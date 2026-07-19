@@ -650,6 +650,18 @@ src/torchcst/
 
 ## 13. 残っている設計判断
 
+### Policyの構成
+
+`Policy`はneuron/synapseのどちらか一方を意味するものではなく、構造可塑性アルゴリズム全体を表す。`cSET`と`cRigL`がこの全体Policyであり、その内部にsynapse側・neuron側のコンポーネントを持つ。
+
+```text
+Policy (cSET / cRigL)
+  ├─ SynapsePolicy
+  └─ NeuronPolicy
+```
+
+各コンポーネントは自身のStoreとbackward観測を担当する。Engineは全体Policyだけを扱い、Policyが各コンポーネントの結果をMutationPlanへまとめる。
+
 新APIで確定済みの事項は、ここへ戻さない。未決なのは実装を前に進めるために
 判断が必要なものだけとする。
 

@@ -1,4 +1,4 @@
-from .base import Policy
+from .base import NeuronPolicy, Policy, SynapsePolicy
 from .backward import BackwardObserver, NeuronBackwardObserver, SynapseBackwardObserver
 from .binding import PolicyBinding, ReadPort
 from .instruments import (
@@ -20,7 +20,7 @@ from .schedule import (
 )
 
 __all__ = [
-    "Policy", "BackwardObserver", "NeuronBackwardObserver",
+    "Policy", "SynapsePolicy", "NeuronPolicy", "BackwardObserver", "NeuronBackwardObserver",
     "SynapseBackwardObserver", "MutationPolicy", "PolicyBinding", "ReadPort",
     "Clock", "UpdateRequest", "UpdateSchedule", "PeriodicSchedule",
     "IdScores", "CandidateScores", "MassEMA", "GradEMA",
