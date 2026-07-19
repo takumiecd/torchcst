@@ -74,34 +74,61 @@ class cSET:
 
 
 class cRigL:
-    """RigL の CST 版: death は cSET 同様、birth は勾配場最大の候補座標。
+    """RigL の CST 版: death は質量最小 (MassEMA、cSET と同じ判定)。birth は
+    勾配場最大の候補座標 (CandidateProbe、KernelPort 経由で実装済み)。
     採択後に座標が off-grid で磨かれるのが離散版に無い CST の利点。
 
-    v0 では未着手のまま (CandidateProbe / GradEMA が「計器の kernel
-    アクセス問題」で未実装のため — instruments.py 参照)。"""
+    death が MassEMA なのは原典への忠実な対応: RigL (Evci et al. 2020) の
+    drop 基準は weight magnitude 最小 (SET と同じ) であり、gradient
+    magnitude を使うのは grow 側だけ。grad ベースの死亡判定を試したい
+    policy は GradEMA (実装済み) に差し替えればよい — 死亡判定の instrument
+    は Policy が自由に選べる。
+
+    妥協点は cSET と同じ 2 つ (docstring 参照): step を self._step に保存/
+    death で計算した n を self._pending_n に控えて birth で使い回す
+    (schedule() が必ず ["death", "birth"] の順で返すことに依存)。
+
+    GateEMA / RentCounter はまだ未実装 (instruments.py 参照: GateEMA は
+    ∂L/∂c に pre-gate 値が要るという KernelPort だけでは解決しない別問題)
+    なので、この policy では使わない。
+    """
 
     def __init__(self, sites: list[str], dt: int = 500, t_end: int = 50_000,
-                 pool: int = 4096):
+                 pool: int = 4096,
+                 frac: Callable[[int], float] = lambda t: 0.3 * (1 - t / 50_000),
+                 domain: tuple[float, float] = (0.0, 1.0)):
         self.sites, self.dt, self.t_end, self.pool = sites, dt, t_end, pool
+        self.frac = frac
+        self.domain = domain
+        self._step = 0
+        self._pending_n: dict[str, int] = {}
 
     def instruments(self):
         out = {}
         for s in self.sites:
-            out[f"gema:{s}"] = (GradEMA(), s)
-            out[f"probe:{s}"] = (CandidateProbe(pool=self.pool), s)
+            out[f"mass:{s}"] = (MassEMA(), s)
+            out[f"probe:{s}"] = (CandidateProbe(pool=self.pool, domain=self.domain), s)
         return out
 
     def schedule(self, step):
+        self._step = step
         return ["death", "birth"] if step % self.dt == 0 and step < self.t_end else []
 
     def decide(self, phase, readings, views, rng):
         ops: list[Op] = []
         for site in self.sites:
-            n = ...
+            view = views[site]
             if phase == "death":
-                ops.append(SynapseDeath(site, readings[f"gema:{site}"].topk(n, largest=False)))
-            else:
-                cand = readings[f"probe:{site}"]   # 座標付き Reading
-                s, t = ...                          # cand.topk(n) の座標
+                k_live = int(view.ids.numel())
+                n = max(1, int(self.frac(self._step) * k_live))
+                n = min(n, k_live)
+                self._pending_n[site] = n
+                dying = readings[f"mass:{site}"].topk(n, largest=False)
+                ops.append(SynapseDeath(site, ids=dying))
+            else:  # phase == "birth"
+                n = self._pending_n.get(site, 0)
+                if n <= 0:
+                    continue
+                s, t = readings[f"probe:{site}"].topk_coords(n)
                 ops.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
         return ops

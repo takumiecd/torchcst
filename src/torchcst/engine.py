@@ -8,8 +8,43 @@ import torch
 from torch import nn
 
 from .compute.linear import CSTLinear
-from .contracts import EntityStore, Instrument, Op, Policy, Reading, View
+from .contracts import EntityStore, Instrument, KernelPort, Op, Policy, Reading, View
 from .storage.synapse import SynapseStore
+
+
+class _LayerKernelPort:
+    """CSTLinear 1 つ分の kernel_in/kernel_out・neuron 座標・gate を閉じ込め
+    た読み取り専用 KernelPort。bind 時の静的配線でのみ作られる — 三角形の
+    per-step の辺 (View/Observation/Op) には現れない (contracts.KernelPort
+    の docstring 参照)。
+
+    gate は毎回 view() から取り直す (in_neurons/out_neurons.view().gate)。
+    これは detach された現在値でよい: 計器は「今の構造が入出力をどう伝えて
+    いるか」を観測するためのものであって、gate 自体を学習する経路ではない。
+
+    評価はすべて torch.no_grad() の中で行う: ここで autograd グラフに乗せて
+    しまうと、毎 step 呼ばれる計器がグラフを蓄積し続けてメモリリークする
+    (計器の統計量そのものに勾配は要らない)。
+    """
+
+    def __init__(self, module: CSTLinear):
+        self._module = module
+
+    def in_features(self, x, coords):
+        with torch.no_grad():
+            in_view = self._module.in_neurons.view()
+            k = self._module.kernel_in(in_view.mu, coords, {})
+            gate = in_view.gate
+            x_gated = x * gate if gate is not None else x
+            return x_gated @ k
+
+    def out_features(self, g, coords):
+        with torch.no_grad():
+            out_view = self._module.out_neurons.view()
+            k = self._module.kernel_out(out_view.mu, coords, {})
+            gate = out_view.gate
+            g_gated = g * gate if gate is not None else g
+            return g_gated @ k
 
 
 class _AdamStateFollower:
@@ -89,6 +124,9 @@ class CSTEngine:
         #    同一オブジェクトの共有 — 例: 中間 NeuronStore を2層で使う — は
         #    正常なので許容する) ──────────────────────────────────────
         self._stores: dict[str, EntityStore] = {}
+        # site (synapse site) → CSTLinear module。KernelPort 構築用
+        # (bind 時の静的配線でのみ使う — per-step の三角形には現れない)。
+        site_to_module: dict[str, CSTLinear] = {}
         for module in model.modules():
             stores_fn = getattr(module, "stores", None)
             if stores_fn is None:
@@ -100,6 +138,8 @@ class CSTEngine:
                         f"site {site!r} is bound to two different store objects"
                     )
                 self._stores[site] = store
+            if isinstance(module, CSTLinear):
+                site_to_module[module.synapses.site] = module
 
         # ── param 収集: 全 store.parameters() + 全 kernel.global_params()
         #    (kernel は CSTLinear の submodule として model.modules() の
@@ -141,7 +181,10 @@ class CSTEngine:
                 "callable factory (params -> Optimizer)"
             )
 
-        # ── instruments 配線: policy.instruments() を bind ─────────────
+        # ── instruments 配線: policy.instruments() を bind。site が
+        #    CSTLinear の synapse site なら KernelPort を渡す (kernel アクセス
+        #    が要る計器 — GradEMA/CandidateProbe — はここで受け取る)。
+        #    port を構成できない site (neuron site 等) には None を渡す。──
         self._instruments: dict[str, Instrument] = {}
         self._instruments_by_site: dict[str, list[str]] = {}
         for name, (inst, site) in policy.instruments().items():
@@ -149,7 +192,9 @@ class CSTEngine:
                 raise ValueError(
                     f"policy instrument {name!r} is bound to unknown site {site!r}"
                 )
-            inst.bind(self._stores[site])
+            module = site_to_module.get(site)
+            port: KernelPort | None = _LayerKernelPort(module) if module is not None else None
+            inst.bind(self._stores[site], port)
             self._instruments[name] = inst
             self._instruments_by_site.setdefault(site, []).append(name)
 

@@ -10,6 +10,14 @@
 
 entity 縦割り: 具体型 (SynapseView / NeuronBirth / ...) は各 store の
 モジュールに置かれる。ここにあるのは共通契約だけ。
+
+KernelPort は辺ではなく bind 時配線: 「計器から Kernel へのアクセス経路が
+ない」という v0 初期の設計未解決点への裁定として追加された。Observation に
+kernel を同梱する案は却下した — Observation は「backward の瞬間の生データ」
+であり、kernel はデータでなく意味論 (どう評価するかのルール) なので、
+per-step の辺 3 型を生のまま不変に保つ方を選んだ。代わりに Engine が
+Instrument.bind() 時に読み取り専用の評価能力 (KernelPort) を渡す。これは
+静的配線 (bind と同格) であって、per-step の三角形の会話には一切登場しない。
 """
 
 from __future__ import annotations
@@ -130,6 +138,49 @@ class Reading(Protocol):
     def value(self, ids: Tensor) -> Tensor: ...
 
 
+class KernelPort(Protocol):
+    """bind 時に Engine が計器へ渡す読み取り専用の評価能力。
+    site の CSTLinear が持つ kernel・neuron 座標・gate を閉じ込める。
+
+    表面を「κ 行列を返す」でなく in_features/out_features にするのは
+    意図的: **gate の掛かり方を port 側に閉じ込める**ため。gated 層では
+
+        ∂L/∂w_k = Σ_b [(x⊙gate_in)@K_in]_{b,k} · [(g_out⊙gate_out)@K_out]_{b,k}
+
+    であり、gate を計器側に露出させると全計器が gate 対応 (gated/plain
+    両対応・None チェック) を個別に再実装する羽目になる。この式は port
+    経由なら
+
+        grad_w = (port.in_features(obs.x, view.s)
+                  * port.out_features(obs.g_out, view.t)).sum(0)
+
+    と 3 行で書ける (GradEMA / CandidateProbe 参照)。
+
+    σ など kernel の学習パラメタは訓練で動くが、port は kernel オブジェクト
+    への参照を閉じているだけなので呼ぶたびに評価時点の現在値が使われる —
+    「port を作った瞬間の σ」に固定されるわけではない。
+
+    KernelPort は三角形の辺ではない: per-step の会話 (View/Observation/Op)
+    には登場せず、bind 時 (静的配線時) にのみ Engine から計器へ渡される。
+    評価は no_grad・バッチ一括で行う契約 (per-item ループ禁止・計器が
+    autograd グラフを保持してはいけない)。
+    """
+
+    def in_features(self, x: Tensor, coords: Tensor) -> Tensor:
+        """(x ⊙ gate_in) @ κ_in(μ_in ⊖ coords)。
+        x: [B, N_in] (Observation.x 相当・ゲート前の生 x)。
+        coords: [n, d_in] (live atom の s でも birth 候補の s_c でもよい)。
+        → [B, n]。"""
+        ...
+
+    def out_features(self, g: Tensor, coords: Tensor) -> Tensor:
+        """(g ⊙ gate_out) @ κ_out(μ_out ⊖ coords)。
+        g: [B, N_out] (Observation.g_out 相当)。
+        coords: [n, d_out]。
+        → [B, n]。"""
+        ...
+
+
 class Instrument(ABC):
     """計器: Observation を毎 step 煮詰め、ΔT ごとの判断材料に変える蓄積器
     (mutation は ΔT ごと・観測は毎 step、の時間スケール差を埋める)。
@@ -138,11 +189,17 @@ class Instrument(ABC):
     NeuronStore に bind する。per-atom 状態は Follower として
     store.followers() に subscribe → mutation 追従が自動 (P3)。
 
-    契約: 入力は Observation と View のみ / obs.version が変わったら
-    EMA 系は自分で無効化 / 答えは常に id で返す (slot を漏らさない)。"""
+    契約: 入力は Observation と View のみ (+ bind 時に渡される KernelPort。
+    これも per-step の辺ではなく静的配線) / obs.version が変わったら EMA 系
+    は自分で無効化 / 答えは常に id で返す (slot を漏らさない)。"""
 
     @abstractmethod
-    def bind(self, store: EntityStore) -> None: ...
+    def bind(self, store: EntityStore, port: "KernelPort | None" = None) -> None:
+        """port は該当 site が CSTLinear の synapse site なら渡される
+        (kernel アクセスが要る計器はここで受け取る)。neuron site など
+        port を構成できない site には None が渡る — 使う計器は bind 時点で
+        即座に検査してエラーにしてよい (使う段になって落ちるより早い)。"""
+        ...
     @abstractmethod
     def update(self, obs: Observation, view: View) -> None: ...
     @abstractmethod

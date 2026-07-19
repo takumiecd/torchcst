@@ -82,11 +82,18 @@ for step, batch in enumerate(loader):
 ## status
 
 v0 core 動作中: storage (SynapseStore birth/death・NeuronStore 固定標本点)・
-CSTLinear matrix-free forward (dense 等価性テスト済)・CSTEngine + MassEMA 計器
-+ cSET policy で三角形が一周する (E2E テストで mutation を跨ぐ訓練を検証)。
+CSTLinear matrix-free forward (dense 等価性テスト済)・CSTEngine + cSET
+(MassEMA) / cRigL (MassEMA death + CandidateProbe birth) で三角形が一周する
+(E2E テストで mutation を跨ぐ訓練を検証)。
 
-v0 スコープ外 (NotImplementedError 明示): merge/kick・per-atom σ (add_extra)・
-neuron mutation・capacity growth・save/load・分散 (world_size>1)・grad 系計器
-(GradEMA/CandidateProbe → cRigL)。grad 系計器は「Instrument から Kernel への
-アクセス経路」という設計未解決点があり、`decision/instruments.py` の
-docstring に整理してある。設計の経緯は `docs/api_draft_v0_3.py` を参照。
+「計器から Kernel へのアクセス経路が無い」という初期の設計未解決点は
+**KernelPort** (bind 時に Engine が計器へ渡す読み取り専用の評価能力。
+Observation には kernel を同梱しない — per-step の辺は生データのまま不変に
+保つ) で解決し、GradEMA / CandidateProbe を実装済み (`contracts.py` の
+KernelPort docstring・`decision/instruments.py` 参照)。
+
+v0 スコープ外 (NotImplementedError 明示): merge/kick・per-atom σ
+(add_extra)・neuron mutation・capacity growth・save/load・分散
+(world_size>1)・GateEMA/RentCounter (∂L/∂c に pre-gate 値が要る別の port
+設計が要る、KernelPort では解決しない)。設計の経緯は `docs/api_draft_v0_3.py`
+を参照。

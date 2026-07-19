@@ -53,7 +53,7 @@ def test_mass_ema_reconcile_preserves_surviving_and_resets_new_ids():
     new_view = store.view()
     assert new_view.version != view.version
 
-    ids_before_reconcile = set(inst._ids.tolist())
+    ids_before_reconcile = set(inst._core.ids.tolist())
     assert surviving_id in ids_before_reconcile
 
     inst.update(_obs("l1", new_view.version), new_view)
@@ -82,9 +82,9 @@ def test_mass_ema_does_not_reconcile_when_version_unchanged():
 
     view = store.view()
     inst.update(_obs("l1", view.version), view)
-    ids_ref = inst._ids
+    ids_ref = inst._core.ids
 
     # version が変わらない限り、内部 ids tensor はそのまま (reconcile が
     # 再度走っていないことの間接証拠)。
     inst.update(_obs("l1", view.version), store.view())
-    assert inst._ids is ids_ref
+    assert inst._core.ids is ids_ref
