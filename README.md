@@ -63,10 +63,16 @@ model = nn.Sequential(
 opt_factory = lambda params: torch.optim.Adam(params, lr=1e-3)
 engine = tc.CSTEngine(model, opt_factory, tc.policies.cRigL(sites=["l1", "l2"]))
 
+# ループの順序不変条件: backward → optimizer.step() → engine.step()。
+# mutation (engine.step) を backward と optimizer.step の間に入れてはいけない
+# — 死んだ原子の stale grad が mutation 後の行 (新生原子) に適用されてしまう。
+# zero_grad は「前 step() の後〜次 backward の前」ならどこでもよいが、
+# 末尾置きは「.grad が None で始まる」暗黙前提に依存するのでループ先頭に置く。
 for step, batch in enumerate(loader):
+    engine.optimizer.zero_grad()
     loss = criterion(model(batch.x), batch.y)
     loss.backward()               # Observation → 計器がここで煮詰まる
-    engine.optimizer.step(); engine.optimizer.zero_grad()
+    engine.optimizer.step()
     engine.step()                 # schedule 発火時のみ三角形が一周する
 ```
 

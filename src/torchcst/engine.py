@@ -184,7 +184,12 @@ class CSTEngine:
         self._rng.manual_seed(seed)
 
     def step(self) -> list[Op]:
-        """optimizer.step() の後に呼ぶ。適用 op を返す (ロギング用)。"""
+        """optimizer.step() の後・次の backward の前に呼ぶ。適用 op を返す。
+
+        順序不変条件: backward → optimizer.step() → engine.step()。
+        backward と optimizer.step() の間で呼んではいけない — mutation で
+        行が入れ替わった後に前住人の stale grad が適用されてしまう
+        (新生原子が死んだ原子の勾配で初手更新される)。"""
         phases = self.policy.schedule(self._step)
         applied: list[Op] = []
         for phase in phases:
