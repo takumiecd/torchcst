@@ -657,6 +657,7 @@ src/torchcst/
 
 - [x] `ModuleGradRecord`のcapture上限をinput / output / grad_outputに固定する。
 - [x] `grad_input`はnative backward hookでcaptureし、Policy処理はbackward完了後に行う。
+- [x] `CSTEngine.backward(loss)`をautograd実行とcapture確定の境界にする。
 - [ ] neuron + synapse複合mutationにprepare/commitが必要か決める。
 - [ ] `PolicyBinding`のsite指定を文字列からtyped `SiteRef`へ移行するか決める。
 

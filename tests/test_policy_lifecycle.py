@@ -51,7 +51,7 @@ def test_set_prepares_without_gradient_capture_and_emits_site_batch():
     )
     engine, synapses = _engine(policy)
 
-    engine.model(torch.randn(2, 4)).sum().backward()
+    engine.backward(engine.model(torch.randn(2, 4)).sum())
     engine.optimizer.step()
     ops = engine.step()
 
@@ -67,7 +67,7 @@ def test_rigl_capture_is_policy_owned_and_produces_candidates():
     )
     engine, synapses = _engine(policy)
 
-    engine.model(torch.randn(2, 4)).sum().backward()
+    engine.backward(engine.model(torch.randn(2, 4)).sum())
     engine.optimizer.step()
     ops = engine.step()
 

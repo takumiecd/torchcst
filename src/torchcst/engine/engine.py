@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable
 import torch
 from torch import nn
 
-from ..backward import CapturePoint
+from ..backward import BackwardContext, CapturePoint
 from ..policy.base import Policy
 from ..policy.binding import PolicyBinding
 from ..policy.schedule import Clock
@@ -207,6 +207,11 @@ class CSTEngine:
 
         self._step += 1
         return applied
+
+    def backward(self, loss: torch.Tensor, *args, **kwargs) -> None:
+        """Run autograd and dispatch captured records after backward completes."""
+        with BackwardContext(self._collect_captures(self.model)):
+            loss.backward(*args, **kwargs)
 
     def close(self) -> None:
         self.policy.close()
