@@ -1,7 +1,5 @@
-"""cRigL (MassEMA death + CandidateProbe birth) の完動テスト。cSET の e2e と
-同構成で 400 step 訓練し、loss 収束・k_live 保存・op_log 整合に加えて
-「birth された座標がその step の probe topk_coords と厳密一致する」ことを
-確認する (統計的な近さでなく決定性そのものを検証する)。"""
+"""cRigLの完動テスト。PolicyがCandidateScoresの最大値を選び、生成した
+birth座標がその選択と厳密一致することも確認する。"""
 
 from __future__ import annotations
 
@@ -40,8 +38,13 @@ def test_crigl_e2e_toy_regression_and_birth_coord_determinism():
     model = nn.Sequential(layer1, nn.GELU(), layer2)
 
     dt, t_end, n_steps = 100, 350, 400
-    policy = tc.policies.cRigL(sites=["l1", "l2"], dt=dt, t_end=t_end, pool=512,
-                                frac=lambda t: 0.05)
+    policy = tc.policies.cRigL(
+        sites=["l1", "l2"],
+        schedule=tc.PeriodicSchedule(
+            every=dt, until=t_end, fraction=lambda _step: 0.05
+        ),
+        pool=512,
+    )
 
     opt_factory = lambda params: torch.optim.Adam(params, lr=1e-2)
     engine = tc.CSTEngine(model, opt_factory, policy, seed=0)
@@ -83,16 +86,13 @@ def test_crigl_e2e_toy_regression_and_birth_coord_determinism():
             for op in ops:
                 if not isinstance(op, SynapseBirth):
                     continue
-                # 決定性チェック: birth された座標は、その time-step で
-                # probe が持っていた reading の topk_coords(n) と厳密一致する。
-                # engine.step() 完了後〜次の backward までは probe の内部
-                # 状態 (pool/scores) は誰にも更新されないので、ここで
-                # 読み直しても decide() が見たのと同じスナップショットに
-                # なる (byte-exact な再現性の検証であって、統計的な近さの
-                # flaky なテストにはしていない)。
-                probe = engine._instruments[f"probe:{op.site}"]
+                # topkはProbeでなくPolicyの判断。snapshotの生scoreから同じ
+                # 選択を再現し、birth座標とbyte-exactに一致することを確認する。
+                scores = policy.candidates[op.site].snapshot()
                 n = op.s.shape[0]
-                expected_s, expected_t = probe.read().topk_coords(n)
+                chosen = scores.scores.topk(n).indices
+                expected_s = scores.s.index_select(0, chosen)
+                expected_t = scores.t.index_select(0, chosen)
                 assert torch.equal(op.s, expected_s)
                 assert torch.equal(op.t, expected_t)
 

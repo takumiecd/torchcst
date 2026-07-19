@@ -6,35 +6,37 @@ policy 駆動の mutation (birth / death / merge / kick) で進化させる。
 
 > ν = Σ_k w_k δ_(s_k, t_k),   W_ij = Σ_k w_k κ(μ_i^in − s_k) κ(μ_j^out − t_k)
 
-## アーキテクチャ = 三角形 × entity 縦割り
+## アーキテクチャ = Engine × Forward × Backward × Policy × Storage
 
 ```
              synapse column          neuron column
 Storage   │ SynapseStore + ops   │ NeuronStore + ops   │ ← 縦割り (内部自由)
-計器      │ synapse Instruments  │ neuron Instruments  │ ← 縦割り
+観測状態  │ synapse observers    │ neuron observers    │ ← Policy所有
 ──────────┼──────────────────────┴─────────────────────┤
-Policy    │   横断: 全計器の読み値 → 協調 op バッチ       │
-Compute   │   横断: CSTLinear = synapse × neuron の合成   │
+Policy    │   prepare / capture / step → MutationPlan       │
+Forward   │   CSTLinear = synapse × neuron の合成           │
+Backward  │   PyTorch Tensor hook → GradRecord              │
 ```
 
+```text
+backward: PyTorch hook ─GradRecord→ Policy-owned observer
+step:     Schedule ─UpdateRequest→ Policy ─MutationPlan→ Storage
 ```
-   Storage ──View──→ Compute ──Observation──→ Decision ──Op──→ Storage
-```
 
-辺の型は 3 つだけ。頂点間はこれ以外で会話しない:
+Policyがprepare時にStorageのread portと必要なPyTorch captureをbindする:
 
-- **Compute は Op を発行できない**(構造を変えられない)
-- **Decision は View の読みと Op の発行のみ**(重みテンソルに触れない)
-- **Engine は Op の中身を見ない**(site-local batchへルーティングして
-  applyするだけ)
+- **Forward/Backward は Op を発行できない**(構造を変えられない)
+- **Policy は observer stateと構造判断を所有する**
+- **Engine は MutationPlan をsiteへrouteするだけ**
 
-契約面はすべて `torchcst/contracts.py` に集約されている。
+公開契約は `torchcst/engine/`, `torchcst/forward/`, `torchcst/backward/`,
+`torchcst/policy/`, `torchcst/storage/`に責務ごとに配置されている。
 
 ## ストレージ第一原理
 
 - P1. 置換不変 — slot 順に意味なし。同一性は id のみ。
 - P2. id は int64・never-reuse・単調増加・上位ビット rank(分散 birth 無調停)。
-- P3. per-atom 付随状態(moment/計器)は Follower として mutation に自動追従。
+- P3. slot-indexed付随状態(optimizer moment等)はFollowerとしてmutationに追従。
 - P4. mutation はsite-localなop batch単位のトランザクション。
   version単調増加 + opログ。
   分散は op ログの broadcast 同一適用(テンソル同期なし)。
@@ -63,7 +65,11 @@ model = nn.Sequential(
 # factory を呼んで実体化する。Optimizer インスタンスをそのまま渡した場合は
 # 不足分の param を add_param_group で足す。
 opt_factory = lambda params: torch.optim.Adam(params, lr=1e-3)
-engine = tc.CSTEngine(model, opt_factory, tc.policies.cRigL(sites=["l1", "l2"]))
+policy = tc.policies.cRigL(
+    sites=["l1", "l2"],
+    schedule=tc.PeriodicSchedule(every=500, until=50_000),
+)
+engine = tc.CSTEngine(model, opt_factory, policy)
 
 # ループの順序不変条件: backward → optimizer.step() → engine.step()。
 # mutation (engine.step) を backward と optimizer.step の間に入れてはいけない
@@ -73,9 +79,9 @@ engine = tc.CSTEngine(model, opt_factory, tc.policies.cRigL(sites=["l1", "l2"]))
 for step, batch in enumerate(loader):
     engine.optimizer.zero_grad()
     loss = criterion(model(batch.x), batch.y)
-    loss.backward()               # Observation → 計器がここで煮詰まる
+    loss.backward()               # Policy-owned capture → observer
     engine.optimizer.step()
-    engine.step()                 # schedule 発火時のみ三角形が一周する
+    engine.step()                 # schedule発火時だけMutationPlanを適用
 ```
 
 参照 policy は cSET / cRigL (SET・RigL の CST 版)。policy が各 1 画面で
@@ -88,14 +94,11 @@ CSTLinear matrix-free forward (dense 等価性テスト済)・CSTEngine + cSET
 (MassEMA) / cRigL (MassEMA death + CandidateProbe birth) で三角形が一周する
 (E2E テストで mutation を跨ぐ訓練を検証)。
 
-「計器から Kernel へのアクセス経路が無い」という初期の設計未解決点は
-**KernelPort** (bind 時に Engine が計器へ渡す読み取り専用の評価能力。
-Observation には kernel を同梱しない — per-step の辺は生データのまま不変に
-保つ) で解決し、GradEMA / CandidateProbe を実装済み (`contracts.py` の
-KernelPort docstring・`decision/instruments.py` 参照)。
+Policyが使うbackward情報は、PyTorch hookから得たdetach済み`GradRecord`である。
+SETはcaptureを登録せず、RigLだけがprepare時にgradient captureを登録する。
+optimizer後はScheduleが`UpdateRequest`を返し、Policyが`MutationPlan`を作る。
 
 v0 スコープ外 (NotImplementedError 明示): merge/kick・per-atom σ
 (add_extra)・neuron mutation・capacity growth・save/load・分散
-(world_size>1)・GateEMA/RentCounter (∂L/∂c に pre-gate 値が要る別の port
-設計が要る、KernelPort では解決しない)。設計の経緯は `docs/api_draft_v0_3.py`
-を参照。
+(world_size>1)・GateEMA/RentCounter (∂L/∂c に pre-gate 値が要る別の capture
+設計が要る)。設計の経緯と未決事項は `docs/architecture_workbench.md` を参照。

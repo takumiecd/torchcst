@@ -11,7 +11,7 @@ from typing import Protocol, Sequence
 import torch
 from torch import Tensor
 
-from ..contracts import Follower
+from .base import Follower
 
 # id の上位ビットに詰める rank のビット幅 (P2)。counter はこの下位に収まる
 # 前提 (rank ごとの発行数が 2**48 を超えることは v0 では想定しない)。
@@ -307,7 +307,7 @@ class BalancedSlotPool:
 
 
 class FollowerHub:
-    """P3 の追従機構。moment 列・計器列など「本体に付随する slot-indexed
+    """P3の追従機構。optimizer momentなど「本体に付随するslot-indexed
     配列」を購読させ、mutation 時に一括通知する。意味論 (birth 初期値や
     merge 合成則) は follower 側が決める。機構はこの 1 クラスで共通。"""
 

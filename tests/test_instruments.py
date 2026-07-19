@@ -1,17 +1,11 @@
-"""MassEMA の id 空間 reconcile と Reading.topk の test。"""
+"""MassEMA のid空間reconcileと生のIdScores snapshotのtest。"""
 
 from __future__ import annotations
 
 import torch
 
-from torchcst.contracts import Observation
-from torchcst.decision.instruments import MassEMA
+from torchcst.policy.instruments import MassEMA
 from torchcst.storage.synapse import SynapseBirth, SynapseDeath, SynapseStore
-
-
-def _obs(site: str, version: int) -> Observation:
-    return Observation(site=site, x=torch.zeros(1, 1), g_out=torch.zeros(1, 1), version=version)
-
 
 def test_mass_ema_topk_returns_smallest_abs_w_id():
     store = SynapseStore("l1", d_in=1, d_out=1, capacity=8)
@@ -20,13 +14,12 @@ def test_mass_ema_topk_returns_smallest_abs_w_id():
         w=torch.tensor([5.0, -1.0, 3.0, 0.2]),
     )])
     inst = MassEMA(decay=0.5)
-    inst.bind(store)
 
     view = store.view()
-    inst.update(_obs("l1", view.version), view)
+    inst.observe(view)
 
-    reading = inst.read()
-    smallest = reading.topk(1, largest=False)
+    scores = inst.snapshot()
+    smallest = scores.ids[scores.scores.argmin()]
     idx_min = view.w.abs().argmin()
     assert int(smallest.item()) == int(view.ids[idx_min].item())
 
@@ -38,11 +31,10 @@ def test_mass_ema_reconcile_preserves_surviving_and_resets_new_ids():
         w=torch.tensor([1.0, 1.0, 1.0, 1.0]),
     )])
     inst = MassEMA(decay=0.5)
-    inst.bind(store)
 
     view = store.view()
     for _ in range(6):
-        inst.update(_obs("l1", view.version), store.view())
+        inst.observe(store.view())
 
     surviving_id = int(view.ids[0].item())
     dying_ids = view.ids[1:2]
@@ -61,9 +53,9 @@ def test_mass_ema_reconcile_preserves_surviving_and_resets_new_ids():
     ids_before_reconcile = set(inst._core.ids.tolist())
     assert surviving_id in ids_before_reconcile
 
-    inst.update(_obs("l1", new_view.version), new_view)
-    reading = inst.read()
-    ema = dict(zip(reading.ids.tolist(), reading.values.tolist()))
+    inst.observe(new_view)
+    scores = inst.snapshot()
+    ema = dict(zip(scores.ids.tolist(), scores.scores.tolist()))
 
     # 生き残り id は EMA を引き継いでいる (0 から出直していない)
     assert ema[surviving_id] > 0.4
@@ -85,13 +77,12 @@ def test_mass_ema_does_not_reconcile_when_version_unchanged():
         w=torch.tensor([1.0, 1.0]),
     )])
     inst = MassEMA(decay=0.0)
-    inst.bind(store)
 
     view = store.view()
-    inst.update(_obs("l1", view.version), view)
+    inst.observe(view)
     ids_ref = inst._core.ids
 
     # version が変わらない限り、内部 ids tensor はそのまま (reconcile が
     # 再度走っていないことの間接証拠)。
-    inst.update(_obs("l1", view.version), store.view())
+    inst.observe(store.view())
     assert inst._core.ids is ids_ref

@@ -11,7 +11,7 @@ from typing import Callable, Iterable, Sequence
 import torch
 from torch import Tensor, nn
 
-from ..contracts import EntityStore, Op, View
+from .base import EntityStore, Op, View
 from .common import (
     FollowerHub,
     SlotBackend,
@@ -133,7 +133,7 @@ class SynapseStore(EntityStore):
     """ν = Σ w_k δ_(s_k,t_k)。実データ: s, t, w (全て学習対象)。
 
     mutation 意味論はここで完結:
-      - birth: op が座標と初期 w を運ぶ。moment/計器は FollowerHub 経由で追従
+      - birth: opが座標と初期wを運ぶ。slot-indexed付随状態はFollowerHubで追従
       - birth/death: batch全体をSlotBackendで同時に計画・検証してから適用
       - merge: s,t = w 質量重み平均 / w = 和。mass は自分の w から取る
       - kick : 座標への in-place 加算
@@ -174,6 +174,7 @@ class SynapseStore(EntityStore):
         t = self.t.index_select(0, slots)
         w = self.w.index_select(0, slots)
         return SynapseView(site=self.site, version=self._version,
+                            capacity=self.capacity,
                             s=s, t=t, w=w, ids=ids)
 
     def apply(self, ops: Sequence[Op]) -> None:

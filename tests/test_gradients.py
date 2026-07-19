@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import torch
 
-from torchcst.compute.kernels import GaussianKernel
-from torchcst.compute.linear import CSTLinear
+from torchcst.forward.kernels import GaussianKernel
+from torchcst.forward.linear import CSTLinear
 from torchcst.storage.neuron import NeuronStore
 from torchcst.storage.synapse import SynapseBirth, SynapseStore
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchcst.contracts import Follower
+from torchcst.storage.base import Follower
 from torchcst.storage.common import BalancedSlotPool
 from torchcst.storage.synapse import (
     SynapseBirth,

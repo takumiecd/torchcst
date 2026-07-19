@@ -8,7 +8,7 @@ from typing import Iterable, Sequence
 import torch
 from torch import Tensor, nn
 
-from ..contracts import EntityStore, Op, View
+from .base import EntityStore, Op, View
 from .common import FollowerHub, IdAllocator
 
 
@@ -80,7 +80,7 @@ class NeuronStore(EntityStore):
 
     def view(self) -> NeuronView:
         gate = self.c if self.gated else None
-        return NeuronView(site=self.site, version=self.version,
+        return NeuronView(site=self.site, version=self.version, capacity=self.mu.shape[0],
                            mu=self.mu, gate=gate, ids=self._ids)
 
     def apply(self, ops: Sequence[Op]) -> None:
