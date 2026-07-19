@@ -17,6 +17,19 @@ def _new_ids(before: torch.Tensor, after: torch.Tensor) -> torch.Tensor:
     return torch.tensor(new, dtype=torch.int64)
 
 
+def test_policy_schedule_returns_named_stage_without_hidden_phase_state():
+    policy = tc.policies.cSET(sites=["l1"], dt=10, t_end=20)
+
+    assert policy.schedule(1) == []
+    stages = policy.schedule(10)
+
+    assert len(stages) == 1
+    assert isinstance(stages[0], tc.DecisionStage)
+    assert stages[0].name == "rewire"
+    assert not hasattr(policy, "_step")
+    assert not hasattr(policy, "_pending_n")
+
+
 def test_engine_e2e_cset_toy_regression():
     torch.manual_seed(0)
 

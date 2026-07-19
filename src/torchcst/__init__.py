@@ -26,6 +26,8 @@ from . import decision as policies
 from .compute import CSTConv2d, CSTLinear, GaussianKernel, TriangularKernel
 from .decision import CandidateReading, MassEMA
 from .contracts import (
+    DecisionContext,
+    DecisionStage,
     EntityStore,
     Follower,
     Instrument,
@@ -61,7 +63,7 @@ __all__ = [
     # contracts
     "View", "Observation", "Op",
     "EntityStore", "Follower", "Kernel", "KernelPort", "Instrument", "Reading",
-    "Policy",
+    "Policy", "DecisionContext", "DecisionStage",
     # storage
     "IdAllocator", "SlotPool", "FollowerHub",
     "SynapseStore", "SynapseView",

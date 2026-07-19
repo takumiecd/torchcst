@@ -8,7 +8,16 @@ import torch
 from torch import nn
 
 from .compute.linear import CSTLinear
-from .contracts import EntityStore, Instrument, KernelPort, Op, Policy, Reading, View
+from .contracts import (
+    DecisionContext,
+    EntityStore,
+    Instrument,
+    KernelPort,
+    Op,
+    Policy,
+    Reading,
+    View,
+)
 from .storage.synapse import SynapseStore
 
 
@@ -102,9 +111,9 @@ class CSTEngine:
       - policy.instruments() を bind し、backward hook で Observation を配る
       - store.parameters() を optimizer に接続し、moment 影列を Follower
         として followers() に subscribe (P3)
-      - step(): schedule 発火 → decide → op を site でルーティングし
+      - step(): schedule された DecisionStage を実行 → op を site でルーティングし
         store.apply (P4: version++, op ログ, 派生キャッシュ無効化)
-      - 分散: rank0 で decide → op broadcast → 全 rank 同一適用
+      - 分散: rank0 で DecisionStage.run → op broadcast → 全 rank 同一適用
     Engine は op の中身も store の内部レイアウトも知らない。
     """
 
@@ -235,16 +244,22 @@ class CSTEngine:
         backward と optimizer.step() の間で呼んではいけない — mutation で
         行が入れ替わった後に前住人の stale grad が適用されてしまう
         (新生原子が死んだ原子の勾配で初手更新される)。"""
-        phases = self.policy.schedule(self._step)
+        stages = self.policy.schedule(self._step)
         applied: list[Op] = []
-        for phase in phases:
+        for stage in stages:
             readings: dict[str, Reading] = {
                 name: inst.read() for name, inst in self._instruments.items()
             }
             views: dict[str, View] = {
                 site: store.view() for site, store in self._stores.items()
             }
-            ops = self.policy.decide(phase, readings, views, self._rng)
+            ctx = DecisionContext(
+                step=self._step,
+                readings=readings,
+                views=views,
+                rng=self._rng,
+            )
+            ops = stage.run(ctx)
             for op in ops:
                 store = self._stores.get(op.site)
                 if store is None:

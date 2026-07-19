@@ -1,19 +1,20 @@
 """torchcst.decision.policies — 参照 policy。
 
-「各 1 画面で書けるか」が API の受け入れテスト。decide は全 site・
-全 entity の読み値を見て混成 op バッチを返してよい (entity 独立ゲートを
-強制しない)。純関数契約: 記録済み Reading でリプレイ可能・乱数は rng 経由。
+「各 1 画面で書けるか」が API の受け入れテスト。schedule された判断処理は
+全 site・全 entity の読み値を見て混成 op バッチを返してよい (entity 独立
+ゲートを強制しない)。記録済み DecisionContext でリプレイ可能・乱数は
+context の rng 経由のみ。
 """
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, cast
 
 import torch
 
-from ..contracts import Op, Reading, View
+from ..contracts import DecisionContext, DecisionStage, Op
 from ..storage.synapse import SynapseBirth, SynapseDeath
-from .instruments import CandidateProbe, GradEMA, MassEMA
+from .instruments import CandidateProbe, CandidateReading, GradEMA, MassEMA
 
 
 class cSET:
@@ -23,15 +24,9 @@ class cSET:
     (instruments.py の「計器の kernel アクセス問題」参照) なのでこちらで
     代替する。
 
-    妥協 2 点 (docstring に明記):
-      1. Policy.decide には step が渡ってこない設計 (Policy.decide の
-         シグネチャに step 引数がない) ため、schedule(step) で self._step
-         に保存して decide から参照する。
-      2. birth の原子数は death と同数にしたい (k_live を維持する) が、
-         death で k_live が減った後の view から再計算すると値がずれうる
-         ので、death phase で計算した n を self._pending_n[site] に控えて
-         birth phase で使い回す (schedule() が必ず ["death", "birth"] の
-         順で返すことに依存する内部実装)。
+    rewire は変更前の同一スナップショットから death と birth を一括決定し、
+    SynapseDeath → SynapseBirth の順で返す。これにより原子数を保ったまま、
+    phase 間で pending 状態を持たずに済む。
     """
 
     def __init__(self, sites: list[str], dt: int = 500, t_end: int = 50_000,
@@ -39,38 +34,35 @@ class cSET:
                  domain: tuple[float, float] = (0.0, 1.0)):
         self.sites, self.dt, self.t_end, self.frac = sites, dt, t_end, frac
         self.domain = domain
-        self._step = 0
-        self._pending_n: dict[str, int] = {}
 
     def instruments(self):
         return {f"mass:{s}": (MassEMA(), s) for s in self.sites}
 
-    def schedule(self, step):
-        self._step = step
-        return ["death", "birth"] if step % self.dt == 0 and step < self.t_end else []
+    def schedule(self, step: int) -> list[DecisionStage]:
+        if step % self.dt == 0 and step < self.t_end:
+            return [DecisionStage("rewire", self.rewire)]
+        return []
 
-    def decide(self, phase, readings, views, rng):
-        ops: list[Op] = []
+    def rewire(self, ctx: DecisionContext) -> list[Op]:
+        deaths: list[Op] = []
+        births: list[Op] = []
         lo, hi = self.domain
         for site in self.sites:
-            view = views[site]
-            if phase == "death":
-                k_live = int(view.ids.numel())
-                n = max(1, int(self.frac(self._step) * k_live))
-                n = min(n, k_live)
-                self._pending_n[site] = n
-                dying = readings[f"mass:{site}"].topk(n, largest=False)
-                ops.append(SynapseDeath(site, ids=dying))
-            else:  # phase == "birth"
-                n = self._pending_n.get(site, 0)
-                if n <= 0:
-                    continue
-                d_in = view.s.shape[-1]
-                d_out = view.t.shape[-1]
-                s = lo + (hi - lo) * torch.rand(n, d_in, generator=rng)
-                t = lo + (hi - lo) * torch.rand(n, d_out, generator=rng)
-                ops.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
-        return ops
+            view = ctx.views[site]
+            k_live = int(view.ids.numel())
+            n = min(max(1, int(self.frac(ctx.step) * k_live)), k_live)
+            if n == 0:
+                continue
+
+            dying = ctx.readings[f"mass:{site}"].topk(n, largest=False)
+            deaths.append(SynapseDeath(site, ids=dying))
+
+            d_in = view.s.shape[-1]
+            d_out = view.t.shape[-1]
+            s = lo + (hi - lo) * torch.rand(n, d_in, generator=ctx.rng)
+            t = lo + (hi - lo) * torch.rand(n, d_out, generator=ctx.rng)
+            births.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
+        return deaths + births
 
 
 class cRigL:
@@ -84,9 +76,8 @@ class cRigL:
     policy は GradEMA (実装済み) に差し替えればよい — 死亡判定の instrument
     は Policy が自由に選べる。
 
-    妥協点は cSET と同じ 2 つ (docstring 参照): step を self._step に保存/
-    death で計算した n を self._pending_n に控えて birth で使い回す
-    (schedule() が必ず ["death", "birth"] の順で返すことに依存)。
+    cSET と同様、rewire は変更前の同一スナップショットから death と birth
+    を一括決定し、順序付きの op バッチを返す。
 
     GateEMA / RentCounter はまだ未実装 (instruments.py 参照: GateEMA は
     ∂L/∂c に pre-gate 値が要るという KernelPort だけでは解決しない別問題)
@@ -100,8 +91,6 @@ class cRigL:
         self.sites, self.dt, self.t_end, self.pool = sites, dt, t_end, pool
         self.frac = frac
         self.domain = domain
-        self._step = 0
-        self._pending_n: dict[str, int] = {}
 
     def instruments(self):
         out = {}
@@ -110,25 +99,25 @@ class cRigL:
             out[f"probe:{s}"] = (CandidateProbe(pool=self.pool, domain=self.domain), s)
         return out
 
-    def schedule(self, step):
-        self._step = step
-        return ["death", "birth"] if step % self.dt == 0 and step < self.t_end else []
+    def schedule(self, step: int) -> list[DecisionStage]:
+        if step % self.dt == 0 and step < self.t_end:
+            return [DecisionStage("rewire", self.rewire)]
+        return []
 
-    def decide(self, phase, readings, views, rng):
-        ops: list[Op] = []
+    def rewire(self, ctx: DecisionContext) -> list[Op]:
+        deaths: list[Op] = []
+        births: list[Op] = []
         for site in self.sites:
-            view = views[site]
-            if phase == "death":
-                k_live = int(view.ids.numel())
-                n = max(1, int(self.frac(self._step) * k_live))
-                n = min(n, k_live)
-                self._pending_n[site] = n
-                dying = readings[f"mass:{site}"].topk(n, largest=False)
-                ops.append(SynapseDeath(site, ids=dying))
-            else:  # phase == "birth"
-                n = self._pending_n.get(site, 0)
-                if n <= 0:
-                    continue
-                s, t = readings[f"probe:{site}"].topk_coords(n)
-                ops.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
-        return ops
+            view = ctx.views[site]
+            k_live = int(view.ids.numel())
+            n = min(max(1, int(self.frac(ctx.step) * k_live)), k_live)
+            if n == 0:
+                continue
+
+            dying = ctx.readings[f"mass:{site}"].topk(n, largest=False)
+            deaths.append(SynapseDeath(site, ids=dying))
+
+            probe = cast(CandidateReading, ctx.readings[f"probe:{site}"])
+            s, t = probe.topk_coords(n)
+            births.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
+        return deaths + births

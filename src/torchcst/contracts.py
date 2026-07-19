@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterable, Protocol
+from typing import TYPE_CHECKING, Callable, Iterable, Protocol
 
 import torch
 from torch import Tensor, nn
@@ -206,10 +206,42 @@ class Instrument(ABC):
     def read(self) -> Reading: ...
 
 
+@dataclass(frozen=True)
+class DecisionContext:
+    """schedule された判断処理に Engine が渡す、その時点のスナップショット。
+
+    step を明示的に運ぶことで Policy が schedule() の副作用として現在 step
+    を保存する必要をなくす。複数 stage がある場合、Engine は各 stage の直前
+    に readings / views を取り直すため、前 stage が適用した mutation を次の
+    stage から観測できる。乱数は再現性のため Engine 所有の rng のみを渡す。
+    """
+
+    step: int
+    readings: dict[str, Reading]
+    views: dict[str, View]
+    rng: torch.Generator
+
+
+DecisionFn = Callable[[DecisionContext], list[Op]]
+
+
+@dataclass(frozen=True)
+class DecisionStage:
+    """Policy が schedule() から返す、名前付きの判断処理。
+
+    run は Engine 内だけで実行されるため serialize 対象ではない。リプレイ・
+    分散 broadcast の境界を越えるのは run が生成した Op のみ。
+    """
+
+    name: str
+    run: DecisionFn
+
+
 class Policy(Protocol):
     """自由度の唯一の置き場・横断点。
 
-    decide は「全 site・全 entity の読み値」を見て混成 op バッチ
+    schedule が返す DecisionStage は「全 site・全 entity の読み値」を見て
+    混成 op バッチ
     (例 [NeuronDeath(...), SynapseMerge(...)]) を返せる。entity 独立の
     ゲートに分解することを API は強制しない (SC-MRG-1 / SC-LIFE-2 の教訓:
     独立ゲートは半端均衡・necessary-atom 食いの病理を生む)。
@@ -219,9 +251,6 @@ class Policy(Protocol):
         """{計器名: (instance, bind先 site)}。Engine が bind と配線を行う。"""
         ...
 
-    def schedule(self, step: int) -> list[str]:
-        """発火フェーズ名を実行順で (例 ["death", "birth"])。空 = 何もしない。"""
+    def schedule(self, step: int) -> list[DecisionStage]:
+        """実行する判断処理を順番に返す。空 = 何もしない。"""
         ...
-
-    def decide(self, phase: str, readings: dict[str, Reading],
-               views: dict[str, View], rng: torch.Generator) -> list[Op]: ...

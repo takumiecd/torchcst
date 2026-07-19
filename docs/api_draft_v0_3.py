@@ -5,8 +5,9 @@ v0.2 からの変更 (合意済み設計):
     NeuronStore が各自の実データ・mutation 実装・専用 op 型を持つ
     (内部は密結合・自由)。Engine が知るのは EntityStore 契約のみ。
   - 共通機構 (id/slot/follower) は継承でなくコンポジションで提供。
-  - 計器も entity 縦割り。ただし Policy.decide と Compute (layer 合成) の
-    2 点だけは横断を API 上保証する (SC-MRG-1 / SC-LIFE-2 の教訓:
+  - 計器も entity 縦割り。ただし Policy の DecisionStage と Compute
+    (layer 合成) の 2 点だけは横断を API 上保証する
+    (SC-MRG-1 / SC-LIFE-2 の教訓:
     entity 独立ゲートは半端均衡・necessary-atom 食いの病理を再生産する)。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -389,10 +390,29 @@ class CandidateProbe(Instrument):
     proposal="uniform" | "near_support" | callable。"""
 
 
+@dataclass(frozen=True)
+class DecisionContext:
+    """Engine が schedule された判断処理へ渡す現在 step のスナップショット。"""
+
+    step: int
+    readings: dict[str, Reading]
+    views: dict[str, View]
+    rng: torch.Generator
+
+
+@dataclass(frozen=True)
+class DecisionStage:
+    """Engine 内だけで実行する名前付き判断処理。境界を越えるのは生成 Op。"""
+
+    name: str
+    run: Callable[[DecisionContext], list[Op]]
+
+
 class Policy(Protocol):
     """自由度の唯一の置き場・横断点その2。
 
-    decide は「全 site・全 entity の読み値」を見て混成 op バッチ
+    schedule が返す DecisionStage は「全 site・全 entity の読み値」を見て
+    混成 op バッチ
     (例 [NeuronDeath(...), SynapseMerge(...)]) を返せる。entity 独立の
     ゲートに分解することを API は強制しない (SC-MRG-1 / SC-LIFE-2)。
     純関数契約: 記録済み Reading でリプレイ可能・乱数は rng 経由のみ (P4)。"""
@@ -401,12 +421,9 @@ class Policy(Protocol):
         """{計器名: (instance, bind先 site)}。Engine が bind と配線を行う。"""
         ...
 
-    def schedule(self, step: int) -> list[str]:
-        """発火フェーズ名を実行順で (例 ["death", "birth"])。空 = 何もしない。"""
+    def schedule(self, step: int) -> list[DecisionStage]:
+        """実行する判断処理を順番に返す。空 = 何もしない。"""
         ...
-
-    def decide(self, phase: str, readings: dict[str, Reading],
-               views: dict[str, View], rng: torch.Generator) -> list[Op]: ...
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -419,9 +436,9 @@ class CSTEngine:
       - policy.instruments() を bind し、backward hook で Observation を配る
       - store.parameters() を optimizer に接続し、moment 影列を Follower
         として followers() に subscribe (P3)
-      - step(): schedule 発火 → decide → op を site でルーティングし
+      - step(): schedule された DecisionStage を実行 → op を site でルーティングし
         store.apply (P4: version++, op ログ, 派生キャッシュ無効化)
-      - 分散: rank0 で decide → op broadcast → 全 rank 同一適用
+      - 分散: rank0 で DecisionStage.run → op broadcast → 全 rank 同一適用
     Engine は op の中身も store の内部レイアウトも知らない。
     """
 
@@ -451,18 +468,19 @@ class cSET:
         return {f"gema:{s}": (GradEMA(), s) for s in self.sites}
 
     def schedule(self, step):
-        return ["death", "birth"] if step % self.dt == 0 and step < self.t_end else []
+        if step % self.dt == 0 and step < self.t_end:
+            return [DecisionStage("rewire", self.rewire)]
+        return []
 
-    def decide(self, phase, readings, views, rng):
-        ops: list[Op] = []
+    def rewire(self, ctx):
+        deaths, births = [], []
         for site in self.sites:
-            n = ...  # frac(step) * k_live
-            if phase == "death":
-                ops.append(SynapseDeath(site, readings[f"gema:{site}"].topk(n, largest=False)))
-            else:
-                s, t = ...  # rng で domain 一様サンプル
-                ops.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
-        return ops
+            n = ...  # frac(ctx.step) * k_live
+            dying = ctx.readings[f"gema:{site}"].topk(n, largest=False)
+            s, t = ...  # ctx.rng で domain 一様サンプル
+            deaths.append(SynapseDeath(site, dying))
+            births.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
+        return deaths + births
 
 
 class cRigL:
@@ -481,19 +499,20 @@ class cRigL:
         return out
 
     def schedule(self, step):
-        return ["death", "birth"] if step % self.dt == 0 and step < self.t_end else []
+        if step % self.dt == 0 and step < self.t_end:
+            return [DecisionStage("rewire", self.rewire)]
+        return []
 
-    def decide(self, phase, readings, views, rng):
-        ops: list[Op] = []
+    def rewire(self, ctx):
+        deaths, births = [], []
         for site in self.sites:
             n = ...
-            if phase == "death":
-                ops.append(SynapseDeath(site, readings[f"gema:{site}"].topk(n, largest=False)))
-            else:
-                cand = readings[f"probe:{site}"]   # 座標付き Reading
-                s, t = ...                          # cand.topk(n) の座標
-                ops.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
-        return ops
+            dying = ctx.readings[f"gema:{site}"].topk(n, largest=False)
+            cand = ctx.readings[f"probe:{site}"]   # 座標付き Reading
+            s, t = ...                              # cand.topk(n) の座標
+            deaths.append(SynapseDeath(site, dying))
+            births.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
+        return deaths + births
 
 
 # ══════════════════════════════════════════════════════════════════════
