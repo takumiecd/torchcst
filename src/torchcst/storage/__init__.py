@@ -1,4 +1,11 @@
-from .common import FollowerHub, IdAllocator, SlotPool
+from .common import (
+    BalancedSlotPool,
+    FollowerHub,
+    IdAllocator,
+    SlotBackend,
+    SlotChange,
+    SlotPool,
+)
 from .neuron import NeuronBirth, NeuronDeath, NeuronKick, NeuronStore, NeuronView
 from .synapse import (
     SynapseBirth,
@@ -10,7 +17,8 @@ from .synapse import (
 )
 
 __all__ = [
-    "IdAllocator", "SlotPool", "FollowerHub",
+    "IdAllocator", "SlotBackend", "SlotChange",
+    "SlotPool", "BalancedSlotPool", "FollowerHub",
     "SynapseStore", "SynapseView",
     "SynapseBirth", "SynapseDeath", "SynapseMerge", "SynapseKick",
     "NeuronStore", "NeuronView",

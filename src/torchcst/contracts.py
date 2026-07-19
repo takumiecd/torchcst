@@ -6,7 +6,8 @@
 頂点間の会話はこの 3 型 (View / Observation / Op) 以外で行わない:
   - Compute は Op を発行できない (構造を変えられない)
   - Decision は View の読みと Op の発行のみ (重みテンソルに触れない)
-  - Engine は Op の中身を見ない (site でルーティングして apply するだけ)
+  - Engine は Op の中身を見ない
+    (site-local batch にルーティングして apply するだけ)
 
 entity 縦割り: 具体型 (SynapseView / NeuronBirth / ...) は各 store の
 モジュールに置かれる。ここにあるのは共通契約だけ。
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Iterable, Protocol
+from typing import TYPE_CHECKING, Callable, Iterable, Protocol, Sequence
 
 import torch
 from torch import Tensor, nn
@@ -85,8 +86,9 @@ class EntityStore(ABC):
 
     契約 4 条:
       - 保持テンソルの leading dim は capacity と常に一致
-      - apply は同期的トランザクション (適用 → version++。拒否・遅延不可、
-        不正 op は例外で落とす)
+      - apply は site-local な op batch を受け取る同期的トランザクション
+        (全件検証 → 全件適用 → version++。拒否・遅延不可、不正 op は適用前に
+        例外で落とす)
       - slot 順に意味を持たせない。永続参照は id (P1)
       - mutation/フック内で per-item 同期をしない (バッチ一括のみ)
     """
@@ -101,7 +103,7 @@ class EntityStore(ABC):
     @abstractmethod
     def view(self) -> View: ...
     @abstractmethod
-    def apply(self, op: Op) -> None: ...
+    def apply(self, ops: Sequence[Op]) -> None: ...
     @abstractmethod
     def parameters(self) -> Iterable[nn.Parameter]: ...
     @abstractmethod
@@ -222,29 +224,30 @@ class DecisionContext:
     rng: torch.Generator
 
 
-DecisionFn = Callable[[DecisionContext], list[Op]]
+DecisionFn = Callable[[str, DecisionContext], list[Op]]
 
 
 @dataclass(frozen=True)
 class DecisionStage:
-    """Policy が schedule() から返す、名前付きの判断処理。
+    """Engine が対象 site ごとに実行する名前付き判断処理。
 
     run は Engine 内だけで実行されるため serialize 対象ではない。リプレイ・
-    分散 broadcast の境界を越えるのは run が生成した Op のみ。
+    分散 broadcast の境界を越えるのは run が生成した Op のみ。contextには
+    全siteのreadings/viewsが入るため横断情報を使えるが、戻り値は実行中site
+    だけを対象とするsite-local batchでなければならない。
     """
 
     name: str
+    sites: tuple[str, ...]
     run: DecisionFn
 
 
 class Policy(Protocol):
     """自由度の唯一の置き場・横断点。
 
-    schedule が返す DecisionStage は「全 site・全 entity の読み値」を見て
-    混成 op バッチ
-    (例 [NeuronDeath(...), SynapseMerge(...)]) を返せる。entity 独立の
-    ゲートに分解することを API は強制しない (SC-MRG-1 / SC-LIFE-2 の教訓:
-    独立ゲートは半端均衡・necessary-atom 食いの病理を生む)。
+    各DecisionStageは全site・全entityの読み値を参照できるため、site間で
+    協調した判断を行える。Engineはstage.sitesを反復し、runが返した
+    site-local op batchを対応Storeへ一括適用する。
     純関数契約: 記録済み Reading でリプレイ可能・乱数は rng 経由のみ (P4)。"""
 
     def instruments(self) -> dict[str, tuple[Instrument, str]]:

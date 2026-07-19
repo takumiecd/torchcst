@@ -41,14 +41,14 @@ def _birth_random(store: SynapseStore, k: int, d_in: int, d_out: int,
     s = torch.rand(k, d_in)
     t = torch.rand(k, d_out)
     w = torch.zeros(k) if w_init == "zeros" else 0.1 * torch.randn(k)
-    store.apply(SynapseBirth(store.site, s=s, t=t, w=w))
+    store.apply([SynapseBirth(store.site, s=s, t=t, w=w)])
 
 
 def _death_and_birth_smallest_mass(store: SynapseStore, n: int, d_in: int, d_out: int):
     view = store.view()
     order = torch.argsort(view.w.detach().abs())
     dying_ids = view.ids[order[:n]]
-    store.apply(SynapseDeath(store.site, ids=dying_ids))
+    store.apply([SynapseDeath(store.site, ids=dying_ids)])
     _birth_random(store, n, d_in, d_out, w_init="zeros")
 
 

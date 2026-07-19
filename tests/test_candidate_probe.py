@@ -34,8 +34,8 @@ def _build_layer(gated: bool, seed: int):
     in_neurons = tc.NeuronStore("in", torch.rand(n_in, d), gated=gated)
     out_neurons = tc.NeuronStore("out", torch.rand(n_out, d), gated=gated)
     syn = tc.SynapseStore("l1", d_in=d, d_out=d, capacity=K)
-    syn.apply(tc.SynapseBirth("l1", s=torch.rand(K, d), t=torch.rand(K, d),
-                               w=torch.randn(K)))
+    syn.apply([tc.SynapseBirth("l1", s=torch.rand(K, d), t=torch.rand(K, d),
+                                w=torch.randn(K))])
 
     if gated:
         with torch.no_grad():
@@ -96,7 +96,7 @@ def test_candidate_probe_resamples_pool_on_version_change():
     # mutation: 適当に 2 個 death させて version を進める
     view = syn.view()
     dying = view.ids[:2]
-    syn.apply(tc.SynapseDeath("l1", ids=dying))
+    syn.apply([tc.SynapseDeath("l1", ids=dying)])
 
     layer.zero_grad(set_to_none=True)
     x2 = torch.randn(4, layer.in_neurons.mu.shape[0])

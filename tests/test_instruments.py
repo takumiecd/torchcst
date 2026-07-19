@@ -15,10 +15,10 @@ def _obs(site: str, version: int) -> Observation:
 
 def test_mass_ema_topk_returns_smallest_abs_w_id():
     store = SynapseStore("l1", d_in=1, d_out=1, capacity=8)
-    store.apply(SynapseBirth(
+    store.apply([SynapseBirth(
         "l1", s=torch.rand(4, 1), t=torch.rand(4, 1),
         w=torch.tensor([5.0, -1.0, 3.0, 0.2]),
-    ))
+    )])
     inst = MassEMA(decay=0.5)
     inst.bind(store)
 
@@ -33,10 +33,10 @@ def test_mass_ema_topk_returns_smallest_abs_w_id():
 
 def test_mass_ema_reconcile_preserves_surviving_and_resets_new_ids():
     store = SynapseStore("l1", d_in=1, d_out=1, capacity=8)
-    store.apply(SynapseBirth(
+    store.apply([SynapseBirth(
         "l1", s=torch.rand(4, 1), t=torch.rand(4, 1),
         w=torch.tensor([1.0, 1.0, 1.0, 1.0]),
-    ))
+    )])
     inst = MassEMA(decay=0.5)
     inst.bind(store)
 
@@ -47,8 +47,13 @@ def test_mass_ema_reconcile_preserves_surviving_and_resets_new_ids():
     surviving_id = int(view.ids[0].item())
     dying_ids = view.ids[1:2]
 
-    store.apply(SynapseDeath("l1", ids=dying_ids))
-    store.apply(SynapseBirth("l1", s=torch.rand(1, 1), t=torch.rand(1, 1), w=torch.tensor([0.0])))
+    store.apply([
+        SynapseDeath("l1", ids=dying_ids),
+        SynapseBirth(
+            "l1", s=torch.rand(1, 1), t=torch.rand(1, 1),
+            w=torch.tensor([0.0]),
+        ),
+    ])
 
     new_view = store.view()
     assert new_view.version != view.version
@@ -75,8 +80,10 @@ def test_mass_ema_reconcile_preserves_surviving_and_resets_new_ids():
 
 def test_mass_ema_does_not_reconcile_when_version_unchanged():
     store = SynapseStore("l1", d_in=1, d_out=1, capacity=8)
-    store.apply(SynapseBirth("l1", s=torch.rand(2, 1), t=torch.rand(2, 1),
-                              w=torch.tensor([1.0, 1.0])))
+    store.apply([SynapseBirth(
+        "l1", s=torch.rand(2, 1), t=torch.rand(2, 1),
+        w=torch.tensor([1.0, 1.0]),
+    )])
     inst = MassEMA(decay=0.0)
     inst.bind(store)
 

@@ -26,8 +26,12 @@ def test_crigl_e2e_toy_regression_and_birth_coord_determinism():
 
     syn1 = tc.SynapseStore("l1", d_in=1, d_out=1, capacity=K)
     syn2 = tc.SynapseStore("l2", d_in=1, d_out=1, capacity=K)
-    syn1.apply(SynapseBirth("l1", s=torch.rand(K, 1), t=torch.rand(K, 1), w=0.1 * torch.randn(K)))
-    syn2.apply(SynapseBirth("l2", s=torch.rand(K, 1), t=torch.rand(K, 1), w=0.1 * torch.randn(K)))
+    syn1.apply([SynapseBirth(
+        "l1", s=torch.rand(K, 1), t=torch.rand(K, 1), w=0.1 * torch.randn(K)
+    )])
+    syn2.apply([SynapseBirth(
+        "l2", s=torch.rand(K, 1), t=torch.rand(K, 1), w=0.1 * torch.randn(K)
+    )])
 
     kernel1 = tc.GaussianKernel(0.15)
     kernel2 = tc.GaussianKernel(0.15)

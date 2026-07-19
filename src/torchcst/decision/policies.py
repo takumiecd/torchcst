@@ -40,29 +40,26 @@ class cSET:
 
     def schedule(self, step: int) -> list[DecisionStage]:
         if step % self.dt == 0 and step < self.t_end:
-            return [DecisionStage("rewire", self.rewire)]
+            return [DecisionStage("rewire", tuple(self.sites), self.rewire)]
         return []
 
-    def rewire(self, ctx: DecisionContext) -> list[Op]:
-        deaths: list[Op] = []
-        births: list[Op] = []
+    def rewire(self, site: str, ctx: DecisionContext) -> list[Op]:
         lo, hi = self.domain
-        for site in self.sites:
-            view = ctx.views[site]
-            k_live = int(view.ids.numel())
-            n = min(max(1, int(self.frac(ctx.step) * k_live)), k_live)
-            if n == 0:
-                continue
+        view = ctx.views[site]
+        k_live = int(view.ids.numel())
+        n = min(max(1, int(self.frac(ctx.step) * k_live)), k_live)
+        if n == 0:
+            return []
 
-            dying = ctx.readings[f"mass:{site}"].topk(n, largest=False)
-            deaths.append(SynapseDeath(site, ids=dying))
-
-            d_in = view.s.shape[-1]
-            d_out = view.t.shape[-1]
-            s = lo + (hi - lo) * torch.rand(n, d_in, generator=ctx.rng)
-            t = lo + (hi - lo) * torch.rand(n, d_out, generator=ctx.rng)
-            births.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
-        return deaths + births
+        dying = ctx.readings[f"mass:{site}"].topk(n, largest=False)
+        d_in = view.s.shape[-1]
+        d_out = view.t.shape[-1]
+        s = lo + (hi - lo) * torch.rand(n, d_in, generator=ctx.rng)
+        t = lo + (hi - lo) * torch.rand(n, d_out, generator=ctx.rng)
+        return [
+            SynapseDeath(site, ids=dying),
+            SynapseBirth(site, s=s, t=t, w=torch.zeros(n)),
+        ]
 
 
 class cRigL:
@@ -101,23 +98,20 @@ class cRigL:
 
     def schedule(self, step: int) -> list[DecisionStage]:
         if step % self.dt == 0 and step < self.t_end:
-            return [DecisionStage("rewire", self.rewire)]
+            return [DecisionStage("rewire", tuple(self.sites), self.rewire)]
         return []
 
-    def rewire(self, ctx: DecisionContext) -> list[Op]:
-        deaths: list[Op] = []
-        births: list[Op] = []
-        for site in self.sites:
-            view = ctx.views[site]
-            k_live = int(view.ids.numel())
-            n = min(max(1, int(self.frac(ctx.step) * k_live)), k_live)
-            if n == 0:
-                continue
+    def rewire(self, site: str, ctx: DecisionContext) -> list[Op]:
+        view = ctx.views[site]
+        k_live = int(view.ids.numel())
+        n = min(max(1, int(self.frac(ctx.step) * k_live)), k_live)
+        if n == 0:
+            return []
 
-            dying = ctx.readings[f"mass:{site}"].topk(n, largest=False)
-            deaths.append(SynapseDeath(site, ids=dying))
-
-            probe = cast(CandidateReading, ctx.readings[f"probe:{site}"])
-            s, t = probe.topk_coords(n)
-            births.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
-        return deaths + births
+        dying = ctx.readings[f"mass:{site}"].topk(n, largest=False)
+        probe = cast(CandidateReading, ctx.readings[f"probe:{site}"])
+        s, t = probe.topk_coords(n)
+        return [
+            SynapseDeath(site, ids=dying),
+            SynapseBirth(site, s=s, t=t, w=torch.zeros(n)),
+        ]

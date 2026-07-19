@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import torch
 from torch import Tensor, nn
 
 from ..contracts import EntityStore, Op, View
-from .common import FollowerHub, IdAllocator, SlotPool
+from .common import FollowerHub, IdAllocator
 
 
 @dataclass(frozen=True)
@@ -83,8 +83,10 @@ class NeuronStore(EntityStore):
         return NeuronView(site=self.site, version=self.version,
                            mu=self.mu, gate=gate, ids=self._ids)
 
-    def apply(self, op: Op) -> None:
+    def apply(self, ops: Sequence[Op]) -> None:
         """NeuronBirth/Death/Kick を受理。"""
+        if not ops:
+            return
         raise NotImplementedError(
             "v0: NeuronStore.apply (birth/death/kick) not implemented — "
             "標本点は固定集合として扱う"

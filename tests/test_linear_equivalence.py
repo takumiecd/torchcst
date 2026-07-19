@@ -35,7 +35,7 @@ def test_cstlinear_matches_dense_matrix_plain():
     s = torch.rand(K, d)
     t = torch.rand(K, d)
     w = torch.randn(K)
-    synapses.apply(SynapseBirth("l1", s=s, t=t, w=w))
+    synapses.apply([SynapseBirth("l1", s=s, t=t, w=w)])
 
     kernel = GaussianKernel(sigma, learnable=False)
     layer = CSTLinear(in_neurons, out_neurons, synapses, kernel)
@@ -62,7 +62,7 @@ def test_cstlinear_matches_dense_matrix_gated():
     s = torch.rand(K, d)
     t = torch.rand(K, d)
     w = torch.randn(K)
-    synapses.apply(SynapseBirth("l1", s=s, t=t, w=w))
+    synapses.apply([SynapseBirth("l1", s=s, t=t, w=w)])
 
     kernel = GaussianKernel(sigma, learnable=False)
     layer = CSTLinear(in_neurons, out_neurons, synapses, kernel)
@@ -96,7 +96,7 @@ def test_cstlinear_separate_kernel_in_out():
     s = torch.rand(K, d)
     t = torch.rand(K, d)
     w = torch.randn(K)
-    synapses.apply(SynapseBirth("l1", s=s, t=t, w=w))
+    synapses.apply([SynapseBirth("l1", s=s, t=t, w=w)])
 
     kernel_in = GaussianKernel(sigma_in, learnable=False)
     kernel_out = GaussianKernel(sigma_out, learnable=False)

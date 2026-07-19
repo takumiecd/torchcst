@@ -24,7 +24,7 @@ def test_gradients_flow_to_all_learnables_plain():
     s = torch.rand(K_live, d)
     t = torch.rand(K_live, d)
     w = torch.randn(K_live)
-    synapses.apply(SynapseBirth("l1", s=s, t=t, w=w))
+    synapses.apply([SynapseBirth("l1", s=s, t=t, w=w)])
 
     kernel = GaussianKernel(0.3, learnable=True)
     layer = CSTLinear(in_neurons, out_neurons, synapses, kernel)
@@ -62,8 +62,8 @@ def test_gradients_flow_to_gate_when_gated():
     out_neurons = NeuronStore("out", mu_out, gated=True)
 
     synapses = SynapseStore("l1", d_in=d, d_out=d, capacity=K)
-    synapses.apply(SynapseBirth("l1", s=torch.rand(K, d), t=torch.rand(K, d),
-                                 w=torch.randn(K)))
+    synapses.apply([SynapseBirth("l1", s=torch.rand(K, d), t=torch.rand(K, d),
+                                  w=torch.randn(K))])
 
     kernel = GaussianKernel(0.3, learnable=True)
     layer = CSTLinear(in_neurons, out_neurons, synapses, kernel)

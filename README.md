@@ -25,7 +25,8 @@ Compute   │   横断: CSTLinear = synapse × neuron の合成   │
 
 - **Compute は Op を発行できない**(構造を変えられない)
 - **Decision は View の読みと Op の発行のみ**(重みテンソルに触れない)
-- **Engine は Op の中身を見ない**(site でルーティングして apply するだけ)
+- **Engine は Op の中身を見ない**(site-local batchへルーティングして
+  applyするだけ)
 
 契約面はすべて `torchcst/contracts.py` に集約されている。
 
@@ -34,7 +35,8 @@ Compute   │   横断: CSTLinear = synapse × neuron の合成   │
 - P1. 置換不変 — slot 順に意味なし。同一性は id のみ。
 - P2. id は int64・never-reuse・単調増加・上位ビット rank(分散 birth 無調停)。
 - P3. per-atom 付随状態(moment/計器)は Follower として mutation に自動追従。
-- P4. mutation は store へのトランザクション。version 単調増加 + op ログ。
+- P4. mutation はsite-localなop batch単位のトランザクション。
+  version単調増加 + opログ。
   分散は op ログの broadcast 同一適用(テンソル同期なし)。
 - P5. checkpoint は正準形(compact → id ソート)でバイト決定的。
 

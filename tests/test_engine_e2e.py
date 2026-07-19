@@ -26,6 +26,7 @@ def test_policy_schedule_returns_named_stage_without_hidden_phase_state():
     assert len(stages) == 1
     assert isinstance(stages[0], tc.DecisionStage)
     assert stages[0].name == "rewire"
+    assert stages[0].sites == ("l1",)
     assert not hasattr(policy, "_step")
     assert not hasattr(policy, "_pending_n")
 
@@ -44,8 +45,12 @@ def test_engine_e2e_cset_toy_regression():
 
     syn1 = tc.SynapseStore("l1", d_in=1, d_out=1, capacity=K)
     syn2 = tc.SynapseStore("l2", d_in=1, d_out=1, capacity=K)
-    syn1.apply(SynapseBirth("l1", s=torch.rand(K, 1), t=torch.rand(K, 1), w=0.1 * torch.randn(K)))
-    syn2.apply(SynapseBirth("l2", s=torch.rand(K, 1), t=torch.rand(K, 1), w=0.1 * torch.randn(K)))
+    syn1.apply([SynapseBirth(
+        "l1", s=torch.rand(K, 1), t=torch.rand(K, 1), w=0.1 * torch.randn(K)
+    )])
+    syn2.apply([SynapseBirth(
+        "l2", s=torch.rand(K, 1), t=torch.rand(K, 1), w=0.1 * torch.randn(K)
+    )])
 
     kernel1 = tc.GaussianKernel(0.15)
     kernel2 = tc.GaussianKernel(0.15)
@@ -91,6 +96,11 @@ def test_engine_e2e_cset_toy_regression():
             # assert 5: engine.step() の戻り値と op_log の末尾が整合する
             log_tail = engine.op_log()[-len(ops):]
             assert [op for (_v, op) in log_tail] == ops
+            # 同一 site の death/birth は一つの store transaction なので、
+            # op log 上も同じ structure version を共有する。
+            for site in ("l1", "l2"):
+                site_versions = [v for v, op in log_tail if op.site == site]
+                assert len(set(site_versions)) == 1
 
             for site, syn in (("l1", syn1), ("l2", syn2)):
                 # assert 3: death n + birth n で k_live が保存される
@@ -131,8 +141,12 @@ def test_engine_rejects_conflicting_site_stores():
 
     syn_a = tc.SynapseStore("l1", d_in=1, d_out=1, capacity=4)
     syn_b = tc.SynapseStore("l2", d_in=1, d_out=1, capacity=4)
-    syn_a.apply(SynapseBirth("l1", s=torch.rand(4, 1), t=torch.rand(4, 1), w=torch.zeros(4)))
-    syn_b.apply(SynapseBirth("l2", s=torch.rand(4, 1), t=torch.rand(4, 1), w=torch.zeros(4)))
+    syn_a.apply([SynapseBirth(
+        "l1", s=torch.rand(4, 1), t=torch.rand(4, 1), w=torch.zeros(4)
+    )])
+    syn_b.apply([SynapseBirth(
+        "l2", s=torch.rand(4, 1), t=torch.rand(4, 1), w=torch.zeros(4)
+    )])
 
     layer_a = tc.CSTLinear(neurons_a, out_a, syn_a, tc.GaussianKernel(0.2))
     layer_b = tc.CSTLinear(neurons_b, out_b, syn_b, tc.GaussianKernel(0.2))
@@ -162,8 +176,12 @@ def test_engine_accepts_shared_neuron_store_same_object():
 
     syn1 = tc.SynapseStore("l1", d_in=1, d_out=1, capacity=6)
     syn2 = tc.SynapseStore("l2", d_in=1, d_out=1, capacity=6)
-    syn1.apply(SynapseBirth("l1", s=torch.rand(6, 1), t=torch.rand(6, 1), w=torch.zeros(6)))
-    syn2.apply(SynapseBirth("l2", s=torch.rand(6, 1), t=torch.rand(6, 1), w=torch.zeros(6)))
+    syn1.apply([SynapseBirth(
+        "l1", s=torch.rand(6, 1), t=torch.rand(6, 1), w=torch.zeros(6)
+    )])
+    syn2.apply([SynapseBirth(
+        "l2", s=torch.rand(6, 1), t=torch.rand(6, 1), w=torch.zeros(6)
+    )])
 
     layer1 = tc.CSTLinear(in_neurons, hidden_neurons, syn1, tc.GaussianKernel(0.2))
     layer2 = tc.CSTLinear(hidden_neurons, out_neurons, syn2, tc.GaussianKernel(0.2))

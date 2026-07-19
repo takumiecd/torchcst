@@ -25,7 +25,8 @@ v0.2 からの変更 (合意済み設計):
   辺の型はこの 3 つだけ。頂点間はこれ以外で会話しない:
     - Compute は Op を発行できない (構造を変えられない)
     - Decision は View の読みと Op の発行のみ (重みテンソルに触れない)
-    - Engine は Op の中身を見ない (site でルーティングして apply するだけ)
+    - Engine は Op の中身を見ない
+      (site-local batch にルーティングして apply するだけ)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ストレージ第一原理 (確定事項・不変):
@@ -59,21 +60,68 @@ class IdAllocator:
     def issue(self, n: int) -> Tensor: ...          # int64 [n]
 
 
-class SlotPool:
-    """slot 割当・空き管理・capacity 倍々拡張・id↔slot 解決・live_slots
-    (派生キャッシュ; version 変化時のみ再構築)・compact remap の生成。"""
+@dataclass(frozen=True)
+class SlotBirth:
+    count: int
 
-    def __init__(self, capacity: int): ...
+
+@dataclass(frozen=True)
+class SlotDeath:
+    ids: Tensor
+
+
+SlotOp = SlotBirth | SlotDeath
+
+
+@dataclass(frozen=True)
+class SlotChange:
+    """SlotBackend.apply が返す、entity tensor 更新用の物理 row 差分。"""
+
+    born_ids: Tensor
+    born_slots: Tensor
+    dead_ids: Tensor
+    dead_slots: Tensor
+
+
+class SlotBackend(Protocol):
+    """EntityStore が slot 配置について依存する最小契約。"""
+
     capacity: int
     @property
     def k_live(self) -> int: ...
     @property
     def live_slots(self) -> Tensor: ...
-    def allocate(self, ids: Tensor) -> Tensor: ...  # -> slots [n] (拡張要求含む)
-    def release(self, slots: Tensor) -> None: ...
+    def apply(self, ops: list[SlotOp]) -> SlotChange: ...
+    def slots_of(self, ids: Tensor) -> Tensor: ...
+    def ids_of(self, slots: Tensor) -> Tensor: ...
+
+
+class SlotPool(SlotBackend):
+    """SlotOp batch の整合性検証・ID 発行・物理 row 更新を一括実行する。
+
+    空き管理・id↔slot 解決・live_slots 派生キャッシュ・compact remap も持つ。
+    capacity は v0 では固定。
+    """
+
+    def __init__(self, capacity: int, rank: int = 0): ...
+    capacity: int
+    @property
+    def k_live(self) -> int: ...
+    @property
+    def live_slots(self) -> Tensor: ...
+    def apply(self, ops: list[SlotOp]) -> SlotChange: ...
     def slots_of(self, ids: Tensor) -> Tensor: ...
     def ids_of(self, slots: Tensor) -> Tensor: ...
     def compact(self) -> Tensor: ...                # old→new remap
+
+
+class BalancedSlotPool(SlotBackend):
+    """固定個数の置換に特化した独立実装。
+
+    初回 birth で K を確定し、以後は death row を同じ batch の birth が
+    再利用する。free list・capacity 長の slot 表・id 辞書を持たず、永続的な
+    slot 帳簿は K 個の live ID tensor だけ。ID→slot は mutation 時に検索する。
+    """
 
 
 class FollowerHub:
@@ -127,8 +175,9 @@ class EntityStore(ABC):
 
     契約 4 条 (v0.2 から不変):
       - 保持テンソルの leading dim は capacity と常に一致
-      - apply は同期的トランザクション (適用 → version++ 。拒否・遅延不可、
-        不正 op は例外で落とす)
+      - apply は site-local な op batch の同期的トランザクション
+        (全件検証 → 全件適用 → version++。拒否・遅延不可、不正 op は適用前に
+        例外で落とす)
       - slot 順に意味を持たせない。永続参照は id (P1)
       - mutation/フック内で per-item 同期をしない (バッチ一括のみ)
     """
@@ -143,7 +192,7 @@ class EntityStore(ABC):
     @abstractmethod
     def view(self) -> View: ...
     @abstractmethod
-    def apply(self, op: Op) -> None: ...
+    def apply(self, ops: list[Op]) -> None: ...
     @abstractmethod
     def parameters(self) -> Iterable[nn.Parameter]: ...
     @abstractmethod
@@ -200,7 +249,7 @@ class SynapseStore(EntityStore):
 
     mutation 意味論はここで完結:
       - birth: op が座標と初期 w を運ぶ。moment/計器は FollowerHub 経由で追従
-      - death: 論理削除 (SlotPool.release + notify)
+      - birth/death: entity op を SlotOp に翻訳し、SlotBackend.apply に一括委譲
       - merge: s,t = w 質量重み平均 / w = 和。mass は自分の w から取る
         (v0.2 の「mass を外から渡す」逆流はこの縦割りで消えた)
       - kick : 座標への in-place 加算
@@ -209,14 +258,15 @@ class SynapseStore(EntityStore):
     """
 
     def __init__(self, site: str, d_in: int, d_out: int,
-                 capacity: int, rank: int = 0, device=None):
-        # self._ids = IdAllocator(rank); self._slots = SlotPool(capacity)
+                 capacity: int, rank: int = 0, device=None,
+                 slot_pool: SlotBackend | None = None):
+        # self._slots = slot_pool or SlotPool(capacity, rank)
         # self._hub = FollowerHub(); s/t/w は nn.Parameter [capacity, ...]
         ...
 
     def view(self) -> SynapseView: ...
-    def apply(self, op: Op) -> None:
-        """SynapseBirth/Death/Merge/Kick を受理。それ以外は TypeError。"""
+    def apply(self, ops: list[Op]) -> None:
+        """site-local batchを全件検証後に適用。それ以外はTypeError。"""
         ...
     def add_extra(self, name: str, shape: tuple[int, ...],
                   merge: Callable[[Tensor, Tensor], Tensor],
@@ -268,7 +318,7 @@ class NeuronStore(EntityStore):
                  rank: int = 0): ...
 
     def view(self) -> NeuronView: ...
-    def apply(self, op: Op) -> None:
+    def apply(self, ops: list[Op]) -> None:
         """NeuronBirth/Death/Kick を受理。"""
         ...
 
@@ -402,19 +452,22 @@ class DecisionContext:
 
 @dataclass(frozen=True)
 class DecisionStage:
-    """Engine 内だけで実行する名前付き判断処理。境界を越えるのは生成 Op。"""
+    """Engineが対象siteごとに実行する名前付き判断処理。
+
+    contextでは全siteを参照できるが、戻り値は実行中siteのbatchに限る。
+    """
 
     name: str
-    run: Callable[[DecisionContext], list[Op]]
+    sites: tuple[str, ...]
+    run: Callable[[str, DecisionContext], list[Op]]
 
 
 class Policy(Protocol):
     """自由度の唯一の置き場・横断点その2。
 
-    schedule が返す DecisionStage は「全 site・全 entity の読み値」を見て
-    混成 op バッチ
-    (例 [NeuronDeath(...), SynapseMerge(...)]) を返せる。entity 独立の
-    ゲートに分解することを API は強制しない (SC-MRG-1 / SC-LIFE-2)。
+    各DecisionStageは全site・全entityの読み値を参照できるため、site間で
+    協調した判断を行える。Engineはstage.sitesを反復し、site-local batchを
+    対応Storeへ一括適用する。
     純関数契約: 記録済み Reading でリプレイ可能・乱数は rng 経由のみ (P4)。"""
 
     def instruments(self) -> dict[str, tuple[Instrument, str]]:
@@ -436,8 +489,9 @@ class CSTEngine:
       - policy.instruments() を bind し、backward hook で Observation を配る
       - store.parameters() を optimizer に接続し、moment 影列を Follower
         として followers() に subscribe (P3)
-      - step(): schedule された DecisionStage を実行 → op を site でルーティングし
-        store.apply (P4: version++, op ログ, 派生キャッシュ無効化)
+      - step(): schedule された DecisionStage を実行 → op を site-local batch
+        にルーティングし store.apply
+        (P4: batchごとにversion++, opログ, 派生キャッシュ無効化)
       - 分散: rank0 で DecisionStage.run → op broadcast → 全 rank 同一適用
     Engine は op の中身も store の内部レイアウトも知らない。
     """
@@ -469,18 +523,17 @@ class cSET:
 
     def schedule(self, step):
         if step % self.dt == 0 and step < self.t_end:
-            return [DecisionStage("rewire", self.rewire)]
+            return [DecisionStage("rewire", tuple(self.sites), self.rewire)]
         return []
 
-    def rewire(self, ctx):
-        deaths, births = [], []
-        for site in self.sites:
-            n = ...  # frac(ctx.step) * k_live
-            dying = ctx.readings[f"gema:{site}"].topk(n, largest=False)
-            s, t = ...  # ctx.rng で domain 一様サンプル
-            deaths.append(SynapseDeath(site, dying))
-            births.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
-        return deaths + births
+    def rewire(self, site, ctx):
+        n = ...  # frac(ctx.step) * k_live
+        dying = ctx.readings[f"gema:{site}"].topk(n, largest=False)
+        s, t = ...  # ctx.rng で domain 一様サンプル
+        return [
+            SynapseDeath(site, dying),
+            SynapseBirth(site, s=s, t=t, w=torch.zeros(n)),
+        ]
 
 
 class cRigL:
@@ -500,19 +553,18 @@ class cRigL:
 
     def schedule(self, step):
         if step % self.dt == 0 and step < self.t_end:
-            return [DecisionStage("rewire", self.rewire)]
+            return [DecisionStage("rewire", tuple(self.sites), self.rewire)]
         return []
 
-    def rewire(self, ctx):
-        deaths, births = [], []
-        for site in self.sites:
-            n = ...
-            dying = ctx.readings[f"gema:{site}"].topk(n, largest=False)
-            cand = ctx.readings[f"probe:{site}"]   # 座標付き Reading
-            s, t = ...                              # cand.topk(n) の座標
-            deaths.append(SynapseDeath(site, dying))
-            births.append(SynapseBirth(site, s=s, t=t, w=torch.zeros(n)))
-        return deaths + births
+    def rewire(self, site, ctx):
+        n = ...
+        dying = ctx.readings[f"gema:{site}"].topk(n, largest=False)
+        cand = ctx.readings[f"probe:{site}"]   # 座標付き Reading
+        s, t = ...                              # cand.topk(n) の座標
+        return [
+            SynapseDeath(site, dying),
+            SynapseBirth(site, s=s, t=t, w=torch.zeros(n)),
+        ]
 
 
 # ══════════════════════════════════════════════════════════════════════

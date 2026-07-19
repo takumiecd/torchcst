@@ -18,8 +18,8 @@ def _check_grad_ema_matches_autograd(gated: bool):
     in_neurons = tc.NeuronStore("in", torch.rand(n_in, d), gated=gated)
     out_neurons = tc.NeuronStore("out", torch.rand(n_out, d), gated=gated)
     syn = tc.SynapseStore("l1", d_in=d, d_out=d, capacity=K)
-    syn.apply(tc.SynapseBirth("l1", s=torch.rand(K, d), t=torch.rand(K, d),
-                               w=torch.randn(K)))
+    syn.apply([tc.SynapseBirth("l1", s=torch.rand(K, d), t=torch.rand(K, d),
+                                w=torch.randn(K))])
 
     if gated:
         with torch.no_grad():
@@ -60,8 +60,8 @@ def test_gradema_matches_autograd_gated():
 
 def test_gradema_bind_without_port_raises():
     syn = tc.SynapseStore("l1", d_in=1, d_out=1, capacity=4)
-    syn.apply(tc.SynapseBirth("l1", s=torch.rand(4, 1), t=torch.rand(4, 1),
-                               w=torch.zeros(4)))
+    syn.apply([tc.SynapseBirth("l1", s=torch.rand(4, 1), t=torch.rand(4, 1),
+                                w=torch.zeros(4))])
     inst = GradEMA()
     try:
         inst.bind(syn, None)

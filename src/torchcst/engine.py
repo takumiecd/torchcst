@@ -111,8 +111,8 @@ class CSTEngine:
       - policy.instruments() を bind し、backward hook で Observation を配る
       - store.parameters() を optimizer に接続し、moment 影列を Follower
         として followers() に subscribe (P3)
-      - step(): schedule された DecisionStage を実行 → op を site でルーティングし
-        store.apply (P4: version++, op ログ, 派生キャッシュ無効化)
+      - step(): DecisionStageの対象siteを反復し、site-local op batchを
+        対応Storeへ一括適用 (P4: version++, opログ, 派生キャッシュ無効化)
       - 分散: rank0 で DecisionStage.run → op broadcast → 全 rank 同一適用
     Engine は op の中身も store の内部レイアウトも知らない。
     """
@@ -259,14 +259,13 @@ class CSTEngine:
                 views=views,
                 rng=self._rng,
             )
-            ops = stage.run(ctx)
-            for op in ops:
-                store = self._stores.get(op.site)
-                if store is None:
-                    raise KeyError(f"op targets unknown site {op.site!r}")
-                store.apply(op)  # P4: version++, engine は op の中身を見ない
-                applied.append(op)
-                self._op_log.append((store.version, op))
+
+            for site in stage.sites:
+                store = self._stores[site]
+                site_ops = stage.run(site, ctx)
+                store.apply(site_ops)  # Engine は op の中身を見ない
+                applied.extend(site_ops)
+                self._op_log.extend((store.version, op) for op in site_ops)
         self._step += 1
         return applied
 

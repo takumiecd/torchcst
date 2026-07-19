@@ -41,6 +41,7 @@ from .contracts import (
 )
 from .engine import CSTEngine
 from .storage import (
+    BalancedSlotPool,
     FollowerHub,
     IdAllocator,
     NeuronBirth,
@@ -49,6 +50,8 @@ from .storage import (
     NeuronStore,
     NeuronView,
     SlotPool,
+    SlotBackend,
+    SlotChange,
     SynapseBirth,
     SynapseDeath,
     SynapseKick,
@@ -65,7 +68,8 @@ __all__ = [
     "EntityStore", "Follower", "Kernel", "KernelPort", "Instrument", "Reading",
     "Policy", "DecisionContext", "DecisionStage",
     # storage
-    "IdAllocator", "SlotPool", "FollowerHub",
+    "IdAllocator", "SlotBackend", "SlotChange",
+    "SlotPool", "BalancedSlotPool", "FollowerHub",
     "SynapseStore", "SynapseView",
     "SynapseBirth", "SynapseDeath", "SynapseMerge", "SynapseKick",
     "NeuronStore", "NeuronView", "NeuronBirth", "NeuronDeath", "NeuronKick",
