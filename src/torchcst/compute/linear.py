@@ -69,7 +69,11 @@ class CSTLinear(nn.Module):
         if gate_out is not None:
             y = y * gate_out
 
-        if self.on_observation is not None:
+        if self.on_observation is not None and y.requires_grad:
+            # torch.no_grad() 下の推論呼び出し (eval など) では y は
+            # requires_grad=False になるので、そのようなテンソルに
+            # register_hook すると RuntimeError になる。学習ループの外での
+            # forward 呼び出しを許すためにガードする。
             site = self.synapses.site
             version = syn_view.version
             x_detached = x.detach()

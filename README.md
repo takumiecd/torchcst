@@ -55,13 +55,19 @@ model = nn.Sequential(
     tc.CSTLinear(n_h,  n_out, s2, tc.GaussianKernel(0.07, per_atom=True)),
 )
 
-engine = tc.CSTEngine(model, opt, tc.policies.cRigL(sites=["l1", "l2"]))
+# optimizer は Optimizer インスタンスの代わりに factory (params -> Optimizer)
+# を渡せる — torch.optim.Adam([]) は空リストで即死するため、param 収集
+# (store.parameters() + kernel.global_params()) を終えた engine がこの
+# factory を呼んで実体化する。Optimizer インスタンスをそのまま渡した場合は
+# 不足分の param を add_param_group で足す。
+opt_factory = lambda params: torch.optim.Adam(params, lr=1e-3)
+engine = tc.CSTEngine(model, opt_factory, tc.policies.cRigL(sites=["l1", "l2"]))
 
 for step, batch in enumerate(loader):
     loss = criterion(model(batch.x), batch.y)
-    loss.backward()      # Observation → 計器がここで煮詰まる
-    opt.step(); opt.zero_grad()
-    engine.step()        # schedule 発火時のみ三角形が一周する
+    loss.backward()               # Observation → 計器がここで煮詰まる
+    engine.optimizer.step(); engine.optimizer.zero_grad()
+    engine.step()                 # schedule 発火時のみ三角形が一周する
 ```
 
 参照 policy は cSET / cRigL (SET・RigL の CST 版)。policy が各 1 画面で
@@ -69,5 +75,12 @@ for step, batch in enumerate(loader):
 
 ## status
 
-設計骨格の段階 (v0.3 契約確定・実装は stub)。設計の経緯は
-`docs/api_draft_v0_3.py` を参照。
+v0 core 動作中: storage (SynapseStore birth/death・NeuronStore 固定標本点)・
+CSTLinear matrix-free forward (dense 等価性テスト済)・CSTEngine + MassEMA 計器
++ cSET policy で三角形が一周する (E2E テストで mutation を跨ぐ訓練を検証)。
+
+v0 スコープ外 (NotImplementedError 明示): merge/kick・per-atom σ (add_extra)・
+neuron mutation・capacity growth・save/load・分散 (world_size>1)・grad 系計器
+(GradEMA/CandidateProbe → cRigL)。grad 系計器は「Instrument から Kernel への
+アクセス経路」という設計未解決点があり、`decision/instruments.py` の
+docstring に整理してある。設計の経緯は `docs/api_draft_v0_3.py` を参照。

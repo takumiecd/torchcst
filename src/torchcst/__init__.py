@@ -24,6 +24,7 @@
 
 from . import decision as policies
 from .compute import CSTConv2d, CSTLinear, GaussianKernel, TriangularKernel
+from .decision import MassEMA
 from .contracts import (
     EntityStore,
     Follower,
@@ -67,5 +68,5 @@ __all__ = [
     # compute
     "CSTLinear", "CSTConv2d", "GaussianKernel", "TriangularKernel",
     # decision / engine
-    "policies", "CSTEngine",
+    "policies", "MassEMA", "CSTEngine",
 ]
