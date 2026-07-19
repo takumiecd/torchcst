@@ -1,4 +1,4 @@
 from .capture import CapturePoint
-from .records import CoordinateGradientProvider, LinearGradRecord
+from .records import GradientProvider, ModuleGradRecord
 
-__all__ = ["CapturePoint", "CoordinateGradientProvider", "LinearGradRecord"]
+__all__ = ["CapturePoint", "GradientProvider", "ModuleGradRecord"]

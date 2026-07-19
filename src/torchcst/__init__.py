@@ -9,7 +9,7 @@
   Policy    │   prepare/capture/step → MutationPlan          │
   Compute   │   横断: CSTLinear = synapse × neuron の合成   │
 
-  backward: PyTorch hook ─GradRecord→ Policy-owned observer
+  backward: PyTorch hook ─ModuleGradRecord→ Policy-owned observer
   step:     Schedule ─UpdateRequest→ Policy ─MutationPlan→ Storage
 
 ストレージ第一原理:

@@ -8,7 +8,7 @@ from typing import Protocol
 from torch import Tensor
 
 
-class CoordinateGradientProvider(Protocol):
+class GradientProvider(Protocol):
     """連続座標上のsynapse weight gradientを評価する能力。"""
 
     def weight_gradients(
@@ -23,11 +23,16 @@ class CoordinateGradientProvider(Protocol):
 
 
 @dataclass(frozen=True)
-class LinearGradRecord:
-    """CSTLinearのforward factsとoutput gradientを結びつけた1観測。"""
+class ModuleGradRecord:
+    """module境界のraw factsとoutput gradientを結びつけた1観測。
+
+    全tensorはcapture callbackへ渡される時点でdetach済み。Observerはrecordを
+    長期保持せず、自分のsummary stateだけを保持する。
+    """
 
     site: str
     version: int
     input: Tensor
+    output: Tensor
     grad_output: Tensor
-    gradients: CoordinateGradientProvider
+    gradients: GradientProvider

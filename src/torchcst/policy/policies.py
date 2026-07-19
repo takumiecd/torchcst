@@ -7,7 +7,7 @@ from collections.abc import Iterable
 import torch
 from torch.utils.hooks import RemovableHandle
 
-from ..backward import LinearGradRecord
+from ..backward import ModuleGradRecord
 from ..engine.plan import MutationPlan, SiteBatch
 from ..storage.synapse import (
     SynapseBirth,
@@ -118,12 +118,12 @@ class cRigL(Policy):
             site: binding.read(site, SynapseView) for site in self.sites
         }
         for site in self.sites:
-            capture = binding.capture(site, LinearGradRecord)
+            capture = binding.capture(site, ModuleGradRecord)
             port = self._ports[site]
             probe = self.candidates[site]
 
             def observe(
-                record: LinearGradRecord,
+                record: ModuleGradRecord,
                 _port: ReadPort[SynapseView] = port,
                 _probe: CandidateProbe = probe,
             ) -> None:

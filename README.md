@@ -15,11 +15,11 @@ Storage   │ SynapseStore + ops   │ NeuronStore + ops   │ ← 縦割り (�
 ──────────┼──────────────────────┴─────────────────────┤
 Policy    │   prepare / capture / step → MutationPlan       │
 Forward   │   CSTLinear = synapse × neuron の合成           │
-Backward  │   PyTorch Tensor hook → GradRecord              │
+Backward  │   PyTorch Tensor hook → ModuleGradRecord        │
 ```
 
 ```text
-backward: PyTorch hook ─GradRecord→ Policy-owned observer
+backward: PyTorch hook ─ModuleGradRecord→ Policy-owned observer
 step:     Schedule ─UpdateRequest→ Policy ─MutationPlan→ Storage
 ```
 
@@ -94,7 +94,7 @@ CSTLinear matrix-free forward (dense 等価性テスト済)・CSTEngine + cSET
 (MassEMA) / cRigL (MassEMA death + CandidateProbe birth) で三角形が一周する
 (E2E テストで mutation を跨ぐ訓練を検証)。
 
-Policyが使うbackward情報は、PyTorch hookから得たdetach済み`GradRecord`である。
+Policyが使うbackward情報は、PyTorch hookから得たdetach済み`ModuleGradRecord`である。
 SETはcaptureを登録せず、RigLだけがprepare時にgradient captureを登録する。
 optimizer後はScheduleが`UpdateRequest`を返し、Policyが`MutationPlan`を作る。
 

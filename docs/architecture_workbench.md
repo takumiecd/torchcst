@@ -142,7 +142,7 @@ backward engineではない。上級Policyには、通常の`nn.Module` hook相�
 | 役割 | 名前の候補 |
 |---|---|
 | `Tensor.register_hook()`へ登録するcallable | `OutputGradHook`、`ParamGradHook` |
-| hookから得たdetach済みの1観測 | `GradRecord`、`LinearGradRecord` |
+| hookから得たdetach済みの1観測 | `ModuleGradRecord` |
 | 時系列に蓄積するPolicy部品 | `GradEMA`、`CandidateProbe` |
 | 座標ごとの勾配を問い合わせる派生機能 | `GradientProvider` |
 | 構造更新アルゴリズム | `SET`、`RigL`、または`SETPolicy`、`RigLPolicy` |
@@ -248,14 +248,14 @@ neuron、出力neuron、synapse、kernelを合成している。
 flowchart TD
     Linear[CSTLinear forward]
     Linear -->|output.register_hook| Hook[OutputGradHook]
-    Hook -->|detach済み input / grad_output| Record[LinearGradRecord]
+    Hook -->|detach済み input / output / grad_output| Record[ModuleGradRecord]
     Record --> SynObservers[Synapse Policy observers]
     Record --> NeuronObservers[Neuron Policy observers]
 ```
 
 Engineが`CSTLinear`からsynapse gradient fieldを導出する方法を知るべきでは
 ない。Policyがprepare時にbindしたcapture helperが、PyTorch hookから
-module-localなraw recordを作る。1つの`LinearGradRecord`をsynapse/neuron両方の
+module-localなraw recordを作る。1つの`ModuleGradRecord`をsynapse/neuron両方の
 observerが異なる解釈で利用できるため、Backward側でentity別eventへ早々に
 分割しない。
 
@@ -386,8 +386,8 @@ class GradientProvider(Protocol):
     def candidate_gradient(self, s: Tensor, t: Tensor) -> Tensor: ...
 ```
 
-`GradientProvider`はBackwardそのものではない。`LinearGradRecord`や
-`ConvGradRecord`とSynapse Viewを使い、synapse座標へ勾配を写すPolicy側の派生部品
+`GradientProvider`はBackwardそのものではない。`ModuleGradRecord`とSynapse Viewを
+使い、synapse座標へ勾配を写すForward側adapter
 である。将来、別のgradient推定を使うPolicyは別Providerを選べる。
 
 Synapse-local observerの例:
@@ -425,8 +425,8 @@ Neuron-local observerの候補は、gate magnitude、gate gradient、activation
 utility、rent counterなど。Neuron-local policyが`NeuronBirth`、
 `NeuronDeath`、`NeuronKick`を作る。
 
-`LinearGradRecord`や`ConvGradRecord`の正確な情報上限は優先度の高い未決事項で
-ある。現在のcRigLから推測して作らず、少なくとも2つの具体的Policyから逆算したい。
+`ModuleGradRecord`の正確な情報上限は、input/output/grad_outputを標準面とし、
+grad_inputはnative hook escape hatchで取得する方針とする。
 
 ## 7. Local Controllerとcross-entity Policy
 
@@ -591,7 +591,7 @@ src/torchcst/
 │   └── conv.py
 ├── backward/
 │   ├── hooks.py            # OutputGradHook等のPyTorch連携
-│   ├── records.py          # GradRecord / LinearGradRecord
+│   ├── records.py          # ModuleGradRecord / GradientProvider
 │   └── capture.py          # PolicyBindingへ公開するcapture facade
 ├── policy/
 │   ├── common.py           # BoundPolicyなど最小contract
@@ -655,8 +655,8 @@ src/torchcst/
 
 ### 優先度: 高
 
-- [ ] `LinearGradRecord`のcapture上限（input / output / grad_output）を固定する。
-- [ ] `ConvGradRecord`を導入するか、Conv専用capture契約を別にする。
+- [x] `ModuleGradRecord`のcapture上限をinput / output / grad_outputに固定する。
+- [ ] `grad_input`用のnative hook escape hatchを設計する。
 - [ ] neuron + synapse複合mutationにprepare/commitが必要か決める。
 - [ ] `PolicyBinding`のsite指定を文字列からtyped `SiteRef`へ移行するか決める。
 
@@ -674,7 +674,7 @@ src/torchcst/
 
 - [x] `Policy.prepare()` / `Policy.step()`を導入する。
 - [x] `PolicyBinding`とtyped `ReadPort`を導入する。
-- [x] PyTorch Tensor hookから`LinearGradRecord`をcaptureする。
+- [x] PyTorch Tensor hookから`ModuleGradRecord`をcaptureする。
 - [x] `MutationPlan`とsite-local `SiteBatch`を導入する。
 - [x] Engineをsite routingだけの実装にする。
 
@@ -688,7 +688,7 @@ src/torchcst/
 
 ### Phase 2: APIと状態管理の強化（次）
 
-- [ ] `LinearGradRecord`の情報上限とmemory lifetimeを文書化する。
+- [x] `ModuleGradRecord`の情報上限とmemory lifetimeを文書化する。
 - [ ] Policy/observer stateの`state_dict`を実装する。
 - [ ] capture handleのcloseと再prepareを完全に検証する。
 - [ ] typed `SiteRef`または同等のbinding契約を導入する。
@@ -703,7 +703,7 @@ src/torchcst/
 
 ### Phase 4: Compute拡張
 
-- [ ] `ConvGradRecord`とCSTConv2dを実装する。
+- [ ] `ModuleGradRecord`をConv captureへ適用し、CSTConv2dを実装する。
 - [ ] captureの複数Policy共有を実装する。
 - [ ] gate utility用のcapture面を設計する。
 
@@ -715,8 +715,7 @@ src/torchcst/
 
 ## 15. 次に行う設計exercise
 
-次はPhase 2の最初の2項目、つまり`LinearGradRecord`の上限とPolicy stateの
-checkpoint形式を決める。その後、neuron-local Policyを1つ実装して、synapse専用の
+次はPhase 2のcheckpoint形式とcapture escape hatchを決める。その後、neuron-local Policyを1つ実装して、synapse専用の
 抽象が混入していないことを確認する。
 
 ## 15. D-001に基づく最小Policy sketch

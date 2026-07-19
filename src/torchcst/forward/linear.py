@@ -5,7 +5,7 @@ from __future__ import annotations
 import torch
 from torch import Tensor, nn
 
-from ..backward import CapturePoint, LinearGradRecord
+from ..backward import CapturePoint, ModuleGradRecord
 from ..storage.base import EntityStore
 from ..storage.neuron import NeuronStore
 from ..storage.synapse import SynapseStore
@@ -63,9 +63,7 @@ class CSTLinear(nn.Module):
         if self.kernel_out is not self.kernel_in:
             self.kernel_out.install(self.synapses)
 
-        self.grad_capture = CapturePoint(
-            self.synapses.site, LinearGradRecord
-        )
+        self.grad_capture = CapturePoint(self.synapses.site, ModuleGradRecord)
         self._gradient_provider = LinearGradientProvider(self)
 
     def forward(self, input: Tensor) -> Tensor:
@@ -90,14 +88,16 @@ class CSTLinear(nn.Module):
             site = self.synapses.site
             version = synapse_view.version
             input_detached = input.detach()
+            output_detached = output.detach()
             capture = self.grad_capture
             provider = self._gradient_provider
 
             def emit(grad_output: Tensor) -> None:
-                capture.emit(LinearGradRecord(
+                capture.emit(ModuleGradRecord(
                     site=site,
                     version=version,
                     input=input_detached,
+                    output=output_detached,
                     grad_output=grad_output.detach(),
                     gradients=provider,
                 ))

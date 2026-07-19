@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from ..backward import LinearGradRecord
+from ..backward import ModuleGradRecord
 from ..storage.synapse import SynapseView
 
 
@@ -75,12 +75,12 @@ class MassEMA:
 
 
 class GradEMA:
-    """LinearGradRecordからlive synapseの|dL/dw|を蓄積する。"""
+    """ModuleGradRecordからlive synapseの|dL/dw|を蓄積する。"""
 
     def __init__(self, decay: float = 0.9):
         self._core = _IdSpaceEMA(decay)
 
-    def observe(self, record: LinearGradRecord, view: SynapseView) -> None:
+    def observe(self, record: ModuleGradRecord, view: SynapseView) -> None:
         with torch.no_grad():
             sample = record.gradients.weight_gradients(
                 record.input,
@@ -128,7 +128,7 @@ class CandidateProbe:
         self._t = t.to(view.t)
         self._scores = view.w.new_zeros(self.pool)
 
-    def observe(self, record: LinearGradRecord, view: SynapseView) -> None:
+    def observe(self, record: ModuleGradRecord, view: SynapseView) -> None:
         if record.site != view.site:
             raise ValueError(
                 f"record site {record.site!r} does not match view {view.site!r}"
@@ -156,10 +156,10 @@ class CandidateProbe:
 
 
 class GateEMA:
-    def observe(self, record: LinearGradRecord) -> None:
+    def observe(self, record: ModuleGradRecord) -> None:
         raise NotImplementedError("GateEMA semantics are not designed yet")
 
 
 class RentCounter:
-    def observe(self, record: LinearGradRecord) -> None:
+    def observe(self, record: ModuleGradRecord) -> None:
         raise NotImplementedError("RentCounter semantics are not designed yet")

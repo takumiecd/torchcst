@@ -1,4 +1,4 @@
-"""GradEMAがPyTorch-native LinearGradRecordと一致することを確認する。"""
+"""GradEMAがPyTorch-native ModuleGradRecordと一致することを確認する。"""
 
 from __future__ import annotations
 
