@@ -656,7 +656,7 @@ src/torchcst/
 ### 優先度: 高
 
 - [x] `ModuleGradRecord`のcapture上限をinput / output / grad_outputに固定する。
-- [ ] `grad_input`用のnative hook escape hatchを設計する。
+- [x] `grad_input`はnative backward hookでcaptureし、Policy処理はbackward完了後に行う。
 - [ ] neuron + synapse複合mutationにprepare/commitが必要か決める。
 - [ ] `PolicyBinding`のsite指定を文字列からtyped `SiteRef`へ移行するか決める。
 
@@ -715,7 +715,7 @@ src/torchcst/
 
 ## 15. 次に行う設計exercise
 
-次はPhase 2のcheckpoint形式とcapture escape hatchを決める。その後、neuron-local Policyを1つ実装して、synapse専用の
+次はPhase 2のcheckpoint形式とbackward capture契約を決める。その後、neuron-local Policyを1つ実装して、synapse専用の
 抽象が混入していないことを確認する。
 
 ## 15. D-001に基づく最小Policy sketch
