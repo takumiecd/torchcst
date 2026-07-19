@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable
 
-from torch import Tensor
+import torch
+from torch import Tensor, nn
 
 from ..contracts import EntityStore, Op, View
 from .common import FollowerHub, IdAllocator, SlotPool
@@ -50,10 +52,52 @@ class NeuronStore(EntityStore):
 
     def __init__(self, site: str, coords: Tensor, *, gated: bool = False,
                  learnable_coords: bool = False, capacity: int | None = None,
-                 rank: int = 0): ...
+                 rank: int = 0):
+        if learnable_coords:
+            raise NotImplementedError("v0: learnable_coords=True not implemented")
 
-    def view(self) -> NeuronView: ...
+        self.site = site
+        self.gated = gated
+        # v0: 標本点は固定集合 (mutation 非対応)。学習しないので buffer 相当
+        # (plain Tensor・requires_grad なし) として保持する。
+        self.mu = coords.detach().clone()
+        self.mu.requires_grad_(False)
+
+        n = self.mu.shape[0]
+        self.c = nn.Parameter(torch.ones(n)) if gated else None
+
+        self._ids_alloc = IdAllocator(rank)
+        self._ids = self._ids_alloc.issue(n)
+        self._hub = FollowerHub()
+
+    @property
+    def version(self) -> int:
+        # v0: mutation 未実装のため固定集合 = version は常に 0。
+        return 0
+
+    def live_ids(self) -> Tensor:
+        return self._ids
+
+    def view(self) -> NeuronView:
+        gate = self.c if self.gated else None
+        return NeuronView(site=self.site, version=self.version,
+                           mu=self.mu, gate=gate, ids=self._ids)
 
     def apply(self, op: Op) -> None:
         """NeuronBirth/Death/Kick を受理。"""
-        ...
+        raise NotImplementedError(
+            "v0: NeuronStore.apply (birth/death/kick) not implemented — "
+            "標本点は固定集合として扱う"
+        )
+
+    def parameters(self) -> Iterable[nn.Parameter]:
+        return [self.c] if self.gated else []
+
+    def followers(self) -> FollowerHub:
+        return self._hub
+
+    def canonical_state(self) -> dict:
+        raise NotImplementedError("v0: NeuronStore.canonical_state not implemented")
+
+    def load_state(self, state: dict) -> None:
+        raise NotImplementedError("v0: NeuronStore.load_state not implemented")
