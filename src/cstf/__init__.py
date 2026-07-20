@@ -53,6 +53,7 @@ from .storage import (
     commit_all,
     prepare_all,
 )
+from .engine import OptimizerStateFollower, StructuralEngine
 
 __all__ = [
     "Accounting",
@@ -90,6 +91,7 @@ __all__ = [
     "NeuronUngate",
     "NeuronView",
     "Observation",
+    "OptimizerStateFollower",
     "RankOneLinear",
     "RentMargin",
     "ProfitCourt",
@@ -102,6 +104,7 @@ __all__ = [
     "SynapseMerge",
     "SynapseStore",
     "SynapseView",
+    "StructuralEngine",
     "Sphere",
     "Ticket",
     "TrialSession",

@@ -53,7 +53,9 @@ class RentCourt:
         if view.mass.numel() == 0:
             return ()
 
-        mass = view.mass.detach().to(device="cpu", dtype=torch.float64)
+        # Widen only after the host transfer because MPS does not implement
+        # float64 tensors.
+        mass = view.mass.detach().to(device="cpu").to(torch.float64)
         threshold = float(torch.quantile(mass, 0.5)) * self.rent_ratio
         ages = ages.detach().cpu()
         dying: list[int] = []
