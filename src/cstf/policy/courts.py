@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 import torch
@@ -72,6 +72,24 @@ class RentCourt:
         operation = NeuronRetire if isinstance(view, NeuronView) else SynapseDeath
         return (operation(view.site, torch.tensor(dying, dtype=torch.int64)),)
 
+    def state_dict(self) -> dict[str, object]:
+        """Snapshot ID-keyed hysteresis state for profit-trial rollback."""
+        return {
+            "schema": "cstf-rent-court-v1",
+            "strike_state": dict(self._strike_state),
+        }
+
+    def load_state_dict(self, state: Mapping[str, object]) -> None:
+        if not isinstance(state, Mapping) or state.get("schema") != "cstf-rent-court-v1":
+            raise ValueError("unsupported RentCourt state schema")
+        raw = state.get("strike_state")
+        if not isinstance(raw, Mapping):
+            raise TypeError("strike_state must be a mapping")
+        restored = {int(entity_id): int(count) for entity_id, count in raw.items()}
+        if any(entity_id < 0 or count <= 0 for entity_id, count in restored.items()):
+            raise ValueError("invalid RentCourt strike state")
+        self._strike_state = restored
+
 
 @dataclass(frozen=True)
 class MagnitudeCourt:
@@ -98,3 +116,10 @@ class MagnitudeCourt:
         ids = view.ids.detach().cpu().index_select(0, positions)
         operation = NeuronRetire if isinstance(view, NeuronView) else SynapseDeath
         return (operation(view.site, ids),)
+
+    def state_dict(self) -> dict[str, str]:
+        return {"schema": "cstf-magnitude-court-v1"}
+
+    def load_state_dict(self, state: Mapping[str, object]) -> None:
+        if not isinstance(state, Mapping) or state.get("schema") != "cstf-magnitude-court-v1":
+            raise ValueError("unsupported MagnitudeCourt state schema")

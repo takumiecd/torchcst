@@ -8,7 +8,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from .domains import CoordinateDomain, IntegerGrid, Sphere
+from .domains import Box, CoordinateDomain, IntegerGrid, Sphere
 
 
 @dataclass(frozen=True)
@@ -26,8 +26,11 @@ class RepresentationSpec:
     def __post_init__(self) -> None:
         entry = self.kernel_in == self.kernel_out == "delta"
         rank_one = self.kernel_in == self.kernel_out == "dot"
-        if not entry and not rank_one:
-            raise ValueError("kernel pair must describe entry or rank-one family")
+        continuous = self.kernel_in == self.kernel_out == "gaussian"
+        if not entry and not rank_one and not continuous:
+            raise ValueError(
+                "kernel pair must describe entry, rank-one, or continuous family"
+            )
         if entry:
             if self.atom_cost != 1:
                 raise ValueError("entry family atom_cost must be 1")
@@ -35,7 +38,7 @@ class RepresentationSpec:
                 self.domain_out, IntegerGrid
             ):
                 raise TypeError("entry family requires IntegerGrid domains")
-        else:
+        elif rank_one:
             if not isinstance(self.domain_in, Sphere) or not isinstance(
                 self.domain_out, Sphere
             ):
@@ -43,6 +46,14 @@ class RepresentationSpec:
             expected = self.domain_in.dim + self.domain_out.dim + 1
             if self.atom_cost != expected:
                 raise ValueError("rank-one atom_cost must be d_in + d_out + 1")
+        else:
+            if not isinstance(self.domain_in, Box) or not isinstance(
+                self.domain_out, Box
+            ):
+                raise TypeError("continuous family requires Box domains")
+            expected = self.domain_in.dim + self.domain_out.dim + 1
+            if self.atom_cost != expected:
+                raise ValueError("continuous atom_cost must be d_in + d_out + 1")
         expected_retirement = "endpoint_cascade" if entry else "gate_only"
         if self.retirement != expected_retirement:
             raise ValueError(
@@ -70,6 +81,33 @@ class RepresentationSpec:
             domain_out=Sphere(d_out),
             kernel_in="dot",
             kernel_out="dot",
+            atom_cost=d_in + d_out + 1,
+            retirement="gate_only",
+        )
+
+    @classmethod
+    def continuous(
+        cls,
+        d_in: int,
+        d_out: int,
+        *,
+        bounds: tuple[float, float] = (0.0, 1.0),
+    ) -> RepresentationSpec:
+        """Create the Box×Box Gaussian continuous-coordinate family.
+
+        Gaussian functional mass depends on sampled neuron locations, sigma,
+        and boundary effects.  Consequently the frozen entry/rank-one rent
+        constants must not be inherited automatically; they require fresh
+        calibration for this family.
+        """
+        if not isinstance(bounds, tuple) or len(bounds) != 2:
+            raise TypeError("bounds must be a (lo, hi) tuple")
+        lo, hi = bounds
+        return cls(
+            domain_in=Box(lo, hi, d_in),
+            domain_out=Box(lo, hi, d_out),
+            kernel_in="gaussian",
+            kernel_out="gaussian",
             atom_cost=d_in + d_out + 1,
             retirement="gate_only",
         )
@@ -109,8 +147,82 @@ class RepresentationSpec:
             raise ValueError("functional_mass tensors must share the atom count")
         if self.kernel_in == self.kernel_out == "delta":
             return w.abs()
+        if self.kernel_in == self.kernel_out == "gaussian":
+            raise RuntimeError(
+                "continuous functional mass requires SynapseStore.mass_scale"
+            )
         return (
             w.abs()
             * torch.linalg.vector_norm(s, dim=1)
             * torch.linalg.vector_norm(t, dim=1)
         )
+
+    def merge_atoms(
+        self,
+        s1: Tensor,
+        t1: Tensor,
+        w1: Tensor | float,
+        s2: Tensor,
+        t2: Tensor,
+        w2: Tensor | float,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Project two atom effects back into the rank-one family (CST S-4).
+
+        The merged atom is the best Frobenius-norm rank-one approximation of
+        ``w1 * s1 t1^T + w2 * s2 t2^T``.  SVD signs are canonicalized by making
+        the largest-magnitude coordinate of each returned factor non-negative;
+        the product of those two sign changes is folded into ``w``, hence
+        ``w`` is ``+sigma`` or ``-sigma``.  This fixes the otherwise arbitrary
+        singular-vector sign while preserving the represented matrix.
+
+        This is the implementation of theoretical rule S-4: project the
+        two-atom effect into the one-atom family before deleting its parents.
+        Entry atoms deliberately have no merge on their discrete lattice.
+        """
+        if self.kernel_in != self.kernel_out or self.kernel_in != "dot":
+            raise ValueError("entry-family merge is undefined on the discrete lattice")
+        for name, value in (("s1", s1), ("t1", t1), ("s2", s2), ("t2", t2)):
+            if not isinstance(value, Tensor) or value.ndim != 1:
+                raise ValueError(f"{name} must be a rank-1 Tensor")
+        if s1.shape != s2.shape or t1.shape != t2.shape:
+            raise ValueError("merge factor dimensions must match")
+        if s1.numel() != self.domain_in.dim or t1.numel() != self.domain_out.dim:
+            raise ValueError("merge factors do not match the representation domains")
+        if not all(value.is_floating_point() for value in (s1, t1, s2, t2)):
+            raise TypeError("rank-one merge factors must have floating dtypes")
+        reference = s1
+        left = torch.stack((s1, s2)).to(reference)
+        right = torch.stack((t1, t2)).to(reference)
+        raw_weights = tuple(
+            torch.as_tensor(value, device=reference.device, dtype=reference.dtype)
+            for value in (w1, w2)
+        )
+        if any(value.numel() != 1 for value in raw_weights):
+            raise ValueError("merge weights must be scalar")
+        weights = torch.stack(tuple(value.reshape(()) for value in raw_weights))
+        result_dtype = reference.dtype
+        if result_dtype in {torch.float16, torch.bfloat16}:
+            left = left.float()
+            right = right.float()
+            weights = weights.float()
+        matrix = torch.einsum("k,ki,kj->ij", weights, left, right)
+        u, singular, vh = torch.linalg.svd(matrix, full_matrices=False)
+        source = u[:, 0]
+        target = vh[0]
+        sigma = singular[0]
+
+        source_sign = self._canonical_sign(source)
+        target_sign = self._canonical_sign(target)
+        source = source * source_sign
+        target = target * target_sign
+        weight = sigma * source_sign * target_sign
+        return (
+            source.to(dtype=result_dtype),
+            target.to(dtype=result_dtype),
+            weight.to(dtype=result_dtype),
+        )
+
+    @staticmethod
+    def _canonical_sign(vector: Tensor) -> Tensor:
+        pivot = vector[torch.argmax(vector.abs())]
+        return torch.where(pivot < 0, pivot.new_tensor(-1.0), pivot.new_tensor(1.0))

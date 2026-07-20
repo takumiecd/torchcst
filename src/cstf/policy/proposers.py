@@ -11,7 +11,7 @@ from torch import Tensor
 
 from cstf.instruments import CertificateSubspace
 from cstf.representation import CoordinateDomain, IntegerGrid, Sphere
-from cstf.storage import SynapseBirth, SynapseView
+from cstf.storage import SynapseBirth, SynapseMerge, SynapseView
 
 from .contract import InstrumentSpec
 from .registry import RetiredCandidateRegistry
@@ -232,6 +232,78 @@ class UniformBirth:
 
 # Compatibility name retained exactly as an alias, not a second implementation.
 UniformEntryBirth = UniformBirth
+
+
+@dataclass
+class MergeProposer:
+    """Propose the most redundant disjoint pairs from a rank-one view.
+
+    Pair similarity is ``|<s_i,s_j> <t_i,t_j>|``.  ``budget`` counts pairs,
+    self-pairs are never formed, unordered duplicates are represented once,
+    and greedy selection skips any pair sharing an ID with a higher-ranked
+    pair so the resulting :class:`SynapseMerge` is valid as one atomic batch.
+    """
+
+    similarity_threshold: float = 0.9
+    requires: tuple[InstrumentSpec, ...] = field(
+        default=(), init=False, repr=False
+    )
+
+    def __post_init__(self) -> None:
+        threshold = float(self.similarity_threshold)
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError("similarity_threshold must be in [0, 1]")
+        self.similarity_threshold = threshold
+
+    def propose(
+        self,
+        view: SynapseView,
+        budget: int,
+        registry: RetiredCandidateRegistry,
+        rng: torch.Generator,
+    ) -> tuple[SynapseMerge, ...]:
+        if isinstance(budget, bool) or not isinstance(budget, int):
+            raise TypeError("budget must be an int")
+        if budget < 0:
+            raise ValueError("budget must be non-negative")
+        if not isinstance(view.domain_in, Sphere) or not isinstance(
+            view.domain_out, Sphere
+        ):
+            raise TypeError("MergeProposer requires a rank-one Sphere×Sphere view")
+        if budget == 0 or view.ids.numel() < 2:
+            return ()
+
+        candidates: list[tuple[float, int, int, int, int]] = []
+        source = view.s.detach()
+        target = view.t.detach()
+        ids = view.ids.detach().cpu()
+        for left in range(ids.numel()):
+            for right in range(left + 1, ids.numel()):
+                score = abs(
+                    float(torch.dot(source[left], source[right]))
+                    * float(torch.dot(target[left], target[right]))
+                )
+                if score >= self.similarity_threshold:
+                    first_id, second_id = sorted((int(ids[left]), int(ids[right])))
+                    candidates.append((-score, first_id, second_id, left, right))
+        candidates.sort()
+        used: set[int] = set()
+        selected: list[tuple[int, int]] = []
+        for _, first_id, second_id, _, _ in candidates:
+            if first_id in used or second_id in used:
+                continue
+            selected.append((first_id, second_id))
+            used.update((first_id, second_id))
+            if len(selected) == budget:
+                break
+        if not selected:
+            return ()
+        return (
+            SynapseMerge(
+                view.site,
+                torch.tensor(selected, dtype=torch.int64),
+            ),
+        )
 
 
 @dataclass

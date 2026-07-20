@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Sequence
+from typing import Any, Sequence
 
 import torch
 from torch import Tensor, nn
@@ -324,6 +324,20 @@ class NeuronStore(nn.Module):
         for value in state.values():
             if isinstance(value, Tensor) and value.shape == self.gate.shape:
                 value.index_fill_(0, reset.to(value.device), 0)
+
+    def get_extra_state(self) -> dict[str, Any]:
+        """Include follower columns and structural version in module snapshots."""
+        return {
+            "schema": "cstf-neuron-store-v1",
+            "followers": self._hub.state_dict(),
+            "version": self._version,
+        }
+
+    def set_extra_state(self, state: dict[str, Any]) -> None:
+        if not isinstance(state, dict) or state.get("schema") != "cstf-neuron-store-v1":
+            raise ValueError("unsupported NeuronStore extra-state schema")
+        self._hub.load_state_dict(state["followers"])
+        self._version = int(state["version"])
 
     def _validate_ticket(self, ticket: Ticket) -> None:
         if not isinstance(ticket, Ticket):

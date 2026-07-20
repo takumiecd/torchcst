@@ -12,9 +12,11 @@ from .proposers import (
     Bounds,
     GradFieldTopKBirth,
     IncidentOutputBirth,
+    MergeProposer,
     OrthogonalBirth,
     UniformEntryBirth,
 )
+from .profit import ProfitCourt
 from .schedules import BirthWindowSchedule, PeriodicSchedule
 
 
@@ -236,6 +238,76 @@ class LC_response:
     @property
     def composer(self):
         return self._policy.composer
+
+    @property
+    def requires(self):
+        return self._policy.requires
+
+    def as_policy(self) -> Policy:
+        return self._policy
+
+
+@dataclass(frozen=True)
+class LC_merge:
+    """Rank-one lifecycle whose scheduled merge trials require ProfitCourt."""
+
+    event_interval: int = 200
+    birth_start_event: int = 1
+    birth_end_event: int = 5
+    birth_budget: int = 1
+    freeze_event: int | None = 10
+    immunity_events: int = 3
+    rent_ratio: float = 0.3
+    strikes: int = 2
+    similarity_threshold: float = 0.9
+    min_profit: float = 0.0
+    cost_rate: float = 0.0
+    composer: None = field(default=None, init=False)
+    _policy: Policy = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        policy = Policy(
+            schedule=BirthWindowSchedule(
+                event_interval=self.event_interval,
+                birth_start_event=self.birth_start_event,
+                birth_end_event=self.birth_end_event,
+                birth_budget=self.birth_budget,
+                freeze_event=self.freeze_event,
+            ),
+            proposers=(MergeProposer(self.similarity_threshold),),
+            allocator=EvenBudgetAllocator(),
+            retention=RentCourt(
+                immunity_events=self.immunity_events,
+                rent_ratio=self.rent_ratio,
+                strikes=self.strikes,
+            ),
+            composer=None,
+            profit=ProfitCourt(
+                min_profit=self.min_profit,
+                cost_rate=self.cost_rate,
+            ),
+        )
+        object.__setattr__(self, "_policy", policy)
+
+    @property
+    def schedule(self):
+        return self._policy.schedule
+
+    @property
+    def proposers(self):
+        return self._policy.proposers
+
+    @property
+    def allocator(self):
+        return self._policy.allocator
+
+    @property
+    def retention(self):
+        return self._policy.retention
+
+    @property
+    def profit(self):
+        return self._policy.profit
 
     @property
     def requires(self):

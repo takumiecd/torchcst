@@ -1,4 +1,4 @@
-"""entry synapse列と二相apply契約。"""
+"""Spec-defined synapse rows and their two-phase apply contract."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ class SynapseDeath:
 
 @dataclass(frozen=True)
 class SynapseMerge:
-    """将来のcanonical merge命令型。"""
+    """Replace each pair of live rank-one IDs with its projected atom."""
 
     site: str
     id_pairs: Tensor
@@ -143,7 +143,7 @@ class SynapseStore(nn.Module):
             bounds = getattr(domain, "bounds", None)
             if expected is not None and expected != width:
                 raise ValueError(f"{name} domain dimension does not match store")
-            if bounds is not None and len(bounds) != width:
+            if expected is None and bounds is not None and len(bounds) != width:
                 raise ValueError(f"{name} domain bounds do not match store")
 
         self._slots = SlotPool(capacity, max_capacity=max_capacity)
@@ -161,7 +161,12 @@ class SynapseStore(nn.Module):
             "t", capacity, d_out, self.spec.domain_out.parameter_role(), device, weight_dtype
         )
         self.w = nn.Parameter(torch.zeros(capacity, dtype=weight_dtype, device=device))
+        mass_dtype = torch.empty((), dtype=weight_dtype).real.dtype
+        self.register_buffer(
+            "mass_scale", torch.ones(capacity, dtype=mass_dtype, device=device)
+        )
         self._version = 0
+        self._next_lineage = 0
 
     def _install_coordinate(
         self,
@@ -212,6 +217,9 @@ class SynapseStore(nn.Module):
         weights = self.w.index_select(0, slots)
         source = self.s.index_select(0, slots)
         target = self.t.index_select(0, slots)
+        scale = self.mass_scale.index_select(
+            0, cpu_slots.to(device=self.mass_scale.device)
+        ).to(device=weights.device, dtype=weights.real.dtype)
         return SynapseView(
             site=self.site,
             version=self._version,
@@ -219,13 +227,38 @@ class SynapseStore(nn.Module):
             s=source,
             t=target,
             w=weights,
-            mass=self.spec.functional_mass(weights, source, target),
+            mass=weights.abs() * scale,
             lineages=self.lineage.values.index_select(0, cpu_slots),
             bounds_in=getattr(self.spec.domain_in, "bounds", None),
             bounds_out=getattr(self.spec.domain_out, "bounds", None),
             domain_in=self.spec.domain_in,
             domain_out=self.spec.domain_out,
         )
+
+    def set_mass_scale(
+        self, scale: Tensor, *, version: int | None = None
+    ) -> None:
+        """Update detached packed Gaussian kernel norms without structural mutation.
+
+        The column is owned by every store for one uniform view contract, but
+        only the continuous Gaussian family may change it.  Entry and
+        rank-one stores therefore retain the exact ``mass == abs(w)`` behavior
+        implied by their delta/orthonormal gauges.
+        """
+        if self.spec.kernel_in != "gaussian" or self.spec.kernel_out != "gaussian":
+            raise RuntimeError("mass_scale is fixed at one outside the Gaussian family")
+        if version is not None and version != self._version:
+            raise RuntimeError("mass_scale update targets a stale store version")
+        if not isinstance(scale, Tensor):
+            raise TypeError("scale must be a Tensor")
+        if scale.ndim != 1 or scale.numel() != self._slots.k_live:
+            raise ValueError("scale must align with packed live atoms")
+        value = scale.detach().to(self.mass_scale)
+        if not bool(torch.isfinite(value).all()) or bool((value < 0).any()):
+            raise ValueError("mass scale must be finite and non-negative")
+        slots = self._slots.live_slots.to(device=self.mass_scale.device)
+        with torch.no_grad():
+            self.mass_scale.index_copy_(0, slots, value)
 
     def retract_coordinates(self, optimizer: torch.optim.Optimizer | None = None) -> None:
         """Restore live coordinate gauges and project matching optimizer moments."""
@@ -305,11 +338,12 @@ class SynapseStore(nn.Module):
             return Ticket(self, self._version, batch, empty=True)
 
         births: list[SynapseBirth] = []
+        merges: list[SynapseMerge] = []
         slot_ops: list[SlotBirth | SlotDeath] = []
         for op in ops:
-            if isinstance(op, (SynapseMerge, SynapseKick)):
-                raise NotImplementedError("SynapseMerge/SynapseKick are not implemented")
-            if not isinstance(op, (SynapseBirth, SynapseDeath)):
+            if isinstance(op, SynapseKick):
+                raise NotImplementedError("SynapseKick is not implemented")
+            if not isinstance(op, (SynapseBirth, SynapseDeath, SynapseMerge)):
                 raise TypeError(f"unsupported synapse op type {type(op)!r}")
             if op.site != self.site:
                 raise ValueError(
@@ -319,10 +353,57 @@ class SynapseStore(nn.Module):
                 ids = self._validate_ids(op.ids)
                 slot_ops.append(SlotDeath(ids))
                 continue
+            if isinstance(op, SynapseMerge):
+                pairs = self._validate_merge(op)
+                if pairs.numel():
+                    merges.append(SynapseMerge(op.site, pairs))
+                    slot_ops.extend((SlotDeath(pairs.reshape(-1)), SlotBirth(pairs.shape[0])))
+                continue
             self._validate_birth(op)
             n = op.w.shape[0]
             births.append(op)
             slot_ops.append(SlotBirth(n))
+
+        if merges:
+            merged_s: list[Tensor] = []
+            merged_t: list[Tensor] = []
+            merged_w: list[Tensor] = []
+            for merge in merges:
+                for pair in merge.id_pairs:
+                    slots = self._slots.slots_of(pair)
+                    device_slots = slots.to(device=self.w.device)
+                    source, target, weight = self.spec.merge_atoms(
+                        self.s[device_slots[0]],
+                        self.t[device_slots[0]],
+                        self.w[device_slots[0]],
+                        self.s[device_slots[1]],
+                        self.t[device_slots[1]],
+                        self.w[device_slots[1]],
+                    )
+                    merged_s.append(source)
+                    merged_t.append(target)
+                    merged_w.append(weight)
+            supplied = [
+                int(value)
+                for birth in births
+                for value in birth.lineage.detach().cpu().tolist()
+            ]
+            live = [
+                int(value)
+                for value in self.lineage.values[self._slots.live_slots].tolist()
+                if int(value) >= 0
+            ]
+            start = max(self._next_lineage, max((*supplied, *live), default=-1) + 1)
+            count = len(merged_w)
+            births.append(
+                SynapseBirth(
+                    self.site,
+                    torch.stack(merged_s),
+                    torch.stack(merged_t),
+                    torch.stack(merged_w),
+                    torch.arange(start, start + count, dtype=torch.int64),
+                )
+            )
 
         slot_plan = self._slots.prepare(slot_ops)
         if births:
@@ -361,6 +442,11 @@ class SynapseStore(nn.Module):
         if committed.born_slots.numel():
             self._hub.notify_birth(committed.born_slots, ticket.batch.lineage)
         self._version += 1
+        if ticket.batch.lineage.numel():
+            self._next_lineage = max(
+                self._next_lineage,
+                int(ticket.batch.lineage.max()) + 1,
+            )
         ticket._used = True
 
     def apply(self, ops: Sequence[SynapseOp]) -> None:
@@ -399,6 +485,45 @@ class SynapseStore(nn.Module):
         self.spec.domain_in.validate_birth(op.s)
         self.spec.domain_out.validate_birth(op.t)
 
+    def _validate_merge(self, op: SynapseMerge) -> Tensor:
+        if self.spec.kernel_in == self.spec.kernel_out == "delta":
+            raise NotImplementedError(
+                "entry-family merge is undefined on the discrete lattice"
+            )
+        pairs = op.id_pairs
+        if not isinstance(pairs, Tensor):
+            raise TypeError("SynapseMerge.id_pairs must be a Tensor")
+        if pairs.ndim != 2 or pairs.shape[1] != 2:
+            raise ValueError("SynapseMerge.id_pairs must have shape [n, 2]")
+        if pairs.dtype != torch.int64:
+            raise TypeError("SynapseMerge.id_pairs must have dtype int64")
+        pairs = pairs.detach().to(device="cpu").clone()
+        flat = pairs.reshape(-1)
+        if flat.unique().numel() != flat.numel():
+            raise ValueError("merge IDs must be distinct across all pairs")
+        # Resolve now so unknown/dead IDs fail during the pure prepare phase.
+        self._slots.slots_of(flat)
+        return pairs
+
+    def get_extra_state(self) -> dict[str, Any]:
+        """Include non-module structural state in ``nn.Module.state_dict``."""
+        return {
+            "schema": "cstf-synapse-store-v1",
+            "slots": self._slots.state_dict(),
+            "followers": self._hub.state_dict(),
+            "version": self._version,
+            "next_lineage": self._next_lineage,
+        }
+
+    def set_extra_state(self, state: dict[str, Any]) -> None:
+        """Restore non-module state captured by :meth:`get_extra_state`."""
+        if not isinstance(state, dict) or state.get("schema") != "cstf-synapse-store-v1":
+            raise ValueError("unsupported SynapseStore extra-state schema")
+        self._slots.load_state_dict(state["slots"])
+        self._hub.load_state_dict(state["followers"])
+        self._version = int(state["version"])
+        self._next_lineage = int(state["next_lineage"])
+
     @staticmethod
     def _validate_ids(ids: Tensor) -> Tensor:
         if not isinstance(ids, Tensor):
@@ -421,6 +546,10 @@ class SynapseStore(nn.Module):
                 grad = self.w.grad.new_zeros((new_capacity,))
                 grad[:old_capacity] = self.w.grad
                 self.w.grad = grad
+            scale = self.mass_scale.new_ones((new_capacity,))
+            scale[:old_capacity] = self.mass_scale
+            self.mass_scale.resize_(new_capacity)
+            self.mass_scale.copy_(scale)
 
     @staticmethod
     def _grow_coordinate(
@@ -447,10 +576,12 @@ class SynapseStore(nn.Module):
                 self.s.index_fill_(0, dead, 0)
                 self.t.index_fill_(0, dead, 0)
                 self.w.index_fill_(0, dead, 0.0)
+                self.mass_scale.index_fill_(0, dead.to(self.mass_scale.device), 1.0)
             if born.numel():
                 self.s.index_copy_(0, born, batch.s)
                 self.t.index_copy_(0, born, batch.t)
                 self.w.index_copy_(0, born, batch.w)
+                self.mass_scale.index_fill_(0, born.to(self.mass_scale.device), 1.0)
 
 
 def prepare_all(

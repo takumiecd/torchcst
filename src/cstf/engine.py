@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import torch
 
-from cstf.compute import BackwardContext, EntryLinear, Observation, RankOneLinear
+from cstf.audit import AuditRecord, AuditSubscriber
+from cstf.compute import BackwardContext, CSTLinear, EntryLinear, Observation, RankOneLinear
 from cstf.instruments import CandidateField, CertificateSubspace, GradFieldEMA
 from cstf.storage import (
     NeuronKick,
@@ -17,6 +19,7 @@ from cstf.storage import (
     NeuronView,
     SynapseBirth,
     SynapseDeath,
+    SynapseMerge,
     SynapseStore,
     SynapseView,
     commit_all,
@@ -24,6 +27,7 @@ from cstf.storage import (
 )
 from .policy.bundle import Op, ProposalBundle, bundle_birth_count
 from .policy.contract import BudgetRequest, Clock, InstrumentSpec, Phase, Policy
+from .policy.profit import TrialSession, TrialTransaction
 from .policy.registry import RetiredCandidateRegistry
 
 
@@ -54,8 +58,11 @@ class StructuralEngine:
         policy: Policy | Any,
         seed: int = 0,
         rng: torch.Generator | None = None,
-        modules: dict[str, EntryLinear | RankOneLinear] | None = None,
+        modules: dict[str, EntryLinear | RankOneLinear | CSTLinear] | None = None,
         optimizer: torch.optim.Optimizer | None = None,
+        audit_subscribers: (
+            tuple[AuditSubscriber, ...] | list[AuditSubscriber] | None
+        ) = None,
     ) -> None:
         if isinstance(policy, type):
             policy = policy()
@@ -102,19 +109,30 @@ class StructuralEngine:
         self._backward_context: BackwardContext | None = None
         self._capture_active = False
         self._backward_finalized = False
+        self._audit_subscribers: list[AuditSubscriber] = []
+        for subscriber in () if audit_subscribers is None else audit_subscribers:
+            self.subscribe_audit(subscriber)
+
+    def subscribe_audit(self, subscriber: AuditSubscriber) -> None:
+        """Register a one-way aggregate record sink outside policy wiring."""
+        if not isinstance(subscriber, AuditSubscriber):
+            raise TypeError("audit subscriber must provide push(AuditRecord)")
+        if any(existing is subscriber for existing in self._audit_subscribers):
+            return
+        self._audit_subscribers.append(subscriber)
 
     def _validate_modules(
-        self, modules: dict[str, EntryLinear | RankOneLinear] | None
-    ) -> dict[str, EntryLinear | RankOneLinear]:
+        self, modules: dict[str, EntryLinear | RankOneLinear | CSTLinear] | None
+    ) -> dict[str, EntryLinear | RankOneLinear | CSTLinear]:
         if modules is None:
             modules = {}
         if not isinstance(modules, dict):
             raise TypeError("modules must be a dict or None")
-        result: dict[str, EntryLinear | RankOneLinear] = {}
+        result: dict[str, EntryLinear | RankOneLinear | CSTLinear] = {}
         for site, module in modules.items():
             if site not in self.synapse_stores:
                 raise ValueError(f"module targets unknown site {site!r}")
-            if not isinstance(module, (EntryLinear, RankOneLinear)):
+            if not isinstance(module, (EntryLinear, RankOneLinear, CSTLinear)):
                 raise TypeError("modules values must be CST linear instances")
             if module.capture_site != site or module.store is not self.synapse_stores[site]:
                 raise ValueError("module site/store must match the stores mapping")
@@ -124,7 +142,7 @@ class StructuralEngine:
             result[site] = module
         if self.policy.requires and set(result) != set(self.synapse_stores):
             raise ValueError(
-                "every store requires a matching EntryLinear when policy requires capture"
+                "every store requires a matching compute module when policy requires capture"
             )
         return result
 
@@ -261,6 +279,25 @@ class StructuralEngine:
             )
         return result
 
+    @staticmethod
+    def _atom_gradient(
+        observations: tuple[Observation, ...],
+        module: EntryLinear | RankOneLinear | CSTLinear,
+    ) -> torch.Tensor:
+        """Sum module-provided live-atom gradients before absolute-value EMA."""
+        result: torch.Tensor | None = None
+        for observation in observations:
+            contribution = module.atom_grads(observation.x, observation.g_out)
+            contribution = contribution * observation.micro_weight
+            result = (
+                contribution
+                if result is None
+                else result.to(contribution) + contribution
+            )
+        if result is None:
+            return module.store.w.detach().new_zeros(module.store.view().ids.numel())
+        return result
+
     def finalize_backward(self) -> None:
         """Apply abs-after-sum update aggregates and release captured tensors."""
         if self._active_update_id is None or self._backward_context is None:
@@ -297,8 +334,8 @@ class StructuralEngine:
                 if isinstance(instrument, GradFieldEMA):
                     instrument.reconcile(view)
                     if site_observations:
-                        gradient = self._coordinate_gradient(
-                            site_observations, view.s, view.t
+                        gradient = self._atom_gradient(
+                            site_observations, self.modules[site]
                         )
                         instrument.update(gradient, view)
                 elif isinstance(instrument, CandidateField):
@@ -475,6 +512,14 @@ class StructuralEngine:
                             store.lineage.values.index_select(0, slots).clone(),
                         )
                     )
+                elif isinstance(op, SynapseMerge):
+                    slots = store._slots.slots_of(op.id_pairs.reshape(-1))
+                    retired.append(
+                        (
+                            site,
+                            store.lineage.values.index_select(0, slots).clone(),
+                        )
+                    )
         tickets = prepare_all(
             (self.stores[site], tuple(site_ops))
             for site, site_ops in by_site.items()
@@ -631,8 +676,114 @@ class StructuralEngine:
                 )
         return tuple(applied)
 
-    def step(self) -> tuple[Op, ...]:
-        """Advance one update; structural work occurs only on schedule events."""
+    def _audit_event_context(
+        self,
+    ) -> tuple[dict[str, dict[int, int]], dict[str, float | None]]:
+        """Snapshot only facts needed to explain the upcoming adjudication."""
+        ages_by_id: dict[str, dict[int, int]] = {}
+        thresholds: dict[str, float | None] = {}
+        for site, store in self.stores.items():
+            view = store.view()
+            ages = self._ages(store, view)
+            ages_by_id[site] = {
+                int(entity_id): int(age)
+                for entity_id, age in zip(view.ids.tolist(), ages.tolist())
+            }
+            court = (
+                self.policy.retention
+                if isinstance(store, SynapseStore)
+                else self.policy.neuron_retention
+            )
+            rent_ratio = getattr(court, "rent_ratio", None)
+            if rent_ratio is None or view.mass.numel() == 0:
+                thresholds[site] = None
+            else:
+                mass = view.mass.detach().to(device="cpu", dtype=torch.float64)
+                thresholds[site] = float(torch.quantile(mass, 0.5)) * float(
+                    rent_ratio
+                )
+        return ages_by_id, thresholds
+
+    def _publish_audit(
+        self,
+        ops: tuple[Op, ...],
+        context: tuple[dict[str, dict[int, int]], dict[str, float | None]],
+    ) -> None:
+        ages_by_id, thresholds = context
+        by_site: dict[str, list[Op]] = {site: [] for site in self.stores}
+        prune_ages: dict[str, list[int]] = {site: [] for site in self.stores}
+        for op in ops:
+            by_site[op.site].append(op)
+            if isinstance(op, (SynapseDeath, NeuronRetire)):
+                prune_ages[op.site].extend(
+                    ages_by_id[op.site][int(entity_id)]
+                    for entity_id in op.ids.detach().to(device="cpu").tolist()
+                )
+
+        views = {site: store.view() for site, store in self.stores.items()}
+        record = AuditRecord(
+            event_index=self.clock.event_index,
+            applied_ops={site: tuple(site_ops) for site, site_ops in by_site.items()},
+            live_counts={site: int(view.ids.numel()) for site, view in views.items()},
+            live_ids={site: view.ids for site, view in views.items()},
+            mass_snapshots={site: view.mass for site, view in views.items()},
+            prune_ages={
+                site: torch.tensor(values, dtype=torch.int64)
+                for site, values in prune_ages.items()
+            },
+            rent_thresholds=thresholds,
+        )
+        for subscriber in tuple(self._audit_subscribers):
+            subscriber.push(record)
+
+    @staticmethod
+    def _proposal_count(ops: tuple[Op, ...]) -> int:
+        count = 0
+        for op in ops:
+            if isinstance(op, SynapseBirth):
+                count += int(op.w.numel())
+            elif isinstance(op, SynapseMerge):
+                count += int(op.id_pairs.shape[0])
+            else:
+                raise TypeError("proposer may return only SynapseBirth/SynapseMerge")
+        return count
+
+    def _apply_merge_trial(
+        self,
+        merge_ops: tuple[SynapseMerge, ...],
+        objective: Callable[[], float] | None,
+    ) -> tuple[Op, ...]:
+        """Run one selected merge batch through the isolated profit path."""
+        if not merge_ops:
+            return ()
+        profit = self.policy.profit
+        if profit is None:
+            raise RuntimeError("SynapseMerge requires an opt-in ProfitCourt")
+        if objective is None:
+            raise RuntimeError("a merge proposal requires objective= for ProfitCourt")
+        transaction = TrialTransaction(self)
+        session = TrialSession(objective, transaction)
+        try:
+            session.begin()
+            price = profit.price_for(merge_ops, self.synapse_stores)
+            applied = self._apply_atomic_unit(tuple(merge_ops))
+            accepted = profit.adjudicate(applied, price, session)
+        except BaseException:
+            if transaction.active:
+                transaction.rollback()
+            raise
+        return applied if accepted else ()
+
+    def step(
+        self, objective: Callable[[], float] | None = None
+    ) -> tuple[Op, ...]:
+        """Advance one update; scheduled merge trials alone may read objective."""
+        if objective is not None and self.policy.profit is None:
+            raise RuntimeError(
+                "objective is unavailable when policy.profit is None"
+            )
+        if objective is not None and not callable(objective):
+            raise TypeError("objective must be callable or None")
         for store in self.synapse_stores.values():
             store.retract_coordinates(self.optimizer)
         if (
@@ -654,9 +805,14 @@ class StructuralEngine:
             return ()
 
         self.clock = candidate
+        audit_context = (
+            self._audit_event_context() if self._audit_subscribers else None
+        )
         if directive.phase is Phase.FROZEN:
             for store in self.stores.values():
                 store.age.tick()
+            if audit_context is not None:
+                self._publish_audit((), audit_context)
             self._reset_event_instruments()
             self._close_update()
             return ()
@@ -727,7 +883,7 @@ class StructuralEngine:
         current_views = {
             site: store.view() for site, store in self.synapse_stores.items()
         }
-        birth_ops: list[Op] = []
+        proposed_ops: list[Op] = []
         for request, budget in zip(requests, allocations):
             proposer = self.policy.proposers[request.proposer_index]
             proposed = proposer.propose(
@@ -738,10 +894,17 @@ class StructuralEngine:
                 self.registry,
                 self.rng,
             )
-            if sum(op.w.numel() for op in proposed) > budget:
-                raise RuntimeError("proposer exceeded its allocated birth budget")
-            birth_ops.extend(proposed)
-        applied.extend(self._apply_atomic_unit(tuple(birth_ops)))
+            if self._proposal_count(tuple(proposed)) > budget:
+                raise RuntimeError("proposer exceeded its allocated operation budget")
+            proposed_ops.extend(proposed)
+        merge_ops = tuple(
+            op for op in proposed_ops if isinstance(op, SynapseMerge)
+        )
+        ordinary_ops = tuple(
+            op for op in proposed_ops if not isinstance(op, SynapseMerge)
+        )
+        applied.extend(self._apply_atomic_unit(ordinary_ops))
+        applied.extend(self._apply_merge_trial(merge_ops, objective))
         if directive.phase is Phase.RESPONSE:
             applied.extend(self._apply_response(directive))
 
@@ -749,6 +912,8 @@ class StructuralEngine:
             store.age.tick()
         result = tuple(applied)
         self._op_log.extend((self.clock.event_index, op) for op in result)
+        if audit_context is not None:
+            self._publish_audit(result, audit_context)
         self._reset_event_instruments()
         self._close_update()
         return result

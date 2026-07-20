@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from math import isfinite
 from typing import MutableMapping, Protocol, runtime_checkable
 
 import torch
@@ -235,6 +236,96 @@ class Sphere:
             raise ValueError("coords and grad must have equal shape")
         if not coords.is_floating_point() or not other.is_floating_point():
             raise TypeError("Sphere coords and grad must have floating dtypes")
+
+
+class Box:
+    """Axis-aligned continuous box with ordinary Euclidean coordinates.
+
+    ``project_state`` is intentionally a no-op.  Unlike :class:`Sphere`, a
+    box has no directional gauge or tangent-moment invariant: optimizer state
+    remains meaningful after the coordinate itself is clamped to the box.
+    ``lineage_key`` returns ``None`` by the common continuous-domain rule.
+    """
+
+    def __init__(self, lo: float, hi: float, dim: int) -> None:
+        if isinstance(dim, bool) or not isinstance(dim, int):
+            raise TypeError("Box dim must be an int")
+        if dim <= 0:
+            raise ValueError("Box dim must be positive")
+        lower = float(lo)
+        upper = float(hi)
+        if not isfinite(lower) or not isfinite(upper):
+            raise ValueError("Box bounds must be finite")
+        if lower >= upper:
+            raise ValueError("Box lo must be less than hi")
+        self.lo = lower
+        self.hi = upper
+        self.dim = dim
+        self.bounds = (lower, upper)
+
+    def parameter_role(self) -> ParameterRole:
+        return ParameterRole.PARAMETER
+
+    def validate_birth(self, coords: Tensor) -> None:
+        if not isinstance(coords, Tensor):
+            raise TypeError("coords must be a Tensor")
+        if coords.ndim != 2:
+            raise ValueError("Box coords must be rank 2")
+        if not coords.is_floating_point():
+            raise TypeError("Box coords must have a floating dtype")
+        if coords.shape[1] != self.dim:
+            raise ValueError("Box coordinate dimension does not match dim")
+        if not bool(torch.isfinite(coords).all()):
+            raise ValueError("Box coordinates must be finite")
+        if bool(((coords < self.lo) | (coords > self.hi)).any()):
+            raise ValueError("Box coordinates are out of bounds")
+
+    def sample(self, n: int, rng: torch.Generator) -> Tensor:
+        """Draw rows uniformly from the closed box (up to RNG endpoint rules)."""
+        _validate_sample_args(n, rng)
+        device = getattr(rng, "device", torch.device("cpu"))
+        unit = torch.rand((n, self.dim), generator=rng, device=device)
+        return unit.mul(self.hi - self.lo).add(self.lo)
+
+    def lineage_key(self, coords: Tensor) -> None:
+        self.validate_birth(coords)
+        return None
+
+    def project_grad(self, coords: Tensor, grad: Tensor) -> Tensor:
+        """Return the Euclidean gradient unchanged."""
+        self._validate_pair(coords, grad)
+        return grad
+
+    def retract(self, coords: Tensor) -> Tensor:
+        """Retract by coordinate-wise clamping to the closed box."""
+        if not isinstance(coords, Tensor) or coords.ndim != 2:
+            raise ValueError("Box coords must be a rank-2 Tensor")
+        if not coords.is_floating_point():
+            raise TypeError("Box coords must have a floating dtype")
+        if coords.shape[1] != self.dim:
+            raise ValueError("Box coordinate dimension does not match dim")
+        if not bool(torch.isfinite(coords).all()):
+            raise ValueError("Box coordinates must be finite")
+        return coords.clamp(self.lo, self.hi)
+
+    def project_state(
+        self, coords: Tensor, opt_state: MutableMapping[str, object]
+    ) -> None:
+        """Leave optimizer state unchanged because a box has no direction gauge."""
+        if not isinstance(coords, Tensor) or coords.ndim != 2:
+            raise ValueError("Box coords must be a rank-2 Tensor")
+        if coords.shape[1] != self.dim:
+            raise ValueError("Box coordinate dimension does not match dim")
+
+    def _validate_pair(self, coords: Tensor, grad: Tensor) -> None:
+        if not isinstance(coords, Tensor) or not isinstance(grad, Tensor):
+            raise TypeError("coords and grad must be Tensors")
+        if coords.ndim != 2 or coords.shape[1] != self.dim:
+            raise ValueError("Box coords have the wrong shape")
+        if coords.shape != grad.shape:
+            raise ValueError("coords and grad must have equal shape")
+        if not coords.is_floating_point() or not grad.is_floating_point():
+            raise TypeError("Box coords and grad must have floating dtypes")
 
 
 def _validate_sample_args(n: int, rng: torch.Generator) -> None:

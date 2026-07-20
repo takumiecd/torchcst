@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Protocol, Sequence
+from collections.abc import Mapping
+from copy import deepcopy
+from typing import Any, Callable, Protocol, Sequence
 
 import torch
 from torch import Tensor
@@ -32,6 +34,21 @@ class IdAllocator:
         ids = self.preview(n)
         self._next += n
         return ids
+
+    def state_dict(self) -> dict[str, int]:
+        """Return the never-reuse counter for transactional snapshots."""
+        return {"next_id": self._next}
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        """Restore a counter previously returned by :meth:`state_dict`."""
+        if not isinstance(state, Mapping):
+            raise TypeError("allocator state must be a mapping")
+        next_id = state.get("next_id")
+        if isinstance(next_id, bool) or not isinstance(next_id, int):
+            raise TypeError("allocator next_id must be an int")
+        if next_id < 0:
+            raise ValueError("allocator next_id must be non-negative")
+        self._next = next_id
 
     def _validate_count(self, n: int) -> None:
         if isinstance(n, bool) or not isinstance(n, int):
@@ -196,6 +213,68 @@ class SlotPool:
         """slot op列をprepareして直ちにcommitする。"""
         return self.commit(self.prepare(ops))
 
+    def state_dict(self) -> dict[str, Any]:
+        """Snapshot every allocation and cache field without shared tensors."""
+        return {
+            "capacity": self.capacity,
+            "max_capacity": self.max_capacity,
+            "allocator": self._allocator.state_dict(),
+            "id_to_slot": dict(self._id_to_slot),
+            "slot_to_id": self._slot_to_id.clone(),
+            "version": self._version,
+            "live_slots_cache": (
+                None
+                if self._live_slots_cache is None
+                else self._live_slots_cache.clone()
+            ),
+            "live_slots_cache_version": self._live_slots_cache_version,
+        }
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        """Restore a complete physical-slot snapshot."""
+        if not isinstance(state, Mapping):
+            raise TypeError("slot-pool state must be a mapping")
+        capacity = state.get("capacity")
+        slot_to_id = state.get("slot_to_id")
+        mapping = state.get("id_to_slot")
+        version = state.get("version")
+        cache_version = state.get("live_slots_cache_version")
+        if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity < 0:
+            raise ValueError("invalid slot-pool capacity")
+        if not isinstance(slot_to_id, Tensor) or slot_to_id.shape != (capacity,):
+            raise ValueError("slot_to_id must match slot-pool capacity")
+        if slot_to_id.dtype != torch.int64:
+            raise TypeError("slot_to_id must have dtype int64")
+        if not isinstance(mapping, Mapping):
+            raise TypeError("id_to_slot must be a mapping")
+        if isinstance(version, bool) or not isinstance(version, int) or version < 0:
+            raise ValueError("invalid slot-pool version")
+        if isinstance(cache_version, bool) or not isinstance(cache_version, int):
+            raise TypeError("live slot cache version must be an int")
+        restored_mapping = {int(key): int(value) for key, value in mapping.items()}
+        expected_mapping = {
+            int(entity_id): slot
+            for slot, entity_id in enumerate(slot_to_id.tolist())
+            if entity_id >= 0
+        }
+        if restored_mapping != expected_mapping:
+            raise ValueError("slot-pool mappings are inconsistent")
+        cache = state.get("live_slots_cache")
+        if cache is not None and (
+            not isinstance(cache, Tensor)
+            or cache.ndim != 1
+            or cache.dtype != torch.int64
+        ):
+            raise TypeError("live_slots_cache must be a rank-1 int64 Tensor or None")
+        self.capacity = capacity
+        self.max_capacity = state.get("max_capacity")
+        self._allocator.load_state_dict(state.get("allocator", {}))
+        self._id_to_slot = restored_mapping
+        self._slot_to_id = slot_to_id.detach().cpu().clone()
+        self._version = version
+        self._live_slots_cache = None if cache is None else cache.detach().cpu().clone()
+        self._live_slots_cache_version = cache_version
+
     def _normalize_ops(self, ops: Sequence[SlotOp]) -> tuple[int, Tensor]:
         n_birth = 0
         deaths: list[Tensor] = []
@@ -292,6 +371,35 @@ class FollowerHub:
         for follower in self._followers:
             follower.on_remap(old_to_new)
 
+    def state_dict(self) -> dict[str, Any]:
+        """Snapshot hub capacity and every subscribed follower in order."""
+        states: list[Any] = []
+        for follower in self._followers:
+            exporter = getattr(follower, "state_dict", None)
+            states.append(
+                exporter() if exporter is not None else deepcopy(follower.__dict__)
+            )
+        return {"capacity": self.capacity, "followers": states}
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        """Restore follower state while preserving follower object identities."""
+        if not isinstance(state, Mapping):
+            raise TypeError("follower-hub state must be a mapping")
+        capacity = state.get("capacity")
+        states = state.get("followers")
+        if isinstance(capacity, bool) or not isinstance(capacity, int):
+            raise TypeError("follower-hub capacity must be an int")
+        if not isinstance(states, list) or len(states) != len(self._followers):
+            raise ValueError("follower snapshot does not match subscriptions")
+        self.capacity = capacity
+        for follower, follower_state in zip(self._followers, states):
+            loader = getattr(follower, "load_state_dict", None)
+            if loader is not None:
+                loader(follower_state)
+            else:
+                follower.__dict__.clear()
+                follower.__dict__.update(deepcopy(follower_state))
+
 
 class AgeColumn:
     """birth後の構造event数をslotごとに保持する標準follower。"""
@@ -338,6 +446,15 @@ class AgeColumn:
             slots = self._live_slots()
         self.values[slots] += 1
 
+    def state_dict(self) -> dict[str, Tensor]:
+        return {"values": self.values.clone()}
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        values = state.get("values") if isinstance(state, Mapping) else None
+        if not isinstance(values, Tensor) or values.ndim != 1:
+            raise TypeError("AgeColumn state requires a rank-1 Tensor")
+        self.values = values.detach().cpu().clone().to(dtype=torch.int64)
+
 
 class LineageColumn:
     """birth op由来のint64 lineage keyをslotごとに保持する標準follower。"""
@@ -369,3 +486,12 @@ class LineageColumn:
         old = torch.nonzero(old_to_new >= 0, as_tuple=False).flatten()
         remapped[old_to_new[old]] = self.values[old]
         self.values = remapped
+
+    def state_dict(self) -> dict[str, Tensor]:
+        return {"values": self.values.clone()}
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        values = state.get("values") if isinstance(state, Mapping) else None
+        if not isinstance(values, Tensor) or values.ndim != 1:
+            raise TypeError("LineageColumn state requires a rank-1 Tensor")
+        self.values = values.detach().cpu().clone().to(dtype=torch.int64)

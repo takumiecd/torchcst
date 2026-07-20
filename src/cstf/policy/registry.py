@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 import torch
 
@@ -42,3 +43,27 @@ class RetiredCandidateRegistry:
     def snapshot(self) -> frozenset[tuple[str, int]]:
         return frozenset(self._keys)
 
+    def state_dict(self) -> dict[str, Any]:
+        """Return a deterministic, deep-copy-safe registry snapshot."""
+        return {
+            "schema": "cstf-retired-registry-v1",
+            "keys": tuple(sorted(self._keys)),
+        }
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        if not isinstance(state, Mapping) or state.get("schema") != "cstf-retired-registry-v1":
+            raise ValueError("unsupported retired-registry state schema")
+        raw = state.get("keys")
+        if not isinstance(raw, (tuple, list)):
+            raise TypeError("registry keys must be a sequence")
+        restored: set[tuple[str, int]] = set()
+        for item in raw:
+            if not isinstance(item, (tuple, list)) or len(item) != 2:
+                raise TypeError("registry keys must contain (site, lineage) pairs")
+            site, lineage = item
+            if not isinstance(site, str) or not site:
+                raise ValueError("registry site must be a non-empty string")
+            if isinstance(lineage, bool) or not isinstance(lineage, int):
+                raise TypeError("registry lineage must be an int")
+            restored.add((site, lineage))
+        self._keys = restored

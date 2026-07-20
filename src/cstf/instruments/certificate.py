@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import NamedTuple
 
 import torch
@@ -108,3 +109,17 @@ class CertificateSubspace:
         """Begin the next observation window without changing shape/device."""
         if self.G is not None:
             self.G.zero_()
+
+    def state_dict(self) -> dict[str, object]:
+        return {
+            "schema": "cstf-certificate-subspace-v1",
+            "G": None if self.G is None else self.G.detach().clone(),
+        }
+
+    def load_state_dict(self, state: Mapping[str, object]) -> None:
+        if not isinstance(state, Mapping) or state.get("schema") != "cstf-certificate-subspace-v1":
+            raise ValueError("unsupported CertificateSubspace state schema")
+        value = state.get("G")
+        if value is not None and not isinstance(value, Tensor):
+            raise TypeError("CertificateSubspace G must be a Tensor or None")
+        self.G = None if value is None else value.detach().clone()

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from math import prod
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -97,6 +99,28 @@ class GradFieldEMA:
             ]
         ).detach()
         return ids, scores
+
+    def state_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "cstf-grad-field-ema-v1",
+            "version": self._version,
+            "state": {
+                entity_id: score.detach().clone()
+                for entity_id, score in self._state.items()
+            },
+        }
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        if not isinstance(state, Mapping) or state.get("schema") != "cstf-grad-field-ema-v1":
+            raise ValueError("unsupported GradFieldEMA state schema")
+        raw = state.get("state")
+        if not isinstance(raw, Mapping):
+            raise TypeError("GradFieldEMA state must be a mapping")
+        self._version = int(state["version"])
+        self._state = {
+            int(entity_id): score.detach().clone()
+            for entity_id, score in raw.items()
+        }
 
 
 class CandidateField:
@@ -236,3 +260,33 @@ class CandidateField:
         self.reconcile()
         coordinates = torch.cat((self._s, self._t), dim=1)
         return coordinates.detach().clone(), self._scores.detach().clone()
+
+    def state_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "cstf-candidate-field-v1",
+            "version": self._version,
+            "registry_state": tuple(sorted(self._registry_state)),
+            "s": self._s.detach().clone(),
+            "t": self._t.detach().clone(),
+            "lineages": self._lineages.detach().clone(),
+            "scores": self._scores.detach().clone(),
+        }
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        if not isinstance(state, Mapping) or state.get("schema") != "cstf-candidate-field-v1":
+            raise ValueError("unsupported CandidateField state schema")
+        self._version = int(state["version"])
+        self._registry_state = frozenset(
+            (str(site), int(lineage))
+            for site, lineage in state["registry_state"]
+        )
+        for target, name in (
+            ("_s", "s"),
+            ("_t", "t"),
+            ("_lineages", "lineages"),
+            ("_scores", "scores"),
+        ):
+            value = state[name]
+            if not isinstance(value, Tensor):
+                raise TypeError(f"CandidateField {name} state must be a Tensor")
+            setattr(self, target, value.detach().clone())

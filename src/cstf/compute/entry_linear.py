@@ -131,7 +131,7 @@ class EntryLinear(nn.Module):
 
         context = self._backward_context
         if context is not None and torch.is_grad_enabled() and output.requires_grad:
-            input_fact = gated_x.detach()
+            input_fact = x.detach()
             site = self.capture_site
             version = view.version
 
@@ -140,6 +140,29 @@ class EntryLinear(nn.Module):
 
             output.register_hook(queue)
         return output
+
+    def atom_grads(self, x: Tensor, g_out: Tensor) -> Tensor:
+        """Return signed ``dL/dw`` contributions in packed live-ID order."""
+        if x.ndim == 0 or x.shape[-1] != self.in_features:
+            raise ValueError("x's final dimension must equal in_features")
+        if g_out.ndim == 0 or g_out.shape[-1] != self.out_features:
+            raise ValueError("g_out's final dimension must equal out_features")
+        x_flat = x.detach().reshape(-1, self.in_features)
+        g_flat = g_out.detach().reshape(-1, self.out_features)
+        if x_flat.shape[0] != g_flat.shape[0]:
+            raise ValueError("captured x and g_out batch dimensions do not align")
+        view = self._view()
+        in_gate = self._gate(self.in_neurons, x_flat)
+        out_gate = self._gate(self.out_neurons, g_flat)
+        if in_gate is not None:
+            x_flat = x_flat * in_gate
+        if out_gate is not None:
+            g_flat = g_flat * out_gate
+        source = view.s[:, 0].to(device=x_flat.device)
+        target = view.t[:, 0].to(device=g_flat.device)
+        return (
+            x_flat.index_select(1, source) * g_flat.index_select(1, target)
+        ).sum(dim=0)
 
     def dense_weight(self) -> Tensor:
         """Materialize ``[out_features, in_features]`` solely for tests/debugging."""

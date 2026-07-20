@@ -1,6 +1,6 @@
 """Public policy surface for CST-native v4 step 2."""
 
-from .catalog import LC, LC_anti, LC_response, cRigL, cSET
+from .catalog import LC, LC_anti, LC_merge, LC_response, cRigL, cSET
 from .bundle import BundleComposer, Op, ProposalBundle, bundle_birth_count
 from .contract import (
     BudgetAllocator,
@@ -19,10 +19,12 @@ from .courts import MagnitudeCourt, RentCourt
 from .proposers import (
     GradFieldTopKBirth,
     IncidentOutputBirth,
+    MergeProposer,
     OrthogonalBirth,
     UniformBirth,
     UniformEntryBirth,
 )
+from .profit import ProfitCourt, TrialSession, TrialTransaction
 from .registry import RetiredCandidateRegistry
 from .schedules import BirthWindowSchedule, PeriodicSchedule, ResponseWindow
 
@@ -40,8 +42,10 @@ __all__ = [
     "IncidentOutputBirth",
     "LC",
     "LC_anti",
+    "LC_merge",
     "LC_response",
     "MagnitudeCourt",
+    "MergeProposer",
     "OrthogonalBirth",
     "Op",
     "OpProposer",
@@ -49,11 +53,14 @@ __all__ = [
     "Phase",
     "Policy",
     "ProposalBundle",
+    "ProfitCourt",
     "RentCourt",
     "ResponseWindow",
     "RetentionCourt",
     "RetiredCandidateRegistry",
     "Schedule",
+    "TrialSession",
+    "TrialTransaction",
     "UniformEntryBirth",
     "UniformBirth",
     "cSET",

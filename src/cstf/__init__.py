@@ -1,7 +1,24 @@
 """CST-native v4契約の実装パッケージ。"""
 
-from .representation import CoordinateDomain, IntegerGrid, RepresentationSpec, Sphere
-from .compute import BackwardContext, EntryLinear, Observation, RankOneLinear
+from .audit import (
+    Accounting,
+    ActiveParameterReport,
+    AuditRecord,
+    AuditSubscriber,
+    EconomyAudit,
+    LossRecord,
+    RentMargin,
+)
+from .representation import (
+    Box,
+    CoordinateDomain,
+    GaussianKernel,
+    IntegerGrid,
+    RepresentationSpec,
+    Sphere,
+)
+from .policy import LC_merge, MergeProposer, ProfitCourt, TrialSession, TrialTransaction
+from .compute import BackwardContext, CSTLinear, EntryLinear, Observation, RankOneLinear
 from .instruments import (
     CandidateField,
     CertificateSnapshot,
@@ -38,20 +55,31 @@ from .storage import (
 )
 
 __all__ = [
+    "Accounting",
+    "ActiveParameterReport",
     "AgeColumn",
+    "AuditRecord",
+    "AuditSubscriber",
     "BackwardContext",
+    "Box",
     "CandidateField",
     "CertificateSnapshot",
     "CertificateSubspace",
     "CoordinateDomain",
+    "CSTLinear",
     "EntityStore",
+    "EconomyAudit",
     "Follower",
     "FollowerHub",
     "EntryLinear",
     "GradFieldEMA",
+    "GaussianKernel",
     "IdAllocator",
     "IntegerGrid",
     "LineageColumn",
+    "LC_merge",
+    "LossRecord",
+    "MergeProposer",
     "DORMANT",
     "LIVE",
     "NeuronKick",
@@ -63,6 +91,8 @@ __all__ = [
     "NeuronView",
     "Observation",
     "RankOneLinear",
+    "RentMargin",
+    "ProfitCourt",
     "RETIRED",
     "RepresentationSpec",
     "SlotPool",
@@ -74,6 +104,8 @@ __all__ = [
     "SynapseView",
     "Sphere",
     "Ticket",
+    "TrialSession",
+    "TrialTransaction",
     "commit_all",
     "prepare_all",
 ]
