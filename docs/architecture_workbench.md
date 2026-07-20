@@ -4,6 +4,11 @@
 >
 > 現在worktreeにある未コミットのPolicy/Context書き直しも、正解としては
 > 扱わない。良かった点と、まだ不自然な点を見つけるための比較対象とする。
+>
+> **2026-07-20追記:** Global PolicyとEngine-managed observation routingへ戻して
+> MVPを再検討する新しいRFCを
+> [`policy_engine_mvp_rfc.md`](policy_engine_mvp_rfc.md) に分離した。新RFCは
+> D-001を再検討しており、合意までは両文書の矛盾を未決事項として扱う。
 
 ## 採用済みの設計判断
 
