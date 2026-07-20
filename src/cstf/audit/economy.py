@@ -146,8 +146,14 @@ class EconomyAudit:
 
     Thrash follows ``framework_conn_5c_report.md``'s lineage-age convention: a
     prune is young when its age is below ``maturity_events``.  The v4 audit
-    denominator is all prunes, and the default maturity boundary is newborn
-    immunity plus the two hysteresis events (``immunity_events + 2``).
+    denominator is all prunes.  The default maturity boundary is the
+    *earliest legal* rent prune age for a :class:`~cstf.policy.courts.RentCourt`
+    with ``strikes`` consecutive rent failures after ``immunity_events``:
+    ``immunity_events + strikes - 1``.  Below that age no rent-court prune can
+    legally occur at all (see ``immune_prunes``), and at exactly that age the
+    prune is the court working as designed, not thrash.  Callers without a
+    strikes-bearing court (e.g. ``MagnitudeCourt``) should leave ``strikes``
+    at its default of 1, which reduces the boundary to ``immunity_events``.
 
     ``record_loss`` accepts arbitrary user-supplied loss readings solely for
     retrospective realized-profit analysis.  Those readings are never passed
@@ -155,13 +161,20 @@ class EconomyAudit:
     """
 
     def __init__(
-        self, *, immunity_events: int = 3, maturity_events: int | None = None
+        self,
+        *,
+        immunity_events: int = 3,
+        strikes: int = 1,
+        maturity_events: int | None = None,
     ) -> None:
         for name, value in (
             ("immunity_events", immunity_events),
+            ("strikes", strikes),
             (
                 "maturity_events",
-                immunity_events + 2 if maturity_events is None else maturity_events,
+                immunity_events + strikes - 1
+                if maturity_events is None
+                else maturity_events,
             ),
         ):
             if isinstance(value, bool) or not isinstance(value, int):
@@ -169,8 +182,11 @@ class EconomyAudit:
             if value < 0:
                 raise ValueError(f"{name} must be non-negative")
         self.immunity_events = immunity_events
+        self.strikes = strikes
         self.maturity_events = (
-            immunity_events + 2 if maturity_events is None else maturity_events
+            immunity_events + strikes - 1
+            if maturity_events is None
+            else maturity_events
         )
         self._records: list[AuditRecord] = []
         self._losses: list[LossRecord] = []
@@ -276,6 +292,20 @@ class EconomyAudit:
     def thrash_rate(self) -> float:
         total = self.prune_count
         return self.thrash_count / total if total else 0.0
+
+    @property
+    def immune_prunes(self) -> int:
+        """Count prunes younger than ``immunity_events``; must always be 0.
+
+        The engine's runtime immunity check rejects any court decision that
+        would prune an entity below ``immunity_events``, so this is a
+        read-only invariant witness, not a tunable metric.
+        """
+        return sum(
+            int((ages < self.immunity_events).sum())
+            for record in self._records
+            for ages in record.prune_ages.values()
+        )
 
     @property
     def thrash_rate_by_site(self) -> dict[str, float]:

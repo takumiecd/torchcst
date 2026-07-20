@@ -89,8 +89,47 @@ def test_user_loss_readings_are_audit_only() -> None:
     ]
 
 
+def test_default_maturity_is_immunity_plus_strikes_minus_one() -> None:
+    audit = EconomyAudit(immunity_events=3, strikes=2)
+    assert audit.maturity_events == 4
+
+
+def test_default_maturity_falls_back_to_immunity_events_without_strikes() -> None:
+    audit = EconomyAudit(immunity_events=3)
+    assert audit.maturity_events == 3
+
+
+def test_earliest_legal_rent_prune_is_not_thrash() -> None:
+    # immunity 3 + 2 consecutive strikes: the earliest legal rent-court death
+    # has age immunity_events + strikes - 1 = 4, and must not read as thrash.
+    audit = EconomyAudit(immunity_events=3, strikes=2)
+    death = SynapseDeath("entry", torch.tensor([4], dtype=torch.int64))
+    audit.push(
+        AuditRecord(
+            event_index=1,
+            applied_ops={"entry": (death,)},
+            live_counts={"entry": 0},
+            mass_snapshots={"entry": torch.zeros(0)},
+            prune_ages={"entry": torch.tensor([4], dtype=torch.int64)},
+            rent_thresholds={"entry": 0.3},
+        )
+    )
+
+    assert audit.thrash_count == 0
+    assert audit.immune_prunes == 0
+
+
+def test_immune_prunes_is_always_zero_for_an_engine_run() -> None:
+    audit, _, _ = _run(audited=True)
+    assert audit is not None
+    assert audit.immune_prunes == 0
+
+
 def test_thrash_denominator_is_all_prunes() -> None:
-    audit = EconomyAudit(immunity_events=3)  # maturity = 5
+    # Preserve pre-step-10 semantics explicitly: this test was written when
+    # maturity_events defaulted to immunity_events + 2 (= 5 here).  The new
+    # default is immunity_events + strikes - 1, so pin the old value directly.
+    audit = EconomyAudit(immunity_events=3, maturity_events=5)
     death = SynapseDeath("entry", torch.tensor([4, 9], dtype=torch.int64))
     audit.push(
         AuditRecord(
