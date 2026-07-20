@@ -1,70 +1,114 @@
-"""torchcst — Continuous Sparse Training in PyTorch.
+"""CST-native v4契約の実装パッケージ。"""
 
-構造 = Engine × Forward × Backward × Policy × Storage:
-
-               synapse column          neuron column
-  Storage   │ SynapseStore + ops   │ NeuronStore + ops   │ ← 縦割り(自由)
-  観測状態  │ synapse observers    │ neuron observers    │ ← Policy所有
-  ──────────┼──────────────────────┴─────────────────────┤
-  Policy    │   prepare/capture/step → MutationPlan          │
-  Compute   │   横断: CSTLinear = synapse × neuron の合成   │
-
-  backward: PyTorch hook ─ModuleGradRecord→ Policy-owned observer
-  step:     Schedule ─UpdateRequest→ Policy ─MutationPlan→ Storage
-
-ストレージ第一原理:
-  P1. 置換不変 — slot 順に意味なし。同一性は id のみ。
-  P2. id は int64・never-reuse・単調増加・上位ビット rank。
-  P3. slot-indexed付随状態 (optimizer moment等) はFollowerとしてmutationに追従。
-  P4. mutation は store へのトランザクション。version 単調増加 + op ログ。
-      分散は op ログの broadcast 同一適用 (テンソル同期なし)。
-  P5. checkpoint は正準形 (compact → id ソート) でバイト決定的。
-"""
-
-from . import policy as policies
-from .forward import CSTConv2d, CSTLinear, GaussianKernel, TriangularKernel
-from .policy import CandidateScores, IdScores, MassEMA, Policy
-from .policy import PolicyBinding, ReadPort
-from .policy import cRigL, cSET
-from .policy import Clock, PeriodicSchedule, UpdateRequest, UpdateSchedule
-from .storage.base import EntityStore, Follower, Op, View
-from .engine import CSTEngine
+from .audit import (
+    Accounting,
+    ActiveParameterReport,
+    AuditRecord,
+    AuditSubscriber,
+    EconomyAudit,
+    LossRecord,
+    RentMargin,
+)
+from .representation import (
+    Box,
+    CoordinateDomain,
+    GaussianKernel,
+    IntegerGrid,
+    RepresentationSpec,
+    Sphere,
+)
+from .policy import LC_merge, MergeProposer, ProfitCourt, TrialSession, TrialTransaction
+from .compute import BackwardContext, CSTLinear, EntryLinear, Observation, RankOneLinear
+from .instruments import (
+    CandidateField,
+    CertificateSnapshot,
+    CertificateSubspace,
+    GradFieldEMA,
+)
 from .storage import (
-    BalancedSlotPool,
+    AgeColumn,
+    DORMANT,
+    EntityStore,
+    Follower,
     FollowerHub,
     IdAllocator,
-    NeuronBirth,
-    NeuronDeath,
+    LineageColumn,
+    LIVE,
     NeuronKick,
+    NeuronOp,
+    NeuronRetire,
+    NeuronState,
     NeuronStore,
+    NeuronUngate,
     NeuronView,
+    RETIRED,
     SlotPool,
-    SlotBackend,
-    SlotChange,
     SynapseBirth,
     SynapseDeath,
     SynapseKick,
     SynapseMerge,
     SynapseStore,
     SynapseView,
+    Ticket,
+    commit_all,
+    prepare_all,
 )
-
-__version__ = "0.0.1"
+from .engine import OptimizerStateFollower, StructuralEngine
 
 __all__ = [
-    # contracts / policy lifecycle
-    "View", "Op", "EntityStore", "Follower", "Policy",
-    "PolicyBinding", "ReadPort", "Clock", "UpdateRequest",
-    "UpdateSchedule", "PeriodicSchedule",
-    # storage
-    "IdAllocator", "SlotBackend", "SlotChange",
-    "SlotPool", "BalancedSlotPool", "FollowerHub",
-    "SynapseStore", "SynapseView",
-    "SynapseBirth", "SynapseDeath", "SynapseMerge", "SynapseKick",
-    "NeuronStore", "NeuronView", "NeuronBirth", "NeuronDeath", "NeuronKick",
-    # compute
-    "CSTLinear", "CSTConv2d", "GaussianKernel", "TriangularKernel",
-    # decision / engine
-    "policies", "MassEMA", "IdScores", "CandidateScores", "cSET", "cRigL",
-    "CSTEngine",
+    "Accounting",
+    "ActiveParameterReport",
+    "AgeColumn",
+    "AuditRecord",
+    "AuditSubscriber",
+    "BackwardContext",
+    "Box",
+    "CandidateField",
+    "CertificateSnapshot",
+    "CertificateSubspace",
+    "CoordinateDomain",
+    "CSTLinear",
+    "EntityStore",
+    "EconomyAudit",
+    "Follower",
+    "FollowerHub",
+    "EntryLinear",
+    "GradFieldEMA",
+    "GaussianKernel",
+    "IdAllocator",
+    "IntegerGrid",
+    "LineageColumn",
+    "LC_merge",
+    "LossRecord",
+    "MergeProposer",
+    "DORMANT",
+    "LIVE",
+    "NeuronKick",
+    "NeuronOp",
+    "NeuronRetire",
+    "NeuronState",
+    "NeuronStore",
+    "NeuronUngate",
+    "NeuronView",
+    "Observation",
+    "OptimizerStateFollower",
+    "RankOneLinear",
+    "RentMargin",
+    "ProfitCourt",
+    "RETIRED",
+    "RepresentationSpec",
+    "SlotPool",
+    "SynapseBirth",
+    "SynapseDeath",
+    "SynapseKick",
+    "SynapseMerge",
+    "SynapseStore",
+    "SynapseView",
+    "StructuralEngine",
+    "Sphere",
+    "Ticket",
+    "TrialSession",
+    "TrialTransaction",
+    "commit_all",
+    "prepare_all",
 ]

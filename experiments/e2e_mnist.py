@@ -2,7 +2,7 @@
 """First end-to-end MNIST exercise for the CSTF structural lifecycle.
 
 This is a framework shakedown, not a research comparison.  Structural work is
-triggered exclusively by policies from :mod:`cstf.policy.catalog`; the training
+triggered exclusively by policies from :mod:`torchcst.policy.catalog`; the training
 loss is used only for ordinary backpropagation.
 """
 
@@ -22,15 +22,15 @@ import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
 
-from cstf.audit import Accounting, EconomyAudit
-from cstf.compute import CSTLinear, EntryLinear, RankOneLinear
-from cstf.engine import StructuralEngine
-from cstf.lab import BatchTape, Ledger, RngStreams
-from cstf.optim import parameter_groups
-from cstf.policy import LC, LC_anti, cRigL, cSET
-from cstf.policy.contract import Clock, Policy
-from cstf.representation import GaussianKernel, RepresentationSpec
-from cstf.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
+from torchcst.audit import Accounting, EconomyAudit
+from torchcst.compute import CSTLinear, EntryLinear, RankOneLinear
+from torchcst.engine import StructuralEngine
+from torchcst.lab import BatchTape, Ledger, RngStreams
+from torchcst.optim import parameter_groups
+from torchcst.policy import LC, LC_anti, cRigL, cSET
+from torchcst.policy.contract import Clock, Policy
+from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
 
 IN_FEATURES = 28 * 28
@@ -215,7 +215,7 @@ def load_mnist(data_dir: Path) -> tuple[Tensor, Tensor, Tensor, Tensor]:
 
 
 def _arm_root_seed(seed: int, arm: str) -> int:
-    payload = f"cstf-e2e-mnist-v1\0{seed}\0{arm}".encode("utf-8")
+    payload = f"torchcst-e2e-mnist-v1\0{seed}\0{arm}".encode("utf-8")
     return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
 
 
@@ -656,7 +656,7 @@ def main() -> None:
             "script_sha256": script_sha256,
         },
         "runs": runs,
-        "schema": "cstf-e2e-mnist-v1",
+        "schema": "torchcst-e2e-mnist-v1",
         "settings": {
             "arms": arm_names,
             "batch_size": 128,

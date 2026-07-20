@@ -1,1 +1,0 @@
-"""cstf contract test package。"""
