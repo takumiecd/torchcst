@@ -893,25 +893,47 @@ class StructuralEngine:
                 raise TypeError("proposer may return only SynapseBirth/SynapseMerge")
         return count
 
-    def _apply_merge_trial(
+    def _apply_profit_trial(
         self,
-        merge_ops: tuple[SynapseMerge, ...],
+        trial_ops: tuple[Op, ...],
         objective: Callable[[], float] | None,
+        polish: Callable[[], None] | None,
     ) -> tuple[Op, ...]:
-        """Run one selected merge batch through the isolated profit path."""
-        if not merge_ops:
+        """Run one selected proposal batch through the isolated profit path.
+
+        Any op type :class:`~torchcst.policy.profit.ProfitCourt` can price
+        (``SynapseBirth``/``SynapseDeath``/``SynapseMerge``) may pass through
+        here: dispatch is keyed on ``policy.profit`` being configured, not on
+        op type, so a pure profit-gated growth policy (only births) and a
+        merge-trial policy (only merges) share one adjudication path.
+
+        ``polish`` runs once, after the trial ops apply and before the after-
+        objective read, entirely inside the transaction: a rejected trial
+        rolls polish back along with everything else.  This is the finite-
+        polish extension point :class:`~torchcst.policy.profit.TrialTransaction`
+        anticipated from the start.  A zero-amplitude birth (this framework's
+        RigL-style convention) has no effect on the objective until polished,
+        so profit-gated growth policies need a ``polish`` callback to ever
+        show positive realized profit; a merge trial needs none, since the
+        merge already carries live weight.
+        """
+        if not trial_ops:
             return ()
         profit = self.policy.profit
         if profit is None:
-            raise RuntimeError("SynapseMerge requires an opt-in ProfitCourt")
+            raise RuntimeError("this proposal requires an opt-in ProfitCourt")
         if objective is None:
-            raise RuntimeError("a merge proposal requires objective= for ProfitCourt")
+            raise RuntimeError("a profit-priced proposal requires objective=")
+        if polish is not None and not callable(polish):
+            raise TypeError("polish must be callable or None")
         transaction = TrialTransaction(self)
         session = TrialSession(objective, transaction)
         try:
             session.begin()
-            price = profit.price_for(merge_ops, self.synapse_stores)
-            applied = self._apply_atomic_unit(tuple(merge_ops))
+            price = profit.price_for(trial_ops, self.synapse_stores)
+            applied = self._apply_atomic_unit(tuple(trial_ops))
+            if polish is not None:
+                polish()
             accepted = profit.adjudicate(applied, price, session)
         except BaseException:
             if transaction.active:
@@ -920,9 +942,13 @@ class StructuralEngine:
         return applied if accepted else ()
 
     def step(
-        self, objective: Callable[[], float] | None = None
+        self,
+        objective: Callable[[], float] | None = None,
+        polish: Callable[[], None] | None = None,
     ) -> tuple[Op, ...]:
-        """Advance one update; scheduled merge trials alone may read objective."""
+        """Advance one update; a profit-priced policy alone may read objective."""
+        if polish is not None and objective is None:
+            raise RuntimeError("polish requires objective=")
         if objective is not None and self.policy.profit is None:
             raise RuntimeError(
                 "objective is unavailable when policy.profit is None"
@@ -1042,14 +1068,19 @@ class StructuralEngine:
             if self._proposal_count(tuple(proposed)) > budget:
                 raise RuntimeError("proposer exceeded its allocated operation budget")
             proposed_ops.extend(proposed)
-        merge_ops = tuple(
-            op for op in proposed_ops if isinstance(op, SynapseMerge)
-        )
-        ordinary_ops = tuple(
-            op for op in proposed_ops if not isinstance(op, SynapseMerge)
-        )
+        # A policy either always prices its proposals (policy.profit is set:
+        # e.g. LC_merge's merge trials or a profit-gated growth policy's
+        # births) or never does; dispatch is on that switch, not op type, so
+        # ProfitCourt.price_for's existing SynapseBirth/SynapseMerge support
+        # extends to any proposer without new op-type plumbing here.
+        if self.policy.profit is not None:
+            trial_ops = tuple(proposed_ops)
+            ordinary_ops: tuple[Op, ...] = ()
+        else:
+            trial_ops = ()
+            ordinary_ops = tuple(proposed_ops)
         applied.extend(self._apply_atomic_unit(ordinary_ops))
-        applied.extend(self._apply_merge_trial(merge_ops, objective))
+        applied.extend(self._apply_profit_trial(trial_ops, objective, polish))
         if directive.phase is Phase.RESPONSE:
             applied.extend(self._apply_response(directive))
 

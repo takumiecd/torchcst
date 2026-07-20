@@ -14,6 +14,7 @@ from .proposers import (
     IncidentOutputBirth,
     MergeProposer,
     OrthogonalBirth,
+    UniformBirth,
     UniformEntryBirth,
 )
 from .profit import ProfitCourt
@@ -286,6 +287,81 @@ class LC_merge:
                 min_profit=self.min_profit,
                 cost_rate=self.cost_rate,
             ),
+        )
+        object.__setattr__(self, "_policy", policy)
+
+    @property
+    def schedule(self):
+        return self._policy.schedule
+
+    @property
+    def proposers(self):
+        return self._policy.proposers
+
+    @property
+    def allocator(self):
+        return self._policy.allocator
+
+    @property
+    def retention(self):
+        return self._policy.retention
+
+    @property
+    def profit(self):
+        return self._policy.profit
+
+    @property
+    def requires(self):
+        return self._policy.requires
+
+    def as_policy(self) -> Policy:
+        return self._policy
+
+
+@dataclass(frozen=True)
+class GrowthByProfit:
+    """Greedy profit-gated forward construction testing theory U-2.
+
+    Every event proposes ``atoms_per_event`` candidate atoms and accepts them
+    only if the realized loss reduction exceeds ``price`` (a ProfitCourt
+    price in the *same units* as ``price_for``'s ``cost_rate * delta_params``
+    — i.e. loss-units per resource-count unit, generically "one more
+    parameter"). No rent/prune: this policy tests pure add-while-profitable
+    construction (S-5 decisions only), not the 5c retention lifecycle, so a
+    run's natural stopping point is theory U-2's predicted K*(price).
+
+    ``retention`` is a required Policy field but this policy has nothing to
+    prune, so it is bound to an always-inert ``MagnitudeCourt(drop_fraction=0.0)``.
+    """
+
+    event_interval: int = 1
+    atoms_per_event: int = 1
+    price: float = 0.0
+    min_profit: float = 0.0
+    initial_weight: float = 0.0
+    bounds_in: Bounds | None = None
+    bounds_out: Bounds | None = None
+    composer: None = field(default=None, init=False)
+    _policy: Policy = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        policy = Policy(
+            schedule=PeriodicSchedule(
+                event_interval=self.event_interval,
+                birth_budget=self.atoms_per_event,
+                freeze_event=None,
+            ),
+            proposers=(
+                UniformBirth(
+                    bounds_in=self.bounds_in,
+                    bounds_out=self.bounds_out,
+                    initial_weight=self.initial_weight,
+                ),
+            ),
+            allocator=EvenBudgetAllocator(),
+            retention=MagnitudeCourt(drop_fraction=0.0),
+            composer=None,
+            profit=ProfitCourt(min_profit=self.min_profit, cost_rate=self.price),
         )
         object.__setattr__(self, "_policy", policy)
 

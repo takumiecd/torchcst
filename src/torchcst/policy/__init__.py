@@ -1,6 +1,6 @@
 """Public policy surface for CST-native v4 step 2."""
 
-from .catalog import LC, LC_anti, LC_merge, LC_response, cRigL, cSET
+from .catalog import LC, LC_anti, LC_merge, LC_response, GrowthByProfit, cRigL, cSET
 from .bundle import BundleComposer, Op, ProposalBundle, bundle_birth_count
 from .contract import (
     BudgetAllocator,
@@ -38,6 +38,7 @@ __all__ = [
     "EvenBudgetAllocator",
     "EventDirective",
     "GradFieldTopKBirth",
+    "GrowthByProfit",
     "InstrumentSpec",
     "IncidentOutputBirth",
     "LC",

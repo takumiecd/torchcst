@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Protocol, Sequence
+from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 import torch
 from torch import Tensor, nn
@@ -505,6 +505,38 @@ class SynapseStore(nn.Module):
         self._slots.slots_of(flat)
         return pairs
 
+    def load_state_dict(self, state_dict: Mapping[str, Any], *args: Any, **kwargs: Any):
+        """Resize capacity-shaped tensors to the checkpoint before copying.
+
+        ``nn.Module.load_state_dict`` copies in place and requires matching
+        shapes; a profit-trial rollback (:class:`~torchcst.policy.profit.
+        TrialTransaction`) can restore a snapshot taken *before* an accepted
+        birth grew capacity, so the destination must be resized first.  Old
+        values are not preserved here (unlike :meth:`_grow`): every element
+        is about to be overwritten by the incoming checkpoint.
+        """
+        if "w" in state_dict:
+            target_capacity = int(state_dict["w"].shape[0])
+            if target_capacity != self.capacity:
+                self._resize_capacity(target_capacity)
+        return super().load_state_dict(state_dict, *args, **kwargs)
+
+    def _resize_capacity(self, new_capacity: int) -> None:
+        # tensor.set_() only (see _resize_in_place): a load_state_dict call's
+        # incoming values overwrite everything immediately after, but the
+        # destination must still keep its Parameter object identity, or a
+        # Parameter already touched by one backward() breaks on the next.
+        with torch.no_grad():
+            for coordinate, width in ((self.s, self.d_in), (self.t, self.d_out)):
+                if isinstance(coordinate, nn.Parameter):
+                    coordinate.set_(coordinate.new_zeros((new_capacity, width)))
+                    coordinate.grad = None
+                else:
+                    coordinate.resize_(new_capacity, width)
+            self.w.set_(self.w.new_zeros((new_capacity,)))
+            self.w.grad = None
+            self.mass_scale.resize_(new_capacity)
+
     def get_extra_state(self) -> dict[str, Any]:
         """Include non-module structural state in ``nn.Module.state_dict``."""
         return {
@@ -539,32 +571,49 @@ class SynapseStore(nn.Module):
         self._grow_coordinate(self.s, new_capacity, self.d_in, old_capacity)
         self._grow_coordinate(self.t, new_capacity, self.d_out, old_capacity)
         with torch.no_grad():
-            weight = self.w.data.new_zeros((new_capacity,))
-            weight[:old_capacity] = self.w.data
-            self.w.data = weight
-            if self.w.grad is not None:
-                grad = self.w.grad.new_zeros((new_capacity,))
-                grad[:old_capacity] = self.w.grad
-                self.w.grad = grad
+            self._resize_in_place(self.w, (new_capacity,), old_capacity)
             scale = self.mass_scale.new_ones((new_capacity,))
             scale[:old_capacity] = self.mass_scale
             self.mass_scale.resize_(new_capacity)
             self.mass_scale.copy_(scale)
 
     @staticmethod
+    def _resize_in_place(
+        tensor: Tensor, new_shape: tuple[int, ...], old_capacity: int
+    ) -> None:
+        """Swap a Parameter's storage while preserving its object identity.
+
+        A leaf :class:`~torch.nn.Parameter` that has already been through one
+        ``backward()`` call has a fixed-shape ``AccumulateGrad`` hook cached
+        by autograd; reassigning ``coordinate.data = grown`` (a *new* tensor
+        object) leaves that hook pointing at the stale shape, and the next
+        ``backward()`` raises "returned an invalid gradient" even after
+        clearing ``.grad``. ``.resize_()`` cannot help either: called
+        directly on a grad-requiring leaf it raises "cannot resize variables
+        that require grad", and called via ``.data`` it silently no-ops,
+        because ``tensor.data`` returns a *fresh* wrapper on every access
+        (``t.data is t.data`` is ``False``) — the resize lands on a
+        throwaway object.  ``Tensor.set_()`` called directly on the
+        Parameter, under ``no_grad``, is the one operation that both changes
+        the object's own shape and keeps the autograd bookkeeping tied to it
+        valid, verified against a live optimizer round-trip.
+        """
+        preserved = tensor.detach()[:old_capacity].clone()
+        grown = preserved.new_zeros(new_shape)
+        grown[:old_capacity] = preserved
+        tensor.set_(grown)
+        tensor.grad = None
+
+    @classmethod
     def _grow_coordinate(
-        coordinate: Tensor, new_capacity: int, width: int, old_capacity: int
+        cls, coordinate: Tensor, new_capacity: int, width: int, old_capacity: int
     ) -> None:
         with torch.no_grad():
-            grown = coordinate.data.new_zeros((new_capacity, width))
-            grown[:old_capacity] = coordinate.data
             if isinstance(coordinate, nn.Parameter):
-                coordinate.data = grown
-                if coordinate.grad is not None:
-                    grad = coordinate.grad.new_zeros((new_capacity, width))
-                    grad[:old_capacity] = coordinate.grad
-                    coordinate.grad = grad
+                cls._resize_in_place(coordinate, (new_capacity, width), old_capacity)
             else:
+                grown = coordinate.data.new_zeros((new_capacity, width))
+                grown[:old_capacity] = coordinate.data
                 coordinate.resize_(new_capacity, width)
                 coordinate.copy_(grown)
 
