@@ -1,5 +1,9 @@
 # CST-native設計: 勝ちレシピからの再構成 (v4 — 収束版)
 
+> **現行設計リファレンス:** 実装済み範囲と利用方法は
+> [repository README](../README.md) が正であり、本書に残る将来構成案は
+> 実装済みAPIを意味しない。文書体系は [`docs/README.md`](README.md) を参照する。
+>
 > 状態: **GPT-5.6-sol(codex)との2ラウンド敵対レビューで収束した版** (2026-07-20)。
 > 審査履歴の全文は
 > [`reviews/winning_recipe_v3_review_gpt56sol.md`](reviews/winning_recipe_v3_review_gpt56sol.md)。

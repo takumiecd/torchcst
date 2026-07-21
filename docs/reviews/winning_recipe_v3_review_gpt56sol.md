@@ -1,3 +1,9 @@
+# Winning recipe v3 adversarial review
+
+> **履歴文書:** これはv3に対するレビューであり、指摘事項はv4設計への入力として
+> 保存されている。現行実装の状態は [repository README](../../README.md) と
+> [`docs/README.md`](../README.md) を参照すること。
+
 総評は「役割分離の方向はよいが、現状は実装開始不可」です。特に realized profit の脱落、slot/ID の混同、cross-entity 意味論が blocking です。
 
 ### 1. realized-profit gate を型から消している

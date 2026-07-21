@@ -1,5 +1,8 @@
 # cst研究成果のPolicy埋め込み exercise
 
+> **履歴文書:** pre-v4 RFCに対する実現可能性検討であり、型名や擬似コードは
+> 現行APIではない。現在の位置づけは [`docs/README.md`](README.md) を参照すること。
+>
 > 状態: 議論用ドラフト。実装仕様ではない。
 >
 > [`policy_engine_mvp_rfc.md`](policy_engine_mvp_rfc.md) の契約

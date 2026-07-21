@@ -1,104 +1,170 @@
 # torchcst — Continuous Sparse Training in PyTorch
 
-DST (Dynamic Sparse Training) が離散マスクをフリップするのに対し、
-CST は構造そのものを連続対象 — 符号付き原子測度 — に緩和し、勾配流と
-policy 駆動の mutation (birth / death / merge / kick) で進化させる。
-
-> ν = Σ_k w_k δ_(s_k, t_k),   W_ij = Σ_k w_k κ(μ_i^in − s_k) κ(μ_j^out − t_k)
-
-## アーキテクチャ = Engine × Forward × Backward × Policy × Storage
-
-```
-             synapse column          neuron column
-Storage   │ SynapseStore + ops   │ NeuronStore + ops   │ ← 縦割り (内部自由)
-観測状態  │ synapse observers    │ neuron observers    │ ← Policy所有
-──────────┼──────────────────────┴─────────────────────┤
-Policy    │   prepare / capture / step → MutationPlan       │
-Forward   │   CSTLinear = synapse × neuron の合成           │
-Backward  │   PyTorch Tensor hook → ModuleGradRecord        │
-```
+`torchcst` is an experimental PyTorch library for continuous sparse training.
+Its primary compute abstraction is `CSTLinear`: a linear map represented by
+learnable synapse atoms in continuous coordinate domains and composed through
+kernel matrices instead of a materialized dense weight matrix.
 
 ```text
-backward: PyTorch hook ─ModuleGradRecord→ Policy-owned observer
-step:     Schedule ─UpdateRequest→ Policy ─MutationPlan→ Storage
+W = K_out(mu_out, t) diag(w) K_in(mu_in, s)^T
 ```
 
-Policyがprepare時にStorageのread portと必要なPyTorch captureをbindする:
+The atom coordinates `s` and `t`, amplitudes `w`, and Gaussian bandwidth can be
+optimized by ordinary PyTorch autograd. A clock-driven policy separately
+decides when atoms or neurons are born, retired, merged, or ungated.
 
-- **Forward/Backward は Op を発行できない**(構造を変えられない)
-- **Policy は observer stateと構造判断を所有する**
-- **Engine は MutationPlan をsiteへrouteするだけ**
+`EntryLinear` and `RankOneLinear` are useful special cases and control families,
+not the intended center of the library. `EntryLinear` is the discrete
+delta-kernel sparse-entry path. `RankOneLinear` is the low-rank/LoRA-like path.
+They share the same storage and policy lifecycle so CST can be compared against
+them without changing the experiment machinery. Neither control owns neuron
+state; experiments that need neuron gates or endpoint-aware response compose an
+explicit `NeuronGatedLinear` wrapper.
 
-公開契約は `torchcst/engine/`, `torchcst/forward/`, `torchcst/backward/`,
-`torchcst/policy/`, `torchcst/storage/`に責務ごとに配置されている。
+The current implementation is built around five explicit responsibilities:
 
-## ストレージ第一原理
+```text
+compute  -> PyTorch forward and optional backward observation capture
+policy   -> schedule, proposal, allocation, retention, and profit decisions
+engine   -> update lifecycle and ordered structural-event orchestration
+storage  -> versioned two-phase mutation of synapse and neuron stores
+audit    -> read-only event records and experiment accounting
+```
 
-- P1. 置換不変 — slot 順に意味なし。同一性は id のみ。
-- P2. id は int64・never-reuse・単調増加・上位ビット rank(分散 birth 無調停)。
-- P3. slot-indexed付随状態(optimizer moment等)はFollowerとしてmutationに追従。
-- P4. mutation はsite-localなop batch単位のトランザクション。
-  version単調増加 + opログ。
-  分散は op ログの broadcast 同一適用(テンソル同期なし)。
-- P5. checkpoint は正準形(compact → id ソート)でバイト決定的。
+Structural mutation is ID-based. Physical slots may be reused, while entity
+IDs and lineages remain stable enough for replay, retirement, and optimizer
+state reconciliation.
 
-## 使い方 (設計目標)
+## Installation
+
+```bash
+python -m pip install -e ".[dev]"
+pytest
+ruff check .
+```
+
+Python 3.10 or newer and PyTorch 2.0 or newer are required.
+
+## Minimal lifecycle
 
 ```python
-import torchcst as tc
+import torch
 
-n_in  = tc.NeuronStore("in",  input_coords(784))
-n_h   = tc.NeuronStore("h1",  grid_coords(128), gated=True)
-n_out = tc.NeuronStore("out", class_coords(10))
-s1 = tc.SynapseStore("l1", d_in=1, d_out=1, capacity=4096)
-s2 = tc.SynapseStore("l2", d_in=1, d_out=1, capacity=4096)
+from torchcst.compute import CSTLinear
+from torchcst.engine import StructuralEngine
+from torchcst.policy import LC
+from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.storage import NeuronStore, SynapseStore
 
-model = nn.Sequential(
-    tc.CSTLinear(n_in, n_h,  s1, tc.GaussianKernel(0.07)),
-    nn.GELU(),
-    tc.CSTLinear(n_h,  n_out, s2, tc.GaussianKernel(0.07, per_atom=True)),
+inputs = NeuronStore(
+    "inputs",
+    4,
+    mu=torch.linspace(0.0, 1.0, 4)[:, None],
+    initial_live=4,
+)
+outputs = NeuronStore(
+    "outputs",
+    3,
+    mu=torch.linspace(0.0, 1.0, 3)[:, None],
+    initial_live=3,
+)
+synapses = SynapseStore(
+    "layer",
+    d_in=1,
+    d_out=1,
+    capacity=16,
+    spec=RepresentationSpec.continuous(1, 1),
+)
+layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.2, learnable=True))
+policy = LC(
+    event_interval=1,
+    birth_end_event=4,
+    birth_budget=2,
+    freeze_event=8,
+    initial_weight=1e-2,
+)
+optimizer = torch.optim.Adam(layer.parameters(), lr=1e-3)
+engine = StructuralEngine(
+    {"layer": synapses, "inputs": inputs, "outputs": outputs},
+    policy,
+    modules={"layer": layer},
+    optimizer=optimizer,
+    seed=0,
 )
 
-# optimizer は Optimizer インスタンスの代わりに factory (params -> Optimizer)
-# を渡せる — torch.optim.Adam([]) は空リストで即死するため、param 収集
-# (store.parameters() + kernel.global_params()) を終えた engine がこの
-# factory を呼んで実体化する。Optimizer インスタンスをそのまま渡した場合は
-# 不足分の param を add_param_group で足す。
-opt_factory = lambda params: torch.optim.Adam(params, lr=1e-3)
-policy = tc.policies.cRigL(
-    sites=["l1", "l2"],
-    schedule=tc.PeriodicSchedule(every=500, until=50_000),
-)
-engine = tc.CSTEngine(model, opt_factory, policy)
+x = torch.randn(8, 4)
+target = torch.randn(8, 3)
 
-# ループの順序不変条件: backward → optimizer.step() → engine.step()。
-# mutation (engine.step) を backward と optimizer.step の間に入れてはいけない
-# — 死んだ原子の stale grad が mutation 後の行 (新生原子) に適用されてしまう。
-# zero_grad は「前 step() の後〜次 backward の前」ならどこでもよいが、
-# 末尾置きは「.grad が None で始まる」暗黙前提に依存するのでループ先頭に置く。
-for step, batch in enumerate(loader):
-    engine.optimizer.zero_grad()
-    loss = criterion(model(batch.x), batch.y)
-    loss.backward()               # Policy-owned capture → observer
-    engine.optimizer.step()
-    engine.step()                 # schedule発火時だけMutationPlanを適用
+engine.begin_update()
+optimizer.zero_grad()
+loss = (layer(x) - target).square().mean()
+loss.backward()
+engine.observe_microbatch()
+engine.finalize_backward()
+optimizer.step()
+applied_ops = engine.step()
 ```
 
-参照 policy は cSET / cRigL (SET・RigL の CST 版)。policy が各 1 画面で
-書けることが API の受け入れテスト。
+The ordering is part of the API contract:
 
-## status
+```text
+begin_update
+  -> forward/backward
+  -> observe_microbatch (once per accumulated microbatch)
+  -> finalize_backward
+  -> optimizer.step
+  -> engine.step
+```
 
-v0 core 動作中: storage (SynapseStore birth/death・NeuronStore 固定標本点)・
-CSTLinear matrix-free forward (dense 等価性テスト済)・CSTEngine + cSET
-(MassEMA) / cRigL (MassEMA death + CandidateProbe birth) で三角形が一周する
-(E2E テストで mutation を跨ぐ訓練を検証)。
+`finalize_backward()` releases captured tensors before the optimizer and
+structural mutation boundaries. Policies that do not request observations add
+no tensor hooks, but they use the same lifecycle.
 
-Policyが使うbackward情報は、PyTorch hookから得たdetach済み`ModuleGradRecord`である。
-SETはcaptureを登録せず、RigLだけがprepare時にgradient captureを登録する。
-optimizer後はScheduleが`UpdateRequest`を返し、Policyが`MutationPlan`を作る。
+## Implemented surface
 
-v0 スコープ外 (NotImplementedError 明示): merge/kick・per-atom σ
-(add_extra)・neuron mutation・capacity growth・save/load・分散
-(world_size>1)・GateEMA/RentCounter (∂L/∂c に pre-gate 値が要る別の capture
-設計が要る)。設計の経緯と未決事項は `docs/architecture_workbench.md` を参照。
+- continuous Gaussian `CSTLinear` with learnable atom coordinates, amplitudes,
+  and kernel bandwidth
+- discrete-entry and rank-one/LoRA-like control families using the same engine
+- opt-in `NeuronGatedLinear` composition for gated control-family experiments
+- `SynapseStore` and `NeuronStore` with versioned prepare/commit mutation
+- slot reuse, capacity growth, age/lineage columns, and follower notifications
+- optimizer-state growth, reset, and coordinate-domain projection
+- lifecycle (`LC`), anti-subspace, response, merge, cSET, and cRigL policies
+- atomic cross-store `ProposalBundle` application
+- opt-in realized-profit trials with complete rollback and finite polish
+- event audit, accounting, deterministic RNG streams, batch tapes, and replay
+
+Deliberately unsupported paths raise explicit errors. These currently include
+synapse/neuron kick operations, entry-family merge, and distributed structural
+coordination.
+
+## Repository layout
+
+```text
+src/torchcst/
+├── audit/           # immutable event records and aggregate accounting
+├── compute/         # CSTLinear plus entry/rank-one controls and capture
+├── instruments/     # gradient fields and certificate subspaces
+├── lab/             # deterministic experiment/replay helpers
+├── policy/          # contracts, schedules, proposers, courts, catalog
+├── representation/  # coordinate domains, kernels, family specification
+├── storage/         # slot mechanics and mutable entity stores
+├── engine.py        # StructuralEngine lifecycle and event orchestration
+└── optim.py         # parameter groups and optimizer-state follower
+```
+
+The tests under `tests/torchcst/` are the executable contract. Design documents
+under `docs/` record both the current v4 design and older decision history; see
+[`docs/README.md`](docs/README.md) before treating a design note as current API
+documentation.
+
+## Development principles
+
+- Schedule-issued budgets are the only source of structural growth.
+- Ordinary policies remain loss-blind; only an opt-in profit trial can evaluate
+  an objective.
+- Forward/backward capture cannot directly mutate structure.
+- Cross-store atomic units prepare completely before any store commits.
+- Audit subscribers are one-way sinks and cannot affect policy decisions.
+- A failed policy event may consume its clock tick, but capture state is always
+  closed before the next update.

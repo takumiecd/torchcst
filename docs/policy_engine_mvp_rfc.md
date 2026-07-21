@@ -1,5 +1,8 @@
 # Global Policy × Engine MVP 設計 RFC
 
+> **履歴文書:** v4より前の提案であり、現行APIの仕様ではない。現在の文書体系は
+> [`docs/README.md`](README.md) を参照すること。
+>
 > 状態: **議論用ドラフト**
 >
 > この文書は実装仕様ではない。まず最小の責務境界へ戻り、cSET、cRigL、
