@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from torchcst.compute import EntryLinear, RankOneLinear
+from torchcst.compute import EntryLinear, NeuronGatedLinear, RankOneLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import EvenBudgetAllocator, LC, ProposalBundle
 from torchcst.representation import RepresentationSpec
@@ -44,9 +44,7 @@ def test_allocator_accounts_birth_rows_and_never_splits_a_bundle() -> None:
 def test_invalid_bundle_drops_only_it_and_never_applies_its_ungate() -> None:
     synapses = SynapseStore("edge", 1, 1, 4)
     neurons = NeuronStore("hidden", 3)
-    engine = StructuralEngine(
-        {"edge": synapses, "hidden": neurons}, LC(birth_budget=0)
-    )
+    engine = StructuralEngine({"edge": synapses, "hidden": neurons}, LC(birth_budget=0))
     invalid_birth = SynapseBirth(
         "edge",
         torch.zeros(1, 2, dtype=torch.int64),
@@ -58,9 +56,7 @@ def test_invalid_bundle_drops_only_it_and_never_applies_its_ungate() -> None:
         "bad",
         (NeuronUngate("hidden", torch.tensor([0])), invalid_birth),
     )
-    good = ProposalBundle(
-        "good", (NeuronUngate("hidden", torch.tensor([1])),)
-    )
+    good = ProposalBundle("good", (NeuronUngate("hidden", torch.tensor([1])),))
 
     applied = engine.apply_proposals(
         [bad, good, NeuronUngate("hidden", torch.tensor([2]))]
@@ -92,16 +88,14 @@ def test_entry_retirement_cascades_both_endpoint_sides_in_one_plan() -> None:
     )
     inputs = NeuronStore("inputs", 2, initial_live=2)
     outputs = NeuronStore("outputs", 2, initial_live=2)
-    module = EntryLinear(synapses, 2, 2, inputs, outputs)
+    module = NeuronGatedLinear(EntryLinear(synapses, 2, 2), inputs, outputs)
     engine = StructuralEngine(
         {"edge": synapses, "inputs": inputs, "outputs": outputs},
         LC(birth_budget=0),
         modules={"edge": module},
     )
 
-    applied = engine.apply_proposals(
-        [NeuronRetire("inputs", torch.tensor([0]))]
-    )
+    applied = engine.apply_proposals([NeuronRetire("inputs", torch.tensor([0]))])
 
     assert [type(op).__name__ for op in applied] == [
         "NeuronRetire",
@@ -111,9 +105,7 @@ def test_entry_retirement_cascades_both_endpoint_sides_in_one_plan() -> None:
 
 
 def test_rank_one_retirement_is_gate_only_until_projection_op_exists() -> None:
-    synapses = SynapseStore(
-        "rank", 2, 2, 1, spec=RepresentationSpec.rank_one(2, 2)
-    )
+    synapses = SynapseStore("rank", 2, 2, 1, spec=RepresentationSpec.rank_one(2, 2))
     synapses.apply(
         [
             SynapseBirth(
@@ -127,16 +119,14 @@ def test_rank_one_retirement_is_gate_only_until_projection_op_exists() -> None:
     )
     inputs = NeuronStore("inputs", 2, initial_live=2)
     outputs = NeuronStore("outputs", 2, initial_live=2)
-    module = RankOneLinear(synapses, 2, 2, inputs, outputs)
+    module = NeuronGatedLinear(RankOneLinear(synapses, 2, 2), inputs, outputs)
     engine = StructuralEngine(
         {"rank": synapses, "inputs": inputs, "outputs": outputs},
         LC(birth_budget=0),
         modules={"rank": module},
     )
 
-    applied = engine.apply_proposals(
-        [NeuronRetire("outputs", torch.tensor([1]))]
-    )
+    applied = engine.apply_proposals([NeuronRetire("outputs", torch.tensor([1]))])
 
     assert [type(op).__name__ for op in applied] == ["NeuronRetire"]
     assert synapses.view().ids.numel() == 1

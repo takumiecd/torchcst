@@ -21,8 +21,49 @@ from .profit import ProfitCourt
 from .schedules import BirthWindowSchedule, PeriodicSchedule
 
 
+class _PolicyAdapter:
+    """Expose one built :class:`Policy` without repeating forwarding boilerplate."""
+
+    _policy: Policy
+
+    @property
+    def schedule(self):
+        return self._policy.schedule
+
+    @property
+    def proposers(self):
+        return self._policy.proposers
+
+    @property
+    def allocator(self):
+        return self._policy.allocator
+
+    @property
+    def retention(self):
+        return self._policy.retention
+
+    @property
+    def composer(self):
+        return self._policy.composer
+
+    @property
+    def profit(self):
+        return self._policy.profit
+
+    @property
+    def neuron_retention(self):
+        return self._policy.neuron_retention
+
+    @property
+    def requires(self):
+        return self._policy.requires
+
+    def as_policy(self) -> Policy:
+        return self._policy
+
+
 @dataclass(frozen=True)
-class LC:
+class LC(_PolicyAdapter):
     """Frozen 5c lifecycle constants, individually overrideable for a run."""
 
     event_interval: int = 200
@@ -50,9 +91,7 @@ class LC:
                 freeze_event=self.freeze_event,
             ),
             proposers=(
-                UniformEntryBirth(
-                    self.bounds_in, self.bounds_out, self.initial_weight
-                ),
+                UniformEntryBirth(self.bounds_in, self.bounds_out, self.initial_weight),
             ),
             allocator=EvenBudgetAllocator(),
             retention=RentCourt(
@@ -65,32 +104,9 @@ class LC:
         )
         object.__setattr__(self, "_policy", policy)
 
-    @property
-    def schedule(self):
-        return self._policy.schedule
-
-    @property
-    def proposers(self):
-        return self._policy.proposers
-
-    @property
-    def allocator(self):
-        return self._policy.allocator
-
-    @property
-    def retention(self):
-        return self._policy.retention
-
-    @property
-    def requires(self):
-        return self._policy.requires
-
-    def as_policy(self) -> Policy:
-        return self._policy
-
 
 @dataclass(frozen=True)
-class LC_anti:
+class LC_anti(_PolicyAdapter):
     """5c lifecycle with B4 output-subspace-avoiding rank-one births."""
 
     event_interval: int = 200
@@ -129,32 +145,9 @@ class LC_anti:
         )
         object.__setattr__(self, "_policy", policy)
 
-    @property
-    def schedule(self):
-        return self._policy.schedule
-
-    @property
-    def proposers(self):
-        return self._policy.proposers
-
-    @property
-    def allocator(self):
-        return self._policy.allocator
-
-    @property
-    def retention(self):
-        return self._policy.retention
-
-    @property
-    def requires(self):
-        return self._policy.requires
-
-    def as_policy(self) -> Policy:
-        return self._policy
-
 
 @dataclass(frozen=True)
-class LC_response:
+class LC_response(_PolicyAdapter):
     """5c lifecycle plus a scheduled Phase 3-B ungate response window."""
 
     event_interval: int = 200
@@ -203,9 +196,7 @@ class LC_response:
                 response_birth_budget=self.response_birth_budget,
             ),
             proposers=(
-                UniformEntryBirth(
-                    self.bounds_in, self.bounds_out, self.initial_weight
-                ),
+                UniformEntryBirth(self.bounds_in, self.bounds_out, self.initial_weight),
                 IncidentOutputBirth(self.initial_weight),
             ),
             allocator=EvenBudgetAllocator(),
@@ -216,40 +207,9 @@ class LC_response:
         )
         object.__setattr__(self, "_policy", policy)
 
-    @property
-    def schedule(self):
-        return self._policy.schedule
-
-    @property
-    def proposers(self):
-        return self._policy.proposers
-
-    @property
-    def allocator(self):
-        return self._policy.allocator
-
-    @property
-    def retention(self):
-        return self._policy.retention
-
-    @property
-    def neuron_retention(self):
-        return self._policy.neuron_retention
-
-    @property
-    def composer(self):
-        return self._policy.composer
-
-    @property
-    def requires(self):
-        return self._policy.requires
-
-    def as_policy(self) -> Policy:
-        return self._policy
-
 
 @dataclass(frozen=True)
-class LC_merge:
+class LC_merge(_PolicyAdapter):
     """Rank-one lifecycle whose scheduled merge trials require ProfitCourt."""
 
     event_interval: int = 200
@@ -290,36 +250,9 @@ class LC_merge:
         )
         object.__setattr__(self, "_policy", policy)
 
-    @property
-    def schedule(self):
-        return self._policy.schedule
-
-    @property
-    def proposers(self):
-        return self._policy.proposers
-
-    @property
-    def allocator(self):
-        return self._policy.allocator
-
-    @property
-    def retention(self):
-        return self._policy.retention
-
-    @property
-    def profit(self):
-        return self._policy.profit
-
-    @property
-    def requires(self):
-        return self._policy.requires
-
-    def as_policy(self) -> Policy:
-        return self._policy
-
 
 @dataclass(frozen=True)
-class GrowthByProfit:
+class GrowthByProfit(_PolicyAdapter):
     """Greedy profit-gated forward construction testing theory U-2.
 
     Every event proposes ``atoms_per_event`` candidate atoms and accepts them
@@ -365,36 +298,9 @@ class GrowthByProfit:
         )
         object.__setattr__(self, "_policy", policy)
 
-    @property
-    def schedule(self):
-        return self._policy.schedule
-
-    @property
-    def proposers(self):
-        return self._policy.proposers
-
-    @property
-    def allocator(self):
-        return self._policy.allocator
-
-    @property
-    def retention(self):
-        return self._policy.retention
-
-    @property
-    def profit(self):
-        return self._policy.profit
-
-    @property
-    def requires(self):
-        return self._policy.requires
-
-    def as_policy(self) -> Policy:
-        return self._policy
-
 
 @dataclass(frozen=True)
-class cSET:
+class cSET(_PolicyAdapter):
     """Periodic random rewiring with smallest-magnitude replacement."""
 
     event_interval: int = 500
@@ -416,9 +322,7 @@ class cSET:
                 freeze_event=self.freeze_event,
             ),
             proposers=(
-                UniformEntryBirth(
-                    self.bounds_in, self.bounds_out, self.initial_weight
-                ),
+                UniformEntryBirth(self.bounds_in, self.bounds_out, self.initial_weight),
             ),
             allocator=EvenBudgetAllocator(replacement_only=True),
             retention=MagnitudeCourt(self.drop_fraction),
@@ -427,32 +331,9 @@ class cSET:
         )
         object.__setattr__(self, "_policy", policy)
 
-    @property
-    def schedule(self):
-        return self._policy.schedule
-
-    @property
-    def proposers(self):
-        return self._policy.proposers
-
-    @property
-    def allocator(self):
-        return self._policy.allocator
-
-    @property
-    def retention(self):
-        return self._policy.retention
-
-    @property
-    def requires(self):
-        return self._policy.requires
-
-    def as_policy(self) -> Policy:
-        return self._policy
-
 
 @dataclass(frozen=True)
-class cRigL:
+class cRigL(_PolicyAdapter):
     """Gradient-greedy vertex-buying control arm, retained as a losing baseline."""
 
     event_interval: int = 500
@@ -493,26 +374,3 @@ class cRigL:
             profit=None,
         )
         object.__setattr__(self, "_policy", policy)
-
-    @property
-    def schedule(self):
-        return self._policy.schedule
-
-    @property
-    def proposers(self):
-        return self._policy.proposers
-
-    @property
-    def allocator(self):
-        return self._policy.allocator
-
-    @property
-    def retention(self):
-        return self._policy.retention
-
-    @property
-    def requires(self):
-        return self._policy.requires
-
-    def as_policy(self) -> Policy:
-        return self._policy

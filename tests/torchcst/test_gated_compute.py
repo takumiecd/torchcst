@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 import torch
 
-from torchcst.compute import EntryLinear, RankOneLinear
+from torchcst.compute import EntryLinear, NeuronGatedLinear, RankOneLinear
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import (
     NeuronRetire,
@@ -16,6 +18,12 @@ from torchcst.storage import (
     commit_all,
     prepare_all,
 )
+
+
+def test_control_linears_do_not_own_neuron_topology() -> None:
+    expected = ("store", "in_features", "out_features")
+    assert tuple(inspect.signature(EntryLinear).parameters) == expected
+    assert tuple(inspect.signature(RankOneLinear).parameters) == expected
 
 
 def entry_module():
@@ -38,30 +46,30 @@ def entry_module():
     outputs = NeuronStore("outputs", 4, initial_live=2)
     inputs.apply([NeuronRetire("inputs", torch.tensor([1]))])
     outputs.apply([NeuronRetire("outputs", torch.tensor([1]))])
-    return EntryLinear(store, 4, 4, inputs, outputs), inputs, outputs
+    return NeuronGatedLinear(EntryLinear(store, 4, 4), inputs, outputs), inputs, outputs
 
 
 def rank_one_module():
-    store = SynapseStore(
-        "rank", 4, 4, 4, spec=RepresentationSpec.rank_one(4, 4)
-    )
+    store = SynapseStore("rank", 4, 4, 4, spec=RepresentationSpec.rank_one(4, 4))
     factors = torch.eye(4)
     store.apply(
-        [
-            SynapseBirth(
-                "rank", factors, factors, torch.ones(4), torch.arange(4)
-            )
-        ]
+        [SynapseBirth("rank", factors, factors, torch.ones(4), torch.arange(4))]
     )
     inputs = NeuronStore("inputs", 4, initial_live=2)
     outputs = NeuronStore("outputs", 4, initial_live=2)
     inputs.apply([NeuronRetire("inputs", torch.tensor([1]))])
     outputs.apply([NeuronRetire("outputs", torch.tensor([1]))])
-    return RankOneLinear(store, 4, 4, inputs, outputs), inputs, outputs
+    return (
+        NeuronGatedLinear(RankOneLinear(store, 4, 4), inputs, outputs),
+        inputs,
+        outputs,
+    )
 
 
 @pytest.mark.parametrize("factory", [entry_module, rank_one_module])
-def test_dormant_and_retired_contributions_are_zero_then_ungate_appears(factory) -> None:
+def test_dormant_and_retired_contributions_are_zero_then_ungate_appears(
+    factory,
+) -> None:
     module, inputs, outputs = factory()
     x = torch.tensor([[2.0, 3.0, 5.0, 7.0]])
 

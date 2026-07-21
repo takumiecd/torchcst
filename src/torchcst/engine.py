@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any
 
 import torch
-from torch import nn
 
 from torchcst.audit import AuditRecord, AuditSubscriber
-from torchcst.compute import BackwardContext, CSTLinear, EntryLinear, Observation, RankOneLinear
+from torchcst.compute import (
+    BackwardContext,
+    ComputeLinear,
+    CSTLinear,
+    EntryLinear,
+    NeuronGatedLinear,
+    Observation,
+    RankOneLinear,
+)
 from torchcst.instruments import CandidateField, CertificateSubspace, GradFieldEMA
+from torchcst.optim import OptimizerStateFollower
 from torchcst.storage import (
     NeuronKick,
     NeuronRetire,
@@ -27,156 +34,16 @@ from torchcst.storage import (
     prepare_all,
 )
 from .policy.bundle import Op, ProposalBundle, bundle_birth_count
-from .policy.contract import BudgetRequest, Clock, InstrumentSpec, Phase, Policy
+from .policy.contract import (
+    BudgetRequest,
+    Clock,
+    EventDirective,
+    InstrumentSpec,
+    Phase,
+    Policy,
+)
 from .policy.profit import TrialSession, TrialTransaction
 from .policy.registry import RetiredCandidateRegistry
-
-
-@dataclass(frozen=True)
-class _BoundedView:
-    site: str
-    version: int
-    ids: torch.Tensor
-    s: torch.Tensor
-    t: torch.Tensor
-    w: torch.Tensor
-    mass: torch.Tensor
-    lineages: torch.Tensor
-    bounds_in: int | tuple[int, ...] | None
-    bounds_out: int | tuple[int, ...] | None
-    domain_in: object
-    domain_out: object
-    retired_in: torch.Tensor
-    retired_out: torch.Tensor
-
-
-class OptimizerStateFollower:
-    """Keep slot-indexed optimizer tensors aligned with a mutable store.
-
-    Optimizers key state by the identity of a :class:`~torch.nn.Parameter`, so
-    changing the parameter's storage during capacity growth does not resize its
-    moments.  This follower treats every non-scalar state tensor whose leading
-    dimension equals the store capacity as slot-indexed state.  Such tensors
-    are zero-padded on growth and cleared on both sides of slot reuse.
-    """
-
-    def __init__(
-        self,
-        optimizer: torch.optim.Optimizer,
-        parameters: Iterable[nn.Parameter],
-    ) -> None:
-        if not isinstance(optimizer, torch.optim.Optimizer):
-            raise TypeError("optimizer must be a torch Optimizer")
-        params = tuple(parameters)
-        if not params or not all(isinstance(param, nn.Parameter) for param in params):
-            raise TypeError("parameters must contain at least one Parameter")
-        capacities = {int(param.shape[0]) for param in params if param.ndim > 0}
-        if len(capacities) != 1 or any(param.ndim == 0 for param in params):
-            raise ValueError("parameters must share one non-scalar leading capacity")
-        self._optimizer = optimizer
-        self._parameters = params
-        self._capacity = capacities.pop()
-
-    @property
-    def capacity(self) -> int:
-        return self._capacity
-
-    @staticmethod
-    def _slots(slots: torch.Tensor) -> torch.Tensor:
-        if not isinstance(slots, torch.Tensor):
-            raise TypeError("slots must be a Tensor")
-        if slots.ndim != 1 or slots.dtype != torch.int64:
-            raise TypeError("slots must be a rank-1 int64 Tensor")
-        return slots.detach().to(device="cpu")
-
-    def _slot_tensors(self, parameter: nn.Parameter):
-        state = self._optimizer.state.get(parameter)
-        if not state:
-            return
-        for name, value in tuple(state.items()):
-            if (
-                isinstance(value, torch.Tensor)
-                and value.ndim > 0
-                and value.shape[0] == self._capacity
-            ):
-                yield state, name, value
-
-    def _zero_rows(self, slots: torch.Tensor) -> None:
-        slots = self._slots(slots)
-        if slots.numel() and bool(((slots < 0) | (slots >= self._capacity)).any()):
-            raise IndexError("optimizer follower slots are outside capacity")
-        for parameter in self._parameters:
-            for _, _, value in self._slot_tensors(parameter):
-                if slots.numel():
-                    value.index_fill_(0, slots.to(value.device), 0)
-
-    def grow(self, new_capacity: int) -> None:
-        """Zero-pad all materialized slot tensors to ``new_capacity``."""
-        if isinstance(new_capacity, bool) or not isinstance(new_capacity, int):
-            raise TypeError("new_capacity must be an int")
-        if new_capacity < self._capacity:
-            raise ValueError("OptimizerStateFollower cannot shrink")
-        if new_capacity == self._capacity:
-            return
-        old_capacity = self._capacity
-        for parameter in self._parameters:
-            state = self._optimizer.state.get(parameter)
-            if not state:
-                continue
-            for name, value in tuple(state.items()):
-                if (
-                    not isinstance(value, torch.Tensor)
-                    or value.ndim == 0
-                    or value.shape[0] != old_capacity
-                ):
-                    continue
-                grown = value.new_zeros((new_capacity, *value.shape[1:]))
-                grown[:old_capacity].copy_(value)
-                state[name] = grown
-        self._capacity = new_capacity
-
-    def on_birth(self, slots: torch.Tensor, lineage: torch.Tensor) -> None:
-        del lineage
-        self._zero_rows(slots)
-
-    def on_death(self, slots: torch.Tensor) -> None:
-        self._zero_rows(slots)
-
-    def on_remap(self, old_to_new: torch.Tensor) -> None:
-        """Move surviving rows according to an old-slot to new-slot mapping."""
-        mapping = self._slots(old_to_new)
-        if mapping.numel() != self._capacity:
-            raise ValueError("old_to_new must align with follower capacity")
-        old = torch.nonzero(mapping >= 0, as_tuple=False).flatten()
-        if old.numel() and bool((mapping[old] >= self._capacity).any()):
-            raise IndexError("optimizer follower remap targets outside capacity")
-        for parameter in self._parameters:
-            for state, name, value in self._slot_tensors(parameter):
-                remapped = torch.zeros_like(value)
-                if old.numel():
-                    source = old.to(value.device)
-                    target = mapping[old].to(value.device)
-                    remapped.index_copy_(0, target, value.index_select(0, source))
-                state[name] = remapped
-
-    def state_dict(self) -> dict[str, object]:
-        return {
-            "schema": "torchcst-optimizer-state-follower-v1",
-            "capacity": self._capacity,
-        }
-
-    def load_state_dict(self, state: Mapping[str, object]) -> None:
-        if (
-            not isinstance(state, Mapping)
-            or state.get("schema") != "torchcst-optimizer-state-follower-v1"
-        ):
-            raise ValueError("unsupported OptimizerStateFollower state schema")
-        capacity = state.get("capacity")
-        if isinstance(capacity, bool) or not isinstance(capacity, int):
-            raise TypeError("optimizer follower capacity must be an int")
-        if capacity < 0:
-            raise ValueError("optimizer follower capacity must be non-negative")
-        self._capacity = capacity
 
 
 class StructuralEngine:
@@ -185,10 +52,10 @@ class StructuralEngine:
     def __init__(
         self,
         stores: dict[str, SynapseStore | NeuronStore],
-        policy: Policy | Any,
+        policy: object,
         seed: int = 0,
         rng: torch.Generator | None = None,
-        modules: dict[str, EntryLinear | RankOneLinear | CSTLinear] | None = None,
+        modules: dict[str, ComputeLinear] | None = None,
         optimizer: torch.optim.Optimizer | None = None,
         audit_subscribers: (
             tuple[AuditSubscriber, ...] | list[AuditSubscriber] | None
@@ -199,6 +66,8 @@ class StructuralEngine:
         adapter = getattr(policy, "as_policy", None)
         if adapter is not None:
             policy = adapter()
+        if not isinstance(policy, Policy):
+            raise TypeError("policy must be a Policy or provide as_policy()")
         if not isinstance(stores, dict) or not stores:
             raise ValueError("stores must be a non-empty dict")
         for site, store in stores.items():
@@ -264,29 +133,49 @@ class StructuralEngine:
         self._audit_subscribers.append(subscriber)
 
     def _validate_modules(
-        self, modules: dict[str, EntryLinear | RankOneLinear | CSTLinear] | None
-    ) -> dict[str, EntryLinear | RankOneLinear | CSTLinear]:
+        self, modules: dict[str, ComputeLinear] | None
+    ) -> dict[str, ComputeLinear]:
         if modules is None:
             modules = {}
         if not isinstance(modules, dict):
             raise TypeError("modules must be a dict or None")
-        result: dict[str, EntryLinear | RankOneLinear | CSTLinear] = {}
+        result: dict[str, ComputeLinear] = {}
         for site, module in modules.items():
             if site not in self.synapse_stores:
                 raise ValueError(f"module targets unknown site {site!r}")
-            if not isinstance(module, (EntryLinear, RankOneLinear, CSTLinear)):
-                raise TypeError("modules values must be CST linear instances")
-            if module.capture_site != site or module.store is not self.synapse_stores[site]:
+            if not isinstance(
+                module, (EntryLinear, RankOneLinear, NeuronGatedLinear, CSTLinear)
+            ):
+                raise TypeError("modules values must be supported compute linears")
+            if (
+                module.capture_site != site
+                or module.store is not self.synapse_stores[site]
+            ):
                 raise ValueError("module site/store must match the stores mapping")
-            for endpoint in (module.in_neurons, module.out_neurons):
-                if endpoint is not None and self.neuron_stores.get(endpoint.site) is not endpoint:
-                    raise ValueError("module neuron endpoints must be present in stores")
+            for endpoint in self._module_endpoints(module):
+                if (
+                    endpoint is not None
+                    and self.neuron_stores.get(endpoint.site) is not endpoint
+                ):
+                    raise ValueError(
+                        "module neuron endpoints must be present in stores"
+                    )
             result[site] = module
         if self.policy.requires and set(result) != set(self.synapse_stores):
             raise ValueError(
                 "every store requires a matching compute module when policy requires capture"
             )
         return result
+
+    @staticmethod
+    def _module_endpoints(
+        module: ComputeLinear,
+    ) -> tuple[NeuronStore | None, NeuronStore | None]:
+        """Return optional topology capabilities without coupling pure controls."""
+        return (
+            getattr(module, "in_neurons", None),
+            getattr(module, "out_neurons", None),
+        )
 
     def _make_instruments(
         self, specs: tuple[InstrumentSpec, ...]
@@ -295,7 +184,9 @@ class StructuralEngine:
         for spec in specs:
             current = by_name.get(spec.name)
             if current is not None and current != spec:
-                raise ValueError(f"conflicting requirements for instrument {spec.name!r}")
+                raise ValueError(
+                    f"conflicting requirements for instrument {spec.name!r}"
+                )
             by_name[spec.name] = spec
         result: dict[str, dict[str, object]] = {
             site: {} for site in self.synapse_stores
@@ -313,7 +204,9 @@ class StructuralEngine:
                         pool_size=spec.pool_size,
                         decay=spec.decay,
                         bounds_in=(module.in_features,) if module is not None else None,
-                        bounds_out=(module.out_features,) if module is not None else None,
+                        bounds_out=(module.out_features,)
+                        if module is not None
+                        else None,
                     )
                 elif name in {"certificate_subspace", "CertificateSubspace"}:
                     instrument = CertificateSubspace(store, rank=spec.rank)
@@ -366,7 +259,9 @@ class StructuralEngine:
         try:
             return self.instruments[site][name]
         except KeyError as exc:
-            raise KeyError(f"instrument {name!r} is not required at site {site!r}") from exc
+            raise KeyError(
+                f"instrument {name!r} is not required at site {site!r}"
+            ) from exc
 
     def begin_update(self) -> int:
         """Issue the next update ID and enable only scheduled required capture."""
@@ -395,7 +290,9 @@ class StructuralEngine:
 
     @staticmethod
     def _coordinate_gradient(
-        observations: tuple[Observation, ...], source: torch.Tensor, target: torch.Tensor
+        observations: tuple[Observation, ...],
+        source: torch.Tensor,
+        target: torch.Tensor,
     ) -> torch.Tensor:
         result: torch.Tensor | None = None
         for observation in observations:
@@ -405,9 +302,7 @@ class StructuralEngine:
                 raise ValueError("captured x and g_out batch dimensions do not align")
             s = source[:, 0].to(device=x.device)
             t = target[:, 0].to(device=g_out.device)
-            contribution = (
-                x.index_select(1, s) * g_out.index_select(1, t)
-            ).sum(dim=0)
+            contribution = (x.index_select(1, s) * g_out.index_select(1, t)).sum(dim=0)
             contribution = contribution * observation.micro_weight
             if result is None:
                 result = contribution
@@ -424,7 +319,7 @@ class StructuralEngine:
     @staticmethod
     def _atom_gradient(
         observations: tuple[Observation, ...],
-        module: EntryLinear | RankOneLinear | CSTLinear,
+        module: ComputeLinear,
     ) -> torch.Tensor:
         """Sum module-provided live-atom gradients before absolute-value EMA."""
         result: torch.Tensor | None = None
@@ -465,7 +360,9 @@ class StructuralEngine:
                 raise RuntimeError("store version changed before finalize_backward()")
 
         by_site = {
-            site: tuple(observation for observation in observations if observation.site == site)
+            site: tuple(
+                observation for observation in observations if observation.site == site
+            )
             for site in self.stores
         }
         for site, site_instruments in self.instruments.items() if was_capturing else ():
@@ -512,7 +409,7 @@ class StructuralEngine:
             slots = view.ids
         return store.age.values.index_select(0, slots)
 
-    def _proposal_view(self, store: SynapseStore, view: SynapseView) -> _BoundedView:
+    def _proposal_view(self, store: SynapseStore, view: SynapseView) -> SynapseView:
         bounds_in = getattr(store.spec.domain_in, "bounds", None)
         bounds_out = getattr(store.spec.domain_out, "bounds", None)
         if bounds_in is None and store.spec.kernel_in == "delta":
@@ -525,7 +422,7 @@ class StructuralEngine:
                 int(view.t[:, column].max()) + 1 if view.t.numel() else 1
                 for column in range(store.d_out)
             )
-        return _BoundedView(
+        return SynapseView(
             site=view.site,
             version=view.version,
             ids=view.ids,
@@ -546,7 +443,8 @@ class StructuralEngine:
         module = self.modules.get(site)
         if module is None:
             return torch.zeros(0, dtype=torch.int64)
-        endpoint = module.in_neurons if side == "in" else module.out_neurons
+        endpoints = self._module_endpoints(module)
+        endpoint = endpoints[0] if side == "in" else endpoints[1]
         return (
             torch.zeros(0, dtype=torch.int64)
             if endpoint is None
@@ -589,13 +487,14 @@ class StructuralEngine:
                 synapse_store = self.synapse_stores[synapse_site]
                 view = synapse_store.view()
                 incident: list[torch.Tensor] = []
-                if module.in_neurons is neuron_store:
+                in_neurons, out_neurons = self._module_endpoints(module)
+                if in_neurons is neuron_store:
                     incident.append(
                         synapse_store.spec.incident_synapse_ids(
                             view, retirement.ids, side="in"
                         )
                     )
-                if module.out_neurons is neuron_store:
+                if out_neurons is neuron_store:
                     incident.append(
                         synapse_store.spec.incident_synapse_ids(
                             view, retirement.ids, side="out"
@@ -620,7 +519,11 @@ class StructuralEngine:
             else:
                 result.append(op)
         for site, columns in deaths.items():
-            ids = torch.cat(columns).unique() if columns else torch.zeros(0, dtype=torch.int64)
+            ids = (
+                torch.cat(columns).unique()
+                if columns
+                else torch.zeros(0, dtype=torch.int64)
+            )
             if ids.numel():
                 result.append(SynapseDeath(site, ids))
         return tuple(result)
@@ -663,8 +566,7 @@ class StructuralEngine:
                         )
                     )
         tickets = prepare_all(
-            (self.stores[site], tuple(site_ops))
-            for site, site_ops in by_site.items()
+            (self.stores[site], tuple(site_ops)) for site, site_ops in by_site.items()
         )
         neuron_court = self.policy.neuron_retention
         if neuron_court is not None:
@@ -689,23 +591,30 @@ class StructuralEngine:
                 continue
             module = self.modules.get(op.site)
             store = self.synapse_stores.get(op.site)
-            if module is None or store is None or store.spec.retirement != "endpoint_cascade":
+            if (
+                module is None
+                or store is None
+                or store.spec.retirement != "endpoint_cascade"
+            ):
                 continue
+            in_neurons, out_neurons = self._module_endpoints(module)
             for side, endpoint, coordinates in (
-                ("input", module.in_neurons, op.s),
-                ("output", module.out_neurons, op.t),
+                ("input", in_neurons, op.s),
+                ("output", out_neurons, op.t),
             ):
                 if endpoint is None:
                     continue
                 forbidden = set(endpoint.retired_ids().tolist())
                 forbidden.update(pending.get(endpoint.site, set()))
-                if forbidden and coordinates.shape[1] == 1 and any(
-                    int(value) in forbidden
-                    for value in coordinates[:, 0].detach().cpu().tolist()
-                ):
-                    raise ValueError(
-                        f"entry birth targets a retired {side} neuron"
+                if (
+                    forbidden
+                    and coordinates.shape[1] == 1
+                    and any(
+                        int(value) in forbidden
+                        for value in coordinates[:, 0].detach().cpu().tolist()
                     )
+                ):
+                    raise ValueError(f"entry birth targets a retired {side} neuron")
 
     def _commit_atomic_unit(
         self,
@@ -719,9 +628,7 @@ class StructuralEngine:
             for ticket in tickets:
                 if isinstance(ticket.store, SynapseStore):
                     change = ticket.batch.slot_plan.change
-                    reset = torch.cat(
-                        (change.dead_slots, change.born_slots)
-                    ).unique()
+                    reset = torch.cat((change.dead_slots, change.born_slots)).unique()
                     ticket.store.reconcile_optimizer_state(self.optimizer, reset)
                 else:
                     reset = torch.cat(
@@ -753,7 +660,13 @@ class StructuralEngine:
                     raise ValueError("step 6 supports only atomic bundles")
                 try:
                     prepared = self._prepare_atomic_unit(proposal.ops)
-                except (KeyError, TypeError, ValueError, RuntimeError, NotImplementedError):
+                except (
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                    RuntimeError,
+                    NotImplementedError,
+                ):
                     continue
                 applied.extend(self._commit_atomic_unit(prepared))
             else:
@@ -780,7 +693,7 @@ class StructuralEngine:
         for site, module in self.modules.items():
             if remaining_ungates == 0 or remaining_births == 0:
                 break
-            neurons = module.out_neurons
+            neurons = self._module_endpoints(module)[1]
             if neurons is None:
                 continue
             while remaining_ungates and remaining_births:
@@ -802,7 +715,11 @@ class StructuralEngine:
                 accepted = (
                     tuple(allocator(remaining_births, (bundle,)))
                     if allocator is not None
-                    else ((bundle,) if bundle_birth_count(bundle) <= remaining_births else ())
+                    else (
+                        (bundle,)
+                        if bundle_birth_count(bundle) <= remaining_births
+                        else ()
+                    )
                 )
                 if len(accepted) != 1 or accepted[0] is not bundle:
                     break
@@ -844,9 +761,7 @@ class StructuralEngine:
                 # combined device/dtype conversion can execute the cast on the
                 # source backend before the CPU copy.
                 mass = view.mass.detach().to(device="cpu").to(torch.float64)
-                thresholds[site] = float(torch.quantile(mass, 0.5)) * float(
-                    rent_ratio
-                )
+                thresholds[site] = float(torch.quantile(mass, 0.5)) * float(rent_ratio)
         return ages_by_id, thresholds
 
     def _publish_audit(
@@ -941,22 +856,19 @@ class StructuralEngine:
             raise
         return applied if accepted else ()
 
-    def step(
+    def _validate_step_call(
         self,
-        objective: Callable[[], float] | None = None,
-        polish: Callable[[], None] | None = None,
-    ) -> tuple[Op, ...]:
-        """Advance one update; a profit-priced policy alone may read objective."""
+        objective: Callable[[], float] | None,
+        polish: Callable[[], None] | None,
+    ) -> None:
         if polish is not None and objective is None:
             raise RuntimeError("polish requires objective=")
         if objective is not None and self.policy.profit is None:
-            raise RuntimeError(
-                "objective is unavailable when policy.profit is None"
-            )
+            raise RuntimeError("objective is unavailable when policy.profit is None")
         if objective is not None and not callable(objective):
             raise TypeError("objective must be callable or None")
-        for store in self.synapse_stores.values():
-            store.retract_coordinates(self.optimizer)
+
+    def _ensure_capture_queue_is_released(self) -> None:
         if (
             self._active_update_id is not None
             and self._backward_context is not None
@@ -965,29 +877,11 @@ class StructuralEngine:
             raise RuntimeError(
                 "finalize_backward() must release the capture queue before step()"
             )
-        candidate = Clock(
-            update_step=self.clock.update_step + 1,
-            event_index=self.clock.event_index + 1,
-        )
-        directive = self.policy.schedule.event(candidate)
-        if directive is None:
-            self.clock = Clock(candidate.update_step, self.clock.event_index)
-            self._close_update()
-            return ()
 
-        self.clock = candidate
-        audit_context = (
-            self._audit_event_context() if self._audit_subscribers else None
-        )
-        if directive.phase is Phase.FROZEN:
-            for store in self.stores.values():
-                store.age.tick()
-            if audit_context is not None:
-                self._publish_audit((), audit_context)
-            self._reset_event_instruments()
-            self._close_update()
-            return ()
-
+    def _decide_retention(
+        self,
+    ) -> tuple[tuple[Op, ...], dict[str, tuple[SynapseDeath, ...]]]:
+        """Collect and validate all court decisions for the current event."""
         views = {site: store.view() for site, store in self.synapse_stores.items()}
         deaths: dict[str, tuple[SynapseDeath, ...]] = {}
         immunity_events = int(getattr(self.policy.retention, "immunity_events", 0))
@@ -1018,14 +912,19 @@ class StructuralEngine:
                 self._check_immunity(store, decided, neuron_immunity)
                 neuron_deaths[site] = decided
 
-        applied: list[Op] = []
         retention_ops = tuple(
             op
             for site_ops in (*deaths.values(), *neuron_deaths.values())
             for op in site_ops
         )
-        applied.extend(self._apply_atomic_unit(retention_ops))
+        return retention_ops, deaths
 
+    def _propose_standard_ops(
+        self,
+        directive: EventDirective,
+        deaths: dict[str, tuple[SynapseDeath, ...]],
+    ) -> tuple[Op, ...]:
+        """Allocate one schedule budget and collect ordinary proposer output."""
         standard_proposer_indexes = tuple(
             index
             for index, proposer in enumerate(self.policy.proposers)
@@ -1037,9 +936,7 @@ class StructuralEngine:
             for index in standard_proposer_indexes
             if directive.phase is not Phase.RESPONSE
         )
-        allocations = self.policy.allocator.allocate(
-            directive.birth_budget, requests
-        )
+        allocations = self.policy.allocator.allocate(directive.birth_budget, requests)
         valid_allocations = all(
             not isinstance(value, bool) and isinstance(value, int) and value >= 0
             for value in allocations
@@ -1068,31 +965,87 @@ class StructuralEngine:
             if self._proposal_count(tuple(proposed)) > budget:
                 raise RuntimeError("proposer exceeded its allocated operation budget")
             proposed_ops.extend(proposed)
+        return tuple(proposed_ops)
+
+    def _apply_event(
+        self,
+        directive: EventDirective,
+        objective: Callable[[], float] | None,
+        polish: Callable[[], None] | None,
+    ) -> tuple[Op, ...]:
+        """Run retention, proposal adjudication, and optional response in order."""
+        retention_ops, deaths = self._decide_retention()
+        applied = list(self._apply_atomic_unit(retention_ops))
+        proposed_ops = self._propose_standard_ops(directive, deaths)
+
         # A policy either always prices its proposals (policy.profit is set:
         # e.g. LC_merge's merge trials or a profit-gated growth policy's
         # births) or never does; dispatch is on that switch, not op type, so
         # ProfitCourt.price_for's existing SynapseBirth/SynapseMerge support
         # extends to any proposer without new op-type plumbing here.
         if self.policy.profit is not None:
-            trial_ops = tuple(proposed_ops)
+            trial_ops = proposed_ops
             ordinary_ops: tuple[Op, ...] = ()
         else:
             trial_ops = ()
-            ordinary_ops = tuple(proposed_ops)
+            ordinary_ops = proposed_ops
         applied.extend(self._apply_atomic_unit(ordinary_ops))
         applied.extend(self._apply_profit_trial(trial_ops, objective, polish))
         if directive.phase is Phase.RESPONSE:
             applied.extend(self._apply_response(directive))
+        return tuple(applied)
 
+    def _finish_event(
+        self,
+        applied: tuple[Op, ...],
+        audit_context: (
+            tuple[dict[str, dict[int, int]], dict[str, float | None]] | None
+        ),
+    ) -> tuple[Op, ...]:
+        """Advance event-owned state and publish the completed result."""
         for store in self.stores.values():
             store.age.tick()
-        result = tuple(applied)
-        self._op_log.extend((self.clock.event_index, op) for op in result)
+        self._op_log.extend((self.clock.event_index, op) for op in applied)
         if audit_context is not None:
-            self._publish_audit(result, audit_context)
+            self._publish_audit(applied, audit_context)
         self._reset_event_instruments()
-        self._close_update()
-        return result
+        return applied
+
+    def step(
+        self,
+        objective: Callable[[], float] | None = None,
+        polish: Callable[[], None] | None = None,
+    ) -> tuple[Op, ...]:
+        """Advance one update; only a profit-priced policy may read objective."""
+        self._validate_step_call(objective, polish)
+        self._ensure_capture_queue_is_released()
+        try:
+            for store in self.synapse_stores.values():
+                store.retract_coordinates(self.optimizer)
+
+            candidate = Clock(
+                update_step=self.clock.update_step + 1,
+                event_index=self.clock.event_index + 1,
+            )
+            directive = self.policy.schedule.event(candidate)
+            if directive is None:
+                self.clock = Clock(candidate.update_step, self.clock.event_index)
+                return ()
+
+            self.clock = candidate
+            audit_context = (
+                self._audit_event_context() if self._audit_subscribers else None
+            )
+            applied = (
+                ()
+                if directive.phase is Phase.FROZEN
+                else self._apply_event(directive, objective, polish)
+            )
+            return self._finish_event(applied, audit_context)
+        finally:
+            # A failed policy component may consume the structural event, but it
+            # must never leave autograd capture attached to the next update.
+            self._close_update()
 
     def _reset_event_instruments(self) -> None:
         for site_instruments in self.instruments.values():

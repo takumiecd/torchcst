@@ -120,8 +120,16 @@ def test_engine_runtime_rejects_any_court_death_during_immunity() -> None:
         retention=_BadCourt(),
     )
 
+    engine = StructuralEngine({"entry": store}, policy, seed=0)
+    engine.begin_update()
     with pytest.raises(RuntimeError, match="immune"):
-        StructuralEngine({"entry": store}, policy, seed=0).step()
+        engine.step()
+
+    # A rejected policy event consumes its clock tick, but the failed update
+    # must not leak capture state into the next training update.
+    assert engine.clock == Clock(update_step=1, event_index=1)
+    assert engine.update_id is None
+    assert not engine.capture_active
 
 
 def test_loss_blind_policy_signatures() -> None:
@@ -141,4 +149,3 @@ def test_loss_blind_policy_signatures() -> None:
 
 def test_clock_has_only_the_minimal_two_fields() -> None:
     assert tuple(Clock.__dataclass_fields__) == ("update_step", "event_index")
-

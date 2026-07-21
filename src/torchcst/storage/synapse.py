@@ -23,7 +23,12 @@ from .mechanics import (
 
 @dataclass(frozen=True)
 class SynapseView:
-    """packedな生存synapse列の読み取りview。"""
+    """Read-only live-synapse snapshot used by courts and proposers.
+
+    Store-created views contain the packed live columns. The engine enriches a
+    proposal-time copy with effective domains and retired endpoint IDs, keeping
+    the policy boundary explicit without exposing an engine-private view type.
+    """
 
     site: str
     version: int
@@ -37,6 +42,8 @@ class SynapseView:
     bounds_out: int | tuple[int, ...] | None = None
     domain_in: object | None = None
     domain_out: object | None = None
+    retired_in: Tensor | None = None
+    retired_out: Tensor | None = None
 
 
 @dataclass(frozen=True)
@@ -155,10 +162,20 @@ class SynapseStore(nn.Module):
 
         weight_dtype = dtype if dtype is not None else torch.get_default_dtype()
         self._install_coordinate(
-            "s", capacity, d_in, self.spec.domain_in.parameter_role(), device, weight_dtype
+            "s",
+            capacity,
+            d_in,
+            self.spec.domain_in.parameter_role(),
+            device,
+            weight_dtype,
         )
         self._install_coordinate(
-            "t", capacity, d_out, self.spec.domain_out.parameter_role(), device, weight_dtype
+            "t",
+            capacity,
+            d_out,
+            self.spec.domain_out.parameter_role(),
+            device,
+            weight_dtype,
         )
         self.w = nn.Parameter(torch.zeros(capacity, dtype=weight_dtype, device=device))
         mass_dtype = torch.empty((), dtype=weight_dtype).real.dtype
@@ -235,9 +252,7 @@ class SynapseStore(nn.Module):
             domain_out=self.spec.domain_out,
         )
 
-    def set_mass_scale(
-        self, scale: Tensor, *, version: int | None = None
-    ) -> None:
+    def set_mass_scale(self, scale: Tensor, *, version: int | None = None) -> None:
         """Update detached packed Gaussian kernel norms without structural mutation.
 
         The column is owned by every store for one uniform view contract, but
@@ -260,7 +275,9 @@ class SynapseStore(nn.Module):
         with torch.no_grad():
             self.mass_scale.index_copy_(0, slots, value)
 
-    def retract_coordinates(self, optimizer: torch.optim.Optimizer | None = None) -> None:
+    def retract_coordinates(
+        self, optimizer: torch.optim.Optimizer | None = None
+    ) -> None:
         """Restore live coordinate gauges and project matching optimizer moments."""
         if optimizer is not None and not isinstance(optimizer, torch.optim.Optimizer):
             raise TypeError("optimizer must be a torch Optimizer or None")
@@ -315,28 +332,33 @@ class SynapseStore(nn.Module):
                     continue
                 if value.shape != parameter.shape:
                     if value.shape[0] > parameter.shape[0]:
-                        raise RuntimeError("optimizer state is larger than its parameter")
+                        raise RuntimeError(
+                            "optimizer state is larger than its parameter"
+                        )
                     grown = value.new_zeros(parameter.shape)
                     grown[: value.shape[0]] = value
                     state[name] = value = grown
                 if reset.numel():
                     value.index_fill_(0, reset.to(value.device), 0)
 
-    def prepare(self, ops: Sequence[SynapseOp]) -> Ticket:
-        """op batchを検証・snapshot化しstoreを一切変更せずTicketを返す。"""
-        ops = tuple(ops)
-        if not ops:
-            empty_plan = self._slots.prepare(())
-            empty = self.w.detach().new_zeros((0,))
-            batch = _SynapseBatch(
-                s=self.s.new_zeros((0, self.d_in)),
-                t=self.t.new_zeros((0, self.d_out)),
-                w=empty,
-                lineage=torch.zeros(0, dtype=torch.int64),
-                slot_plan=empty_plan,
-            )
-            return Ticket(self, self._version, batch, empty=True)
+    def _empty_ticket(self) -> Ticket:
+        batch = _SynapseBatch(
+            s=self.s.new_zeros((0, self.d_in)),
+            t=self.t.new_zeros((0, self.d_out)),
+            w=self.w.detach().new_zeros((0,)),
+            lineage=torch.zeros(0, dtype=torch.int64),
+            slot_plan=self._slots.prepare(()),
+        )
+        return Ticket(self, self._version, batch, empty=True)
 
+    def _normalize_ops(
+        self, ops: tuple[SynapseOp, ...]
+    ) -> tuple[
+        list[SynapseBirth],
+        list[SynapseMerge],
+        list[SlotBirth | SlotDeath],
+    ]:
+        """Validate public operations and derive their slot-level plan."""
         births: list[SynapseBirth] = []
         merges: list[SynapseMerge] = []
         slot_ops: list[SlotBirth | SlotDeath] = []
@@ -357,71 +379,94 @@ class SynapseStore(nn.Module):
                 pairs = self._validate_merge(op)
                 if pairs.numel():
                     merges.append(SynapseMerge(op.site, pairs))
-                    slot_ops.extend((SlotDeath(pairs.reshape(-1)), SlotBirth(pairs.shape[0])))
+                    slot_ops.extend(
+                        (SlotDeath(pairs.reshape(-1)), SlotBirth(pairs.shape[0]))
+                    )
                 continue
             self._validate_birth(op)
             n = op.w.shape[0]
             births.append(op)
             slot_ops.append(SlotBirth(n))
+        return births, merges, slot_ops
 
-        if merges:
-            merged_s: list[Tensor] = []
-            merged_t: list[Tensor] = []
-            merged_w: list[Tensor] = []
-            for merge in merges:
-                for pair in merge.id_pairs:
-                    slots = self._slots.slots_of(pair)
-                    device_slots = slots.to(device=self.w.device)
-                    source, target, weight = self.spec.merge_atoms(
-                        self.s[device_slots[0]],
-                        self.t[device_slots[0]],
-                        self.w[device_slots[0]],
-                        self.s[device_slots[1]],
-                        self.t[device_slots[1]],
-                        self.w[device_slots[1]],
-                    )
-                    merged_s.append(source)
-                    merged_t.append(target)
-                    merged_w.append(weight)
-            supplied = [
-                int(value)
-                for birth in births
-                for value in birth.lineage.detach().cpu().tolist()
-            ]
-            live = [
-                int(value)
-                for value in self.lineage.values[self._slots.live_slots].tolist()
-                if int(value) >= 0
-            ]
-            start = max(self._next_lineage, max((*supplied, *live), default=-1) + 1)
-            count = len(merged_w)
-            births.append(
-                SynapseBirth(
-                    self.site,
-                    torch.stack(merged_s),
-                    torch.stack(merged_t),
-                    torch.stack(merged_w),
-                    torch.arange(start, start + count, dtype=torch.int64),
+    def _materialize_merges(
+        self, merges: list[SynapseMerge], births: list[SynapseBirth]
+    ) -> SynapseBirth:
+        """Project merge pairs and assign fresh lineages to their replacements."""
+        merged_s: list[Tensor] = []
+        merged_t: list[Tensor] = []
+        merged_w: list[Tensor] = []
+        for merge in merges:
+            for pair in merge.id_pairs:
+                slots = self._slots.slots_of(pair).to(device=self.w.device)
+                source, target, weight = self.spec.merge_atoms(
+                    self.s[slots[0]],
+                    self.t[slots[0]],
+                    self.w[slots[0]],
+                    self.s[slots[1]],
+                    self.t[slots[1]],
+                    self.w[slots[1]],
                 )
+                merged_s.append(source)
+                merged_t.append(target)
+                merged_w.append(weight)
+
+        supplied = [
+            int(value)
+            for birth in births
+            for value in birth.lineage.detach().cpu().tolist()
+        ]
+        live = [
+            int(value)
+            for value in self.lineage.values[self._slots.live_slots].tolist()
+            if int(value) >= 0
+        ]
+        start = max(self._next_lineage, max((*supplied, *live), default=-1) + 1)
+        count = len(merged_w)
+        return SynapseBirth(
+            self.site,
+            torch.stack(merged_s),
+            torch.stack(merged_t),
+            torch.stack(merged_w),
+            torch.arange(start, start + count, dtype=torch.int64),
+        )
+
+    def _snapshot_births(
+        self, births: list[SynapseBirth], slot_plan: object
+    ) -> _SynapseBatch:
+        """Detach proposal tensors so later caller mutation cannot alter a ticket."""
+        if not births:
+            return _SynapseBatch(
+                s=self.s.new_zeros((0, self.d_in)),
+                t=self.t.new_zeros((0, self.d_out)),
+                w=self.w.detach().new_zeros((0,)),
+                lineage=torch.zeros(0, dtype=torch.int64),
+                slot_plan=slot_plan,
             )
 
-        slot_plan = self._slots.prepare(slot_ops)
-        if births:
-            s = torch.cat([op.s for op in births]).detach().to(self.s).clone()
-            t = torch.cat([op.t for op in births]).detach().to(self.t).clone()
-            w = torch.cat([op.w for op in births]).detach().to(self.w).clone()
-            lineage = (
+        return _SynapseBatch(
+            s=torch.cat([op.s for op in births]).detach().to(self.s).clone(),
+            t=torch.cat([op.t for op in births]).detach().to(self.t).clone(),
+            w=torch.cat([op.w for op in births]).detach().to(self.w).clone(),
+            lineage=(
                 torch.cat([op.lineage for op in births])
                 .detach()
                 .to(device="cpu", dtype=torch.int64)
                 .clone()
-            )
-        else:
-            s = self.s.new_zeros((0, self.d_in))
-            t = self.t.new_zeros((0, self.d_out))
-            w = self.w.detach().new_zeros((0,))
-            lineage = torch.zeros(0, dtype=torch.int64)
-        batch = _SynapseBatch(s=s, t=t, w=w, lineage=lineage, slot_plan=slot_plan)
+            ),
+            slot_plan=slot_plan,
+        )
+
+    def prepare(self, ops: Sequence[SynapseOp]) -> Ticket:
+        """Validate and snapshot an operation batch without changing the store."""
+        ops = tuple(ops)
+        if not ops:
+            return self._empty_ticket()
+
+        births, merges, slot_ops = self._normalize_ops(ops)
+        if merges:
+            births.append(self._materialize_merges(merges, births))
+        batch = self._snapshot_births(births, self._slots.prepare(slot_ops))
         return Ticket(self, self._version, batch)
 
     def commit(self, ticket: Ticket) -> None:
@@ -463,11 +508,16 @@ class SynapseStore(nn.Module):
         if ticket.version != self._version:
             raise RuntimeError("ticket is stale")
         slot_plan = ticket.batch.slot_plan
-        if slot_plan.pool is not self._slots or slot_plan.version != self._slots.version:
+        if (
+            slot_plan.pool is not self._slots
+            or slot_plan.version != self._slots.version
+        ):
             raise RuntimeError("ticket is stale")
 
     def _validate_birth(self, op: SynapseBirth) -> None:
-        if not all(isinstance(value, Tensor) for value in (op.s, op.t, op.w, op.lineage)):
+        if not all(
+            isinstance(value, Tensor) for value in (op.s, op.t, op.w, op.lineage)
+        ):
             raise TypeError("SynapseBirth fields must be Tensors")
         if op.s.ndim != 2 or op.t.ndim != 2 or op.w.ndim != 1:
             raise ValueError("SynapseBirth expects rank-2 s/t and rank-1 w")
@@ -549,7 +599,10 @@ class SynapseStore(nn.Module):
 
     def set_extra_state(self, state: dict[str, Any]) -> None:
         """Restore non-module state captured by :meth:`get_extra_state`."""
-        if not isinstance(state, dict) or state.get("schema") != "torchcst-synapse-store-v1":
+        if (
+            not isinstance(state, dict)
+            or state.get("schema") != "torchcst-synapse-store-v1"
+        ):
             raise ValueError("unsupported SynapseStore extra-state schema")
         self._slots.load_state_dict(state["slots"])
         self._hub.load_state_dict(state["followers"])

@@ -18,7 +18,15 @@ from .representation import (
     Sphere,
 )
 from .policy import LC_merge, MergeProposer, ProfitCourt, TrialSession, TrialTransaction
-from .compute import BackwardContext, CSTLinear, EntryLinear, Observation, RankOneLinear
+from .compute import (
+    BackwardContext,
+    ComputeLinear,
+    CSTLinear,
+    EntryLinear,
+    NeuronGatedLinear,
+    Observation,
+    RankOneLinear,
+)
 from .instruments import (
     CandidateField,
     CertificateSnapshot,
@@ -53,7 +61,8 @@ from .storage import (
     commit_all,
     prepare_all,
 )
-from .engine import OptimizerStateFollower, StructuralEngine
+from .engine import StructuralEngine
+from .optim import OptimizerStateFollower
 
 __all__ = [
     "Accounting",
@@ -67,6 +76,7 @@ __all__ = [
     "CertificateSnapshot",
     "CertificateSubspace",
     "CoordinateDomain",
+    "ComputeLinear",
     "CSTLinear",
     "EntityStore",
     "EconomyAudit",
@@ -84,6 +94,7 @@ __all__ = [
     "DORMANT",
     "LIVE",
     "NeuronKick",
+    "NeuronGatedLinear",
     "NeuronOp",
     "NeuronRetire",
     "NeuronState",

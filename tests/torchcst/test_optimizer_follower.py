@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import torch
 
-from torchcst.engine import OptimizerStateFollower, StructuralEngine
+from torchcst.engine import StructuralEngine
+from torchcst.optim import OptimizerStateFollower
 from torchcst.policy import LC
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseDeath, SynapseStore

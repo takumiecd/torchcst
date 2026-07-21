@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from torchcst.compute import EntryLinear
+from torchcst.compute import EntryLinear, NeuronGatedLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import Clock, LC_response, Phase, UniformBirth
 from torchcst.representation import RepresentationSpec
@@ -39,7 +39,7 @@ def test_scripted_response_bundle_immunity_rent_cascade_and_requiescence() -> No
         ]
     )
     outputs = NeuronStore("outputs", 2, initial_live=1)
-    module = EntryLinear(synapses, 3, 2, out_neurons=outputs)
+    module = NeuronGatedLinear(EntryLinear(synapses, 3, 2), out_neurons=outputs)
     policy = LC_response(
         event_interval=1,
         birth_end_event=1,
@@ -107,9 +107,7 @@ def test_scripted_response_bundle_immunity_rent_cascade_and_requiescence() -> No
     # Even a free-standing coverage proposer sees the retired output row as
     # outside its candidate universe.
     proposal_view = engine._proposal_view(synapses, synapses.view())
-    proposed = UniformBirth().propose(
-        proposal_view, 6, engine.registry, engine.rng
-    )
+    proposed = UniformBirth().propose(proposal_view, 6, engine.registry, engine.rng)
     assert not proposed or not bool((proposed[0].t[:, 0] == 1).any())
 
 

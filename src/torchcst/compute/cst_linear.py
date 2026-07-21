@@ -38,7 +38,10 @@ class CSTLinear(nn.Module):
             raise TypeError("kernel must be a GaussianKernel")
         if kernel_out is not None and not isinstance(kernel_out, GaussianKernel):
             raise TypeError("kernel_out must be a GaussianKernel or None")
-        if synapses.spec.kernel_in != "gaussian" or synapses.spec.kernel_out != "gaussian":
+        if (
+            synapses.spec.kernel_in != "gaussian"
+            or synapses.spec.kernel_out != "gaussian"
+        ):
             raise ValueError("CSTLinear requires a continuous Gaussian spec")
         if not isinstance(synapses.spec.domain_in, Box) or not isinstance(
             synapses.spec.domain_out, Box
@@ -142,16 +145,18 @@ class CSTLinear(nn.Module):
         unchanged = (
             self._mass_signature == signature
             and len(sigmas) == len(self._mass_sigmas)
-            and all(torch.equal(now, old.to(now)) for now, old in zip(sigmas, self._mass_sigmas))
+            and all(
+                torch.equal(now, old.to(now))
+                for now, old in zip(sigmas, self._mass_sigmas)
+            )
         )
         if unchanged:
             return
         in_gate = self.in_neurons.gate_vector().detach().to(k_in)
         out_gate = self.out_neurons.gate_vector().detach().to(k_out)
-        scale = (
-            torch.linalg.vector_norm(in_gate[:, None] * k_in.detach(), dim=0)
-            * torch.linalg.vector_norm(out_gate[:, None] * k_out.detach(), dim=0)
-        )
+        scale = torch.linalg.vector_norm(
+            in_gate[:, None] * k_in.detach(), dim=0
+        ) * torch.linalg.vector_norm(out_gate[:, None] * k_out.detach(), dim=0)
         self.synapses.set_mass_scale(scale, version=self.synapses.version)
         self._mass_signature = signature
         self._mass_sigmas = sigmas
@@ -194,7 +199,9 @@ class CSTLinear(nn.Module):
         if x.ndim == 0 or x.shape[-1] != self.in_features:
             raise ValueError("x's final dimension must equal the input neuron width")
         if g_out.ndim == 0 or g_out.shape[-1] != self.out_features:
-            raise ValueError("g_out's final dimension must equal the output neuron width")
+            raise ValueError(
+                "g_out's final dimension must equal the output neuron width"
+            )
         x_flat = x.detach().reshape(-1, self.in_features)
         g_flat = g_out.detach().reshape(-1, self.out_features)
         if x_flat.shape[0] != g_flat.shape[0]:
@@ -207,10 +214,9 @@ class CSTLinear(nn.Module):
             k_in, k_out = self._kernel_matrices(source, target)
             in_gate = self.in_neurons.gate_vector().to(x_flat)
             out_gate = self.out_neurons.gate_vector().to(g_flat)
-            return (
-                ((x_flat * in_gate) @ k_in)
-                * ((g_flat * out_gate) @ k_out)
-            ).sum(dim=0)
+            return (((x_flat * in_gate) @ k_in) * ((g_flat * out_gate) @ k_out)).sum(
+                dim=0
+            )
 
     def dense_weight(self) -> Tensor:
         """Materialize ``K_out diag(w) K_in.T`` solely for tests/debugging."""

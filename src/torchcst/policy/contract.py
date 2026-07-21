@@ -8,9 +8,16 @@ from typing import Any, Protocol, Sequence, runtime_checkable
 
 import torch
 
-from torchcst.storage import NeuronRetire, NeuronView, SynapseBirth, SynapseDeath, SynapseView
+from torchcst.storage import (
+    NeuronRetire,
+    NeuronView,
+    SynapseBirth,
+    SynapseDeath,
+    SynapseView,
+)
 
 from .bundle import BundleComposer, ProposalBundle, bundle_birth_count
+from .registry import RetiredCandidateRegistry
 
 
 @dataclass(frozen=True)
@@ -112,7 +119,7 @@ class OpProposer(Protocol):
         self,
         view: SynapseView,
         budget: int,
-        registry: Any,
+        registry: RetiredCandidateRegistry,
         rng: torch.Generator,
     ) -> tuple[SynapseBirth, ...]: ...
 

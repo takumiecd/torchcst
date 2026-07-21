@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Protocol
 
 import torch
 
@@ -16,7 +16,10 @@ from torchcst.storage import (
     SynapseDeath,
     SynapseKick,
     SynapseMerge,
+    SynapseView,
 )
+
+from .registry import RetiredCandidateRegistry
 
 
 Op = (
@@ -28,6 +31,19 @@ Op = (
     | NeuronRetire
     | NeuronKick
 )
+
+
+class IncidentProposer(Protocol):
+    """Proposer capability required by response bundle composition."""
+
+    def propose_incident(
+        self,
+        view: SynapseView,
+        budget: int,
+        target_id: int,
+        registry: RetiredCandidateRegistry,
+        rng: torch.Generator,
+    ) -> tuple[SynapseBirth, ...]: ...
 
 
 @dataclass(frozen=True)
@@ -51,9 +67,7 @@ def bundle_birth_count(bundle: ProposalBundle) -> int:
     """Return the schedule-priced synapse births carried by one bundle."""
     if not isinstance(bundle, ProposalBundle):
         raise TypeError("bundle must be a ProposalBundle")
-    return sum(
-        int(op.w.numel()) for op in bundle.ops if isinstance(op, SynapseBirth)
-    )
+    return sum(int(op.w.numel()) for op in bundle.ops if isinstance(op, SynapseBirth))
 
 
 @dataclass(frozen=True)
@@ -88,9 +102,9 @@ class BundleComposer:
         *,
         event_index: int,
         neuron_store: NeuronStore,
-        synapse_view: Any,
-        proposer: Any,
-        registry: Any,
+        synapse_view: SynapseView,
+        proposer: IncidentProposer,
+        registry: RetiredCandidateRegistry,
         rng: torch.Generator,
         neuron_id: int | None = None,
         birth_budget: int | None = None,
@@ -117,13 +131,12 @@ class BundleComposer:
                 synapse_view, self.incident_births, target, registry, rng
             )
         )
-        if sum(
-            int(op.w.numel()) for op in proposed if isinstance(op, SynapseBirth)
-        ) != self.incident_births:
+        if (
+            sum(int(op.w.numel()) for op in proposed if isinstance(op, SynapseBirth))
+            != self.incident_births
+        ):
             return None
-        bundle_id = (
-            f"{self.bundle_prefix}:{event_index}:{neuron_store.site}:{target}"
-        )
+        bundle_id = f"{self.bundle_prefix}:{event_index}:{neuron_store.site}:{target}"
         return ProposalBundle(
             bundle_id,
             (
