@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from torchcst.compute import RankOneLinear
@@ -11,18 +12,23 @@ from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseDeath, SynapseStore
 
 
-def _empty_parts(policy, seed: int = 13):
-    store = SynapseStore(
-        "rank", 2, 3, 1, spec=RepresentationSpec.rank_one(2, 3)
-    )
+def _empty_parts(policy, seed: int = 13, *, capture_mode="deferred"):
+    store = SynapseStore("rank", 2, 3, 1, spec=RepresentationSpec.rank_one(2, 3))
     module = RankOneLinear(store, 2, 3)
     engine = StructuralEngine(
-        {"rank": store}, policy, modules={"rank": module}, seed=seed
+        {"rank": store},
+        policy,
+        modules={"rank": module},
+        seed=seed,
+        capture_mode=capture_mode,
     )
     return store, module, engine
 
 
-def test_orthogonal_birth_avoids_scripted_dominant_output_direction() -> None:
+@pytest.mark.parametrize("capture_mode", ["deferred", "inline_reduced"])
+def test_orthogonal_birth_avoids_scripted_dominant_output_direction(
+    capture_mode: str,
+) -> None:
     anti_store, anti_module, anti = _empty_parts(
         LC_anti(
             event_interval=1,
@@ -31,7 +37,8 @@ def test_orthogonal_birth_avoids_scripted_dominant_output_direction() -> None:
             freeze_event=3,
             observe_window=1,
             certificate_rank=1,
-        )
+        ),
+        capture_mode=capture_mode,
     )
     anti.begin_update()
     x = torch.tensor([[1.0, 0.0]], requires_grad=True)

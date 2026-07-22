@@ -71,9 +71,22 @@ class CertificateSubspace:
     def update(self, observations: tuple[Observation, ...]) -> None:
         """Accumulate a finalized update's observations."""
         for observation in observations:
-            self.accumulate(
-                observation.x, observation.g_out, observation.micro_weight
-            )
+            self.accumulate(observation.x, observation.g_out, observation.micro_weight)
+
+    def update_reduced(self, contribution: Tensor) -> None:
+        """Accumulate one already-reduced ``g_out.T @ x`` contribution."""
+        if not isinstance(contribution, Tensor):
+            raise TypeError("contribution must be a Tensor")
+        if contribution.ndim != 2:
+            raise ValueError("reduced certificate contribution must be rank 2")
+        value = contribution.detach()
+        if self.G is None:
+            self.G = value.clone()
+        else:
+            if self.G.shape != value.shape:
+                raise ValueError("certificate contribution dimensions changed")
+            self.G = self.G.to(value) + value
+        self.G = self.G.detach()
 
     def snapshot(self) -> CertificateSnapshot:
         """Compute the only SVD in the lifecycle, immediately before an event."""
@@ -117,7 +130,10 @@ class CertificateSubspace:
         }
 
     def load_state_dict(self, state: Mapping[str, object]) -> None:
-        if not isinstance(state, Mapping) or state.get("schema") != "torchcst-certificate-subspace-v1":
+        if (
+            not isinstance(state, Mapping)
+            or state.get("schema") != "torchcst-certificate-subspace-v1"
+        ):
             raise ValueError("unsupported CertificateSubspace state schema")
         value = state.get("G")
         if value is not None and not isinstance(value, Tensor):

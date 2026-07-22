@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+import pytest
 import torch
 import torch.nn.functional as F
 
@@ -202,7 +203,8 @@ class _ObserveLiveAtoms:
         return ()
 
 
-def test_engine_capture_observes_unfolded_patch_rows() -> None:
+@pytest.mark.parametrize("capture_mode", ["deferred", "inline_reduced"])
+def test_engine_capture_observes_unfolded_patch_rows(capture_mode: str) -> None:
     store, _, conv = _parts()
     proposer = _ObserveLiveAtoms()
     policy = Policy(
@@ -222,6 +224,7 @@ def test_engine_capture_observes_unfolded_patch_rows() -> None:
         policy,
         modules={store.site: conv},
         optimizer=optimizer,
+        capture_mode=capture_mode,
     )
 
     x = torch.randn(2, 2, 7, 8, dtype=torch.float64)

@@ -20,6 +20,7 @@ from .representation import (
 from .policy import LC_merge, MergeProposer, ProfitCourt, TrialSession, TrialTransaction
 from .compute import (
     BackwardContext,
+    CaptureMode,
     ComputeLinear,
     CSTConv2d,
     CSTLinear,
@@ -73,6 +74,7 @@ __all__ = [
     "AuditRecord",
     "AuditSubscriber",
     "BackwardContext",
+    "CaptureMode",
     "Box",
     "CandidateField",
     "CertificateSnapshot",

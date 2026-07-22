@@ -1,6 +1,12 @@
 """CST compute modules, control families, and backward-capture primitives."""
 
-from .capture import BackwardContext, Observation
+from .capture import (
+    BackwardContext,
+    CaptureBatch,
+    CaptureMode,
+    Observation,
+    ReducedObservation,
+)
 from .cst_conv import CSTConv2d, conv2d_neuron_coordinates
 from .cst_linear import CSTLinear
 from .entry_linear import EntryLinear
@@ -11,6 +17,8 @@ ComputeLinear = CSTConv2d | CSTLinear | EntryLinear | NeuronGatedLinear | RankOn
 
 __all__ = [
     "BackwardContext",
+    "CaptureBatch",
+    "CaptureMode",
     "ComputeLinear",
     "CSTConv2d",
     "CSTLinear",
@@ -19,4 +27,5 @@ __all__ = [
     "NeuronGatedLinear",
     "Observation",
     "RankOneLinear",
+    "ReducedObservation",
 ]

@@ -12,7 +12,7 @@ from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseStore
 
 
-def _engine(policy):
+def _engine(policy, *, capture_mode="deferred"):
     store = SynapseStore(
         "entry",
         1,
@@ -32,12 +32,20 @@ def _engine(policy):
         ]
     )
     module = EntryLinear(store, 3, 2)
-    return store, module, StructuralEngine(
-        {"entry": store}, policy, modules={"entry": module}, seed=19
+    return (
+        store,
+        module,
+        StructuralEngine(
+            {"entry": store},
+            policy,
+            modules={"entry": module},
+            seed=19,
+            capture_mode=capture_mode,
+        ),
     )
 
 
-def _run(chunks: int):
+def _run(chunks: int, *, capture_mode="deferred"):
     policy = cRigL(
         event_interval=1,
         observe_window=1,
@@ -45,7 +53,7 @@ def _run(chunks: int):
         pool_size=99,
         decay=0.0,
     )
-    _, module, engine = _engine(policy)
+    _, module, engine = _engine(policy, capture_mode=capture_mode)
     x = torch.tensor(
         [[1.0, 2.0, 4.0], [3.0, -1.0, 2.0], [2.0, 1.0, -2.0], [0.0, 3.0, 1.0]]
     )
@@ -71,6 +79,17 @@ def test_abs_after_sum_is_gradient_accumulation_invariant() -> None:
     assert torch.equal(coords_one, coords_two)
     torch.testing.assert_close(scores_one, scores_two)
     assert log_one == log_two
+
+
+def test_deferred_and_inline_reduced_candidate_fields_are_identical() -> None:
+    deferred = _run(2, capture_mode="deferred")
+    inline = _run(2, capture_mode="inline_reduced")
+    (coords_deferred, scores_deferred), log_deferred = deferred
+    (coords_inline, scores_inline), log_inline = inline
+
+    assert torch.equal(coords_deferred, coords_inline)
+    torch.testing.assert_close(scores_deferred, scores_inline)
+    assert log_deferred == log_inline
 
 
 def test_scripted_gradient_selects_the_unique_large_coordinate() -> None:

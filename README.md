@@ -105,6 +105,24 @@ optimizer.step()
 applied_ops = engine.step()
 ```
 
+Backward capture is selectable globally or per site.  ``deferred`` keeps the
+detached module-boundary ``x``/``g_out`` tensors and reduces them in
+``finalize_backward()``; ``inline_reduced`` computes instrument sufficient
+statistics in the tensor hook and retains only the smaller reduced payload.
+The default remains ``deferred``.
+
+```python
+engine = StructuralEngine(
+    stores,
+    policy,
+    modules=modules,
+    capture_mode={
+        "large_conv": "inline_reduced",
+        "small_head": "deferred",
+    },
+)
+```
+
 The ordering is part of the API contract:
 
 ```text

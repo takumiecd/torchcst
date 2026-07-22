@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
+import pytest
 import torch
 
 from torchcst.compute import CSTLinear
@@ -86,13 +87,10 @@ def test_continuous_lifecycle_honors_immunity_rent_and_quiescence() -> None:
                 store.w.index_fill_(0, weak.to(store.w.device), 0.01)
         events.append(engine.step())
 
-    deaths = [
-        op
-        for event in events
-        for op in event
-        if isinstance(op, SynapseDeath)
-    ]
-    assert all(not any(isinstance(op, SynapseDeath) for op in event) for event in events[:4])
+    deaths = [op for event in events for op in event if isinstance(op, SynapseDeath)]
+    assert all(
+        not any(isinstance(op, SynapseDeath) for op in event) for event in events[:4]
+    )
     assert any(int(weak_lineage) in death.ids.tolist() for death in deaths)
     assert all(not event for event in events[5:])
 
@@ -137,7 +135,10 @@ class _GradFieldRequest:
         return ()
 
 
-def test_cst_capture_gradfield_matches_autograd_weight_gradient() -> None:
+@pytest.mark.parametrize("capture_mode", ["deferred", "inline_reduced"])
+def test_cst_capture_gradfield_matches_autograd_weight_gradient(
+    capture_mode: str,
+) -> None:
     store = _continuous_store()
     store.apply(
         [
@@ -175,10 +176,9 @@ def test_cst_capture_gradfield_matches_autograd_weight_gradient() -> None:
         {store.site: store, inputs.site: inputs, outputs.site: outputs},
         policy,
         modules={store.site: module},
+        capture_mode=capture_mode,
     )
-    x = torch.tensor(
-        [[1.0, -0.5, 2.0], [-1.0, 0.25, 0.75]], dtype=torch.float64
-    )
+    x = torch.tensor([[1.0, -0.5, 2.0], [-1.0, 0.25, 0.75]], dtype=torch.float64)
     upstream = torch.tensor([[0.5, -2.0], [1.5, 0.25]], dtype=torch.float64)
 
     engine.begin_update()

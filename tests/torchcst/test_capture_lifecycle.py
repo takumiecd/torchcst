@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchcst.compute import EntryLinear
+from torchcst.compute import BackwardContext, EntryLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import LC, cRigL
 from torchcst.representation import RepresentationSpec
@@ -56,9 +56,7 @@ def test_lc_and_periodic_window_exterior_register_no_hooks() -> None:
 
 
 def test_lifecycle_errors_and_queue_must_be_finalized_before_step() -> None:
-    _, module, engine = _parts(
-        cRigL(event_interval=1, observe_window=1, pool_size=4)
-    )
+    _, module, engine = _parts(cRigL(event_interval=1, observe_window=1, pool_size=4))
     with pytest.raises(RuntimeError, match="begin_update"):
         engine.observe_microbatch()
     with pytest.raises(RuntimeError, match="begin_update"):
@@ -74,9 +72,7 @@ def test_lifecycle_errors_and_queue_must_be_finalized_before_step() -> None:
 
 
 def test_inference_does_not_register_tensor_hook_inside_observation_window() -> None:
-    _, module, engine = _parts(
-        cRigL(event_interval=1, observe_window=1, pool_size=4)
-    )
+    _, module, engine = _parts(cRigL(event_interval=1, observe_window=1, pool_size=4))
     engine.begin_update()
     with torch.no_grad():
         output = module(torch.randn(2, 2))
@@ -85,3 +81,29 @@ def test_inference_does_not_register_tensor_hook_inside_observation_window() -> 
     engine.observe_microbatch()
     engine.finalize_backward()
 
+
+def test_backward_context_can_mix_deferred_and_inline_reduced_sites() -> None:
+    context = BackwardContext(
+        7,
+        reducers={
+            "inline": lambda _site, x, g_out, _version: {"dot": (x * g_out).sum(dim=0)}
+        },
+    )
+    x = torch.tensor([[1.0, 2.0]])
+    g_out = torch.tensor([[3.0, 4.0]])
+
+    context.queue("deferred", x, g_out, version=2)
+    context.queue("inline", x, g_out, version=3)
+    assert context.raw_queued == 1
+    assert context.reduced_queued == 1
+
+    context.observe_microbatch(weight=0.25)
+    capture = context.finalize_capture()
+    assert len(capture.observations) == 1
+    assert len(capture.reduced) == 1
+    assert capture.observations[0].site == "deferred"
+    assert capture.reduced[0].site == "inline"
+    torch.testing.assert_close(
+        capture.reduced[0].values["dot"], torch.tensor([3.0, 8.0])
+    )
+    assert capture.reduced[0].micro_weight == 0.25
