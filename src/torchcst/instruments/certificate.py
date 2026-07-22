@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import torch
 from torch import Tensor
 
 from torchcst.compute import Observation
 from torchcst.storage import SynapseStore
+
+from .base import WeightedMeasurement, weighted_sum
 
 
 class CertificateSnapshot(NamedTuple):
@@ -87,6 +89,30 @@ class CertificateSubspace:
                 raise ValueError("certificate contribution dimensions changed")
             self.G = self.G.to(value) + value
         self.G = self.G.detach()
+
+    def prepare(self, view: Any, module: Any) -> None:
+        """Certificate dimensions are stable; no per-update preparation is needed."""
+        del view, module
+
+    def measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
+        """Return one signed low-rank certificate contribution."""
+        del module
+        x_flat = x.detach().reshape(-1, x.shape[-1])
+        g_flat = g_out.detach().reshape(-1, g_out.shape[-1])
+        if x_flat.shape[0] != g_flat.shape[0]:
+            raise ValueError("captured x and g_out batch dimensions do not align")
+        return {"matrix": g_flat.transpose(0, 1) @ x_flat}
+
+    def finalize_update(
+        self,
+        measurements: tuple[WeightedMeasurement, ...],
+        view: Any,
+    ) -> None:
+        """Accumulate the weighted signed certificate at the update boundary."""
+        del view
+        contribution = weighted_sum(measurements, "matrix")
+        if contribution is not None:
+            self.update_reduced(contribution)
 
     def snapshot(self) -> CertificateSnapshot:
         """Compute the only SVD in the lifecycle, immediately before an event."""

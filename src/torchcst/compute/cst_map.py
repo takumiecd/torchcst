@@ -220,6 +220,54 @@ class _GaussianCSTMap(nn.Module):
                 dim=0
             )
 
+    def candidate_weight_grads(
+        self,
+        x: Tensor,
+        g_out: Tensor,
+        source: Tensor,
+        target: Tensor,
+        *,
+        chunk_size: int | None = None,
+    ) -> Tensor:
+        """Score zero-weight continuous candidates without mutating the store."""
+        if source.ndim != 2 or source.shape[1] != self.synapses.d_in:
+            raise ValueError("source candidates have the wrong coordinate shape")
+        if target.ndim != 2 or target.shape[1] != self.synapses.d_out:
+            raise ValueError("target candidates have the wrong coordinate shape")
+        if source.shape[0] != target.shape[0]:
+            raise ValueError("source and target candidate counts must match")
+        count = source.shape[0]
+        if chunk_size is None:
+            chunk_size = max(count, 1)
+        if isinstance(chunk_size, bool) or not isinstance(chunk_size, int):
+            raise TypeError("chunk_size must be an int or None")
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+
+        x_flat = x.detach().reshape(-1, self.in_features)
+        g_flat = g_out.detach().reshape(-1, self.out_features)
+        if x_flat.shape[0] != g_flat.shape[0]:
+            raise ValueError("captured x and g_out batch dimensions do not align")
+        source = source.detach().to(device=x_flat.device, dtype=x_flat.dtype)
+        target = target.detach().to(device=g_flat.device, dtype=g_flat.dtype)
+        in_gate = self.in_neurons.gate_vector().to(x_flat)
+        out_gate = self.out_neurons.gate_vector().to(g_flat)
+        values: list[Tensor] = []
+        with torch.no_grad():
+            for start in range(0, count, chunk_size):
+                stop = min(start + chunk_size, count)
+                k_in, k_out = self._kernel_matrices(
+                    source[start:stop], target[start:stop]
+                )
+                values.append(
+                    (((x_flat * in_gate) @ k_in) * ((g_flat * out_gate) @ k_out)).sum(
+                        dim=0
+                    )
+                )
+        if not values:
+            return self.synapses.w.detach().new_zeros(0).to(x_flat)
+        return torch.cat(values)
+
     def dense_weight(self) -> Tensor:
         """Materialize ``K_out diag(w) K_in.T`` for diagnostics or fast paths."""
         self._view()

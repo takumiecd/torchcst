@@ -9,6 +9,7 @@ from .contract import (
     EvenBudgetAllocator,
     EventDirective,
     InstrumentSpec,
+    ObservationRequest,
     OpProposer,
     Phase,
     Policy,
@@ -26,6 +27,7 @@ from .proposers import (
 )
 from .profit import ProfitCourt, TrialSession, TrialTransaction
 from .registry import RetiredCandidateRegistry
+from .scored import ScoredBirth, TopKSelector
 from .schedules import BirthWindowSchedule, PeriodicSchedule, ResponseWindow
 
 __all__ = [
@@ -40,6 +42,7 @@ __all__ = [
     "GradFieldTopKBirth",
     "GrowthByProfit",
     "InstrumentSpec",
+    "ObservationRequest",
     "IncidentOutputBirth",
     "LC",
     "LC_anti",
@@ -60,8 +63,10 @@ __all__ = [
     "RetentionCourt",
     "RetiredCandidateRegistry",
     "Schedule",
+    "ScoredBirth",
     "TrialSession",
     "TrialTransaction",
+    "TopKSelector",
     "UniformEntryBirth",
     "UniformBirth",
     "cSET",

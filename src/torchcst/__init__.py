@@ -17,7 +17,15 @@ from .representation import (
     RepresentationSpec,
     Sphere,
 )
-from .policy import LC_merge, MergeProposer, ProfitCourt, TrialSession, TrialTransaction
+from .policy import (
+    LC_merge,
+    MergeProposer,
+    ProfitCourt,
+    ScoredBirth,
+    TopKSelector,
+    TrialSession,
+    TrialTransaction,
+)
 from .compute import (
     BackwardContext,
     CaptureMode,
@@ -32,9 +40,13 @@ from .compute import (
 )
 from .instruments import (
     CandidateField,
+    CandidateSnapshot,
     CertificateSnapshot,
     CertificateSubspace,
+    ContinuousGradientRequest,
+    ContinuousGradientScores,
     GradFieldEMA,
+    InstrumentBuildContext,
 )
 from .storage import (
     AgeColumn,
@@ -77,9 +89,12 @@ __all__ = [
     "CaptureMode",
     "Box",
     "CandidateField",
+    "CandidateSnapshot",
     "CertificateSnapshot",
     "CertificateSubspace",
     "CoordinateDomain",
+    "ContinuousGradientRequest",
+    "ContinuousGradientScores",
     "ComputeLinear",
     "CSTConv2d",
     "CSTLinear",
@@ -93,6 +108,7 @@ __all__ = [
     "GaussianKernel",
     "IdAllocator",
     "IntegerGrid",
+    "InstrumentBuildContext",
     "LineageColumn",
     "LC_merge",
     "LossRecord",
@@ -111,6 +127,7 @@ __all__ = [
     "OptimizerStateFollower",
     "RankOneLinear",
     "RentMargin",
+    "ScoredBirth",
     "ProfitCourt",
     "RETIRED",
     "RepresentationSpec",
@@ -124,6 +141,7 @@ __all__ = [
     "StructuralEngine",
     "Sphere",
     "Ticket",
+    "TopKSelector",
     "TrialSession",
     "TrialTransaction",
     "commit_all",

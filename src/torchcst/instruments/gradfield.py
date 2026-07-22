@@ -12,6 +12,8 @@ from torch import Tensor
 from torchcst.policy.registry import RetiredCandidateRegistry
 from torchcst.storage import SynapseStore, SynapseView
 
+from .base import WeightedMeasurement, weighted_sum
+
 
 def _bounds(
     value: int | tuple[int, ...] | None, width: int, name: str
@@ -85,6 +87,25 @@ class GradFieldEMA:
                 + (1.0 - self.decay) * samples[position]
             ).detach()
 
+    def prepare(self, view: SynapseView, module: Any) -> None:
+        """Reconcile entity IDs before an observed forward."""
+        del module
+        self.reconcile(view)
+
+    def measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
+        """Measure signed live-atom gradients through the compute capability."""
+        return {"gradient": module.atom_grads(x, g_out)}
+
+    def finalize_update(
+        self,
+        measurements: tuple[WeightedMeasurement, ...],
+        view: SynapseView,
+    ) -> None:
+        """Apply abs-after-sum EMA at the explicit update boundary."""
+        gradient = weighted_sum(measurements, "gradient")
+        if gradient is not None:
+            self.update(gradient, view)
+
     def snapshot(self) -> tuple[Tensor, Tensor]:
         view = self.reconcile()
         ids = view.ids.detach().clone()
@@ -111,15 +132,17 @@ class GradFieldEMA:
         }
 
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
-        if not isinstance(state, Mapping) or state.get("schema") != "torchcst-grad-field-ema-v1":
+        if (
+            not isinstance(state, Mapping)
+            or state.get("schema") != "torchcst-grad-field-ema-v1"
+        ):
             raise ValueError("unsupported GradFieldEMA state schema")
         raw = state.get("state")
         if not isinstance(raw, Mapping):
             raise TypeError("GradFieldEMA state must be a mapping")
         self._version = int(state["version"])
         self._state = {
-            int(entity_id): score.detach().clone()
-            for entity_id, score in raw.items()
+            int(entity_id): score.detach().clone() for entity_id, score in raw.items()
         }
 
 
@@ -256,6 +279,35 @@ class CandidateField:
             self.decay * self._scores + (1.0 - self.decay) * samples
         ).detach()
 
+    def prepare(self, view: SynapseView, module: Any) -> None:
+        """Keep one candidate set until structural state changes."""
+        del module
+        self.reconcile(view)
+
+    def measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
+        """Measure signed gradients for the current discrete candidate set."""
+        del module
+        x_flat = x.detach().reshape(-1, x.shape[-1])
+        g_flat = g_out.detach().reshape(-1, g_out.shape[-1])
+        if x_flat.shape[0] != g_flat.shape[0]:
+            raise ValueError("captured x and g_out batch dimensions do not align")
+        source = self._s[:, 0].to(device=x_flat.device)
+        target = self._t[:, 0].to(device=g_flat.device)
+        gradient = (
+            x_flat.index_select(1, source) * g_flat.index_select(1, target)
+        ).sum(dim=0)
+        return {"gradient": gradient}
+
+    def finalize_update(
+        self,
+        measurements: tuple[WeightedMeasurement, ...],
+        view: SynapseView,
+    ) -> None:
+        """Apply abs-after-sum EMA at the explicit update boundary."""
+        gradient = weighted_sum(measurements, "gradient")
+        if gradient is not None:
+            self.update(gradient, view)
+
     def snapshot(self) -> tuple[Tensor, Tensor]:
         self.reconcile()
         coordinates = torch.cat((self._s, self._t), dim=1)
@@ -273,12 +325,14 @@ class CandidateField:
         }
 
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
-        if not isinstance(state, Mapping) or state.get("schema") != "torchcst-candidate-field-v1":
+        if (
+            not isinstance(state, Mapping)
+            or state.get("schema") != "torchcst-candidate-field-v1"
+        ):
             raise ValueError("unsupported CandidateField state schema")
         self._version = int(state["version"])
         self._registry_state = frozenset(
-            (str(site), int(lineage))
-            for site, lineage in state["registry_state"]
+            (str(site), int(lineage)) for site, lineage in state["registry_state"]
         )
         for target, name in (
             ("_s", "s"),

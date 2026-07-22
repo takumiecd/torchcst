@@ -101,6 +101,18 @@ class InstrumentSpec:
 
 
 @runtime_checkable
+class ObservationRequest(Protocol):
+    """Third-party factory request for one engine-owned capture instrument."""
+
+    name: str
+
+    def build(self, context: Any) -> Any: ...
+
+
+InstrumentRequirement = InstrumentSpec | ObservationRequest
+
+
+@runtime_checkable
 class Schedule(Protocol):
     """Clock-only structural event source."""
 
@@ -223,7 +235,7 @@ class Policy:
     neuron_retention: RetentionCourt | None = None
 
     @property
-    def requires(self) -> tuple[InstrumentSpec, ...]:
+    def requires(self) -> tuple[InstrumentRequirement, ...]:
         """Deduplicate every component's requests while preserving order."""
         components = (
             self.schedule,
@@ -234,13 +246,19 @@ class Policy:
             self.profit,
             self.neuron_retention,
         )
-        result: list[InstrumentSpec] = []
+        result: list[InstrumentRequirement] = []
         for component in components:
             if component is None:
                 continue
             requested = tuple(getattr(component, "requires", ()))
-            if not all(isinstance(spec, InstrumentSpec) for spec in requested):
-                raise TypeError("component requires must contain InstrumentSpec values")
+            if not all(
+                isinstance(spec, (InstrumentSpec, ObservationRequest))
+                for spec in requested
+            ):
+                raise TypeError(
+                    "component requires must contain InstrumentSpec or "
+                    "ObservationRequest values"
+                )
             for spec in requested:
                 if spec not in result:
                     result.append(spec)

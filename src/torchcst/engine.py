@@ -16,11 +16,17 @@ from torchcst.compute import (
     CSTLinear,
     EntryLinear,
     NeuronGatedLinear,
-    Observation,
     RankOneLinear,
-    ReducedObservation,
 )
-from torchcst.instruments import CandidateField, CertificateSubspace, GradFieldEMA
+from torchcst.instruments import (
+    CandidateField,
+    CaptureInstrument,
+    CertificateSubspace,
+    GradFieldEMA,
+    InstrumentBuildContext,
+    WeightedMeasurement,
+    checked_measurement,
+)
 from torchcst.optim import OptimizerStateFollower
 from torchcst.storage import (
     NeuronKick,
@@ -42,6 +48,7 @@ from .policy.contract import (
     Clock,
     EventDirective,
     InstrumentSpec,
+    InstrumentRequirement,
     Phase,
     Policy,
 )
@@ -127,9 +134,6 @@ class StructuralEngine:
         self._backward_context: BackwardContext | None = None
         self._capture_active = False
         self._backward_finalized = False
-        self._inline_candidate_coordinates: dict[
-            tuple[str, str], tuple[torch.Tensor, torch.Tensor]
-        ] = {}
         self._audit_subscribers: list[AuditSubscriber] = []
         for subscriber in () if audit_subscribers is None else audit_subscribers:
             self.subscribe_audit(subscriber)
@@ -219,10 +223,34 @@ class StructuralEngine:
             getattr(module, "out_neurons", None),
         )
 
+    def _build_legacy_instrument(
+        self,
+        spec: InstrumentSpec,
+        store: SynapseStore,
+        module: ComputeLinear | None,
+    ) -> CaptureInstrument:
+        """Build a catalog instrument while old string specs remain supported."""
+        name = spec.name
+        if name in {"grad_field", "grad_field_ema", "GradFieldEMA"}:
+            return GradFieldEMA(store, decay=spec.decay)
+        if name in {"candidate_field", "CandidateField"}:
+            return CandidateField(
+                store,
+                self.registry,
+                rng=self.rng,
+                pool_size=spec.pool_size,
+                decay=spec.decay,
+                bounds_in=(module.in_features,) if module is not None else None,
+                bounds_out=(module.out_features,) if module is not None else None,
+            )
+        if name in {"certificate_subspace", "CertificateSubspace"}:
+            return CertificateSubspace(store, rank=spec.rank)
+        raise ValueError(f"unknown legacy instrument {name!r}")
+
     def _make_instruments(
-        self, specs: tuple[InstrumentSpec, ...]
-    ) -> dict[str, dict[str, object]]:
-        by_name: dict[str, InstrumentSpec] = {}
+        self, specs: tuple[InstrumentRequirement, ...]
+    ) -> dict[str, dict[str, CaptureInstrument]]:
+        by_name: dict[str, InstrumentRequirement] = {}
         for spec in specs:
             current = by_name.get(spec.name)
             if current is not None and current != spec:
@@ -230,30 +258,30 @@ class StructuralEngine:
                     f"conflicting requirements for instrument {spec.name!r}"
                 )
             by_name[spec.name] = spec
-        result: dict[str, dict[str, object]] = {
+        result: dict[str, dict[str, CaptureInstrument]] = {
             site: {} for site in self.synapse_stores
         }
         for site, store in self.synapse_stores.items():
             module = self.modules.get(site)
             for name, spec in by_name.items():
-                if name in {"grad_field", "grad_field_ema", "GradFieldEMA"}:
-                    instrument: object = GradFieldEMA(store, decay=spec.decay)
-                elif name in {"candidate_field", "CandidateField"}:
-                    instrument = CandidateField(
-                        store,
-                        self.registry,
-                        rng=self.rng,
-                        pool_size=spec.pool_size,
-                        decay=spec.decay,
-                        bounds_in=(module.in_features,) if module is not None else None,
-                        bounds_out=(module.out_features,)
-                        if module is not None
-                        else None,
-                    )
-                elif name in {"certificate_subspace", "CertificateSubspace"}:
-                    instrument = CertificateSubspace(store, rank=spec.rank)
+                if isinstance(spec, InstrumentSpec):
+                    instrument = self._build_legacy_instrument(spec, store, module)
                 else:
-                    raise ValueError(f"unknown instrument {name!r}")
+                    instrument = spec.build(
+                        InstrumentBuildContext(
+                            site=site,
+                            store=store,
+                            module=module,
+                            registry=self.registry,
+                            rng=self.rng,
+                        )
+                    )
+                if not isinstance(instrument, CaptureInstrument):
+                    raise TypeError(
+                        f"instrument request {name!r} returned an invalid instrument"
+                    )
+                if not isinstance(instrument.name, str) or not instrument.name:
+                    raise ValueError("instrument name must be a non-empty string")
                 result[site][name] = instrument
                 result[site].setdefault(instrument.name, instrument)
         return result
@@ -305,48 +333,28 @@ class StructuralEngine:
                 f"instrument {name!r} is not required at site {site!r}"
             ) from exc
 
-    def _prepare_inline_reducers(self) -> dict[str, Callable]:
-        """Freeze hook-time instrument inputs before the observed forward."""
-        self._inline_candidate_coordinates.clear()
+    @staticmethod
+    def _measurement_key(instrument: str, component: str) -> str:
+        return f"{instrument}\x1f{component}"
+
+    @staticmethod
+    def _unique_instruments(
+        instruments: Mapping[str, CaptureInstrument],
+    ) -> tuple[CaptureInstrument, ...]:
+        return tuple(dict.fromkeys(instruments.values()))
+
+    def _prepare_capture(self) -> dict[str, Callable]:
+        """Prepare every instrument and return reducers for inline sites."""
         reducers: dict[str, Callable] = {}
         for site, mode in self.capture_modes.items():
-            if mode is not CaptureMode.INLINE_REDUCED:
-                continue
             store = self.synapse_stores[site]
             view = store.view()
-            for instrument in dict.fromkeys(self.instruments[site].values()):
-                if isinstance(instrument, GradFieldEMA):
-                    instrument.reconcile(view)
-                elif isinstance(instrument, CandidateField):
-                    instrument.reconcile(view)
-                    self._inline_candidate_coordinates[(site, instrument.name)] = (
-                        instrument.coordinates()
-                    )
-            reducers[site] = self._reduce_inline_capture
+            module = self.modules[site]
+            for instrument in self._unique_instruments(self.instruments[site]):
+                instrument.prepare(view, module)
+            if mode is CaptureMode.INLINE_REDUCED:
+                reducers[site] = self._reduce_inline_capture
         return reducers
-
-    @staticmethod
-    def _coordinate_gradient_tensors(
-        x: torch.Tensor,
-        g_out: torch.Tensor,
-        source: torch.Tensor,
-        target: torch.Tensor,
-    ) -> torch.Tensor:
-        x = x.reshape(-1, x.shape[-1])
-        g_out = g_out.reshape(-1, g_out.shape[-1])
-        if x.shape[0] != g_out.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
-        s = source[:, 0].to(device=x.device)
-        t = target[:, 0].to(device=g_out.device)
-        return (x.index_select(1, s) * g_out.index_select(1, t)).sum(dim=0)
-
-    @staticmethod
-    def _certificate_tensor(x: torch.Tensor, g_out: torch.Tensor) -> torch.Tensor:
-        x = x.reshape(-1, x.shape[-1])
-        g_out = g_out.reshape(-1, g_out.shape[-1])
-        if x.shape[0] != g_out.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
-        return g_out.transpose(0, 1) @ x
 
     def _reduce_inline_capture(
         self,
@@ -362,19 +370,10 @@ class StructuralEngine:
         module = self.modules[site]
         values: dict[str, torch.Tensor] = {}
         with torch.no_grad():
-            for instrument in dict.fromkeys(self.instruments[site].values()):
-                if isinstance(instrument, GradFieldEMA):
-                    value = module.atom_grads(x, g_out)
-                elif isinstance(instrument, CandidateField):
-                    source, target = self._inline_candidate_coordinates[
-                        (site, instrument.name)
-                    ]
-                    value = self._coordinate_gradient_tensors(x, g_out, source, target)
-                elif isinstance(instrument, CertificateSubspace):
-                    value = self._certificate_tensor(x, g_out)
-                else:  # pragma: no cover - guarded when instruments are built.
-                    raise TypeError(f"unsupported capture instrument {instrument!r}")
-                values[instrument.name] = value.detach()
+            for instrument in self._unique_instruments(self.instruments[site]):
+                measurement = checked_measurement(instrument.measure(module, x, g_out))
+                for component, value in measurement.items():
+                    values[self._measurement_key(instrument.name, component)] = value
         return values
 
     def begin_update(self) -> int:
@@ -386,7 +385,7 @@ class StructuralEngine:
         self._capture_active = bool(self.policy.requires) and bool(
             self.policy.schedule.observing(candidate)
         )
-        reducers = self._prepare_inline_reducers() if self._capture_active else {}
+        reducers = self._prepare_capture() if self._capture_active else {}
         self._active_update_id = update_id
         self._backward_context = BackwardContext(update_id, reducers=reducers)
         self._backward_finalized = False
@@ -403,68 +402,39 @@ class StructuralEngine:
             raise RuntimeError("backward has already been finalized")
         self._backward_context.observe_microbatch(weight)
 
-    @staticmethod
-    def _coordinate_gradient(
-        observations: tuple[Observation, ...],
-        source: torch.Tensor,
-        target: torch.Tensor,
-    ) -> torch.Tensor:
-        result: torch.Tensor | None = None
-        for observation in observations:
-            contribution = StructuralEngine._coordinate_gradient_tensors(
-                observation.x, observation.g_out, source, target
-            )
-            contribution = contribution * observation.micro_weight
-            if result is None:
-                result = contribution
-            else:
-                result = result.to(contribution) + contribution
-        if result is None:
-            return torch.zeros(
-                source.shape[0],
-                device=source.device,
-                dtype=torch.get_default_dtype(),
-            )
-        return result
-
-    @staticmethod
-    def _atom_gradient(
-        observations: tuple[Observation, ...],
+    def _instrument_measurements(
+        self,
+        instrument: CaptureInstrument,
         module: ComputeLinear,
-    ) -> torch.Tensor:
-        """Sum module-provided live-atom gradients before absolute-value EMA."""
-        result: torch.Tensor | None = None
-        for observation in observations:
-            contribution = module.atom_grads(observation.x, observation.g_out)
-            contribution = contribution * observation.micro_weight
-            result = (
-                contribution
-                if result is None
-                else result.to(contribution) + contribution
-            )
-        if result is None:
-            return module.store.w.detach().new_zeros(module.store.view().ids.numel())
-        return result
+        raw: tuple[Any, ...],
+        reduced: tuple[Any, ...],
+    ) -> tuple[WeightedMeasurement, ...]:
+        """Normalize deferred and inline observations to one instrument API."""
+        result: list[WeightedMeasurement] = []
+        with torch.no_grad():
+            for observation in raw:
+                values = checked_measurement(
+                    instrument.measure(module, observation.x, observation.g_out)
+                )
+                result.append(WeightedMeasurement(values, observation.micro_weight))
 
-    @staticmethod
-    def _summed_reduced_value(
-        observations: tuple[ReducedObservation, ...], name: str
-    ) -> torch.Tensor | None:
-        result: torch.Tensor | None = None
-        for observation in observations:
-            try:
-                value = observation.values[name]
-            except KeyError as exc:
+        prefix = self._measurement_key(instrument.name, "")
+        for observation in reduced:
+            values = {
+                key[len(prefix) :]: value
+                for key, value in observation.values.items()
+                if key.startswith(prefix)
+            }
+            if not values:
                 raise RuntimeError(
-                    f"inline capture omitted required instrument {name!r}"
-                ) from exc
-            contribution = value * observation.micro_weight
-            result = (
-                contribution
-                if result is None
-                else result.to(contribution) + contribution
+                    f"inline capture omitted instrument {instrument.name!r}"
+                )
+            result.append(
+                WeightedMeasurement(
+                    checked_measurement(values), observation.micro_weight
+                )
             )
-        return result
+        return tuple(result)
 
     def finalize_backward(self) -> None:
         """Apply abs-after-sum update aggregates and release captured tensors."""
@@ -509,43 +479,15 @@ class StructuralEngine:
             view = store.view()
             site_observations = by_site[site]
             site_reduced = reduced_by_site[site]
-            for instrument in dict.fromkeys(site_instruments.values()):
-                if isinstance(instrument, GradFieldEMA):
-                    instrument.reconcile(view)
-                    if site_observations:
-                        gradient = self._atom_gradient(
-                            site_observations, self.modules[site]
-                        )
-                        instrument.update(gradient, view)
-                    elif site_reduced:
-                        gradient = self._summed_reduced_value(
-                            site_reduced, instrument.name
-                        )
-                        assert gradient is not None
-                        instrument.update(gradient, view)
-                elif isinstance(instrument, CandidateField):
-                    instrument.reconcile(view)
-                    if site_observations:
-                        source, target = instrument.coordinates()
-                        gradient = self._coordinate_gradient(
-                            site_observations, source, target
-                        )
-                        instrument.update(gradient, view)
-                    elif site_reduced:
-                        gradient = self._summed_reduced_value(
-                            site_reduced, instrument.name
-                        )
-                        assert gradient is not None
-                        instrument.update(gradient, view)
-                elif isinstance(instrument, CertificateSubspace):
-                    if site_observations:
-                        instrument.update(site_observations)
-                    elif site_reduced:
-                        contribution = self._summed_reduced_value(
-                            site_reduced, instrument.name
-                        )
-                        assert contribution is not None
-                        instrument.update_reduced(contribution)
+            for instrument in self._unique_instruments(site_instruments):
+                measurements = self._instrument_measurements(
+                    instrument,
+                    self.modules[site],
+                    site_observations,
+                    site_reduced,
+                )
+                if measurements:
+                    instrument.finalize_update(measurements, view)
         self._backward_finalized = True
 
     def _close_update(self) -> None:
@@ -557,7 +499,6 @@ class StructuralEngine:
         self._backward_context = None
         self._capture_active = False
         self._backward_finalized = False
-        self._inline_candidate_coordinates.clear()
 
     @staticmethod
     def _ages(
