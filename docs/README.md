@@ -13,15 +13,12 @@ current API documentation.
 
 ## Historical decision records
 
-- [`architecture_workbench.md`](architecture_workbench.md) — early lifecycle
-  alternatives and responsibility-boundary exploration.
-- [`policy_engine_mvp_rfc.md`](policy_engine_mvp_rfc.md) — pre-v4 Global Policy
-  RFC. Names such as `UpdateRequest`, `MutationPlan`, and older `CSTEngine`
-  sketches are not current APIs.
-- [`cst_policy_embedding.md`](cst_policy_embedding.md) — feasibility exercise
-  written against that pre-v4 RFC.
 - [`reviews/winning_recipe_v3_review_gpt56sol.md`](reviews/winning_recipe_v3_review_gpt56sol.md)
   — adversarial review of v3; its blocking findings were inputs to v4.
+
+Earlier pre-v4 notes (`architecture_workbench.md`, `policy_engine_mvp_rfc.md`,
+`cst_policy_embedding.md`) were removed; their conclusions are folded into
+`winning_recipe_design.md` and remain recoverable from git history.
 
 For usage, installation, supported features, and the live update order, use the
 repository [`README`](../README.md).
