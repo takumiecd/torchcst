@@ -115,7 +115,8 @@ class LC(_PolicyAdapter):
                         self.birth_end_event,
                         StructuralQuota(synapse_birth=self.birth_budget),
                     ),
-                )
+                ),
+                default=StructuralQuota(),
             ),
             actions=(
                 ActionSpec.synapse_prune(
@@ -171,7 +172,8 @@ class LC_anti(_PolicyAdapter):
                         self.birth_end_event,
                         StructuralQuota(synapse_birth=self.birth_budget),
                     ),
-                )
+                ),
+                default=StructuralQuota(),
             ),
             actions=(
                 ActionSpec.synapse_prune(
@@ -252,7 +254,8 @@ class LC_response(_PolicyAdapter):
                             neuron_birth=self.response_ungates_per_event,
                         ),
                     ),
-                )
+                ),
+                default=StructuralQuota(),
             ),
             actions=(
                 ActionSpec.synapse_prune(retention),
@@ -303,7 +306,8 @@ class LC_merge(_PolicyAdapter):
                         self.birth_end_event,
                         StructuralQuota(synapse_merge=self.birth_budget),
                     ),
-                )
+                ),
+                default=StructuralQuota(),
             ),
             actions=(
                 ActionSpec.synapse_prune(

@@ -260,7 +260,11 @@ class EvenBudgetDistributor:
         while remaining:
             progressed = False
             for index, request in enumerate(requests):
-                cap = request.replacement_count if self.replacement_only else budget
+                cap = (
+                    request.replacement_count
+                    if self.replacement_only or request.kind.endswith("_prune")
+                    else budget
+                )
                 if allocations[index] >= cap:
                     continue
                 allocations[index] += 1

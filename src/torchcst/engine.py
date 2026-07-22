@@ -48,6 +48,7 @@ from torchcst.storage import (
 )
 from .policy.bundle import Op, ProposalBundle, bundle_birth_count
 from .policy.contract import (
+    ActionKind,
     BudgetRequest,
     Clock,
     EventDirective,
@@ -1139,8 +1140,65 @@ class StructuralEngine:
                 "finalize_backward() must release the capture queue before step()"
             )
 
+    @staticmethod
+    def _take_retention(
+        operations: tuple[SynapseDeath, ...] | tuple[NeuronRetire, ...],
+        count: int,
+    ) -> tuple[SynapseDeath, ...] | tuple[NeuronRetire, ...]:
+        """Take at most ``count`` entity deaths without changing court order."""
+        selected: list[SynapseDeath | NeuronRetire] = []
+        remaining = count
+        for operation in operations:
+            if remaining == 0:
+                break
+            ids = operation.ids[:remaining]
+            if ids.numel():
+                selected.append(type(operation)(operation.site, ids))
+                remaining -= ids.numel()
+        return tuple(selected)
+
+    def _cap_retention(
+        self,
+        decisions: dict[str, tuple[SynapseDeath, ...]]
+        | dict[str, tuple[NeuronRetire, ...]],
+        budget: int | None,
+        kind: str,
+    ) -> dict[str, tuple[SynapseDeath, ...]] | dict[str, tuple[NeuronRetire, ...]]:
+        """Distribute and enforce an optional logical prune limit."""
+        if budget is None:
+            return decisions
+        requests = tuple(
+            BudgetRequest(
+                site=site,
+                proposer_index=0,
+                replacement_count=sum(op.ids.numel() for op in operations),
+                kind=kind,
+            )
+            for site, operations in decisions.items()
+            if operations
+        )
+        grants = self.policy.active_distributor.allocate(budget, requests)
+        valid = (
+            len(grants) == len(requests)
+            and all(
+                not isinstance(value, bool)
+                and isinstance(value, int)
+                and 0 <= value <= request.replacement_count
+                for value, request in zip(grants, requests)
+            )
+            and sum(grants) <= budget
+        )
+        if not valid:
+            raise RuntimeError(f"distributor exceeded the {kind!r} structural quota")
+        by_site = dict(zip((request.site for request in requests), grants))
+        return {
+            site: self._take_retention(operations, by_site.get(site, 0))
+            for site, operations in decisions.items()
+        }
+
     def _decide_retention(
         self,
+        quota: StructuralQuota,
     ) -> tuple[tuple[Op, ...], dict[str, tuple[SynapseDeath, ...]]]:
         """Collect and validate all court decisions for the current event."""
         views = {site: store.view() for site, store in self.synapse_stores.items()}
@@ -1161,6 +1219,9 @@ class StructuralEngine:
                 raise TypeError("retention court may return only SynapseDeath")
             self._check_immunity(store, decided, immunity_events)
             deaths[site] = decided
+        deaths = self._cap_retention(
+            deaths, quota.synapse_prune, ActionKind.SYNAPSE_PRUNE.value
+        )
 
         neuron_deaths: dict[str, tuple[NeuronRetire, ...]] = {
             site: () for site in self.neuron_stores
@@ -1177,6 +1238,9 @@ class StructuralEngine:
                     raise TypeError("neuron retention may return only NeuronRetire")
                 self._check_immunity(store, decided, neuron_immunity)
                 neuron_deaths[site] = decided
+        neuron_deaths = self._cap_retention(
+            neuron_deaths, quota.neuron_prune, ActionKind.NEURON_PRUNE.value
+        )
 
         retention_ops = tuple(
             op
@@ -1261,7 +1325,7 @@ class StructuralEngine:
         polish: Callable[[], None] | None,
     ) -> tuple[Op, ...]:
         """Run retention, proposal adjudication, and optional response in order."""
-        retention_ops, deaths = self._decide_retention()
+        retention_ops, deaths = self._decide_retention(quota)
         applied = list(self._apply_atomic_unit(retention_ops))
         proposed_ops = self._propose_standard_ops(signal, quota, deaths)
 

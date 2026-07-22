@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .contract import Clock, Phase, StructuralQuota
 
@@ -51,15 +51,18 @@ class QuotaWindow:
 
 @dataclass(frozen=True)
 class WindowedQuota:
-    """Select the first matching event window, otherwise return zero supply."""
+    """Select the first matching event window, otherwise return ``default``."""
 
     windows: tuple[QuotaWindow, ...]
+    default: StructuralQuota = field(default_factory=StructuralQuota.zero)
 
     def __post_init__(self) -> None:
         if not isinstance(self.windows, tuple):
             raise TypeError("windows must be a tuple")
         if not all(isinstance(window, QuotaWindow) for window in self.windows):
             raise TypeError("windows must contain QuotaWindow values")
+        if not isinstance(self.default, StructuralQuota):
+            raise TypeError("default must be a StructuralQuota")
         for index, left in enumerate(self.windows):
             for right in self.windows[index + 1 :]:
                 if max(left.start_event, right.start_event) <= min(
@@ -73,7 +76,7 @@ class WindowedQuota:
         for window in self.windows:
             if window.contains(clock.event_index):
                 return window.quota
-        return StructuralQuota.zero()
+        return self.default
 
 
 @dataclass(frozen=True)

@@ -20,7 +20,13 @@ from torchcst.policy import (
 )
 from torchcst.policy.contract import Clock
 from torchcst.representation import RepresentationSpec
-from torchcst.storage import SynapseBirth, SynapseDeath, SynapseStore
+from torchcst.storage import (
+    NeuronRetire,
+    NeuronStore,
+    SynapseBirth,
+    SynapseDeath,
+    SynapseStore,
+)
 
 
 def test_cadence_signal_contains_no_structural_supply() -> None:
@@ -113,3 +119,102 @@ def test_replacement_reuses_slot_under_new_policy_api() -> None:
     assert store.capacity == 1
     assert torch.equal(store._slots.slots_of(store.live_ids()), old_slot)
     assert not torch.equal(store.live_ids(), old_id)
+
+
+def test_synapse_prune_quota_caps_court_decision() -> None:
+    store = SynapseStore(
+        "edge",
+        1,
+        1,
+        capacity=4,
+        spec=RepresentationSpec.entry(bounds_in=1, bounds_out=4),
+    )
+    store.apply(
+        [
+            SynapseBirth(
+                store.site,
+                torch.zeros((4, 1), dtype=torch.int64),
+                torch.arange(4, dtype=torch.int64)[:, None],
+                torch.arange(1, 5, dtype=torch.float32),
+                torch.arange(4, dtype=torch.int64),
+            )
+        ]
+    )
+    policy = Policy(
+        cadence=PeriodicCadence(event_interval=1),
+        quota=ConstantQuota(StructuralQuota(synapse_prune=2)),
+        actions=(ActionSpec.synapse_prune(MagnitudeCourt(1.0)),),
+        distributor=EvenBudgetDistributor(),
+    )
+
+    operations = StructuralEngine({store.site: store}, policy).step()
+
+    deaths = [
+        operation
+        for operation in operations
+        if isinstance(operation, SynapseDeath)
+    ]
+    assert sum(operation.ids.numel() for operation in deaths) == 2
+    assert store.live_ids().numel() == 2
+
+
+def test_unbounded_prune_quota_preserves_court_decision() -> None:
+    store = SynapseStore(
+        "edge",
+        1,
+        1,
+        capacity=2,
+        spec=RepresentationSpec.entry(bounds_in=1, bounds_out=2),
+    )
+    store.apply(
+        [
+            SynapseBirth(
+                store.site,
+                torch.zeros((2, 1), dtype=torch.int64),
+                torch.arange(2, dtype=torch.int64)[:, None],
+                torch.ones(2),
+                torch.arange(2, dtype=torch.int64),
+            )
+        ]
+    )
+    policy = Policy(
+        cadence=PeriodicCadence(event_interval=1),
+        quota=ConstantQuota(StructuralQuota()),
+        actions=(ActionSpec.synapse_prune(MagnitudeCourt(1.0)),),
+        distributor=EvenBudgetDistributor(),
+    )
+
+    StructuralEngine({store.site: store}, policy).step()
+
+    assert store.live_ids().numel() == 0
+
+
+def test_neuron_prune_quota_caps_court_decision() -> None:
+    synapses = SynapseStore(
+        "edge",
+        1,
+        1,
+        capacity=0,
+        spec=RepresentationSpec.entry(bounds_in=1, bounds_out=3),
+    )
+    neurons = NeuronStore("outputs", 3, initial_live=3)
+    with torch.no_grad():
+        neurons.gate.copy_(torch.tensor([0.1, 0.2, 0.3]))
+    policy = Policy(
+        cadence=PeriodicCadence(event_interval=1),
+        quota=ConstantQuota(StructuralQuota(neuron_prune=1)),
+        actions=(ActionSpec.neuron_prune(MagnitudeCourt(1.0)),),
+        distributor=EvenBudgetDistributor(),
+    )
+
+    operations = StructuralEngine(
+        {synapses.site: synapses, neurons.site: neurons}, policy
+    ).step()
+
+    retirements = [
+        operation
+        for operation in operations
+        if isinstance(operation, NeuronRetire)
+    ]
+    assert sum(operation.ids.numel() for operation in retirements) == 1
+    assert neurons.live_ids().numel() == 2
