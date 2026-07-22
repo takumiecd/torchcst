@@ -13,8 +13,11 @@ from .contract import (
     OpProposer,
     Phase,
     Policy,
+    PolicyContext,
     RetentionCourt,
     Schedule,
+    StructuralPlan,
+    StructuralPolicy,
 )
 from .courts import MagnitudeCourt, RentCourt
 from .proposers import (
@@ -56,6 +59,7 @@ __all__ = [
     "PeriodicSchedule",
     "Phase",
     "Policy",
+    "PolicyContext",
     "ProposalBundle",
     "ProfitCourt",
     "RentCourt",
@@ -64,6 +68,8 @@ __all__ = [
     "RetiredCandidateRegistry",
     "Schedule",
     "ScoredBirth",
+    "StructuralPlan",
+    "StructuralPolicy",
     "TrialSession",
     "TrialTransaction",
     "TopKSelector",

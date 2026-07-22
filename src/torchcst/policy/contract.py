@@ -4,19 +4,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from collections.abc import Mapping
 from typing import Any, Protocol, Sequence, runtime_checkable
 
 import torch
 
 from torchcst.storage import (
+    NeuronKick,
     NeuronRetire,
+    NeuronUngate,
     NeuronView,
     SynapseBirth,
     SynapseDeath,
+    SynapseKick,
+    SynapseMerge,
     SynapseView,
 )
 
-from .bundle import BundleComposer, ProposalBundle, bundle_birth_count
+from .bundle import BundleComposer, Op, ProposalBundle, bundle_birth_count
 from .registry import RetiredCandidateRegistry
 
 
@@ -263,3 +268,77 @@ class Policy:
                 if spec not in result:
                     result.append(spec)
         return tuple(result)
+
+
+@dataclass(frozen=True)
+class PolicyContext:
+    """Read-only engine state presented to a whole-policy implementation."""
+
+    clock: Clock
+    synapses: Mapping[str, SynapseView]
+    neurons: Mapping[str, NeuronView]
+    ages: Mapping[str, torch.Tensor]
+    instruments: Mapping[str, Mapping[str, Any]]
+    registry: RetiredCandidateRegistry
+    rng: torch.Generator
+
+    def instrument(self, site: str, name: str) -> Any:
+        """Return one declared site instrument with a useful lookup error."""
+        try:
+            return self.instruments[site][name]
+        except KeyError as exc:
+            raise KeyError(
+                f"instrument {name!r} is not available at site {site!r}"
+            ) from exc
+
+
+@dataclass(frozen=True)
+class StructuralPlan:
+    """Independent operations or atomic bundles emitted by one policy event."""
+
+    proposals: tuple[Op | ProposalBundle, ...] = ()
+    synapse_immunity_events: int = 0
+    neuron_immunity_events: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.proposals, tuple):
+            raise TypeError("proposals must be a tuple")
+        operation_types = (
+            SynapseBirth,
+            SynapseDeath,
+            SynapseMerge,
+            SynapseKick,
+            NeuronUngate,
+            NeuronRetire,
+            NeuronKick,
+        )
+        if not all(
+            isinstance(item, (*operation_types, ProposalBundle))
+            for item in self.proposals
+        ):
+            raise TypeError("proposals must contain operations or ProposalBundle values")
+        for name, value in (
+            ("synapse_immunity_events", self.synapse_immunity_events),
+            ("neuron_immunity_events", self.neuron_immunity_events),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an int")
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
+
+
+@runtime_checkable
+class StructuralPolicy(Protocol):
+    """First-class extension point for implementing a policy as one object.
+
+    Unlike :class:`Policy`, this contract does not require a schedule,
+    allocator, proposer, or court decomposition. Returning ``None`` from
+    :meth:`plan` means that no structural event occurs at that update; an empty
+    plan is still an event and advances structural time.
+    """
+
+    requires: tuple[InstrumentRequirement, ...]
+
+    def capture(self, clock: Clock) -> bool: ...
+
+    def plan(self, context: PolicyContext) -> StructuralPlan | None: ...

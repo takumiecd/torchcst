@@ -1,13 +1,80 @@
 # Authoring structural policies
 
 This guide is for users who want a structural learning rule that is not in the
-catalog. The intended workflow is composition first: choose a schedule, a birth
-rule, an allocator, and a retention court. Implement a new observation
-instrument only when the policy needs a new backward-derived statistic.
+catalog. There are two equally public authoring paths:
+
+- `Policy` composes reusable schedule, proposer, allocator, and retention
+  components. Use it when those boundaries fit the algorithm.
+- `StructuralPolicy` implements the learning rule as one object. Use it when
+  decomposition would distort the algorithm or merely add boilerplate.
+
+An allocator and schedule are therefore conveniences, not framework
+requirements. Implement a new observation instrument only when the policy
+needs a new backward-derived statistic.
+
+## Implement a complete policy as one object
+
+A whole policy answers three engine lifecycle questions:
+
+```python
+class MyPolicy:
+    requires = ()
+
+    def capture(self, clock):
+        # Should this update collect the declared backward observations?
+        return False
+
+    def plan(self, context):
+        # None means no event. StructuralPlan() is an event with no operations.
+        if context.clock.update_step % 100:
+            return None
+
+        view = context.synapses["conv1"]
+        operations = decide_birth_prune_merge(view, context.ages["conv1"])
+        return StructuralPlan(
+            proposals=tuple(operations),
+            synapse_immunity_events=3,
+        )
+```
+
+Pass the object directly to `StructuralEngine`; it needs no `Schedule`,
+`BudgetAllocator`, `OpProposer`, or `RetentionCourt`. `PolicyContext` exposes
+read-only synapse and neuron views, aligned ages, declared instruments, the
+retired-lineage registry, the policy RNG, and the candidate event clock.
+
+Each plan item is either one operation or an atomic `ProposalBundle`. The
+framework still owns operation validation, two-phase cross-store apply,
+lineage retirement, optimizer-state reconciliation, event logging, and hook
+lifetime. A policy can optionally implement
+`on_applied(context, applied_operations)` to update state from the operations
+that actually committed.
+
+Backward-based whole policies declare and bind observations in the same way as
+components:
+
+```python
+class MyPolicy:
+    request = MyScoreRequest()
+    requires = (request,)
+
+    def bind_instruments(self, site, instruments):
+        self.scores_by_site[site] = instruments[self.request.name]
+
+    def capture(self, clock):
+        return clock.update_step % 100 >= 90
+
+    def plan(self, context):
+        scores = context.instrument("conv1", self.request.name)
+        ...
+```
+
+This is intentionally a lifecycle contract, not a hidden controller base
+class. A policy may internally reuse `PeriodicSchedule`, `ScoredBirth`, or a
+selector, but it is not required to expose those choices to the engine.
 
 ## The four questions a policy answers
 
-A policy author normally decides four things:
+A composed policy normally decides four things:
 
 1. **When is structure observed or changed?** The schedule owns update and
    event timing.

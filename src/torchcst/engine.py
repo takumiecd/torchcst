@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from types import MappingProxyType
 from typing import Any
 
 import torch
@@ -49,8 +50,12 @@ from .policy.contract import (
     EventDirective,
     InstrumentSpec,
     InstrumentRequirement,
+    ObservationRequest,
     Phase,
     Policy,
+    PolicyContext,
+    StructuralPlan,
+    StructuralPolicy,
 )
 from .policy.profit import TrialSession, TrialTransaction
 from .policy.registry import RetiredCandidateRegistry
@@ -79,8 +84,10 @@ class StructuralEngine:
         adapter = getattr(policy, "as_policy", None)
         if adapter is not None:
             policy = adapter()
-        if not isinstance(policy, Policy):
-            raise TypeError("policy must be a Policy or provide as_policy()")
+        if not isinstance(policy, (Policy, StructuralPolicy)):
+            raise TypeError(
+                "policy must be a Policy, StructuralPolicy, or provide as_policy()"
+            )
         if not isinstance(stores, dict) or not stores:
             raise ValueError("stores must be a non-empty dict")
         for site, store in stores.items():
@@ -102,6 +109,7 @@ class StructuralEngine:
         if not self.synapse_stores:
             raise ValueError("StructuralEngine requires at least one SynapseStore")
         self.policy = policy
+        self._composed_policy = isinstance(policy, Policy)
         self.registry = RetiredCandidateRegistry()
         self.clock = Clock(update_step=0, event_index=0)
         if rng is not None and not isinstance(rng, torch.Generator):
@@ -128,7 +136,16 @@ class StructuralEngine:
         self._op_log: list[tuple[int, Op]] = []
         self.modules = self._validate_modules(modules)
         self.capture_modes = self._normalize_capture_modes(capture_mode)
-        self.instruments = self._make_instruments(policy.requires)
+        requirements = tuple(policy.requires)
+        if not all(
+            isinstance(requirement, (InstrumentSpec, ObservationRequest))
+            for requirement in requirements
+        ):
+            raise TypeError(
+                "policy requires must contain InstrumentSpec or "
+                "ObservationRequest values"
+            )
+        self.instruments = self._make_instruments(requirements)
         self._bind_instruments()
         self._active_update_id: int | None = None
         self._backward_context: BackwardContext | None = None
@@ -207,7 +224,7 @@ class StructuralEngine:
                         "module neuron endpoints must be present in stores"
                     )
             result[site] = module
-        if self.policy.requires and set(result) != set(self.synapse_stores):
+        if tuple(self.policy.requires) and set(result) != set(self.synapse_stores):
             raise ValueError(
                 "every store requires a matching compute module when policy requires capture"
             )
@@ -288,13 +305,17 @@ class StructuralEngine:
 
     def _bind_instruments(self) -> None:
         components = (
-            self.policy.schedule,
-            *self.policy.proposers,
-            self.policy.allocator,
-            self.policy.retention,
-            self.policy.composer,
-            self.policy.profit,
-            self.policy.neuron_retention,
+            (
+                self.policy.schedule,
+                *self.policy.proposers,
+                self.policy.allocator,
+                self.policy.retention,
+                self.policy.composer,
+                self.policy.profit,
+                self.policy.neuron_retention,
+            )
+            if self._composed_policy
+            else (self.policy,)
         )
         for component in components:
             if component is None:
@@ -382,9 +403,12 @@ class StructuralEngine:
             raise RuntimeError("an update is already active")
         update_id = self.clock.update_step + 1
         candidate = Clock(update_id, self.clock.event_index + 1)
-        self._capture_active = bool(self.policy.requires) and bool(
+        observing = (
             self.policy.schedule.observing(candidate)
+            if self._composed_policy
+            else self.policy.capture(candidate)
         )
+        self._capture_active = bool(tuple(self.policy.requires)) and bool(observing)
         reducers = self._prepare_capture() if self._capture_active else {}
         self._active_update_id = update_id
         self._backward_context = BackwardContext(update_id, reducers=reducers)
@@ -540,6 +564,39 @@ class StructuralEngine:
             retired_out=self._retired_endpoint_ids(store.site, "out"),
         )
 
+    def _policy_context(self, clock: Clock) -> PolicyContext:
+        """Build an immutable lookup surface for a whole-policy decision."""
+        synapses = {
+            site: self._proposal_view(store, store.view())
+            for site, store in self.synapse_stores.items()
+        }
+        neurons = {
+            site: store.view() for site, store in self.neuron_stores.items()
+        }
+        ages = {
+            site: self._ages(store, synapses[site])
+            for site, store in self.synapse_stores.items()
+        }
+        ages.update(
+            {
+                site: self._ages(store, neurons[site])
+                for site, store in self.neuron_stores.items()
+            }
+        )
+        instruments = {
+            site: MappingProxyType(dict(site_instruments))
+            for site, site_instruments in self.instruments.items()
+        }
+        return PolicyContext(
+            clock=clock,
+            synapses=MappingProxyType(synapses),
+            neurons=MappingProxyType(neurons),
+            ages=MappingProxyType(ages),
+            instruments=MappingProxyType(instruments),
+            registry=self.registry,
+            rng=self.rng,
+        )
+
     def _retired_endpoint_ids(self, site: str, side: str) -> torch.Tensor:
         module = self.modules.get(site)
         if module is None:
@@ -669,7 +726,9 @@ class StructuralEngine:
         tickets = prepare_all(
             (self.stores[site], tuple(site_ops)) for site, site_ops in by_site.items()
         )
-        neuron_court = self.policy.neuron_retention
+        neuron_court = (
+            self.policy.neuron_retention if self._composed_policy else None
+        )
         if neuron_court is not None:
             immunity = int(getattr(neuron_court, "immunity_events", 0))
             for site, store in self.neuron_stores.items():
@@ -849,11 +908,13 @@ class StructuralEngine:
                 int(entity_id): int(age)
                 for entity_id, age in zip(view.ids.tolist(), ages.tolist())
             }
-            court = (
-                self.policy.retention
-                if isinstance(store, SynapseStore)
-                else self.policy.neuron_retention
-            )
+            court = None
+            if self._composed_policy:
+                court = (
+                    self.policy.retention
+                    if isinstance(store, SynapseStore)
+                    else self.policy.neuron_retention
+                )
             rent_ratio = getattr(court, "rent_ratio", None)
             if rent_ratio is None or view.mass.numel() == 0:
                 thresholds[site] = None
@@ -964,7 +1025,9 @@ class StructuralEngine:
     ) -> None:
         if polish is not None and objective is None:
             raise RuntimeError("polish requires objective=")
-        if objective is not None and self.policy.profit is None:
+        if objective is not None and (
+            not self._composed_policy or self.policy.profit is None
+        ):
             raise RuntimeError("objective is unavailable when policy.profit is None")
         if objective is not None and not callable(objective):
             raise TypeError("objective must be callable or None")
@@ -1112,6 +1175,47 @@ class StructuralEngine:
         self._reset_event_instruments()
         return applied
 
+    def _check_plan_immunity(self, plan: StructuralPlan) -> None:
+        """Enforce the whole policy's declared age protection before apply."""
+        operations: list[Op] = []
+        for proposal in plan.proposals:
+            operations.extend(
+                proposal.ops if isinstance(proposal, ProposalBundle) else (proposal,)
+            )
+        for site, store in self.synapse_stores.items():
+            deaths = tuple(
+                op
+                for op in operations
+                if isinstance(op, SynapseDeath) and op.site == site
+            )
+            self._check_immunity(store, deaths, plan.synapse_immunity_events)
+        for site, store in self.neuron_stores.items():
+            retirements = tuple(
+                op
+                for op in operations
+                if isinstance(op, NeuronRetire) and op.site == site
+            )
+            self._check_immunity(store, retirements, plan.neuron_immunity_events)
+
+    def _step_whole_policy(self, candidate: Clock) -> tuple[Op, ...]:
+        """Ask one first-class policy for a complete structural plan."""
+        context = self._policy_context(candidate)
+        plan = self.policy.plan(context)
+        if plan is None:
+            self.clock = Clock(candidate.update_step, self.clock.event_index)
+            return ()
+        if not isinstance(plan, StructuralPlan):
+            raise TypeError("StructuralPolicy.plan() must return StructuralPlan or None")
+
+        self.clock = candidate
+        self._check_plan_immunity(plan)
+        audit_context = self._audit_event_context() if self._audit_subscribers else None
+        applied = self.apply_proposals(plan.proposals)
+        callback = getattr(self.policy, "on_applied", None)
+        if callback is not None:
+            callback(context, applied)
+        return self._finish_event(applied, audit_context)
+
     def step(
         self,
         objective: Callable[[], float] | None = None,
@@ -1128,6 +1232,8 @@ class StructuralEngine:
                 update_step=self.clock.update_step + 1,
                 event_index=self.clock.event_index + 1,
             )
+            if not self._composed_policy:
+                return self._step_whole_policy(candidate)
             directive = self.policy.schedule.event(candidate)
             if directive is None:
                 self.clock = Clock(candidate.update_step, self.clock.event_index)
