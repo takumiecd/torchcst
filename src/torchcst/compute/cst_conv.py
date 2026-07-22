@@ -1,4 +1,4 @@
-"""Two-dimensional convolution backed by :class:`CSTLinear`."""
+"""Independent continuous Gaussian CST two-dimensional convolution."""
 
 from __future__ import annotations
 
@@ -8,8 +8,10 @@ from torch.nn import functional as F
 from torch.nn.modules.utils import _pair
 from typing import Literal
 
-from .capture import BackwardContext
-from .cst_linear import CSTLinear
+from torchcst.representation import GaussianKernel
+from torchcst.storage import NeuronStore, SynapseStore
+
+from .cst_map import _GaussianCSTMap
 
 
 def conv2d_neuron_coordinates(
@@ -61,14 +63,15 @@ def conv2d_neuron_coordinates(
     return input_mu, output_mu
 
 
-class CSTConv2d(nn.Module):
-    """Apply one continuous CST linear map to every unfolded image patch.
+class CSTConv2d(_GaussianCSTMap):
+    """Apply one continuous CST measure as a shared convolutional filter.
 
-    The wrapped ``CSTLinear`` has ``in_channels * kernel_height * kernel_width``
-    input neurons and ``out_channels`` output neurons. Its dense debug weight
-    therefore reshapes directly to a normal convolution kernel. Spatial output
-    positions share that map, giving the same translation-equivariant contract
-    as ``torch.nn.Conv2d`` while keeping the filter in the CST atom family.
+    The module directly owns its endpoint neuron charts, synapse measure, and
+    Gaussian kernels. Its input chart has
+    ``in_channels * kernel_height * kernel_width`` neurons and its output chart
+    has one neuron per output channel. Spatial output positions share the same
+    represented map, giving the translation-equivariant contract of
+    :class:`torch.nn.Conv2d` without depending on :class:`CSTLinear`.
 
     Grouped convolution and non-zero padding modes are intentionally outside
     this first compute contract. Bias is a conventional per-output-channel
@@ -77,19 +80,21 @@ class CSTConv2d(nn.Module):
 
     def __init__(
         self,
-        linear: CSTLinear,
+        in_neurons: NeuronStore,
+        out_neurons: NeuronStore,
+        synapses: SynapseStore,
+        kernel: GaussianKernel,
         in_channels: int,
         kernel_size: int | tuple[int, int],
         *,
+        kernel_out: GaussianKernel | None = None,
         stride: int | tuple[int, int] = 1,
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
         bias: bool = True,
         implementation: Literal["unfold", "materialized"] = "unfold",
     ) -> None:
-        super().__init__()
-        if not isinstance(linear, CSTLinear):
-            raise TypeError("linear must be a CSTLinear")
+        super().__init__(in_neurons, out_neurons, synapses, kernel, kernel_out)
         if isinstance(in_channels, bool) or not isinstance(in_channels, int):
             raise TypeError("in_channels must be an int")
         if in_channels <= 0:
@@ -101,27 +106,20 @@ class CSTConv2d(nn.Module):
         self.dilation = self._positive_pair(dilation, "dilation")
         self.padding = self._nonnegative_pair(padding, "padding")
         expected = in_channels * self.kernel_size[0] * self.kernel_size[1]
-        if linear.in_features != expected:
+        if self.in_features != expected:
             raise ValueError(
-                "linear.in_features must equal in_channels * kernel_size area"
+                "in_neurons width must equal in_channels * kernel_size area"
             )
 
-        self.linear = linear
         self.in_channels = in_channels
-        self.out_channels = linear.out_features
-        self.in_features = linear.in_features
-        self.out_features = linear.out_features
+        self.out_channels = self.out_features
         self.implementation = implementation
         self.bias = (
-            nn.Parameter(linear.synapses.w.new_zeros(self.out_channels))
-            if bias
-            else None
+            nn.Parameter(synapses.w.new_zeros(self.out_channels)) if bias else None
         )
 
     @staticmethod
-    def _positive_pair(
-        value: int | tuple[int, int], name: str
-    ) -> tuple[int, int]:
+    def _positive_pair(value: int | tuple[int, int], name: str) -> tuple[int, int]:
         pair = _pair(value)
         if any(isinstance(item, bool) or not isinstance(item, int) for item in pair):
             raise TypeError(f"{name} must contain ints")
@@ -130,9 +128,7 @@ class CSTConv2d(nn.Module):
         return pair
 
     @staticmethod
-    def _nonnegative_pair(
-        value: int | tuple[int, int], name: str
-    ) -> tuple[int, int]:
+    def _nonnegative_pair(value: int | tuple[int, int], name: str) -> tuple[int, int]:
         pair = _pair(value)
         if any(isinstance(item, bool) or not isinstance(item, int) for item in pair):
             raise TypeError(f"{name} must contain ints")
@@ -140,46 +136,13 @@ class CSTConv2d(nn.Module):
             raise ValueError(f"{name} values must be non-negative")
         return pair
 
-    @property
-    def store(self):
-        """The wrapped linear's synapse store, for engine compatibility."""
-        return self.linear.store
-
-    @property
-    def synapses(self):
-        return self.linear.synapses
-
-    @property
-    def in_neurons(self):
-        return self.linear.in_neurons
-
-    @property
-    def out_neurons(self):
-        return self.linear.out_neurons
-
-    @property
-    def capture_site(self) -> str:
-        return self.linear.capture_site
-
-    @property
-    def capture_enabled(self) -> bool:
-        return self.linear.capture_enabled
-
-    def set_backward_context(self, context: BackwardContext | None) -> None:
-        self.linear.set_backward_context(context)
-
-    def atom_grads(self, x: Tensor, g_out: Tensor) -> Tensor:
-        """Delegate gradients for already-unfolded patch observations."""
-        return self.linear.atom_grads(x, g_out)
-
     def dense_weight(self) -> Tensor:
         """Materialize the effective represented filter.
 
-        Unlike :meth:`CSTLinear.dense_weight`, this includes neuron gates so
-        the returned kernel is exactly the one used by the fast convolution
-        path.
+        This includes neuron gates, so the returned kernel is exactly the one
+        used by the materialized convolution path.
         """
-        weight = self.linear.dense_weight()
+        weight = super().dense_weight()
         in_gate = self.in_neurons.gate_vector().to(weight)
         out_gate = self.out_neurons.gate_vector().to(weight)
         weight = out_gate[:, None] * weight * in_gate[None, :]
@@ -220,12 +183,14 @@ class CSTConv2d(nn.Module):
         )
         batch, _, locations = patches.shape
         patch_rows = patches.transpose(1, 2).reshape(-1, self.in_features)
-        output = self.linear(patch_rows)
+        output = self._forward_rows(patch_rows)
         if self.bias is not None:
             output = output + self.bias
         height, width = self._output_shape(x.shape[-2], x.shape[-1])
         if height * width != locations:
-            raise RuntimeError("unfold output shape does not match convolution geometry")
+            raise RuntimeError(
+                "unfold output shape does not match convolution geometry"
+            )
         return (
             output.reshape(batch, locations, self.out_channels)
             .transpose(1, 2)

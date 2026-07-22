@@ -1,4 +1,4 @@
-"""CSTLinear-backed convolution numerical and engine contracts."""
+"""Independent CSTConv2d numerical and engine contracts."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any, Mapping
 import torch
 import torch.nn.functional as F
 
-from torchcst.compute import CSTConv2d, CSTLinear, conv2d_neuron_coordinates
+from torchcst.compute import CSTConv2d, conv2d_neuron_coordinates
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import GradFieldEMA
 from torchcst.policy import (
@@ -69,9 +69,11 @@ def _parts() -> tuple[SynapseStore, GaussianKernel, CSTConv2d]:
         dtype=torch.float64,
     )
     kernel = GaussianKernel(0.35, learnable=True).double()
-    linear = CSTLinear(inputs, outputs, store, kernel)
     conv = CSTConv2d(
-        linear,
+        inputs,
+        outputs,
+        store,
+        kernel,
         2,
         (2, 3),
         stride=(2, 1),
@@ -82,6 +84,17 @@ def _parts() -> tuple[SynapseStore, GaussianKernel, CSTConv2d]:
     with torch.no_grad():
         conv.bias.copy_(torch.tensor([0.1, -0.2, 0.05], dtype=torch.float64))
     return store, kernel, conv
+
+
+def test_conv_owns_continuous_map_without_linear_wrapper() -> None:
+    store, kernel, conv = _parts()
+
+    assert not hasattr(conv, "linear")
+    assert conv.store is store
+    assert conv.synapses is store
+    assert conv.kernel_in is kernel
+    assert conv.in_neurons.site == "conv-in"
+    assert conv.out_neurons.site == "conv-out"
 
 
 def test_coordinate_grid_matches_conv_flattening_and_box() -> None:
