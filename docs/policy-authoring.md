@@ -161,12 +161,19 @@ There is no separate candidate-freeze operation.
 
 The complete executable example is
 [`examples/gaussian_gradient_birth.py`](../examples/gaussian_gradient_birth.py).
-The test suite runs that exact example with both capture modes.
+The test suite runs that exact example with both observation timings.
 
 ## Inline versus deferred measurement
 
-The instrument implements one `measure(module, x, g_out)` method. The engine
-decides when to call it:
+The observation request decides when its instrument computes. Different
+requests at the same site may choose different stages:
+
+```python
+inline_scores = MyScoreRequest(timing="backward_inline")
+deferred_residual = ResidualRequest(timing="after_backward")
+```
+
+An engine-level setting remains available as an experiment override:
 
 ```python
 engine = StructuralEngine(
@@ -180,10 +187,10 @@ engine = StructuralEngine(
 )
 ```
 
-- `inline_reduced` calls `measure` from the output tensor hook and retains only
-  the returned sufficient statistics.
-- `deferred` retains detached `x` and `g_out`, then calls the same `measure`
-  method in `finalize_backward()`.
+- `backward_inline` calls `reduce_backward` from the output tensor hook and
+  retains only the returned sufficient statistics.
+- `after_backward` retains detached `x` and `g_out`, then calls
+  `measure_after_backward` in `finalize_backward()`.
 
 In both modes, `finalize_update` receives weighted microbatch measurements at
 the update boundary. Nonlinear aggregation such as absolute value therefore
@@ -209,6 +216,7 @@ The request is immutable configuration and builds one instrument per site:
 class MyScoreRequest:
     scale: float = 1.0
     name: str = "my_scores"
+    timing: str = "after_backward"
 
     def build(self, context: InstrumentBuildContext):
         return MyScoreInstrument(
@@ -218,7 +226,8 @@ class MyScoreRequest:
         )
 ```
 
-The instrument implements three capture methods:
+The instrument implements a timing-neutral lifecycle plus exactly the
+capability requested. A deferred-only example is:
 
 ```python
 class MyScoreInstrument:
@@ -229,7 +238,7 @@ class MyScoreInstrument:
         # relevant store version has not changed.
         ...
 
-    def measure(self, module, x, g_out):
+    def measure_after_backward(self, module, x, g_out):
         # Return signed tensors. Do not take abs here.
         return {"gradient": signed_candidate_gradient}
 
@@ -237,6 +246,11 @@ class MyScoreInstrument:
         total = weighted_sum(measurements, "gradient")
         self.scores = total.abs()
 ```
+
+An inline-only instrument implements `reduce_backward` instead. An instrument
+that intentionally supports both stages may implement both methods and share a
+private numerical kernel; the public methods remain separate so hook-time
+cost and memory behavior are explicit.
 
 For use with `ScoredBirth`, it additionally exposes:
 
@@ -273,11 +287,12 @@ Third-party policy tests should establish:
 - request configuration is deterministic and validates invalid values;
 - `prepare` changes candidate state only when its documented structural state
   changes;
-- `measure` returns detached, signed sufficient statistics and never mutates
-  structure;
+- `reduce_backward` and/or `measure_after_backward` return detached, signed
+  sufficient statistics and never mutate structure;
 - microbatch accumulation applies nonlinear aggregation after signed summation;
-- deferred and inline-reduced modes produce equal ranking scores and operations;
-- selector output never exceeds the schedule-issued budget;
+- dual-stage instruments produce equal ranking scores and operations in both
+  stages;
+- selector output never exceeds its distributed structural quota;
 - replay with the same RNG state produces identical candidates and operations;
 - state serialization restores every policy-owned running statistic.
 

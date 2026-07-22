@@ -52,7 +52,16 @@ def build_example(*, capture_mode: str = "inline_reduced"):
         ]
     )
     layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.2))
-    scorer = ContinuousGradientRequest(pool_size=32, decay=0.0, chunk_size=8)
+    timing = {
+        "inline_reduced": "backward_inline",
+        "deferred": "after_backward",
+    }[capture_mode]
+    scorer = ContinuousGradientRequest(
+        pool_size=32,
+        decay=0.0,
+        chunk_size=8,
+        timing=timing,
+    )
     birth = ScoredBirth(scorer, initial_weight=0.0)
     policy = Policy(
         cadence=PeriodicCadence(
@@ -70,7 +79,6 @@ def build_example(*, capture_mode: str = "inline_reduced"):
         policy,
         modules={"layer": layer},
         optimizer=optimizer,
-        capture_mode=capture_mode,
         seed=7,
     )
     return layer, synapses, optimizer, engine

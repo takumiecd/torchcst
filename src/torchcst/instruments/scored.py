@@ -8,6 +8,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
+from torchcst.compute import ObservationTiming
 from torchcst.representation import Box
 from torchcst.storage import SynapseStore, SynapseView
 
@@ -51,6 +52,7 @@ class ContinuousGradientRequest:
     decay: float = 0.9
     chunk_size: int = 128
     name: str = "continuous_gradient_scores"
+    timing: ObservationTiming | str = ObservationTiming.AFTER_BACKWARD
 
     def __post_init__(self) -> None:
         for field_name, value in (
@@ -65,6 +67,11 @@ class ContinuousGradientRequest:
             raise ValueError("decay must be in [0, 1]")
         if not isinstance(self.name, str) or not self.name:
             raise ValueError("name must be a non-empty string")
+        try:
+            timing = ObservationTiming(self.timing)
+        except ValueError as exc:
+            raise ValueError("timing must be backward_inline or after_backward") from exc
+        object.__setattr__(self, "timing", timing)
 
     def build(self, context: InstrumentBuildContext) -> ContinuousGradientScores:
         return ContinuousGradientScores(
@@ -126,7 +133,7 @@ class ContinuousGradientScores:
         self._scores = self.store.w.detach().new_zeros(self.pool_size)
         self._version = view.version
 
-    def measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
+    def _measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
         if module is not self.module:
             raise ValueError("instrument measured another compute module")
         gradient = module.candidate_weight_grads(
@@ -137,6 +144,18 @@ class ContinuousGradientScores:
             chunk_size=self.chunk_size,
         )
         return {"gradient": gradient}
+
+    def reduce_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> dict[str, Tensor]:
+        """Reduce continuous candidate gradients inside backward."""
+        return self._measure(module, x, g_out)
+
+    def measure_after_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> dict[str, Tensor]:
+        """Measure continuous candidate gradients after backward."""
+        return self._measure(module, x, g_out)
 
     def finalize_update(
         self,

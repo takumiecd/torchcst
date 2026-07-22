@@ -35,9 +35,15 @@ class _ThirdPartySignal:
     def prepare(self, view, module) -> None:
         del view, module
 
-    def measure(self, module, x, g_out):
+    def _measure(self, module, x, g_out):
         del module, x
         return {"signal": g_out.sum()}
+
+    def reduce_backward(self, module, x, g_out):
+        return self._measure(module, x, g_out)
+
+    def measure_after_backward(self, module, x, g_out):
+        return self._measure(module, x, g_out)
 
     def finalize_update(
         self, measurements: tuple[WeightedMeasurement, ...], view
@@ -52,6 +58,7 @@ class _ThirdPartySignal:
 @dataclass(frozen=True)
 class _ThirdPartyRequest:
     name: str = "third_party_signal"
+    timing: str = "after_backward"
 
     def build(self, context: InstrumentBuildContext):
         del context

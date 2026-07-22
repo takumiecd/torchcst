@@ -45,6 +45,7 @@ from .compute import (
     EntryLinear,
     NeuronGatedLinear,
     Observation,
+    ObservationTiming,
     RankOneLinear,
     conv2d_neuron_coordinates,
 )
@@ -55,8 +56,10 @@ from .instruments import (
     CertificateSubspace,
     ContinuousGradientRequest,
     ContinuousGradientScores,
+    DeferredCaptureInstrument,
     GradFieldEMA,
     InstrumentBuildContext,
+    InlineCaptureInstrument,
 )
 from .storage import (
     AgeColumn,
@@ -109,6 +112,7 @@ __all__ = [
     "CoordinateDomain",
     "ContinuousGradientRequest",
     "ContinuousGradientScores",
+    "DeferredCaptureInstrument",
     "ComputeLinear",
     "CSTConv2d",
     "CSTLinear",
@@ -124,6 +128,7 @@ __all__ = [
     "IdAllocator",
     "IntegerGrid",
     "InstrumentBuildContext",
+    "InlineCaptureInstrument",
     "LineageColumn",
     "LC_merge",
     "LossRecord",
@@ -139,6 +144,7 @@ __all__ = [
     "NeuronUngate",
     "NeuronView",
     "Observation",
+    "ObservationTiming",
     "OptimizerStateFollower",
     "PeriodicCadence",
     "PolicyContext",

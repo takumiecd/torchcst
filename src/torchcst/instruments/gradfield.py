@@ -92,9 +92,20 @@ class GradFieldEMA:
         del module
         self.reconcile(view)
 
-    def measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
-        """Measure signed live-atom gradients through the compute capability."""
+    def _measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
         return {"gradient": module.atom_grads(x, g_out)}
+
+    def reduce_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> dict[str, Tensor]:
+        """Reduce signed live-atom gradients inside backward."""
+        return self._measure(module, x, g_out)
+
+    def measure_after_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> dict[str, Tensor]:
+        """Measure signed live-atom gradients after backward."""
+        return self._measure(module, x, g_out)
 
     def finalize_update(
         self,
@@ -284,8 +295,7 @@ class CandidateField:
         del module
         self.reconcile(view)
 
-    def measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
-        """Measure signed gradients for the current discrete candidate set."""
+    def _measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
         del module
         x_flat = x.detach().reshape(-1, x.shape[-1])
         g_flat = g_out.detach().reshape(-1, g_out.shape[-1])
@@ -297,6 +307,18 @@ class CandidateField:
             x_flat.index_select(1, source) * g_flat.index_select(1, target)
         ).sum(dim=0)
         return {"gradient": gradient}
+
+    def reduce_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> dict[str, Tensor]:
+        """Reduce candidate gradients inside backward."""
+        return self._measure(module, x, g_out)
+
+    def measure_after_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> dict[str, Tensor]:
+        """Measure candidate gradients after backward."""
+        return self._measure(module, x, g_out)
 
     def finalize_update(
         self,

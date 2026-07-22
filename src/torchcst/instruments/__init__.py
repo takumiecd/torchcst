@@ -2,6 +2,8 @@
 
 from .base import (
     CaptureInstrument,
+    DeferredCaptureInstrument,
+    InlineCaptureInstrument,
     InstrumentBuildContext,
     Measurement,
     WeightedMeasurement,
@@ -20,12 +22,14 @@ __all__ = [
     "CandidateField",
     "CandidateSnapshot",
     "CaptureInstrument",
+    "DeferredCaptureInstrument",
     "CertificateSnapshot",
     "CertificateSubspace",
     "GradFieldEMA",
     "ContinuousGradientRequest",
     "ContinuousGradientScores",
     "InstrumentBuildContext",
+    "InlineCaptureInstrument",
     "Measurement",
     "WeightedMeasurement",
     "checked_measurement",

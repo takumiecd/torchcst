@@ -94,14 +94,25 @@ class CertificateSubspace:
         """Certificate dimensions are stable; no per-update preparation is needed."""
         del view, module
 
-    def measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
-        """Return one signed low-rank certificate contribution."""
+    def _measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
         del module
         x_flat = x.detach().reshape(-1, x.shape[-1])
         g_flat = g_out.detach().reshape(-1, g_out.shape[-1])
         if x_flat.shape[0] != g_flat.shape[0]:
             raise ValueError("captured x and g_out batch dimensions do not align")
         return {"matrix": g_flat.transpose(0, 1) @ x_flat}
+
+    def reduce_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> dict[str, Tensor]:
+        """Reduce one signed certificate contribution inside backward."""
+        return self._measure(module, x, g_out)
+
+    def measure_after_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> dict[str, Tensor]:
+        """Measure one signed certificate contribution after backward."""
+        return self._measure(module, x, g_out)
 
     def finalize_update(
         self,

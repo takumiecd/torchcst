@@ -37,15 +37,12 @@ class InstrumentBuildContext:
 
 @runtime_checkable
 class CaptureInstrument(Protocol):
-    """A policy-owned observation instrument understood generically by the engine."""
+    """Timing-neutral state lifecycle shared by all capture instruments."""
 
     name: str
 
     def prepare(self, view: SynapseView, module: Any) -> None:
         """Reconcile state before the observed forward begins."""
-
-    def measure(self, module: Any, x: Tensor, g_out: Tensor) -> Measurement:
-        """Return detached signed sufficient statistics for one module backward."""
 
     def finalize_update(
         self,
@@ -55,10 +52,30 @@ class CaptureInstrument(Protocol):
         """Commit one update's weighted measurements to instrument state."""
 
 
+@runtime_checkable
+class InlineCaptureInstrument(Protocol):
+    """Instrument capability safe to execute inside a backward tensor hook."""
+
+    def reduce_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> Measurement:
+        """Return small signed sufficient statistics without retaining x/g_out."""
+
+
+@runtime_checkable
+class DeferredCaptureInstrument(Protocol):
+    """Instrument capability executed after autograd finishes."""
+
+    def measure_after_backward(
+        self, module: Any, x: Tensor, g_out: Tensor
+    ) -> Measurement:
+        """Return signed statistics from retained boundary tensors."""
+
+
 def checked_measurement(value: Measurement) -> dict[str, Tensor]:
     """Validate and detach a third-party instrument measurement."""
     if not isinstance(value, Mapping):
-        raise TypeError("instrument measure() must return a mapping")
+        raise TypeError("instrument measurement stage must return a mapping")
     result: dict[str, Tensor] = {}
     for name, tensor in value.items():
         if not isinstance(name, str) or not name:

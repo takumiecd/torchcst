@@ -5,6 +5,7 @@ from .capture import (
     CaptureBatch,
     CaptureMode,
     Observation,
+    ObservationTiming,
     ReducedObservation,
 )
 from .cst_conv import CSTConv2d, conv2d_neuron_coordinates
@@ -26,6 +27,7 @@ __all__ = [
     "EntryLinear",
     "NeuronGatedLinear",
     "Observation",
+    "ObservationTiming",
     "RankOneLinear",
     "ReducedObservation",
 ]

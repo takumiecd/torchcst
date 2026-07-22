@@ -140,6 +140,7 @@ class InstrumentSpec:
     pool_size: int = 4096
     aggregation: str = "abs_after_sum"
     rank: int = 1
+    timing: str = "after_backward"
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name:
@@ -158,6 +159,8 @@ class InstrumentSpec:
             object.__setattr__(self, "aggregation", "abs_after_sum")
         if self.aggregation != "abs_after_sum":
             raise ValueError("step 4 supports only abs_after_sum aggregation")
+        if self.timing not in {"backward_inline", "after_backward"}:
+            raise ValueError("instrument timing must be backward_inline or after_backward")
 
 
 @runtime_checkable
@@ -165,6 +168,7 @@ class ObservationRequest(Protocol):
     """Third-party factory request for one engine-owned capture instrument."""
 
     name: str
+    timing: Any
 
     def build(self, context: Any) -> Any: ...
 
@@ -361,7 +365,6 @@ class Policy:
         components = (
             self.active_cadence,
             self.quota,
-            *self.observations,
             *self.proposers,
             self.active_distributor,
             self.retention,
@@ -369,7 +372,13 @@ class Policy:
             self.profit,
             self.neuron_retention,
         )
-        result: list[InstrumentRequirement] = []
+        result: list[InstrumentRequirement] = list(self.observations)
+        if not all(
+            isinstance(spec, (InstrumentSpec, ObservationRequest)) for spec in result
+        ):
+            raise TypeError(
+                "observations must contain InstrumentSpec or ObservationRequest values"
+            )
         for component in components:
             if component is None:
                 continue

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from math import isfinite
@@ -12,10 +12,17 @@ from torch import Tensor
 
 
 class CaptureMode(str, Enum):
-    """When backward observations are reduced to instrument statistics."""
+    """Engine override for when observations become instrument statistics."""
 
     DEFERRED = "deferred"
     INLINE_REDUCED = "inline_reduced"
+
+
+class ObservationTiming(str, Enum):
+    """Policy-requested execution stage for one observation instrument."""
+
+    BACKWARD_INLINE = "backward_inline"
+    AFTER_BACKWARD = "after_backward"
 
 
 ReducedPayload = Mapping[str, Tensor]
@@ -109,17 +116,19 @@ class _PendingReducedFact:
 class BackwardContext:
     """Queue detached hook facts and attach one weight per microbatch.
 
-    With no site reducer, :meth:`queue` retains raw ``x``/``g_out`` facts for
-    the engine's ``finalize_backward`` boundary.  Sites with reducers compute
-    their sufficient statistics inside the hook and retain only those detached
-    tensors.  Absolute values and EMA updates always remain update-boundary
-    operations so both modes preserve ``abs_after_sum`` semantics.
+    Inline reducers compute sufficient statistics inside the hook. Explicit
+    ``raw_sites`` retain ``x``/``g_out`` for deferred instruments, allowing one
+    site to do both for different requests. With no explicit ``raw_sites``, the
+    legacy behavior retains raw facts only at sites without reducers. Absolute
+    values and EMA updates remain update-boundary operations so every route
+    preserves ``abs_after_sum`` semantics.
     """
 
     def __init__(
         self,
         update_id: int,
         reducers: Mapping[str, CaptureReducer] | None = None,
+        raw_sites: Collection[str] | None = None,
     ) -> None:
         if isinstance(update_id, bool) or not isinstance(update_id, int):
             raise TypeError("update_id must be an int")
@@ -138,6 +147,15 @@ class BackwardContext:
                 raise TypeError("capture reducers must be callable")
             checked[site] = reducer
         self._reducers = MappingProxyType(checked)
+        if raw_sites is not None:
+            if not isinstance(raw_sites, Collection) or isinstance(raw_sites, str):
+                raise TypeError("raw_sites must be a collection of site names or None")
+            if not all(isinstance(site, str) and site for site in raw_sites):
+                raise ValueError("raw_sites must contain non-empty strings")
+            self._raw_sites: frozenset[str] | None = frozenset(raw_sites)
+        else:
+            # Compatibility behavior: sites without reducers retain raw facts.
+            self._raw_sites = None
         self._pending: list[_PendingFact] = []
         self._observations: list[Observation] = []
         self._pending_reduced: list[_PendingReducedFact] = []
@@ -174,10 +192,13 @@ class BackwardContext:
             self._pending_reduced.append(
                 _PendingReducedFact(site, dict(values), int(version))
             )
-            return
-        self._pending.append(
-            _PendingFact(site, x.detach(), g_out.detach(), int(version))
+        retain_raw = (
+            reducer is None if self._raw_sites is None else site in self._raw_sites
         )
+        if retain_raw:
+            self._pending.append(
+                _PendingFact(site, x.detach(), g_out.detach(), int(version))
+            )
 
     def observe_microbatch(self, weight: float = 1.0) -> None:
         """Assign ``weight`` to every fact queued since the prior boundary."""

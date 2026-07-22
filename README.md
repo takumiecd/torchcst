@@ -105,11 +105,14 @@ optimizer.step()
 applied_ops = engine.step()
 ```
 
-Backward capture is selectable globally or per site.  ``deferred`` keeps the
-detached module-boundary ``x``/``g_out`` tensors and reduces them in
-``finalize_backward()``; ``inline_reduced`` computes instrument sufficient
-statistics in the tensor hook and retains only the smaller reduced payload.
-The default remains ``deferred``.
+Each observation request declares its execution timing. `after_backward`
+keeps detached module-boundary `x`/`g_out` tensors and measures them in
+`finalize_backward()`; `backward_inline` computes sufficient statistics in the
+tensor hook and retains only the smaller payload. Different instruments at the
+same site may use different timings.
+
+`capture_mode` is an optional global/per-site experiment override, not the
+policy's primary timing declaration:
 
 ```python
 engine = StructuralEngine(
@@ -151,19 +154,20 @@ scores = ContinuousGradientRequest(
     pool_size=4096,
     decay=0.9,
     chunk_size=128,
+    timing="backward_inline",
 )
 birth = ScoredBirth(scores, selector=TopKSelector(), initial_weight=0.0)
 ```
 
-The request builds one instrument per site. The instrument's same `measure`
-method runs either inside the backward hook or after backward according to the
-site's capture mode. `ScoredBirth` reads finalized scores, accepts the
-schedule-issued budget, selects top candidates, allocates continuous lineages,
-and emits `SynapseBirth` operations.
+The request builds one instrument per site. Inline instruments implement
+`reduce_backward`; deferred instruments implement `measure_after_backward`.
+Both feed the common `finalize_update` boundary. `ScoredBirth` reads finalized
+scores, accepts its distributed structural quota, selects top candidates,
+allocates continuous lineages, and emits `SynapseBirth` operations.
 
 Third-party observation requests implement `build(context)`. Their instruments
-implement `prepare`, `measure`, and `finalize_update`; the engine has no
-instrument-class registration step. See the
+implement `prepare`, one timing-specific measurement method, and
+`finalize_update`; the engine has no instrument-class registration step. See the
 [`policy authoring guide`](docs/policy-authoring.md), the
 [`capture lifecycle`](docs/capture-lifecycle.md), and the executable
 [`Gaussian scored-birth example`](examples/gaussian_gradient_birth.py).

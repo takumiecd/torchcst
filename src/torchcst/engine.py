@@ -17,14 +17,17 @@ from torchcst.compute import (
     CSTLinear,
     EntryLinear,
     NeuronGatedLinear,
+    ObservationTiming,
     RankOneLinear,
 )
 from torchcst.instruments import (
     CandidateField,
     CaptureInstrument,
     CertificateSubspace,
+    DeferredCaptureInstrument,
     GradFieldEMA,
     InstrumentBuildContext,
+    InlineCaptureInstrument,
     WeightedMeasurement,
     checked_measurement,
 )
@@ -78,8 +81,8 @@ class StructuralEngine:
             tuple[AuditSubscriber, ...] | list[AuditSubscriber] | None
         ) = None,
         capture_mode: (
-            CaptureMode | str | Mapping[str, CaptureMode | str]
-        ) = CaptureMode.DEFERRED,
+            CaptureMode | str | Mapping[str, CaptureMode | str] | None
+        ) = None,
     ) -> None:
         if isinstance(policy, type):
             policy = policy()
@@ -148,6 +151,7 @@ class StructuralEngine:
                 "ObservationRequest values"
             )
         self.instruments = self._make_instruments(requirements)
+        self.instrument_timings = self._resolve_instrument_timings(requirements)
         self._bind_instruments()
         self._active_update_id: int | None = None
         self._backward_context: BackwardContext | None = None
@@ -173,8 +177,10 @@ class StructuralEngine:
 
     def _normalize_capture_modes(
         self,
-        value: CaptureMode | str | Mapping[str, CaptureMode | str],
-    ) -> dict[str, CaptureMode]:
+        value: CaptureMode | str | Mapping[str, CaptureMode | str] | None,
+    ) -> dict[str, CaptureMode | None]:
+        if value is None:
+            return {site: None for site in self.synapse_stores}
         if isinstance(value, Mapping):
             unknown = set(value) - set(self.synapse_stores)
             if unknown:
@@ -182,11 +188,64 @@ class StructuralEngine:
                     f"capture modes target unknown sites: {sorted(unknown)!r}"
                 )
             return {
-                site: self._capture_mode(value.get(site, CaptureMode.DEFERRED))
+                site: (
+                    None
+                    if site not in value
+                    else self._capture_mode(value[site])
+                )
                 for site in self.synapse_stores
             }
         mode = self._capture_mode(value)
         return {site: mode for site in self.synapse_stores}
+
+    @staticmethod
+    def _timing_from_mode(mode: CaptureMode) -> ObservationTiming:
+        return (
+            ObservationTiming.BACKWARD_INLINE
+            if mode is CaptureMode.INLINE_REDUCED
+            else ObservationTiming.AFTER_BACKWARD
+        )
+
+    def _resolve_instrument_timings(
+        self, requirements: tuple[InstrumentRequirement, ...]
+    ) -> dict[str, dict[int, ObservationTiming]]:
+        """Resolve request timing per instrument, with optional engine override."""
+        result: dict[str, dict[int, ObservationTiming]] = {
+            site: {} for site in self.synapse_stores
+        }
+        for site, instruments in self.instruments.items():
+            override = self.capture_modes[site]
+            for requirement in requirements:
+                instrument = instruments[requirement.name]
+                timing = (
+                    self._timing_from_mode(override)
+                    if override is not None
+                    else ObservationTiming(
+                        getattr(
+                            requirement,
+                            "timing",
+                            ObservationTiming.AFTER_BACKWARD,
+                        )
+                    )
+                )
+                if timing is ObservationTiming.BACKWARD_INLINE:
+                    if not isinstance(instrument, InlineCaptureInstrument):
+                        raise TypeError(
+                            f"instrument {requirement.name!r} does not provide "
+                            "reduce_backward()"
+                        )
+                elif not isinstance(instrument, DeferredCaptureInstrument):
+                    raise TypeError(
+                        f"instrument {requirement.name!r} does not provide "
+                        "measure_after_backward()"
+                    )
+                previous = result[site].get(id(instrument))
+                if previous is not None and previous is not timing:
+                    raise ValueError(
+                        f"instrument {requirement.name!r} has conflicting timings"
+                    )
+                result[site][id(instrument)] = timing
+        return result
 
     def subscribe_audit(self, subscriber: AuditSubscriber) -> None:
         """Register a one-way aggregate record sink outside policy wiring."""
@@ -368,18 +427,26 @@ class StructuralEngine:
     ) -> tuple[CaptureInstrument, ...]:
         return tuple(dict.fromkeys(instruments.values()))
 
-    def _prepare_capture(self) -> dict[str, Callable]:
-        """Prepare every instrument and return reducers for inline sites."""
+    def _prepare_capture(self) -> tuple[dict[str, Callable], frozenset[str]]:
+        """Prepare instruments and route each one to its declared stage."""
         reducers: dict[str, Callable] = {}
-        for site, mode in self.capture_modes.items():
+        raw_sites: set[str] = set()
+        for site in self.synapse_stores:
             store = self.synapse_stores[site]
             view = store.view()
             module = self.modules[site]
-            for instrument in self._unique_instruments(self.instruments[site]):
+            instruments = self._unique_instruments(self.instruments[site])
+            for instrument in instruments:
                 instrument.prepare(view, module)
-            if mode is CaptureMode.INLINE_REDUCED:
+            timings = {
+                self.instrument_timings[site][id(instrument)]
+                for instrument in instruments
+            }
+            if ObservationTiming.BACKWARD_INLINE in timings:
                 reducers[site] = self._reduce_inline_capture
-        return reducers
+            if ObservationTiming.AFTER_BACKWARD in timings:
+                raw_sites.add(site)
+        return reducers, frozenset(raw_sites)
 
     def _reduce_inline_capture(
         self,
@@ -396,7 +463,15 @@ class StructuralEngine:
         values: dict[str, torch.Tensor] = {}
         with torch.no_grad():
             for instrument in self._unique_instruments(self.instruments[site]):
-                measurement = checked_measurement(instrument.measure(module, x, g_out))
+                if (
+                    self.instrument_timings[site][id(instrument)]
+                    is not ObservationTiming.BACKWARD_INLINE
+                ):
+                    continue
+                assert isinstance(instrument, InlineCaptureInstrument)
+                measurement = checked_measurement(
+                    instrument.reduce_backward(module, x, g_out)
+                )
                 for component, value in measurement.items():
                     values[self._measurement_key(instrument.name, component)] = value
         return values
@@ -413,9 +488,13 @@ class StructuralEngine:
             else self.policy.capture(candidate)
         )
         self._capture_active = bool(tuple(self.policy.requires)) and bool(observing)
-        reducers = self._prepare_capture() if self._capture_active else {}
+        reducers, raw_sites = (
+            self._prepare_capture() if self._capture_active else ({}, frozenset())
+        )
         self._active_update_id = update_id
-        self._backward_context = BackwardContext(update_id, reducers=reducers)
+        self._backward_context = BackwardContext(
+            update_id, reducers=reducers, raw_sites=raw_sites
+        )
         self._backward_finalized = False
         if self._capture_active:
             for module in self.modules.values():
@@ -433,19 +512,28 @@ class StructuralEngine:
     def _instrument_measurements(
         self,
         instrument: CaptureInstrument,
+        timing: ObservationTiming,
         module: ComputeLinear,
         raw: tuple[Any, ...],
         reduced: tuple[Any, ...],
     ) -> tuple[WeightedMeasurement, ...]:
         """Normalize deferred and inline observations to one instrument API."""
         result: list[WeightedMeasurement] = []
-        with torch.no_grad():
-            for observation in raw:
-                values = checked_measurement(
-                    instrument.measure(module, observation.x, observation.g_out)
-                )
-                result.append(WeightedMeasurement(values, observation.micro_weight))
+        if timing is ObservationTiming.AFTER_BACKWARD:
+            assert isinstance(instrument, DeferredCaptureInstrument)
+            with torch.no_grad():
+                for observation in raw:
+                    values = checked_measurement(
+                        instrument.measure_after_backward(
+                            module, observation.x, observation.g_out
+                        )
+                    )
+                    result.append(
+                        WeightedMeasurement(values, observation.micro_weight)
+                    )
+            return tuple(result)
 
+        assert isinstance(instrument, InlineCaptureInstrument)
         prefix = self._measurement_key(instrument.name, "")
         for observation in reduced:
             values = {
@@ -510,6 +598,7 @@ class StructuralEngine:
             for instrument in self._unique_instruments(site_instruments):
                 measurements = self._instrument_measurements(
                     instrument,
+                    self.instrument_timings[site][id(instrument)],
                     self.modules[site],
                     site_observations,
                     site_reduced,
