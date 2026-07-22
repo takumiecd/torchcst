@@ -5,6 +5,13 @@ notes explain why that contract exists, but several documents intentionally
 preserve superseded proposals. Use this index before reading pseudocode as
 current API documentation.
 
+## User guides
+
+- [`policy-authoring.md`](policy-authoring.md) — compose a policy, add a custom
+  backward statistic without editing the engine, and test both capture modes.
+- [`capture-lifecycle.md`](capture-lifecycle.md) — hook timing, deferred versus
+  inline-reduced measurement, memory trade-offs, and the structural boundary.
+
 ## Current design reference
 
 - [`winning_recipe_design.md`](winning_recipe_design.md) — v4 architecture and

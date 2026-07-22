@@ -138,6 +138,36 @@ begin_update
 structural mutation boundaries. Policies that do not request observations add
 no tensor hooks, but they use the same lifecycle.
 
+## Authoring a policy
+
+Policies are compositions of timing, proposal, allocation, and retention. A
+gradient-scored Gaussian birth requires no `StructuralEngine` modification:
+
+```python
+from torchcst.instruments import ContinuousGradientRequest
+from torchcst.policy import ScoredBirth, TopKSelector
+
+scores = ContinuousGradientRequest(
+    pool_size=4096,
+    decay=0.9,
+    chunk_size=128,
+)
+birth = ScoredBirth(scores, selector=TopKSelector(), initial_weight=0.0)
+```
+
+The request builds one instrument per site. The instrument's same `measure`
+method runs either inside the backward hook or after backward according to the
+site's capture mode. `ScoredBirth` reads finalized scores, accepts the
+schedule-issued budget, selects top candidates, allocates continuous lineages,
+and emits `SynapseBirth` operations.
+
+Third-party observation requests implement `build(context)`. Their instruments
+implement `prepare`, `measure`, and `finalize_update`; the engine has no
+instrument-class registration step. See the
+[`policy authoring guide`](docs/policy-authoring.md), the
+[`capture lifecycle`](docs/capture-lifecycle.md), and the executable
+[`Gaussian scored-birth example`](examples/gaussian_gradient_birth.py).
+
 ## Implemented surface
 
 - continuous Gaussian `CSTLinear` with learnable atom coordinates, amplitudes,
@@ -150,6 +180,8 @@ no tensor hooks, but they use the same lifecycle.
 - slot reuse, capacity growth, age/lineage columns, and follower notifications
 - optimizer-state growth, reset, and coordinate-domain projection
 - lifecycle (`LC`), anti-subspace, response, merge, cSET, and cRigL policies
+- public observation-instrument factories and high-level scored-birth policy
+  composition for third-party policies
 - atomic cross-store `ProposalBundle` application
 - opt-in realized-profit trials with complete rollback and finite polish
 - event audit, accounting, deterministic RNG streams, batch tapes, and replay
@@ -161,6 +193,8 @@ coordination.
 ## Repository layout
 
 ```text
+examples/               # small executable public-API examples
+docs/                   # user guides, lifecycle reference, and design history
 src/torchcst/
 ├── audit/           # immutable event records and aggregate accounting
 ├── compute/         # CSTLinear/CSTConv2d plus controls and capture
