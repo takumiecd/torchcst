@@ -54,7 +54,7 @@ class Phase(str, Enum):
 
 @dataclass(frozen=True)
 class EventDirective:
-    """A schedule-issued event and its only source of birth supply."""
+    """Legacy schedule event carrying both timing and structural supply."""
 
     event_index: int
     birth_budget: int
@@ -74,6 +74,61 @@ class EventDirective:
             raise TypeError("ungate_budget must be an int")
         if self.ungate_budget < 0:
             raise ValueError("ungate_budget must be non-negative")
+
+
+@dataclass(frozen=True)
+class EventSignal:
+    """Cadence-issued structural time point with no resource budget."""
+
+    event_index: int
+    phase: Phase
+
+    def __post_init__(self) -> None:
+        if isinstance(self.event_index, bool) or not isinstance(self.event_index, int):
+            raise TypeError("event_index must be an int")
+        if self.event_index < 0:
+            raise ValueError("event_index must be non-negative")
+        if not isinstance(self.phase, Phase):
+            raise TypeError("phase must be a Phase")
+
+
+@dataclass(frozen=True)
+class StructuralQuota:
+    """Logical operation limits, independent of physical storage placement."""
+
+    synapse_birth: int = 0
+    synapse_merge: int = 0
+    neuron_birth: int = 0
+    synapse_prune: int | None = None
+    neuron_prune: int | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("synapse_birth", "synapse_merge", "neuron_birth"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an int")
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
+        for name in ("synapse_prune", "neuron_prune"):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an int or None")
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
+
+    @classmethod
+    def zero(cls) -> StructuralQuota:
+        """Return a quota that permits no structural operations."""
+        return cls(synapse_prune=0, neuron_prune=0)
+
+    def limit(self, kind: str) -> int | None:
+        """Return one named logical limit for generic action routing."""
+        try:
+            return getattr(self, kind)
+        except AttributeError as exc:
+            raise KeyError(f"unknown structural quota kind {kind!r}") from exc
 
 
 @dataclass(frozen=True)
@@ -119,13 +174,31 @@ InstrumentRequirement = InstrumentSpec | ObservationRequest
 
 @runtime_checkable
 class Schedule(Protocol):
-    """Clock-only structural event source."""
+    """Legacy clock source that also carries operation budgets."""
 
     def phase(self, clock: Clock) -> Phase: ...
 
     def event(self, clock: Clock) -> EventDirective | None: ...
 
     def observing(self, clock: Clock) -> bool: ...
+
+
+@runtime_checkable
+class Cadence(Protocol):
+    """Clock-only observation and event timing with no resource decisions."""
+
+    def phase(self, clock: Clock) -> Phase: ...
+
+    def event(self, clock: Clock) -> EventSignal | None: ...
+
+    def observing(self, clock: Clock) -> bool: ...
+
+
+@runtime_checkable
+class QuotaPolicy(Protocol):
+    """Produce logical structural limits for one cadence-issued event."""
+
+    def at(self, clock: Clock, phase: Phase) -> StructuralQuota: ...
 
 
 @runtime_checkable
@@ -143,16 +216,17 @@ class OpProposer(Protocol):
 
 @dataclass(frozen=True)
 class BudgetRequest:
-    """One site/proposer recipient considered by a global allocator."""
+    """One site/action recipient considered by a logical distributor."""
 
     site: str
     proposer_index: int
     replacement_count: int
+    kind: str = "synapse_birth"
 
 
 @runtime_checkable
-class BudgetAllocator(Protocol):
-    """Split one schedule-issued budget over proposal recipients."""
+class BudgetDistributor(Protocol):
+    """Split one logical quota over site/action recipients."""
 
     def allocate(
         self, budget: int, requests: Sequence[BudgetRequest]
@@ -164,8 +238,8 @@ class BudgetAllocator(Protocol):
 
 
 @dataclass(frozen=True)
-class EvenBudgetAllocator:
-    """Deterministically share budget; optionally cap births by deaths."""
+class EvenBudgetDistributor:
+    """Deterministically distribute quota; optionally cap births by deaths."""
 
     replacement_only: bool = False
 
@@ -216,6 +290,12 @@ class EvenBudgetAllocator:
         return tuple(accepted)
 
 
+# Compatibility names for the pre-cadence public API. These are aliases, not
+# storage allocators; physical slots remain exclusively owned by SlotPool.
+BudgetAllocator = BudgetDistributor
+EvenBudgetAllocator = EvenBudgetDistributor
+
+
 @runtime_checkable
 class RetentionCourt(Protocol):
     """Return death operations using structural state only."""
@@ -231,21 +311,59 @@ class RetentionCourt(Protocol):
 class Policy:
     """One swappable structural learning rule."""
 
-    schedule: Schedule
-    proposers: tuple[OpProposer, ...]
-    allocator: BudgetAllocator
-    retention: RetentionCourt
+    schedule: Schedule | None = None
+    proposers: tuple[OpProposer, ...] = ()
+    allocator: BudgetDistributor | None = None
+    retention: RetentionCourt | None = None
     composer: BundleComposer | None = None
     profit: Any | None = None
     neuron_retention: RetentionCourt | None = None
+    cadence: Cadence | None = None
+    quota: QuotaPolicy | None = None
+    distributor: BudgetDistributor | None = None
+    observations: tuple[InstrumentRequirement, ...] = ()
+
+    def __post_init__(self) -> None:
+        if (self.schedule is None) == (self.cadence is None):
+            raise ValueError("specify exactly one of schedule= or cadence=")
+        if self.cadence is not None and self.quota is None:
+            raise ValueError("cadence= requires a separate quota=")
+        if self.schedule is not None and self.quota is not None:
+            raise ValueError("legacy schedule= already owns its operation budget")
+        if (self.allocator is None) == (self.distributor is None):
+            raise ValueError("specify exactly one of allocator= or distributor=")
+        if self.retention is None:
+            raise ValueError("retention is required")
+        if not isinstance(self.proposers, tuple):
+            raise TypeError("proposers must be a tuple")
+        if not isinstance(self.observations, tuple):
+            raise TypeError("observations must be a tuple")
+
+    @property
+    def active_cadence(self) -> Schedule | Cadence:
+        """Return the configured timing source across old and new APIs."""
+        cadence = self.cadence if self.cadence is not None else self.schedule
+        assert cadence is not None
+        return cadence
+
+    @property
+    def active_distributor(self) -> BudgetDistributor:
+        """Return the configured logical distributor across both API names."""
+        distributor = (
+            self.distributor if self.distributor is not None else self.allocator
+        )
+        assert distributor is not None
+        return distributor
 
     @property
     def requires(self) -> tuple[InstrumentRequirement, ...]:
         """Deduplicate every component's requests while preserving order."""
         components = (
-            self.schedule,
+            self.active_cadence,
+            self.quota,
+            *self.observations,
             *self.proposers,
-            self.allocator,
+            self.active_distributor,
             self.retention,
             self.composer,
             self.profit,

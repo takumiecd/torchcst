@@ -6,7 +6,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .bundle import BundleComposer
-from .contract import EvenBudgetAllocator, Policy
+from .cadences import BirthWindowCadence, PeriodicCadence
+from .contract import EvenBudgetDistributor, Policy, StructuralQuota
 from .courts import MagnitudeCourt, RentCourt
 from .proposers import (
     Bounds,
@@ -18,7 +19,7 @@ from .proposers import (
     UniformEntryBirth,
 )
 from .profit import ProfitCourt
-from .schedules import BirthWindowSchedule, PeriodicSchedule
+from .quotas import ConstantQuota, QuotaWindow, WindowedQuota
 
 
 class _PolicyAdapter:
@@ -28,7 +29,16 @@ class _PolicyAdapter:
 
     @property
     def schedule(self):
-        return self._policy.schedule
+        """Compatibility alias for the catalog entry's budget-free cadence."""
+        return self._policy.active_cadence
+
+    @property
+    def cadence(self):
+        return self._policy.active_cadence
+
+    @property
+    def quota(self):
+        return self._policy.quota
 
     @property
     def proposers(self):
@@ -36,7 +46,12 @@ class _PolicyAdapter:
 
     @property
     def allocator(self):
-        return self._policy.allocator
+        """Compatibility alias for the logical budget distributor."""
+        return self._policy.active_distributor
+
+    @property
+    def distributor(self):
+        return self._policy.active_distributor
 
     @property
     def retention(self):
@@ -83,17 +98,24 @@ class LC(_PolicyAdapter):
 
     def __post_init__(self) -> None:
         policy = Policy(
-            schedule=BirthWindowSchedule(
+            cadence=BirthWindowCadence(
                 event_interval=self.event_interval,
-                birth_start_event=self.birth_start_event,
                 birth_end_event=self.birth_end_event,
-                birth_budget=self.birth_budget,
                 freeze_event=self.freeze_event,
+            ),
+            quota=WindowedQuota(
+                (
+                    QuotaWindow(
+                        self.birth_start_event,
+                        self.birth_end_event,
+                        StructuralQuota(synapse_birth=self.birth_budget),
+                    ),
+                )
             ),
             proposers=(
                 UniformEntryBirth(self.bounds_in, self.bounds_out, self.initial_weight),
             ),
-            allocator=EvenBudgetAllocator(),
+            distributor=EvenBudgetDistributor(),
             retention=RentCourt(
                 immunity_events=self.immunity_events,
                 rent_ratio=self.rent_ratio,
@@ -125,16 +147,23 @@ class LC_anti(_PolicyAdapter):
 
     def __post_init__(self) -> None:
         policy = Policy(
-            schedule=BirthWindowSchedule(
+            cadence=BirthWindowCadence(
                 event_interval=self.event_interval,
-                birth_start_event=self.birth_start_event,
                 birth_end_event=self.birth_end_event,
-                birth_budget=self.birth_budget,
                 freeze_event=self.freeze_event,
                 observe_window=self.observe_window,
             ),
+            quota=WindowedQuota(
+                (
+                    QuotaWindow(
+                        self.birth_start_event,
+                        self.birth_end_event,
+                        StructuralQuota(synapse_birth=self.birth_budget),
+                    ),
+                )
+            ),
             proposers=(OrthogonalBirth(rank=self.certificate_rank),),
-            allocator=EvenBudgetAllocator(),
+            distributor=EvenBudgetDistributor(),
             retention=RentCourt(
                 immunity_events=self.immunity_events,
                 rent_ratio=self.rent_ratio,
@@ -185,21 +214,34 @@ class LC_response(_PolicyAdapter):
             strikes=self.strikes,
         )
         policy = Policy(
-            schedule=BirthWindowSchedule(
+            cadence=BirthWindowCadence(
                 event_interval=self.event_interval,
-                birth_start_event=self.birth_start_event,
                 birth_end_event=self.birth_end_event,
-                birth_budget=self.birth_budget,
                 freeze_event=self.freeze_event,
                 response_events=self.response_events,
-                response_ungates_per_event=self.response_ungates_per_event,
-                response_birth_budget=self.response_birth_budget,
+            ),
+            quota=WindowedQuota(
+                (
+                    QuotaWindow(
+                        self.birth_start_event,
+                        self.birth_end_event,
+                        StructuralQuota(synapse_birth=self.birth_budget),
+                    ),
+                    QuotaWindow(
+                        self.response_events[0],
+                        self.response_events[1],
+                        StructuralQuota(
+                            synapse_birth=self.response_birth_budget,
+                            neuron_birth=self.response_ungates_per_event,
+                        ),
+                    ),
+                )
             ),
             proposers=(
                 UniformEntryBirth(self.bounds_in, self.bounds_out, self.initial_weight),
                 IncidentOutputBirth(self.initial_weight),
             ),
-            allocator=EvenBudgetAllocator(),
+            distributor=EvenBudgetDistributor(),
             retention=retention,
             composer=composer,
             profit=None,
@@ -228,15 +270,22 @@ class LC_merge(_PolicyAdapter):
 
     def __post_init__(self) -> None:
         policy = Policy(
-            schedule=BirthWindowSchedule(
+            cadence=BirthWindowCadence(
                 event_interval=self.event_interval,
-                birth_start_event=self.birth_start_event,
                 birth_end_event=self.birth_end_event,
-                birth_budget=self.birth_budget,
                 freeze_event=self.freeze_event,
             ),
+            quota=WindowedQuota(
+                (
+                    QuotaWindow(
+                        self.birth_start_event,
+                        self.birth_end_event,
+                        StructuralQuota(synapse_merge=self.birth_budget),
+                    ),
+                )
+            ),
             proposers=(MergeProposer(self.similarity_threshold),),
-            allocator=EvenBudgetAllocator(),
+            distributor=EvenBudgetDistributor(),
             retention=RentCourt(
                 immunity_events=self.immunity_events,
                 rent_ratio=self.rent_ratio,
@@ -279,10 +328,12 @@ class GrowthByProfit(_PolicyAdapter):
 
     def __post_init__(self) -> None:
         policy = Policy(
-            schedule=PeriodicSchedule(
+            cadence=PeriodicCadence(
                 event_interval=self.event_interval,
-                birth_budget=self.atoms_per_event,
                 freeze_event=None,
+            ),
+            quota=ConstantQuota(
+                StructuralQuota(synapse_birth=self.atoms_per_event)
             ),
             proposers=(
                 UniformBirth(
@@ -291,7 +342,7 @@ class GrowthByProfit(_PolicyAdapter):
                     initial_weight=self.initial_weight,
                 ),
             ),
-            allocator=EvenBudgetAllocator(),
+            distributor=EvenBudgetDistributor(),
             retention=MagnitudeCourt(drop_fraction=0.0),
             composer=None,
             profit=ProfitCourt(min_profit=self.min_profit, cost_rate=self.price),
@@ -316,15 +367,17 @@ class cSET(_PolicyAdapter):
 
     def __post_init__(self) -> None:
         policy = Policy(
-            schedule=PeriodicSchedule(
+            cadence=PeriodicCadence(
                 event_interval=self.event_interval,
-                birth_budget=self.birth_budget,
                 freeze_event=self.freeze_event,
+            ),
+            quota=ConstantQuota(
+                StructuralQuota(synapse_birth=self.birth_budget)
             ),
             proposers=(
                 UniformEntryBirth(self.bounds_in, self.bounds_out, self.initial_weight),
             ),
-            allocator=EvenBudgetAllocator(replacement_only=True),
+            distributor=EvenBudgetDistributor(replacement_only=True),
             retention=MagnitudeCourt(self.drop_fraction),
             composer=None,
             profit=None,
@@ -355,11 +408,13 @@ class cRigL(_PolicyAdapter):
         effective_pool = self.pool_size if self.pool is None else self.pool
         object.__setattr__(self, "pool_size", effective_pool)
         policy = Policy(
-            schedule=PeriodicSchedule(
+            cadence=PeriodicCadence(
                 event_interval=self.event_interval,
-                birth_budget=self.birth_budget,
                 freeze_event=self.freeze_event,
                 observe_window=self.observe_window,
+            ),
+            quota=ConstantQuota(
+                StructuralQuota(synapse_birth=self.birth_budget)
             ),
             proposers=(
                 GradFieldTopKBirth(
@@ -368,7 +423,7 @@ class cRigL(_PolicyAdapter):
                     pool_size=effective_pool,
                 ),
             ),
-            allocator=EvenBudgetAllocator(replacement_only=True),
+            distributor=EvenBudgetDistributor(replacement_only=True),
             retention=MagnitudeCourt(self.drop_fraction),
             composer=None,
             profit=None,

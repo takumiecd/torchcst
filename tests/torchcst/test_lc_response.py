@@ -111,8 +111,8 @@ def test_scripted_response_bundle_immunity_rent_cascade_and_requiescence() -> No
     assert not proposed or not bool((proposed[0].t[:, 0] == 1).any())
 
 
-def test_response_schedule_issues_separate_ungate_and_birth_supply() -> None:
-    schedule = LC_response(
+def test_response_cadence_and_quota_separate_timing_from_supply() -> None:
+    policy = LC_response(
         event_interval=1,
         birth_end_event=1,
         freeze_event=2,
@@ -120,10 +120,12 @@ def test_response_schedule_issues_separate_ungate_and_birth_supply() -> None:
         response_ungates_per_event=2,
         response_birth_budget=7,
         incident_births=3,
-    ).schedule
-    directive = schedule.event(Clock(update_step=4, event_index=4))
+    )
+    clock = Clock(update_step=4, event_index=4)
+    signal = policy.cadence.event(clock)
 
-    assert directive is not None
-    assert directive.phase is Phase.RESPONSE
-    assert directive.ungate_budget == 2
-    assert directive.birth_budget == 7
+    assert signal is not None
+    assert signal.phase is Phase.RESPONSE
+    quota = policy.quota.at(clock, signal.phase)
+    assert quota.neuron_birth == 2
+    assert quota.synapse_birth == 7

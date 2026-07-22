@@ -3,12 +3,12 @@
 This guide is for users who want a structural learning rule that is not in the
 catalog. There are two equally public authoring paths:
 
-- `Policy` composes reusable schedule, proposer, allocator, and retention
+- `Policy` composes reusable cadence, quota, action, distributor, and retention
   components. Use it when those boundaries fit the algorithm.
 - `StructuralPolicy` implements the learning rule as one object. Use it when
   decomposition would distort the algorithm or merely add boilerplate.
 
-An allocator and schedule are therefore conveniences, not framework
+A distributor and cadence are therefore conveniences, not framework
 requirements. Implement a new observation instrument only when the policy
 needs a new backward-derived statistic.
 
@@ -37,8 +37,8 @@ class MyPolicy:
         )
 ```
 
-Pass the object directly to `StructuralEngine`; it needs no `Schedule`,
-`BudgetAllocator`, `OpProposer`, or `RetentionCourt`. `PolicyContext` exposes
+Pass the object directly to `StructuralEngine`; it needs no `Cadence`,
+`BudgetDistributor`, `OpProposer`, or `RetentionCourt`. `PolicyContext` exposes
 read-only synapse and neuron views, aligned ages, declared instruments, the
 retired-lineage registry, the policy RNG, and the candidate event clock.
 
@@ -69,23 +69,43 @@ class MyPolicy:
 ```
 
 This is intentionally a lifecycle contract, not a hidden controller base
-class. A policy may internally reuse `PeriodicSchedule`, `ScoredBirth`, or a
+class. A policy may internally reuse `PeriodicCadence`, `ScoredBirth`, or a
 selector, but it is not required to expose those choices to the engine.
 
-## The four questions a policy answers
+## The five questions a composed policy answers
 
-A composed policy normally decides four things:
+A composed policy normally decides five things:
 
-1. **When is structure observed or changed?** The schedule owns update and
+1. **When is structure observed or changed?** The cadence owns update and
    event timing.
-2. **What may be born?** A proposer owns candidate construction.
-3. **How are candidates ranked?** A capture instrument owns backward-derived
+2. **How much structure may change?** The quota owns logical operation limits.
+3. **What may be born?** A proposer owns candidate construction.
+4. **How are candidates ranked?** A capture instrument owns backward-derived
    sufficient statistics; a selector turns scores into choices.
-4. **What is removed?** A retention court owns prune decisions.
+5. **What is removed?** A retention court owns prune decisions.
 
-The framework owns hook lifetime, microbatch weighting, birth budgets,
+The framework owns hook lifetime, microbatch weighting, quota enforcement,
 transactions, lineage IDs, optimizer-state reconciliation, and replay clocks.
 A backward observation never mutates structure directly.
+
+## Logical quotas are not storage allocation
+
+`StructuralQuota` limits logical operations. `BudgetDistributor` divides that
+quota over sites and actions; despite the old `BudgetAllocator` name, it never
+selects tensor slots. Physical placement remains private to `SynapseStore` and
+`SlotPool.prepare()`:
+
+```text
+Cadence -> StructuralQuota -> BudgetDistributor -> operations
+                                                   |
+                                                   v
+                         Store.prepare -> free/dead slot reuse or capacity grow
+```
+
+The store reuses free holes and same-event death slots before growing. Capacity
+grows geometrically only when the requested live count no longer fits. A
+future CSR, paged, or block-sparse layout must replace the storage allocator,
+not the policy budget API.
 
 ## Use an existing birth component
 
@@ -93,9 +113,10 @@ Policies that do not need backward observations require no instrument:
 
 ```python
 policy = Policy(
-    schedule=PeriodicSchedule(event_interval=200, birth_budget=8),
+    cadence=PeriodicCadence(event_interval=200),
+    quota=ConstantQuota(StructuralQuota(synapse_birth=8)),
     proposers=(UniformBirth(initial_weight=0.0),),
-    allocator=EvenBudgetAllocator(),
+    distributor=EvenBudgetDistributor(),
     retention=RentCourt(immunity_events=3, rent_ratio=0.3, strikes=2),
 )
 ```
@@ -123,13 +144,13 @@ birth = ScoredBirth(
 )
 
 policy = Policy(
-    schedule=PeriodicSchedule(
+    cadence=PeriodicCadence(
         event_interval=200,
-        birth_budget=32,
         observe_window=20,
     ),
+    quota=ConstantQuota(StructuralQuota(synapse_birth=32)),
     proposers=(birth,),
-    allocator=EvenBudgetAllocator(),
+    distributor=EvenBudgetDistributor(),
     retention=MagnitudeCourt(drop_fraction=0.1),
 )
 ```

@@ -8,11 +8,13 @@ from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import ContinuousGradientRequest
 from torchcst.policy import (
-    EvenBudgetAllocator,
+    ConstantQuota,
+    EvenBudgetDistributor,
     MagnitudeCourt,
-    PeriodicSchedule,
+    PeriodicCadence,
     Policy,
     ScoredBirth,
+    StructuralQuota,
 )
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -53,13 +55,13 @@ def build_example(*, capture_mode: str = "inline_reduced"):
     scorer = ContinuousGradientRequest(pool_size=32, decay=0.0, chunk_size=8)
     birth = ScoredBirth(scorer, initial_weight=0.0)
     policy = Policy(
-        schedule=PeriodicSchedule(
+        cadence=PeriodicCadence(
             event_interval=1,
-            birth_budget=1,
             observe_window=1,
         ),
+        quota=ConstantQuota(StructuralQuota(synapse_birth=1)),
         proposers=(birth,),
-        allocator=EvenBudgetAllocator(),
+        distributor=EvenBudgetDistributor(),
         retention=MagnitudeCourt(drop_fraction=0.0),
     )
     optimizer = torch.optim.Adam(layer.parameters(), lr=1e-3)

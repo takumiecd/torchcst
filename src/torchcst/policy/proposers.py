@@ -245,6 +245,7 @@ class MergeProposer:
     """
 
     similarity_threshold: float = 0.9
+    quota_kind: str = field(default="synapse_merge", init=False)
     requires: tuple[InstrumentSpec, ...] = field(
         default=(), init=False, repr=False
     )

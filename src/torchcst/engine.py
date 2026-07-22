@@ -48,6 +48,7 @@ from .policy.contract import (
     BudgetRequest,
     Clock,
     EventDirective,
+    EventSignal,
     InstrumentSpec,
     InstrumentRequirement,
     ObservationRequest,
@@ -56,6 +57,7 @@ from .policy.contract import (
     PolicyContext,
     StructuralPlan,
     StructuralPolicy,
+    StructuralQuota,
 )
 from .policy.profit import TrialSession, TrialTransaction
 from .policy.registry import RetiredCandidateRegistry
@@ -306,9 +308,11 @@ class StructuralEngine:
     def _bind_instruments(self) -> None:
         components = (
             (
-                self.policy.schedule,
+                self.policy.active_cadence,
+                self.policy.quota,
+                *self.policy.observations,
                 *self.policy.proposers,
-                self.policy.allocator,
+                self.policy.active_distributor,
                 self.policy.retention,
                 self.policy.composer,
                 self.policy.profit,
@@ -404,7 +408,7 @@ class StructuralEngine:
         update_id = self.clock.update_step + 1
         candidate = Clock(update_id, self.clock.event_index + 1)
         observing = (
-            self.policy.schedule.observing(candidate)
+            self.policy.active_cadence.observing(candidate)
             if self._composed_policy
             else self.policy.capture(candidate)
         )
@@ -833,8 +837,10 @@ class StructuralEngine:
                 applied.extend(self._apply_atomic_unit((proposal,)))
         return tuple(applied)
 
-    def _apply_response(self, directive: Any) -> tuple[Op, ...]:
-        if directive.ungate_budget == 0:
+    def _apply_response(
+        self, signal: EventSignal, quota: StructuralQuota
+    ) -> tuple[Op, ...]:
+        if quota.neuron_birth == 0:
             return ()
         composer = self.policy.composer
         if composer is None:
@@ -847,8 +853,8 @@ class StructuralEngine:
         if len(incident) != 1:
             raise RuntimeError("response policy requires one incident proposer")
         proposer = incident[0]
-        remaining_births = directive.birth_budget
-        remaining_ungates = directive.ungate_budget
+        remaining_births = quota.synapse_birth
+        remaining_ungates = quota.neuron_birth
         applied: list[Op] = []
         for site, module in self.modules.items():
             if remaining_ungates == 0 or remaining_births == 0:
@@ -861,7 +867,7 @@ class StructuralEngine:
                     self.synapse_stores[site], self.synapse_stores[site].view()
                 )
                 bundle = composer.compose_response(
-                    event_index=self.clock.event_index,
+                    event_index=signal.event_index,
                     neuron_store=neurons,
                     synapse_view=view,
                     proposer=proposer,
@@ -871,10 +877,12 @@ class StructuralEngine:
                 )
                 if bundle is None:
                     break
-                allocator = getattr(self.policy.allocator, "allocate_bundles", None)
+                distribute = getattr(
+                    self.policy.active_distributor, "allocate_bundles", None
+                )
                 accepted = (
-                    tuple(allocator(remaining_births, (bundle,)))
-                    if allocator is not None
+                    tuple(distribute(remaining_births, (bundle,)))
+                    if distribute is not None
                     else (
                         (bundle,)
                         if bundle_birth_count(bundle) <= remaining_births
@@ -1085,32 +1093,52 @@ class StructuralEngine:
 
     def _propose_standard_ops(
         self,
-        directive: EventDirective,
+        signal: EventSignal,
+        quota: StructuralQuota,
         deaths: dict[str, tuple[SynapseDeath, ...]],
     ) -> tuple[Op, ...]:
-        """Allocate one schedule budget and collect ordinary proposer output."""
+        """Distribute logical quotas and collect ordinary action output."""
         standard_proposer_indexes = tuple(
             index
             for index, proposer in enumerate(self.policy.proposers)
             if not hasattr(proposer, "propose_incident")
         )
         requests = tuple(
-            BudgetRequest(site, index, self._death_count(deaths[site]))
+            BudgetRequest(
+                site,
+                index,
+                self._death_count(deaths[site]),
+                getattr(self.policy.proposers[index], "quota_kind", "synapse_birth"),
+            )
             for site in self.synapse_stores
             for index in standard_proposer_indexes
-            if directive.phase is not Phase.RESPONSE
+            if signal.phase is not Phase.RESPONSE
         )
-        allocations = self.policy.allocator.allocate(directive.birth_budget, requests)
-        valid_allocations = all(
-            not isinstance(value, bool) and isinstance(value, int) and value >= 0
-            for value in allocations
-        )
-        if (
-            len(allocations) != len(requests)
-            or not valid_allocations
-            or sum(allocations) > directive.birth_budget
-        ):
-            raise RuntimeError("allocator exceeded the schedule-issued birth budget")
+        allocations = [0] * len(requests)
+        kinds = tuple(dict.fromkeys(request.kind for request in requests))
+        for kind in kinds:
+            positions = tuple(
+                index for index, request in enumerate(requests) if request.kind == kind
+            )
+            kind_requests = tuple(requests[index] for index in positions)
+            budget = quota.limit(kind)
+            if budget is None:
+                raise RuntimeError(f"quota kind {kind!r} cannot be unbounded")
+            granted = self.policy.active_distributor.allocate(budget, kind_requests)
+            valid_grants = all(
+                not isinstance(value, bool) and isinstance(value, int) and value >= 0
+                for value in granted
+            )
+            if (
+                len(granted) != len(kind_requests)
+                or not valid_grants
+                or sum(granted) > budget
+            ):
+                raise RuntimeError(
+                    f"distributor exceeded the {kind!r} structural quota"
+                )
+            for position, value in zip(positions, granted):
+                allocations[position] = value
 
         current_views = {
             site: store.view() for site, store in self.synapse_stores.items()
@@ -1133,14 +1161,15 @@ class StructuralEngine:
 
     def _apply_event(
         self,
-        directive: EventDirective,
+        signal: EventSignal,
+        quota: StructuralQuota,
         objective: Callable[[], float] | None,
         polish: Callable[[], None] | None,
     ) -> tuple[Op, ...]:
         """Run retention, proposal adjudication, and optional response in order."""
         retention_ops, deaths = self._decide_retention()
         applied = list(self._apply_atomic_unit(retention_ops))
-        proposed_ops = self._propose_standard_ops(directive, deaths)
+        proposed_ops = self._propose_standard_ops(signal, quota, deaths)
 
         # A policy either always prices its proposals (policy.profit is set:
         # e.g. LC_merge's merge trials or a profit-gated growth policy's
@@ -1155,8 +1184,8 @@ class StructuralEngine:
             ordinary_ops = proposed_ops
         applied.extend(self._apply_atomic_unit(ordinary_ops))
         applied.extend(self._apply_profit_trial(trial_ops, objective, polish))
-        if directive.phase is Phase.RESPONSE:
-            applied.extend(self._apply_response(directive))
+        if signal.phase is Phase.RESPONSE:
+            applied.extend(self._apply_response(signal, quota))
         return tuple(applied)
 
     def _finish_event(
@@ -1216,6 +1245,37 @@ class StructuralEngine:
             callback(context, applied)
         return self._finish_event(applied, audit_context)
 
+    def _composed_event(
+        self, candidate: Clock
+    ) -> tuple[EventSignal, StructuralQuota] | None:
+        """Normalize legacy schedules and separated cadence/quota policies."""
+        if self.policy.cadence is not None:
+            signal = self.policy.cadence.event(candidate)
+            if signal is None:
+                return None
+            if not isinstance(signal, EventSignal):
+                raise TypeError("Cadence.event() must return EventSignal or None")
+            assert self.policy.quota is not None
+            quota = self.policy.quota.at(candidate, signal.phase)
+            if not isinstance(quota, StructuralQuota):
+                raise TypeError("QuotaPolicy.at() must return StructuralQuota")
+            return signal, quota
+
+        assert self.policy.schedule is not None
+        directive = self.policy.schedule.event(candidate)
+        if directive is None:
+            return None
+        if not isinstance(directive, EventDirective):
+            raise TypeError("legacy Schedule.event() must return EventDirective or None")
+        return (
+            EventSignal(directive.event_index, directive.phase),
+            StructuralQuota(
+                synapse_birth=directive.birth_budget,
+                synapse_merge=directive.birth_budget,
+                neuron_birth=directive.ungate_budget,
+            ),
+        )
+
     def step(
         self,
         objective: Callable[[], float] | None = None,
@@ -1234,19 +1294,20 @@ class StructuralEngine:
             )
             if not self._composed_policy:
                 return self._step_whole_policy(candidate)
-            directive = self.policy.schedule.event(candidate)
-            if directive is None:
+            event = self._composed_event(candidate)
+            if event is None:
                 self.clock = Clock(candidate.update_step, self.clock.event_index)
                 return ()
 
+            signal, quota = event
             self.clock = candidate
             audit_context = (
                 self._audit_event_context() if self._audit_subscribers else None
             )
             applied = (
                 ()
-                if directive.phase is Phase.FROZEN
-                else self._apply_event(directive, objective, polish)
+                if signal.phase is Phase.FROZEN
+                else self._apply_event(signal, quota, objective, polish)
             )
             return self._finish_event(applied, audit_context)
         finally:
