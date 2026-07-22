@@ -21,11 +21,13 @@ from .policy import LC_merge, MergeProposer, ProfitCourt, TrialSession, TrialTra
 from .compute import (
     BackwardContext,
     ComputeLinear,
+    CSTConv2d,
     CSTLinear,
     EntryLinear,
     NeuronGatedLinear,
     Observation,
     RankOneLinear,
+    conv2d_neuron_coordinates,
 )
 from .instruments import (
     CandidateField,
@@ -77,7 +79,9 @@ __all__ = [
     "CertificateSubspace",
     "CoordinateDomain",
     "ComputeLinear",
+    "CSTConv2d",
     "CSTLinear",
+    "conv2d_neuron_coordinates",
     "EntityStore",
     "EconomyAudit",
     "Follower",

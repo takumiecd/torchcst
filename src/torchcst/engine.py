@@ -11,6 +11,7 @@ from torchcst.audit import AuditRecord, AuditSubscriber
 from torchcst.compute import (
     BackwardContext,
     ComputeLinear,
+    CSTConv2d,
     CSTLinear,
     EntryLinear,
     NeuronGatedLinear,
@@ -144,9 +145,10 @@ class StructuralEngine:
             if site not in self.synapse_stores:
                 raise ValueError(f"module targets unknown site {site!r}")
             if not isinstance(
-                module, (EntryLinear, RankOneLinear, NeuronGatedLinear, CSTLinear)
+                module,
+                (EntryLinear, RankOneLinear, NeuronGatedLinear, CSTLinear, CSTConv2d),
             ):
-                raise TypeError("modules values must be supported compute linears")
+                raise TypeError("modules values must be supported compute modules")
             if (
                 module.capture_site != site
                 or module.store is not self.synapse_stores[site]

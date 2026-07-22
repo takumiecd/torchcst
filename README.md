@@ -124,6 +124,8 @@ no tensor hooks, but they use the same lifecycle.
 
 - continuous Gaussian `CSTLinear` with learnable atom coordinates, amplitudes,
   and kernel bandwidth
+- `CSTConv2d`, which shares a `CSTLinear` patch map across image locations and
+  supports stride, zero padding, and dilation
 - discrete-entry and rank-one/LoRA-like control families using the same engine
 - opt-in `NeuronGatedLinear` composition for gated control-family experiments
 - `SynapseStore` and `NeuronStore` with versioned prepare/commit mutation
@@ -143,7 +145,7 @@ coordination.
 ```text
 src/torchcst/
 ├── audit/           # immutable event records and aggregate accounting
-├── compute/         # CSTLinear plus entry/rank-one controls and capture
+├── compute/         # CSTLinear/CSTConv2d plus controls and capture
 ├── instruments/     # gradient fields and certificate subspaces
 ├── lab/             # deterministic experiment/replay helpers
 ├── policy/          # contracts, schedules, proposers, courts, catalog
@@ -157,6 +159,19 @@ The tests under `tests/torchcst/` are the executable contract. Design documents
 under `docs/` record both the current v4 design and older decision history; see
 [`docs/README.md`](docs/README.md) before treating a design note as current API
 documentation.
+
+The `CONV-GROW-4` protocol reproduction using the continuous family is runnable
+with local MNIST IDX files:
+
+```bash
+python experiments/e2e_mnist_conv.py --smoke --data-dir ../cst/data/MNIST/raw
+python experiments/e2e_mnist_conv.py --device mps --data-dir ../cst/data/MNIST/raw
+```
+
+This keeps the original topology, tape family, K ladder, and birth timing, but
+replaces the original per-offset rank-one filter with `CSTConv2d`/`CSTLinear`.
+Its JSON labels that distinction explicitly; it is a protocol reproduction,
+not a same-family numerical replication.
 
 ## Development principles
 
