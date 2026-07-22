@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from .bundle import BundleComposer
 from .cadences import BirthWindowCadence, PeriodicCadence
-from .contract import EvenBudgetDistributor, Policy, StructuralQuota
+from .contract import ActionSpec, EvenBudgetDistributor, Policy, StructuralQuota
 from .courts import MagnitudeCourt, RentCourt
 from .proposers import (
     Bounds,
@@ -42,7 +42,12 @@ class _PolicyAdapter:
 
     @property
     def proposers(self):
-        return self._policy.proposers
+        """Compatibility view of proposal-producing action rules."""
+        return self._policy.proposal_rules
+
+    @property
+    def actions(self):
+        return self._policy.active_actions
 
     @property
     def allocator(self):
@@ -55,7 +60,7 @@ class _PolicyAdapter:
 
     @property
     def retention(self):
-        return self._policy.retention
+        return self._policy.synapse_retention_rule
 
     @property
     def composer(self):
@@ -67,7 +72,7 @@ class _PolicyAdapter:
 
     @property
     def neuron_retention(self):
-        return self._policy.neuron_retention
+        return self._policy.neuron_retention_rule
 
     @property
     def requires(self):
@@ -112,15 +117,21 @@ class LC(_PolicyAdapter):
                     ),
                 )
             ),
-            proposers=(
-                UniformEntryBirth(self.bounds_in, self.bounds_out, self.initial_weight),
+            actions=(
+                ActionSpec.synapse_prune(
+                    RentCourt(
+                        immunity_events=self.immunity_events,
+                        rent_ratio=self.rent_ratio,
+                        strikes=self.strikes,
+                    )
+                ),
+                ActionSpec.synapse_birth(
+                    UniformEntryBirth(
+                        self.bounds_in, self.bounds_out, self.initial_weight
+                    )
+                ),
             ),
             distributor=EvenBudgetDistributor(),
-            retention=RentCourt(
-                immunity_events=self.immunity_events,
-                rent_ratio=self.rent_ratio,
-                strikes=self.strikes,
-            ),
             composer=None,
             profit=None,
         )
@@ -162,13 +173,19 @@ class LC_anti(_PolicyAdapter):
                     ),
                 )
             ),
-            proposers=(OrthogonalBirth(rank=self.certificate_rank),),
-            distributor=EvenBudgetDistributor(),
-            retention=RentCourt(
-                immunity_events=self.immunity_events,
-                rent_ratio=self.rent_ratio,
-                strikes=self.strikes,
+            actions=(
+                ActionSpec.synapse_prune(
+                    RentCourt(
+                        immunity_events=self.immunity_events,
+                        rent_ratio=self.rent_ratio,
+                        strikes=self.strikes,
+                    )
+                ),
+                ActionSpec.synapse_birth(
+                    OrthogonalBirth(rank=self.certificate_rank)
+                ),
             ),
+            distributor=EvenBudgetDistributor(),
             composer=None,
             profit=None,
         )
@@ -237,15 +254,19 @@ class LC_response(_PolicyAdapter):
                     ),
                 )
             ),
-            proposers=(
-                UniformEntryBirth(self.bounds_in, self.bounds_out, self.initial_weight),
-                IncidentOutputBirth(self.initial_weight),
+            actions=(
+                ActionSpec.synapse_prune(retention),
+                ActionSpec.neuron_prune(neuron_retention),
+                ActionSpec.synapse_birth(
+                    UniformEntryBirth(
+                        self.bounds_in, self.bounds_out, self.initial_weight
+                    )
+                ),
+                ActionSpec.synapse_birth(IncidentOutputBirth(self.initial_weight)),
             ),
             distributor=EvenBudgetDistributor(),
-            retention=retention,
             composer=composer,
             profit=None,
-            neuron_retention=neuron_retention,
         )
         object.__setattr__(self, "_policy", policy)
 
@@ -284,13 +305,19 @@ class LC_merge(_PolicyAdapter):
                     ),
                 )
             ),
-            proposers=(MergeProposer(self.similarity_threshold),),
-            distributor=EvenBudgetDistributor(),
-            retention=RentCourt(
-                immunity_events=self.immunity_events,
-                rent_ratio=self.rent_ratio,
-                strikes=self.strikes,
+            actions=(
+                ActionSpec.synapse_prune(
+                    RentCourt(
+                        immunity_events=self.immunity_events,
+                        rent_ratio=self.rent_ratio,
+                        strikes=self.strikes,
+                    )
+                ),
+                ActionSpec.synapse_merge(
+                    MergeProposer(self.similarity_threshold)
+                ),
             ),
+            distributor=EvenBudgetDistributor(),
             composer=None,
             profit=ProfitCourt(
                 min_profit=self.min_profit,
@@ -312,8 +339,7 @@ class GrowthByProfit(_PolicyAdapter):
     construction (S-5 decisions only), not the 5c retention lifecycle, so a
     run's natural stopping point is theory U-2's predicted K*(price).
 
-    ``retention`` is a required Policy field but this policy has nothing to
-    prune, so it is bound to an always-inert ``MagnitudeCourt(drop_fraction=0.0)``.
+    This policy declares only a birth action because it has nothing to prune.
     """
 
     event_interval: int = 1
@@ -335,15 +361,16 @@ class GrowthByProfit(_PolicyAdapter):
             quota=ConstantQuota(
                 StructuralQuota(synapse_birth=self.atoms_per_event)
             ),
-            proposers=(
-                UniformBirth(
-                    bounds_in=self.bounds_in,
-                    bounds_out=self.bounds_out,
-                    initial_weight=self.initial_weight,
+            actions=(
+                ActionSpec.synapse_birth(
+                    UniformBirth(
+                        bounds_in=self.bounds_in,
+                        bounds_out=self.bounds_out,
+                        initial_weight=self.initial_weight,
+                    )
                 ),
             ),
             distributor=EvenBudgetDistributor(),
-            retention=MagnitudeCourt(drop_fraction=0.0),
             composer=None,
             profit=ProfitCourt(min_profit=self.min_profit, cost_rate=self.price),
         )
@@ -374,11 +401,15 @@ class cSET(_PolicyAdapter):
             quota=ConstantQuota(
                 StructuralQuota(synapse_birth=self.birth_budget)
             ),
-            proposers=(
-                UniformEntryBirth(self.bounds_in, self.bounds_out, self.initial_weight),
+            actions=(
+                ActionSpec.synapse_prune(MagnitudeCourt(self.drop_fraction)),
+                ActionSpec.synapse_birth(
+                    UniformEntryBirth(
+                        self.bounds_in, self.bounds_out, self.initial_weight
+                    )
+                ),
             ),
             distributor=EvenBudgetDistributor(replacement_only=True),
-            retention=MagnitudeCourt(self.drop_fraction),
             composer=None,
             profit=None,
         )
@@ -416,15 +447,17 @@ class cRigL(_PolicyAdapter):
             quota=ConstantQuota(
                 StructuralQuota(synapse_birth=self.birth_budget)
             ),
-            proposers=(
-                GradFieldTopKBirth(
-                    initial_weight=self.initial_weight,
-                    decay=self.decay,
-                    pool_size=effective_pool,
+            actions=(
+                ActionSpec.synapse_prune(MagnitudeCourt(self.drop_fraction)),
+                ActionSpec.synapse_birth(
+                    GradFieldTopKBirth(
+                        initial_weight=self.initial_weight,
+                        decay=self.decay,
+                        pool_size=effective_pool,
+                    )
                 ),
             ),
             distributor=EvenBudgetDistributor(replacement_only=True),
-            retention=MagnitudeCourt(self.drop_fraction),
             composer=None,
             profit=None,
         )

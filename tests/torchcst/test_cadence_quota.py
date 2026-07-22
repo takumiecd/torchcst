@@ -6,6 +6,7 @@ import torch
 
 from torchcst.engine import StructuralEngine
 from torchcst.policy import (
+    ActionSpec,
     BudgetRequest,
     CallableQuota,
     ConstantQuota,
@@ -65,9 +66,13 @@ def test_engine_runs_policy_with_separate_cadence_and_quota() -> None:
     policy = Policy(
         cadence=PeriodicCadence(event_interval=1),
         quota=ConstantQuota(StructuralQuota(synapse_birth=1)),
-        proposers=(UniformEntryBirth(bounds_in=1, bounds_out=2),),
+        actions=(
+            ActionSpec.synapse_prune(MagnitudeCourt(0.0)),
+            ActionSpec.synapse_birth(
+                UniformEntryBirth(bounds_in=1, bounds_out=2)
+            ),
+        ),
         distributor=EvenBudgetDistributor(),
-        retention=MagnitudeCourt(0.0),
     )
 
     operations = StructuralEngine({store.site: store}, policy, seed=4).step()

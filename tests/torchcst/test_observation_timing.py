@@ -13,7 +13,6 @@ from torchcst.instruments import InstrumentBuildContext, WeightedMeasurement
 from torchcst.policy import (
     ConstantQuota,
     EvenBudgetDistributor,
-    MagnitudeCourt,
     PeriodicCadence,
     Policy,
     StructuralQuota,
@@ -97,7 +96,6 @@ def _parts():
         quota=ConstantQuota(StructuralQuota()),
         observations=(inline, deferred),
         distributor=EvenBudgetDistributor(),
-        retention=MagnitudeCourt(0.0),
     )
     return store, module, policy
 

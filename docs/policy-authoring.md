@@ -79,14 +79,31 @@ A composed policy normally decides five things:
 1. **When is structure observed or changed?** The cadence owns update and
    event timing.
 2. **How much structure may change?** The quota owns logical operation limits.
-3. **What may be born?** A proposer owns candidate construction.
+3. **What may be born?** A birth action owns candidate construction.
 4. **How are candidates ranked?** A capture instrument owns backward-derived
    sufficient statistics; a selector turns scores into choices.
-5. **What is removed?** A retention court owns prune decisions.
+5. **What is removed?** A prune action owns retention decisions.
 
 The framework owns hook lifetime, microbatch weighting, quota enforcement,
 transactions, lineage IDs, optimizer-state reconciliation, and replay clocks.
 A backward observation never mutates structure directly.
+
+`ActionSpec` labels an independently authored rule; it does not become a large
+planner object:
+
+```python
+actions = (
+    ActionSpec.synapse_prune(RentCourt(...)),
+    ActionSpec.synapse_birth(UniformBirth(...)),
+    ActionSpec.synapse_merge(MergeProposer(...)),
+)
+```
+
+The engine evaluates prune actions, distributes the matching quota, invokes
+birth/merge actions, and constructs the `StructuralPlan`. A whole policy places
+an all-or-nothing cross-store change in a `ProposalBundle`; no additional
+planner object is required. The legacy `proposers=`, `retention=`, and
+`allocator=` fields remain accepted only as a migration surface.
 
 ## Logical quotas are not storage allocation
 
@@ -115,9 +132,13 @@ Policies that do not need backward observations require no instrument:
 policy = Policy(
     cadence=PeriodicCadence(event_interval=200),
     quota=ConstantQuota(StructuralQuota(synapse_birth=8)),
-    proposers=(UniformBirth(initial_weight=0.0),),
+    actions=(
+        ActionSpec.synapse_prune(
+            RentCourt(immunity_events=3, rent_ratio=0.3, strikes=2),
+        ),
+        ActionSpec.synapse_birth(UniformBirth(initial_weight=0.0)),
+    ),
     distributor=EvenBudgetDistributor(),
-    retention=RentCourt(immunity_events=3, rent_ratio=0.3, strikes=2),
 )
 ```
 
@@ -149,9 +170,11 @@ policy = Policy(
         observe_window=20,
     ),
     quota=ConstantQuota(StructuralQuota(synapse_birth=32)),
-    proposers=(birth,),
+    actions=(
+        ActionSpec.synapse_prune(MagnitudeCourt(drop_fraction=0.1)),
+        ActionSpec.synapse_birth(birth),
+    ),
     distributor=EvenBudgetDistributor(),
-    retention=MagnitudeCourt(drop_fraction=0.1),
 )
 ```
 

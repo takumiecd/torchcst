@@ -25,7 +25,7 @@ The current implementation is built around five explicit responsibilities:
 
 ```text
 compute  -> PyTorch forward and optional backward observation capture
-policy   -> schedule, proposal, allocation, retention, and profit decisions
+policy   -> cadence, quota, observations, actions, distribution, and profit
 engine   -> update lifecycle and ordered structural-event orchestration
 storage  -> versioned two-phase mutation of synapse and neuron stores
 audit    -> read-only event records and experiment accounting
@@ -143,7 +143,9 @@ no tensor hooks, but they use the same lifecycle.
 
 ## Authoring a policy
 
-Policies are compositions of timing, proposal, allocation, and retention. A
+Policies compose cadence, logical quota, observations, action rules, and a
+budget distributor. The engine—not a user-supplied planner—assembles their
+operations into a validated structural plan. A
 gradient-scored Gaussian birth requires no `StructuralEngine` modification:
 
 ```python
@@ -204,7 +206,7 @@ src/torchcst/
 ├── compute/         # CSTLinear/CSTConv2d plus controls and capture
 ├── instruments/     # gradient fields and certificate subspaces
 ├── lab/             # deterministic experiment/replay helpers
-├── policy/          # contracts, schedules, proposers, courts, catalog
+├── policy/          # cadence, quotas, actions, distributors, courts, catalog
 ├── representation/  # coordinate domains, kernels, family specification
 ├── storage/         # slot mechanics and mutable entity stores
 ├── engine.py        # StructuralEngine lifecycle and event orchestration

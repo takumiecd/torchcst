@@ -102,11 +102,11 @@ def test_orthogonal_merge_reject_restores_store_optimizer_court_rng_registry_and
     store, module, optimizer, engine = _engine(source, source.clone(), cost_rate=0.0)
     desired = module.dense_weight().detach().clone()
     live_id = int(store.live_ids()[0])
-    engine.policy.retention._strike_state[live_id] = 1
+    engine.policy.synapse_retention_rule._strike_state[live_id] = 1
     before = {
         "store": deepcopy(store.state_dict()),
         "optimizer": deepcopy(optimizer.state_dict()),
-        "strikes": engine.policy.retention.state_dict(),
+        "strikes": engine.policy.synapse_retention_rule.state_dict(),
         "rng": engine.rng.get_state().clone(),
         "registry": engine.registry.state_dict(),
         "op_log": engine.op_log(),
@@ -130,7 +130,9 @@ def test_orthogonal_merge_reject_restores_store_optimizer_court_rng_registry_and
     expected_store["_extra_state"]["followers"]["followers"][0]["values"] += 1
     _assert_equal(store.state_dict(), expected_store)
     _assert_equal(optimizer.state_dict(), before["optimizer"])
-    _assert_equal(engine.policy.retention.state_dict(), before["strikes"])
+    _assert_equal(
+        engine.policy.synapse_retention_rule.state_dict(), before["strikes"]
+    )
     assert torch.equal(engine.rng.get_state(), before["rng"])
     _assert_equal(engine.registry.state_dict(), before["registry"])
     assert engine.op_log() == before["op_log"]

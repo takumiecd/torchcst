@@ -42,8 +42,8 @@ class TrialTransaction:
         )
         self._component_states: list[tuple[Any, Any]] = []
         components = (
-            engine.policy.retention,
-            engine.policy.neuron_retention,
+            engine.policy.synapse_retention_rule,
+            engine.policy.neuron_retention_rule,
             engine.policy.profit,
         )
         seen: set[int] = set()
@@ -253,4 +253,3 @@ class ProfitCourt:
     def load_state_dict(self, state: Mapping[str, object]) -> None:
         if not isinstance(state, Mapping) or state.get("schema") != "torchcst-profit-court-v1":
             raise ValueError("unsupported ProfitCourt state schema")
-

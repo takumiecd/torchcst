@@ -3,6 +3,8 @@
 from .catalog import LC, LC_anti, LC_merge, LC_response, GrowthByProfit, cRigL, cSET
 from .bundle import BundleComposer, Op, ProposalBundle, bundle_birth_count
 from .contract import (
+    ActionKind,
+    ActionSpec,
     BudgetAllocator,
     BudgetDistributor,
     BudgetRequest,
@@ -42,6 +44,8 @@ from .quotas import CallableQuota, ConstantQuota, QuotaWindow, WindowedQuota
 from .schedules import BirthWindowSchedule, PeriodicSchedule, ResponseWindow
 
 __all__ = [
+    "ActionKind",
+    "ActionSpec",
     "BirthWindowSchedule",
     "BirthWindowCadence",
     "BudgetAllocator",

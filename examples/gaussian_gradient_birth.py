@@ -8,6 +8,7 @@ from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import ContinuousGradientRequest
 from torchcst.policy import (
+    ActionSpec,
     ConstantQuota,
     EvenBudgetDistributor,
     MagnitudeCourt,
@@ -69,9 +70,11 @@ def build_example(*, capture_mode: str = "inline_reduced"):
             observe_window=1,
         ),
         quota=ConstantQuota(StructuralQuota(synapse_birth=1)),
-        proposers=(birth,),
+        actions=(
+            ActionSpec.synapse_prune(MagnitudeCourt(drop_fraction=0.0)),
+            ActionSpec.synapse_birth(birth),
+        ),
         distributor=EvenBudgetDistributor(),
-        retention=MagnitudeCourt(drop_fraction=0.0),
     )
     optimizer = torch.optim.Adam(layer.parameters(), lr=1e-3)
     engine = StructuralEngine(

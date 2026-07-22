@@ -370,12 +370,12 @@ class StructuralEngine:
                 self.policy.active_cadence,
                 self.policy.quota,
                 *self.policy.observations,
-                *self.policy.proposers,
+                *self.policy.proposal_rules,
                 self.policy.active_distributor,
-                self.policy.retention,
+                self.policy.synapse_retention_rule,
                 self.policy.composer,
                 self.policy.profit,
-                self.policy.neuron_retention,
+                self.policy.neuron_retention_rule,
             )
             if self._composed_policy
             else (self.policy,)
@@ -820,7 +820,7 @@ class StructuralEngine:
             (self.stores[site], tuple(site_ops)) for site, site_ops in by_site.items()
         )
         neuron_court = (
-            self.policy.neuron_retention if self._composed_policy else None
+            self.policy.neuron_retention_rule if self._composed_policy else None
         )
         if neuron_court is not None:
             immunity = int(getattr(neuron_court, "immunity_events", 0))
@@ -936,7 +936,7 @@ class StructuralEngine:
             raise RuntimeError("response ungate budget requires a BundleComposer")
         incident = [
             proposer
-            for proposer in self.policy.proposers
+            for proposer in self.policy.proposal_rules
             if hasattr(proposer, "propose_incident")
         ]
         if len(incident) != 1:
@@ -1008,9 +1008,9 @@ class StructuralEngine:
             court = None
             if self._composed_policy:
                 court = (
-                    self.policy.retention
+                    self.policy.synapse_retention_rule
                     if isinstance(store, SynapseStore)
-                    else self.policy.neuron_retention
+                    else self.policy.neuron_retention_rule
                 )
             rent_ratio = getattr(court, "rent_ratio", None)
             if rent_ratio is None or view.mass.numel() == 0:
@@ -1145,11 +1145,16 @@ class StructuralEngine:
         """Collect and validate all court decisions for the current event."""
         views = {site: store.view() for site, store in self.synapse_stores.items()}
         deaths: dict[str, tuple[SynapseDeath, ...]] = {}
-        immunity_events = int(getattr(self.policy.retention, "immunity_events", 0))
+        synapse_court = self.policy.synapse_retention_rule
+        immunity_events = int(getattr(synapse_court, "immunity_events", 0))
         for site, store in self.synapse_stores.items():
-            decided = tuple(
-                self.policy.retention.decide(
-                    views[site], self._ages(store, views[site]), self.clock
+            decided = (
+                ()
+                if synapse_court is None
+                else tuple(
+                    synapse_court.decide(
+                        views[site], self._ages(store, views[site]), self.clock
+                    )
                 )
             )
             if not all(isinstance(op, SynapseDeath) for op in decided):
@@ -1160,7 +1165,7 @@ class StructuralEngine:
         neuron_deaths: dict[str, tuple[NeuronRetire, ...]] = {
             site: () for site in self.neuron_stores
         }
-        neuron_court = self.policy.neuron_retention
+        neuron_court = self.policy.neuron_retention_rule
         if neuron_court is not None:
             neuron_immunity = int(getattr(neuron_court, "immunity_events", 0))
             for site, store in self.neuron_stores.items():
@@ -1189,7 +1194,7 @@ class StructuralEngine:
         """Distribute logical quotas and collect ordinary action output."""
         standard_proposer_indexes = tuple(
             index
-            for index, proposer in enumerate(self.policy.proposers)
+            for index, proposer in enumerate(self.policy.proposal_rules)
             if not hasattr(proposer, "propose_incident")
         )
         requests = tuple(
@@ -1197,7 +1202,7 @@ class StructuralEngine:
                 site,
                 index,
                 self._death_count(deaths[site]),
-                getattr(self.policy.proposers[index], "quota_kind", "synapse_birth"),
+                self.policy.proposal_actions[index].kind.value,
             )
             for site in self.synapse_stores
             for index in standard_proposer_indexes
@@ -1234,7 +1239,7 @@ class StructuralEngine:
         }
         proposed_ops: list[Op] = []
         for request, budget in zip(requests, allocations):
-            proposer = self.policy.proposers[request.proposer_index]
+            proposer = self.policy.proposal_rules[request.proposer_index]
             proposed = proposer.propose(
                 self._proposal_view(
                     self.synapse_stores[request.site], current_views[request.site]

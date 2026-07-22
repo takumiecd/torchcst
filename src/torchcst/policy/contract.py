@@ -311,6 +311,55 @@ class RetentionCourt(Protocol):
     ) -> tuple[SynapseDeath | NeuronRetire, ...]: ...
 
 
+class ActionKind(str, Enum):
+    """Logical structural operation family owned by one reusable rule."""
+
+    SYNAPSE_BIRTH = "synapse_birth"
+    SYNAPSE_PRUNE = "synapse_prune"
+    SYNAPSE_MERGE = "synapse_merge"
+    NEURON_BIRTH = "neuron_birth"
+    NEURON_PRUNE = "neuron_prune"
+
+
+@dataclass(frozen=True)
+class ActionSpec:
+    """Bind one independently authored rule to a structural action kind."""
+
+    kind: ActionKind
+    rule: Any
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, ActionKind):
+            raise TypeError("kind must be an ActionKind")
+        method = (
+            "decide"
+            if self.kind in {ActionKind.SYNAPSE_PRUNE, ActionKind.NEURON_PRUNE}
+            else "propose"
+        )
+        if not callable(getattr(self.rule, method, None)):
+            raise TypeError(f"{self.kind.value} rule must provide {method}()")
+
+    @classmethod
+    def synapse_birth(cls, rule: Any) -> ActionSpec:
+        return cls(ActionKind.SYNAPSE_BIRTH, rule)
+
+    @classmethod
+    def synapse_prune(cls, rule: Any) -> ActionSpec:
+        return cls(ActionKind.SYNAPSE_PRUNE, rule)
+
+    @classmethod
+    def synapse_merge(cls, rule: Any) -> ActionSpec:
+        return cls(ActionKind.SYNAPSE_MERGE, rule)
+
+    @classmethod
+    def neuron_birth(cls, rule: Any) -> ActionSpec:
+        return cls(ActionKind.NEURON_BIRTH, rule)
+
+    @classmethod
+    def neuron_prune(cls, rule: Any) -> ActionSpec:
+        return cls(ActionKind.NEURON_PRUNE, rule)
+
+
 @dataclass(frozen=True)
 class Policy:
     """One swappable structural learning rule."""
@@ -326,6 +375,7 @@ class Policy:
     quota: QuotaPolicy | None = None
     distributor: BudgetDistributor | None = None
     observations: tuple[InstrumentRequirement, ...] = ()
+    actions: tuple[ActionSpec, ...] = ()
 
     def __post_init__(self) -> None:
         if (self.schedule is None) == (self.cadence is None):
@@ -336,12 +386,25 @@ class Policy:
             raise ValueError("legacy schedule= already owns its operation budget")
         if (self.allocator is None) == (self.distributor is None):
             raise ValueError("specify exactly one of allocator= or distributor=")
-        if self.retention is None:
-            raise ValueError("retention is required")
+        legacy_actions = bool(self.proposers) or self.retention is not None
+        if self.actions and legacy_actions:
+            raise ValueError(
+                "actions= cannot be mixed with legacy proposers=/retention="
+            )
+        if self.actions and self.neuron_retention is not None:
+            raise ValueError("neuron_retention belongs in actions=")
         if not isinstance(self.proposers, tuple):
             raise TypeError("proposers must be a tuple")
         if not isinstance(self.observations, tuple):
             raise TypeError("observations must be a tuple")
+        if not isinstance(self.actions, tuple) or not all(
+            isinstance(action, ActionSpec) for action in self.actions
+        ):
+            raise TypeError("actions must be a tuple of ActionSpec values")
+        kinds = [action.kind for action in self.actions]
+        for kind in (ActionKind.SYNAPSE_PRUNE, ActionKind.NEURON_PRUNE):
+            if kinds.count(kind) > 1:
+                raise ValueError(f"only one {kind.value} action is currently supported")
 
     @property
     def active_cadence(self) -> Schedule | Cadence:
@@ -360,17 +423,66 @@ class Policy:
         return distributor
 
     @property
+    def active_actions(self) -> tuple[ActionSpec, ...]:
+        """Normalize old component fields to the public action representation."""
+        if self.actions:
+            return self.actions
+        result: list[ActionSpec] = []
+        if self.retention is not None:
+            result.append(ActionSpec.synapse_prune(self.retention))
+        if self.neuron_retention is not None:
+            result.append(ActionSpec.neuron_prune(self.neuron_retention))
+        for proposer in self.proposers:
+            kind = (
+                ActionKind.SYNAPSE_MERGE
+                if getattr(proposer, "quota_kind", None) == "synapse_merge"
+                else ActionKind.SYNAPSE_BIRTH
+            )
+            result.append(ActionSpec(kind, proposer))
+        return tuple(result)
+
+    def action(self, kind: ActionKind) -> ActionSpec | None:
+        """Return the single action of one kind, if configured."""
+        matches = tuple(action for action in self.active_actions if action.kind is kind)
+        if len(matches) > 1 and kind in {
+            ActionKind.SYNAPSE_PRUNE,
+            ActionKind.NEURON_PRUNE,
+        }:
+            raise RuntimeError(f"multiple {kind.value} actions are unsupported")
+        return matches[0] if matches else None
+
+    @property
+    def proposal_actions(self) -> tuple[ActionSpec, ...]:
+        return tuple(
+            action
+            for action in self.active_actions
+            if action.kind in {ActionKind.SYNAPSE_BIRTH, ActionKind.SYNAPSE_MERGE}
+        )
+
+    @property
+    def proposal_rules(self) -> tuple[Any, ...]:
+        return tuple(action.rule for action in self.proposal_actions)
+
+    @property
+    def synapse_retention_rule(self) -> Any | None:
+        action = self.action(ActionKind.SYNAPSE_PRUNE)
+        return None if action is None else action.rule
+
+    @property
+    def neuron_retention_rule(self) -> Any | None:
+        action = self.action(ActionKind.NEURON_PRUNE)
+        return None if action is None else action.rule
+
+    @property
     def requires(self) -> tuple[InstrumentRequirement, ...]:
         """Deduplicate every component's requests while preserving order."""
         components = (
             self.active_cadence,
             self.quota,
-            *self.proposers,
+            *(action.rule for action in self.active_actions),
             self.active_distributor,
-            self.retention,
             self.composer,
             self.profit,
-            self.neuron_retention,
         )
         result: list[InstrumentRequirement] = list(self.observations)
         if not all(

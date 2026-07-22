@@ -18,6 +18,8 @@ from .representation import (
     Sphere,
 )
 from .policy import (
+    ActionKind,
+    ActionSpec,
     BirthWindowCadence,
     BudgetDistributor,
     CallableQuota,
@@ -93,6 +95,8 @@ from .engine import StructuralEngine
 from .optim import OptimizerStateFollower
 
 __all__ = [
+    "ActionKind",
+    "ActionSpec",
     "Accounting",
     "ActiveParameterReport",
     "AgeColumn",
