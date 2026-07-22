@@ -14,6 +14,9 @@ current API documentation.
 
 ## Current design reference
 
+- [`framework-design.md`](framework-design.md) — current responsibility map,
+  composed versus whole policies, storage behavior, implemented operation
+  matrix, and extension checklist.
 - [`winning_recipe_design.md`](winning_recipe_design.md) — v4 architecture and
   accepted invariants behind the current implementation. Some planned modules
   and distributed paths described there are still future work.

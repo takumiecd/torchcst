@@ -173,6 +173,9 @@ implement `prepare`, one timing-specific measurement method, and
 [`policy authoring guide`](docs/policy-authoring.md), the
 [`capture lifecycle`](docs/capture-lifecycle.md), and the executable
 [`Gaussian scored-birth example`](examples/gaussian_gradient_birth.py).
+The [`framework design map`](docs/framework-design.md) records the current
+responsibility boundaries, storage behavior, operation support matrix, and the
+recommended extension checklist.
 
 ## Implemented surface
 
@@ -193,8 +196,10 @@ implement `prepare`, one timing-specific measurement method, and
 - event audit, accounting, deterministic RNG streams, batch tapes, and replay
 
 Deliberately unsupported paths raise explicit errors. These currently include
-synapse/neuron kick operations, entry-family merge, and distributed structural
-coordination.
+synapse/neuron kick operations, entry-family merge, generic composed-policy
+neuron birth, and distributed structural coordination. Coupled neuron and
+synapse birth can be authored today as a whole `StructuralPolicy` emitting an
+atomic `ProposalBundle`.
 
 ## Repository layout
 
