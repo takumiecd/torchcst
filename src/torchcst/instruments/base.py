@@ -35,6 +35,31 @@ class InstrumentBuildContext:
     rng: torch.Generator
 
 
+@dataclass(frozen=True)
+class KernelPort:
+    """Read-only kernel-column evaluation handed to continuous-domain instruments.
+
+    Wraps one compute module's public ``kernel_columns`` entry point so that
+    instruments evaluate ``u``/``v`` kernel directions for arbitrary
+    source/target coordinates without reaching into a module's private
+    kernel/neuron internals (``module.kernel_in``, ``module.in_neurons.mu``,
+    ...).
+    """
+
+    module: Any
+
+    def columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
+        """Return ``(k_in, k_out)`` kernel columns for source/target rows.
+
+        ``k_in`` has shape ``[in_features, N]`` and ``k_out`` has shape
+        ``[out_features, N]``; both are detached, gradient-free reads.
+        """
+        columns = getattr(self.module, "kernel_columns", None)
+        if not callable(columns):
+            raise TypeError("KernelPort module must provide kernel_columns()")
+        return columns(source, target)
+
+
 @runtime_checkable
 class CaptureInstrument(Protocol):
     """Timing-neutral state lifecycle shared by all capture instruments."""
