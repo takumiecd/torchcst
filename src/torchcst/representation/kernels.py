@@ -38,6 +38,17 @@ class ContinuousKernel(nn.Module):
     implementation may revive the old ``SynapseStore.add_extra`` design for
     that purpose.
 
+    ``forward`` validates that ``sigma`` is finite and positive on every
+    call by default (``validate_sigma=True``, construction time is always
+    validated regardless of this flag).  That guard costs two host syncs
+    per call -- ``torch._assert_async`` would avoid them but corrupts the
+    CUDA context on failure, too weak a contract for a general library, so
+    the default stays a hard, sync-costing ``raise``.  Pass
+    ``validate_sigma=False`` only when a caller can prove sigma is positive
+    and finite by construction on every write after ``__init__`` too (e.g.
+    it is always written as ``exp(x)`` for some finite real ``x``, and
+    nothing else ever touches the buffer/parameter).
+
     Subclasses set :attr:`family` to the name their representation spec
     declares and implement :meth:`profile`.
     """
@@ -45,12 +56,20 @@ class ContinuousKernel(nn.Module):
     #: Spec-level family name; concrete kernels must override it.
     family: ClassVar[str] = ""
 
-    def __init__(self, sigma: float | Tensor, learnable: bool = True) -> None:
+    def __init__(
+        self,
+        sigma: float | Tensor,
+        learnable: bool = True,
+        *,
+        validate_sigma: bool = True,
+    ) -> None:
         super().__init__()
         if not self.family:
             raise TypeError("ContinuousKernel subclasses must define a family name")
         if not isinstance(learnable, bool):
             raise TypeError("learnable must be a bool")
+        if not isinstance(validate_sigma, bool):
+            raise TypeError("validate_sigma must be a bool")
         if isinstance(sigma, bool):
             raise TypeError("sigma must be a real scalar")
         value = torch.as_tensor(sigma)
@@ -66,6 +85,18 @@ class ContinuousKernel(nn.Module):
             self.sigma = nn.Parameter(value)
         else:
             self.register_buffer("sigma", value)
+        # Whether forward() re-checks sigma's finiteness/positivity on every
+        # call (see forward's docstring note below). This construction-time
+        # check above always runs regardless: it is a one-time cost, not the
+        # per-call host sync forward's guard incurs, so validate_sigma never
+        # weakens the *library* default (True) for any existing caller --
+        # only a caller who can prove sigma stays positive and finite by
+        # construction on every subsequent write (e.g. reparameterizing as
+        # log_sigma and writing exp(log_sigma), never touching the buffer
+        # any other way) should pass False. Mirrors the track_mass precedent
+        # in _ContinuousCSTMap: an opt-out for provably-dead-weight
+        # per-forward bookkeeping, default True everywhere else.
+        self._validate_sigma = validate_sigma
 
     @property
     def learnable(self) -> bool:
@@ -85,8 +116,14 @@ class ContinuousKernel(nn.Module):
         if not query.is_floating_point() or not centers.is_floating_point():
             raise TypeError("continuous coordinates must have floating dtypes")
         sigma = self.sigma.to(device=query.device, dtype=query.dtype)
-        if not bool(torch.isfinite(sigma)) or bool(sigma <= 0):
-            raise ValueError("sigma must remain finite and positive")
+        if self._validate_sigma:
+            # Two host syncs (bool(), bool()) on every call. torch._assert_async
+            # would avoid them but poisons the CUDA context on failure, which
+            # is too weak a contract for this library's default -- see
+            # validate_sigma's docstring note in __init__ for who may
+            # disable this and why.
+            if not bool(torch.isfinite(sigma)) or bool(sigma <= 0):
+                raise ValueError("sigma must remain finite and positive")
         centers = centers.to(device=query.device, dtype=query.dtype)
         squared_distance = (query[:, None, :] - centers[None, :, :]).square().sum(-1)
         return self.profile(squared_distance, sigma)

@@ -93,8 +93,9 @@ class CSTConv2d(_ContinuousCSTMap):
         dilation: int | tuple[int, int] = 1,
         bias: bool = True,
         implementation: Literal["unfold", "materialized"] = "unfold",
+        track_mass: bool = True,
     ) -> None:
-        super().__init__(in_neurons, out_neurons, synapses, kernel, kernel_out)
+        super().__init__(in_neurons, out_neurons, synapses, kernel, kernel_out, track_mass=track_mass)
         if isinstance(in_channels, bool) or not isinstance(in_channels, int):
             raise TypeError("in_channels must be an int")
         if in_channels <= 0:

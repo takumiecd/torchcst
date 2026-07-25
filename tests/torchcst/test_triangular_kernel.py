@@ -157,6 +157,42 @@ def test_continuous_kernel_base_refuses_to_be_instantiated() -> None:
         ContinuousKernel(0.1)
 
 
+def test_forward_rejects_a_sigma_that_went_bad_after_construction() -> None:
+    """Default behaviour (validate_sigma=True): the per-call guard fires
+    even though construction itself was fine, e.g. an external buffer
+    write drove sigma non-positive after the fact."""
+    kernel = GaussianKernel(0.3, learnable=False)
+    kernel.sigma.copy_(torch.tensor(-1.0))
+    query = torch.tensor([[0.0]])
+    centers = torch.tensor([[0.0]])
+
+    with pytest.raises(ValueError):
+        kernel(query, centers)
+
+
+def test_validate_sigma_false_skips_the_per_forward_guard() -> None:
+    """Opt-out mirrors the track_mass precedent: default True everywhere,
+    a caller that can prove sigma stays positive/finite by construction may
+    disable the per-call recheck. Construction-time validation is
+    unaffected by the flag -- only forward's guard is skipped."""
+    with pytest.raises(ValueError):
+        GaussianKernel(-1.0, learnable=False, validate_sigma=False)
+
+    kernel = GaussianKernel(0.3, learnable=False, validate_sigma=False)
+    kernel.sigma.copy_(torch.tensor(-1.0))
+    query = torch.tensor([[0.0]])
+    centers = torch.tensor([[0.0]])
+
+    # Would raise under the default; validate_sigma=False lets it through.
+    values = kernel(query, centers)
+    assert bool(torch.isfinite(values).all())
+
+
+def test_validate_sigma_must_be_a_bool() -> None:
+    with pytest.raises(TypeError):
+        GaussianKernel(0.3, validate_sigma="no")  # type: ignore[arg-type]
+
+
 # --------------------------------------------------------------------------- #
 # Spec wiring
 # --------------------------------------------------------------------------- #

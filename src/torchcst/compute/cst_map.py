@@ -31,8 +31,12 @@ class _ContinuousCSTMap(nn.Module):
         synapses: SynapseStore,
         kernel: ContinuousKernel,
         kernel_out: ContinuousKernel | None = None,
+        *,
+        track_mass: bool = True,
     ) -> None:
         super().__init__()
+        if not isinstance(track_mass, bool):
+            raise TypeError("track_mass must be a bool")
         if not isinstance(in_neurons, NeuronStore) or not isinstance(
             out_neurons, NeuronStore
         ):
@@ -66,6 +70,19 @@ class _ContinuousCSTMap(nn.Module):
         self.in_features = in_neurons.n_max
         self.out_features = out_neurons.n_max
         self.capture_site = synapses.site
+        # Whether this module keeps ``synapses.mass_scale`` fresh on every
+        # forward/dense_weight call. Mass tracking exists purely for
+        # diagnostics/structural-retention policies (functional_mass,
+        # view.mass) -- it is never read by the represented forward/backward
+        # math (see _forward_rows/dense_weight, which only ever touch
+        # synapses.w). A caller that never runs a mass-based structural
+        # policy and never inspects view.mass/functional_mass can safely set
+        # this False to skip _refresh_mass_scale's per-call bookkeeping
+        # entirely: the version/signature comparison, the sigma clone, and
+        # (whenever the cache is actually invalidated) the two host-syncing
+        # bool() checks inside SynapseStore.set_mass_scale. Default True
+        # preserves the exact prior behavior for every existing caller.
+        self._track_mass = track_mass
         self._cached_version = -1
         self._cached_view: SynapseView | None = None
         self._cached_slots = torch.zeros(0, dtype=torch.int64)
@@ -147,6 +164,8 @@ class _ContinuousCSTMap(nn.Module):
         )
 
     def _refresh_mass_scale(self, k_in: Tensor, k_out: Tensor) -> None:
+        if not self._track_mass:
+            return
         kernels = tuple(dict.fromkeys((self.kernel_in, self.kernel_out)))
         sigmas = tuple(kernel.sigma.detach().clone() for kernel in kernels)
         signature = self._current_mass_signature()
