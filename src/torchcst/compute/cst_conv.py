@@ -8,10 +8,10 @@ from torch.nn import functional as F
 from torch.nn.modules.utils import _pair
 from typing import Literal
 
-from torchcst.representation import GaussianKernel
+from torchcst.representation import ContinuousKernel
 from torchcst.storage import NeuronStore, SynapseStore
 
-from .cst_map import _GaussianCSTMap
+from .cst_map import _ContinuousCSTMap
 
 
 def conv2d_neuron_coordinates(
@@ -63,7 +63,7 @@ def conv2d_neuron_coordinates(
     return input_mu, output_mu
 
 
-class CSTConv2d(_GaussianCSTMap):
+class CSTConv2d(_ContinuousCSTMap):
     """Apply one continuous CST measure as a shared convolutional filter.
 
     The module directly owns its endpoint neuron charts, synapse measure, and
@@ -83,11 +83,11 @@ class CSTConv2d(_GaussianCSTMap):
         in_neurons: NeuronStore,
         out_neurons: NeuronStore,
         synapses: SynapseStore,
-        kernel: GaussianKernel,
+        kernel: ContinuousKernel,
         in_channels: int,
         kernel_size: int | tuple[int, int],
         *,
-        kernel_out: GaussianKernel | None = None,
+        kernel_out: ContinuousKernel | None = None,
         stride: int | tuple[int, int] = 1,
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,

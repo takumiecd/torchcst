@@ -8,7 +8,11 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 import torch
 from torch import Tensor, nn
 
-from torchcst.representation import ParameterRole, RepresentationSpec
+from torchcst.representation import (
+    CONTINUOUS_KERNELS,
+    ParameterRole,
+    RepresentationSpec,
+)
 
 from .mechanics import (
     AgeColumn,
@@ -253,15 +257,20 @@ class SynapseStore(nn.Module):
         )
 
     def set_mass_scale(self, scale: Tensor, *, version: int | None = None) -> None:
-        """Update detached packed Gaussian kernel norms without structural mutation.
+        """Update detached packed continuous kernel norms without mutation.
 
         The column is owned by every store for one uniform view contract, but
-        only the continuous Gaussian family may change it.  Entry and
-        rank-one stores therefore retain the exact ``mass == abs(w)`` behavior
-        implied by their delta/orthonormal gauges.
+        only a continuous family may change it.  Entry and rank-one stores
+        therefore retain the exact ``mass == abs(w)`` behavior implied by
+        their delta/orthonormal gauges.
         """
-        if self.spec.kernel_in != "gaussian" or self.spec.kernel_out != "gaussian":
-            raise RuntimeError("mass_scale is fixed at one outside the Gaussian family")
+        if (
+            self.spec.kernel_in != self.spec.kernel_out
+            or self.spec.kernel_in not in CONTINUOUS_KERNELS
+        ):
+            raise RuntimeError(
+                "mass_scale is fixed at one outside the continuous families"
+            )
         if version is not None and version != self._version:
             raise RuntimeError("mass_scale update targets a stale store version")
         if not isinstance(scale, Tensor):

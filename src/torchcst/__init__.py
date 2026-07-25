@@ -11,11 +11,13 @@ from .audit import (
 )
 from .representation import (
     Box,
+    ContinuousKernel,
     CoordinateDomain,
     GaussianKernel,
     IntegerGrid,
     RepresentationSpec,
     Sphere,
+    TriangularKernel,
 )
 from .policy import (
     ActionKind,
@@ -128,6 +130,7 @@ __all__ = [
     "FollowerHub",
     "EntryLinear",
     "GradFieldEMA",
+    "ContinuousKernel",
     "GaussianKernel",
     "IdAllocator",
     "IntegerGrid",
@@ -170,6 +173,7 @@ __all__ = [
     "StructuralPolicy",
     "StructuralQuota",
     "Sphere",
+    "TriangularKernel",
     "Ticket",
     "TopKSelector",
     "TrialSession",

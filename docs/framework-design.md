@@ -87,7 +87,7 @@ should use `cadence=`, `quota=`, and `distributor=`.
 
 ### Annealing structural change
 
-Sigma annealing and structural annealing are independent. Keep a Gaussian
+Sigma annealing and structural annealing are independent. Keep the
 kernel's sigma fixed on the compute module and return a time-varying
 `StructuralQuota`:
 
@@ -182,13 +182,30 @@ sampled on first use and refreshed when the associated store version changes.
 Current standard birth choices include:
 
 - `UniformBirth`: sample continuous coordinates uniformly and emit births;
-- `ScoredBirth(ContinuousGradientRequest(...))`: score continuous Gaussian
+- `ScoredBirth(ContinuousGradientRequest(...))`: score continuous
   coordinates from backward evidence and take top-K at the structural event;
 - discrete-entry and rank-one controls, which are comparison families rather
   than the center of CST research.
 
-Gaussian width belongs to `GaussianKernel`. Birth policy selects coordinates,
+Bandwidth belongs to the kernel object. Birth policy selects coordinates,
 lineage, and initial amplitude; it does not silently anneal sigma.
+
+### Continuous kernel families
+
+`RepresentationSpec.continuous(..., kernel=...)` selects the profile, and the
+compute module refuses a kernel whose `family` disagrees with the store's spec
+because mass and rent constants are family-specific.
+
+- `GaussianKernel` (`"gaussian"`): support is the whole domain at every
+  positive sigma, so a position gradient reaches every neuron and the
+  represented matrix is never structurally sparse.
+- `TriangularKernel` (`"triangular"`): `relu(1 - r/sigma)`, exactly zero
+  outside the radius-sigma ball. The represented matrix is structurally
+  sparse, and shrinking sigma below the neuron spacing reproduces the entry
+  family's delta behaviour exactly -- it is the only continuous family that
+  reaches the entry family continuously. The cost is that atoms outside every
+  neuron's support receive no position gradient, so a compact kernel relies on
+  structural birth/death for transport where the Gaussian relies on its tail.
 
 ## Storage behavior
 

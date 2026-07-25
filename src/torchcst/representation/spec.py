@@ -9,6 +9,7 @@ import torch
 from torch import Tensor
 
 from .domains import Box, CoordinateDomain, IntegerGrid, Sphere
+from .kernels import CONTINUOUS_KERNELS
 
 
 @dataclass(frozen=True)
@@ -26,7 +27,9 @@ class RepresentationSpec:
     def __post_init__(self) -> None:
         entry = self.kernel_in == self.kernel_out == "delta"
         rank_one = self.kernel_in == self.kernel_out == "dot"
-        continuous = self.kernel_in == self.kernel_out == "gaussian"
+        continuous = (
+            self.kernel_in == self.kernel_out and self.kernel_in in CONTINUOUS_KERNELS
+        )
         if not entry and not rank_one and not continuous:
             raise ValueError(
                 "kernel pair must describe entry, rank-one, or continuous family"
@@ -92,22 +95,29 @@ class RepresentationSpec:
         d_out: int,
         *,
         bounds: tuple[float, float] = (0.0, 1.0),
+        kernel: str = "gaussian",
     ) -> RepresentationSpec:
-        """Create the Box×Box Gaussian continuous-coordinate family.
+        """Create a Box×Box continuous-coordinate family.
 
-        Gaussian functional mass depends on sampled neuron locations, sigma,
-        and boundary effects.  Consequently the frozen entry/rank-one rent
-        constants must not be inherited automatically; they require fresh
-        calibration for this family.
+        ``kernel`` selects the profile: ``"gaussian"`` (global support) or
+        ``"triangular"`` (compact support, and therefore the family that
+        reaches the entry family's delta kernel as sigma shrinks).  Continuous
+        functional mass depends on sampled neuron locations, sigma, and
+        boundary effects, and the compact profile changes all three.
+        Consequently the frozen entry/rank-one rent constants must not be
+        inherited automatically, and neither may a Gaussian calibration be
+        reused for a compact kernel: each requires fresh calibration.
         """
         if not isinstance(bounds, tuple) or len(bounds) != 2:
             raise TypeError("bounds must be a (lo, hi) tuple")
+        if kernel not in CONTINUOUS_KERNELS:
+            raise ValueError(f"kernel must be one of {sorted(CONTINUOUS_KERNELS)}")
         lo, hi = bounds
         return cls(
             domain_in=Box(lo, hi, d_in),
             domain_out=Box(lo, hi, d_out),
-            kernel_in="gaussian",
-            kernel_out="gaussian",
+            kernel_in=kernel,
+            kernel_out=kernel,
             atom_cost=d_in + d_out + 1,
             retirement="gate_only",
         )
@@ -147,7 +157,7 @@ class RepresentationSpec:
             raise ValueError("functional_mass tensors must share the atom count")
         if self.kernel_in == self.kernel_out == "delta":
             return w.abs()
-        if self.kernel_in == self.kernel_out == "gaussian":
+        if self.kernel_in == self.kernel_out and self.kernel_in in CONTINUOUS_KERNELS:
             raise RuntimeError(
                 "continuous functional mass requires SynapseStore.mass_scale"
             )

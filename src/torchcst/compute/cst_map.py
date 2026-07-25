@@ -1,23 +1,27 @@
-"""Shared mechanics for continuous Gaussian CST compute modules."""
+"""Shared mechanics for continuous CST compute modules."""
 
 from __future__ import annotations
 
 import torch
 from torch import Tensor, nn
 
-from torchcst.representation import Box, GaussianKernel
+from torchcst.representation import Box, ContinuousKernel
 from torchcst.storage import NeuronStore, SynapseStore, SynapseView
 
 from .capture import BackwardContext
 
 
-class _GaussianCSTMap(nn.Module):
-    """Own a continuous Gaussian CST measure and its endpoint charts.
+class _ContinuousCSTMap(nn.Module):
+    """Own a continuous CST measure and its endpoint charts.
 
     This internal base contains representation, mass, and capture mechanics
     shared by linear and convolutional compute modules.  It deliberately has
     no public forward contract: each concrete module defines its own input
     geometry.
+
+    The kernel objects and the store's spec must name the same family, so a
+    store calibrated for one profile cannot be driven by another: mass and
+    rent constants are family-specific.
     """
 
     def __init__(
@@ -25,8 +29,8 @@ class _GaussianCSTMap(nn.Module):
         in_neurons: NeuronStore,
         out_neurons: NeuronStore,
         synapses: SynapseStore,
-        kernel: GaussianKernel,
-        kernel_out: GaussianKernel | None = None,
+        kernel: ContinuousKernel,
+        kernel_out: ContinuousKernel | None = None,
     ) -> None:
         super().__init__()
         if not isinstance(in_neurons, NeuronStore) or not isinstance(
@@ -35,15 +39,18 @@ class _GaussianCSTMap(nn.Module):
             raise TypeError("in_neurons and out_neurons must be NeuronStores")
         if not isinstance(synapses, SynapseStore):
             raise TypeError("synapses must be a SynapseStore")
-        if not isinstance(kernel, GaussianKernel):
-            raise TypeError("kernel must be a GaussianKernel")
-        if kernel_out is not None and not isinstance(kernel_out, GaussianKernel):
-            raise TypeError("kernel_out must be a GaussianKernel or None")
+        if not isinstance(kernel, ContinuousKernel):
+            raise TypeError("kernel must be a ContinuousKernel")
+        if kernel_out is not None and not isinstance(kernel_out, ContinuousKernel):
+            raise TypeError("kernel_out must be a ContinuousKernel or None")
+        outgoing = kernel if kernel_out is None else kernel_out
         if (
-            synapses.spec.kernel_in != "gaussian"
-            or synapses.spec.kernel_out != "gaussian"
+            synapses.spec.kernel_in != kernel.family
+            or synapses.spec.kernel_out != outgoing.family
         ):
-            raise ValueError("continuous CST maps require a Gaussian spec")
+            raise ValueError(
+                "continuous CST maps require a spec naming the kernel families"
+            )
         if not isinstance(synapses.spec.domain_in, Box) or not isinstance(
             synapses.spec.domain_out, Box
         ):
