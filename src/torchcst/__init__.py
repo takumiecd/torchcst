@@ -40,17 +40,15 @@ from .policy import (
     TrialSession,
     TrialTransaction,
 )
+from . import baselines
 from .compute import (
     BackwardContext,
     CaptureMode,
     ComputeLinear,
     CSTConv2d,
     CSTLinear,
-    EntryLinear,
-    NeuronGatedLinear,
     Observation,
     ObservationTiming,
-    RankOneLinear,
     conv2d_neuron_coordinates,
 )
 from .instruments import (
@@ -105,6 +103,7 @@ __all__ = [
     "AuditRecord",
     "AuditSubscriber",
     "BackwardContext",
+    "baselines",
     "BirthWindowCadence",
     "CaptureMode",
     "Box",
@@ -128,7 +127,6 @@ __all__ = [
     "EvenBudgetDistributor",
     "Follower",
     "FollowerHub",
-    "EntryLinear",
     "GradFieldEMA",
     "ContinuousKernel",
     "GaussianKernel",
@@ -143,7 +141,6 @@ __all__ = [
     "DORMANT",
     "LIVE",
     "NeuronKick",
-    "NeuronGatedLinear",
     "NeuronOp",
     "NeuronRetire",
     "NeuronState",
@@ -155,7 +152,6 @@ __all__ = [
     "OptimizerStateFollower",
     "PeriodicCadence",
     "PolicyContext",
-    "RankOneLinear",
     "RentMargin",
     "ScoredBirth",
     "ProfitCourt",

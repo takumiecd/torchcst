@@ -7,11 +7,15 @@ from torch import Tensor, nn
 
 from torchcst.storage import SynapseStore, SynapseView
 
-from .capture import BackwardContext
+from ..capture import BackwardContext
 
 
 class EntryLinear(nn.Module):
-    """Sparse linear map backed by entry-family ``(source, target, weight)`` rows.
+    """Control family, not CST: the entry family (one atom == one sparse
+    matrix entry), i.e. the DST/SET/RigL baseline and the sigma->0 limit of
+    the triangular kernel family.
+
+    Sparse linear map backed by entry-family ``(source, target, weight)`` rows.
 
     The module is a read-only compute edge: it neither creates operations nor
     mutates the store.  No dense weight matrix is materialized by ``forward``.

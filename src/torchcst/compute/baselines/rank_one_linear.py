@@ -7,11 +7,16 @@ from torch import Tensor, nn
 
 from torchcst.storage import SynapseStore, SynapseView
 
-from .capture import BackwardContext
+from ..capture import BackwardContext
 
 
 class RankOneLinear(nn.Module):
-    """Linear map ``sum_k c_k u_k v_k^T`` without materializing dense ``W``."""
+    """Control family, not CST: a chart-free rank-one control (free u, v; no
+    kernel, no bandwidth) that sits outside the theory's representation
+    class and upper-bounds what coordinates alone can buy.
+
+    Linear map ``sum_k c_k u_k v_k^T`` without materializing dense ``W``.
+    """
 
     def __init__(
         self,

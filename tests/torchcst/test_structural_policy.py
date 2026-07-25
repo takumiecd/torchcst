@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import pytest
 import torch
 
-from torchcst.compute import EntryLinear
+from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import InstrumentBuildContext, WeightedMeasurement
 from torchcst.policy import (
@@ -17,8 +17,8 @@ from torchcst.policy import (
     StructuralPlan,
     StructuralPolicy,
 )
-from torchcst.representation import RepresentationSpec
-from torchcst.storage import SynapseBirth, SynapseDeath, SynapseStore
+from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
 
 @dataclass
@@ -185,20 +185,54 @@ class _ObservedWholePolicy:
         return StructuralPlan()
 
 
+def _continuous_store() -> tuple[SynapseStore, NeuronStore, NeuronStore, CSTLinear]:
+    store = SynapseStore(
+        "edge",
+        1,
+        1,
+        capacity=1,
+        spec=RepresentationSpec.continuous(1, 1, bounds=(0.0, 1.0)),
+        dtype=torch.float64,
+    )
+    store.apply(
+        [
+            SynapseBirth(
+                store.site,
+                torch.zeros(1, 1, dtype=torch.float64),
+                torch.zeros(1, 1, dtype=torch.float64),
+                torch.ones(1, dtype=torch.float64),
+                torch.zeros(1, dtype=torch.int64),
+            )
+        ]
+    )
+    inputs = NeuronStore(
+        "edge_in", 1, mu=torch.zeros(1, 1, dtype=torch.float64), initial_live=1,
+        dtype=torch.float64,
+    )
+    outputs = NeuronStore(
+        "edge_out",
+        2,
+        mu=torch.tensor([[0.0], [1.0]], dtype=torch.float64),
+        initial_live=2,
+        dtype=torch.float64,
+    )
+    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.5).double())
+    return store, inputs, outputs, module
+
+
 @pytest.mark.parametrize("capture_mode", ["deferred", "inline_reduced"])
 def test_whole_policy_declares_and_reads_observations(capture_mode: str) -> None:
-    store = _store()
-    module = EntryLinear(store, 1, 2)
+    store, inputs, outputs, module = _continuous_store()
     policy = _ObservedWholePolicy()
     engine = StructuralEngine(
-        {store.site: store},
+        {store.site: store, inputs.site: inputs, outputs.site: outputs},
         policy,
         modules={store.site: module},
         capture_mode=capture_mode,
     )
 
     engine.begin_update()
-    module(torch.ones(1, 1)).sum().backward()
+    module(torch.ones(1, 1, dtype=torch.float64)).sum().backward()
     engine.observe_microbatch(weight=0.5)
     engine.finalize_backward()
     engine.step()

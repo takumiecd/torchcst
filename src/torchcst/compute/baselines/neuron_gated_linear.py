@@ -6,7 +6,7 @@ from torch import Tensor, nn
 
 from torchcst.storage import NeuronStore, SynapseStore
 
-from .capture import BackwardContext
+from ..capture import BackwardContext
 from .entry_linear import EntryLinear
 from .rank_one_linear import RankOneLinear
 

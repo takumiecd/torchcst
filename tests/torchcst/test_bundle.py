@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import torch
 
-from torchcst.compute import EntryLinear, NeuronGatedLinear, RankOneLinear
+from torchcst.compute import CSTLinear, EntryLinear, NeuronGatedLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import EvenBudgetAllocator, LC, ProposalBundle
-from torchcst.representation import RepresentationSpec
+from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import (
     NeuronRetire,
     NeuronStore,
@@ -104,22 +104,43 @@ def test_entry_retirement_cascades_both_endpoint_sides_in_one_plan() -> None:
     assert synapses.view().s[:, 0].tolist() == [1]
 
 
-def test_rank_one_retirement_is_gate_only_until_projection_op_exists() -> None:
-    synapses = SynapseStore("rank", 2, 2, 1, spec=RepresentationSpec.rank_one(2, 2))
+def test_continuous_retirement_is_gate_only_until_projection_op_exists() -> None:
+    """`CSTLinear` (continuous family) shares rank-one's gate_only retirement
+    semantics; no projection/cascade op exists for either non-entry family."""
+    synapses = SynapseStore(
+        "rank",
+        1,
+        1,
+        1,
+        spec=RepresentationSpec.continuous(1, 1, bounds=(0.0, 1.0)),
+        dtype=torch.float64,
+    )
     synapses.apply(
         [
             SynapseBirth(
                 "rank",
-                torch.tensor([[1.0, 0.0]]),
-                torch.tensor([[0.0, 1.0]]),
-                torch.ones(1),
+                torch.tensor([[0.2]], dtype=torch.float64),
+                torch.tensor([[0.8]], dtype=torch.float64),
+                torch.ones(1, dtype=torch.float64),
                 torch.zeros(1, dtype=torch.int64),
             )
         ]
     )
-    inputs = NeuronStore("inputs", 2, initial_live=2)
-    outputs = NeuronStore("outputs", 2, initial_live=2)
-    module = NeuronGatedLinear(RankOneLinear(synapses, 2, 2), inputs, outputs)
+    inputs = NeuronStore(
+        "inputs",
+        2,
+        mu=torch.tensor([[0.0], [1.0]], dtype=torch.float64),
+        initial_live=2,
+        dtype=torch.float64,
+    )
+    outputs = NeuronStore(
+        "outputs",
+        2,
+        mu=torch.tensor([[0.0], [1.0]], dtype=torch.float64),
+        initial_live=2,
+        dtype=torch.float64,
+    )
+    module = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.5).double())
     engine = StructuralEngine(
         {"rank": synapses, "inputs": inputs, "outputs": outputs},
         LC(birth_budget=0),

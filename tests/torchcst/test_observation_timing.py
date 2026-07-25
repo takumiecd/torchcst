@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import pytest
 import torch
 
-from torchcst.compute import EntryLinear, ObservationTiming
+from torchcst.compute import CSTLinear, ObservationTiming
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import InstrumentBuildContext, WeightedMeasurement
 from torchcst.policy import (
@@ -17,8 +17,8 @@ from torchcst.policy import (
     Policy,
     StructuralQuota,
 )
-from torchcst.representation import RepresentationSpec
-from torchcst.storage import SynapseBirth, SynapseStore
+from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
 class _InstrumentState:
@@ -75,20 +75,29 @@ def _parts():
         1,
         1,
         capacity=1,
-        spec=RepresentationSpec.entry(bounds_in=1, bounds_out=1),
+        spec=RepresentationSpec.continuous(1, 1, bounds=(0.0, 1.0)),
+        dtype=torch.float64,
     )
     store.apply(
         [
             SynapseBirth(
                 store.site,
-                torch.zeros(1, 1, dtype=torch.int64),
-                torch.zeros(1, 1, dtype=torch.int64),
-                torch.ones(1),
+                torch.zeros(1, 1, dtype=torch.float64),
+                torch.zeros(1, 1, dtype=torch.float64),
+                torch.ones(1, dtype=torch.float64),
                 torch.zeros(1, dtype=torch.int64),
             )
         ]
     )
-    module = EntryLinear(store, 1, 1)
+    inputs = NeuronStore(
+        "edge_in", 1, mu=torch.zeros(1, 1, dtype=torch.float64), initial_live=1,
+        dtype=torch.float64,
+    )
+    outputs = NeuronStore(
+        "edge_out", 1, mu=torch.zeros(1, 1, dtype=torch.float64), initial_live=1,
+        dtype=torch.float64,
+    )
+    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.5).double())
     inline = _TimingRequest("inline", ObservationTiming.BACKWARD_INLINE)
     deferred = _TimingRequest("deferred", ObservationTiming.AFTER_BACKWARD)
     policy = Policy(
@@ -97,19 +106,21 @@ def _parts():
         observations=(inline, deferred),
         distributor=EvenBudgetDistributor(),
     )
-    return store, module, policy
+    return store, inputs, outputs, module, policy
 
 
 def test_one_site_mixes_inline_and_after_backward_instruments() -> None:
-    store, module, policy = _parts()
+    store, inputs, outputs, module, policy = _parts()
     engine = StructuralEngine(
-        {store.site: store}, policy, modules={store.site: module}
+        {store.site: store, inputs.site: inputs, outputs.site: outputs},
+        policy,
+        modules={store.site: module},
     )
     inline = engine.instrument(store.site, "inline")
     deferred = engine.instrument(store.site, "deferred")
 
     engine.begin_update()
-    module(torch.ones(1, 1)).sum().backward()
+    module(torch.ones(1, 1, dtype=torch.float64)).sum().backward()
     engine.observe_microbatch(weight=0.5)
 
     assert inline.calls == 1
@@ -125,10 +136,10 @@ def test_one_site_mixes_inline_and_after_backward_instruments() -> None:
 
 
 def test_engine_override_must_match_instrument_capability() -> None:
-    store, module, policy = _parts()
+    store, inputs, outputs, module, policy = _parts()
     with pytest.raises(TypeError, match="reduce_backward"):
         StructuralEngine(
-            {store.site: store},
+            {store.site: store, inputs.site: inputs, outputs.site: outputs},
             policy,
             modules={store.site: module},
             capture_mode="inline_reduced",

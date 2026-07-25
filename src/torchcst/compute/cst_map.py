@@ -275,6 +275,24 @@ class _ContinuousCSTMap(nn.Module):
             return self.synapses.w.detach().new_zeros(0).to(x_flat)
         return torch.cat(values)
 
+    def kernel_columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
+        """Evaluate read-only kernel columns for arbitrary source/target rows.
+
+        Returns ``(k_in, k_out)`` with shapes ``[in_features, N]`` and
+        ``[out_features, N]``.  No gradient is tracked and no store state is
+        read or mutated; this is the capability instruments use to evaluate
+        candidate/live kernel directions (``KernelPort``) instead of reaching
+        into kernel/neuron internals directly.
+        """
+        if source.ndim != 2 or source.shape[1] != self.synapses.d_in:
+            raise ValueError("source coordinates have the wrong shape")
+        if target.ndim != 2 or target.shape[1] != self.synapses.d_out:
+            raise ValueError("target coordinates have the wrong shape")
+        if source.shape[0] != target.shape[0]:
+            raise ValueError("source and target coordinate counts must match")
+        with torch.no_grad():
+            return self._kernel_matrices(source.detach(), target.detach())
+
     def dense_weight(self) -> Tensor:
         """Materialize ``K_out diag(w) K_in.T`` for diagnostics or fast paths."""
         self._view()

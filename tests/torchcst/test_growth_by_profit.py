@@ -13,11 +13,11 @@ from typing import Any
 
 import torch
 
-from torchcst.compute import RankOneLinear
+from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import GrowthByProfit
-from torchcst.representation import RepresentationSpec
-from torchcst.storage import SynapseBirth, SynapseStore
+from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
 def _assert_equal(left: Any, right: Any) -> None:
@@ -39,13 +39,28 @@ def _assert_equal(left: Any, right: Any) -> None:
 def _engine(price: float, *, capacity: int = 8, seed: int = 3):
     store = SynapseStore(
         "rank",
-        2,
-        2,
+        1,
+        1,
         capacity,
-        spec=RepresentationSpec.rank_one(2, 2),
+        spec=RepresentationSpec.continuous(1, 1, bounds=(0.0, 1.0)),
         dtype=torch.float64,
     )
-    module = RankOneLinear(store, 2, 2)
+    inputs = NeuronStore(
+        "rank_in",
+        2,
+        mu=torch.tensor([[0.0], [1.0]], dtype=torch.float64),
+        initial_live=2,
+        dtype=torch.float64,
+    )
+    outputs = NeuronStore(
+        "rank_out",
+        2,
+        mu=torch.tensor([[0.0], [1.0]], dtype=torch.float64),
+        initial_live=2,
+        dtype=torch.float64,
+    )
+    kernel = GaussianKernel(0.5).double()
+    module = CSTLinear(inputs, outputs, store, kernel)
     policy = GrowthByProfit(
         event_interval=1,
         atoms_per_event=1,
@@ -53,7 +68,7 @@ def _engine(price: float, *, capacity: int = 8, seed: int = 3):
     )
     optimizer = torch.optim.Adam(store.parameters(), lr=0.05)
     engine = StructuralEngine(
-        {"rank": store},
+        {"rank": store, "rank_in": inputs, "rank_out": outputs},
         policy,
         modules={"rank": module},
         optimizer=optimizer,
@@ -63,7 +78,7 @@ def _engine(price: float, *, capacity: int = 8, seed: int = 3):
 
 
 def _objective_and_polish(
-    module: RankOneLinear,
+    module: CSTLinear,
     optimizer: torch.optim.Optimizer,
     target: torch.Tensor,
     *,
