@@ -12,7 +12,11 @@ from .base import (
     weighted_sum,
 )
 from .certificate import CertificateSnapshot, CertificateSubspace
-from .continuous_candidate import ContinuousCandidateField, ContinuousCandidateRequest
+from .continuous_candidate import (
+    ContinuousCandidateField,
+    ContinuousCandidateRequest,
+    RefinementSchedule,
+)
 from .gradfield import CandidateField, GradFieldEMA
 from .scored import (
     CandidateSnapshot,
@@ -36,6 +40,7 @@ __all__ = [
     "InlineCaptureInstrument",
     "KernelPort",
     "Measurement",
+    "RefinementSchedule",
     "WeightedMeasurement",
     "checked_measurement",
     "weighted_sum",

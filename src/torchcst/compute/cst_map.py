@@ -121,7 +121,26 @@ class _ContinuousCSTMap(nn.Module):
                 domain_in=view.domain_in,
                 domain_out=view.domain_out,
             )
-            self._cached_slots = self.synapses._slots.slots_of(view.ids)
+            # Cached device-resident, not left on whatever device slots_of()
+            # returns (CPU -- see SlotPool, IDs/slots are CPU-side
+            # bookkeeping): _live_factors() below runs on every forward call
+            # (every layer, every step) and used to redo this cast every
+            # single time via a bare `.to(device=...)`. Off this cache-miss
+            # branch (i.e. every call except the rare one after a real
+            # structural event actually changes synapses.version), that
+            # made _live_factors() a bare index_select on an
+            # already-correct-device tensor turn into a fresh host->device
+            # transfer of a freshly-touched CPU tensor every time -- besides
+            # being pointless work when nothing changed, that is also a
+            # CUDA-graph-capture blocker: capturing a stream disallows
+            # exactly this kind of ad hoc host-to-device copy
+            # (cudaErrorStreamCaptureUnsupported), so `_live_factors()`
+            # could never be called inside a captured region even though
+            # its own compute (an index_select) has nothing device-copy
+            # shaped about it. Casting once here instead makes every
+            # subsequent `.to(device=...)` in `_live_factors()` (until the
+            # next real cache invalidation) a true no-op.
+            self._cached_slots = self.synapses._slots.slots_of(view.ids).to(device=self.synapses.w.device)
             self._cached_version = view.version
         assert self._cached_view is not None
         return self._cached_view
