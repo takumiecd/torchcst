@@ -49,6 +49,7 @@ from .compute import (
     CSTLinear,
     Observation,
     ObservationTiming,
+    conv2d_isotropic_scales,
     conv2d_neuron_coordinates,
 )
 from .instruments import (
@@ -121,6 +122,7 @@ __all__ = [
     "ComputeLinear",
     "CSTConv2d",
     "CSTLinear",
+    "conv2d_isotropic_scales",
     "conv2d_neuron_coordinates",
     "EntityStore",
     "EconomyAudit",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import types
 
+import pytest
 import torch
 
 from torchcst.compute import CSTLinear, conv2d_neuron_coordinates
@@ -21,6 +22,7 @@ from torchcst.policy import (
     PeriodicSchedule,
     Policy,
     ScoredBirth,
+    TopKSelector,
 )
 from torchcst.representation import Box, GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -311,7 +313,13 @@ def test_scored_birth_buys_the_top_budget_candidates_end_to_end() -> None:
     torch.testing.assert_close(scored.source, before.source)
     torch.testing.assert_close(scored.target, before.target)
 
-    top = torch.argsort(scored.scores, descending=True, stable=True)[:budget]
+    # |score|, not the signed score: this instrument's scores are signed
+    # inner products and a synapse atom's coefficient is a signed scalar
+    # (TopKSelector's candidate_cone="signed" default). On this fixture the
+    # two orderings genuinely disagree -- the second buy is a negative-score
+    # candidate -- so this line is a real assertion about the convention.
+    top = torch.argsort(scored.scores.abs(), descending=True, stable=True)[:budget]
+    assert bool((scored.scores.index_select(0, top) < 0).any())
     operations = engine.step()
     births = [op for op in operations if isinstance(op, SynapseBirth)]
     assert len(births) == 1
@@ -647,3 +655,98 @@ def test_refinement_resolves_the_worst_layer_below_sigma() -> None:
     empirical_spacing = _mean_nn_spacing(local_pool)
     ratio = empirical_spacing / sigma_init
     assert ratio < 1.0
+
+
+# ---------------------------------------------------------------------------
+# Selection ranks by |score| for a signed scalar candidate
+#
+# This instrument is the one candidate instrument in the library whose scores
+# are *signed* (GradientField/ContinuousGradientField/ScoredCandidates already
+# emit |grad|), and a synapse atom's coefficient is a signed scalar, so the
+# theory selects it by |S_o| -- theory/sections/03_support_dynamics.tex,
+# def. "一般 birth score": `c_o in R` -> `|S_o|`, and only a fixed non-negative
+# ray `c_o >= 0` (a neuron gate) -> `[S_o]_+`. The profile gain
+# (eq:profile-birth-gain) is quadratic in the score, so a large negative score
+# is exactly as good a candidate as a large positive one. Discrete RigL says
+# the same thing when it ranks dormant weights by |grad|.
+# ---------------------------------------------------------------------------
+
+
+def test_selector_prefers_a_strongly_negative_score_over_a_weakly_positive_one() -> None:
+    scores = torch.tensor([0.1, -5.0, 0.9, -0.2, 4.0])
+    chosen = TopKSelector().select(scores, 2)
+    assert chosen.tolist() == [1, 4]  # |-5.0| then |4.0|, not 4.0 then 0.9
+
+    # budget 1 is the sharpest form of the same statement
+    assert TopKSelector().select(torch.tensor([-5.0, 0.9]), 1).tolist() == [0]
+
+
+def test_nonnegative_ray_selection_stays_available_and_unchanged() -> None:
+    """The `[S]_+` case is a different candidate class, not a fallback.
+
+    A gate pinned to `c_o >= 0` cannot buy a negative score at all, so it
+    ranks by `[S_o]_+`; the two cases must not be collapsed. The neuron axis
+    is deferred on this bench but this behaviour has to be here and correct
+    when it comes back.
+    """
+    scores = torch.tensor([0.1, -5.0, 0.9, -0.2, 4.0])
+    ray = TopKSelector(candidate_cone="nonnegative_ray")
+    assert ray.select(scores, 2).tolist() == [4, 2]  # 4.0 then 0.9; -5.0 is worthless
+
+    # every non-positive candidate has zero gain, so they tie and the stable
+    # sort breaks the tie by index (rather than preferring the least negative)
+    assert ray.select(torch.tensor([-0.2, -5.0, -0.1]), 3).tolist() == [0, 1, 2]
+
+    with pytest.raises(ValueError, match="candidate_cone"):
+        TopKSelector(candidate_cone="absolute")
+
+
+def test_refinement_zooms_on_negative_peaks_too() -> None:
+    """`_refine` must rank winners the same way selection does.
+
+    If refinement zoomed only on `+score` peaks it would resolve half the
+    field and leave the other half at coarse resolution -- and the refined
+    pool is exactly what the caller then selects over, so a disagreement
+    between the two rankings means refinement zooms where selection will not
+    buy.
+    """
+    store, module = _build_module()
+
+    def _negative_peak(
+        self: ContinuousCandidateField,
+        source: torch.Tensor,
+        target: torch.Tensor,
+        gradient: torch.Tensor,
+        live_source: torch.Tensor,
+        live_target: torch.Tensor,
+    ) -> torch.Tensor:
+        del gradient, live_source, live_target
+        center_source = source.new_full((1, source.shape[1]), 0.5)
+        center_target = target.new_full((1, target.shape[1]), 0.5)
+        width = 0.01
+        d2 = (source - center_source).pow(2).sum(dim=1) + (target - center_target).pow(2).sum(dim=1)
+        return -torch.exp(-d2 / (2.0 * width * width))  # the peak points *down*
+
+    rng = torch.Generator().manual_seed(0)
+    field = ContinuousCandidateField(
+        store,
+        module,
+        rng,
+        pool_size=8,
+        mode="raw",
+        sampling="uniform",
+        sigma=None,
+        hardcore_attempts=8,
+        eps=1e-6,
+        name="continuous_candidate_field",
+        refinement=RefinementSchedule(top_k=8, samples_per_winner=256, radius_multiplier=1.0, rounds=2),
+    )
+    field._score = types.MethodType(_negative_peak, field)  # type: ignore[method-assign]
+    field.prepare(store.view(), module)
+
+    scores = field.candidate_snapshot().scores
+    # the same narrow width-0.01 bump the positive-peak test uses, mirrored:
+    # a coarse M=8 pool essentially never lands inside it, so finding it at
+    # all is refinement's doing.
+    assert bool(scores.abs().max() > 0.5)
+    assert bool(scores.min() < -0.5)

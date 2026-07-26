@@ -96,29 +96,31 @@ def capturable_sgd_step(
 
     Mirrors ``torch.optim.sgd._multi_tensor_sgd``'s momentum + weight-decay
     formula exactly, restricted to the dense (non-sparse-grad), non-maximize,
-    non-nesterov case every caller in this repo uses. The final update is a
-    single ``torch._foreach_add_(params, bufs, alpha=-lr_tensor)`` -- a
-    *Tensor* ``alpha`` (undocumented but accepted by the foreach ops; ATen
-    dispatches it through the same kernel as a Python-float ``alpha``, not
-    through a separate multiply-then-add), which is what makes this
-    bit-for-bit identical to real ``torch.optim.SGD.step()``'s own
-    ``torch._foreach_add_(params, grads, alpha=-lr)`` float-lr path --
-    verified directly, not assumed
-    (``tests/test_framework_rebase_cuda_graphs.py::
-    test_capturable_sgd_step_matches_optimizer_step``).
+    non-nesterov case every caller in this repo uses, taking that function's
+    ``isinstance(lr, Tensor) and torch.compiler.is_compiling()`` branch
+    (``torch._foreach_mul`` then a separate ``torch._foreach_add_``)
+    unconditionally, since that is the only formula that is both capturable
+    and reads the lr by value on every replay.
 
-    An earlier version of this function used the "mul-then-add" pattern
-    SGD's own compiling branch takes for a Tensor lr under
-    ``torch.compiler.is_compiling()`` (``torch._foreach_mul`` then a
-    separate ``torch._foreach_add_``) on the theory that it was the closest
-    "already handles a Tensor lr" precedent in ``torch/optim/sgd.py``. That
-    theory was wrong: the two-step form rounds differently from the eager
-    reference's single fused add-with-alpha and produced a parameter
-    mismatch from step 1 onward, caught by exactly the test named above.
-    The Tensor-``alpha`` single-op form is not the branch SGD's own source
-    ever takes (it exists in ATen but ``torch.optim.sgd`` never calls it
-    this way), but it is capture-safe (no ``.item()``) and, empirically,
-    bit-identical to the plain eager path.
+    *** This is NOT bit-identical to plain eager ``torch.optim.SGD.step()``
+    with a Python float lr. *** That path issues a single fused
+    ``torch._foreach_add_(params, grads, alpha=-lr)``. A Tensor ``alpha``
+    reproduces that exact fused kernel and *is* bit-identical to it
+    (verified directly -- see
+    ``tests/test_framework_rebase_cuda_graphs.py::
+    test_capturable_sgd_step_matches_optimizer_step``'s git history / the
+    module's own test suite), but is not capture-safe: ATen's Tensor-alpha
+    foreach overload raises ``cudaErrorStreamCaptureUnsupported`` inside
+    ``torch.cuda.graph()`` (confirmed empirically, not assumed -- it is not
+    a documented restriction). The two-step mul-then-add form is the only
+    formula found that both replays correctly and never touches a host
+    scalar, at the cost of a small ULP-level rounding difference from the
+    eager reference's single fused op every step. This is a real, measured
+    limitation, not an oversight: a graphed run is bit-for-bit
+    *self-consistent* (replay vs replay, same seed and tape) but not
+    bit-for-bit identical to a fully-eager run of the same seed and tape.
+    See the wrapper's report for the measured size of the resulting
+    divergence.
 
     Momentum buffers must already exist and be zero-initialized (see
     ``make_momentum_buffers``) before the first call: SGD's own "clone the
@@ -138,7 +140,8 @@ def capturable_sgd_step(
             grads = torch._foreach_add(grads, params, alpha=wd)
         torch._foreach_mul_(bufs, momentum)
         torch._foreach_add_(bufs, grads, alpha=1 - dampening)
-        torch._foreach_add_(params, bufs, alpha=-lr_tensor)
+        update = torch._foreach_mul(bufs, -lr_tensor)
+        torch._foreach_add_(params, update)
 
 
 class GraphedCellRunner:

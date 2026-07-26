@@ -74,10 +74,15 @@ def _coarse_spacing(domain: Box, pool_size: int) -> float:
     instead of an actual nearest-neighbour computation on a realized pool
     means computing a refinement radius costs no extra ``cdist``/host-sync
     beyond the sampling that already happens.
+
+    ``domain.width`` rather than ``domain.hi - domain.lo``: the law is
+    ``(volume / M) ** (1/dim)``, and ``Box.width`` is exactly
+    ``volume ** (1/dim)`` -- identical to ``hi - lo`` on a cube, and defined
+    on an anisotropic box, where ``hi - lo`` is not a single number at all.
     """
     if pool_size <= 0:
-        return domain.hi - domain.lo
-    return (domain.hi - domain.lo) * (float(pool_size) ** (-1.0 / domain.dim))
+        return domain.width
+    return domain.width * (float(pool_size) ** (-1.0 / domain.dim))
 
 
 def _sample_local_uniform(
@@ -324,6 +329,15 @@ class ContinuousCandidateField:
     All kernel evaluation goes through :class:`~torchcst.instruments.base.KernelPort`
     rather than reaching into the compute module's kernel/neuron internals.
 
+    ⚠ **The scores this instrument reports are signed**, unlike
+    :class:`~torchcst.instruments.GradientField` and
+    :class:`~torchcst.instruments.ScoredCandidates`, which already emit
+    ``|grad|``. A synapse atom's coefficient is a signed scalar and the local
+    profile gain is quadratic in the score, so callers must rank by
+    ``|score|`` -- which is what :class:`~torchcst.policy.TopKSelector` does
+    under its ``candidate_cone="signed"`` default, and what :meth:`_refine`
+    does when picking which candidates to zoom in on.
+
     ``refinement``, when given a :class:`RefinementSchedule`, layers
     coarse-to-fine off-grid refinement on top of the uniform ``pool_size``
     pool (see that class's docstring for why this is the faithful reading
@@ -504,7 +518,7 @@ class ContinuousCandidateField:
         live_source: Tensor,
         live_target: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Coarse-to-fine loop: top-k by score, resample locally, rescore, repeat.
+        """Coarse-to-fine loop: top-k by ``|score|``, resample locally, rescore, repeat.
 
         See :class:`RefinementSchedule` for the rationale and the radius
         rule. Every round's candidates (coarse pool plus every refined
@@ -512,6 +526,16 @@ class ContinuousCandidateField:
         common :meth:`_score` footing, so the caller's own top-k selection
         (not this method) picks the final "best overall" -- this keeps the
         method correct for any downstream birth budget, not just budget 1.
+
+        Winners are ranked by ``|score|``, matching
+        :class:`~torchcst.policy.TopKSelector`'s ``candidate_cone="signed"``
+        default and for the same reason: a synapse atom's coefficient is a
+        signed scalar, the profile gain is quadratic in the score, so the
+        extrema of this field are its ``|score|`` peaks in both directions.
+        Refining around ``+score`` peaks only would resolve half the field
+        and hand the other half to the coarse grid -- and the refined pool is
+        what the caller then selects over, so the two rankings have to agree
+        or refinement zooms somewhere selection will not buy.
         """
         schedule = self.refinement
         assert schedule is not None
@@ -524,7 +548,7 @@ class ContinuousCandidateField:
             top_k = min(schedule.top_k, scores.numel())
             if top_k == 0:
                 break
-            winners = torch.argsort(scores, descending=True, stable=True)[:top_k]
+            winners = torch.argsort(scores.abs(), descending=True, stable=True)[:top_k]
             winners_source = source.index_select(0, winners)
             winners_target = target.index_select(0, winners)
             refined_source, refined_target = _sample_local(

@@ -17,7 +17,53 @@ from .registry import RetiredCandidateRegistry
 
 @dataclass(frozen=True)
 class TopKSelector:
-    """Select the largest finite candidate scores with stable tie-breaking."""
+    """Select the best finite candidate scores with stable tie-breaking.
+
+    ``candidate_cone`` says which cone the candidate's *coefficient* lives in,
+    and that -- not the sign of the score -- is what decides how a score is
+    ranked. This follows the birth-score definition in the theory
+    (``theory/sections/03_support_dynamics.tex``, def. "一般 birth score"):
+    a shape-fixed scalar candidate ``c_o in R`` is selected by ``|S_o|``, and
+    only a fixed non-negative ray ``c_o >= 0`` uses ``[S_o]_+``.
+
+    * ``"signed"`` (default): rank by ``|S_o|``. The local profile gain is
+      ``S_o^2 / (2||(I-P_T)d_o||^2)`` -- quadratic in the score -- so a large
+      *negative* score is exactly as good a candidate as an equally large
+      positive one; the amplitude fit simply buys it with ``c < 0``. Every
+      synapse atom in this library is such a candidate, and this is also what
+      discrete RigL does when it ranks dormant weights by ``|grad|``.
+      Ranking those by the signed score silently discards the whole negative
+      half of the leaderboard.
+    * ``"nonnegative_ray"``: rank by ``[S_o]_+ = max(S_o, 0)``. Reserved for a
+      candidate whose coefficient is pinned to a non-negative ray -- a neuron
+      gate with a fixed shape. There a negative score really does mean "no
+      first-order gain in the admissible direction", so every non-positive
+      candidate is worth the same (zero) and they tie, broken by index.
+      Note the theory's own caveat: if such a gate's family admits both
+      ``d`` and ``-d`` as shapes, the candidate set is symmetric again and
+      the correct rule reverts to ``"signed"``.
+
+    Instruments differ in which convention their scores already carry:
+    ``GradientField``/``ContinuousGradientField``/``ScoredCandidates`` emit
+    ``|grad|`` (so ``"signed"`` is a no-op on them), while
+    ``ContinuousCandidateField`` emits the signed inner product
+    ``<G, a_z>`` (raw) or its deflated analogue, where it is load-bearing.
+    """
+
+    candidate_cone: str = "signed"
+
+    def __post_init__(self) -> None:
+        if self.candidate_cone not in ("signed", "nonnegative_ray"):
+            raise ValueError(
+                "candidate_cone must be 'signed' or 'nonnegative_ray', "
+                f"got {self.candidate_cone!r}"
+            )
+
+    def rank_values(self, scores: Tensor) -> Tensor:
+        """Map raw candidate scores to the quantity this cone ranks by."""
+        if self.candidate_cone == "signed":
+            return scores.abs()
+        return scores.clamp_min(0.0)
 
     def select(self, scores: Tensor, budget: int) -> Tensor:
         if scores.ndim != 1:
@@ -30,9 +76,8 @@ class TopKSelector:
         count = min(budget, finite.numel())
         if count == 0:
             return torch.zeros(0, dtype=torch.int64, device=scores.device)
-        order = torch.argsort(
-            scores.index_select(0, finite), descending=True, stable=True
-        )[:count]
+        ranked = self.rank_values(scores.index_select(0, finite))
+        order = torch.argsort(ranked, descending=True, stable=True)[:count]
         return finite.index_select(0, order)
 
 

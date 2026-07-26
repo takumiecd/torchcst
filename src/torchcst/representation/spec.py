@@ -94,7 +94,8 @@ class RepresentationSpec:
         d_in: int,
         d_out: int,
         *,
-        bounds: tuple[float, float] = (0.0, 1.0),
+        bounds: tuple[Any, Any] = (0.0, 1.0),
+        bounds_out: tuple[Any, Any] | None = None,
         kernel: str = "gaussian",
     ) -> RepresentationSpec:
         """Create a Box×Box continuous-coordinate family.
@@ -107,15 +108,25 @@ class RepresentationSpec:
         Consequently the frozen entry/rank-one rent constants must not be
         inherited automatically, and neither may a Gaussian calibration be
         reused for a compact kernel: each requires fresh calibration.
+
+        ``bounds`` is ``(lo, hi)``; each side may be one scalar (a cube) or
+        one value per axis, because an isotropic chart is generally not a
+        cube (see :class:`torchcst.representation.Box`).  ``bounds_out``
+        defaults to ``bounds``, which is only right when both endpoint charts
+        happen to share an extent -- pass it explicitly whenever they do not.
         """
-        if not isinstance(bounds, tuple) or len(bounds) != 2:
-            raise TypeError("bounds must be a (lo, hi) tuple")
+        for name, value in (("bounds", bounds), ("bounds_out", bounds_out)):
+            if value is None:
+                continue
+            if not isinstance(value, tuple) or len(value) != 2:
+                raise TypeError(f"{name} must be a (lo, hi) tuple")
         if kernel not in CONTINUOUS_KERNELS:
             raise ValueError(f"kernel must be one of {sorted(CONTINUOUS_KERNELS)}")
         lo, hi = bounds
+        lo_out, hi_out = bounds if bounds_out is None else bounds_out
         return cls(
             domain_in=Box(lo, hi, d_in),
-            domain_out=Box(lo, hi, d_out),
+            domain_out=Box(lo_out, hi_out, d_out),
             kernel_in=kernel,
             kernel_out=kernel,
             atom_cost=d_in + d_out + 1,

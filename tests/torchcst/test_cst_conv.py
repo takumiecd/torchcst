@@ -238,3 +238,46 @@ def test_engine_capture_observes_unfolded_patch_rows(capture_mode: str) -> None:
     torch.testing.assert_close(ids, store.view().ids)
     assert scores.shape == (5,)
     assert bool((scores > 0).any())
+
+
+def test_isotropic_scales_equalize_every_chart_axis_spacing() -> None:
+    """The scales must make one nearest-neighbour spacing serve all three
+    input-chart axes -- that equality is the whole content of the fix, and
+    the default (1.0, 1.0) violates it by (C-1)/2."""
+    from torchcst.compute import conv2d_isotropic_scales
+
+    for in_channels in (16, 32, 64):
+        channel_scale, spatial_scale = conv2d_isotropic_scales(in_channels, 3)
+        assert channel_scale == 1.0
+        assert spatial_scale == pytest.approx(2.0 / (in_channels - 1))
+
+        in_mu, _ = conv2d_neuron_coordinates(
+            in_channels, 8, 3, channel_scale=channel_scale,
+            spatial_scale=spatial_scale, dtype=torch.float64,
+        )
+        channel_axis = torch.unique(in_mu[:, 0])
+        ky_axis = torch.unique(in_mu[:, 1])
+        kx_axis = torch.unique(in_mu[:, 2])
+        spacings = [
+            float(axis.diff().min()) for axis in (channel_axis, ky_axis, kx_axis)
+        ]
+        assert spacings[0] == pytest.approx(spacings[1])
+        assert spacings[0] == pytest.approx(spacings[2])
+        # And it is still a chart inside the unit cube.
+        assert float(in_mu.min()) >= 0.0 and float(in_mu.max()) <= 1.0
+
+    # Fewer channels than taps: the compressed axis flips over.
+    assert conv2d_isotropic_scales(2, 3) == (1.0, 1.0) or conv2d_isotropic_scales(2, 3)[0] < 1.0
+    assert conv2d_isotropic_scales(1, 3) == (1.0, 1.0)
+
+
+def test_the_default_chart_is_anisotropic_by_a_factor_that_grows_with_channels() -> None:
+    """A regression pin on the defect itself: the default keeps tap spacing
+    at 0.5 no matter how fine the channel axis gets, so one isotropic sigma
+    cannot resolve both."""
+    for in_channels, expected in ((16, 7.5), (32, 15.5), (64, 31.5)):
+        in_mu, _ = conv2d_neuron_coordinates(in_channels, 8, 3, dtype=torch.float64)
+        channel_spacing = float(torch.unique(in_mu[:, 0]).diff().min())
+        tap_spacing = float(torch.unique(in_mu[:, 1]).diff().min())
+        assert tap_spacing == pytest.approx(0.5)
+        assert tap_spacing / channel_spacing == pytest.approx(expected)

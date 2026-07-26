@@ -14,6 +14,48 @@ from torchcst.storage import NeuronStore, SynapseStore
 from .cst_map import _ContinuousCSTMap
 
 
+def conv2d_isotropic_scales(
+    in_channels: int, kernel_size: int | tuple[int, int]
+) -> tuple[float, float]:
+    """``(channel_scale, spatial_scale)`` giving every chart axis one spacing.
+
+    :func:`conv2d_neuron_coordinates` lays each axis out independently over
+    ``[0, 1]``, so an axis carrying ``n`` lattice points gets spacing
+    ``scale / (n - 1)``.  With the default scales the channel axis therefore
+    has spacing ``1/(C-1)`` while a 3-tap axis has spacing ``0.5``
+    *regardless of C* -- an anisotropy of up to ``(C-1)/2`` within one chart.
+    An isotropic kernel has a single bandwidth to spend on all of them, and
+    the natural bandwidth prior (a small multiple of the chart's
+    nearest-neighbour spacing) tracks whichever axis is finest, so the coarse
+    axes are left undersampled: an atom then contributes nothing unless it
+    happens to land within a bandwidth of a tap on *every* spatial axis at
+    once.
+
+    These scales remove the anisotropy at its source by equalizing spacing.
+    The axis with the most points keeps ``scale = 1.0`` and the others are
+    compressed to match, so every coordinate still lies in ``[0, 1]``.  The
+    resulting chart's bounding box is **not** a cube, so the atom domain has
+    to be built from the chart's real per-axis extent -- see
+    :class:`torchcst.representation.Box`'s per-axis form.  Rescaling the
+    chart while atoms and candidates keep being drawn from the old cube moves
+    the defect rather than fixing it.
+    """
+    size = CSTConv2d._positive_pair(kernel_size, "kernel_size")
+    if isinstance(in_channels, bool) or not isinstance(in_channels, int):
+        raise TypeError("in_channels must be an int")
+    if in_channels <= 0:
+        raise ValueError("in_channels must be positive")
+    channel_steps = in_channels - 1
+    spatial_steps = max(size) - 1
+    if channel_steps <= 0 or spatial_steps <= 0:
+        # A single-point axis has no spacing to match; it sits at 0.5 under
+        # every scale, so neither scale is determined.
+        return 1.0, 1.0
+    if channel_steps >= spatial_steps:
+        return 1.0, spatial_steps / channel_steps
+    return channel_steps / spatial_steps, 1.0
+
+
 def conv2d_neuron_coordinates(
     in_channels: int,
     out_channels: int,
@@ -30,6 +72,15 @@ def conv2d_neuron_coordinates(
     order and have three coordinates. Output rows have one channel coordinate.
     Both grids lie in ``[0, 1]`` so they pair directly with
     ``RepresentationSpec.continuous(3, 1)``.
+
+    ⚠ The default scales produce an **anisotropic** input chart: each axis is
+    spread over the whole of ``[0, 1]`` however many lattice points it
+    carries, so the channel axis has spacing ``1/(C-1)`` and each tap axis
+    has spacing ``0.5``.  Paired with an isotropic kernel that is a
+    representation defect rather than a convention --
+    :func:`conv2d_isotropic_scales` returns the scales that remove it.  The
+    default is left alone only because changing it would silently re-place
+    every chart in every existing experiment.
     """
     if isinstance(in_channels, bool) or not isinstance(in_channels, int):
         raise TypeError("in_channels must be an int")
