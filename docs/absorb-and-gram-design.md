@@ -174,15 +174,24 @@ Tests (`tests/torchcst/test_gram_service.py`):
   cost each, leaves exactly one survivor carrying the summed mass; total W
   displacement ~ 0. (Sequential-prune soundness, tex prop 2.6(b).)
 
-## 5. Stage 3 (later, separate delegation) — policy wiring
+## 5. Stage 3 — policy wiring (split into 3a / 3b)
 
+**Stage 3a (first): whole `StructuralPolicy`.** Per the framework's own
+extension guidance (authoring path 2), an `AbsorbPolicy` object implementing
+`capture(clock)`, `bind_instruments(...)` (to receive `KernelPort`), and
+`plan(context)`: build a `GramService` from the live view + kernel columns at
+event time, run `plan_chain(budget=..., cost_cap=rent)`, map view positions to
+entity ids, emit the ordered `SynapseAbsorb` ops as one plan. Acceptance is
+`cost <= rent` only; audit payload records per-step `cost`, `res2_D`,
+`||Delta W||_F`, `||alpha||`, receiver count. Requires at most additive
+admission of `SynapseAbsorb` to plan/bundle op unions — no `ActionKind`, no
+quota field, no engine plan-assembly changes.
+
+**Stage 3b (after 3a proves semantics in cst experiments): composed route.**
 `ActionKind.SYNAPSE_ABSORB`, `StructuralQuota.synapse_absorb`,
-`ActionSpec.synapse_absorb`, an `AbsorbCourt(rent=..., ridge=..., radius=...,
-audit_delta_w=True)` that consults GramService at plan time, engine routing +
-plan-order rule (absorb runs **before** prune courts: canonicalization first),
-audit fields (cost, res2_D, ||Delta W||_F, ||alpha||, receiver count). Not in
-Stage 1–2 scope: do not touch `policy/`, `engine.py`, `compute/`,
-`instruments/` until this stage.
+`ActionSpec.synapse_absorb(AbsorbCourt(...))`, engine plan-order rule (absorb
+runs **before** prune courts: canonicalization first). Deferred deliberately:
+it touches contract/engine surface and should follow, not precede, evidence.
 
 ## 6. Stage 4 (later) — `torchcst/init/`
 
