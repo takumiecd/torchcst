@@ -12,6 +12,7 @@ from torchcst.storage import (
     NeuronRetire,
     NeuronStore,
     NeuronUngate,
+    SynapseAbsorb,
     SynapseBirth,
     SynapseDeath,
     SynapseKick,
@@ -27,6 +28,7 @@ Op = (
     | SynapseDeath
     | SynapseMerge
     | SynapseKick
+    | SynapseAbsorb
     | NeuronUngate
     | NeuronRetire
     | NeuronKick
