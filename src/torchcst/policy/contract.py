@@ -99,12 +99,13 @@ class StructuralQuota:
 
     synapse_birth: int = 0
     synapse_merge: int = 0
+    synapse_absorb: int = 0
     neuron_birth: int = 0
     synapse_prune: int | None = None
     neuron_prune: int | None = None
 
     def __post_init__(self) -> None:
-        for name in ("synapse_birth", "synapse_merge", "neuron_birth"):
+        for name in ("synapse_birth", "synapse_merge", "synapse_absorb", "neuron_birth"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int):
                 raise TypeError(f"{name} must be an int")
@@ -322,6 +323,7 @@ class ActionKind(str, Enum):
     SYNAPSE_BIRTH = "synapse_birth"
     SYNAPSE_PRUNE = "synapse_prune"
     SYNAPSE_MERGE = "synapse_merge"
+    SYNAPSE_ABSORB = "synapse_absorb"
     NEURON_BIRTH = "neuron_birth"
     NEURON_PRUNE = "neuron_prune"
 
@@ -355,6 +357,10 @@ class ActionSpec:
     @classmethod
     def synapse_merge(cls, rule: Any) -> ActionSpec:
         return cls(ActionKind.SYNAPSE_MERGE, rule)
+
+    @classmethod
+    def synapse_absorb(cls, rule: Any) -> ActionSpec:
+        return cls(ActionKind.SYNAPSE_ABSORB, rule)
 
     @classmethod
     def neuron_birth(cls, rule: Any) -> ActionSpec:
@@ -471,6 +477,11 @@ class Policy:
     @property
     def synapse_retention_rule(self) -> Any | None:
         action = self.action(ActionKind.SYNAPSE_PRUNE)
+        return None if action is None else action.rule
+
+    @property
+    def synapse_absorb_rule(self) -> Any | None:
+        action = self.action(ActionKind.SYNAPSE_ABSORB)
         return None if action is None else action.rule
 
     @property

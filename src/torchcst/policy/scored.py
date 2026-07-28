@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from typing import Any
 
 import torch
@@ -83,11 +84,25 @@ class TopKSelector:
 
 @dataclass
 class ScoredBirth:
-    """Turn any candidate-score instrument into a budgeted birth proposer."""
+    """Turn any candidate-score instrument into a budgeted birth proposer.
+
+    ``rent``, when set, is a per-candidate profit floor: with the
+    deflated-normalized instrument mode (``ContinuousCandidateField``'s
+    ``mode="deflated"``, i.e. cRES), ``score**2 / 2`` is the exact local
+    profile gain in loss units, so a candidate whose gain falls below
+    ``rent`` is not bought even when budget remains -- the entrance-side half
+    of ``docs/absorb-and-gram-design.md``'s stage 3b economy (the exit side
+    is :class:`~torchcst.policy.absorb.AbsorbCourt`). Per that design's
+    economy rule, ``rent`` is a plain float passed independently to whichever
+    parts need it, never a shared mutable object threaded between rules.
+    Ranking itself is unchanged: ``rent`` only filters the selector's output,
+    it never alters ``selector.select``'s signed-score semantics.
+    """
 
     request: ObservationRequest
     selector: Any = field(default_factory=TopKSelector)
     initial_weight: float = 0.0
+    rent: float | None = None
     requires: tuple[ObservationRequest, ...] = field(init=False)
     _instruments: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
     _next_lineage: dict[str, int] = field(default_factory=dict, init=False, repr=False)
@@ -97,6 +112,13 @@ class ScoredBirth:
             raise TypeError("request must implement ObservationRequest")
         if not callable(getattr(self.selector, "select", None)):
             raise TypeError("selector must provide select(scores, budget)")
+        if self.rent is not None:
+            if isinstance(self.rent, bool) or not isinstance(self.rent, (int, float)):
+                raise TypeError("rent must be a real number or None")
+            rent = float(self.rent)
+            if not isfinite(rent) or rent < 0:
+                raise ValueError("rent must be finite and non-negative")
+            self.rent = rent
         self.requires = (self.request,)
 
     def bind_instruments(self, site: str, instruments: dict[str, Any]) -> None:
@@ -149,6 +171,12 @@ class ScoredBirth:
         if not isinstance(snapshot, CandidateSnapshot):
             raise TypeError("candidate_snapshot() must return CandidateSnapshot")
         positions = self.selector.select(snapshot.scores, budget)
+        if self.rent is not None and positions.numel():
+            selected_scores = snapshot.scores.index_select(
+                0, positions.to(snapshot.scores.device)
+            )
+            profile_gain = 0.5 * selected_scores.pow(2)
+            positions = positions[(profile_gain >= self.rent).to(positions.device)]
         count = positions.numel()
         if count == 0:
             return ()

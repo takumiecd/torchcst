@@ -374,6 +374,7 @@ class StructuralEngine:
                 *self.policy.proposal_rules,
                 self.policy.active_distributor,
                 self.policy.synapse_retention_rule,
+                self.policy.synapse_absorb_rule,
                 self.policy.composer,
                 self.policy.profit,
                 self.policy.neuron_retention_rule,
@@ -1196,6 +1197,50 @@ class StructuralEngine:
             for site, operations in decisions.items()
         }
 
+    def _propose_absorb_ops(
+        self, quota: StructuralQuota
+    ) -> tuple[Op | ProposalBundle, ...]:
+        """Collect this event's absorb proposals, budgeted like any other action.
+
+        Runs before :meth:`_decide_retention` so canonicalization -- duplicate
+        collapse, receiver-less prune -- happens first and prune courts then
+        see the post-absorb view (``docs/absorb-and-gram-design.md`` section
+        5, stage 3b item 3). Unlike birth/merge, an absorb rule's own
+        ``propose()`` may return whole :class:`ProposalBundle` values (a
+        chain must commit atomically), so this is applied through
+        :meth:`apply_proposals`, not :meth:`_apply_atomic_unit`.
+        """
+        rule = self.policy.synapse_absorb_rule
+        if rule is None or quota.synapse_absorb == 0:
+            return ()
+        sites = tuple(self.synapse_stores)
+        requests = tuple(
+            BudgetRequest(site, 0, quota.synapse_absorb, ActionKind.SYNAPSE_ABSORB.value)
+            for site in sites
+        )
+        grants = self.policy.active_distributor.allocate(quota.synapse_absorb, requests)
+        valid = (
+            len(grants) == len(requests)
+            and all(
+                not isinstance(value, bool) and isinstance(value, int) and value >= 0
+                for value in grants
+            )
+            and sum(grants) <= quota.synapse_absorb
+        )
+        if not valid:
+            raise RuntimeError(
+                "distributor exceeded the 'synapse_absorb' structural quota"
+            )
+        proposals: list[Op | ProposalBundle] = []
+        for site, granted in zip(sites, grants):
+            if granted == 0:
+                continue
+            store = self.synapse_stores[site]
+            view = self._proposal_view(store, store.view())
+            proposed = rule.propose(view, granted, self.registry, self.rng)
+            proposals.extend(proposed)
+        return tuple(proposals)
+
     def _decide_retention(
         self,
         quota: StructuralQuota,
@@ -1324,9 +1369,11 @@ class StructuralEngine:
         objective: Callable[[], float] | None,
         polish: Callable[[], None] | None,
     ) -> tuple[Op, ...]:
-        """Run retention, proposal adjudication, and optional response in order."""
+        """Run absorb, retention, proposal adjudication, and response in order."""
+        absorb_proposals = self._propose_absorb_ops(quota)
+        applied = list(self.apply_proposals(absorb_proposals))
         retention_ops, deaths = self._decide_retention(quota)
-        applied = list(self._apply_atomic_unit(retention_ops))
+        applied.extend(self._apply_atomic_unit(retention_ops))
         proposed_ops = self._propose_standard_ops(signal, quota, deaths)
 
         # A policy either always prices its proposals (policy.profit is set:

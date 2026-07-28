@@ -1,6 +1,6 @@
 """Public policy surface for CST-native v4 step 2."""
 
-from .absorb import AbsorbAuditEntry, AbsorbPolicy
+from .absorb import AbsorbAuditEntry, AbsorbCourt, AbsorbPolicy
 from .catalog import LC, LC_anti, LC_merge, LC_response, GrowthByProfit, cRigL, cSET
 from .bundle import BundleComposer, Op, ProposalBundle, bundle_birth_count
 from .contract import (
@@ -46,6 +46,7 @@ from .schedules import BirthWindowSchedule, PeriodicSchedule, ResponseWindow
 
 __all__ = [
     "AbsorbAuditEntry",
+    "AbsorbCourt",
     "AbsorbPolicy",
     "ActionKind",
     "ActionSpec",

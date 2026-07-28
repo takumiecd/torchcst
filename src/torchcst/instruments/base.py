@@ -60,6 +60,72 @@ class KernelPort:
         return columns(source, target)
 
 
+@dataclass(frozen=True)
+class KernelPortRequest:
+    """Observation request whose only purpose is delivering a KernelPort.
+
+    Some policy components need read-only access to a compute module's
+    ``kernel_columns()`` at *plan* time (e.g. to assemble a
+    :class:`~torchcst.representation.gram.GramService` from live positions)
+    without ever wanting a captured backward observation. The engine's
+    ``requires``/``bind_instruments`` channel (``docs/policy-authoring.md``)
+    is the sole sanctioned way to reach a compute module from outside
+    ``engine.py`` -- a component cannot reach into ``self.modules[site]``
+    directly -- so this request exists purely to ride that channel and hand
+    back a :class:`KernelPort`.
+
+    Because instrument identity is scoped per site already
+    (``StructuralEngine._make_instruments`` builds one instrument per
+    ``(name, site)`` pair), one fixed request name is safe to share across
+    every site and every component that only wants a ``KernelPort``: they
+    all get the same do-nothing instrument shape, bound to their own site's
+    module.
+
+    A caller's ``capture(clock)`` (whole policy) or cadence ``observing()``
+    (composed policy) may legitimately be ``True`` on updates where some
+    *other* declared instrument needs real backward statistics -- capture is
+    a per-site, not per-instrument, switch. ``measure_after_backward`` must
+    therefore never assume it is unreachable; it returns a cheap placeholder
+    measurement that :meth:`KernelPortInstrument.finalize_update` discards,
+    rather than raising.
+    """
+
+    name: str = "kernel_port"
+    timing: str = "after_backward"
+
+    def build(self, context: InstrumentBuildContext) -> "KernelPortInstrument":
+        return KernelPortInstrument(context.module)
+
+
+class KernelPortInstrument:
+    """Capture-instrument shell whose only state is a read-only KernelPort."""
+
+    def __init__(self, module: Any) -> None:
+        if not callable(getattr(module, "kernel_columns", None)):
+            raise TypeError(
+                "KernelPortRequest requires a compute module with kernel_columns()"
+            )
+        self.name = "kernel_port"
+        self.port = KernelPort(module)
+
+    def prepare(self, view: SynapseView, module: Any) -> None:
+        del view, module
+
+    def measure_after_backward(self, module: Any, x: Tensor, g_out: Tensor) -> Measurement:
+        """Return a harmless placeholder; this instrument never truly measures.
+
+        Called whenever the site happens to capture backward for some other
+        instrument's sake (see the class docstring) -- it must not raise.
+        """
+        del module
+        return {"kernel_port_probe": x.new_zeros(())}
+
+    def finalize_update(
+        self, measurements: tuple[WeightedMeasurement, ...], view: SynapseView
+    ) -> None:
+        del measurements, view
+
+
 @runtime_checkable
 class CaptureInstrument(Protocol):
     """Timing-neutral state lifecycle shared by all capture instruments."""
