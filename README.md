@@ -1,25 +1,165 @@
 # torchcst — Continuous Sparse Training in PyTorch
 
-`torchcst` is an experimental PyTorch library for continuous sparse training.
-Its primary compute abstraction is `CSTLinear`: a linear map represented by
-learnable synapse atoms in continuous coordinate domains and composed through
-kernel matrices instead of a materialized dense weight matrix.
+> [!WARNING]
+> **Research Preview.** `torchcst` is an experimental research codebase, not a
+> production-ready training library. APIs, numerical behavior, policy
+> semantics, and checkpoint compatibility may change without notice. The
+> current release is intended for inspection, method development, and early
+> experiments; it should not yet be treated as a stable dependency or as
+> evidence of an established scientific result.
 
-```text
-W = K_out(mu_out, t) diag(w) K_in(mu_in, s)^T
-```
+`torchcst` explores continuous sparse training: a linear map is represented by
+a finite collection of learnable synapse atoms in continuous coordinate
+domains, rather than by one independently stored parameter for every entry of
+a dense weight matrix. Its primary compute abstraction is `CSTLinear`.
 
-The atom coordinates `s` and `t`, amplitudes `w`, and Gaussian bandwidth can be
-optimized by ordinary PyTorch autograd. A clock-driven policy separately
-decides when atoms or neurons are born, retired, merged, or ungated.
+## Mathematical model
 
-`EntryLinear` and `RankOneLinear` are useful special cases and control families,
-not the intended center of the library. `EntryLinear` is the discrete
-delta-kernel sparse-entry path. `RankOneLinear` is the low-rank/LoRA-like path.
-They share the same storage and policy lifecycle so CST can be compared against
-them without changing the experiment machinery. Neither control owns neuron
-state; experiments that need neuron gates or endpoint-aware response compose an
-explicit `NeuronGatedLinear` wrapper.
+Let the input and output neuron charts contain coordinates
+$\mu_i^{\mathrm{in}}\in\mathbb{R}^{d_{\mathrm{in}}}$ and
+$\mu_j^{\mathrm{out}}\in\mathbb{R}^{d_{\mathrm{out}}}$. A live synapse atom
+
+$$
+\theta_a = (s_a, t_a, w_a)
+$$
+
+has a source coordinate $s_a$, a target coordinate $t_a$, and a scalar
+amplitude $w_a$. Equivalently, $M$ live atoms define the signed atomic
+measure
+
+$$
+\nu = \sum_{a=1}^{M} w_a\,\delta_{(s_a,t_a)}.
+$$
+
+The continuous kernel operator induced by this measure is
+
+$$
+\begin{aligned}
+W_{\mathrm{core}}(\mu_j^{\mathrm{out}},\mu_i^{\mathrm{in}})
+&=
+\int
+\kappa_{\mathrm{out}}(\mu_j^{\mathrm{out}},t)\,
+\kappa_{\mathrm{in}}(\mu_i^{\mathrm{in}},s)\,
+\mathrm{d}\nu(s,t) \\
+&=
+\sum_{a=1}^{M}
+w_a\,
+\kappa_{\mathrm{out}}(\mu_j^{\mathrm{out}},t_a)\,
+\kappa_{\mathrm{in}}(\mu_i^{\mathrm{in}},s_a).
+\end{aligned}
+$$
+
+The functions $\kappa_{\mathrm{in}}$ and $\kappa_{\mathrm{out}}$ are the
+kernels: they specify how strongly an atom at one continuous coordinate
+couples to a neuron at another coordinate. Evaluating them over every neuron
+and live atom produces the rectangular kernel feature matrices
+
+$$
+(\Phi_{\mathrm{in}})_{ia}
+= \kappa_{\mathrm{in}}(\mu_i^{\mathrm{in}},s_a),
+\qquad
+(\Phi_{\mathrm{out}})_{ja}
+= \kappa_{\mathrm{out}}(\mu_j^{\mathrm{out}},t_a).
+$$
+
+Then the conceptual dense weight is
+
+$$
+W_{\mathrm{core}}
+=
+\Phi_{\mathrm{out}}\,
+\operatorname{diag}(w)\,
+\Phi_{\mathrm{in}}^{\mathsf T}
+\in \mathbb{R}^{n_{\mathrm{out}}\times n_{\mathrm{in}}}.
+$$
+
+With input and output neuron gates $g_{\mathrm{in}}$ and
+$g_{\mathrm{out}}$, the map actually represented by `CSTLinear` is
+
+$$
+W
+=
+\operatorname{diag}(g_{\mathrm{out}})\,
+W_{\mathrm{core}}\,
+\operatorname{diag}(g_{\mathrm{in}}).
+$$
+
+For a row-major input batch $X$, the implementation computes the equivalent
+factorized expression
+
+$$
+Y
+=
+\left(
+\left(
+(X\odot g_{\mathrm{in}})\,\Phi_{\mathrm{in}}
+\right)
+\odot w
+\right)
+\Phi_{\mathrm{out}}^{\mathsf T}
+\odot g_{\mathrm{out}},
+$$
+
+without materializing $W$ during the forward pass. Here $\odot$ denotes
+broadcast elementwise multiplication.
+
+The available continuous profiles are
+
+$$
+\kappa_{\mathrm{Gaussian}}(u,v)
+=
+\exp\left(-\frac{\lVert u-v\rVert_2^2}{2\sigma^2}\right),
+\qquad
+\kappa_{\mathrm{triangular}}(u,v)
+=
+\max\left(0, 1-\frac{\lVert u-v\rVert_2}{\sigma}\right).
+$$
+
+Gaussian atoms have global support, so the represented $W$ is generally
+dense even though it is parameterized by only $M$ atoms. Triangular atoms
+have compact support and can produce exact zeros. Thus “sparse” primarily
+describes the finite atomic representation and its structural lifecycle; it
+does not imply that every supported kernel produces a sparse materialized
+matrix.
+
+Ordinary PyTorch autograd optimizes the live amplitudes $w_a$, continuous
+endpoints $s_a,t_a$, neuron gates, and optionally the bandwidth $\sigma$.
+Neuron chart coordinates $\mu$ are fixed buffers in the current
+implementation. Separately, a clock-driven structural policy decides when
+atoms or neurons are born, retired, merged, or ungated. This separates
+continuous parameter optimization from discrete changes to model structure.
+
+### Choosing a compute module
+
+> [!IMPORTANT]
+> Use `CSTLinear` for new continuous sparse training experiments
+> (`CSTConv2d` for convolutional layers). `EntryLinear` and `RankOneLinear`
+> are deprecated as primary modeling APIs: they remain public only as
+> comparison baselines and compatibility controls, not as implementations of
+> the central CST representation.
+
+CST investigates parameter-efficient training by evolving a finite set of
+continuous synapse atoms instead of assigning an independent parameter to
+every dense matrix entry. In that sense, it is a continuous-coordinate member
+of the broader dynamic sparse training (DST) family. The effective Gaussian
+weight can still be dense; the sparsity is in the number of stored, trainable,
+and structurally managed atoms.
+
+`EntryLinear` is the discrete delta-kernel control. Conceptually, it is an
+ordinary unstructured DST or masked sparse-entry model: each live atom selects
+one matrix entry, although the implementation stores live entries as atoms
+rather than as a dense parameter plus a literal mask.
+
+`RankOneLinear` is the factorized control. Each atom contributes a rank-one
+outer product, making it a low-rank/LoRA-like parameterization rather than
+continuous sparse training. It is useful for comparison but is not identical
+to LoRA, which commonly parameterizes an additive update to a separate base
+weight.
+
+Both controls share CST's storage and policy lifecycle so experiments can
+compare representation families without changing the surrounding machinery.
+Neither control owns neuron state; experiments that require neuron gates or
+endpoint-aware response compose an explicit `NeuronGatedLinear` wrapper.
 
 The current implementation is built around five explicit responsibilities:
 
@@ -105,6 +245,25 @@ optimizer.step()
 applied_ops = engine.step()
 ```
 
+`LC` means “lifecycle champion.” It is a convenience preset retained from the
+internal 5c experiments, not a gradient optimizer and not a required part of
+`CSTLinear`. Adam updates the differentiable values; `LC` controls discrete
+structure at `engine.step()` by composing a cadence, an operation quota, birth
+and prune rules, and a budget distributor.
+
+In the configuration above, a structural event occurs after every optimizer
+update. Events 1–4 may add up to two uniformly sampled continuous atoms per
+event. Events 5–7 add no atoms but continue the rent-based cleanup sweep, and
+event 8 onward is structurally frozen. The default rent rule protects a
+newborn atom for three events and then removes it after two consecutive events
+below 30% of the live population's median functional mass.
+
+These `LC` constants are a historical catalog preset, not universal CST
+hyperparameters. Continuous-kernel experiments should calibrate retention
+thresholds and immunity for their kernel profile, bandwidth, coordinate
+domain, and training timescale. Users can instead compose `Policy` directly;
+see the [policy authoring guide](docs/policy-authoring.md).
+
 Each observation request declares its execution timing. `after_backward`
 keeps detached module-boundary `x`/`g_out` tensors and measures them in
 `finalize_backward()`; `backward_inline` computes sufficient statistics in the
@@ -179,8 +338,8 @@ recommended extension checklist.
 
 ## Implemented surface
 
-- continuous Gaussian `CSTLinear` with learnable atom coordinates, amplitudes,
-  and kernel bandwidth
+- continuous Gaussian or compact-support triangular `CSTLinear` with learnable
+  atom coordinates, amplitudes, and kernel bandwidth
 - independent `CSTConv2d`, which owns a continuous CST filter shared across
   image locations and supports stride, zero padding, and dilation
 - discrete-entry and rank-one/LoRA-like control families using the same engine
