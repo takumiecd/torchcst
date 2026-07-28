@@ -25,6 +25,7 @@ from .neuron import (
 )
 from .synapse import (
     EntityStore,
+    SynapseAbsorb,
     SynapseBirth,
     SynapseDeath,
     SynapseKick,
@@ -57,6 +58,7 @@ __all__ = [
     "SlotChange",
     "SlotDeath",
     "SlotPool",
+    "SynapseAbsorb",
     "SynapseBirth",
     "SynapseDeath",
     "SynapseKick",

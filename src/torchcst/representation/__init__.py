@@ -1,6 +1,7 @@
 """座標domainとrepresentation仕様の公開面。"""
 
 from .domains import Box, CoordinateDomain, IntegerGrid, ParameterRole, Role, Sphere
+from .gram import AbsorbAssessment, AbsorbPlanStep, GramService
 from .kernels import (
     CONTINUOUS_KERNELS,
     ContinuousKernel,
@@ -10,11 +11,14 @@ from .kernels import (
 from .spec import RepresentationSpec
 
 __all__ = [
+    "AbsorbAssessment",
+    "AbsorbPlanStep",
     "Box",
     "CONTINUOUS_KERNELS",
     "ContinuousKernel",
     "CoordinateDomain",
     "GaussianKernel",
+    "GramService",
     "IntegerGrid",
     "ParameterRole",
     "RepresentationSpec",

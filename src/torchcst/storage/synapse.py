@@ -87,7 +87,45 @@ class SynapseKick:
     dt: Tensor | None = None
 
 
-SynapseOp = SynapseBirth | SynapseDeath | SynapseMerge | SynapseKick
+@dataclass(frozen=True)
+class SynapseAbsorb:
+    """Kill one live atom and redistribute its mass to receivers, then die.
+
+    ``dying`` is one logical id; ``receivers``/``delta_w`` are the
+    ``GramService``-computed delivery manifest (``delta_w == c_dying *
+    alpha*``). Apply order is ``w[rows(receivers)] += delta_w`` followed by
+    the existing death path for ``dying`` -- ``s``/``t`` are never touched
+    (the Gram is position-only, which is what makes chain simulation exact).
+
+    A structural event may carry an ordered *list* of absorbs; :meth:`
+    SynapseStore.prepare` validates them in that order against the running
+    state: at each step ``dying`` must be live, every receiver must be live,
+    and ``dying`` may not appear in its own ``receivers``. A receiver of an
+    earlier absorb may legally be the ``dying`` of a later one in the same
+    ticket (chains); a dead atom may never receive.
+
+    Optimizer moments: the dying row is zeroed exactly as an ordinary death
+    does today (via the caller's usual ``reconcile_optimizer_state`` pass
+    over the ticket's dead ids); receiver rows keep their existing optimizer
+    moments untouched -- the amplitude shift is a structural mass transfer,
+    not a gradient event.
+    """
+
+    site: str
+    dying: int
+    receivers: Tensor
+    delta_w: Tensor
+
+
+SynapseOp = SynapseBirth | SynapseDeath | SynapseMerge | SynapseKick | SynapseAbsorb
+
+
+@dataclass(frozen=True)
+class _AbsorbBatch:
+    """検証後にTicketへ固定するabsorb適用値（物理slot単位）。"""
+
+    receiver_slots: Tensor
+    delta_w: Tensor
 
 
 @dataclass(frozen=True)
@@ -99,6 +137,7 @@ class _SynapseBatch:
     w: Tensor
     lineage: Tensor
     slot_plan: object
+    absorbs: _AbsorbBatch
 
 
 @dataclass(eq=False)
@@ -350,6 +389,12 @@ class SynapseStore(nn.Module):
                 if reset.numel():
                     value.index_fill_(0, reset.to(value.device), 0)
 
+    def _empty_absorb_batch(self) -> _AbsorbBatch:
+        return _AbsorbBatch(
+            receiver_slots=torch.zeros(0, dtype=torch.int64),
+            delta_w=self.w.detach().new_zeros((0,)),
+        )
+
     def _empty_ticket(self) -> Ticket:
         batch = _SynapseBatch(
             s=self.s.new_zeros((0, self.d_in)),
@@ -357,6 +402,7 @@ class SynapseStore(nn.Module):
             w=self.w.detach().new_zeros((0,)),
             lineage=torch.zeros(0, dtype=torch.int64),
             slot_plan=self._slots.prepare(()),
+            absorbs=self._empty_absorb_batch(),
         )
         return Ticket(self, self._version, batch, empty=True)
 
@@ -365,16 +411,32 @@ class SynapseStore(nn.Module):
     ) -> tuple[
         list[SynapseBirth],
         list[SynapseMerge],
+        _AbsorbBatch,
         list[SlotBirth | SlotDeath],
     ]:
-        """Validate public operations and derive their slot-level plan."""
+        """Validate public operations and derive their slot-level plan.
+
+        ``dead_ids`` tracks every id that dies *within this ticket* (by an
+        earlier death/merge/absorb in ``ops``, in list order) so a later
+        ``SynapseAbsorb`` can tell a pre-ticket-dead id (rejected by
+        ``SlotPool``/``_validate_merge`` resolving against the live store)
+        apart from one that is still committed-live but has already been
+        scheduled to die earlier in this same ticket -- both are illegal
+        ``dying``/receiver targets, but a receiver may legally become a
+        later op's ``dying`` (chains).
+        """
         births: list[SynapseBirth] = []
         merges: list[SynapseMerge] = []
         slot_ops: list[SlotBirth | SlotDeath] = []
+        dead_ids: set[int] = set()
+        absorb_receiver_slots: list[Tensor] = []
+        absorb_delta_w: list[Tensor] = []
         for op in ops:
             if isinstance(op, SynapseKick):
                 raise NotImplementedError("SynapseKick is not implemented")
-            if not isinstance(op, (SynapseBirth, SynapseDeath, SynapseMerge)):
+            if not isinstance(
+                op, (SynapseBirth, SynapseDeath, SynapseMerge, SynapseAbsorb)
+            ):
                 raise TypeError(f"unsupported synapse op type {type(op)!r}")
             if op.site != self.site:
                 raise ValueError(
@@ -382,21 +444,90 @@ class SynapseStore(nn.Module):
                 )
             if isinstance(op, SynapseDeath):
                 ids = self._validate_ids(op.ids)
+                dead_ids.update(int(value) for value in ids.tolist())
                 slot_ops.append(SlotDeath(ids))
                 continue
             if isinstance(op, SynapseMerge):
                 pairs = self._validate_merge(op)
                 if pairs.numel():
+                    flat = pairs.reshape(-1)
+                    dead_ids.update(int(value) for value in flat.tolist())
                     merges.append(SynapseMerge(op.site, pairs))
-                    slot_ops.extend(
-                        (SlotDeath(pairs.reshape(-1)), SlotBirth(pairs.shape[0]))
-                    )
+                    slot_ops.extend((SlotDeath(flat), SlotBirth(pairs.shape[0])))
+                continue
+            if isinstance(op, SynapseAbsorb):
+                receiver_slots, delta_w = self._validate_absorb(op, dead_ids)
+                dead_ids.add(int(op.dying))
+                slot_ops.append(
+                    SlotDeath(torch.tensor([op.dying], dtype=torch.int64))
+                )
+                absorb_receiver_slots.append(receiver_slots)
+                absorb_delta_w.append(delta_w)
                 continue
             self._validate_birth(op)
             n = op.w.shape[0]
             births.append(op)
             slot_ops.append(SlotBirth(n))
-        return births, merges, slot_ops
+        absorbs = _AbsorbBatch(
+            receiver_slots=(
+                torch.cat(absorb_receiver_slots)
+                if absorb_receiver_slots
+                else torch.zeros(0, dtype=torch.int64)
+            ),
+            delta_w=(
+                torch.cat(absorb_delta_w)
+                if absorb_delta_w
+                else self.w.detach().new_zeros((0,))
+            ),
+        )
+        return births, merges, absorbs, slot_ops
+
+    def _validate_absorb(
+        self, op: SynapseAbsorb, dead_ids: set[int]
+    ) -> tuple[Tensor, Tensor]:
+        """Validate one absorb against ids already dead earlier in this ticket.
+
+        Returns the receivers' physical slots -- resolved now, while the
+        pre-ticket slot mapping is still intact -- and ``delta_w`` cast to
+        this store's ``w`` dtype/device, ready for ``_write``'s deferred
+        ``index_add_``.
+        """
+        if isinstance(op.dying, bool) or not isinstance(op.dying, int):
+            raise TypeError("SynapseAbsorb.dying must be an int")
+        if not isinstance(op.receivers, Tensor) or not isinstance(op.delta_w, Tensor):
+            raise TypeError("SynapseAbsorb.receivers and delta_w must be Tensors")
+        if op.receivers.ndim != 1 or op.delta_w.ndim != 1:
+            raise ValueError("SynapseAbsorb.receivers and delta_w must be rank 1")
+        if op.receivers.dtype != torch.int64:
+            raise TypeError("SynapseAbsorb.receivers must have dtype int64")
+        if not (op.delta_w.is_floating_point() or op.delta_w.is_complex()):
+            raise TypeError(
+                "SynapseAbsorb.delta_w must have a floating or complex dtype"
+            )
+        if op.receivers.shape[0] != op.delta_w.shape[0]:
+            raise ValueError(
+                "SynapseAbsorb.receivers and delta_w must share their count"
+            )
+        if op.receivers.numel() == 0:
+            raise ValueError("SynapseAbsorb.receivers must not be empty")
+
+        receivers = op.receivers.detach().to(device="cpu").clone()
+        receiver_list = [int(value) for value in receivers.tolist()]
+        if len(set(receiver_list)) != len(receiver_list):
+            raise ValueError("SynapseAbsorb.receivers must not repeat an id")
+        if op.dying in receiver_list:
+            raise ValueError("SynapseAbsorb.dying must not appear in its receivers")
+        if op.dying in dead_ids:
+            raise KeyError(f"dead or unknown id: {op.dying}")
+        already_dead = dead_ids.intersection(receiver_list)
+        if already_dead:
+            raise KeyError(f"dead or unknown id: {sorted(already_dead)[0]}")
+
+        # Resolves against the pre-ticket store, so an id that never existed
+        # (or already died before this ticket) fails here during prepare().
+        receiver_slots = self._slots.slots_of(receivers)
+        delta_w = op.delta_w.detach().to(self.w).clone()
+        return receiver_slots, delta_w
 
     def _materialize_merges(
         self, merges: list[SynapseMerge], births: list[SynapseBirth]
@@ -441,7 +572,7 @@ class SynapseStore(nn.Module):
         )
 
     def _snapshot_births(
-        self, births: list[SynapseBirth], slot_plan: object
+        self, births: list[SynapseBirth], slot_plan: object, absorbs: _AbsorbBatch
     ) -> _SynapseBatch:
         """Detach proposal tensors so later caller mutation cannot alter a ticket."""
         if not births:
@@ -451,6 +582,7 @@ class SynapseStore(nn.Module):
                 w=self.w.detach().new_zeros((0,)),
                 lineage=torch.zeros(0, dtype=torch.int64),
                 slot_plan=slot_plan,
+                absorbs=absorbs,
             )
 
         return _SynapseBatch(
@@ -464,6 +596,7 @@ class SynapseStore(nn.Module):
                 .clone()
             ),
             slot_plan=slot_plan,
+            absorbs=absorbs,
         )
 
     def prepare(self, ops: Sequence[SynapseOp]) -> Ticket:
@@ -472,10 +605,10 @@ class SynapseStore(nn.Module):
         if not ops:
             return self._empty_ticket()
 
-        births, merges, slot_ops = self._normalize_ops(ops)
+        births, merges, absorbs, slot_ops = self._normalize_ops(ops)
         if merges:
             births.append(self._materialize_merges(merges, births))
-        batch = self._snapshot_births(births, self._slots.prepare(slot_ops))
+        batch = self._snapshot_births(births, self._slots.prepare(slot_ops), absorbs)
         return Ticket(self, self._version, batch)
 
     def commit(self, ticket: Ticket) -> None:
@@ -683,6 +816,17 @@ class SynapseStore(nn.Module):
         dead = change.dead_slots.to(device=self.w.device)
         born = change.born_slots.to(device=self.w.device)
         with torch.no_grad():
+            if batch.absorbs.receiver_slots.numel():
+                # Applied before the dead-row zeroing below so a row that is
+                # both an earlier absorb's receiver *and* a later absorb's
+                # ``dying`` in the same ticket (a chain) ends up correctly
+                # zero: its transient increment is overwritten by the zero
+                # pass, exactly mirroring processing the ops in list order.
+                receiver_slots = batch.absorbs.receiver_slots.to(
+                    device=self.w.device
+                )
+                delta_w = batch.absorbs.delta_w.to(self.w)
+                self.w.index_add_(0, receiver_slots, delta_w)
             if dead.numel():
                 self.s.index_fill_(0, dead, 0)
                 self.t.index_fill_(0, dead, 0)
