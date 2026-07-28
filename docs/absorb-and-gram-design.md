@@ -223,6 +223,27 @@ exists, it is computed once per event at the composer level and passed
 DOWN as a value. Per-op prices are reported through the one-way audit sink;
 ledger unification happens offline.
 
+**Stage 3b-fix (registered 2026-07-29, from the RENT-T1 calibration audit):**
+two defects found by the sol audit (cst scripts/diag_birth_gain_calibration.py):
+
+1. **Certificate reset (R_{t-1}=0 semantics).** `ContinuousCandidateField`
+   accumulates `_G` across events and never clears it on consumption: the
+   gate fires on a cumulative, pre-optimizer-step certificate, double-
+   counting displacement the optimizer already consumed. Fix: scores are
+   consumed BY the structural event — reset the accumulated `_G` (and any
+   score state) after each event's plan is taken, so each event reads a
+   fresh certificate (the theory convention: the residual before this
+   window is treated as zero).
+2. **Loss-unit settlement at the entrance.** The instrument's deflation is
+   Frobenius-geometry (D-blind); `0.5*score^2` is NOT the loss-unit gain
+   for general data and no global correction factor exists. Fix: keep the
+   instrument as the cheap pre-ranker, and let `ScoredBirth(rent=...)`
+   settle the shortlist EXACTLY via GramService at plan time:
+   `gain = <G, psi>_F^2 / (2 * ||(I - P_live) psi||_D^2)` (reference
+   validated to 8e-11 against realized delta-loss). Rent then gates on
+   loss units, symmetric with AbsorbCourt. Four-stage discipline: cheap
+   filter -> exact settle -> audit.
+
 **Catalog discipline:** no new catalog entries in this stage. The acceptance
 criterion is the repo's own: cSET / cRigL / cRES / RENT each writable as a
 one-screen composed `Policy` — proven by a test that composes all four
