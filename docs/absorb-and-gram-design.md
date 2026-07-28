@@ -187,11 +187,47 @@ entity ids, emit the ordered `SynapseAbsorb` ops as one plan. Acceptance is
 admission of `SynapseAbsorb` to plan/bundle op unions — no `ActionKind`, no
 quota field, no engine plan-assembly changes.
 
-**Stage 3b (after 3a proves semantics in cst experiments): composed route.**
-`ActionKind.SYNAPSE_ABSORB`, `StructuralQuota.synapse_absorb`,
-`ActionSpec.synapse_absorb(AbsorbCourt(...))`, engine plan-order rule (absorb
-runs **before** prune courts: canonicalization first). Deferred deliberately:
-it touches contract/engine surface and should follow, not precede, evidence.
+**Stage 3b (approved 2026-07-29, after V1/V5/V7 20/20 PASS): composed route.**
+Semantics proven by the verification gates; absorb is promoted from a whole
+StructuralPolicy to a detachable composed part so users can assemble
+cSET / cRigL / cRES / RENT from the same part bin.
+
+Deliverables:
+
+1. `ActionKind.SYNAPSE_ABSORB`, `StructuralQuota.synapse_absorb`,
+   `ActionSpec.synapse_absorb(rule)` (rule provides `propose()`, like merge).
+2. `AbsorbCourt(rent, radius, ridge, budget=None, include_isolated=True,
+   audit_delta_w=True)` — the composed-part reincarnation of AbsorbPolicy's
+   plan logic: build GramService from the live view + kernel columns at plan
+   time (kernel access via the same observation-request/bind channel the 3a
+   policy used, promoted to a public reusable request), run `plan_chain`
+   with `cost_cap=rent`, emit the ordered `SynapseAbsorb` ops as one
+   `ProposalBundle` (ordered atomicity, the 3a lesson). When
+   `include_isolated`, an atom with **no live neighbors** whose full cost
+   `0.5*c^2*||psi||_D^2 < rent` is emitted as a plain `SynapseDeath` —
+   receiver-less absorb IS pure prune, so a RENT policy needs no separate
+   prune court.
+3. Engine plan-assembly order: absorb actions run **before** prune courts
+   (canonicalization first). Minimal, localized change.
+4. Entrance-side rent: `ScoredBirth` gains an optional `rent=None` threshold.
+   With the deflated-normalized instrument mode (cRES), `score^2 / 2` is the
+   exact profile gain in loss units; candidates below `rent` are not bought
+   even when budget remains.
+
+**Economy design rule (decided):** the currency is a plain float `rent`
+passed independently to each part — parts stay pure functions of
+`(view, budget, scores, rent)`. **Never a shared mutable object between
+rules** (it would add a third lateral crossing point, create apply-order
+coupling, and break deterministic replay). If an adaptive `rent_t` ever
+exists, it is computed once per event at the composer level and passed
+DOWN as a value. Per-op prices are reported through the one-way audit sink;
+ledger unification happens offline.
+
+**Catalog discipline:** no new catalog entries in this stage. The acceptance
+criterion is the repo's own: cSET / cRigL / cRES / RENT each writable as a
+one-screen composed `Policy` — proven by a test that composes all four
+inline and runs them. RENT enters the catalog only after it wins its
+benchmark comparison.
 
 ## 6. Stage 4 (later) — `torchcst/init/`
 
