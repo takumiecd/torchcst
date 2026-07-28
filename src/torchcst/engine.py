@@ -24,6 +24,7 @@ from torchcst.instruments import (
     CandidateField,
     CaptureInstrument,
     CertificateSubspace,
+    ContinuousCandidateField,
     DeferredCaptureInstrument,
     GradFieldEMA,
     InstrumentBuildContext,
@@ -1521,9 +1522,25 @@ class StructuralEngine:
             self._close_update()
 
     def _reset_event_instruments(self) -> None:
+        """Consume every accumulate-until-consumed certificate instrument.
+
+        Called once per applied structural event (never on a declined
+        event), this is the R_{t-1}=0 consumption hook: both
+        :class:`~torchcst.instruments.CertificateSubspace` and
+        :class:`~torchcst.instruments.ContinuousCandidateField` accumulate a
+        signed, weighted microbatch sum *within* one observation window, but
+        the event that reads their scores also retires that window --
+        otherwise the next event would gate on a cumulative,
+        pre-optimizer-step certificate rather than the residual since the
+        last event (the Stage 3b-fix defect documented on
+        ``ContinuousCandidateField``). Every bound instance at every site is
+        reset here regardless of whether this particular event's proposers
+        actually consulted it, matching the pre-existing
+        ``CertificateSubspace`` behaviour this generalizes.
+        """
         for site_instruments in self.instruments.values():
             for instrument in dict.fromkeys(site_instruments.values()):
-                if isinstance(instrument, CertificateSubspace):
+                if isinstance(instrument, (CertificateSubspace, ContinuousCandidateField)):
                     instrument.reset()
 
     def op_log(self) -> tuple[tuple[int, Op], ...]:

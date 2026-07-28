@@ -4,16 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import isfinite
-from typing import Any
+from typing import Any, Callable
 
 import torch
 from torch import Tensor
 
 from torchcst.instruments import CandidateSnapshot
+from torchcst.representation.gram import GramService
 from torchcst.storage import SynapseBirth, SynapseView
 
 from .contract import ObservationRequest
 from .registry import RetiredCandidateRegistry
+
+
+# GramService's constructor requires a positive finite ``radius`` for its
+# radius-restricted neighbourhood API (``neighbors``/``residual``/``cost``/
+# ``plan_chain``), but ``ScoredBirth``'s entrance-side settlement below only
+# ever calls the radius-independent :meth:`GramService.gram_block` directly,
+# over the *entire* live span rather than a local neighbourhood -- so this
+# value is inert, never read by anything the settlement path calls.
+_SETTLEMENT_RADIUS = 1.0
 
 
 @dataclass(frozen=True)
@@ -86,23 +96,70 @@ class TopKSelector:
 class ScoredBirth:
     """Turn any candidate-score instrument into a budgeted birth proposer.
 
-    ``rent``, when set, is a per-candidate profit floor: with the
-    deflated-normalized instrument mode (``ContinuousCandidateField``'s
-    ``mode="deflated"``, i.e. cRES), ``score**2 / 2`` is the exact local
-    profile gain in loss units, so a candidate whose gain falls below
-    ``rent`` is not bought even when budget remains -- the entrance-side half
-    of ``docs/absorb-and-gram-design.md``'s stage 3b economy (the exit side
-    is :class:`~torchcst.policy.absorb.AbsorbCourt`). Per that design's
-    economy rule, ``rent`` is a plain float passed independently to whichever
-    parts need it, never a shared mutable object threaded between rules.
-    Ranking itself is unchanged: ``rent`` only filters the selector's output,
-    it never alters ``selector.select``'s signed-score semantics.
+    ``rent``, when set, is a per-candidate profit floor gating on the
+    *exact* local profile gain in loss units, settled via
+    :class:`~torchcst.representation.gram.GramService` over the live view
+    (design doc Stage 3b-fix item 2) -- the entrance-side half of
+    ``docs/absorb-and-gram-design.md``'s stage 3b economy (the exit side is
+    :class:`~torchcst.policy.absorb.AbsorbCourt`). The bound instrument stays
+    the cheap pre-ranker: its scores choose the ``budget``-sized shortlist
+    (via ``selector``), and settlement only ever filters and re-ranks
+    *within* that shortlist -- it never widens it. For each shortlisted
+    candidate,
+
+    ``gain = <G, psi>_F^2 / (2 * ||(I - P_live) psi||_D^2)``
+
+    where ``psi`` is the *un-normalized* candidate atom matrix from kernel
+    columns (unlike the instrument's own Frobenius-unit-normalized
+    pre-ranking directions), ``P_live`` is the D-orthogonal projection onto
+    the entire live atom span, and ``G`` is the bound instrument's
+    accumulated certificate in raw loss-gradient units (its
+    ``raw_gradient()``). This exact formula is what
+    ``cst/scripts/diag_birth_gain_calibration.py`` validated against a dense
+    D-profile computation and an amplitudes-only refit to 8e-11 -- the cheap
+    instrument score's ``0.5 * score**2`` (Frobenius-geometry, D-blind) is
+    *not* generally the loss-unit gain, which is exactly the defect this
+    settlement fixes. Rent gating requires the bound instrument to expose
+    ``.port`` (a :class:`~torchcst.instruments.base.KernelPort`) and
+    ``.raw_gradient()`` -- :class:`~torchcst.instruments.ContinuousCandidateField`
+    does; a plain ``TypeError`` is raised at settlement time for an
+    instrument that does not.
+
+    Only candidates with ``gain >= rent`` are accepted, in descending exact
+    -gain order, up to the shortlist's own size (never more than ``budget``).
+    ``gain`` is always non-negative by construction (a squared numerator over
+    a positive denominator), which makes ``rent=0`` alone a mathematical
+    no-op; a candidate must also clear ``gain > 0`` to be bought, so a
+    freshly reset, all-zero certificate ("nothing to explain" -- see
+    :class:`~torchcst.instruments.ContinuousCandidateField`'s R_{t-1}=0
+    convention) never buys a birth even at ``rent=0`` with budget to spare.
+    For ``rent > 0`` this second condition is implied by ``gain >= rent`` and
+    changes nothing.
+
+    ``ridge`` regularizes the settlement's local least-squares solve
+    (:class:`~torchcst.representation.gram.GramService`'s own ``ridge``);
+    ``data``, when given, is a zero-argument ``[n, n_in]`` batch provider for
+    the D metric, called once per ``propose()`` needing settlement -- exactly
+    :class:`~torchcst.policy.absorb.AbsorbCourt`'s own pattern. The identity
+    metric is used when ``data`` is ``None``; per
+    :class:`~torchcst.representation.gram.GramService`'s docstring this makes
+    ``res2_D == res2_F`` exactly, i.e. identity-metric settlement is the
+    ``X=I`` sum-loss case (no data-dependent second moment).
+
+    Per the design's economy rule, ``rent`` is a plain float passed
+    independently to whichever parts need it, never a shared mutable object
+    threaded between rules. Ranking by the cheap instrument score is
+    unchanged by any of this: ``rent`` only filters and re-ranks the
+    selector's already-chosen shortlist, it never alters
+    ``selector.select``'s own signed-score semantics.
     """
 
     request: ObservationRequest
     selector: Any = field(default_factory=TopKSelector)
     initial_weight: float = 0.0
     rent: float | None = None
+    ridge: float = 1.0e-10
+    data: Callable[[], Tensor] | None = None
     requires: tuple[ObservationRequest, ...] = field(init=False)
     _instruments: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
     _next_lineage: dict[str, int] = field(default_factory=dict, init=False, repr=False)
@@ -119,6 +176,14 @@ class ScoredBirth:
             if not isfinite(rent) or rent < 0:
                 raise ValueError("rent must be finite and non-negative")
             self.rent = rent
+        if isinstance(self.ridge, bool) or not isinstance(self.ridge, (int, float)):
+            raise TypeError("ridge must be a real number")
+        ridge = float(self.ridge)
+        if not isfinite(ridge) or ridge < 0:
+            raise ValueError("ridge must be finite and non-negative")
+        self.ridge = ridge
+        if self.data is not None and not callable(self.data):
+            raise TypeError("data must be a callable batch provider or None")
         self.requires = (self.request,)
 
     def bind_instruments(self, site: str, instruments: dict[str, Any]) -> None:
@@ -172,11 +237,17 @@ class ScoredBirth:
             raise TypeError("candidate_snapshot() must return CandidateSnapshot")
         positions = self.selector.select(snapshot.scores, budget)
         if self.rent is not None and positions.numel():
-            selected_scores = snapshot.scores.index_select(
-                0, positions.to(snapshot.scores.device)
-            )
-            profile_gain = 0.5 * selected_scores.pow(2)
-            positions = positions[(profile_gain >= self.rent).to(positions.device)]
+            gains = self._settlement_gains(view, instrument, snapshot, positions)
+            order = torch.argsort(gains, descending=True, stable=True)
+            positions = positions.index_select(0, order.to(positions.device))
+            gains = gains.index_select(0, order)
+            # ``gain`` is provably non-negative (a squared numerator over a
+            # positive denominator), so ``gain >= rent`` alone is a
+            # mathematical no-op at ``rent=0``; requiring ``gain > 0`` too
+            # keeps an all-zero certificate ("nothing to explain") from ever
+            # buying a birth. For ``rent > 0`` this changes nothing.
+            keep = (gains >= self.rent) & (gains > 0.0)
+            positions = positions[keep.to(positions.device)]
         count = positions.numel()
         if count == 0:
             return ()
@@ -188,3 +259,73 @@ class ScoredBirth:
             lineages = snapshot.lineages.index_select(0, positions.cpu())
         weights = view.w.new_full((count,), float(self.initial_weight))
         return (SynapseBirth(view.site, source, target, weights, lineages),)
+
+    def _settlement_gains(
+        self,
+        view: SynapseView,
+        instrument: Any,
+        snapshot: CandidateSnapshot,
+        positions: Tensor,
+    ) -> Tensor:
+        """Exact loss-unit profile gain for the shortlist, via GramService.
+
+        See the class docstring for the formula and its provenance. This
+        never widens ``positions`` (the cheap pre-ranker's shortlist) --
+        it only computes each shortlisted candidate's exact gain so
+        :meth:`propose` can filter by ``rent`` and re-rank by true gain
+        instead of the cheap instrument score.
+        """
+        port = getattr(instrument, "port", None)
+        raw_gradient = getattr(instrument, "raw_gradient", None)
+        if port is None or not callable(raw_gradient):
+            raise TypeError(
+                "ScoredBirth's rent gate requires an instrument exposing "
+                "'.port' (a KernelPort) and 'raw_gradient()' -- e.g. "
+                f"ContinuousCandidateField; got {type(instrument).__name__!r}"
+            )
+        gradient = raw_gradient()
+        source = snapshot.source.index_select(0, positions.to(snapshot.source.device))
+        target = snapshot.target.index_select(0, positions.to(snapshot.target.device))
+        k_in_cand, k_out_cand = port.columns(source, target)
+        numerator = ((gradient @ k_in_cand) * k_out_cand).sum(dim=0).square()
+
+        l_count = source.shape[0]
+        k_live = view.w.numel()
+        batch = self.data() if self.data is not None else None
+        if batch is not None and not isinstance(batch, Tensor):
+            raise TypeError("data provider must return a Tensor")
+
+        k_in_live, k_out_live = port.columns(view.s, view.t)
+        combined_w = torch.cat([view.w, view.w.new_zeros(l_count)])
+        combined_s = torch.cat([view.s, source], dim=0)
+        combined_t = torch.cat([view.t, target], dim=0)
+        combined_u = torch.cat([k_out_live, k_out_cand], dim=1)
+        combined_v = torch.cat([k_in_live, k_in_cand], dim=1)
+        gram = GramService(
+            combined_u,
+            combined_v,
+            combined_w,
+            combined_s,
+            combined_t,
+            radius=_SETTLEMENT_RADIUS,
+            ridge=self.ridge,
+            data=batch,
+        )
+        idx_cand = torch.arange(
+            k_live, k_live + l_count, dtype=torch.int64, device=combined_w.device
+        )
+        gamma_self, _ = gram.gram_block(idx_cand, idx_cand)
+        self_norm = torch.diagonal(gamma_self).clone()
+        if k_live:
+            idx_live = torch.arange(k_live, dtype=torch.int64, device=combined_w.device)
+            gamma_live, _ = gram.gram_block(idx_live, idx_live)
+            gamma_cross, _ = gram.gram_block(idx_live, idx_cand)
+            eye = torch.eye(k_live, dtype=gamma_live.dtype, device=gamma_live.device)
+            alpha = torch.linalg.solve(gamma_live + self.ridge * eye, gamma_cross)
+            proj = (gamma_cross * alpha).sum(dim=0)
+            quad = (alpha * (gamma_live @ alpha)).sum(dim=0)
+            residual = (self_norm - 2.0 * proj + quad).clamp_min(0.0)
+        else:
+            residual = self_norm.clamp_min(0.0)
+        denom = 2.0 * residual.clamp_min(torch.finfo(residual.dtype).tiny)
+        return numerator / denom

@@ -357,6 +357,24 @@ class ContinuousCandidateField:
     freshly re-refined (and hence not source/target-identical) pool each
     time when refinement is enabled, whereas the coarse-only pool is stable
     across such calls.
+
+    **Certificate convention: R_{t-1}=0.** ``G`` accumulates the signed,
+    weighted microbatch sum *within* one observation window exactly as
+    documented above, but it is consumed -- not merely observed -- by the
+    structural event that reads it: :class:`~torchcst.engine.StructuralEngine`
+    resets every bound ``ContinuousCandidateField`` (alongside every
+    :class:`~torchcst.instruments.CertificateSubspace`) at the end of each
+    structural event that actually applies (``_finish_event``), regardless of
+    whether that specific instrument's scores were the ones a proposer used.
+    This is the theory's "the residual before this window is treated as
+    zero" convention: each event's :meth:`candidate_snapshot` reads a
+    certificate accumulated purely since the *previous* event, never a
+    cumulative, pre-optimizer-step sum spanning multiple events (the defect
+    ``docs/absorb-and-gram-design.md``'s Stage 3b-fix section describes and
+    ``cst/scripts/diag_birth_gain_calibration.py`` measured). A caller that
+    never reaches a structural event (e.g. only ever calls
+    :meth:`candidate_snapshot` diagnostically) must still call :meth:`reset`
+    explicitly, exactly as before this convention was wired into the engine.
     """
 
     def __init__(
@@ -462,14 +480,36 @@ class ContinuousCandidateField:
     def reset(self) -> None:
         """Begin the next observation window without changing shape/device.
 
-        Unlike :class:`~torchcst.instruments.CertificateSubspace`, this
-        instrument is not automatically reset by the engine's per-event
-        sweep (that sweep only targets ``CertificateSubspace`` instances).
-        Callers that want ``G`` cleared between structural events should call
-        this explicitly at the appropriate boundary.
+        :class:`~torchcst.engine.StructuralEngine` calls this automatically
+        at the end of every structural event that applies (the same
+        per-event sweep that resets every
+        :class:`~torchcst.instruments.CertificateSubspace`), implementing the
+        R_{t-1}=0 certificate convention documented on the class -- a
+        structural event *consumes* ``G``, it does not merely observe it. A
+        caller driving this instrument outside the engine (e.g. a
+        diagnostic) must still call this explicitly at its own event
+        boundary; nothing here depends on the engine.
         """
         if self._G is not None:
             self._G.zero_()
+
+    def raw_gradient(self) -> Tensor:
+        """Return the currently accumulated certificate ``G``, in raw units.
+
+        Same zero-fallback shape as :meth:`candidate_snapshot` uses
+        internally for scoring (``[out_features, in_features]``, matching
+        ``self.module``). Unlike :meth:`_score`'s Frobenius-unit-normalized
+        candidate directions, this is ``G`` in its native loss-gradient
+        units -- exactly what
+        :class:`~torchcst.policy.scored.ScoredBirth`'s entrance-side
+        loss-unit settlement needs (design doc Stage 3b-fix item 2) to
+        compute ``<G, psi>_F`` against an *un-normalized* candidate atom
+        matrix ``psi``.
+        """
+        base = self.store.s.detach()
+        if self._G is None:
+            return base.new_zeros((self.module.out_features, self.module.in_features))
+        return self._G.detach().to(base)
 
     def _score(
         self, source: Tensor, target: Tensor, gradient: Tensor, live_source: Tensor, live_target: Tensor
@@ -603,11 +643,7 @@ class ContinuousCandidateField:
         live_source = view.s.detach()
         live_target = view.t.detach()
 
-        base = self.store.s.detach()
-        if self._G is None:
-            gradient = base.new_zeros((self.module.out_features, self.module.in_features))
-        else:
-            gradient = self._G.detach().to(base)
+        gradient = self.raw_gradient()
 
         source = self._source
         target = self._target
