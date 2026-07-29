@@ -148,3 +148,24 @@ root = RentEconomy(lam=0.05, method=cRES(), overrides={"stage2.*": cSET()})
    型レベルで表現される＝不正な組合せが最初から書けない。
 5. recipes との整合: **recipe = family 1個＋検証済み設定**。
    「既定1＋対照2」=「出荷する family は少数」の言い換え。
+
+## 依存の四角形（2026-07-29 追記）
+
+```
+  Engine ×1  ──propose(event)→ops──▶  親policy ×少数(family, 稼働1本)
+     │        （最細・唯一の公開ABI）        │
+ commit(ops)                          family私有・密結合
+ follower                             （予備動作・値付け・裁定）
+ 書き込み専権                                │
+     ▼                                     ▼
+  Storage  ◀╌╌╌view/計器の読み(超密・1:1)╌╌╌  子policy ×store数
+  Synapse×18層                          （型は family×store種）
+  Neuron×界面
+```
+
+- **無い辺が本質**: engine–子（engine は根しか知らない）と、子→storage の書き
+  （子は op データを親経由で返すのみ。書き込みは engine→storage の1本）。
+- 結合密度の序列: 子↔storage(読) ＞ 親↔子 ＞ engine→storage(機構) ＞ engine→親(ABI)。
+- 子 policy の数: **実体 = store 数**（稼働木は1本）。**型 = family数 × store種**
+  （family ごとに子の型セットは別。cross-family 共用は約束しない）。
+- engine が storage/policy に呼べる面は制限する（機構契約のみ）。
