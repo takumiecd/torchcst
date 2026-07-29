@@ -84,3 +84,16 @@ Policy への畳み込み adapter** として実装し、257 本の既存テス�
 | `EvenBudgetDistributor` / `QuotaShare` | `QuotaRegime` 根ノードの内部 |
 | `AbsorbCourt(rent=λ)` を action ごとに設定 | λ は `RentEconomy` 根が一元保持し子に降ろす |
 | `neuron_retention_rule` | 界面子ノードの court |
+
+## Recipes（部品＋完成形、2026-07-29 追記）
+
+配布は3層構成とする（ユーザー裁定）:
+
+1. **部品箱**: 子ノード部品（`ScoredBirth` / `AbsorbCourt` / court / cadence 等）。
+   大半は既存実装をそのまま木ノード化する。
+2. **完成形（recipe）**: `recipes.rent_default(model, lam)` のような名前つき
+   組立て済みの木。**recipe = 検証済み構成**の規律を守る（toy 検証済みの RENT 合成、
+   ベンチで勝った構成のみを recipe 化）。再現性の単位を兼ねる。
+3. **段階的開示**: そのまま使う → 子ノード差し替え → 自作ノード。
+
+recipe は増やしすぎない: **既定1個＋対照2個を上限**とする（動物園化の防止）。
