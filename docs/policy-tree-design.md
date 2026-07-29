@@ -127,3 +127,24 @@ root = RentEconomy(lam=0.05, method=cRES(), overrides={"stage2.*": cSET()})
 - cadence も根の所有。
 - 方法が持ってよいのは**選択規則の内部パラメータのみ**
   （pool サイズ、top-k、deflate の有無、court の閾値系など）。
+
+## 契約の細さと family 密結合（2026-07-29 追記・上の broadcast 節を修正する裁定）
+
+ユーザー裁定: 「何でも上書きできる」を**フレームワークの約束にしない**。
+
+1. **骨格だけが公開契約**: engine ↔ 根の1インターフェース・op データ型・store・
+   原子的 commit・follower。ここだけが安定 ABI。
+   「どの layer がどの policy を持つか」という配線もフレームワークが持つ。
+2. **密結合の単位は family**: RentEconomy＋その子、QuotaRegime＋その子は、
+   一体で設計・出荷される閉じた家族。親が子に要求する予備動作
+   （値付けの共有バッチ・deflation 状態・証明場の消費タイミング等）は
+   family の私有インターフェースであり、疎結合化を試みない
+   （「素な結合はほぼ不可能。親と子は密な連携を持つものとして設計する」）。
+3. **方法コンストラクタの引数スキーマは family の所有物**。フレームワークは固定しない。
+4. **overrides は family 内機能に格下げ**: 同一 family の互換な子
+   （quota 系の cSET/cRigL/cRES など、同じ子インターフェースを満たす者）の
+   差し替えのみ。cross-family の混在は約束しない。
+   副産物: 「cSET は値札を出せないので RentEconomy の子になれない」が
+   型レベルで表現される＝不正な組合せが最初から書けない。
+5. recipes との整合: **recipe = family 1個＋検証済み設定**。
+   「既定1＋対照2」=「出荷する family は少数」の言い換え。
