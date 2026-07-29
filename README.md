@@ -19,21 +19,21 @@ Let the input and output neuron charts contain coordinates
 $\mu_i^{\mathrm{in}}\in\mathbb{R}^{d_{\mathrm{in}}}$ and
 $\mu_j^{\mathrm{out}}\in\mathbb{R}^{d_{\mathrm{out}}}$. A live synapse atom
 
-$$
+```math
 \theta_a = (s_a, t_a, w_a)
-$$
+```
 
 has a source coordinate $s_a$, a target coordinate $t_a$, and a scalar
 amplitude $w_a$. Equivalently, $M$ live atoms define the signed atomic
 measure
 
-$$
+```math
 \nu = \sum_{a=1}^{M} w_a\,\delta_{(s_a,t_a)}.
-$$
+```
 
 The continuous kernel operator induced by this measure is
 
-$$
+```math
 \begin{aligned}
 W_{\mathrm{core}}(\mu_j^{\mathrm{out}},\mu_i^{\mathrm{in}})
 &=
@@ -47,47 +47,47 @@ w_a\,
 \kappa_{\mathrm{out}}(\mu_j^{\mathrm{out}},t_a)\,
 \kappa_{\mathrm{in}}(\mu_i^{\mathrm{in}},s_a).
 \end{aligned}
-$$
+```
 
 The functions $\kappa_{\mathrm{in}}$ and $\kappa_{\mathrm{out}}$ are the
 kernels: they specify how strongly an atom at one continuous coordinate
 couples to a neuron at another coordinate. Evaluating them over every neuron
 and live atom produces the rectangular kernel feature matrices
 
-$$
+```math
 (\Phi_{\mathrm{in}})_{ia}
 = \kappa_{\mathrm{in}}(\mu_i^{\mathrm{in}},s_a),
 \qquad
 (\Phi_{\mathrm{out}})_{ja}
 = \kappa_{\mathrm{out}}(\mu_j^{\mathrm{out}},t_a).
-$$
+```
 
 Then the conceptual dense weight is
 
-$$
+```math
 W_{\mathrm{core}}
 =
 \Phi_{\mathrm{out}}\,
 \operatorname{diag}(w)\,
 \Phi_{\mathrm{in}}^{\mathsf T}
 \in \mathbb{R}^{n_{\mathrm{out}}\times n_{\mathrm{in}}}.
-$$
+```
 
 With input and output neuron gates $g_{\mathrm{in}}$ and
 $g_{\mathrm{out}}$, the map actually represented by `CSTLinear` is
 
-$$
+```math
 W
 =
 \operatorname{diag}(g_{\mathrm{out}})\,
 W_{\mathrm{core}}\,
 \operatorname{diag}(g_{\mathrm{in}}).
-$$
+```
 
 For a row-major input batch $X$, the implementation computes the equivalent
 factorized expression
 
-$$
+```math
 Y
 =
 \left(
@@ -98,14 +98,14 @@ Y
 \right)
 \Phi_{\mathrm{out}}^{\mathsf T}
 \odot g_{\mathrm{out}},
-$$
+```
 
 without materializing $W$ during the forward pass. Here $\odot$ denotes
 broadcast elementwise multiplication.
 
 The available continuous profiles are
 
-$$
+```math
 \kappa_{\mathrm{Gaussian}}(u,v)
 =
 \exp\left(-\frac{\lVert u-v\rVert_2^2}{2\sigma^2}\right),
@@ -113,7 +113,7 @@ $$
 \kappa_{\mathrm{triangular}}(u,v)
 =
 \max\left(0, 1-\frac{\lVert u-v\rVert_2}{\sigma}\right).
-$$
+```
 
 Gaussian atoms have global support, so the represented $W$ is generally
 dense even though it is parameterized by only $M$ atoms. Triangular atoms
