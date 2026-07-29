@@ -97,3 +97,33 @@ Policy への畳み込み adapter** として実装し、257 本の既存テス�
 3. **段階的開示**: そのまま使う → 子ノード差し替え → 自作ノード。
 
 recipe は増やしすぎない: **既定1個＋対照2個を上限**とする（動物園化の防止）。
+
+## 語彙の3段スタックと方法の broadcast（2026-07-29 追記）
+
+`layer1: cRigL` とも `SynapseLifecycle(birth=..., absorb=...)` 直書きとも決めない。
+語彙を3段に積む:
+
+1. **方法名（語彙3）**: `cSET()` / `cRigL()` / `cRES()` / `RENT()` は
+   **名前つき合成**（named constructor）＝ Lifecycle を返すただの関数。
+   方法どうしの差分がコードの diff として読める（cRigL と cRES の差 = deflate 1個）。
+   ベンチの構造軸の水準表がそのままコンストラクタ一覧になる。
+2. **合成（語彙2）**: `SynapseLifecycle(birth=..., death=...)`。
+   新しい方法を発明する研究者だけが触る。
+3. **op データ（語彙1）**: engine 専用。人間は書かない。
+
+**方法は根に1回渡して全層へ broadcast** する。層名が API に現れるのは
+上書き（`overrides={"stage2.*": cSET()}`）の時だけ:
+
+```python
+root = RentEconomy(lam=0.05, method=cRES(), cadence=Periodic(25))
+root = RentEconomy(lam=0.05, method=cRES(), overrides={"stage2.*": cSET()})
+```
+
+「policy = 方法1個＋例外リスト」が普段の姿。
+
+### 方法コンストラクタの引数規律（起草者推奨・裁定待ち）
+
+- λ（家賃）は根の所有。方法には渡さない。
+- cadence も根の所有。
+- 方法が持ってよいのは**選択規則の内部パラメータのみ**
+  （pool サイズ、top-k、deflate の有無、court の閾値系など）。
