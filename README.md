@@ -68,7 +68,7 @@ Then the conceptual dense weight is
 W_{\mathrm{core}}
 =
 \Phi_{\mathrm{out}}\,
-\operatorname{diag}(w)\,
+\mathrm{diag}(w)\,
 \Phi_{\mathrm{in}}^{\mathsf T}
 \in \mathbb{R}^{n_{\mathrm{out}}\times n_{\mathrm{in}}}.
 ```
@@ -79,9 +79,9 @@ $g_{\mathrm{out}}$, the map actually represented by `CSTLinear` is
 ```math
 W
 =
-\operatorname{diag}(g_{\mathrm{out}})\,
+\mathrm{diag}(g_{\mathrm{out}})\,
 W_{\mathrm{core}}\,
-\operatorname{diag}(g_{\mathrm{in}}).
+\mathrm{diag}(g_{\mathrm{in}}).
 ```
 
 For a row-major input batch $X$, the implementation computes the equivalent
