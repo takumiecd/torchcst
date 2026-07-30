@@ -870,19 +870,13 @@ class StructuralEngine:
             tuple[Any, ...], tuple[Op, ...], tuple[tuple[str, torch.Tensor], ...]
         ],
     ) -> tuple[Op, ...]:
+        # Optimizer-state reconciliation is not repeated here: each store's
+        # commit fires its FollowerHub (grow/birth/death), and the
+        # OptimizerStateFollower subscribed in __init__ zeroes and grows
+        # slot-indexed moments from those notifications. Storage is the single
+        # emission point for mutation consequences (Phase 2 S1).
         tickets, expanded, retired = prepared
         commit_all(tickets)
-        if self.optimizer is not None:
-            for ticket in tickets:
-                if isinstance(ticket.store, SynapseStore):
-                    change = ticket.batch.slot_plan.change
-                    reset = torch.cat((change.dead_slots, change.born_slots)).unique()
-                    ticket.store.reconcile_optimizer_state(self.optimizer, reset)
-                else:
-                    reset = torch.cat(
-                        (ticket.batch.retire_ids, ticket.batch.ungate_ids)
-                    ).unique()
-                    ticket.store.reconcile_optimizer_state(self.optimizer, reset)
         for site, lineages in retired:
             self.registry.retire(site, lineages)
         return expanded

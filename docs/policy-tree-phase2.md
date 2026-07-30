@@ -99,7 +99,13 @@ NeuronLifecycle は「隣接2層の界面」の子として木に住む（policy
 1. **S0 統計的等価ハーネス**: 旧 main（3e6d40f）で基準統計（固定 seed 群の
    到達損失・K 軌跡・op 種別頻度）を採取し、以後の各段の合格判定器にする。
    bit 比較はここで退役。
-2. **S1 storage 発火**: follower 通知・監査イベントの発火点を storage に一本化。
+2. **S1 storage 発火**: 変異の帰結の発火点を storage に一本化。実体は
+   optimizer-state 整合の二重化解消（store.commit の FollowerHub 通知が唯一の
+   経路になる。engine 側の post-commit `reconcile_optimizer_state` 再実行を削除）。
+   **監査はここでは動かさない**: イベント級 AuditRecord は裁定文脈（rent 閾値・
+   prune 時点の age）を要するため、S3/S4 で「root の Plan＋子の commit ack」から
+   組み立てる形に置換する。store 級 commit 通知は FollowerHub が既に担っており、
+   それが「storage が発火する」の実体である。
 3. **S2 子の実行時化**: SynapseLifecycle → store 束縛済み子ノード
    （view 読み・PricedProposal・二相実行）。
 4. **S3 根の実行時裁定**: RentEconomy / QuotaRegime が毎イベント
