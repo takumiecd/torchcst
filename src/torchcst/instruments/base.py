@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import torch
 from torch import Tensor
 
-from torchcst.policy.registry import RetiredCandidateRegistry
 from torchcst.storage import SynapseStore, SynapseView
+
+if TYPE_CHECKING:
+    # Annotation-only: a runtime import here would close the
+    # instruments <-> policy cycle (policy modules import instrument types).
+    from torchcst.policy.registry import RetiredCandidateRegistry
 
 
 Measurement = Mapping[str, Tensor]

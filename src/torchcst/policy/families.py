@@ -27,7 +27,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from torchcst.instruments import ContinuousCandidateRequest
+# Submodule import; see policy/absorb.py's note on the instruments cycle.
+from torchcst.instruments.continuous_candidate import ContinuousCandidateRequest
 
 from .absorb import AbsorbCourt
 from .courts import MagnitudeCourt

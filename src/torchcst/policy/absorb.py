@@ -32,7 +32,11 @@ import torch
 from torch import Tensor
 
 from torchcst._validation import require_int, require_real
-from torchcst.instruments import KernelPort, KernelPortRequest
+
+# Submodule import: torchcst.instruments' package __init__ may itself be
+# mid-import (it reaches back into torchcst.policy), so policy modules must
+# import instrument symbols from their defining modules.
+from torchcst.instruments.base import KernelPort, KernelPortRequest
 from torchcst.representation.gram import AbsorbPlanStep, GramService
 from torchcst.storage import SynapseAbsorb, SynapseDeath, SynapseView
 

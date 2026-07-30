@@ -10,7 +10,9 @@ import torch
 from torch import Tensor
 
 from torchcst._validation import require_int
-from torchcst.instruments import CertificateSubspace
+
+# Submodule import; see policy/absorb.py's note on the instruments cycle.
+from torchcst.instruments.certificate import CertificateSubspace
 from torchcst.representation import CoordinateDomain, IntegerGrid, Sphere
 from torchcst.storage import SynapseBirth, SynapseMerge, SynapseView
 

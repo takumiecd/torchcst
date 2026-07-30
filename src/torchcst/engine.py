@@ -10,6 +10,7 @@ import torch
 from torchcst.audit import AuditSubscriber
 from torchcst.compute import (
     BackwardContext,
+    CaptureBatch,
     CaptureMode,
     ComputeLinear,
     CSTConv2d,
@@ -163,6 +164,7 @@ class StructuralEngine:
             return value
         if not isinstance(value, str):
             raise TypeError("capture modes must be CaptureMode values or strings")
+        # Accepted shorthand for the full mode name.
         if value == "inline":
             value = CaptureMode.INLINE_REDUCED.value
         try:
@@ -519,14 +521,18 @@ class StructuralEngine:
         if self._backward_finalized:
             raise RuntimeError("backward has already been finalized")
         capture = self._backward_context.finalize_capture()
-        observations = capture.observations
-        reduced = capture.reduced
         was_capturing = self._capture_active
         for module in self.modules.values():
             module.set_backward_context(None)
         self._capture_active = False
+        self._validate_capture(capture)
+        if was_capturing:
+            self._finalize_instruments(capture)
+        self._backward_finalized = True
 
-        for observation in (*observations, *reduced):
+    def _validate_capture(self, capture: CaptureBatch) -> None:
+        """Reject observations from another update or a mutated store."""
+        for observation in (*capture.observations, *capture.reduced):
             if observation.update_id != self._active_update_id:
                 raise RuntimeError("captured observation belongs to another update")
             try:
@@ -538,34 +544,37 @@ class StructuralEngine:
             if observation.version != version:
                 raise RuntimeError("store version changed before finalize_backward()")
 
+    def _finalize_instruments(self, capture: CaptureBatch) -> None:
+        """Route each site's observations into its instruments' finalize_update."""
         by_site = {
             site: tuple(
-                observation for observation in observations if observation.site == site
+                observation
+                for observation in capture.observations
+                if observation.site == site
             )
             for site in self.stores
         }
         reduced_by_site = {
             site: tuple(
-                observation for observation in reduced if observation.site == site
+                observation
+                for observation in capture.reduced
+                if observation.site == site
             )
             for site in self.stores
         }
-        for site, site_instruments in self.instruments.items() if was_capturing else ():
+        for site, site_instruments in self.instruments.items():
             store = self.stores[site]
             view = store.view()
-            site_observations = by_site[site]
-            site_reduced = reduced_by_site[site]
             for instrument in self._unique_instruments(site_instruments):
                 measurements = self._instrument_measurements(
                     instrument,
                     self.instrument_timings[site][id(instrument)],
                     self.modules[site],
-                    site_observations,
-                    site_reduced,
+                    by_site[site],
+                    reduced_by_site[site],
                 )
                 if measurements:
                     instrument.finalize_update(measurements, view)
-        self._backward_finalized = True
 
     def _close_update(self) -> None:
         for module in self.modules.values():

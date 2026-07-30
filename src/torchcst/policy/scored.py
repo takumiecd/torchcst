@@ -9,7 +9,9 @@ import torch
 from torch import Tensor
 
 from torchcst._validation import require_int, require_real
-from torchcst.instruments import CandidateSnapshot
+
+# Submodule import; see policy/absorb.py's note on the instruments cycle.
+from torchcst.instruments.base import CandidateSnapshot
 from torchcst.representation.gram import GramService
 from torchcst.storage import SynapseBirth, SynapseView
 
