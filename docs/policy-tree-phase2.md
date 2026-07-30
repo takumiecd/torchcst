@@ -111,9 +111,29 @@ NeuronLifecycle は「隣接2層の界面」の子として木に住む（policy
 4. **S3 根の実行時裁定**: RentEconomy / QuotaRegime が毎イベント
    propose(EventView)→Plan を実装（λ フィルタ / budget top-k・カスケード・
    dedup・immunity）。cadence 応答も根へ。
-5. **S4 engine 削減**: トランザクション進行役＋capture サービスだけにする。
-   arbiter.py・composed/StructuralPolicy 経路・Independent・catalog preset 削除。
-   LC 系 recipe 化。
+5. **S4 engine 削減**（進行中・sub-step 分割）:
+   - S4a 済: RuntimeTree を QuotaPolicy 駆動に一般化（windowed 供給・prune cap は
+     root の計画行為）。recipes.LC が runtime 経路で指紋 PASS。
+   - S4b 済: profit trial = root の execute_trial サブプロトコル。checkpoint
+     (TrialTransaction) は全 family 共通の機構として engine が factory で貸すだけ
+     （trial の存在を知らない）。ordinary 半（absorb/retention）commit 後に
+     checkpoint → priced 半（birth/merge）→ polish → 裁定、が旧境界と同一。
+     recipes.GrowthByProfit 指紋 PASS（rollback 込み）。
+   - S4c 未: NeuronLifecycle（界面子）。実装指針: compose_response は
+     `neuron_id=` 明示指定を既に受けるので、snapshot の dormant_ids から root が
+     ターゲット列を計画し、bundle 間の依存は view_after を「計画済み birth の行
+     追加（合成負 id・lineage は op が持つ）」に拡張して解く。retire カスケードは
+     root の計画行為: SiteBinding.endpoints で当該 neuron store に接する synapse
+     子を特定し `spec.incident_synapse_ids` を子経由で照会して死を計画に加える。
+     LC_response recipe が lc_response_cascade 指紋を PASS したら完了。
+   - S4d 未: StructuralPolicy の後継 = 「root を自作する」研究者向け seam。
+     structural_policy_direct fixture を自作 root で再表現して指紋 PASS。
+   - S4e 未: 切除実行 — arbiter.py・composed/StructuralPolicy 経路・Independent・
+     _SiteProposer/_SiteRetentionCourt・compile() 経路・catalog preset
+     （LC_anti / LC_merge は歴史的 preset として recipe 化せず削除を許容、
+     コミットメッセージに記録。移すのは指紋が pin する LC / LC_response /
+     GrowthByProfit のみ）。engine の instruments reset・capture は現状維持
+     （A束は Phase 2 スコープ外の継続課題）。
 6. **S5 テスト再憲法化**: 旧テストのうち意味論に依存しない層（storage/compute/
    audit/replay）は維持、イベント編成系は新意味論で書き直し。S0 ハーネスで
    旧 main との統計的等価を最終確認。
