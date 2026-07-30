@@ -291,6 +291,17 @@ def _edge_store(*, capacity: int = 12, sigma: float = 0.1):
     return store, inputs, outputs, module
 
 
+# Phase 2 S3: when True (--tree-native), tree fixtures hand the ROOT itself
+# to StructuralEngine (the runtime linear-stack path) instead of compiling
+# down to a composed Policy. Fixture names stay identical so the comparator
+# measures the semantic change against the same preregistered baseline.
+TREE_NATIVE = False
+
+
+def _policy_of(root, stores):
+    return root if TREE_NATIVE else root.compile(stores)
+
+
 def _rent_economy_build(seed: int):
     store, inputs, outputs, module = _edge_store()
     optimizer = torch.optim.SGD(store.parameters(), lr=1.0e-4)
@@ -300,7 +311,7 @@ def _rent_economy_build(seed: int):
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
         budget=4,
     )
-    policy = root.compile({"edge": store, "edge_in": inputs, "edge_out": outputs})
+    policy = _policy_of(root, {"edge": store, "edge_in": inputs, "edge_out": outputs})
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
         policy,
@@ -344,7 +355,7 @@ def _quota_cset_build(seed: int):
         method=cSET(bounds_in=4, bounds_out=3, drop_fraction=0.25),
         cadence=PeriodicCadence(event_interval=1),
     )
-    policy = root.compile({"entry": store})
+    policy = _policy_of(root, {"entry": store})
     engine = StructuralEngine(
         {"entry": store}, policy, modules={"entry": module}, optimizer=optimizer, seed=seed
     )
@@ -370,7 +381,7 @@ def _quota_cres_build(seed: int):
         method=cRES(pool_size=16, drop_fraction=0.2),
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
     )
-    policy = root.compile({"edge": store, "edge_in": inputs, "edge_out": outputs})
+    policy = _policy_of(root, {"edge": store, "edge_in": inputs, "edge_out": outputs})
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
         policy,
@@ -756,6 +767,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=None, help="write JSON here instead of stdout")
     parser.add_argument("--seeds", type=int, default=DEFAULT_SEEDS, help="seeds 0..N-1 per fixture")
     parser.add_argument(
+        "--tree-native",
+        action="store_true",
+        help="run tree fixtures through the runtime (bind) path instead of compile-down",
+    )
+    parser.add_argument(
         "--fixtures",
         type=str,
         default=None,
@@ -767,6 +783,9 @@ def main(argv: list[str] | None = None) -> int:
         help="dev-only escape hatch; the baseline capture must NOT use this",
     )
     args = parser.parse_args(argv)
+
+    if args.tree_native:
+        globals()["TREE_NATIVE"] = True
 
     names = args.fixtures.split(",") if args.fixtures else None
     fingerprint = build_fingerprint(

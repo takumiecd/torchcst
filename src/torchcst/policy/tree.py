@@ -39,6 +39,8 @@ constructors; :meth:`compile` is the only place they are read (from the
 from __future__ import annotations
 
 import fnmatch
+
+import torch
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from math import isfinite
@@ -482,3 +484,436 @@ def compile(root: Root, stores: Stores | None = None) -> Policy:
     if not hasattr(root, "compile"):
         raise TypeError("root must be a RentEconomy, QuotaRegime, or Independent")
     return root.compile(stores)
+
+
+def _bind_root(
+    root: "RentEconomy | QuotaRegime",
+    bindings: Mapping[str, Any],
+    neuron_stores: tuple[NeuronStore, ...],
+) -> "RuntimeTree":
+    """Shared bind: resolve overrides to concrete children, once, here.
+
+    Site globs are consumed at this boundary and never live past it -- a
+    bound child holds its store by reference. Children receive the root's
+    already-built rules (the same instances the compile path broadcasts;
+    every rule is multi-site by construction via per-site instrument
+    binding), so bind() and compile() price and compose identically.
+    """
+    from .runtime import EndpointChild, SiteBinding, SynapseChild
+
+    for site, binding in bindings.items():
+        if not isinstance(binding, SiteBinding):
+            raise TypeError("bindings values must be SiteBinding")
+        if binding.store.site != site:
+            raise ValueError("bindings keys must equal binding.store.site")
+    override_lifecycles = dict(root.overrides)
+    built_by_pattern = dict(root._built_overrides)
+    matched: set[str] = set()
+    children: list[SynapseChild] = []
+    for site, binding in bindings.items():
+        lifecycle = root.method
+        built = root._built_default
+        for pattern in root._override_patterns:
+            if fnmatch.fnmatchcase(site, pattern):
+                lifecycle = override_lifecycles[pattern]
+                built = built_by_pattern[pattern]
+                matched.add(pattern)
+                break
+        children.append(SynapseChild(lifecycle, built, binding))
+    unmatched = [
+        pattern for pattern in root._override_patterns if pattern not in matched
+    ]
+    if unmatched:
+        raise ValueError(
+            f"override pattern(s) {unmatched!r} match no bound site "
+            f"{sorted(bindings)!r}"
+        )
+    return RuntimeTree(
+        children=tuple(children),
+        endpoints=tuple(EndpointChild(store) for store in neuron_stores),
+        cadence=root.cadence,
+        distributor=root.distributor,
+        birth_budget=root.budget,
+        absorb_budget=root.budget,
+    )
+
+
+def _root_bind_method(self, bindings, neuron_stores=()):  # noqa: ANN001
+    return _bind_root(self, bindings, tuple(neuron_stores))
+
+
+# ``bind`` shares one implementation across the two coordination families;
+# ``Independent`` deliberately gets none (docs/policy-tree-phase2.md removes
+# it -- an explicit ``QuotaRegime(budget=...)`` is the honest control).
+RentEconomy.bind = _root_bind_method
+QuotaRegime.bind = _root_bind_method
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 S3: runtime adjudication. ``root.bind(...)`` produces a
+# ``RuntimeTree`` -- the root as a *live* per-event arbiter over store-bound
+# children (policy/runtime.py), replacing the compile-down path's baked-in
+# coordination. The engine talks to it through four calls only (requires /
+# observing / event / propose+execute); it never sees a store.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EventPlan:
+    """One event's adjudicated outcome, as data, before anything commits.
+
+    ``ops_by_site`` holds each store's slice in its required execution order
+    (absorbs, then retention deaths, then births). ``dropped`` records
+    proposals the root's conflict resolution removed -- the snapshot
+    semantics make the root, not sequential mid-event commits, responsible
+    for intra-event consistency (docs/policy-tree-phase2.md).
+    """
+
+    signal: Any
+    ops_by_site: Mapping[str, tuple[Any, ...]]
+    dropped: tuple[str, ...]
+    audit_ages: Mapping[str, Mapping[int, int]] | None
+    audit_thresholds: Mapping[str, float | None] | None
+
+    def flattened(self) -> tuple[Any, ...]:
+        """Phase-major op order for the op log: absorbs, deaths, births."""
+        from torchcst.storage import SynapseDeath
+
+        absorbs: list[Any] = []
+        deaths: list[Any] = []
+        births: list[Any] = []
+        for ops in self.ops_by_site.values():
+            for op in ops:
+                if isinstance(op, SynapseDeath):
+                    deaths.append(op)
+                elif hasattr(op, "dying"):
+                    absorbs.append(op)
+                else:
+                    births.append(op)
+        return (*absorbs, *deaths, *births)
+
+
+@dataclass(frozen=True)
+class EventResult:
+    """What actually happened: applied ops (all, or none on abort) plus the
+    post-commit store facts the engine needs to assemble an audit record
+    without ever reading a store itself."""
+
+    applied: tuple[Any, ...]
+    aborted: bool
+    abort_reason: str | None
+    post_live_ids: Mapping[str, Any]
+    post_mass: Mapping[str, Any]
+
+
+class RuntimeTree:
+    """The bound, live policy tree: one root's coordination over its children.
+
+    Construction happens once, in ``root.bind``: overrides are resolved to
+    concrete children (site globs die here), lam/budget are attached, and
+    the retired-candidate registry -- structural memory, hence policy-side --
+    is created. Per event the root proposes from one snapshot (every child's
+    view taken before any adjudication), resolves intra-event conflicts that
+    the old interleaved semantics resolved by committing mid-event, and then
+    conducts the two-phase execution: every involved child prepares, and
+    only if all prepared do all commit (ruling 1: a prepare failure aborts
+    the whole event).
+    """
+
+    def __init__(
+        self,
+        children: tuple[Any, ...],
+        endpoints: tuple[Any, ...],
+        cadence: Cadence,
+        distributor: BudgetDistributor,
+        birth_budget: int,
+        absorb_budget: int,
+    ) -> None:
+        from .registry import RetiredCandidateRegistry
+
+        self.children = tuple(children)
+        self.endpoints = tuple(endpoints)
+        self.cadence = cadence
+        self.distributor = distributor
+        self.birth_budget = int(birth_budget)
+        self.absorb_budget = int(absorb_budget)
+        self.registry = RetiredCandidateRegistry()
+
+    # -- static declarations (read once by the engine) ---------------------
+
+    @property
+    def requires(self) -> tuple[Any, ...]:
+        seen: list[Any] = []
+        for child in self.children:
+            for requirement in child.requires:
+                if requirement not in seen:
+                    seen.append(requirement)
+        return tuple(seen)
+
+    def bind_instruments(self, instruments_by_site: Mapping[str, Mapping[str, Any]]) -> None:
+        for child in self.children:
+            site_instruments = instruments_by_site.get(child.store.site)
+            if site_instruments is None:
+                continue
+            names = {getattr(req, "name", None) for req in child.requires}
+            child.bind_instruments(
+                {name: inst for name, inst in site_instruments.items() if name in names}
+            )
+
+    # -- cadence (root-owned) ----------------------------------------------
+
+    def observing(self, clock: Any) -> bool:
+        return bool(self.cadence.observing(clock))
+
+    def event(self, clock: Any) -> Any | None:
+        return self.cadence.event(clock)
+
+    # -- adjudication ------------------------------------------------------
+
+    def _allocate(
+        self, budget: int, kind: str, replacement: Mapping[str, int]
+    ) -> dict[str, int]:
+        from .contract import BudgetRequest
+
+        sites = tuple(child.store.site for child in self.children)
+        requests = tuple(
+            BudgetRequest(site, 0, int(replacement.get(site, 0)), kind)
+            for site in sites
+        )
+        grants = self.distributor.allocate(budget, requests)
+        valid = (
+            len(grants) == len(requests)
+            and all(
+                not isinstance(value, bool) and isinstance(value, int) and value >= 0
+                for value in grants
+            )
+            and sum(grants) <= budget
+        )
+        if not valid:
+            raise RuntimeError(f"distributor exceeded the {kind!r} structural quota")
+        return dict(zip(sites, grants))
+
+    @staticmethod
+    def _absorb_participants(proposal: Any) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        """(dying ids, receiver ids) across an op or a bundle of ops."""
+        ops = proposal.ops if hasattr(proposal, "ops") else (proposal,)
+        dying: list[int] = []
+        receivers: list[int] = []
+        for op in ops:
+            if hasattr(op, "dying"):
+                dying.append(int(op.dying))
+                receivers.extend(int(v) for v in op.receivers.tolist())
+            elif hasattr(op, "ids"):
+                dying.extend(int(v) for v in op.ids.tolist())
+        return tuple(dying), tuple(receivers)
+
+    def propose(self, signal: Any, clock: Any, rng: Any, want_audit: bool) -> EventPlan:
+        from .contract import Phase
+        from torchcst.storage import SynapseDeath
+
+        frozen = getattr(signal, "phase", None) is Phase.FROZEN
+        views = {} if frozen else {child: child.view() for child in self.children}
+        dropped: list[str] = []
+        absorbs_by_site: dict[str, list[Any]] = {}
+        deaths_by_site: dict[str, list[Any]] = {}
+        births_by_site: dict[str, list[Any]] = {}
+        dying_by_site: dict[str, set[int]] = {}
+
+        if not frozen:
+            from .runtime import PlanRegistryView, view_after
+
+            # Planned retirements become visible to later stages through an
+            # overlay, never by writing the real registry mid-plan: the old
+            # mid-event commits retired a killed entry before the birth stage
+            # ran (it could not be reborn the same event), and that
+            # information flow is part of the semantics worth keeping.
+            plan_registry = PlanRegistryView(self.registry)
+
+            def _retire_planned(child: Any, view: Any, ids: Any) -> None:
+                position_of = {
+                    int(entity): index
+                    for index, entity in enumerate(view.ids.tolist())
+                }
+                lineages = view.lineages.index_select(
+                    0,
+                    torch.tensor([position_of[int(v)] for v in ids.tolist()], dtype=torch.int64),
+                )
+                plan_registry.retire(child.store.site, lineages)
+
+            absorb_grants = self._allocate(self.absorb_budget, "synapse_absorb", {})
+            for child in self.children:
+                site = child.store.site
+                accepted: list[Any] = []
+                dead: set[int] = set()
+                for proposal in child.propose_absorb(
+                    views[child], absorb_grants[site], self.registry, rng
+                ):
+                    dying, receivers = self._absorb_participants(proposal.op)
+                    if any(d in dead for d in dying) or any(r in dead for r in receivers):
+                        dropped.append(f"{site}: conflicting absorb dropped")
+                        continue
+                    dead.update(dying)
+                    ops = (
+                        proposal.op.ops
+                        if hasattr(proposal.op, "ops")
+                        else (proposal.op,)
+                    )
+                    accepted.extend(ops)
+                absorbs_by_site[site] = accepted
+                dying_by_site[site] = dead
+                for op in accepted:
+                    if isinstance(op, SynapseDeath):
+                        _retire_planned(child, views[child], op.ids)
+
+            # Later stages plan against simulated views (runtime.view_after):
+            # courts judge the post-absorb population and births score the
+            # post-death state, exactly the information flow the old
+            # mid-event commits provided -- with one commit at the end.
+            replacement: dict[str, int] = {}
+            post_absorb: dict[Any, Any] = {}
+            for child in self.children:
+                site = child.store.site
+                simulated = view_after(views[child], tuple(absorbs_by_site[site]))
+                post_absorb[child] = simulated
+                decided = child.decide_retention(simulated, clock)
+                for death in decided:
+                    _retire_planned(child, simulated, death.ids)
+                deaths_by_site[site] = list(decided)
+                replacement[site] = sum(int(d.ids.numel()) for d in decided)
+
+            birth_grants = self._allocate(self.birth_budget, "synapse_birth", replacement)
+            for child in self.children:
+                site = child.store.site
+                pre_birth = view_after(
+                    post_absorb[child], tuple(deaths_by_site[site])
+                )
+                proposals = child.propose_births(
+                    pre_birth, birth_grants[site], plan_registry, rng
+                )
+                births_by_site[site] = [proposal.op for proposal in proposals]
+
+        # Root dedup duty: naked deaths merge into one union op per site
+        # (the old engine's _deduplicate_synapse_deaths, now a planning act).
+        merged_deaths: dict[str, tuple[Any, ...]] = {}
+        for site, site_deaths in deaths_by_site.items():
+            columns = [death.ids for death in site_deaths]
+            naked = [
+                op for op in absorbs_by_site.get(site, ())
+                if isinstance(op, SynapseDeath)
+            ]
+            columns.extend(op.ids for op in naked)
+            if naked:
+                absorbs_by_site[site] = [
+                    op for op in absorbs_by_site[site]
+                    if not isinstance(op, SynapseDeath)
+                ]
+            ids = (
+                torch.cat(columns).unique()
+                if columns
+                else torch.zeros(0, dtype=torch.int64)
+            )
+            merged_deaths[site] = (SynapseDeath(site, ids),) if ids.numel() else ()
+
+        ops_by_site = {
+            child.store.site: tuple(
+                (
+                    *absorbs_by_site.get(child.store.site, ()),
+                    *merged_deaths.get(child.store.site, ()),
+                    *births_by_site.get(child.store.site, ()),
+                )
+            )
+            for child in self.children
+        }
+
+        audit_ages = None
+        audit_thresholds = None
+        if want_audit:
+            audit_ages = {}
+            audit_thresholds = {}
+            for child in self.children:
+                view = views[child] if child in views else child.view()
+                ages = child.ages(view)
+                audit_ages[child.store.site] = {
+                    int(i): int(a) for i, a in zip(view.ids.tolist(), ages.tolist())
+                }
+                audit_thresholds[child.store.site] = child.audit_threshold(view)
+            for endpoint in self.endpoints:
+                view = endpoint.store.view()
+                ages = endpoint.store.age.values.index_select(
+                    0, view.ids.detach().to(device="cpu")
+                )
+                audit_ages[endpoint.store.site] = {
+                    int(i): int(a) for i, a in zip(view.ids.tolist(), ages.tolist())
+                }
+                audit_thresholds[endpoint.store.site] = None
+
+        return EventPlan(
+            signal=signal,
+            ops_by_site=ops_by_site,
+            dropped=tuple(dropped),
+            audit_ages=audit_ages,
+            audit_thresholds=audit_thresholds,
+        )
+
+    # -- two-phase execution (ruling 1: whole-event abort) -----------------
+
+    def execute(self, plan: EventPlan) -> EventResult:
+        by_child = tuple(
+            (child, plan.ops_by_site.get(child.store.site, ()))
+            for child in self.children
+        )
+        prepared: list[tuple[Any, Any, Any]] = []
+        try:
+            for child, ops in by_child:
+                if not ops:
+                    continue
+                ticket, retired = child.prepare(tuple(ops))
+                prepared.append((child, ticket, retired))
+        except (KeyError, TypeError, ValueError, RuntimeError, NotImplementedError) as error:
+            # Ruling 1: whole-event abort. Nothing was written (prepare is
+            # read-only), but the event itself was consumed, so entity ages
+            # still tick -- exactly as a FROZEN event's do.
+            for child in self.children:
+                child.tick_age()
+            for endpoint in self.endpoints:
+                endpoint.tick_age()
+            return EventResult(
+                applied=(),
+                aborted=True,
+                abort_reason=f"{type(error).__name__}: {error}",
+                post_live_ids=self._post_ids(),
+                post_mass=self._post_mass(),
+            )
+        for child, ticket, _ in prepared:
+            child.commit(ticket)
+        for child, _, retired in prepared:
+            if retired.numel():
+                self.registry.retire(child.store.site, retired)
+        for child in self.children:
+            child.tick_age()
+        for endpoint in self.endpoints:
+            endpoint.tick_age()
+        return EventResult(
+            applied=plan.flattened(),
+            aborted=False,
+            abort_reason=None,
+            post_live_ids=self._post_ids(),
+            post_mass=self._post_mass(),
+        )
+
+    def _post_ids(self) -> dict[str, Any]:
+        result = {child.store.site: child.store.view().ids for child in self.children}
+        result.update(
+            {endpoint.store.site: endpoint.store.view().ids for endpoint in self.endpoints}
+        )
+        return result
+
+    def _post_mass(self) -> dict[str, Any]:
+        result = {child.store.site: child.store.view().mass for child in self.children}
+        result.update(
+            {
+                endpoint.store.site: endpoint.store.view().mass
+                for endpoint in self.endpoints
+            }
+        )
+        return result

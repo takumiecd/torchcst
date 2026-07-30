@@ -49,6 +49,8 @@ from torchcst.storage import (
 )
 from .policy.arbiter import make_arbiter
 from .policy.bundle import Op, ProposalBundle
+from .policy.runtime import SiteBinding
+from .policy.tree import QuotaRegime, RentEconomy, RuntimeTree
 from .policy.contract import (
     Clock,
     InstrumentSpec,
@@ -83,13 +85,16 @@ class StructuralEngine:
     ) -> None:
         if isinstance(policy, type):
             policy = policy()
-        adapter = getattr(policy, "as_policy", None)
-        if adapter is not None:
-            policy = adapter()
-        if not isinstance(policy, (Policy, StructuralPolicy)):
-            raise TypeError(
-                "policy must be a Policy, StructuralPolicy, or provide as_policy()"
-            )
+        tree_root = isinstance(policy, (QuotaRegime, RentEconomy))
+        if not tree_root:
+            adapter = getattr(policy, "as_policy", None)
+            if adapter is not None:
+                policy = adapter()
+            if not isinstance(policy, (Policy, StructuralPolicy)):
+                raise TypeError(
+                    "policy must be a policy-tree root, a Policy, a "
+                    "StructuralPolicy, or provide as_policy()"
+                )
         if not isinstance(stores, dict) or not stores:
             raise ValueError("stores must be a non-empty dict")
         for site, store in stores.items():
@@ -112,7 +117,8 @@ class StructuralEngine:
             raise ValueError("StructuralEngine requires at least one SynapseStore")
         self.policy = policy
         self._composed_policy = isinstance(policy, Policy)
-        self._arbiter = make_arbiter(policy)
+        self._tree: RuntimeTree | None = None
+        self._arbiter = None if tree_root else make_arbiter(policy)
         self.registry = RetiredCandidateRegistry()
         self.clock = Clock(update_step=0, event_index=0)
         if rng is not None and not isinstance(rng, torch.Generator):
@@ -139,7 +145,20 @@ class StructuralEngine:
         self._op_log: list[tuple[int, Op]] = []
         self.modules = self._validate_modules(modules)
         self.capture_modes = self._normalize_capture_modes(capture_mode)
-        requirements = tuple(policy.requires)
+        if tree_root:
+            # The linear stack (docs/policy-tree-phase2.md): bind the tree
+            # once -- children take their stores by reference, the root takes
+            # its children, and from here on the engine reads only the
+            # tree's aggregated declarations (requires, registry, cadence).
+            bindings = {
+                site: SiteBinding(store=store, module=self.modules.get(site))
+                for site, store in self.synapse_stores.items()
+            }
+            self._tree = policy.bind(bindings, tuple(self.neuron_stores.values()))
+            self.registry = self._tree.registry
+            requirements = tuple(self._tree.requires)
+        else:
+            requirements = tuple(policy.requires)
         if not all(
             isinstance(requirement, (InstrumentSpec, ObservationRequest))
             for requirement in requirements
@@ -148,9 +167,15 @@ class StructuralEngine:
                 "policy requires must contain InstrumentSpec or "
                 "ObservationRequest values"
             )
+        self._requirements = requirements
+        if requirements and set(self.modules) != set(self.synapse_stores):
+            raise ValueError(
+                "every store requires a matching compute module when policy requires capture"
+            )
         self.instruments = self._make_instruments(requirements)
         self.instrument_timings = self._resolve_instrument_timings(requirements)
         self._bind_instruments()
+        self.last_event_abort: str | None = None
         self._active_update_id: int | None = None
         self._backward_context: BackwardContext | None = None
         self._capture_active = False
@@ -283,10 +308,6 @@ class StructuralEngine:
                         "module neuron endpoints must be present in stores"
                     )
             result[site] = module
-        if tuple(self.policy.requires) and set(result) != set(self.synapse_stores):
-            raise ValueError(
-                "every store requires a matching compute module when policy requires capture"
-            )
         return result
 
     @staticmethod
@@ -363,6 +384,9 @@ class StructuralEngine:
         return result
 
     def _bind_instruments(self) -> None:
+        if self._tree is not None:
+            self._tree.bind_instruments(self.instruments)
+            return
         components = (
             (
                 self.policy.active_cadence,
@@ -481,12 +505,13 @@ class StructuralEngine:
             raise RuntimeError("an update is already active")
         update_id = self.clock.update_step + 1
         candidate = Clock(update_id, self.clock.event_index + 1)
-        observing = (
-            self.policy.active_cadence.observing(candidate)
-            if self._composed_policy
-            else self.policy.capture(candidate)
-        )
-        self._capture_active = bool(tuple(self.policy.requires)) and bool(observing)
+        if self._tree is not None:
+            observing = self._tree.observing(candidate)
+        elif self._composed_policy:
+            observing = self.policy.active_cadence.observing(candidate)
+        else:
+            observing = self.policy.capture(candidate)
+        self._capture_active = bool(self._requirements) and bool(observing)
         reducers, raw_sites = (
             self._prepare_capture() if self._capture_active else ({}, frozenset())
         )
@@ -1033,6 +1058,11 @@ class StructuralEngine:
     ) -> None:
         if polish is not None and objective is None:
             raise RuntimeError("polish requires objective=")
+        if objective is not None and self._tree is not None:
+            raise RuntimeError(
+                "profit trials are not yet a tree-family subprotocol; "
+                "objective= is unavailable on the tree path"
+            )
         if objective is not None and (
             not self._composed_policy or self.policy.profit is None
         ):
@@ -1116,6 +1146,8 @@ class StructuralEngine:
                 update_step=self.clock.update_step + 1,
                 event_index=self.clock.event_index + 1,
             )
+            if self._tree is not None:
+                return self._step_tree(candidate)
             applied = self._arbiter.propose_event(self, candidate, objective, polish)
             if applied is None:
                 self.clock = Clock(candidate.update_step, self.clock.event_index)
@@ -1125,6 +1157,64 @@ class StructuralEngine:
             # A failed policy component may consume the structural event, but it
             # must never leave autograd capture attached to the next update.
             self._close_update()
+
+    def _step_tree(self, candidate: Clock) -> tuple[Op, ...]:
+        """One event on the linear stack: plan rises, commit descends.
+
+        The engine sees the adjudicated :class:`~.policy.tree.EventPlan`
+        (data) before anything commits, then hands it back for two-phase
+        execution and assembles the audit record from the values the tree
+        returned -- pre-adjudication ages/thresholds and post-commit
+        live/mass snapshots. No store is read here (the structural vertical
+        is storage-blind; capture above remains the continuous vertical).
+        A prepare failure aborts the whole event (phase2 ruling 1): the
+        event index is still consumed, nothing is written, and the abort
+        reason is preserved on the engine for inspection.
+        """
+        tree = self._tree
+        assert tree is not None
+        signal = tree.event(candidate)
+        if signal is None:
+            self.clock = Clock(candidate.update_step, self.clock.event_index)
+            return ()
+        self.clock = candidate
+        want_audit = bool(self._audit_subscribers)
+        plan = tree.propose(signal, candidate, self.rng, want_audit)
+        result = tree.execute(plan)
+        self.last_event_abort = result.abort_reason
+        applied = result.applied
+        self._op_log.extend((self.clock.event_index, op) for op in applied)
+        if want_audit:
+            prune_ages: dict[str, list[int]] = {site: [] for site in self.stores}
+            by_site: dict[str, list[Op]] = {site: [] for site in self.stores}
+            for op in applied:
+                by_site[op.site].append(op)
+                if isinstance(op, (SynapseDeath, NeuronRetire)):
+                    prune_ages[op.site].extend(
+                        plan.audit_ages[op.site][int(entity_id)]
+                        for entity_id in op.ids.detach().to(device="cpu").tolist()
+                    )
+            record = AuditRecord(
+                event_index=self.clock.event_index,
+                applied_ops={
+                    site: tuple(site_ops) for site, site_ops in by_site.items()
+                },
+                live_counts={
+                    site: int(ids.numel())
+                    for site, ids in result.post_live_ids.items()
+                },
+                live_ids=dict(result.post_live_ids),
+                mass_snapshots=dict(result.post_mass),
+                prune_ages={
+                    site: torch.tensor(values, dtype=torch.int64)
+                    for site, values in prune_ages.items()
+                },
+                rent_thresholds=dict(plan.audit_thresholds),
+            )
+            for subscriber in tuple(self._audit_subscribers):
+                subscriber.push(record)
+        self._reset_event_instruments()
+        return applied
 
     def _reset_event_instruments(self) -> None:
         """Consume every accumulate-until-consumed certificate instrument.

@@ -48,6 +48,86 @@ from torchcst.storage import (
 from .bundle import Op, ProposalBundle
 from .contract import Clock
 from .families import SynapseLifecycle, _BuiltLifecycle
+from .registry import RetiredCandidateRegistry
+
+
+class PlanRegistryView(RetiredCandidateRegistry):
+    """The registry as it will read once this event's plan commits.
+
+    Later planning stages must see earlier stages' planned retirements (the
+    old engine gave them this by committing -- and registry-retiring --
+    mid-event; a killed entry could never be reborn in the same event). This
+    overlay holds the plan's pending retirements next to the base registry
+    without writing to it, so an aborted event leaves the real registry
+    untouched (ruling 1) and the real ``retire`` still happens exactly once,
+    at commit, from the children's prepare bookkeeping.
+    """
+
+    def __init__(self, base: RetiredCandidateRegistry) -> None:
+        super().__init__()
+        self._base = base
+
+    def is_retired(self, site: str, lineage: int) -> bool:
+        return self._base.is_retired(site, lineage) or super().is_retired(site, lineage)
+
+    def snapshot(self) -> frozenset[tuple[str, int]]:
+        return frozenset(self._base.snapshot() | self._keys)
+
+    def __len__(self) -> int:
+        return len(self.snapshot())
+
+
+def view_after(view: SynapseView, ops: tuple[Any, ...]) -> SynapseView:
+    """The view as it will read once ``ops`` commit -- computed, not committed.
+
+    The old engine resolved intra-event dependencies (birth scoring needs the
+    post-absorb state; courts judge the post-absorb population) by committing
+    mid-event. Snapshot semantics keep the dependency but move it into the
+    plan: an absorb op carries its full delivery manifest (``delta_w``), so
+    its effect on the view is exactly computable (`SynapseAbsorb` docstring:
+    the position-only Gram "makes chain simulation exact"), and a death is a
+    row drop. Later planning stages read this simulated view; the store still
+    commits exactly once, at the end of the event.
+    """
+    w = view.w.clone()
+    weights_abs = view.w.abs()
+    scale = torch.where(
+        weights_abs > 0,
+        view.mass / torch.where(weights_abs > 0, weights_abs, torch.ones_like(weights_abs)),
+        torch.ones_like(view.mass),
+    )
+    position_of = {int(entity): index for index, entity in enumerate(view.ids.tolist())}
+    dying: set[int] = set()
+    for op in ops:
+        if hasattr(op, "dying"):
+            rows = torch.tensor(
+                [position_of[int(r)] for r in op.receivers.tolist()], dtype=torch.int64
+            )
+            if rows.numel():
+                w.index_add_(0, rows.to(w.device), op.delta_w.to(w.dtype))
+            dying.add(int(op.dying))
+        elif isinstance(op, SynapseDeath):
+            dying.update(int(v) for v in op.ids.tolist())
+    keep = torch.tensor(
+        [int(entity) not in dying for entity in view.ids.tolist()], dtype=torch.bool
+    )
+    rows = torch.nonzero(keep, as_tuple=False).flatten()
+    return SynapseView(
+        site=view.site,
+        version=view.version,
+        ids=view.ids.index_select(0, rows),
+        s=view.s.index_select(0, rows.to(view.s.device)),
+        t=view.t.index_select(0, rows.to(view.t.device)),
+        w=w.index_select(0, rows.to(w.device)),
+        mass=(w.abs() * scale).index_select(0, rows.to(w.device)),
+        lineages=view.lineages.index_select(0, rows),
+        bounds_in=view.bounds_in,
+        bounds_out=view.bounds_out,
+        domain_in=view.domain_in,
+        domain_out=view.domain_out,
+        retired_in=view.retired_in,
+        retired_out=view.retired_out,
+    )
 
 
 @dataclass(frozen=True)
@@ -205,6 +285,14 @@ class SynapseChild:
     def ages(self, view: SynapseView) -> torch.Tensor:
         slots = self.store._slots.slots_of(view.ids)
         return self.store.age.values.index_select(0, slots)
+
+    def audit_threshold(self, view: SynapseView) -> float | None:
+        """The rent line the audit explains prunes against, if the court has one."""
+        rent_ratio = getattr(self._prune, "rent_ratio", None)
+        if rent_ratio is None or view.mass.numel() == 0:
+            return None
+        mass = view.mass.detach().to(device="cpu").to(torch.float64)
+        return float(torch.quantile(mass, 0.5)) * float(rent_ratio)
 
     # ------------------------------------------------------------------
     # Event-time proposals (all against one snapshot view).
