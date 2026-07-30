@@ -43,6 +43,9 @@ from .scored import ScoredBirth, TopKSelector
 from .cadences import BirthWindowCadence, PeriodicCadence
 from .quotas import CallableQuota, ConstantQuota, QuotaWindow, WindowedQuota
 from .schedules import BirthWindowSchedule, PeriodicSchedule, ResponseWindow
+from .families import RENT, SynapseLifecycle, cRES, thinned
+from .tree import Independent, QuotaRegime, RentEconomy
+from .tree import compile as compile_tree
 
 __all__ = [
     "AbsorbAuditEntry",
@@ -60,6 +63,7 @@ __all__ = [
     "Clock",
     "Cadence",
     "CallableQuota",
+    "compile_tree",
     "ConstantQuota",
     "EvenBudgetAllocator",
     "EvenBudgetDistributor",
@@ -67,6 +71,7 @@ __all__ = [
     "EventSignal",
     "GradFieldTopKBirth",
     "GrowthByProfit",
+    "Independent",
     "InstrumentSpec",
     "ObservationRequest",
     "IncidentOutputBirth",
@@ -86,7 +91,10 @@ __all__ = [
     "PolicyContext",
     "ProposalBundle",
     "ProfitCourt",
+    "QuotaRegime",
     "RentCourt",
+    "RentEconomy",
+    "RENT",
     "QuotaPolicy",
     "QuotaWindow",
     "ResponseWindow",
@@ -97,6 +105,8 @@ __all__ = [
     "StructuralPlan",
     "StructuralPolicy",
     "StructuralQuota",
+    "SynapseLifecycle",
+    "thinned",
     "TrialSession",
     "TrialTransaction",
     "TopKSelector",
@@ -105,4 +115,5 @@ __all__ = [
     "WindowedQuota",
     "cSET",
     "cRigL",
+    "cRES",
 ]
