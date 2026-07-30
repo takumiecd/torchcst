@@ -11,9 +11,41 @@ import torch
 
 from torchcst.compute import EntryLinear, RankOneLinear
 from torchcst.engine import StructuralEngine
-from torchcst.policy import Clock, LC, LC_merge, ProfitCourt, TrialTransaction, cRigL, cSET
+from torchcst.policy import (
+    Clock,
+    LC,
+    LC_merge,
+    PeriodicCadence,
+    ProfitCourt,
+    QuotaRegime,
+    TrialTransaction,
+    cRigL,
+    cSET,
+)
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseDeath, SynapseStore
+
+
+def _cset_policy(*, event_interval: int, birth_budget: int):
+    """``QuotaRegime`` equivalent of the retired ``catalog.cSET`` preset."""
+    return QuotaRegime(
+        budget=birth_budget,
+        method=cSET(),
+        cadence=PeriodicCadence(event_interval=event_interval),
+    ).compile()
+
+
+def _crigl_policy(
+    *, event_interval: int, birth_budget: int, observe_window: int, pool_size: int
+):
+    """``QuotaRegime`` equivalent of the retired ``catalog.cRigL`` preset."""
+    return QuotaRegime(
+        budget=birth_budget,
+        method=cRigL(pool_size=pool_size),
+        cadence=PeriodicCadence(
+            event_interval=event_interval, observe_window=observe_window
+        ),
+    ).compile()
 
 
 def _assert_state_equal(left: Any, right: Any) -> None:
@@ -93,8 +125,8 @@ def test_lc_merge_requires_objective_when_a_merge_is_proposed() -> None:
     "policy",
     [
         LC(event_interval=1, birth_budget=0),
-        cSET(event_interval=1, birth_budget=0),
-        cRigL(event_interval=1, birth_budget=0, observe_window=1, pool_size=2),
+        _cset_policy(event_interval=1, birth_budget=0),
+        _crigl_policy(event_interval=1, birth_budget=0, observe_window=1, pool_size=2),
     ],
 )
 def test_normal_catalog_engines_have_no_trial_state_or_objective_wiring(policy) -> None:
@@ -108,12 +140,12 @@ def test_normal_catalog_engines_have_no_trial_state_or_objective_wiring(policy) 
 
 
 def test_trial_transaction_restores_instrument_followers_clock_and_rng_bits() -> None:
-    base = cRigL(
+    base = _crigl_policy(
         event_interval=1,
         birth_budget=0,
         observe_window=1,
         pool_size=2,
-    ).as_policy()
+    )
     engine = _entry_engine(replace(base, profit=ProfitCourt()))
     store = engine.synapse_stores["entry"]
     instrument = engine.instrument("entry", "candidate_field")

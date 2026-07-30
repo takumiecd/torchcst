@@ -7,9 +7,20 @@ import torch
 
 from torchcst.compute import BackwardContext, EntryLinear
 from torchcst.engine import StructuralEngine
-from torchcst.policy import LC, cRigL
+from torchcst.policy import LC, PeriodicCadence, QuotaRegime, cRigL
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseStore
+
+
+def _crigl_policy(*, event_interval: int, observe_window: int, pool_size: int):
+    """``QuotaRegime`` equivalent of the retired ``catalog.cRigL`` preset."""
+    return QuotaRegime(
+        budget=2**31 - 1,
+        method=cRigL(pool_size=pool_size),
+        cadence=PeriodicCadence(
+            event_interval=event_interval, observe_window=observe_window
+        ),
+    ).compile()
 
 
 def _parts(policy):
@@ -47,7 +58,7 @@ def test_lc_and_periodic_window_exterior_register_no_hooks() -> None:
     assert getattr(output, "_backward_hooks", None) is None
 
     _, rigl_module, rigl_engine = _parts(
-        cRigL(event_interval=3, observe_window=1, pool_size=4)
+        _crigl_policy(event_interval=3, observe_window=1, pool_size=4)
     )
     rigl_engine.begin_update()  # update 1; only update 3 is observed
     output = rigl_module(torch.randn(2, 2, requires_grad=True))
@@ -56,7 +67,9 @@ def test_lc_and_periodic_window_exterior_register_no_hooks() -> None:
 
 
 def test_lifecycle_errors_and_queue_must_be_finalized_before_step() -> None:
-    _, module, engine = _parts(cRigL(event_interval=1, observe_window=1, pool_size=4))
+    _, module, engine = _parts(
+        _crigl_policy(event_interval=1, observe_window=1, pool_size=4)
+    )
     with pytest.raises(RuntimeError, match="begin_update"):
         engine.observe_microbatch()
     with pytest.raises(RuntimeError, match="begin_update"):
@@ -72,7 +85,7 @@ def test_lifecycle_errors_and_queue_must_be_finalized_before_step() -> None:
 
 
 def test_inference_does_not_register_tensor_hook_inside_observation_window() -> None:
-    _, module, engine = _parts(cRigL(event_interval=1, observe_window=1, pool_size=4))
+    _, module, engine = _parts(_crigl_policy(event_interval=1, observe_window=1, pool_size=4))
     engine.begin_update()
     with torch.no_grad():
         output = module(torch.randn(2, 2))

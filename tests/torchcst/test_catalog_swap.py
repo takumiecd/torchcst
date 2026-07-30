@@ -5,9 +5,18 @@ from __future__ import annotations
 import torch
 
 from torchcst.engine import StructuralEngine
-from torchcst.policy import LC, cSET
+from torchcst.policy import LC, PeriodicCadence, QuotaRegime, cSET
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseStore
+
+
+def _cset_policy(*, event_interval: int, drop_fraction: float):
+    """``QuotaRegime`` equivalent of the retired ``catalog.cSET`` preset."""
+    return QuotaRegime(
+        budget=2**31 - 1,
+        method=cSET(drop_fraction=drop_fraction),
+        cadence=PeriodicCadence(event_interval=event_interval),
+    ).compile()
 
 
 def make_store() -> SynapseStore:
@@ -44,7 +53,7 @@ def test_catalog_swap_needs_only_the_policy_argument() -> None:
     )
     baseline = StructuralEngine(
         {"entry": set_store},
-        policy=cSET(event_interval=1, drop_fraction=0.5),
+        policy=_cset_policy(event_interval=1, drop_fraction=0.5),
         seed=2,
     )
 

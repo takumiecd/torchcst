@@ -1,17 +1,15 @@
-"""Step-2 policy catalog: lifecycle champion and cSET baseline."""
+"""Step-2 policy catalog: lifecycle champion presets."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .bundle import BundleComposer
 from .cadences import BirthWindowCadence, PeriodicCadence
 from .contract import ActionSpec, EvenBudgetDistributor, Policy, StructuralQuota
-from .courts import MagnitudeCourt, RentCourt
+from .courts import RentCourt
 from .proposers import (
     Bounds,
-    GradFieldTopKBirth,
     IncidentOutputBirth,
     MergeProposer,
     OrthogonalBirth,
@@ -377,92 +375,5 @@ class GrowthByProfit(_PolicyAdapter):
             distributor=EvenBudgetDistributor(),
             composer=None,
             profit=ProfitCourt(min_profit=self.min_profit, cost_rate=self.price),
-        )
-        object.__setattr__(self, "_policy", policy)
-
-
-@dataclass(frozen=True)
-class cSET(_PolicyAdapter):
-    """Periodic random rewiring with smallest-magnitude replacement."""
-
-    event_interval: int = 500
-    birth_budget: int = 2**31 - 1
-    drop_fraction: float | Callable = 0.3
-    freeze_event: int | None = None
-    bounds_in: Bounds | None = None
-    bounds_out: Bounds | None = None
-    initial_weight: float = 0.0
-    composer: None = field(default=None, init=False)
-    profit: None = field(default=None, init=False)
-    _policy: Policy = field(init=False, repr=False, compare=False)
-
-    def __post_init__(self) -> None:
-        policy = Policy(
-            cadence=PeriodicCadence(
-                event_interval=self.event_interval,
-                freeze_event=self.freeze_event,
-            ),
-            quota=ConstantQuota(
-                StructuralQuota(synapse_birth=self.birth_budget)
-            ),
-            actions=(
-                ActionSpec.synapse_prune(MagnitudeCourt(self.drop_fraction)),
-                ActionSpec.synapse_birth(
-                    UniformEntryBirth(
-                        self.bounds_in, self.bounds_out, self.initial_weight
-                    )
-                ),
-            ),
-            distributor=EvenBudgetDistributor(replacement_only=True),
-            composer=None,
-            profit=None,
-        )
-        object.__setattr__(self, "_policy", policy)
-
-
-@dataclass(frozen=True)
-class cRigL(_PolicyAdapter):
-    """Gradient-greedy vertex-buying control arm, retained as a losing baseline."""
-
-    event_interval: int = 500
-    observe_window: int = 1
-    birth_budget: int = 2**31 - 1
-    drop_fraction: float | Callable = 0.3
-    freeze_event: int | None = None
-    pool_size: int = 4096
-    pool: int | None = None
-    decay: float = 0.9
-    initial_weight: float = 0.0
-    composer: None = field(default=None, init=False)
-    profit: None = field(default=None, init=False)
-    _policy: Policy = field(init=False, repr=False, compare=False)
-
-    def __post_init__(self) -> None:
-        if self.pool is not None and self.pool_size != 4096:
-            raise ValueError("specify only one of pool and pool_size")
-        effective_pool = self.pool_size if self.pool is None else self.pool
-        object.__setattr__(self, "pool_size", effective_pool)
-        policy = Policy(
-            cadence=PeriodicCadence(
-                event_interval=self.event_interval,
-                freeze_event=self.freeze_event,
-                observe_window=self.observe_window,
-            ),
-            quota=ConstantQuota(
-                StructuralQuota(synapse_birth=self.birth_budget)
-            ),
-            actions=(
-                ActionSpec.synapse_prune(MagnitudeCourt(self.drop_fraction)),
-                ActionSpec.synapse_birth(
-                    GradFieldTopKBirth(
-                        initial_weight=self.initial_weight,
-                        decay=self.decay,
-                        pool_size=effective_pool,
-                    )
-                ),
-            ),
-            distributor=EvenBudgetDistributor(replacement_only=True),
-            composer=None,
-            profit=None,
         )
         object.__setattr__(self, "_policy", policy)

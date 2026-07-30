@@ -348,8 +348,15 @@ composed `Policy` that `StructuralEngine` already runs, so nothing about the
 engine, the update ordering, or existing composed policies changes.
 
 ```python
-from torchcst.policy import QuotaRegime, RentEconomy, RENT, cRES, PeriodicCadence
-from torchcst.policy.families import cSET, thinned  # tree vocabulary
+from torchcst.policy import (
+    QuotaRegime,
+    RentEconomy,
+    RENT,
+    cRES,
+    cSET,
+    thinned,
+    PeriodicCadence,
+)
 
 # Central quota distribution, one method broadcast to every site.
 root = QuotaRegime(
@@ -396,11 +403,9 @@ Rules the tree enforces at construction time rather than by convention:
   pattern (`overrides={"stage9.*": ...}`) into an error instead of a silent
   no-op.
 
-Naming note: top-level `torchcst.policy.cSET`/`cRigL` still refer to the
-pre-existing catalog presets (dataclass policies usable without a tree); the
-tree-vocabulary constructors with the same names live in
-`torchcst.policy.families` until the catalog spellings are retired. `cRES` and
-`RENT` are new names and are exported at the top level directly.
+`cSET`, `cRigL`, `cRES`, `RENT`, `SynapseLifecycle`, `thinned`, and the three
+root types are all exported directly from `torchcst.policy` — the vocabulary
+is symmetric, with no separate catalog spelling to disambiguate.
 
 ## Implemented surface
 
@@ -413,7 +418,8 @@ tree-vocabulary constructors with the same names live in
 - `SynapseStore` and `NeuronStore` with versioned prepare/commit mutation
 - slot reuse, capacity growth, age/lineage columns, and follower notifications
 - optimizer-state growth, reset, and coordinate-domain projection
-- lifecycle (`LC`), anti-subspace, response, merge, cSET, and cRigL policies
+- lifecycle (`LC`), anti-subspace, response, and merge catalog policies, plus
+  the `cSET`/`cRigL`/`cRES`/`RENT` policy-tree method vocabulary
 - public observation-instrument factories and high-level scored-birth policy
   composition for third-party policies
 - atomic cross-store `ProposalBundle` application

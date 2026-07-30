@@ -221,9 +221,9 @@ def cSET(
 ) -> SynapseLifecycle:
     """Periodic random rewiring, smallest-magnitude replacement.
 
-    Matches ``catalog.cSET``'s selection rule. ``UniformEntryBirth`` has no
-    per-candidate loss-unit gain to gate on, so this lifecycle is not
-    :attr:`~SynapseLifecycle.priceable` -- it cannot join a ``RentEconomy``.
+    ``UniformEntryBirth`` has no per-candidate loss-unit gain to gate on, so
+    this lifecycle is not :attr:`~SynapseLifecycle.priceable` -- it cannot
+    join a ``RentEconomy``.
     """
 
     def make_birth(lam: float | None) -> UniformEntryBirth:
@@ -247,10 +247,9 @@ def cRigL(
 ) -> SynapseLifecycle:
     """Gradient-greedy vertex buying, smallest-magnitude replacement.
 
-    Matches ``catalog.cRigL``'s selection rule; retained as a losing control
-    arm. ``GradFieldTopKBirth`` has no per-candidate loss-unit gain either,
-    so -- like :func:`cSET` -- this lifecycle is not
-    :attr:`~SynapseLifecycle.priceable`.
+    Retained as a losing control arm. ``GradFieldTopKBirth`` has no
+    per-candidate loss-unit gain either, so -- like :func:`cSET` -- this
+    lifecycle is not :attr:`~SynapseLifecycle.priceable`.
     """
 
     def make_birth(lam: float | None) -> GradFieldTopKBirth:

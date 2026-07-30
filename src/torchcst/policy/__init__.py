@@ -1,7 +1,7 @@
 """Public policy surface for CST-native v4 step 2."""
 
 from .absorb import AbsorbAuditEntry, AbsorbCourt, AbsorbPolicy
-from .catalog import LC, LC_anti, LC_merge, LC_response, GrowthByProfit, cRigL, cSET
+from .catalog import LC, LC_anti, LC_merge, LC_response, GrowthByProfit
 from .bundle import BundleComposer, Op, ProposalBundle, bundle_birth_count
 from .contract import (
     ActionKind,
@@ -43,7 +43,7 @@ from .scored import ScoredBirth, TopKSelector
 from .cadences import BirthWindowCadence, PeriodicCadence
 from .quotas import CallableQuota, ConstantQuota, QuotaWindow, WindowedQuota
 from .schedules import BirthWindowSchedule, PeriodicSchedule, ResponseWindow
-from .families import RENT, SynapseLifecycle, cRES, thinned
+from .families import RENT, SynapseLifecycle, cRES, cRigL, cSET, thinned
 from .tree import Independent, QuotaRegime, RentEconomy
 from .tree import compile as compile_tree
 

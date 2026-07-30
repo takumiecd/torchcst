@@ -7,9 +7,28 @@ import torch
 from torchcst.compute import EntryLinear
 from torchcst.engine import StructuralEngine
 from torchcst.lab import Ledger
-from torchcst.policy import LC, cRigL
+from torchcst.policy import LC, PeriodicCadence, QuotaRegime, cRigL
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseStore
+
+
+def _crigl_policy(
+    *,
+    event_interval: int = 500,
+    observe_window: int = 1,
+    birth_budget: int = 2**31 - 1,
+    drop_fraction: float = 0.3,
+    pool_size: int = 4096,
+    decay: float = 0.9,
+):
+    """``QuotaRegime`` equivalent of the retired ``catalog.cRigL`` preset."""
+    return QuotaRegime(
+        budget=birth_budget,
+        method=cRigL(drop_fraction=drop_fraction, pool_size=pool_size, decay=decay),
+        cadence=PeriodicCadence(
+            event_interval=event_interval, observe_window=observe_window
+        ),
+    ).compile()
 
 
 def _engine(policy, *, capture_mode="deferred"):
@@ -46,7 +65,7 @@ def _engine(policy, *, capture_mode="deferred"):
 
 
 def _run(chunks: int, *, capture_mode="deferred"):
-    policy = cRigL(
+    policy = _crigl_policy(
         event_interval=1,
         observe_window=1,
         drop_fraction=0.5,
@@ -93,7 +112,7 @@ def test_deferred_and_inline_reduced_candidate_fields_are_identical() -> None:
 
 
 def test_scripted_gradient_selects_the_unique_large_coordinate() -> None:
-    policy = cRigL(
+    policy = _crigl_policy(
         event_interval=1,
         observe_window=1,
         drop_fraction=0.5,
@@ -116,7 +135,7 @@ def test_scripted_gradient_selects_the_unique_large_coordinate() -> None:
 def test_policy_swap_uses_one_engine_update_api_with_and_without_capture() -> None:
     for policy, expected_capture in (
         (LC(event_interval=1, birth_budget=0), False),
-        (cRigL(event_interval=1, observe_window=1, pool_size=4), True),
+        (_crigl_policy(event_interval=1, observe_window=1, pool_size=4), True),
     ):
         _, module, engine = _engine(policy)
         engine.begin_update()
