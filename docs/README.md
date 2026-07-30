@@ -20,6 +20,9 @@ current API documentation.
 - [`winning_recipe_design.md`](winning_recipe_design.md) — v4 architecture and
   accepted invariants behind the current implementation. Some planned modules
   and distributed paths described there are still future work.
+- [`fast-construction-family.md`](fast-construction-family.md) — design-only
+  contract for the cSFW / cVP / cELM methods (FASTCON arc). Implementation is
+  gated on policy-tree Phase 2 S2 and the FC-0 experiment outcome.
 
 ## Historical decision records
 
