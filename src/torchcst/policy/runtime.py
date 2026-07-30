@@ -204,8 +204,24 @@ class EndpointChild:
         self.store = store
 
     @property
+    def site(self) -> str:
+        return self.store.site
+
+    @property
     def requires(self) -> tuple[Any, ...]:
         return ()
+
+    def view(self) -> Any:
+        return self.store.view()
+
+    def ages(self, view: Any) -> torch.Tensor:
+        return self.store.age.values.index_select(
+            0, view.ids.detach().to(device="cpu")
+        )
+
+    def audit_threshold(self, view: Any) -> float | None:
+        del view
+        return None
 
     def bind_instruments(self, instruments: dict[str, Any]) -> None:
         del instruments
@@ -323,6 +339,15 @@ class SynapseChild:
     def ages(self, view: SynapseView) -> torch.Tensor:
         slots = self.store._slots.slots_of(view.ids)
         return self.store.age.values.index_select(0, slots)
+
+    @property
+    def site(self) -> str:
+        return self.store.site
+
+    def incident_ids(self, view: SynapseView, neuron_ids: Any, side: str) -> Any:
+        """Synapses in ``view`` incident to the given chart endpoints -- the
+        topology read the root's cascade planning asks this child for."""
+        return self.store.spec.incident_synapse_ids(view, neuron_ids, side=side)
 
     def audit_threshold(self, view: SynapseView) -> float | None:
         """The rent line the audit explains prunes against, if the court has one."""
@@ -454,14 +479,6 @@ class InterfaceChild(EndpointChild):
             binder = getattr(rule, "bind_instruments", None)
             if binder is not None:
                 binder(self.store.site, instruments)
-
-    def view(self) -> Any:
-        return self.store.view()
-
-    def ages(self, view: Any) -> torch.Tensor:
-        return self.store.age.values.index_select(
-            0, view.ids.detach().to(device="cpu")
-        )
 
     def audit_threshold(self, view: Any) -> float | None:
         rent_ratio = getattr(self._court, "rent_ratio", None)

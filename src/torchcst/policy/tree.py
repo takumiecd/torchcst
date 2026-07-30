@@ -362,7 +362,7 @@ class RuntimeTree:
 
     def bind_instruments(self, instruments_by_site: Mapping[str, Mapping[str, Any]]) -> None:
         for child in (*self.children, *self.endpoints):
-            site_instruments = instruments_by_site.get(child.store.site)
+            site_instruments = instruments_by_site.get(child.site)
             if site_instruments is None:
                 continue
             names = {getattr(req, "name", None) for req in child.requires}
@@ -385,7 +385,7 @@ class RuntimeTree:
     ) -> dict[str, int]:
         from .contract import BudgetRequest
 
-        sites = tuple(child.store.site for child in self.children)
+        sites = tuple(child.site for child in self.children)
         requests = tuple(
             BudgetRequest(site, 0, int(replacement.get(site, 0)), kind)
             for site in sites
@@ -491,7 +491,7 @@ class RuntimeTree:
         prepared: list[tuple[Any, Any, Any]] = []
         try:
             for child in (*self.children, *self.endpoints):
-                ops = ops_by_site.get(child.store.site, ())
+                ops = ops_by_site.get(child.site, ())
                 if not ops:
                     continue
                 ticket, retired = child.prepare(tuple(ops))
@@ -502,7 +502,7 @@ class RuntimeTree:
             child.commit(ticket)
         for child, _, retired in prepared:
             if retired.numel():
-                self.registry.retire(child.store.site, retired)
+                self.registry.retire(child.site, retired)
         return None
 
     def _tick_all(self) -> None:
@@ -643,7 +643,7 @@ class RuntimeTree:
             session = TrialSession(objective, transaction)
             session.begin()
             price = self.profit.price_for(
-                trial_flat, {child.store.site: child.store for child in self.children}
+                trial_flat, {child.site: child.store for child in self.children}
             )
             reason = self._two_phase(trial)
             if reason is not None:
@@ -662,18 +662,15 @@ class RuntimeTree:
         return self._result(applied, None)
 
     def _post_ids(self) -> dict[str, Any]:
-        result = {child.store.site: child.store.view().ids for child in self.children}
+        result = {child.site: child.view().ids for child in self.children}
         result.update(
-            {endpoint.store.site: endpoint.store.view().ids for endpoint in self.endpoints}
+            {endpoint.site: endpoint.view().ids for endpoint in self.endpoints}
         )
         return result
 
     def _post_mass(self) -> dict[str, Any]:
-        result = {child.store.site: child.store.view().mass for child in self.children}
+        result = {child.site: child.view().mass for child in self.children}
         result.update(
-            {
-                endpoint.store.site: endpoint.store.view().mass
-                for endpoint in self.endpoints
-            }
+            {endpoint.site: endpoint.view().mass for endpoint in self.endpoints}
         )
         return result

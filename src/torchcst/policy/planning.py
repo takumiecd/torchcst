@@ -101,7 +101,7 @@ class EventDraft:
         self.absorbs: dict[str, list[Any]] = {}
         self.deaths: dict[str, list[Any]] = {}
         self.cascades: dict[str, list[Any]] = {
-            child.store.site: [] for child in tree.children
+            child.site: [] for child in tree.children
         }
         self.births: dict[str, list[Any]] = {}
         self.retires: dict[str, list[Any]] = {}
@@ -125,7 +125,7 @@ class EventDraft:
                 [position_of[int(v)] for v in ids.tolist()], dtype=torch.int64
             ),
         )
-        self.registry.retire(child.store.site, lineages)
+        self.registry.retire(child.site, lineages)
 
     @staticmethod
     def _participants(proposal_op: Any) -> tuple[tuple[int, ...], tuple[int, ...]]:
@@ -150,7 +150,7 @@ class EventDraft:
         the old sequential commits resolved by per-bundle prepare failure."""
         grants = self.tree._allocate(quota.synapse_absorb, "synapse_absorb", {})
         for child in self.tree.children:
-            site = child.store.site
+            site = child.site
             accepted: list[Any] = []
             dead: set[int] = set()
             for proposal in child.propose_absorb(
@@ -175,7 +175,7 @@ class EventDraft:
         from .runtime import view_after
 
         for child in self.tree.children:
-            site = child.store.site
+            site = child.site
             simulated = view_after(self.views[child], tuple(self.absorbs[site]))
             self.post_absorb[child] = simulated
             decided = child.decide_retention(simulated, self.clock)
@@ -198,9 +198,9 @@ class EventDraft:
             decide = getattr(endpoint, "decide_retention", None)
             if decide is None:
                 continue
-            decided = list(decide(endpoint.store.view(), self.clock))
+            decided = list(decide(endpoint.view(), self.clock))
             if decided:
-                decisions[endpoint.store.site] = decided
+                decisions[endpoint.site] = decided
         if not decisions:
             return
         capped, _ = self.tree._cap_prune(
@@ -210,19 +210,17 @@ class EventDraft:
             if retires:
                 self.retires[site] = list(retires)
         for endpoint in self.tree.endpoints:
-            for retire in self.retires.get(endpoint.store.site, ()):
+            for retire in self.retires.get(endpoint.site, ()):
                 for child in self.tree.children:
                     in_store, out_store = child.binding.endpoints()
                     base = self.post_absorb[child]
                     for present, side in ((in_store, "in"), (out_store, "out")):
                         if present is not endpoint.store:
                             continue
-                        ids = child.store.spec.incident_synapse_ids(
-                            base, retire.ids, side=side
-                        )
+                        ids = child.incident_ids(base, retire.ids, side)
                         if ids.numel():
-                            self.cascades[child.store.site].append(
-                                SynapseDeath(child.store.site, ids)
+                            self.cascades[child.site].append(
+                                SynapseDeath(child.site, ids)
                             )
                             self._retire_planned(child, base, ids)
 
@@ -232,14 +230,14 @@ class EventDraft:
         from .runtime import view_after
 
         grants = (
-            {child.store.site: 0 for child in self.tree.children}
+            {child.site: 0 for child in self.tree.children}
             if response_phase
             else self.tree._allocate(
                 quota.synapse_birth, "synapse_birth", self.replacement
             )
         )
         for child in self.tree.children:
-            site = child.store.site
+            site = child.site
             simulated = view_after(
                 self.post_absorb[child],
                 tuple((*self.deaths[site], *self.cascades[site])),
@@ -278,7 +276,7 @@ class EventDraft:
             for partner in partners:
                 if remaining_ungates == 0 or remaining_births == 0:
                     break
-                site = partner.store.site
+                site = partner.site
                 for target in endpoint.dormant_ids().tolist():
                     if remaining_ungates == 0 or remaining_births == 0:
                         break
@@ -355,35 +353,33 @@ class EventDraft:
         for child in self.tree.children:
             view = self.views.get(child) or child.view()
             ages = child.ages(view)
-            ages_by_id[child.store.site] = {
+            ages_by_id[child.site] = {
                 int(i): int(a) for i, a in zip(view.ids.tolist(), ages.tolist())
             }
-            thresholds[child.store.site] = child.audit_threshold(view)
+            thresholds[child.site] = child.audit_threshold(view)
         for endpoint in self.tree.endpoints:
-            view = endpoint.store.view()
-            ages = endpoint.store.age.values.index_select(
-                0, view.ids.detach().to(device="cpu")
-            )
-            ages_by_id[endpoint.store.site] = {
+            view = endpoint.view()
+            ages = endpoint.ages(view)
+            ages_by_id[endpoint.site] = {
                 int(i): int(a) for i, a in zip(view.ids.tolist(), ages.tolist())
             }
-            thresholds[endpoint.store.site] = None
+            thresholds[endpoint.site] = endpoint.audit_threshold(view)
         return ages_by_id, thresholds
 
     def plan(self, signal: Any, want_audit: bool) -> EventPlan:
         merged_deaths = self._merged_deaths()
         ops_by_site: dict[str, tuple[Any, ...]] = {
-            child.store.site: tuple(
+            child.site: tuple(
                 (
-                    *self.absorbs.get(child.store.site, ()),
-                    *merged_deaths.get(child.store.site, ()),
-                    *self.births.get(child.store.site, ()),
+                    *self.absorbs.get(child.site, ()),
+                    *merged_deaths.get(child.site, ()),
+                    *self.births.get(child.site, ()),
                 )
             )
             for child in self.tree.children
         }
         for endpoint in self.tree.endpoints:
-            site = endpoint.store.site
+            site = endpoint.site
             neuron_ops = (
                 *self.retires.get(site, ()),
                 *self.ungates.get(site, ()),
