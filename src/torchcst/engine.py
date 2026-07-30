@@ -47,22 +47,17 @@ from torchcst.storage import (
     commit_all,
     prepare_all,
 )
-from .policy.bundle import Op, ProposalBundle, bundle_birth_count
+from .policy.arbiter import make_arbiter
+from .policy.bundle import Op, ProposalBundle
 from .policy.contract import (
-    ActionKind,
-    BudgetRequest,
     Clock,
-    EventDirective,
-    EventSignal,
     InstrumentSpec,
     InstrumentRequirement,
     ObservationRequest,
-    Phase,
     Policy,
     PolicyContext,
     StructuralPlan,
     StructuralPolicy,
-    StructuralQuota,
 )
 from .policy.profit import TrialSession, TrialTransaction
 from .policy.registry import RetiredCandidateRegistry
@@ -117,6 +112,7 @@ class StructuralEngine:
             raise ValueError("StructuralEngine requires at least one SynapseStore")
         self.policy = policy
         self._composed_policy = isinstance(policy, Policy)
+        self._arbiter = make_arbiter(policy)
         self.registry = RetiredCandidateRegistry()
         self.clock = Clock(update_step=0, event_index=0)
         if rng is not None and not isinstance(rng, torch.Generator):
@@ -705,10 +701,6 @@ class StructuralEngine:
             else endpoint.retired_ids()
         )
 
-    @staticmethod
-    def _death_count(ops: tuple[SynapseDeath, ...]) -> int:
-        return sum(op.ids.numel() for op in ops)
-
     def _check_immunity(
         self,
         store: SynapseStore | NeuronStore,
@@ -929,72 +921,6 @@ class StructuralEngine:
                 applied.extend(self._apply_atomic_unit((proposal,)))
         return tuple(applied)
 
-    def _apply_response(
-        self, signal: EventSignal, quota: StructuralQuota
-    ) -> tuple[Op, ...]:
-        if quota.neuron_birth == 0:
-            return ()
-        composer = self.policy.composer
-        if composer is None:
-            raise RuntimeError("response ungate budget requires a BundleComposer")
-        incident = [
-            proposer
-            for proposer in self.policy.proposal_rules
-            if hasattr(proposer, "propose_incident")
-        ]
-        if len(incident) != 1:
-            raise RuntimeError("response policy requires one incident proposer")
-        proposer = incident[0]
-        remaining_births = quota.synapse_birth
-        remaining_ungates = quota.neuron_birth
-        applied: list[Op] = []
-        for site, module in self.modules.items():
-            if remaining_ungates == 0 or remaining_births == 0:
-                break
-            neurons = self._module_endpoints(module)[1]
-            if neurons is None:
-                continue
-            while remaining_ungates and remaining_births:
-                view = self._proposal_view(
-                    self.synapse_stores[site], self.synapse_stores[site].view()
-                )
-                bundle = composer.compose_response(
-                    event_index=signal.event_index,
-                    neuron_store=neurons,
-                    synapse_view=view,
-                    proposer=proposer,
-                    registry=self.registry,
-                    rng=self.rng,
-                    birth_budget=remaining_births,
-                )
-                if bundle is None:
-                    break
-                distribute = getattr(
-                    self.policy.active_distributor, "allocate_bundles", None
-                )
-                accepted = (
-                    tuple(distribute(remaining_births, (bundle,)))
-                    if distribute is not None
-                    else (
-                        (bundle,)
-                        if bundle_birth_count(bundle) <= remaining_births
-                        else ()
-                    )
-                )
-                if len(accepted) != 1 or accepted[0] is not bundle:
-                    break
-                unit_applied = self.apply_proposals([bundle])
-                if not unit_applied:
-                    break
-                applied.extend(unit_applied)
-                remaining_births -= bundle_birth_count(bundle)
-                remaining_ungates -= sum(
-                    op.ids.numel()
-                    for op in unit_applied
-                    if isinstance(op, NeuronUngate)
-                )
-        return tuple(applied)
-
     def _audit_event_context(
         self,
     ) -> tuple[dict[str, dict[int, int]], dict[str, float | None]]:
@@ -1057,18 +983,6 @@ class StructuralEngine:
         )
         for subscriber in tuple(self._audit_subscribers):
             subscriber.push(record)
-
-    @staticmethod
-    def _proposal_count(ops: tuple[Op, ...]) -> int:
-        count = 0
-        for op in ops:
-            if isinstance(op, SynapseBirth):
-                count += int(op.w.numel())
-            elif isinstance(op, SynapseMerge):
-                count += int(op.id_pairs.shape[0])
-            else:
-                raise TypeError("proposer may return only SynapseBirth/SynapseMerge")
-        return count
 
     def _apply_profit_trial(
         self,
@@ -1142,258 +1056,6 @@ class StructuralEngine:
                 "finalize_backward() must release the capture queue before step()"
             )
 
-    @staticmethod
-    def _take_retention(
-        operations: tuple[SynapseDeath, ...] | tuple[NeuronRetire, ...],
-        count: int,
-    ) -> tuple[SynapseDeath, ...] | tuple[NeuronRetire, ...]:
-        """Take at most ``count`` entity deaths without changing court order."""
-        selected: list[SynapseDeath | NeuronRetire] = []
-        remaining = count
-        for operation in operations:
-            if remaining == 0:
-                break
-            ids = operation.ids[:remaining]
-            if ids.numel():
-                selected.append(type(operation)(operation.site, ids))
-                remaining -= ids.numel()
-        return tuple(selected)
-
-    def _cap_retention(
-        self,
-        decisions: dict[str, tuple[SynapseDeath, ...]]
-        | dict[str, tuple[NeuronRetire, ...]],
-        budget: int | None,
-        kind: str,
-    ) -> dict[str, tuple[SynapseDeath, ...]] | dict[str, tuple[NeuronRetire, ...]]:
-        """Distribute and enforce an optional logical prune limit."""
-        if budget is None:
-            return decisions
-        requests = tuple(
-            BudgetRequest(
-                site=site,
-                proposer_index=0,
-                replacement_count=sum(op.ids.numel() for op in operations),
-                kind=kind,
-            )
-            for site, operations in decisions.items()
-            if operations
-        )
-        grants = self.policy.active_distributor.allocate(budget, requests)
-        valid = (
-            len(grants) == len(requests)
-            and all(
-                not isinstance(value, bool)
-                and isinstance(value, int)
-                and 0 <= value <= request.replacement_count
-                for value, request in zip(grants, requests)
-            )
-            and sum(grants) <= budget
-        )
-        if not valid:
-            raise RuntimeError(f"distributor exceeded the {kind!r} structural quota")
-        by_site = dict(zip((request.site for request in requests), grants))
-        return {
-            site: self._take_retention(operations, by_site.get(site, 0))
-            for site, operations in decisions.items()
-        }
-
-    def _propose_absorb_ops(
-        self, quota: StructuralQuota
-    ) -> tuple[Op | ProposalBundle, ...]:
-        """Collect this event's absorb proposals, budgeted like any other action.
-
-        Runs before :meth:`_decide_retention` so canonicalization -- duplicate
-        collapse, receiver-less prune -- happens first and prune courts then
-        see the post-absorb view (``docs/absorb-and-gram-design.md`` section
-        5, stage 3b item 3). Unlike birth/merge, an absorb rule's own
-        ``propose()`` may return whole :class:`ProposalBundle` values (a
-        chain must commit atomically), so this is applied through
-        :meth:`apply_proposals`, not :meth:`_apply_atomic_unit`.
-        """
-        rule = self.policy.synapse_absorb_rule
-        if rule is None or quota.synapse_absorb == 0:
-            return ()
-        sites = tuple(self.synapse_stores)
-        requests = tuple(
-            BudgetRequest(site, 0, quota.synapse_absorb, ActionKind.SYNAPSE_ABSORB.value)
-            for site in sites
-        )
-        grants = self.policy.active_distributor.allocate(quota.synapse_absorb, requests)
-        valid = (
-            len(grants) == len(requests)
-            and all(
-                not isinstance(value, bool) and isinstance(value, int) and value >= 0
-                for value in grants
-            )
-            and sum(grants) <= quota.synapse_absorb
-        )
-        if not valid:
-            raise RuntimeError(
-                "distributor exceeded the 'synapse_absorb' structural quota"
-            )
-        proposals: list[Op | ProposalBundle] = []
-        for site, granted in zip(sites, grants):
-            if granted == 0:
-                continue
-            store = self.synapse_stores[site]
-            view = self._proposal_view(store, store.view())
-            proposed = rule.propose(view, granted, self.registry, self.rng)
-            proposals.extend(proposed)
-        return tuple(proposals)
-
-    def _decide_retention(
-        self,
-        quota: StructuralQuota,
-    ) -> tuple[tuple[Op, ...], dict[str, tuple[SynapseDeath, ...]]]:
-        """Collect and validate all court decisions for the current event."""
-        views = {site: store.view() for site, store in self.synapse_stores.items()}
-        deaths: dict[str, tuple[SynapseDeath, ...]] = {}
-        synapse_court = self.policy.synapse_retention_rule
-        immunity_events = int(getattr(synapse_court, "immunity_events", 0))
-        for site, store in self.synapse_stores.items():
-            decided = (
-                ()
-                if synapse_court is None
-                else tuple(
-                    synapse_court.decide(
-                        views[site], self._ages(store, views[site]), self.clock
-                    )
-                )
-            )
-            if not all(isinstance(op, SynapseDeath) for op in decided):
-                raise TypeError("retention court may return only SynapseDeath")
-            self._check_immunity(store, decided, immunity_events)
-            deaths[site] = decided
-        deaths = self._cap_retention(
-            deaths, quota.synapse_prune, ActionKind.SYNAPSE_PRUNE.value
-        )
-
-        neuron_deaths: dict[str, tuple[NeuronRetire, ...]] = {
-            site: () for site in self.neuron_stores
-        }
-        neuron_court = self.policy.neuron_retention_rule
-        if neuron_court is not None:
-            neuron_immunity = int(getattr(neuron_court, "immunity_events", 0))
-            for site, store in self.neuron_stores.items():
-                view = store.view()
-                decided = tuple(
-                    neuron_court.decide(view, self._ages(store, view), self.clock)
-                )
-                if not all(isinstance(op, NeuronRetire) for op in decided):
-                    raise TypeError("neuron retention may return only NeuronRetire")
-                self._check_immunity(store, decided, neuron_immunity)
-                neuron_deaths[site] = decided
-        neuron_deaths = self._cap_retention(
-            neuron_deaths, quota.neuron_prune, ActionKind.NEURON_PRUNE.value
-        )
-
-        retention_ops = tuple(
-            op
-            for site_ops in (*deaths.values(), *neuron_deaths.values())
-            for op in site_ops
-        )
-        return retention_ops, deaths
-
-    def _propose_standard_ops(
-        self,
-        signal: EventSignal,
-        quota: StructuralQuota,
-        deaths: dict[str, tuple[SynapseDeath, ...]],
-    ) -> tuple[Op, ...]:
-        """Distribute logical quotas and collect ordinary action output."""
-        standard_proposer_indexes = tuple(
-            index
-            for index, proposer in enumerate(self.policy.proposal_rules)
-            if not hasattr(proposer, "propose_incident")
-        )
-        requests = tuple(
-            BudgetRequest(
-                site,
-                index,
-                self._death_count(deaths[site]),
-                self.policy.proposal_actions[index].kind.value,
-            )
-            for site in self.synapse_stores
-            for index in standard_proposer_indexes
-            if signal.phase is not Phase.RESPONSE
-        )
-        allocations = [0] * len(requests)
-        kinds = tuple(dict.fromkeys(request.kind for request in requests))
-        for kind in kinds:
-            positions = tuple(
-                index for index, request in enumerate(requests) if request.kind == kind
-            )
-            kind_requests = tuple(requests[index] for index in positions)
-            budget = quota.limit(kind)
-            if budget is None:
-                raise RuntimeError(f"quota kind {kind!r} cannot be unbounded")
-            granted = self.policy.active_distributor.allocate(budget, kind_requests)
-            valid_grants = all(
-                not isinstance(value, bool) and isinstance(value, int) and value >= 0
-                for value in granted
-            )
-            if (
-                len(granted) != len(kind_requests)
-                or not valid_grants
-                or sum(granted) > budget
-            ):
-                raise RuntimeError(
-                    f"distributor exceeded the {kind!r} structural quota"
-                )
-            for position, value in zip(positions, granted):
-                allocations[position] = value
-
-        current_views = {
-            site: store.view() for site, store in self.synapse_stores.items()
-        }
-        proposed_ops: list[Op] = []
-        for request, budget in zip(requests, allocations):
-            proposer = self.policy.proposal_rules[request.proposer_index]
-            proposed = proposer.propose(
-                self._proposal_view(
-                    self.synapse_stores[request.site], current_views[request.site]
-                ),
-                budget,
-                self.registry,
-                self.rng,
-            )
-            if self._proposal_count(tuple(proposed)) > budget:
-                raise RuntimeError("proposer exceeded its allocated operation budget")
-            proposed_ops.extend(proposed)
-        return tuple(proposed_ops)
-
-    def _apply_event(
-        self,
-        signal: EventSignal,
-        quota: StructuralQuota,
-        objective: Callable[[], float] | None,
-        polish: Callable[[], None] | None,
-    ) -> tuple[Op, ...]:
-        """Run absorb, retention, proposal adjudication, and response in order."""
-        absorb_proposals = self._propose_absorb_ops(quota)
-        applied = list(self.apply_proposals(absorb_proposals))
-        retention_ops, deaths = self._decide_retention(quota)
-        applied.extend(self._apply_atomic_unit(retention_ops))
-        proposed_ops = self._propose_standard_ops(signal, quota, deaths)
-
-        # A policy either always prices its proposals (policy.profit is set:
-        # e.g. LC_merge's merge trials or a profit-gated growth policy's
-        # births) or never does; dispatch is on that switch, not op type, so
-        # ProfitCourt.price_for's existing SynapseBirth/SynapseMerge support
-        # extends to any proposer without new op-type plumbing here.
-        if self.policy.profit is not None:
-            trial_ops = proposed_ops
-            ordinary_ops: tuple[Op, ...] = ()
-        else:
-            trial_ops = ()
-            ordinary_ops = proposed_ops
-        applied.extend(self._apply_atomic_unit(ordinary_ops))
-        applied.extend(self._apply_profit_trial(trial_ops, objective, polish))
-        if signal.phase is Phase.RESPONSE:
-            applied.extend(self._apply_response(signal, quota))
-        return tuple(applied)
-
     def _finish_event(
         self,
         applied: tuple[Op, ...],
@@ -1432,62 +1094,24 @@ class StructuralEngine:
             )
             self._check_immunity(store, retirements, plan.neuron_immunity_events)
 
-    def _step_whole_policy(self, candidate: Clock) -> tuple[Op, ...]:
-        """Ask one first-class policy for a complete structural plan."""
-        context = self._policy_context(candidate)
-        plan = self.policy.plan(context)
-        if plan is None:
-            self.clock = Clock(candidate.update_step, self.clock.event_index)
-            return ()
-        if not isinstance(plan, StructuralPlan):
-            raise TypeError("StructuralPolicy.plan() must return StructuralPlan or None")
-
-        self.clock = candidate
-        self._check_plan_immunity(plan)
-        audit_context = self._audit_event_context() if self._audit_subscribers else None
-        applied = self.apply_proposals(plan.proposals)
-        callback = getattr(self.policy, "on_applied", None)
-        if callback is not None:
-            callback(context, applied)
-        return self._finish_event(applied, audit_context)
-
-    def _composed_event(
-        self, candidate: Clock
-    ) -> tuple[EventSignal, StructuralQuota] | None:
-        """Normalize legacy schedules and separated cadence/quota policies."""
-        if self.policy.cadence is not None:
-            signal = self.policy.cadence.event(candidate)
-            if signal is None:
-                return None
-            if not isinstance(signal, EventSignal):
-                raise TypeError("Cadence.event() must return EventSignal or None")
-            assert self.policy.quota is not None
-            quota = self.policy.quota.at(candidate, signal.phase)
-            if not isinstance(quota, StructuralQuota):
-                raise TypeError("QuotaPolicy.at() must return StructuralQuota")
-            return signal, quota
-
-        assert self.policy.schedule is not None
-        directive = self.policy.schedule.event(candidate)
-        if directive is None:
-            return None
-        if not isinstance(directive, EventDirective):
-            raise TypeError("legacy Schedule.event() must return EventDirective or None")
-        return (
-            EventSignal(directive.event_index, directive.phase),
-            StructuralQuota(
-                synapse_birth=directive.birth_budget,
-                synapse_merge=directive.birth_budget,
-                neuron_birth=directive.ungate_budget,
-            ),
-        )
-
     def step(
         self,
         objective: Callable[[], float] | None = None,
         polish: Callable[[], None] | None = None,
     ) -> tuple[Op, ...]:
-        """Advance one update; only a profit-priced policy may read objective."""
+        """Advance one update; only a profit-priced policy may read objective.
+
+        Event orchestration (cadence/schedule normalization, absorb/retention/
+        proposal collection and adjudication, response bundling -- or, for a
+        first-class :class:`~torchcst.policy.contract.StructuralPolicy`,
+        ``plan()``) lives in the policy-side :class:`~.policy.arbiter.EventArbiter`
+        (``policy/arbiter.py``), not here. This method is the mechanism-only
+        remainder: ask the arbiter for this event's outcome, then either
+        advance ``update_step`` only (no event occurred) or return the
+        already-applied ops (the arbiter finished the event, including audit
+        and age ticks, via the engine's own mechanism methods before
+        returning).
+        """
         self._validate_step_call(objective, polish)
         self._ensure_capture_queue_is_released()
         try:
@@ -1498,24 +1122,11 @@ class StructuralEngine:
                 update_step=self.clock.update_step + 1,
                 event_index=self.clock.event_index + 1,
             )
-            if not self._composed_policy:
-                return self._step_whole_policy(candidate)
-            event = self._composed_event(candidate)
-            if event is None:
+            applied = self._arbiter.propose_event(self, candidate, objective, polish)
+            if applied is None:
                 self.clock = Clock(candidate.update_step, self.clock.event_index)
                 return ()
-
-            signal, quota = event
-            self.clock = candidate
-            audit_context = (
-                self._audit_event_context() if self._audit_subscribers else None
-            )
-            applied = (
-                ()
-                if signal.phase is Phase.FROZEN
-                else self._apply_event(signal, quota, objective, polish)
-            )
-            return self._finish_event(applied, audit_context)
+            return applied
         finally:
             # A failed policy component may consume the structural event, but it
             # must never leave autograd capture attached to the next update.
