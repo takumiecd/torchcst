@@ -1,6 +1,12 @@
 # Policy Tree — Phase 2 設計ノート: 一直線の protocol stack
 
-起草: 2026-07-30（ユーザー裁定を受けて）。ステータス: **設計・レビュー待ち**。
+起草: 2026-07-30（ユーザー裁定を受けて）。
+ステータス: **S0〜S5 全段実装完了**（同日、branch feat/phase2-s0-harness）。
+木が唯一の実行経路。engine 1547→730 行。検証=旧世界で採取した事前登録指紋
+（tools/phase2_baseline.json・無変更のまま）に対し全7 fixture 統計的等価 PASS・
+テストスイート 260 passed（削除したテストは各 commit メッセージに理由つきで列挙）。
+残課題（Phase 2 スコープ外）: A束=capture/計器束縛の薄型化・merge の木語彙
+（SynapseLifecycle に merge slot なし・必要になった時に family として設計）。
 前提ノート: `policy-tree-design.md`（Phase 1 と語彙・family 裁定はそのまま生きる）。
 
 ## ユーザー裁定（2026-07-30・本ノートの公理）
