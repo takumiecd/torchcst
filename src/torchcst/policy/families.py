@@ -43,13 +43,36 @@ from .scored import ScoredBirth
 _request_counter = itertools.count()
 
 
-def _no_prune() -> None:
+def _no_rule() -> None:
+    """Default factory for an absent rule slot."""
     return None
 
 
-def _no_absorb(lam: float | None) -> None:
+def _no_priced_rule(lam: float | None) -> None:
+    """Default factory for an absent rule slot that would receive ``lam``."""
     del lam
     return None
+
+
+def _deflated_scored_birth_factory(
+    *, pool_size: int, initial_weight: float, ridge: float
+) -> Callable[[float | None], ScoredBirth]:
+    """Shared cRES/RENT birth factory: deflated candidate scoring, rent-gated.
+
+    Each call reserves a fresh instrument-request name (see
+    ``_request_counter``), so two lifecycles never collide on hyperparameters.
+    """
+    name = f"continuous_candidate_field#{next(_request_counter)}"
+
+    def make_birth(lam: float | None) -> ScoredBirth:
+        request = ContinuousCandidateRequest(
+            pool_size=pool_size, mode="deflated", name=name
+        )
+        return ScoredBirth(
+            request=request, initial_weight=initial_weight, rent=lam, ridge=ridge
+        )
+
+    return make_birth
 
 
 @dataclass(frozen=True)
@@ -143,8 +166,8 @@ class SynapseLifecycle:
     """
 
     birth_factory: Callable[[float | None], Any | None]
-    prune_factory: Callable[[], Any | None] = _no_prune
-    absorb_factory: Callable[[float | None], Any | None] = _no_absorb
+    prune_factory: Callable[[], Any | None] = _no_rule
+    absorb_factory: Callable[[float | None], Any | None] = _no_priced_rule
     every: int = 1
     priceable: bool = False
     label: str = "lifecycle"
@@ -282,18 +305,10 @@ def cRES(
     the existing ``cRES``-style composition (deflated growth capped by
     ``QuotaRegime``'s budget, magnitude-based prune).
     """
-    name = f"continuous_candidate_field#{next(_request_counter)}"
-
-    def make_birth(lam: float | None) -> ScoredBirth:
-        request = ContinuousCandidateRequest(
-            pool_size=pool_size, mode="deflated", name=name
-        )
-        return ScoredBirth(
-            request=request, initial_weight=initial_weight, rent=lam, ridge=ridge
-        )
-
     return SynapseLifecycle(
-        birth_factory=make_birth,
+        birth_factory=_deflated_scored_birth_factory(
+            pool_size=pool_size, initial_weight=initial_weight, ridge=ridge
+        ),
         prune_factory=lambda: MagnitudeCourt(drop_fraction),
         priceable=True,
         label="cRES",
@@ -316,15 +331,6 @@ def RENT(
     price: ``QuotaRegime``/``Independent`` (``lam=None``) are rejected
     because ``AbsorbCourt`` itself requires a real ``rent`` value.
     """
-    name = f"continuous_candidate_field#{next(_request_counter)}"
-
-    def make_birth(lam: float | None) -> ScoredBirth:
-        request = ContinuousCandidateRequest(
-            pool_size=pool_size, mode="deflated", name=name
-        )
-        return ScoredBirth(
-            request=request, initial_weight=initial_weight, rent=lam, ridge=ridge
-        )
 
     def make_absorb(lam: float | None) -> AbsorbCourt:
         return AbsorbCourt(
@@ -332,7 +338,9 @@ def RENT(
         )
 
     return SynapseLifecycle(
-        birth_factory=make_birth,
+        birth_factory=_deflated_scored_birth_factory(
+            pool_size=pool_size, initial_weight=initial_weight, ridge=ridge
+        ),
         absorb_factory=make_absorb,
         priceable=True,
         label="RENT",
@@ -363,9 +371,9 @@ class NeuronLifecycle:
     response window is open.
     """
 
-    retention_factory: Callable[[], Any | None] = _no_prune
-    composer_factory: Callable[[], Any | None] = _no_prune
-    incident_factory: Callable[[], Any | None] = _no_prune
+    retention_factory: Callable[[], Any | None] = _no_rule
+    composer_factory: Callable[[], Any | None] = _no_rule
+    incident_factory: Callable[[], Any | None] = _no_rule
     label: str = "interface"
 
     def __post_init__(self) -> None:

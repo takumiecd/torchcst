@@ -190,6 +190,10 @@ class NeuronStore(nn.Module):
     def retired_ids(self) -> Tensor:
         return self._ids_in_state(NeuronState.RETIRED)
 
+    def ages_of(self, ids: Tensor) -> Tensor:
+        """Structural ages for chart IDs, aligned with ``ids``."""
+        return self.age.values.index_select(0, self._validate_ids(ids))
+
     def followers(self) -> FollowerHub:
         return self._hub
 

@@ -4,16 +4,8 @@
 ``OpProposer``-shaped rule (``propose(view, budget, registry, rng)``) that
 :func:`~torchcst.policy.families.RENT` places as a
 :class:`~torchcst.policy.families.SynapseLifecycle`'s ``absorb_factory``.
-
-(Phase 2 S4e retired the sibling stage-3a path, ``AbsorbPolicy`` -- a
-first-class whole-``StructuralPolicy`` implementing ``capture``/``plan``/
-``on_applied`` with no cadence, distributor, or court decomposition. That
-protocol is gone from ``docs/policy-tree-phase2.md``'s "消すもの" list; the
-tree (``RentEconomy``/``QuotaRegime`` binding a lifecycle whose
-``absorb_factory`` is :class:`AbsorbCourt`) is the sole surviving authoring
-path for absorb. Its regression coverage lived in
-``tests/torchcst/test_absorb_policy.py``, removed in the same step -- see
-that commit for the full accounting of what it verified.)
+The tree is the sole authoring path for absorb (the earlier whole-policy
+``AbsorbPolicy`` route is retired; see git history for its accounting).
 
 :class:`AbsorbCourt` builds a
 :class:`~torchcst.representation.gram.GramService` from the live
@@ -34,12 +26,12 @@ delivery manifest, never an acceptance input (design section 1).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import isfinite
 from typing import Any, Callable
 
 import torch
 from torch import Tensor
 
+from torchcst._validation import require_int, require_real
 from torchcst.instruments import KernelPort, KernelPortRequest
 from torchcst.representation.gram import AbsorbPlanStep, GramService
 from torchcst.storage import SynapseAbsorb, SynapseDeath, SynapseView
@@ -66,19 +58,6 @@ class AbsorbAuditEntry:
     res2_D: float
     delta_w_frobenius: float
     alpha_norm: float
-
-
-def _validate_real(value: Any, name: str, *, allow_zero: bool = True) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TypeError(f"{name} must be a real number")
-    value = float(value)
-    if not isfinite(value):
-        raise ValueError(f"{name} must be finite")
-    if allow_zero and value < 0:
-        raise ValueError(f"{name} must be non-negative")
-    if not allow_zero and value <= 0:
-        raise ValueError(f"{name} must be positive")
-    return value
 
 
 def _reassess_step(gram: GramService, step: AbsorbPlanStep) -> tuple[float, float, Tensor]:
@@ -186,9 +165,9 @@ class AbsorbCourt:
     _ports: dict[str, KernelPort] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self.rent = _validate_real(self.rent, "rent")
-        self.radius = _validate_real(self.radius, "radius", allow_zero=False)
-        self.ridge = _validate_real(self.ridge, "ridge")
+        self.rent = require_real(self.rent, "rent", nonnegative=True)
+        self.radius = require_real(self.radius, "radius", positive=True)
+        self.ridge = require_real(self.ridge, "ridge", nonnegative=True)
         if self.budget is not None:
             if isinstance(self.budget, bool) or not isinstance(self.budget, int):
                 raise TypeError("budget must be an int or None")
@@ -215,26 +194,45 @@ class AbsorbCourt:
         rng: torch.Generator,
     ) -> tuple[Op | ProposalBundle, ...]:
         del registry, rng
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         if budget == 0 or view.ids.numel() == 0:
             return ()
+        gram = self._build_gram(view)
+        # ``event_marker`` (the store version) stands in for the event index
+        # on AbsorbAuditEntry: the court never sees the clock, and the
+        # version increments exactly once per applied event.
+        event_marker = int(view.version)
+        chain_budget = budget if self.budget is None else min(self.budget, budget)
+        ops, entries, absorbed = self._chain_ops(
+            gram, view, chain_budget, event_marker
+        )
+        if self.include_isolated:
+            isolated_ops, isolated_entries = self._isolated_deaths(
+                gram, view, budget - len(ops), absorbed, event_marker
+            )
+            ops.extend(isolated_ops)
+            entries.extend(isolated_entries)
+        if not ops:
+            return ()
+        self.audit_log.extend(entries)
+        bundle = ProposalBundle(f"absorb:{view.site}:{event_marker}", tuple(ops))
+        return (bundle,)
+
+    def _build_gram(self, view: SynapseView) -> GramService:
+        """One fresh position-only Gram over the live view, per court call."""
         port = self._ports.get(view.site)
         if port is None:
             raise RuntimeError(
                 f"AbsorbCourt has no KernelPort bound for site {view.site!r}; "
                 "was the engine constructed with a matching compute module?"
             )
-
         k_in, k_out = port.columns(view.s, view.t)
         batch = None
         if self.data is not None:
             batch = self.data()
             if not isinstance(batch, Tensor):
                 raise TypeError("data provider must return a Tensor")
-        gram = GramService(
+        return GramService(
             k_out,
             k_in,
             view.w,
@@ -244,12 +242,18 @@ class AbsorbCourt:
             ridge=self.ridge,
             data=batch,
         )
-        chain_budget = budget if self.budget is None else min(self.budget, budget)
-        steps = gram.plan_chain(budget=chain_budget, cost_cap=self.rent)
 
+    def _chain_ops(
+        self,
+        gram: GramService,
+        view: SynapseView,
+        chain_budget: int,
+        event_marker: int,
+    ) -> tuple[list[Op], list[AbsorbAuditEntry], set[int]]:
+        """Plan the rent-capped absorb chain and map positions to entity IDs."""
+        steps = gram.plan_chain(budget=chain_budget, cost_cap=self.rent)
         ops: list[Op] = []
         entries: list[AbsorbAuditEntry] = []
-        event_marker = int(view.version)
         absorbed_positions: set[int] = set()
         for step in steps:
             absorbed_positions.add(step.dying)
@@ -275,36 +279,41 @@ class AbsorbCourt:
                         alpha_norm=float(alpha.norm()),
                     )
                 )
+        return ops, entries, absorbed_positions
 
-        remaining = budget - len(steps)
-        if self.include_isolated:
-            for position in range(gram.k_live):
-                if remaining <= 0:
-                    break
-                if position in absorbed_positions:
-                    continue
-                if gram.neighbors(position).numel():
-                    continue
-                assessment = gram.residual(position)
-                full_cost = 0.5 * float(gram.w[position]) ** 2 * assessment.res2_D
-                if full_cost >= self.rent:
-                    continue
-                ops.append(SynapseDeath(view.site, view.ids[position].reshape(1)))
-                entries.append(
-                    AbsorbAuditEntry(
-                        event_index=event_marker,
-                        dying=int(view.ids[position]),
-                        receiver_count=0,
-                        cost=full_cost,
-                        res2_D=assessment.res2_D,
-                        delta_w_frobenius=0.0,
-                        alpha_norm=0.0,
-                    )
+    def _isolated_deaths(
+        self,
+        gram: GramService,
+        view: SynapseView,
+        remaining: int,
+        absorbed_positions: set[int],
+        event_marker: int,
+    ) -> tuple[list[Op], list[AbsorbAuditEntry]]:
+        """Price neighborless atoms as receiver-less absorbs (pure prunes)."""
+        ops: list[Op] = []
+        entries: list[AbsorbAuditEntry] = []
+        for position in range(gram.k_live):
+            if remaining <= 0:
+                break
+            if position in absorbed_positions:
+                continue
+            if gram.neighbors(position).numel():
+                continue
+            assessment = gram.residual(position)
+            full_cost = 0.5 * float(gram.w[position]) ** 2 * assessment.res2_D
+            if full_cost >= self.rent:
+                continue
+            ops.append(SynapseDeath(view.site, view.ids[position].reshape(1)))
+            entries.append(
+                AbsorbAuditEntry(
+                    event_index=event_marker,
+                    dying=int(view.ids[position]),
+                    receiver_count=0,
+                    cost=full_cost,
+                    res2_D=assessment.res2_D,
+                    delta_w_frobenius=0.0,
+                    alpha_norm=0.0,
                 )
-                remaining -= 1
-
-        if not ops:
-            return ()
-        self.audit_log.extend(entries)
-        bundle = ProposalBundle(f"absorb:{view.site}:{event_marker}", tuple(ops))
-        return (bundle,)
+            )
+            remaining -= 1
+        return ops, entries

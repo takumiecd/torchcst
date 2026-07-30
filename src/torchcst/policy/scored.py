@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import isfinite
 from typing import Any, Callable
 
 import torch
 from torch import Tensor
 
+from torchcst._validation import require_int, require_real
 from torchcst.instruments import CandidateSnapshot
 from torchcst.representation.gram import GramService
 from torchcst.storage import SynapseBirth, SynapseView
 
 from .contract import ObservationRequest
+from .proposers import _continuous_lineages
 from .registry import RetiredCandidateRegistry
 
 
@@ -79,10 +80,7 @@ class TopKSelector:
     def select(self, scores: Tensor, budget: int) -> Tensor:
         if scores.ndim != 1:
             raise ValueError("candidate scores must be rank 1")
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         finite = torch.nonzero(torch.isfinite(scores), as_tuple=False).flatten()
         count = min(budget, finite.numel())
         if count == 0:
@@ -96,62 +94,44 @@ class TopKSelector:
 class ScoredBirth:
     """Turn any candidate-score instrument into a budgeted birth proposer.
 
-    ``rent``, when set, is a per-candidate profit floor gating on the
-    *exact* local profile gain in loss units, settled via
-    :class:`~torchcst.representation.gram.GramService` over the live view
-    (design doc Stage 3b-fix item 2) -- the entrance-side half of
+    The bound instrument is the cheap pre-ranker: its scores choose the
+    ``budget``-sized shortlist (via ``selector``). ``rent``, when set, is a
+    per-candidate profit floor on the *exact* local profile gain in loss
+    units, settled via :class:`~torchcst.representation.gram.GramService`
+    over the live view -- the entrance-side half of
     ``docs/absorb-and-gram-design.md``'s stage 3b economy (the exit side is
-    :class:`~torchcst.policy.absorb.AbsorbCourt`). The bound instrument stays
-    the cheap pre-ranker: its scores choose the ``budget``-sized shortlist
-    (via ``selector``), and settlement only ever filters and re-ranks
-    *within* that shortlist -- it never widens it. For each shortlisted
+    :class:`~torchcst.policy.absorb.AbsorbCourt`). Settlement only filters
+    and re-ranks *within* the shortlist, never widens it, and never alters
+    ``selector.select``'s own signed-score semantics. For each shortlisted
     candidate,
 
     ``gain = <G, psi>_F^2 / (2 * ||(I - P_live) psi||_D^2)``
 
-    where ``psi`` is the *un-normalized* candidate atom matrix from kernel
-    columns (unlike the instrument's own Frobenius-unit-normalized
-    pre-ranking directions), ``P_live`` is the D-orthogonal projection onto
-    the entire live atom span, and ``G`` is the bound instrument's
-    accumulated certificate in raw loss-gradient units (its
-    ``raw_gradient()``). This exact formula is what
-    ``cst/scripts/diag_birth_gain_calibration.py`` validated against a dense
-    D-profile computation and an amplitudes-only refit to 8e-11 -- the cheap
-    instrument score's ``0.5 * score**2`` (Frobenius-geometry, D-blind) is
-    *not* generally the loss-unit gain, which is exactly the defect this
-    settlement fixes. Rent gating requires the bound instrument to expose
-    ``.port`` (a :class:`~torchcst.instruments.base.KernelPort`) and
-    ``.raw_gradient()`` -- :class:`~torchcst.instruments.ContinuousCandidateField`
-    does; a plain ``TypeError`` is raised at settlement time for an
-    instrument that does not.
+    where ``psi`` is the un-normalized candidate atom matrix from kernel
+    columns, ``P_live`` the D-orthogonal projection onto the live atom span,
+    and ``G`` the instrument's accumulated certificate in raw loss-gradient
+    units (its ``raw_gradient()``). The cheap instrument score's
+    ``0.5 * score**2`` (Frobenius-geometry, D-blind) is *not* generally the
+    loss-unit gain; this settlement is the fix, validated to 8e-11 against a
+    dense D-profile computation (``cst/scripts/diag_birth_gain_calibration.py``).
+    Rent gating therefore requires the instrument to expose ``.port`` (a
+    :class:`~torchcst.instruments.base.KernelPort`) and ``raw_gradient()`` --
+    :class:`~torchcst.instruments.ContinuousCandidateField` does; a
+    ``TypeError`` is raised at settlement time otherwise.
 
-    Only candidates with ``gain >= rent`` are accepted, in descending exact
-    -gain order, up to the shortlist's own size (never more than ``budget``).
-    ``gain`` is always non-negative by construction (a squared numerator over
-    a positive denominator), which makes ``rent=0`` alone a mathematical
-    no-op; a candidate must also clear ``gain > 0`` to be bought, so a
-    freshly reset, all-zero certificate ("nothing to explain" -- see
-    :class:`~torchcst.instruments.ContinuousCandidateField`'s R_{t-1}=0
-    convention) never buys a birth even at ``rent=0`` with budget to spare.
-    For ``rent > 0`` this second condition is implied by ``gain >= rent`` and
-    changes nothing.
+    Acceptance: candidates with ``gain >= rent`` *and* ``gain > 0``, in
+    descending exact-gain order, never more than the shortlist. The second
+    condition matters only at ``rent=0``: gain is non-negative by
+    construction, so without it a freshly reset all-zero certificate
+    ("nothing to explain" -- see ``ContinuousCandidateField``'s R_{t-1}=0
+    convention) could buy births for free.
 
-    ``ridge`` regularizes the settlement's local least-squares solve
-    (:class:`~torchcst.representation.gram.GramService`'s own ``ridge``);
-    ``data``, when given, is a zero-argument ``[n, n_in]`` batch provider for
-    the D metric, called once per ``propose()`` needing settlement -- exactly
-    :class:`~torchcst.policy.absorb.AbsorbCourt`'s own pattern. The identity
-    metric is used when ``data`` is ``None``; per
-    :class:`~torchcst.representation.gram.GramService`'s docstring this makes
-    ``res2_D == res2_F`` exactly, i.e. identity-metric settlement is the
-    ``X=I`` sum-loss case (no data-dependent second moment).
-
-    Per the design's economy rule, ``rent`` is a plain float passed
-    independently to whichever parts need it, never a shared mutable object
-    threaded between rules. Ranking by the cheap instrument score is
-    unchanged by any of this: ``rent`` only filters and re-ranks the
-    selector's already-chosen shortlist, it never alters
-    ``selector.select``'s own signed-score semantics.
+    ``ridge`` regularizes the settlement's least-squares solve; ``data``,
+    when given, is a zero-argument ``[n, n_in]`` batch provider for the D
+    metric, called once per settling ``propose()`` (the identity metric is
+    used when ``None``, making ``res2_D == res2_F`` exactly). ``rent`` is a
+    plain float handed to each part that needs it, never a shared mutable
+    object threaded between rules.
     """
 
     request: ObservationRequest
@@ -172,16 +152,8 @@ class ScoredBirth:
         if self.rent is not None:
             if isinstance(self.rent, bool) or not isinstance(self.rent, (int, float)):
                 raise TypeError("rent must be a real number or None")
-            rent = float(self.rent)
-            if not isfinite(rent) or rent < 0:
-                raise ValueError("rent must be finite and non-negative")
-            self.rent = rent
-        if isinstance(self.ridge, bool) or not isinstance(self.ridge, (int, float)):
-            raise TypeError("ridge must be a real number")
-        ridge = float(self.ridge)
-        if not isfinite(ridge) or ridge < 0:
-            raise ValueError("ridge must be finite and non-negative")
-        self.ridge = ridge
+            self.rent = require_real(self.rent, "rent", nonnegative=True)
+        self.ridge = require_real(self.ridge, "ridge", nonnegative=True)
         if self.data is not None and not callable(self.data):
             raise TypeError("data must be a callable batch provider or None")
         self.requires = (self.request,)
@@ -197,21 +169,6 @@ class ScoredBirth:
             raise TypeError("scored-birth instrument must provide candidate_snapshot()")
         self._instruments[site] = instrument
 
-    def _fresh_lineages(
-        self,
-        view: SynapseView,
-        count: int,
-        registry: RetiredCandidateRegistry,
-    ) -> Tensor:
-        existing = () if view.lineages is None else view.lineages
-        if isinstance(existing, Tensor):
-            existing = existing.detach().cpu().tolist()
-        retired = [key for site, key in registry.snapshot() if site == view.site]
-        floor = max((*[int(value) for value in existing], *retired), default=-1) + 1
-        start = max(self._next_lineage.get(view.site, 0), floor)
-        self._next_lineage[view.site] = start + count
-        return torch.arange(start, start + count, dtype=torch.int64)
-
     def propose(
         self,
         view: SynapseView,
@@ -220,10 +177,7 @@ class ScoredBirth:
         rng: torch.Generator,
     ) -> tuple[SynapseBirth, ...]:
         del rng
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         if budget == 0:
             return ()
         try:
@@ -254,7 +208,7 @@ class ScoredBirth:
         source = snapshot.source.index_select(0, positions.to(snapshot.source.device))
         target = snapshot.target.index_select(0, positions.to(snapshot.target.device))
         if snapshot.lineages is None:
-            lineages = self._fresh_lineages(view, count, registry)
+            lineages = _continuous_lineages(view, count, registry, self._next_lineage)
         else:
             lineages = snapshot.lineages.index_select(0, positions.cpu())
         weights = view.w.new_full((count,), float(self.initial_weight))
@@ -289,14 +243,17 @@ class ScoredBirth:
         k_in_cand, k_out_cand = port.columns(source, target)
         numerator = ((gradient @ k_in_cand) * k_out_cand).sum(dim=0).square()
 
-        l_count = source.shape[0]
-        k_live = view.w.numel()
+        n_candidates = source.shape[0]
+        n_live = view.w.numel()
         batch = self.data() if self.data is not None else None
         if batch is not None and not isinstance(batch, Tensor):
             raise TypeError("data provider must return a Tensor")
 
+        # One Gram over live atoms plus zero-amplitude candidate atoms: rows
+        # [0, n_live) are the live span, rows [n_live, n_live + n_candidates)
+        # the shortlist.
         k_in_live, k_out_live = port.columns(view.s, view.t)
-        combined_w = torch.cat([view.w, view.w.new_zeros(l_count)])
+        combined_w = torch.cat([view.w, view.w.new_zeros(n_candidates)])
         combined_s = torch.cat([view.s, source], dim=0)
         combined_t = torch.cat([view.t, target], dim=0)
         combined_u = torch.cat([k_out_live, k_out_cand], dim=1)
@@ -312,15 +269,17 @@ class ScoredBirth:
             data=batch,
         )
         idx_cand = torch.arange(
-            k_live, k_live + l_count, dtype=torch.int64, device=combined_w.device
+            n_live, n_live + n_candidates, dtype=torch.int64, device=combined_w.device
         )
         gamma_self, _ = gram.gram_block(idx_cand, idx_cand)
         self_norm = torch.diagonal(gamma_self).clone()
-        if k_live:
-            idx_live = torch.arange(k_live, dtype=torch.int64, device=combined_w.device)
+        if n_live:
+            # residual = ||(I - P_live) psi||_D^2 per candidate, via the
+            # ridge-regularized least-squares projection onto the live span.
+            idx_live = torch.arange(n_live, dtype=torch.int64, device=combined_w.device)
             gamma_live, _ = gram.gram_block(idx_live, idx_live)
             gamma_cross, _ = gram.gram_block(idx_live, idx_cand)
-            eye = torch.eye(k_live, dtype=gamma_live.dtype, device=gamma_live.device)
+            eye = torch.eye(n_live, dtype=gamma_live.dtype, device=gamma_live.device)
             alpha = torch.linalg.solve(gamma_live + self.ridge * eye, gamma_cross)
             proj = (gamma_cross * alpha).sum(dim=0)
             quad = (alpha * (gamma_live @ alpha)).sum(dim=0)

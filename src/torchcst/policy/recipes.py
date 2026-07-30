@@ -1,15 +1,11 @@
 """Named, validated tree assemblies (``docs/policy-tree-design.md`` Recipes).
 
-A recipe is a plain function returning a ready-to-bind policy-tree root: the
-frozen catalog presets re-expressed in the tree vocabulary, one per shipped
-configuration. Recipes carry the discipline the design note registered --
-**recipe = 検証済み構成** -- and stay few (既定1＋対照2 per family).
-
-Phase 2 S4 retires the composed-``Policy`` presets in ``catalog.py``; each
-one that survives does so as a recipe here, gated by the S0 statistical
-fingerprint (``tools/phase2_baseline.json``): the recipe must reproduce the
-preset's behavior within the preregistered tolerances before the preset is
-deleted.
+A recipe is a plain function returning a ready-to-bind policy-tree root, one
+per shipped configuration. Recipes carry the discipline the design note
+registered -- a recipe is a *validated* assembly -- and stay few (one
+default plus a couple of control arms per family). Each one reproduces its
+retired catalog preset within the preregistered tolerances of the S0
+statistical fingerprint (``tools/phase2_baseline.json``).
 """
 
 from __future__ import annotations
@@ -160,22 +156,23 @@ def LC_response(
         del lam
         return UniformEntryBirth(bounds_in, bounds_out, initial_weight)
 
-    method = SynapseLifecycle(
-        birth_factory=make_birth,
-        prune_factory=lambda: RentCourt(
+    def make_rent_court() -> RentCourt:
+        # A fresh court per build: synapse and neuron sides must never share
+        # hysteresis state.
+        return RentCourt(
             immunity_events=immunity_events,
             rent_ratio=rent_ratio,
             strikes=strikes,
-        ),
+        )
+
+    method = SynapseLifecycle(
+        birth_factory=make_birth,
+        prune_factory=make_rent_court,
         priceable=False,
         label="LC_response",
     )
     interface = NeuronLifecycle(
-        retention_factory=lambda: RentCourt(
-            immunity_events=immunity_events,
-            rent_ratio=rent_ratio,
-            strikes=strikes,
-        ),
+        retention_factory=make_rent_court,
         composer_factory=lambda: BundleComposer(
             incident_births=incident_births,
             initial_gate=initial_gate,

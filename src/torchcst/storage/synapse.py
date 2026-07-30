@@ -278,6 +278,14 @@ class SynapseStore(nn.Module):
         """Live entity IDs in physical-slot order."""
         return self._slots.ids_of(self._slots.live_slots)
 
+    def ages_of(self, ids: Tensor) -> Tensor:
+        """Structural ages of live entities, aligned with ``ids``."""
+        return self.age.values.index_select(0, self._slots.slots_of(ids))
+
+    def lineages_of(self, ids: Tensor) -> Tensor:
+        """Lineage keys of live entities, aligned with ``ids``."""
+        return self.lineage.values.index_select(0, self._slots.slots_of(ids))
+
     def followers(self) -> FollowerHub:
         """The notification hub for slot-indexed auxiliary state."""
         return self._hub

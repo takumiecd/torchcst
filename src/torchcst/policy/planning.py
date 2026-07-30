@@ -4,13 +4,11 @@
 state: one snapshot, one adjudicated :class:`EventPlan`, one two-phase
 commit. The stages inside that function are not incidental -- absorbs
 canonicalize first, courts judge the post-absorb population, births score
-the post-death state, responses grow the view bundle by bundle -- and the
-old engine produced exactly this information flow by committing mid-event.
-:class:`EventDraft` is that flow as *planning*: each stage reads simulated
-state (``runtime.view_after``) and planned retirements
-(``runtime.PlanRegistryView``) derived from the snapshot plus what the draft
-already holds, and nothing touches a store until the root executes the
-finished plan.
+the post-death state, responses grow the view bundle by bundle. Each stage
+of :class:`EventDraft` reads simulated state (``runtime.view_after``) and
+planned retirements (``runtime.PlanRegistryView``) derived from the snapshot
+plus what the draft already holds, and nothing touches a store until the
+root executes the finished plan.
 
 The draft is root-private (family machinery, not public ABI): it borrows the
 root's allocation/cap helpers and reads its children, and dies with the
@@ -24,9 +22,16 @@ from typing import Any, Mapping
 
 import torch
 
-from torchcst.storage import NeuronRetire, NeuronUngate, SynapseDeath
+from torchcst.storage import (
+    NeuronRetire,
+    NeuronUngate,
+    SynapseAbsorb,
+    SynapseDeath,
+)
 
+from .bundle import ProposalBundle, bundle_birth_count
 from .contract import Phase, StructuralQuota
+from .runtime import PlanRegistryView, view_after
 
 
 @dataclass(frozen=True)
@@ -61,7 +66,7 @@ class EventPlan:
                     retires.append(op)
                 elif isinstance(op, NeuronUngate):
                     ungates.append(op)
-                elif hasattr(op, "dying"):
+                elif isinstance(op, SynapseAbsorb):
                     absorbs.append(op)
                 else:
                     births.append(op)
@@ -81,17 +86,33 @@ class EventResult:
     post_mass: Mapping[str, Any]
 
 
+@dataclass
+class _ResponseBudget:
+    """The two counters a RESPONSE stage spends: ungates and births."""
+
+    ungates: int
+    births: int
+
+    @property
+    def exhausted(self) -> bool:
+        return self.ungates == 0 or self.births == 0
+
+
 class EventDraft:
     """Plan-in-progress over one snapshot; every mutation is simulated.
 
     Stage order is the semantics (see module docstring). Stages append to
-    per-site op lists; :meth:`plan` merges naked deaths (the root's dedup
-    duty), assembles per-store execution order, and snapshots audit facts.
+    per-site op lists; :meth:`plan` folds cascades into deaths, merges naked
+    deaths (the root's dedup duty), assembles per-store execution order, and
+    snapshots audit facts.
+
+    Keying convention: per-site op dicts (``absorbs``/``deaths``/...) are
+    keyed by site string; the simulated views ``post_absorb``/``pre_birth``
+    are keyed by the child object itself, because a view belongs to the
+    child that built it.
     """
 
     def __init__(self, tree: Any, clock: Any, rng: Any) -> None:
-        from .runtime import PlanRegistryView
-
         self.tree = tree
         self.clock = clock
         self.rng = rng
@@ -130,14 +151,18 @@ class EventDraft:
     @staticmethod
     def _participants(proposal_op: Any) -> tuple[tuple[int, ...], tuple[int, ...]]:
         """(dying ids, receiver ids) across an op or a bundle of ops."""
-        ops = proposal_op.ops if hasattr(proposal_op, "ops") else (proposal_op,)
+        ops = (
+            proposal_op.ops
+            if isinstance(proposal_op, ProposalBundle)
+            else (proposal_op,)
+        )
         dying: list[int] = []
         receivers: list[int] = []
         for op in ops:
-            if hasattr(op, "dying"):
+            if isinstance(op, SynapseAbsorb):
                 dying.append(int(op.dying))
                 receivers.extend(int(v) for v in op.receivers.tolist())
-            elif hasattr(op, "ids"):
+            elif isinstance(op, SynapseDeath):
                 dying.extend(int(v) for v in op.ids.tolist())
         return tuple(dying), tuple(receivers)
 
@@ -146,8 +171,8 @@ class EventDraft:
     # ------------------------------------------------------------------
 
     def absorb(self, quota: StructuralQuota) -> None:
-        """Canonicalization first: collect absorb chains, resolve conflicts
-        the old sequential commits resolved by per-bundle prepare failure."""
+        """Canonicalization first: collect absorb chains and resolve
+        intra-event conflicts (two proposals touching one dying atom)."""
         grants = self.tree._allocate(quota.synapse_absorb, "synapse_absorb", {})
         for child in self.tree.children:
             site = child.site
@@ -161,10 +186,11 @@ class EventDraft:
                     self.dropped.append(f"{site}: conflicting absorb dropped")
                     continue
                 dead.update(dying)
-                ops = (
-                    proposal.op.ops if hasattr(proposal.op, "ops") else (proposal.op,)
+                accepted.extend(
+                    proposal.op.ops
+                    if isinstance(proposal.op, ProposalBundle)
+                    else (proposal.op,)
                 )
-                accepted.extend(ops)
             self.absorbs[site] = accepted
             for op in accepted:
                 if isinstance(op, SynapseDeath):
@@ -172,8 +198,6 @@ class EventDraft:
 
     def retention(self, quota: StructuralQuota) -> None:
         """Courts judge the post-absorb population (simulated, not committed)."""
-        from .runtime import view_after
-
         for child in self.tree.children:
             site = child.site
             simulated = view_after(self.views[child], tuple(self.absorbs[site]))
@@ -187,12 +211,11 @@ class EventDraft:
         )
 
     def interface(self, quota: StructuralQuota) -> None:
-        """Neuron courts decide; the retire -> incident-synapse-death cascade
-        is planned here (the cross-child coordination the old engine performed
-        at commit in ``_expand_retirements``). Cascaded deaths join the plan
-        and the birth-stage simulation but never the replacement counts, and
-        they bypass the synapse court's immunity -- family-defined incident
-        deaths, exactly as before."""
+        """Neuron courts decide; each retire cascades into the deaths of its
+        incident synapses (cross-child coordination planned by the root).
+        Cascaded deaths join the plan and the birth-stage simulation but
+        never the replacement counts, and they bypass the synapse court's
+        immunity -- family-defined incident deaths."""
         decisions: dict[str, list[Any]] = {}
         for endpoint in self.tree.endpoints:
             decide = getattr(endpoint, "decide_retention", None)
@@ -211,24 +234,24 @@ class EventDraft:
                 self.retires[site] = list(retires)
         for endpoint in self.tree.endpoints:
             for retire in self.retires.get(endpoint.site, ()):
-                for child in self.tree.children:
-                    in_store, out_store = child.binding.endpoints()
-                    base = self.post_absorb[child]
-                    for present, side in ((in_store, "in"), (out_store, "out")):
-                        if present is not endpoint.store:
-                            continue
-                        ids = child.incident_ids(base, retire.ids, side)
-                        if ids.numel():
-                            self.cascades[child.site].append(
-                                SynapseDeath(child.site, ids)
-                            )
-                            self._retire_planned(child, base, ids)
+                self._cascade_retire(endpoint, retire)
+
+    def _cascade_retire(self, endpoint: Any, retire: Any) -> None:
+        """Plan the incident-synapse deaths one neuron retire implies."""
+        for child in self.tree.children:
+            in_store, out_store = child.binding.endpoints()
+            base = self.post_absorb[child]
+            for present, side in ((in_store, "in"), (out_store, "out")):
+                if present is not endpoint.store:
+                    continue
+                ids = child.incident_ids(base, retire.ids, side)
+                if ids.numel():
+                    self.cascades[child.site].append(SynapseDeath(child.site, ids))
+                    self._retire_planned(child, base, ids)
 
     def birth(self, quota: StructuralQuota, *, response_phase: bool) -> None:
         """Births score the post-death state; a RESPONSE event has no standard
         birth supply (its births arrive through response bundles)."""
-        from .runtime import view_after
-
         grants = (
             {child.site: 0 for child in self.tree.children}
             if response_phase
@@ -247,81 +270,90 @@ class EventDraft:
                 simulated, grants[site], self.registry, self.rng
             )
             self.births[site] = [proposal.op for proposal in proposals]
-        for site, cascades in self.cascades.items():
-            self.deaths[site].extend(cascades)
 
     def response(self, signal: Any, quota: StructuralQuota) -> None:
-        """RESPONSE bundles: ungate a dormant neuron + its incident births,
-        walking the snapshot's dormant list where the old loop walked
-        mid-event commits; between bundles the partner view grows by the
-        planned births -- exactly what each per-bundle commit used to give
-        the next composition."""
-        from .bundle import bundle_birth_count
-        from .runtime import view_after
+        """RESPONSE bundles: ungate a dormant neuron + its incident births.
 
-        remaining_ungates = quota.neuron_birth
-        remaining_births = quota.synapse_birth
-        if remaining_ungates == 0 or remaining_births == 0:
+        Walks each responding endpoint's dormant list; between bundles the
+        partner's simulated view grows by the births already planned, so
+        each composition sees its predecessors' atoms."""
+        budget = _ResponseBudget(quota.neuron_birth, quota.synapse_birth)
+        if budget.exhausted:
             return
         for endpoint in self.tree.endpoints:
-            if remaining_ungates == 0 or remaining_births == 0:
+            if budget.exhausted:
                 break
             if not getattr(endpoint, "can_respond", False):
                 continue
-            partners = tuple(
-                child
-                for child in self.tree.children
-                if child.binding.endpoints()[1] is endpoint.store
-            )
-            for partner in partners:
-                if remaining_ungates == 0 or remaining_births == 0:
+            for partner in self._partners_of(endpoint):
+                if budget.exhausted:
                     break
-                site = partner.site
-                for target in endpoint.dormant_ids().tolist():
-                    if remaining_ungates == 0 or remaining_births == 0:
-                        break
-                    synapse_view = view_after(
-                        self.pre_birth[partner], tuple(self.births[site])
-                    )
-                    bundle = endpoint.compose_response(
-                        event_index=signal.event_index,
-                        synapse_view=synapse_view,
-                        target_id=int(target),
-                        registry=self.registry,
-                        rng=self.rng,
-                        birth_budget=remaining_births,
-                    )
-                    if bundle is None:
-                        break
-                    distribute = getattr(
-                        self.tree.distributor, "allocate_bundles", None
-                    )
-                    accepted = (
-                        tuple(distribute(remaining_births, (bundle,)))
-                        if distribute is not None
-                        else (
-                            (bundle,)
-                            if bundle_birth_count(bundle) <= remaining_births
-                            else ()
-                        )
-                    )
-                    if len(accepted) != 1 or accepted[0] is not bundle:
-                        break
-                    for op in bundle.ops:
-                        if isinstance(op, NeuronUngate):
-                            self.ungates.setdefault(op.site, []).append(op)
-                            remaining_ungates -= int(op.ids.numel())
-                        else:
-                            self.births.setdefault(op.site, []).append(op)
-                    remaining_births -= bundle_birth_count(bundle)
+                self._respond_through(endpoint, partner, signal, budget)
+
+    def _partners_of(self, endpoint: Any) -> tuple[Any, ...]:
+        """Synapse children whose output endpoint is this neuron store."""
+        return tuple(
+            child
+            for child in self.tree.children
+            if child.binding.endpoints()[1] is endpoint.store
+        )
+
+    def _respond_through(
+        self, endpoint: Any, partner: Any, signal: Any, budget: _ResponseBudget
+    ) -> None:
+        """Compose bundles for one endpoint/partner pair until the dormant
+        list, the budget, the composer, or the distributor stops."""
+        site = partner.site
+        for target in endpoint.dormant_ids().tolist():
+            if budget.exhausted:
+                return
+            synapse_view = view_after(
+                self.pre_birth[partner], tuple(self.births.get(site, ()))
+            )
+            bundle = endpoint.compose_response(
+                event_index=signal.event_index,
+                synapse_view=synapse_view,
+                target_id=int(target),
+                registry=self.registry,
+                rng=self.rng,
+                birth_budget=budget.births,
+            )
+            if bundle is None or not self._bundle_accepted(bundle, budget.births):
+                return
+            self._admit_bundle(bundle, budget)
+
+    def _bundle_accepted(self, bundle: Any, birth_budget: int) -> bool:
+        """Let the distributor adjudicate the whole bundle, or fall back to
+        a plain budget check when it has no bundle protocol."""
+        distribute = getattr(self.tree.distributor, "allocate_bundles", None)
+        if distribute is not None:
+            accepted = tuple(distribute(birth_budget, (bundle,)))
+        else:
+            accepted = (
+                (bundle,) if bundle_birth_count(bundle) <= birth_budget else ()
+            )
+        return len(accepted) == 1 and accepted[0] is bundle
+
+    def _admit_bundle(self, bundle: Any, budget: _ResponseBudget) -> None:
+        """Spread an accepted bundle's ops into the plan and charge the budget."""
+        for op in bundle.ops:
+            if isinstance(op, NeuronUngate):
+                self.ungates.setdefault(op.site, []).append(op)
+                budget.ungates -= int(op.ids.numel())
+            else:
+                self.births.setdefault(op.site, []).append(op)
+        budget.births -= bundle_birth_count(bundle)
 
     # ------------------------------------------------------------------
     # Assembly
     # ------------------------------------------------------------------
 
     def _merged_deaths(self) -> dict[str, tuple[Any, ...]]:
-        """Root dedup duty: naked deaths merge into one union op per site
-        (the old engine's ``_deduplicate_synapse_deaths``, as a planning act).
+        """Root dedup duty: naked deaths merge into one union op per site.
+
+        Consumes the plain ``SynapseDeath`` ops out of ``self.absorbs`` (the
+        isolated-atom prunes an absorb bundle may carry) so each site commits
+        at most one death op.
         """
         merged: dict[str, tuple[Any, ...]] = {}
         for site, site_deaths in self.deaths.items():
@@ -367,6 +399,11 @@ class EventDraft:
         return ages_by_id, thresholds
 
     def plan(self, signal: Any, want_audit: bool) -> EventPlan:
+        # Cascaded deaths join the death lists only now, after the birth
+        # stage simulated them, so they never fed the replacement counts.
+        for site, cascades in self.cascades.items():
+            if cascades:
+                self.deaths.setdefault(site, []).extend(cascades)
         merged_deaths = self._merged_deaths()
         ops_by_site: dict[str, tuple[Any, ...]] = {
             child.site: tuple(
@@ -399,7 +436,11 @@ class EventDraft:
 
 
 def frozen_plan(tree: Any, signal: Any, want_audit: bool) -> EventPlan:
-    """A FROZEN event: consumed, empty, still auditable."""
+    """A FROZEN event: consumed, empty, still auditable.
+
+    The draft's stages never run, so the unused ``clock``/``rng`` slots are
+    passed as ``None``.
+    """
     draft = EventDraft(tree, clock=None, rng=None)
     return draft.plan(signal, want_audit)
 

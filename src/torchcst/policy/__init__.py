@@ -12,6 +12,7 @@ few named, validated whole-tree assemblies (``LC``, ``LC_response``,
 
 from .absorb import AbsorbAuditEntry, AbsorbCourt
 from .bundle import BundleComposer, Op, ProposalBundle, bundle_birth_count
+from .cadences import BirthWindowCadence, PeriodicCadence
 from .contract import (
     BudgetDistributor,
     BudgetRequest,
@@ -23,11 +24,21 @@ from .contract import (
     ObservationRequest,
     OpProposer,
     Phase,
-    RetentionCourt,
     QuotaPolicy,
+    RetentionCourt,
     StructuralQuota,
 )
 from .courts import MagnitudeCourt, RentCourt
+from .families import (
+    RENT,
+    NeuronLifecycle,
+    SynapseLifecycle,
+    cRES,
+    cRigL,
+    cSET,
+    thinned,
+)
+from .profit import ProfitCourt, TrialSession, TrialTransaction
 from .proposers import (
     GradFieldTopKBirth,
     IncidentOutputBirth,
@@ -36,7 +47,7 @@ from .proposers import (
     UniformBirth,
     UniformEntryBirth,
 )
-from .profit import ProfitCourt, TrialSession, TrialTransaction
+from .quotas import CallableQuota, ConstantQuota, QuotaWindow, WindowedQuota
 from .registry import RetiredCandidateRegistry
 from .runtime import (
     EndpointChild,
@@ -46,9 +57,6 @@ from .runtime import (
     SynapseChild,
 )
 from .scored import ScoredBirth, TopKSelector
-from .cadences import BirthWindowCadence, PeriodicCadence
-from .quotas import CallableQuota, ConstantQuota, QuotaWindow, WindowedQuota
-from .families import NeuronLifecycle, RENT, SynapseLifecycle, cRES, cRigL, cSET, thinned
 from .tree import QuotaRegime, RentEconomy, RuntimeTree
 from . import recipes
 
@@ -58,38 +66,36 @@ __all__ = [
     "BirthWindowCadence",
     "BudgetDistributor",
     "BudgetRequest",
-    "bundle_birth_count",
     "BundleComposer",
-    "Clock",
     "Cadence",
     "CallableQuota",
+    "Clock",
     "ConstantQuota",
     "EndpointChild",
     "EvenBudgetDistributor",
     "EventSignal",
     "GradFieldTopKBirth",
+    "IncidentOutputBirth",
     "InstrumentSpec",
     "InterfaceChild",
-    "ObservationRequest",
-    "IncidentOutputBirth",
     "MagnitudeCourt",
     "MergeProposer",
     "NeuronLifecycle",
-    "OrthogonalBirth",
+    "ObservationRequest",
     "Op",
     "OpProposer",
+    "OrthogonalBirth",
     "PeriodicCadence",
     "Phase",
     "PricedProposal",
-    "ProposalBundle",
     "ProfitCourt",
+    "ProposalBundle",
+    "QuotaPolicy",
     "QuotaRegime",
+    "QuotaWindow",
+    "RENT",
     "RentCourt",
     "RentEconomy",
-    "RENT",
-    "QuotaPolicy",
-    "QuotaWindow",
-    "recipes",
     "RetentionCourt",
     "RetiredCandidateRegistry",
     "RuntimeTree",
@@ -98,14 +104,16 @@ __all__ = [
     "StructuralQuota",
     "SynapseChild",
     "SynapseLifecycle",
-    "thinned",
+    "TopKSelector",
     "TrialSession",
     "TrialTransaction",
-    "TopKSelector",
-    "UniformEntryBirth",
     "UniformBirth",
+    "UniformEntryBirth",
     "WindowedQuota",
-    "cSET",
-    "cRigL",
+    "bundle_birth_count",
     "cRES",
+    "cRigL",
+    "cSET",
+    "recipes",
+    "thinned",
 ]

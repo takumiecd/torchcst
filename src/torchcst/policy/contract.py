@@ -8,6 +8,7 @@ from typing import Any, Protocol, Sequence, runtime_checkable
 
 import torch
 
+from torchcst._validation import require_int
 from torchcst.storage import (
     NeuronRetire,
     NeuronView,
@@ -28,14 +29,8 @@ class Clock:
     event_index: int
 
     def __post_init__(self) -> None:
-        for name, value in (
-            ("update_step", self.update_step),
-            ("event_index", self.event_index),
-        ):
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise TypeError(f"{name} must be an int")
-            if value < 0:
-                raise ValueError(f"{name} must be non-negative")
+        require_int(self.update_step, "update_step", minimum=0)
+        require_int(self.event_index, "event_index", minimum=0)
 
 
 class Phase(str, Enum):
@@ -55,10 +50,7 @@ class EventSignal:
     phase: Phase
 
     def __post_init__(self) -> None:
-        if isinstance(self.event_index, bool) or not isinstance(self.event_index, int):
-            raise TypeError("event_index must be an int")
-        if self.event_index < 0:
-            raise ValueError("event_index must be non-negative")
+        require_int(self.event_index, "event_index", minimum=0)
         if not isinstance(self.phase, Phase):
             raise TypeError("phase must be a Phase")
 
@@ -76,11 +68,7 @@ class StructuralQuota:
 
     def __post_init__(self) -> None:
         for name in ("synapse_birth", "synapse_merge", "synapse_absorb", "neuron_birth"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise TypeError(f"{name} must be an int")
-            if value < 0:
-                raise ValueError(f"{name} must be non-negative")
+            require_int(getattr(self, name), name, minimum=0)
         for name in ("synapse_prune", "neuron_prune"):
             value = getattr(self, name)
             if value is None:
@@ -119,18 +107,13 @@ class InstrumentSpec:
             raise ValueError("instrument name must be a non-empty string")
         if not 0.0 <= float(self.decay) <= 1.0:
             raise ValueError("instrument decay must be in [0, 1]")
-        if isinstance(self.pool_size, bool) or not isinstance(self.pool_size, int):
-            raise TypeError("instrument pool_size must be an int")
-        if self.pool_size <= 0:
-            raise ValueError("instrument pool_size must be positive")
-        if isinstance(self.rank, bool) or not isinstance(self.rank, int):
-            raise TypeError("instrument rank must be an int")
-        if self.rank <= 0:
-            raise ValueError("instrument rank must be positive")
+        require_int(self.pool_size, "instrument pool_size", minimum=1)
+        require_int(self.rank, "instrument rank", minimum=1)
+        # Accepted spelling variant; the canonical form is the stored one.
         if self.aggregation == "abs-after-sum":
             object.__setattr__(self, "aggregation", "abs_after_sum")
         if self.aggregation != "abs_after_sum":
-            raise ValueError("step 4 supports only abs_after_sum aggregation")
+            raise ValueError("only abs_after_sum aggregation is supported")
         if self.timing not in {"backward_inline", "after_backward"}:
             raise ValueError("instrument timing must be backward_inline or after_backward")
 
@@ -211,13 +194,15 @@ class EvenBudgetDistributor:
     def allocate(
         self, budget: int, requests: Sequence[BudgetRequest]
     ) -> tuple[int, ...]:
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         requests = tuple(requests)
         allocations = [0] * len(requests)
         remaining = budget
+        # Round-robin, one unit per pass, so leftover units land evenly.
+        # Prune-kind requests (and every request under replacement_only) are
+        # capped at their own replacement count; others may take the whole
+        # budget. The progressed flag ends the loop once every request is at
+        # its cap.
         while remaining:
             progressed = False
             for index, request in enumerate(requests):
@@ -241,17 +226,14 @@ class EvenBudgetDistributor:
         self, budget: int, bundles: Sequence[ProposalBundle]
     ) -> tuple[ProposalBundle, ...]:
         """Accept whole bundles in stable order while the budget permits."""
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         accepted: list[ProposalBundle] = []
         remaining = budget
         for bundle in tuple(bundles):
             if not isinstance(bundle, ProposalBundle):
                 raise TypeError("bundles must contain ProposalBundle values")
             if not bundle.atomic:
-                raise ValueError("step 6 accepts only atomic proposal bundles")
+                raise ValueError("only atomic proposal bundles are supported")
             cost = bundle_birth_count(bundle)
             if cost <= remaining:
                 accepted.append(bundle)
