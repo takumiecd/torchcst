@@ -7,7 +7,7 @@ from typing import Any
 
 import torch
 
-from torchcst.audit import AuditRecord, AuditSubscriber
+from torchcst.audit import AuditSubscriber
 from torchcst.compute import (
     BackwardContext,
     CaptureMode,
@@ -33,9 +33,7 @@ from torchcst.instruments import (
 )
 from torchcst.optim import OptimizerStateFollower
 from torchcst.storage import (
-    NeuronRetire,
     NeuronStore,
-    SynapseDeath,
     SynapseStore,
 )
 from .policy.bundle import Op
@@ -644,15 +642,11 @@ class StructuralEngine:
     ) -> tuple[Op, ...]:
         """One event on the linear stack: plan rises, commit descends.
 
-        The engine sees the adjudicated :class:`~.policy.tree.EventPlan`
-        (data) before anything commits, then hands it back for two-phase
-        execution and assembles the audit record from the values the tree
-        returned -- pre-adjudication ages/thresholds and post-commit
-        live/mass snapshots. No store is read here (the structural vertical
-        is storage-blind; capture above remains the continuous vertical).
-        A prepare failure aborts the whole event (phase2 ruling 1): the
-        event index is still consumed, nothing is written, and the abort
-        reason is preserved on the engine for inspection.
+        event? -> propose -> execute (or the profit family's trial, with the
+        engine lending its checkpoint factory blind) -> log -> publish the
+        record the root assembled -> reset event instruments. No store is
+        read here; a prepare failure aborts the whole event (ruling 1) with
+        the reason kept on ``last_event_abort``.
         """
         tree = self._tree
         assert tree is not None
@@ -670,39 +664,13 @@ class StructuralEngine:
         else:
             result = tree.execute(plan)
         self.last_event_abort = result.abort_reason
-        applied = result.applied
-        self._op_log.extend((self.clock.event_index, op) for op in applied)
+        self._op_log.extend((self.clock.event_index, op) for op in result.applied)
         if want_audit:
-            prune_ages: dict[str, list[int]] = {site: [] for site in self.stores}
-            by_site: dict[str, list[Op]] = {site: [] for site in self.stores}
-            for op in applied:
-                by_site[op.site].append(op)
-                if isinstance(op, (SynapseDeath, NeuronRetire)):
-                    prune_ages[op.site].extend(
-                        plan.audit_ages[op.site][int(entity_id)]
-                        for entity_id in op.ids.detach().to(device="cpu").tolist()
-                    )
-            record = AuditRecord(
-                event_index=self.clock.event_index,
-                applied_ops={
-                    site: tuple(site_ops) for site, site_ops in by_site.items()
-                },
-                live_counts={
-                    site: int(ids.numel())
-                    for site, ids in result.post_live_ids.items()
-                },
-                live_ids=dict(result.post_live_ids),
-                mass_snapshots=dict(result.post_mass),
-                prune_ages={
-                    site: torch.tensor(values, dtype=torch.int64)
-                    for site, values in prune_ages.items()
-                },
-                rent_thresholds=dict(plan.audit_thresholds),
-            )
+            record = tree.audit_record(plan, result, self.clock.event_index)
             for subscriber in tuple(self._audit_subscribers):
                 subscriber.push(record)
         self._reset_event_instruments()
-        return applied
+        return result.applied
 
     def _reset_event_instruments(self) -> None:
         """Consume every accumulate-until-consumed certificate instrument.
