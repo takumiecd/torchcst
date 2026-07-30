@@ -1059,10 +1059,13 @@ class StructuralEngine:
         if polish is not None and objective is None:
             raise RuntimeError("polish requires objective=")
         if objective is not None and self._tree is not None:
-            raise RuntimeError(
-                "profit trials are not yet a tree-family subprotocol; "
-                "objective= is unavailable on the tree path"
-            )
+            if self._tree.profit is None:
+                raise RuntimeError(
+                    "objective is unavailable when the tree has no profit court"
+                )
+            if not callable(objective):
+                raise TypeError("objective must be callable or None")
+            return
         if objective is not None and (
             not self._composed_policy or self.policy.profit is None
         ):
@@ -1147,7 +1150,7 @@ class StructuralEngine:
                 event_index=self.clock.event_index + 1,
             )
             if self._tree is not None:
-                return self._step_tree(candidate)
+                return self._step_tree(candidate, objective, polish)
             applied = self._arbiter.propose_event(self, candidate, objective, polish)
             if applied is None:
                 self.clock = Clock(candidate.update_step, self.clock.event_index)
@@ -1158,7 +1161,12 @@ class StructuralEngine:
             # must never leave autograd capture attached to the next update.
             self._close_update()
 
-    def _step_tree(self, candidate: Clock) -> tuple[Op, ...]:
+    def _step_tree(
+        self,
+        candidate: Clock,
+        objective: Callable[[], float] | None = None,
+        polish: Callable[[], None] | None = None,
+    ) -> tuple[Op, ...]:
         """One event on the linear stack: plan rises, commit descends.
 
         The engine sees the adjudicated :class:`~.policy.tree.EventPlan`
@@ -1180,7 +1188,12 @@ class StructuralEngine:
         self.clock = candidate
         want_audit = bool(self._audit_subscribers)
         plan = tree.propose(signal, candidate, self.rng, want_audit)
-        result = tree.execute(plan)
+        if tree.profit is not None:
+            result = tree.execute_trial(
+                plan, objective, polish, lambda: TrialTransaction(self)
+            )
+        else:
+            result = tree.execute(plan)
         self.last_event_abort = result.abort_reason
         applied = result.applied
         self._op_log.extend((self.clock.event_index, op) for op in applied)

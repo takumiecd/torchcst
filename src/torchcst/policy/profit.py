@@ -41,10 +41,15 @@ class TrialTransaction:
             else deepcopy(engine.optimizer.state_dict())
         )
         self._component_states: list[tuple[Any, Any]] = []
+        tree = getattr(engine, "_tree", None)
         components = (
-            engine.policy.synapse_retention_rule,
-            engine.policy.neuron_retention_rule,
-            engine.policy.profit,
+            tree.stateful_components()
+            if tree is not None
+            else (
+                engine.policy.synapse_retention_rule,
+                engine.policy.neuron_retention_rule,
+                engine.policy.profit,
+            )
         )
         seen: set[int] = set()
         for component in components:

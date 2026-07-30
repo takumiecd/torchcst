@@ -534,7 +534,12 @@ def _growth_by_profit_run(seed: int) -> _FixtureResult:
     # saturate and roll back, on every seed (verified empirically across
     # seeds 0..15 during harness construction) -- and it avoids attaching a
     # second OptimizerStateFollower to the same store mid-run.
-    policy = GrowthByProfit(event_interval=1, atoms_per_event=1, price=0.05)
+    if TREE_NATIVE:
+        from torchcst.policy.recipes import GrowthByProfit as GrowthByProfit_recipe
+
+        policy = GrowthByProfit_recipe(event_interval=1, atoms_per_event=1, price=0.05)
+    else:
+        policy = GrowthByProfit(event_interval=1, atoms_per_event=1, price=0.05)
     engine = StructuralEngine(
         {"rank": store, "rank_in": inputs, "rank_out": outputs},
         policy,

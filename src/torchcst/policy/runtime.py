@@ -211,6 +211,10 @@ class SynapseChild:
     # ------------------------------------------------------------------
 
     @property
+    def rules(self) -> tuple[Any | None, Any | None, Any | None]:
+        return (self._birth, self._prune, self._absorb)
+
+    @property
     def requires(self) -> tuple[Any, ...]:
         seen: list[Any] = []
         for rule in (self._birth, self._prune, self._absorb):

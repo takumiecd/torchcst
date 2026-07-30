@@ -14,11 +14,12 @@ deleted.
 
 from __future__ import annotations
 
-from .cadences import BirthWindowCadence
+from .cadences import BirthWindowCadence, PeriodicCadence
 from .contract import EvenBudgetDistributor, StructuralQuota
 from .courts import RentCourt
 from .families import SynapseLifecycle
-from .proposers import Bounds, UniformEntryBirth
+from .profit import ProfitCourt
+from .proposers import Bounds, UniformBirth, UniformEntryBirth
 from .quotas import QuotaWindow, WindowedQuota
 from .tree import QuotaRegime
 
@@ -80,4 +81,46 @@ def LC(
             default=StructuralQuota(),
         ),
         distributor=EvenBudgetDistributor(),
+    )
+
+
+def GrowthByProfit(
+    *,
+    event_interval: int = 1,
+    atoms_per_event: int = 1,
+    price: float = 0.0,
+    min_profit: float = 0.0,
+    initial_weight: float = 0.0,
+    bounds_in: Bounds | None = None,
+    bounds_out: Bounds | None = None,
+) -> QuotaRegime:
+    """Greedy profit-gated forward construction (theory U-2) as a tree.
+
+    Same parts as the retired ``catalog.GrowthByProfit`` preset: every event
+    proposes ``atoms_per_event`` uniform candidates and the root's profit
+    court keeps them only when the realized loss reduction beats the price.
+    No prune -- the run's natural stop is U-2's predicted K*(price). The
+    trial itself is the root's own subprotocol (docs/policy-tree-phase2.md
+    ruling 2); the engine only lends its checkpoint mechanism.
+    """
+
+    def make_birth(lam: float | None) -> UniformBirth:
+        del lam
+        return UniformBirth(
+            bounds_in=bounds_in,
+            bounds_out=bounds_out,
+            initial_weight=initial_weight,
+        )
+
+    method = SynapseLifecycle(
+        birth_factory=make_birth,
+        priceable=False,
+        label="GrowthByProfit",
+    )
+    return QuotaRegime(
+        budget=atoms_per_event,
+        method=method,
+        cadence=PeriodicCadence(event_interval=event_interval, freeze_event=None),
+        distributor=EvenBudgetDistributor(),
+        profit=ProfitCourt(min_profit=min_profit, cost_rate=price),
     )

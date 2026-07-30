@@ -395,6 +395,7 @@ class QuotaRegime:
         default_factory=lambda: EvenBudgetDistributor(replacement_only=True)
     )
     quota: QuotaPolicy | None = None
+    profit: Any | None = None
     _built_default: _BuiltLifecycle = field(init=False, repr=False, compare=False)
     _built_overrides: tuple[tuple[str, _BuiltLifecycle], ...] = field(
         init=False, repr=False, compare=False
@@ -404,6 +405,11 @@ class QuotaRegime:
     def __post_init__(self) -> None:
         if self.quota is not None and not isinstance(self.quota, QuotaPolicy):
             raise TypeError("quota must satisfy the QuotaPolicy protocol or be None")
+        if self.profit is not None and (
+            not callable(getattr(self.profit, "price_for", None))
+            or not callable(getattr(self.profit, "adjudicate", None))
+        ):
+            raise TypeError("profit must provide price_for/adjudicate or be None")
         _validate_budget(self.budget, "budget")
         _validate_cadence(self.cadence)
         method = _validate_method(self.method)
@@ -546,6 +552,7 @@ def _bind_root(
         cadence=root.cadence,
         distributor=root.distributor,
         quota=quota,
+        profit=getattr(root, "profit", None),
     )
 
 
@@ -638,6 +645,7 @@ class RuntimeTree:
         cadence: Cadence,
         distributor: BudgetDistributor,
         quota: QuotaPolicy,
+        profit: Any | None = None,
     ) -> None:
         from .registry import RetiredCandidateRegistry
 
@@ -646,6 +654,7 @@ class RuntimeTree:
         self.cadence = cadence
         self.distributor = distributor
         self.quota = quota
+        self.profit = profit
         self.registry = RetiredCandidateRegistry()
 
     # -- static declarations (read once by the engine) ---------------------
@@ -930,49 +939,141 @@ class RuntimeTree:
 
     # -- two-phase execution (ruling 1: whole-event abort) -----------------
 
-    def execute(self, plan: EventPlan) -> EventResult:
-        by_child = tuple(
-            (child, plan.ops_by_site.get(child.store.site, ()))
-            for child in self.children
-        )
+    def _two_phase(self, ops_by_site: Mapping[str, tuple[Any, ...]]) -> str | None:
+        """All involved children prepare, then all commit; retire lineages.
+
+        Returns an abort reason (nothing written) or ``None`` on success.
+        """
         prepared: list[tuple[Any, Any, Any]] = []
         try:
-            for child, ops in by_child:
+            for child in self.children:
+                ops = ops_by_site.get(child.store.site, ())
                 if not ops:
                     continue
                 ticket, retired = child.prepare(tuple(ops))
                 prepared.append((child, ticket, retired))
         except (KeyError, TypeError, ValueError, RuntimeError, NotImplementedError) as error:
-            # Ruling 1: whole-event abort. Nothing was written (prepare is
-            # read-only), but the event itself was consumed, so entity ages
-            # still tick -- exactly as a FROZEN event's do.
-            for child in self.children:
-                child.tick_age()
-            for endpoint in self.endpoints:
-                endpoint.tick_age()
-            return EventResult(
-                applied=(),
-                aborted=True,
-                abort_reason=f"{type(error).__name__}: {error}",
-                post_live_ids=self._post_ids(),
-                post_mass=self._post_mass(),
-            )
+            return f"{type(error).__name__}: {error}"
         for child, ticket, _ in prepared:
             child.commit(ticket)
         for child, _, retired in prepared:
             if retired.numel():
                 self.registry.retire(child.store.site, retired)
+        return None
+
+    def _tick_all(self) -> None:
+        # The event was consumed (applied, aborted, or frozen alike), so
+        # every store's entity ages tick exactly once.
         for child in self.children:
             child.tick_age()
         for endpoint in self.endpoints:
             endpoint.tick_age()
+
+    def _result(self, applied: tuple[Any, ...], reason: str | None) -> EventResult:
         return EventResult(
-            applied=plan.flattened(),
-            aborted=False,
-            abort_reason=None,
+            applied=applied,
+            aborted=reason is not None,
+            abort_reason=reason,
             post_live_ids=self._post_ids(),
             post_mass=self._post_mass(),
         )
+
+    def execute(self, plan: EventPlan) -> EventResult:
+        reason = self._two_phase(plan.ops_by_site)
+        self._tick_all()
+        return self._result(() if reason else plan.flattened(), reason)
+
+    # -- profit-trial subprotocol (ruling 2: the root's own adjudication) ---
+
+    def stateful_components(self) -> tuple[Any, ...]:
+        """Every rule/court whose state a world checkpoint must cover."""
+        seen: list[Any] = []
+        for child in self.children:
+            for rule in child.rules:
+                if (
+                    rule is not None
+                    and callable(getattr(rule, "state_dict", None))
+                    and not any(existing is rule for existing in seen)
+                ):
+                    seen.append(rule)
+        if self.profit is not None and callable(
+            getattr(self.profit, "state_dict", None)
+        ):
+            seen.append(self.profit)
+        return tuple(seen)
+
+    def _trial_split(
+        self, plan: EventPlan
+    ) -> tuple[dict[str, tuple[Any, ...]], dict[str, tuple[Any, ...]]]:
+        """Ordinary ops commit unconditionally; births/merges face the court
+        (the same op-kind dispatch the old profit path used)."""
+        ordinary: dict[str, tuple[Any, ...]] = {}
+        trial: dict[str, tuple[Any, ...]] = {}
+        for site, ops in plan.ops_by_site.items():
+            priced = tuple(
+                op for op in ops if hasattr(op, "w") or hasattr(op, "id_pairs")
+            )
+            plain = tuple(op for op in ops if op not in priced)
+            if plain:
+                ordinary[site] = plain
+            if priced:
+                trial[site] = priced
+        return ordinary, trial
+
+    def execute_trial(
+        self,
+        plan: EventPlan,
+        objective: Any,
+        polish: Any,
+        begin_transaction: Any,
+    ) -> EventResult:
+        """One event under the profit family: measure, then keep or revert.
+
+        The ordinary half (absorbs, retention) commits first, as it always
+        did; the world checkpoint is taken *after* it, so a rejected trial
+        keeps the ordinary half and reverts exactly the priced half -- the
+        old ``_apply_profit_trial`` boundary. ``begin_transaction`` is the
+        engine's checkpoint mechanism, handed over as a callable so the
+        engine never learns what the root does with it (ruling 2).
+        """
+        from .profit import TrialSession
+
+        ordinary, trial = self._trial_split(plan)
+        reason = self._two_phase(ordinary)
+        if reason is not None:
+            self._tick_all()
+            return self._result((), reason)
+        ordinary_flat = tuple(
+            op for site, ops in ordinary.items() for op in ops
+        )
+        trial_flat = tuple(op for site, ops in trial.items() for op in ops)
+        if not trial_flat:
+            self._tick_all()
+            return self._result(ordinary_flat, None)
+        if objective is None:
+            raise RuntimeError("a profit-priced proposal requires objective=")
+        transaction = begin_transaction()
+        try:
+            session = TrialSession(objective, transaction)
+            session.begin()
+            price = self.profit.price_for(
+                trial_flat, {child.store.site: child.store for child in self.children}
+            )
+            reason = self._two_phase(trial)
+            if reason is not None:
+                transaction.rollback()
+                self._tick_all()
+                return self._result(ordinary_flat, reason)
+            if polish is not None:
+                polish()
+            accepted = self.profit.adjudicate(trial_flat, price, session)
+        except BaseException:
+            if transaction.active:
+                transaction.rollback()
+            raise
+        self._tick_all()
+        applied = (*ordinary_flat, *trial_flat) if accepted else ordinary_flat
+        return self._result(applied, None)
 
     def _post_ids(self) -> dict[str, Any]:
         result = {child.store.site: child.store.view().ids for child in self.children}
