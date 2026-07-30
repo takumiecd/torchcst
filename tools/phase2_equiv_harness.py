@@ -228,7 +228,7 @@ def _lc_build(seed: int):
     )
     module = EntryLinear(store, 4, 3)
     optimizer = torch.optim.SGD(store.parameters(), lr=0.05)
-    policy = LC(
+    lc_kwargs = dict(
         event_interval=1,
         birth_start_event=1,
         birth_end_event=50,
@@ -241,6 +241,12 @@ def _lc_build(seed: int):
         bounds_out=3,
         initial_weight=0.0,
     )
+    if TREE_NATIVE:
+        from torchcst.policy.recipes import LC as LC_recipe
+
+        policy = LC_recipe(**lc_kwargs)
+    else:
+        policy = LC(**lc_kwargs)
     engine = StructuralEngine(
         {"entry": store}, policy, modules={"entry": module}, optimizer=optimizer, seed=seed
     )

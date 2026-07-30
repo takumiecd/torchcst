@@ -54,6 +54,7 @@ from .contract import (
     Cadence,
     EvenBudgetDistributor,
     Policy,
+    QuotaPolicy,
     StructuralQuota,
 )
 from .families import SynapseLifecycle, _BuiltLifecycle
@@ -329,6 +330,7 @@ class RentEconomy:
     overrides: Mapping[str, SynapseLifecycle] = field(default_factory=dict)
     budget: int = 2**31 - 1
     distributor: BudgetDistributor = field(default_factory=EvenBudgetDistributor)
+    quota: QuotaPolicy | None = None
     _built_default: _BuiltLifecycle = field(init=False, repr=False, compare=False)
     _built_overrides: tuple[tuple[str, _BuiltLifecycle], ...] = field(
         init=False, repr=False, compare=False
@@ -336,6 +338,8 @@ class RentEconomy:
     _override_patterns: tuple[str, ...] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        if self.quota is not None and not isinstance(self.quota, QuotaPolicy):
+            raise TypeError("quota must satisfy the QuotaPolicy protocol or be None")
         if isinstance(self.lam, bool) or not isinstance(self.lam, (int, float)):
             raise TypeError("lam must be a real number")
         lam = float(self.lam)
@@ -390,6 +394,7 @@ class QuotaRegime:
     distributor: BudgetDistributor = field(
         default_factory=lambda: EvenBudgetDistributor(replacement_only=True)
     )
+    quota: QuotaPolicy | None = None
     _built_default: _BuiltLifecycle = field(init=False, repr=False, compare=False)
     _built_overrides: tuple[tuple[str, _BuiltLifecycle], ...] = field(
         init=False, repr=False, compare=False
@@ -397,6 +402,8 @@ class QuotaRegime:
     _override_patterns: tuple[str, ...] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        if self.quota is not None and not isinstance(self.quota, QuotaPolicy):
+            raise TypeError("quota must satisfy the QuotaPolicy protocol or be None")
         _validate_budget(self.budget, "budget")
         _validate_cadence(self.cadence)
         method = _validate_method(self.method)
@@ -528,13 +535,17 @@ def _bind_root(
             f"override pattern(s) {unmatched!r} match no bound site "
             f"{sorted(bindings)!r}"
         )
+    quota = root.quota
+    if quota is None:
+        quota = ConstantQuota(
+            StructuralQuota(synapse_birth=root.budget, synapse_absorb=root.budget)
+        )
     return RuntimeTree(
         children=tuple(children),
         endpoints=tuple(EndpointChild(store) for store in neuron_stores),
         cadence=root.cadence,
         distributor=root.distributor,
-        birth_budget=root.budget,
-        absorb_budget=root.budget,
+        quota=quota,
     )
 
 
@@ -626,8 +637,7 @@ class RuntimeTree:
         endpoints: tuple[Any, ...],
         cadence: Cadence,
         distributor: BudgetDistributor,
-        birth_budget: int,
-        absorb_budget: int,
+        quota: QuotaPolicy,
     ) -> None:
         from .registry import RetiredCandidateRegistry
 
@@ -635,8 +645,7 @@ class RuntimeTree:
         self.endpoints = tuple(endpoints)
         self.cadence = cadence
         self.distributor = distributor
-        self.birth_budget = int(birth_budget)
-        self.absorb_budget = int(absorb_budget)
+        self.quota = quota
         self.registry = RetiredCandidateRegistry()
 
     # -- static declarations (read once by the engine) ---------------------
@@ -693,6 +702,60 @@ class RuntimeTree:
             raise RuntimeError(f"distributor exceeded the {kind!r} structural quota")
         return dict(zip(sites, grants))
 
+    def _cap_prune(
+        self,
+        deaths_by_site: dict[str, list[Any]],
+        budget: int | None,
+    ) -> tuple[dict[str, list[Any]], dict[str, int]]:
+        """Enforce an optional logical prune limit, court order preserved."""
+        from .contract import BudgetRequest
+
+        if budget is not None:
+            requests = tuple(
+                BudgetRequest(
+                    site,
+                    0,
+                    sum(int(op.ids.numel()) for op in operations),
+                    "synapse_prune",
+                )
+                for site, operations in deaths_by_site.items()
+                if operations
+            )
+            grants = self.distributor.allocate(budget, requests)
+            valid = (
+                len(grants) == len(requests)
+                and all(
+                    not isinstance(value, bool)
+                    and isinstance(value, int)
+                    and 0 <= value <= request.replacement_count
+                    for value, request in zip(grants, requests)
+                )
+                and sum(grants) <= budget
+            )
+            if not valid:
+                raise RuntimeError(
+                    "distributor exceeded the 'synapse_prune' structural quota"
+                )
+            by_site = dict(zip((request.site for request in requests), grants))
+            capped: dict[str, list[Any]] = {}
+            for site, operations in deaths_by_site.items():
+                remaining = by_site.get(site, 0)
+                kept: list[Any] = []
+                for operation in operations:
+                    if remaining == 0:
+                        break
+                    ids = operation.ids[:remaining]
+                    if ids.numel():
+                        kept.append(type(operation)(operation.site, ids))
+                        remaining -= int(ids.numel())
+                capped[site] = kept
+            deaths_by_site = capped
+        replacement = {
+            site: sum(int(op.ids.numel()) for op in operations)
+            for site, operations in deaths_by_site.items()
+        }
+        return deaths_by_site, replacement
+
     @staticmethod
     def _absorb_participants(proposal: Any) -> tuple[tuple[int, ...], tuple[int, ...]]:
         """(dying ids, receiver ids) across an op or a bundle of ops."""
@@ -740,7 +803,12 @@ class RuntimeTree:
                 )
                 plan_registry.retire(child.store.site, lineages)
 
-            absorb_grants = self._allocate(self.absorb_budget, "synapse_absorb", {})
+            event_quota = self.quota.at(clock, getattr(signal, "phase", None))
+            if not isinstance(event_quota, StructuralQuota):
+                raise TypeError("QuotaPolicy.at() must return StructuralQuota")
+            absorb_grants = self._allocate(
+                event_quota.synapse_absorb, "synapse_absorb", {}
+            )
             for child in self.children:
                 site = child.store.site
                 accepted: list[Any] = []
@@ -781,7 +849,12 @@ class RuntimeTree:
                 deaths_by_site[site] = list(decided)
                 replacement[site] = sum(int(d.ids.numel()) for d in decided)
 
-            birth_grants = self._allocate(self.birth_budget, "synapse_birth", replacement)
+            deaths_by_site, replacement = self._cap_prune(
+                deaths_by_site, event_quota.synapse_prune
+            )
+            birth_grants = self._allocate(
+                event_quota.synapse_birth, "synapse_birth", replacement
+            )
             for child in self.children:
                 site = child.store.site
                 pre_birth = view_after(
