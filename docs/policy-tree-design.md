@@ -1,8 +1,11 @@
 # Policy Tree — v2 API 設計ノート（草案）
 
-起草: 2026-07-29（ユーザーとの設計議論より）。ステータス: **草案・実装前**。
+起草: 2026-07-29（ユーザーとの設計議論より）。
+ステータス: **Phase 1（compile-down adapter）実装済み**（2026-07-30、
+`policy/families.py` + `policy/tree.py` + README「Policy trees」節。未決3点は
+起草者推奨案で確定: cadence 根のみ／異種根の混在なし／requires 子宣言・根合算）。
+Phase 2（engine 木ネイティブ化）は未着手。
 現行 API（composed `Policy` + site 文字列 + `StructuralEngine`）はベンチ走行中のため凍結。
-本ノートは次期 API の合意形成用。
 
 ## 動機（観測された問題）
 

@@ -336,6 +336,72 @@ The [`framework design map`](docs/framework-design.md) records the current
 responsibility boundaries, storage behavior, operation support matrix, and the
 recommended extension checklist.
 
+## Policy trees (v2 API, Phase 1 preview)
+
+The policy tree is the successor authoring surface described in
+[`docs/policy-tree-design.md`](docs/policy-tree-design.md): one root node owns
+the coordination mechanism (and the knobs that go with it — the cadence, and
+either a shared rent `lam` or an operation-count `budget`), while named method
+constructors describe what happens at each site. Phase 1 ships it as a
+compile-down adapter: `root.compile(stores)` folds the tree into the exact
+composed `Policy` that `StructuralEngine` already runs, so nothing about the
+engine, the update ordering, or existing composed policies changes.
+
+```python
+from torchcst.policy import QuotaRegime, RentEconomy, RENT, cRES, PeriodicCadence
+from torchcst.policy.families import cSET, thinned  # tree vocabulary
+
+# Central quota distribution, one method broadcast to every site.
+root = QuotaRegime(
+    budget=2,
+    method=cSET(drop_fraction=0.3),
+    cadence=PeriodicCadence(event_interval=1),
+)
+
+# Rent economy: the root alone owns lam; one site family is overridden.
+root = RentEconomy(
+    lam=1e-6,
+    method=RENT(radius=0.01),
+    cadence=PeriodicCadence(event_interval=1, observe_window=1),
+    overrides={"stage2.*": thinned(cRES(), every=2)},
+)
+
+policy = root.compile(stores)  # a current-contract composed Policy
+engine = StructuralEngine(stores, policy, modules=modules, seed=0)
+```
+
+The vocabulary is layered so most users never leave level 3:
+
+1. **Named methods** — `cSET()`, `cRigL()`, `cRES()`, `RENT()` are plain
+   functions returning a `SynapseLifecycle`; the difference between two
+   methods reads as a code diff. They accept only their own selection-rule
+   internals (pool size, drop fraction, thresholds) — never `lam`, never a
+   cadence.
+2. **Composition** — `SynapseLifecycle(birth_factory=..., ...)`, for authors
+   of new methods.
+3. **Op data** — engine-only; humans do not write it.
+
+Rules the tree enforces at construction time rather than by convention:
+
+- **Cadence is root-only.** A child may thin (`thinned(lifecycle, every=2)`
+  fires on every second root-issued event) but can never carry a competing
+  schedule.
+- **Family compatibility is checked eagerly.** `RentEconomy(method=cSET())`
+  raises immediately: `cSET`'s uniform birth has no per-candidate price tag to
+  gate on, so it cannot join a rent economy. Conversely `RENT()` refuses to
+  build under `QuotaRegime`/`Independent`, whose roots carry no `lam`.
+- **`requires` is aggregated for you.** Each lifecycle's rules declare their
+  own instrument requirements; the compiled `Policy` carries their union.
+- **Override globs must match.** Passing `stores` to `compile` turns a typo'd
+  pattern (`overrides={"stage9.*": ...}`) into an error instead of a silent
+  no-op.
+
+Naming note: top-level `torchcst.policy.cSET`/`cRigL` still refer to the
+pre-existing catalog presets (dataclass policies usable without a tree); the
+tree-vocabulary constructors with the same names live in
+`torchcst.policy.families` until the catalog spellings are retired. `cRES` and
+`RENT` are new names and are exported at the top level directly.
+
 ## Implemented surface
 
 - continuous Gaussian or compact-support triangular `CSTLinear` with learnable
