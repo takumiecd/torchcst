@@ -1,13 +1,19 @@
-"""Stage 3b: absorb promoted from whole-policy to a detachable composed part.
+"""Stage 3b: absorb as a tree-native ``SynapseLifecycle.absorb_factory`` part.
 
-Covers ``docs/absorb-and-gram-design.md`` section 5's stage 3b acceptance:
-quota/contract wiring for ``ActionKind.SYNAPSE_ABSORB``, absorb-before-prune
-plan-assembly ordering, ``AbsorbCourt``'s ``include_isolated`` receiver-less
-prune, a one-screen RENT composition (``AbsorbCourt`` + rent-gated
-``ScoredBirth``), and the "cSET / cRigL / cRES / RENT each writable as a
-one-screen composed ``Policy``" composability proof. :class:`AbsorbPolicy`
-(stage 3a) is untouched here -- its own regression lives in
-``test_absorb_policy.py``.
+Covers ``docs/absorb-and-gram-design.md`` section 5's stage 3b acceptance,
+re-expressed against the tree-native root (``docs/policy-tree-phase2.md``
+S4e retires the composed ``Policy``/``ActionSpec``/``ActionKind`` this file
+used to build against): absorb-before-prune plan-assembly ordering,
+``AbsorbCourt``'s ``include_isolated`` receiver-less prune, a one-screen RENT
+composition (``AbsorbCourt`` + rent-gated ``ScoredBirth``), and the
+"cSET / cRigL / cRES / RENT each writable as one screen" composability
+proof -- now via the named tree method constructors (``cSET``/``cRigL``/
+``cRES``/``RENT``) under a ``QuotaRegime``/``RentEconomy`` root, rather than
+hand-assembled ``ActionSpec`` tuples.
+
+``AbsorbPolicy`` (stage 3a, the first-class whole-``StructuralPolicy`` path)
+and its own regression (``test_absorb_policy.py``) were removed in the same
+step: that protocol is retired outright, not migrated.
 """
 
 from __future__ import annotations
@@ -19,18 +25,17 @@ from torchcst.engine import StructuralEngine
 from torchcst.instruments import ContinuousCandidateRequest
 from torchcst.policy import (
     AbsorbCourt,
-    ActionKind,
-    ActionSpec,
     ConstantQuota,
     EvenBudgetDistributor,
-    GradFieldTopKBirth,
     MagnitudeCourt,
     PeriodicCadence,
-    Policy,
+    QuotaRegime,
+    RentEconomy,
     ScoredBirth,
     StructuralQuota,
-    UniformEntryBirth,
+    SynapseLifecycle,
 )
+from torchcst.policy.families import RENT, cRES, cRigL, cSET
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import (
     NeuronStore,
@@ -43,9 +48,7 @@ from torchcst.storage import (
 
 # ---------------------------------------------------------------------------
 # Shared continuous-edge fixture: a planted near-duplicate triple (atoms 0-2,
-# all within 1e-4 of (0.5, 0.5)) plus room to grow, mirroring
-# test_absorb_policy.py's ``_build`` so absorb behavior is directly
-# comparable across the 3a/3b routes.
+# all within 1e-4 of (0.5, 0.5)) plus room to grow.
 # ---------------------------------------------------------------------------
 
 
@@ -119,7 +122,14 @@ def _op_equal(op_a: object, op_b: object) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Contract: quota, ActionSpec validation, absorb-before-prune ordering.
+# Contract: quota and absorb-before-prune ordering.
+#
+# (test_action_spec_synapse_absorb_requires_propose removed: it verified
+# ActionSpec's own propose()-presence validation, retired along with
+# ActionSpec/ActionKind/Policy in Phase 2 S4e. The tree vocabulary has
+# nothing analogous to validate -- a SynapseLifecycle's absorb_factory is a
+# plain callable, checked only by SynapseLifecycle.__post_init__'s
+# callable() check, already covered by test_policy_tree.py's family tests.)
 # ---------------------------------------------------------------------------
 
 
@@ -140,38 +150,24 @@ def test_structural_quota_synapse_absorb_defaults_and_validates() -> None:
         raise AssertionError("non-int synapse_absorb must raise")
 
 
-def test_action_spec_synapse_absorb_requires_propose() -> None:
-    court = AbsorbCourt(rent=1.0e-6, radius=0.01, ridge=1.0e-9)
-    spec = ActionSpec.synapse_absorb(court)
-    assert spec.kind is ActionKind.SYNAPSE_ABSORB
-    assert spec.rule is court
-
-    class _NoPropose:
-        pass
-
-    try:
-        ActionSpec(ActionKind.SYNAPSE_ABSORB, _NoPropose())
-    except TypeError:
-        pass
-    else:
-        raise AssertionError("a rule without propose() must be rejected")
-
-
 def test_quota_limits_absorb_count_even_when_more_are_eligible() -> None:
     store, inputs, outputs, module = _edge_store()
-    policy = Policy(
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: None,
+        absorb_factory=lambda lam: AbsorbCourt(rent=1.0, radius=0.01, ridge=1.0e-9),
+        priceable=False,
+        label="absorb-only",
+    )
+    root = QuotaRegime(
+        budget=0,
+        method=method,
         cadence=PeriodicCadence(event_interval=1),
         quota=ConstantQuota(StructuralQuota(synapse_absorb=1)),
-        actions=(
-            ActionSpec.synapse_absorb(
-                AbsorbCourt(rent=1.0, radius=0.01, ridge=1.0e-9)
-            ),
-        ),
         distributor=EvenBudgetDistributor(),
     )
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
-        policy,
+        root,
         modules={"edge": module},
     )
     applied = engine.step()
@@ -200,27 +196,25 @@ def test_absorb_ops_apply_before_any_prune_death_within_one_event() -> None:
             )
         ]
     )
-    policy = Policy(
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: None,
+        absorb_factory=lambda lam: AbsorbCourt(
+            rent=1.0, radius=0.01, ridge=1.0e-9, include_isolated=False
+        ),
+        prune_factory=lambda: MagnitudeCourt(1.0),
+        priceable=False,
+        label="absorb-then-prune",
+    )
+    root = QuotaRegime(
+        budget=0,
+        method=method,
         cadence=PeriodicCadence(event_interval=1),
-        quota=ConstantQuota(
-            StructuralQuota(synapse_absorb=10, synapse_prune=2)
-        ),
-        actions=(
-            ActionSpec.synapse_absorb(
-                AbsorbCourt(
-                    rent=1.0,
-                    radius=0.01,
-                    ridge=1.0e-9,
-                    include_isolated=False,
-                )
-            ),
-            ActionSpec.synapse_prune(MagnitudeCourt(1.0)),
-        ),
+        quota=ConstantQuota(StructuralQuota(synapse_absorb=10, synapse_prune=2)),
         distributor=EvenBudgetDistributor(),
     )
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
-        policy,
+        root,
         modules={"edge": module},
     )
     applied = engine.step()
@@ -288,19 +282,22 @@ def test_include_isolated_prunes_near_zero_cost_and_spares_effective_atom() -> N
 
     def _run(w_value: float) -> int:
         store, inputs, outputs, module = _isolated_store(w_value)
-        policy = Policy(
+        method = SynapseLifecycle(
+            birth_factory=lambda lam: None,
+            absorb_factory=lambda lam: AbsorbCourt(rent=rent, radius=0.05, ridge=1.0e-9),
+            priceable=False,
+            label="isolated-absorb",
+        )
+        root = QuotaRegime(
+            budget=0,
+            method=method,
             cadence=PeriodicCadence(event_interval=1),
             quota=ConstantQuota(StructuralQuota(synapse_absorb=5)),
-            actions=(
-                ActionSpec.synapse_absorb(
-                    AbsorbCourt(rent=rent, radius=0.05, ridge=1.0e-9)
-                ),
-            ),
             distributor=EvenBudgetDistributor(),
         )
         engine = StructuralEngine(
             {"edge": store, "edge_in": inputs, "edge_out": outputs},
-            policy,
+            root,
             modules={"edge": module},
         )
         applied = engine.step()
@@ -320,20 +317,12 @@ def test_include_isolated_prunes_near_zero_cost_and_spares_effective_atom() -> N
 # ---------------------------------------------------------------------------
 
 
-def _rent_policy(rent: float, request: ContinuousCandidateRequest) -> Policy:
-    return Policy(
-        cadence=PeriodicCadence(event_interval=1, observe_window=1),
-        quota=ConstantQuota(
-            StructuralQuota(synapse_absorb=10, synapse_birth=10)
-        ),
-        observations=(request,),
-        actions=(
-            ActionSpec.synapse_absorb(
-                AbsorbCourt(rent=rent, radius=0.01, ridge=1.0e-9)
-            ),
-            ActionSpec.synapse_birth(ScoredBirth(request=request, rent=rent)),
-        ),
-        distributor=EvenBudgetDistributor(),
+def _rent_lifecycle(rent: float, request: ContinuousCandidateRequest) -> SynapseLifecycle:
+    return SynapseLifecycle(
+        birth_factory=lambda lam: ScoredBirth(request=request, rent=rent),
+        absorb_factory=lambda lam: AbsorbCourt(rent=rent, radius=0.01, ridge=1.0e-9),
+        priceable=False,
+        label="rent-composition",
     )
 
 
@@ -341,9 +330,15 @@ def _rent_engine(rent: float, *, seed: int = 5):
     store, inputs, outputs, module = _edge_store()
     request = ContinuousCandidateRequest(pool_size=24, mode="deflated")
     optimizer = torch.optim.SGD(store.parameters(), lr=1.0e-5)
+    root = QuotaRegime(
+        budget=10,
+        method=_rent_lifecycle(rent, request),
+        cadence=PeriodicCadence(event_interval=1, observe_window=1),
+        distributor=EvenBudgetDistributor(),
+    )
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
-        _rent_policy(rent, request),
+        root,
         modules={"edge": module},
         optimizer=optimizer,
         seed=seed,
@@ -415,7 +410,7 @@ def test_rent_composition_replay_is_deterministic() -> None:
 
 # ---------------------------------------------------------------------------
 # One-screen composability proof: cSET / cRigL / cRES / RENT, each a single
-# Policy(...) expression from public parts (no catalog entries involved).
+# QuotaRegime/RentEconomy root built from one named method constructor.
 # ---------------------------------------------------------------------------
 
 
@@ -456,54 +451,43 @@ def _step_continuous(engine: StructuralEngine, module: CSTLinear) -> None:
     engine.step()
 
 
-def test_cset_crigl_cres_rent_each_compose_as_one_screen_policy() -> None:
+def test_cset_crigl_cres_rent_each_compose_as_one_screen_tree() -> None:
     # cSET-like: periodic random rewiring, smallest-magnitude replacement.
+    # QuotaRegime's own default distributor (replacement_only=True) is
+    # exactly what makes an effectively-unbounded budget still a
+    # replacement-only rewiring.
     store, module = _entry_fixture()
-    cset = Policy(
+    cset_root = QuotaRegime(
+        budget=2**31 - 1,
+        method=cSET(bounds_in=3, bounds_out=2, drop_fraction=0.3),
         cadence=PeriodicCadence(event_interval=1),
-        quota=ConstantQuota(StructuralQuota(synapse_birth=2**31 - 1)),
-        actions=(
-            ActionSpec.synapse_prune(MagnitudeCourt(0.3)),
-            ActionSpec.synapse_birth(UniformEntryBirth(3, 2)),
-        ),
-        distributor=EvenBudgetDistributor(replacement_only=True),
     )
-    engine = StructuralEngine({"entry": store}, cset, modules={"entry": module}, seed=1)
+    engine = StructuralEngine({"entry": store}, cset_root, modules={"entry": module}, seed=1)
     for _ in range(3):
         _step_entry(engine, module)
 
     # cRigL-like: gradient-greedy vertex buying, smallest-magnitude replacement.
     store, module = _entry_fixture()
-    crigl = Policy(
+    crigl_root = QuotaRegime(
+        budget=2**31 - 1,
+        method=cRigL(drop_fraction=0.3, pool_size=8),
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
-        quota=ConstantQuota(StructuralQuota(synapse_birth=2**31 - 1)),
-        actions=(
-            ActionSpec.synapse_prune(MagnitudeCourt(0.3)),
-            ActionSpec.synapse_birth(GradFieldTopKBirth(pool_size=8)),
-        ),
-        distributor=EvenBudgetDistributor(replacement_only=True),
     )
-    engine = StructuralEngine({"entry": store}, crigl, modules={"entry": module}, seed=2)
+    engine = StructuralEngine({"entry": store}, crigl_root, modules={"entry": module}, seed=2)
     for _ in range(3):
         _step_entry(engine, module)
 
     # cRES-like: continuous deflated-candidate growth, smallest-magnitude
     # replacement.
     store, inputs, outputs, module = _edge_store()
-    request = ContinuousCandidateRequest(pool_size=16, mode="deflated")
-    cres = Policy(
+    cres_root = QuotaRegime(
+        budget=2,
+        method=cRES(pool_size=16, drop_fraction=0.2),
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
-        quota=ConstantQuota(StructuralQuota(synapse_birth=2)),
-        observations=(request,),
-        actions=(
-            ActionSpec.synapse_prune(MagnitudeCourt(0.2)),
-            ActionSpec.synapse_birth(ScoredBirth(request=request)),
-        ),
-        distributor=EvenBudgetDistributor(replacement_only=True),
     )
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
-        cres,
+        cres_root,
         modules={"edge": module},
         seed=3,
     )
@@ -511,26 +495,19 @@ def test_cset_crigl_cres_rent_each_compose_as_one_screen_policy() -> None:
         _step_continuous(engine, module)
 
     # RENT-like: absorb (exit) + rent-gated ScoredBirth (entrance), no
-    # separate prune court -- receiver-less absorb already is one.
+    # separate prune court -- receiver-less absorb already is one. (Both
+    # RentEconomy's own default distributor and RENT()'s shared lam price
+    # the exit and entrance sides identically.)
     store, inputs, outputs, module = _edge_store()
-    request = ContinuousCandidateRequest(pool_size=16, mode="deflated")
-    rent = Policy(
+    rent_root = RentEconomy(
+        lam=1.0e-6,
+        method=RENT(radius=0.01, ridge=1.0e-9, pool_size=16),
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
-        quota=ConstantQuota(StructuralQuota(synapse_absorb=4, synapse_birth=4)),
-        observations=(request,),
-        actions=(
-            ActionSpec.synapse_absorb(
-                AbsorbCourt(rent=1.0e-6, radius=0.01, ridge=1.0e-9)
-            ),
-            ActionSpec.synapse_birth(
-                ScoredBirth(request=request, rent=1.0e-6)
-            ),
-        ),
-        distributor=EvenBudgetDistributor(),
+        budget=4,
     )
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
-        rent,
+        rent_root,
         modules={"edge": module},
         seed=4,
     )

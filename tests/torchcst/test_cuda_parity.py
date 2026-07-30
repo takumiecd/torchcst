@@ -23,14 +23,12 @@ from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import ContinuousGradientRequest
 from torchcst.policy import (
-    ActionSpec,
-    ConstantQuota,
     EvenBudgetDistributor,
     MagnitudeCourt,
     PeriodicCadence,
-    Policy,
+    QuotaRegime,
     ScoredBirth,
-    StructuralQuota,
+    SynapseLifecycle,
 )
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -81,13 +79,16 @@ def build(device: str):
     scorer = ContinuousGradientRequest(
         pool_size=32, decay=0.0, chunk_size=8, timing="backward_inline"
     )
-    policy = Policy(
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: ScoredBirth(scorer, initial_weight=0.0),
+        prune_factory=lambda: MagnitudeCourt(drop_fraction=0.0),
+        priceable=False,
+        label="cuda-parity",
+    )
+    policy = QuotaRegime(
+        budget=1,
+        method=method,
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
-        quota=ConstantQuota(StructuralQuota(synapse_birth=1)),
-        actions=(
-            ActionSpec.synapse_prune(MagnitudeCourt(drop_fraction=0.0)),
-            ActionSpec.synapse_birth(scorer and ScoredBirth(scorer, initial_weight=0.0)),
-        ),
         distributor=EvenBudgetDistributor(),
     )
     optimizer = torch.optim.Adam(layer.parameters(), lr=1e-3)

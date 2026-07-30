@@ -1,8 +1,8 @@
 """Phase 2 S0: statistical equivalence harness.
 
 ``docs/policy-tree-phase2.md`` retires op_log bit-compatibility as the
-migration's acceptance gate (the engine's event semantics are about to change
-from an interleaved apply-as-you-go loop to a snapshot-pure
+migration's acceptance gate (the engine's event semantics changed from an
+interleaved apply-as-you-go loop to a snapshot-pure
 ``propose(EventView) -> Plan`` cycle). The replacement gate is *statistical*
 equivalence: capture a fixed battery of small fixtures x seeds against
 whatever ``src/torchcst`` currently implements, reduce each run to a
@@ -19,13 +19,21 @@ engine under study -- is broken (e.g. a stray use of the global torch RNG
 instead of the engine's own ``torch.Generator``), and capturing a baseline
 from a non-deterministic harness would be meaningless.
 
+``tools/phase2_baseline.json`` is frozen: it was captured against the
+pre-S4e world (composed ``Policy``/catalog presets/``StructuralPolicy``, all
+now deleted) and is the constitution every later stage's fingerprint is
+compared against. Every fixture below now runs exclusively through the
+tree-native path (``docs/policy-tree-phase2.md`` S4e retires the compile-down
+bridge and the composed/whole-policy engine paths entirely); the baseline
+file itself is never regenerated.
+
 Fixture inventory (each is deliberately tiny -- CPU-seconds, matching
 ``tests/torchcst/test_policy_tree.py``'s fixture scale) and the event path
 each one exercises:
 
-    lc_birth_prune            composed ``Policy`` (catalog ``LC``): periodic
+    lc_birth_prune            tree ``QuotaRegime`` (``recipes.LC``): periodic
                                birth + rent-based prune, the plain
-                               birth-then-prune composed path.
+                               birth-then-prune path.
     rent_economy_rent         tree ``RentEconomy(method=RENT())``: absorb
                                (exit) + rent-gated ``ScoredBirth`` (entrance),
                                lambda-priced proposals.
@@ -35,21 +43,22 @@ each one exercises:
                                quota, deflated continuous-candidate scored
                                birth family (the "quota + scored" pairing
                                ``cSET`` alone doesn't cover).
-    lc_response_cascade       catalog ``LC_response``: a scripted
-                               ``NeuronUngate`` response bundle followed, once
-                               the ungated neuron goes back to sleep, by a
-                               ``NeuronRetire`` -> cascaded ``SynapseDeath``
-                               cross-store plan -- the one path that touches
-                               neuron-side ops at all.
-    growth_by_profit          catalog ``GrowthByProfit``: realized-profit
-                               trial economy. Run in two back-to-back phases
-                               (price=0.0 then a prohibitive price) so the
-                               battery is guaranteed to exercise at least one
-                               rejected trial (full birth+polish rollback),
-                               not just the accept path.
-    structural_policy_direct  a first-class ``StructuralPolicy`` written
-                               directly against the engine's whole-policy
-                               protocol (no ``Policy``/tree layering at all).
+    lc_response_cascade       tree ``QuotaRegime`` (``recipes.LC_response``): a
+                               scripted ``NeuronUngate`` response bundle
+                               followed, once the ungated neuron goes back to
+                               sleep, by a ``NeuronRetire`` -> cascaded
+                               ``SynapseDeath`` cross-store plan -- the one
+                               path that touches neuron-side ops at all.
+    growth_by_profit          tree ``QuotaRegime`` (``recipes.GrowthByProfit``):
+                               realized-profit trial economy. Run in two
+                               back-to-back phases (price=0.0 then a
+                               prohibitive price) so the battery is guaranteed
+                               to exercise at least one rejected trial (full
+                               birth+polish rollback), not just the accept path.
+    structural_policy_direct  Phase 2 S4d's ``StructuralPolicy`` successor: a
+                               hand-rolled ``SynapseLifecycle`` under a
+                               ``QuotaRegime`` root, authored directly against
+                               public parts rather than a preset or recipe.
 
 Every fixture is driven only through the public ``StructuralEngine`` surface
 (``begin_update``/``observe_microbatch``/``finalize_backward``/``step``) plus
@@ -60,7 +69,7 @@ copied verbatim from ``tests/torchcst/test_lc_response.py``).
 
 Usage::
 
-    python tools/phase2_equiv_harness.py --out tools/phase2_baseline.json
+    python tools/phase2_equiv_harness.py --out /tmp/candidate.json
     python tools/phase2_equiv_harness.py | python tools/phase2_equiv_compare.py tools/phase2_baseline.json -
 """
 
@@ -72,7 +81,7 @@ import statistics
 import sys
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -86,18 +95,15 @@ import torch  # noqa: E402
 from torchcst.compute import CSTLinear, EntryLinear  # noqa: E402
 from torchcst.engine import StructuralEngine  # noqa: E402
 from torchcst.policy import (  # noqa: E402
-    LC,
-    LC_response,
-    GrowthByProfit,
     PeriodicCadence,
-    ProposalBundle,
     QuotaRegime,
     RentEconomy,
-    StructuralPlan,
+    SynapseLifecycle,
     cRES,
     cSET,
     RENT,
 )
+from torchcst.policy.recipes import GrowthByProfit, LC, LC_response  # noqa: E402
 from torchcst.representation import GaussianKernel, RepresentationSpec  # noqa: E402
 from torchcst.storage import (  # noqa: E402
     NeuronStore,
@@ -207,7 +213,7 @@ def _drive_training_loop(
 
 
 # ---------------------------------------------------------------------------
-# (a) LC: composed Policy, plain birth + rent-based prune.
+# (a) LC: tree-native QuotaRegime recipe, plain birth + rent-based prune.
 # ---------------------------------------------------------------------------
 
 
@@ -228,7 +234,7 @@ def _lc_build(seed: int):
     )
     module = EntryLinear(store, 4, 3)
     optimizer = torch.optim.SGD(store.parameters(), lr=0.05)
-    lc_kwargs = dict(
+    policy = LC(
         event_interval=1,
         birth_start_event=1,
         birth_end_event=50,
@@ -241,12 +247,6 @@ def _lc_build(seed: int):
         bounds_out=3,
         initial_weight=0.0,
     )
-    if TREE_NATIVE:
-        from torchcst.policy.recipes import LC as LC_recipe
-
-        policy = LC_recipe(**lc_kwargs)
-    else:
-        policy = LC(**lc_kwargs)
     engine = StructuralEngine(
         {"entry": store}, policy, modules={"entry": module}, optimizer=optimizer, seed=seed
     )
@@ -297,27 +297,15 @@ def _edge_store(*, capacity: int = 12, sigma: float = 0.1):
     return store, inputs, outputs, module
 
 
-# Phase 2 S3: when True (--tree-native), tree fixtures hand the ROOT itself
-# to StructuralEngine (the runtime linear-stack path) instead of compiling
-# down to a composed Policy. Fixture names stay identical so the comparator
-# measures the semantic change against the same preregistered baseline.
-TREE_NATIVE = False
-
-
-def _policy_of(root, stores):
-    return root if TREE_NATIVE else root.compile(stores)
-
-
 def _rent_economy_build(seed: int):
     store, inputs, outputs, module = _edge_store()
     optimizer = torch.optim.SGD(store.parameters(), lr=1.0e-4)
-    root = RentEconomy(
+    policy = RentEconomy(
         lam=1.0e-5,
         method=RENT(radius=0.01, ridge=1.0e-9, pool_size=16),
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
         budget=4,
     )
-    policy = _policy_of(root, {"edge": store, "edge_in": inputs, "edge_out": outputs})
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
         policy,
@@ -356,12 +344,11 @@ def _quota_cset_build(seed: int):
     )
     module = EntryLinear(store, 4, 3)
     optimizer = torch.optim.SGD(store.parameters(), lr=0.05)
-    root = QuotaRegime(
+    policy = QuotaRegime(
         budget=8,
         method=cSET(bounds_in=4, bounds_out=3, drop_fraction=0.25),
         cadence=PeriodicCadence(event_interval=1),
     )
-    policy = _policy_of(root, {"entry": store})
     engine = StructuralEngine(
         {"entry": store}, policy, modules={"entry": module}, optimizer=optimizer, seed=seed
     )
@@ -382,12 +369,11 @@ def _quota_cset_run() -> Callable[[int], _FixtureResult]:
 def _quota_cres_build(seed: int):
     store, inputs, outputs, module = _edge_store()
     optimizer = torch.optim.SGD(store.parameters(), lr=1.0e-4)
-    root = QuotaRegime(
+    policy = QuotaRegime(
         budget=2,
         method=cRES(pool_size=16, drop_fraction=0.2),
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
     )
-    policy = _policy_of(root, {"edge": store, "edge_in": inputs, "edge_out": outputs})
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
         policy,
@@ -432,11 +418,7 @@ def _lc_response_run(seed: int) -> _FixtureResult:
     )
     outputs = NeuronStore("outputs", 2, initial_live=1)
     module = NeuronGatedLinear(EntryLinear(synapses, 3, 2), out_neurons=outputs)
-    if TREE_NATIVE:
-        from torchcst.policy.recipes import LC_response as _LC_response_impl
-    else:
-        _LC_response_impl = LC_response
-    policy = _LC_response_impl(
+    policy = LC_response(
         event_interval=1,
         birth_end_event=1,
         birth_budget=0,
@@ -538,12 +520,7 @@ def _growth_by_profit_run(seed: int) -> _FixtureResult:
     # saturate and roll back, on every seed (verified empirically across
     # seeds 0..15 during harness construction) -- and it avoids attaching a
     # second OptimizerStateFollower to the same store mid-run.
-    if TREE_NATIVE:
-        from torchcst.policy.recipes import GrowthByProfit as GrowthByProfit_recipe
-
-        policy = GrowthByProfit_recipe(event_interval=1, atoms_per_event=1, price=0.05)
-    else:
-        policy = GrowthByProfit(event_interval=1, atoms_per_event=1, price=0.05)
+    policy = GrowthByProfit(event_interval=1, atoms_per_event=1, price=0.05)
     engine = StructuralEngine(
         {"rank": store, "rank_in": inputs, "rank_out": outputs},
         policy,
@@ -580,49 +557,14 @@ def _growth_by_profit_run(seed: int) -> _FixtureResult:
 
 
 # ---------------------------------------------------------------------------
-# (f) StructuralPolicy direct: whole-policy protocol, no Policy/tree at all.
+# (f) structural_policy_direct: Phase 2 S4d's StructuralPolicy successor --
+# "author your own root" -- exercised via a hand-rolled SynapseLifecycle
+# under a QuotaRegime, not a first-class StructuralPolicy (retired in S4e
+# along with Policy/PolicyContext/StructuralPlan; see
+# docs/policy-tree-phase2.md's "消すもの"). The fixture name is unchanged so
+# the comparator measures this fixture's own statistical equivalence across
+# the S4d->S4e boundary, not a fresh baseline.
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class _ReplaceOnePolicy:
-    """Every ``interval``-th update, replace the sole live atom in place.
-
-    A minimal, self-contained ``StructuralPolicy`` -- deliberately *not*
-    imported from ``tests/`` -- exercising the engine's whole-policy protocol
-    path (``capture``/``plan``, no ``Policy`` composition or tree at all).
-    Candidate lineage rotates with the event index so the replacement target
-    varies over the run without needing any RNG.
-    """
-
-    site: str
-    bounds_in: int
-    bounds_out: int
-    interval: int = 3
-    requires: tuple = field(default=())
-
-    def capture(self, clock) -> bool:
-        del clock
-        return False
-
-    def plan(self, context) -> StructuralPlan | None:
-        if context.clock.update_step % self.interval:
-            return None
-        view = context.synapses[self.site]
-        if view.ids.numel() == 0:
-            return StructuralPlan()
-        lineage = int(context.clock.event_index % (self.bounds_in * self.bounds_out))
-        s_val, t_val = divmod(lineage, self.bounds_out)
-        death = SynapseDeath(view.site, view.ids[:1])
-        birth = SynapseBirth(
-            view.site,
-            torch.tensor([[s_val]], dtype=torch.int64),
-            torch.tensor([[t_val]], dtype=torch.int64),
-            torch.tensor([0.0]),
-            torch.tensor([lineage], dtype=torch.int64),
-        )
-        bundle = ProposalBundle("replace-one", (death, birth))
-        return StructuralPlan((bundle,), synapse_immunity_events=0)
 
 
 class _ReplaceOneBirth:
@@ -686,20 +628,15 @@ def _structural_policy_build(seed: int):
     )
     module = EntryLinear(store, bounds_in, bounds_out)
     optimizer = torch.optim.SGD(store.parameters(), lr=0.05)
-    if TREE_NATIVE:
-        from torchcst.policy.families import SynapseLifecycle
-
-        method = SynapseLifecycle(
-            birth_factory=lambda lam: _ReplaceOneBirth(bounds_in, bounds_out),
-            prune_factory=_FirstIdCourt,
-            priceable=False,
-            label="replace-one",
-        )
-        policy = QuotaRegime(
-            budget=1, method=method, cadence=PeriodicCadence(event_interval=3)
-        )
-    else:
-        policy = _ReplaceOnePolicy(site="entry", bounds_in=bounds_in, bounds_out=bounds_out)
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: _ReplaceOneBirth(bounds_in, bounds_out),
+        prune_factory=_FirstIdCourt,
+        priceable=False,
+        label="replace-one",
+    )
+    policy = QuotaRegime(
+        budget=1, method=method, cadence=PeriodicCadence(event_interval=3)
+    )
     engine = StructuralEngine(
         {"entry": store}, policy, modules={"entry": module}, optimizer=optimizer, seed=seed
     )
@@ -838,11 +775,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=None, help="write JSON here instead of stdout")
     parser.add_argument("--seeds", type=int, default=DEFAULT_SEEDS, help="seeds 0..N-1 per fixture")
     parser.add_argument(
-        "--tree-native",
-        action="store_true",
-        help="run tree fixtures through the runtime (bind) path instead of compile-down",
-    )
-    parser.add_argument(
         "--fixtures",
         type=str,
         default=None,
@@ -854,9 +786,6 @@ def main(argv: list[str] | None = None) -> int:
         help="dev-only escape hatch; the baseline capture must NOT use this",
     )
     args = parser.parse_args(argv)
-
-    if args.tree_native:
-        globals()["TREE_NATIVE"] = True
 
     names = args.fixtures.split(",") if args.fixtures else None
     fingerprint = build_fingerprint(

@@ -9,16 +9,18 @@ import torch
 
 from torchcst.engine import StructuralEngine
 from torchcst.policy import (
-    BirthWindowSchedule,
-    BudgetAllocator,
+    BudgetDistributor,
+    Cadence,
     Clock,
-    EvenBudgetAllocator,
-    LC,
+    EvenBudgetDistributor,
     OpProposer,
-    Policy,
+    PeriodicCadence,
+    QuotaRegime,
     RetentionCourt,
-    Schedule,
+    SynapseLifecycle,
+    UniformEntryBirth,
 )
+from torchcst.policy.recipes import LC
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseDeath, SynapseStore
 
@@ -111,16 +113,22 @@ def test_engine_runtime_rejects_any_court_death_during_immunity() -> None:
             )
         ]
     )
-    policy = Policy(
-        schedule=BirthWindowSchedule(
-            event_interval=1, birth_end_event=1, birth_budget=0, freeze_event=2
-        ),
-        proposers=(),
-        allocator=EvenBudgetAllocator(),
-        retention=_BadCourt(),
+    method = SynapseLifecycle(
+        # budget=0 below means this birth rule is never actually called; a
+        # lifecycle still must declare *some* birth or absorb rule to build.
+        birth_factory=lambda lam: UniformEntryBirth(bounds_in=1, bounds_out=1),
+        prune_factory=lambda: _BadCourt(),
+        priceable=False,
+        label="bad-court",
+    )
+    root = QuotaRegime(
+        budget=0,
+        method=method,
+        cadence=PeriodicCadence(event_interval=1),
+        distributor=EvenBudgetDistributor(),
     )
 
-    engine = StructuralEngine({"entry": store}, policy, seed=0)
+    engine = StructuralEngine({"entry": store}, root, seed=0)
     engine.begin_update()
     with pytest.raises(RuntimeError, match="immune"):
         engine.step()
@@ -133,7 +141,7 @@ def test_engine_runtime_rejects_any_court_death_during_immunity() -> None:
 
 
 def test_loss_blind_policy_signatures() -> None:
-    components = (Schedule, OpProposer, BudgetAllocator, RetentionCourt)
+    components = (Cadence, OpProposer, BudgetDistributor, RetentionCourt)
     forbidden = ("loss", "objective")
     for component in components:
         for name, member in inspect.getmembers(component):

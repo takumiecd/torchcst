@@ -10,7 +10,7 @@ import torch
 
 from torchcst.engine import StructuralEngine
 from torchcst.lab import Ledger, RngStreams
-from torchcst.policy import LC
+from torchcst.policy.recipes import LC
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseDeath, SynapseStore
 

@@ -12,14 +12,15 @@ from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.lab import Ledger, RngStreams
 from torchcst.policy import (
-    EvenBudgetAllocator,
+    EvenBudgetDistributor,
     InstrumentSpec,
-    LC,
     MagnitudeCourt,
-    PeriodicSchedule,
-    Policy,
+    PeriodicCadence,
+    QuotaRegime,
     RetiredCandidateRegistry,
+    SynapseLifecycle,
 )
+from torchcst.policy.recipes import LC
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
@@ -166,11 +167,17 @@ def test_cst_capture_gradfield_matches_autograd_weight_gradient(
         dtype=torch.float64,
     )
     module = CSTLinear(inputs, outputs, store, GaussianKernel(0.3).double())
-    policy = Policy(
-        schedule=PeriodicSchedule(event_interval=1, birth_budget=0, observe_window=1),
-        proposers=(_GradFieldRequest(),),
-        allocator=EvenBudgetAllocator(),
-        retention=MagnitudeCourt(0.0),
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: _GradFieldRequest(),
+        prune_factory=lambda: MagnitudeCourt(0.0),
+        priceable=False,
+        label="grad-field-observer",
+    )
+    policy = QuotaRegime(
+        budget=0,
+        method=method,
+        cadence=PeriodicCadence(event_interval=1, observe_window=1),
+        distributor=EvenBudgetDistributor(),
     )
     engine = StructuralEngine(
         {store.site: store, inputs.site: inputs, outputs.site: outputs},

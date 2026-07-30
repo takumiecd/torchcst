@@ -6,7 +6,8 @@ import torch
 
 from torchcst.compute import EntryLinear, NeuronGatedLinear
 from torchcst.engine import StructuralEngine
-from torchcst.policy import Clock, LC_response, Phase, UniformBirth
+from torchcst.policy import Clock, Phase, UniformBirth
+from torchcst.policy.recipes import LC_response
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import (
     RETIRED,
@@ -92,7 +93,17 @@ def test_scripted_response_bundle_immunity_rent_cascade_and_requiescence() -> No
         outputs.gate[1] = 1.0e-3
     assert engine.step() == ()
     retired = engine.step()
-    assert [type(op) for op in retired] == [NeuronRetire, SynapseDeath]
+    # Op order within one applied event changed under the tree-native
+    # runtime: EventPlan.flattened() (policy/tree.py) is phase-major
+    # (absorbs, deaths, retires, ungates, births), so the cascaded
+    # SynapseDeath now precedes the NeuronRetire that triggered it, the
+    # reverse of the old composed-engine's op-log order. This is a pure
+    # op_log bit-compatibility change, not a behavior change (op_log bit
+    # compatibility was explicitly retired in favor of statistical
+    # equivalence -- docs/policy-tree-phase2.md, pinned by
+    # tools/phase2_baseline.json); both ops are still in the same applied
+    # set for the same event.
+    assert [type(op) for op in retired] == [SynapseDeath, NeuronRetire]
     assert outputs.state[1].item() == RETIRED
     assert not bool((synapses.view().t[:, 0] == 1).any())
 
@@ -105,8 +116,10 @@ def test_scripted_response_bundle_immunity_rent_cascade_and_requiescence() -> No
     )
 
     # Even a free-standing coverage proposer sees the retired output row as
-    # outside its candidate universe.
-    proposal_view = engine._proposal_view(synapses, synapses.view())
+    # outside its candidate universe. There is exactly one synapse child
+    # bound in this tree ("edge"); its view() is the same construction a
+    # birth proposer would receive from the tree's own propose() path.
+    proposal_view = engine._tree.children[0].view()
     proposed = UniformBirth().propose(proposal_view, 6, engine.registry, engine.rng)
     assert not proposed or not bool((proposed[0].t[:, 0] == 1).any())
 

@@ -15,7 +15,7 @@ import torch
 
 from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
-from torchcst.policy import GrowthByProfit
+from torchcst.policy.recipes import GrowthByProfit
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 

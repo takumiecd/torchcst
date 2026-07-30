@@ -45,27 +45,38 @@ def _child(lifecycle, lam=None, capacity: int = 12):
     return child, store, inputs, outputs, module
 
 
-def test_child_view_matches_engine_proposal_view() -> None:
-    """The child's self-built view equals what the engine used to assemble."""
+def test_child_view_matches_the_engines_own_bound_child_view() -> None:
+    """A hand-built child's view equals the engine's own bound child's view.
+
+    Since Phase 2 S4e (docs/policy-tree-phase2.md), the engine no longer
+    builds a proposal view of its own at all -- the child is the only place
+    this logic lives (``StructuralEngine._proposal_view``/``_ages`` are
+    deleted along with the composed/whole-policy engine paths). This checks
+    the same thing the old cross-check checked: view construction is a pure,
+    deterministic function of the store, so a hand-built
+    :class:`~torchcst.policy.runtime.SynapseChild` for one store and the
+    engine's own bound tree's child for that identical store must agree.
+    """
     child, store, inputs, outputs, module = _child(cSET())
-    policy = QuotaRegime(
+    root = QuotaRegime(
         budget=1, method=cSET(), cadence=PeriodicCadence(event_interval=1)
-    ).compile()
+    )
     engine = StructuralEngine(
         {"edge": store, "edge_in": inputs, "edge_out": outputs},
-        policy,
+        root,
         modules={"edge": module},
         seed=0,
     )
+    engine_child = engine._tree.children[0]
     mine = child.view()
-    theirs = engine._proposal_view(store, store.view())
+    theirs = engine_child.view()
     assert mine.site == theirs.site and mine.version == theirs.version
     assert torch.equal(mine.ids, theirs.ids)
     assert torch.equal(mine.lineages, theirs.lineages)
     assert mine.bounds_in == theirs.bounds_in and mine.bounds_out == theirs.bounds_out
     assert torch.equal(mine.retired_in, theirs.retired_in)
     assert torch.equal(mine.retired_out, theirs.retired_out)
-    assert torch.equal(child.ages(mine), engine._ages(store, theirs))
+    assert torch.equal(child.ages(mine), engine_child.ages(theirs))
 
 
 def test_child_two_phase_execution_and_retired_lineages() -> None:

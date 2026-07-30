@@ -16,11 +16,12 @@ from torchcst.instruments import (
     WeightedMeasurement,
 )
 from torchcst.policy import (
-    EvenBudgetAllocator,
+    EvenBudgetDistributor,
     MagnitudeCourt,
-    PeriodicSchedule,
-    Policy,
+    PeriodicCadence,
+    QuotaRegime,
     ScoredBirth,
+    SynapseLifecycle,
 )
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -94,11 +95,17 @@ def test_documented_example_runs_in_both_capture_modes(capture_mode: str) -> Non
 def test_third_party_request_needs_no_engine_registration(capture_mode: str) -> None:
     store, module, _, _ = _parts(capture_mode)
     proposer = _ObserveOnlyProposer()
-    policy = Policy(
-        schedule=PeriodicSchedule(event_interval=1, birth_budget=0, observe_window=1),
-        proposers=(proposer,),
-        allocator=EvenBudgetAllocator(),
-        retention=MagnitudeCourt(0.0),
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: proposer,
+        prune_factory=lambda: MagnitudeCourt(0.0),
+        priceable=False,
+        label="observe-only",
+    )
+    policy = QuotaRegime(
+        budget=0,
+        method=method,
+        cadence=PeriodicCadence(event_interval=1, observe_window=1),
+        distributor=EvenBudgetDistributor(),
     )
     engine = StructuralEngine(
         {
@@ -157,15 +164,23 @@ def _parts(capture_mode: str, *, event_interval: int = 1, birth_budget: int = 1)
     module = CSTLinear(inputs, outputs, store, GaussianKernel(0.25).double())
     request = ContinuousGradientRequest(pool_size=7, decay=0.0, chunk_size=2)
     proposer = ScoredBirth(request)
-    policy = Policy(
-        schedule=PeriodicSchedule(
-            event_interval=event_interval,
-            birth_budget=birth_budget,
-            observe_window=event_interval,
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: proposer,
+        prune_factory=lambda: MagnitudeCourt(0.0),
+        priceable=False,
+        label="scored-birth",
+    )
+    policy = QuotaRegime(
+        budget=birth_budget,
+        method=method,
+        cadence=PeriodicCadence(
+            event_interval=event_interval, observe_window=event_interval
         ),
-        proposers=(proposer,),
-        allocator=EvenBudgetAllocator(),
-        retention=MagnitudeCourt(0.0),
+        # QuotaRegime's own default distributor is replacement_only=True,
+        # which would cap the birth grant at the (always-zero, since
+        # MagnitudeCourt(0.0) never prunes) death count; the old
+        # EvenBudgetAllocator() default had no such cap.
+        distributor=EvenBudgetDistributor(),
     )
     engine = StructuralEngine(
         {store.site: store, inputs.site: inputs, outputs.site: outputs},

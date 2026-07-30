@@ -28,13 +28,11 @@ from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import ContinuousCandidateRequest
 from torchcst.policy import (
-    ActionSpec,
-    ConstantQuota,
     EvenBudgetDistributor,
     PeriodicCadence,
-    Policy,
+    QuotaRegime,
     ScoredBirth,
-    StructuralQuota,
+    SynapseLifecycle,
 )
 from torchcst.policy.registry import RetiredCandidateRegistry
 from torchcst.representation import GaussianKernel, RepresentationSpec
@@ -151,15 +149,15 @@ def _build_problem(rent: float, budget: int):
     )
 
     request = ContinuousCandidateRequest(pool_size=POOL_SIZE, mode="deflated")
-    policy = Policy(
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: ScoredBirth(request=request, rent=rent, data=lambda: x),
+        priceable=False,
+        label="entrance-settlement",
+    )
+    policy = QuotaRegime(
+        budget=budget,
+        method=method,
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
-        quota=ConstantQuota(StructuralQuota(synapse_birth=budget)),
-        observations=(request,),
-        actions=(
-            ActionSpec.synapse_birth(
-                ScoredBirth(request=request, rent=rent, data=lambda: x)
-            ),
-        ),
         distributor=EvenBudgetDistributor(),
     )
     engine = StructuralEngine(
