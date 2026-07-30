@@ -8,7 +8,8 @@ from typing import Any, NamedTuple
 import torch
 from torch import Tensor
 
-from torchcst.compute import Observation
+from torchcst._validation import require_int
+from torchcst.compute import Observation, flatten_capture_pair
 from torchcst.storage import SynapseStore
 
 from .base import WeightedMeasurement, weighted_sum
@@ -24,23 +25,34 @@ class CertificateSnapshot(NamedTuple):
     participation_ratio: float
 
 
+def _participation_ratio(u_r: Tensor) -> float:
+    """``(sum|u|)^2 / sum u^2`` of the leading left singular vector."""
+    if not u_r.shape[1]:
+        return 0.0
+    leading = u_r[:, 0]
+    denominator = float(leading.square().sum())
+    if denominator <= 0:
+        return 0.0
+    return float(leading.abs().sum().square()) / denominator
+
+
 class CertificateSubspace:
-    """Accumulate ``G += sum weight * g_out.T @ x``; factor only on snapshot."""
+    """Accumulate ``G += sum weight * g_out.T @ x``; factor only on snapshot.
+
+    Four accumulation entry points feed the same ``G``, one per caller shape:
+    :meth:`accumulate` takes raw boundary tensors, :meth:`update` a finalized
+    update's :class:`~torchcst.compute.Observation` tuple,
+    :meth:`update_reduced` an already-reduced ``g_out.T @ x`` matrix, and
+    :meth:`finalize_update` is the engine's instrument boundary (weighted
+    measurements).
+    """
 
     name = "certificate_subspace"
 
     def __init__(self, store: SynapseStore | None = None, rank: int = 1) -> None:
-        if isinstance(store, int) and not isinstance(store, bool):
-            if rank != 1:
-                raise ValueError("rank was specified twice")
-            rank = store
-            store = None
         if store is not None and not isinstance(store, SynapseStore):
             raise TypeError("store must be a SynapseStore or None")
-        if isinstance(rank, bool) or not isinstance(rank, int):
-            raise TypeError("rank must be an int")
-        if rank <= 0:
-            raise ValueError("rank must be positive")
+        require_int(rank, "rank", minimum=1)
         self.store = store
         self.rank = rank
         self.G: Tensor | None = None
@@ -57,10 +69,7 @@ class CertificateSubspace:
             raise TypeError("x and g_out must be Tensors")
         if x.ndim == 0 or g_out.ndim == 0:
             raise ValueError("x and g_out must have feature dimensions")
-        x_flat = x.detach().reshape(-1, x.shape[-1])
-        g_flat = g_out.detach().reshape(-1, g_out.shape[-1])
-        if x_flat.shape[0] != g_flat.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
+        x_flat, g_flat = flatten_capture_pair(x, g_out, x.shape[-1], g_out.shape[-1])
         contribution = float(weight) * (g_flat.transpose(0, 1) @ x_flat)
         if self.G is None:
             self.G = contribution.detach().clone()
@@ -96,10 +105,7 @@ class CertificateSubspace:
 
     def _measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
         del module
-        x_flat = x.detach().reshape(-1, x.shape[-1])
-        g_flat = g_out.detach().reshape(-1, g_out.shape[-1])
-        if x_flat.shape[0] != g_flat.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
+        x_flat, g_flat = flatten_capture_pair(x, g_out, x.shape[-1], g_out.shape[-1])
         return {"matrix": g_flat.transpose(0, 1) @ x_flat}
 
     def reduce_backward(
@@ -129,30 +135,19 @@ class CertificateSubspace:
         """Compute the only SVD in the lifecycle, immediately before an event."""
         if self.G is None:
             raise RuntimeError("certificate dimensions are not initialized")
-        matrix = self.G.detach()
-        u, singular, vh = torch.linalg.svd(matrix, full_matrices=False)
+        u, singular, vh = torch.linalg.svd(self.G.detach(), full_matrices=False)
         count = min(self.rank, singular.numel())
         u_r = u[:, :count].clone()
         v_r = vh[:count].clone()
         sigma1 = float(singular[0]) if singular.numel() else 0.0
         sigma2 = float(singular[1]) if singular.numel() > 1 else 0.0
         ratio = sigma2 / sigma1 if sigma1 > 0 else 0.0
-        if u_r.shape[1]:
-            leading = u_r[:, 0]
-            denominator = float(leading.square().sum())
-            participation = (
-                float(leading.abs().sum().square()) / denominator
-                if denominator > 0
-                else 0.0
-            )
-        else:
-            participation = 0.0
         return CertificateSnapshot(
             u_r,
             singular[:count].clone(),
             v_r,
             ratio,
-            participation,
+            _participation_ratio(u_r),
         )
 
     def reset(self) -> None:

@@ -8,7 +8,7 @@ from torch import Tensor, nn
 from torchcst.representation import Box, ContinuousKernel
 from torchcst.storage import NeuronStore, SynapseStore, SynapseView
 
-from .capture import BackwardContext
+from .capture import BackwardContext, flatten_capture_pair, register_capture_hook
 
 
 class _ContinuousCSTMap(nn.Module):
@@ -70,18 +70,11 @@ class _ContinuousCSTMap(nn.Module):
         self.in_features = in_neurons.n_max
         self.out_features = out_neurons.n_max
         self.capture_site = synapses.site
-        # Whether this module keeps ``synapses.mass_scale`` fresh on every
-        # forward/dense_weight call. Mass tracking exists purely for
-        # diagnostics/structural-retention policies (functional_mass,
-        # view.mass) -- it is never read by the represented forward/backward
-        # math (see _forward_rows/dense_weight, which only ever touch
-        # synapses.w). A caller that never runs a mass-based structural
-        # policy and never inspects view.mass/functional_mass can safely set
-        # this False to skip _refresh_mass_scale's per-call bookkeeping
-        # entirely: the version/signature comparison, the sigma clone, and
-        # (whenever the cache is actually invalidated) the two host-syncing
-        # bool() checks inside SynapseStore.set_mass_scale. Default True
-        # preserves the exact prior behavior for every existing caller.
+        # Mass tracking feeds diagnostics and mass-based retention policies
+        # only; the represented forward/backward math never reads it. A
+        # caller that uses neither may pass track_mass=False to skip
+        # _refresh_mass_scale's per-call bookkeeping (including the
+        # host-syncing checks in SynapseStore.set_mass_scale).
         self._track_mass = track_mass
         self._cached_version = -1
         self._cached_view: SynapseView | None = None
@@ -121,26 +114,14 @@ class _ContinuousCSTMap(nn.Module):
                 domain_in=view.domain_in,
                 domain_out=view.domain_out,
             )
-            # Cached device-resident, not left on whatever device slots_of()
-            # returns (CPU -- see SlotPool, IDs/slots are CPU-side
-            # bookkeeping): _live_factors() below runs on every forward call
-            # (every layer, every step) and used to redo this cast every
-            # single time via a bare `.to(device=...)`. Off this cache-miss
-            # branch (i.e. every call except the rare one after a real
-            # structural event actually changes synapses.version), that
-            # made _live_factors() a bare index_select on an
-            # already-correct-device tensor turn into a fresh host->device
-            # transfer of a freshly-touched CPU tensor every time -- besides
-            # being pointless work when nothing changed, that is also a
-            # CUDA-graph-capture blocker: capturing a stream disallows
-            # exactly this kind of ad hoc host-to-device copy
-            # (cudaErrorStreamCaptureUnsupported), so `_live_factors()`
-            # could never be called inside a captured region even though
-            # its own compute (an index_select) has nothing device-copy
-            # shaped about it. Casting once here instead makes every
-            # subsequent `.to(device=...)` in `_live_factors()` (until the
-            # next real cache invalidation) a true no-op.
-            self._cached_slots = self.synapses._slots.slots_of(view.ids).to(device=self.synapses.w.device)
+            # Slots are cached device-resident (slots_of returns CPU
+            # bookkeeping) so _live_factors' per-forward `.to(device=...)`
+            # is a true no-op until the next structural event. That keeps
+            # the hot path free of host-to-device copies -- which is also
+            # what makes it CUDA-graph-capturable.
+            self._cached_slots = self.synapses._slots.slots_of(view.ids).to(
+                device=self.synapses.w.device
+            )
             self._cached_version = view.version
         assert self._cached_view is not None
         return self._cached_view
@@ -229,16 +210,10 @@ class _ContinuousCSTMap(nn.Module):
         )
         output = output * out_gate
 
-        context = self._backward_context
-        if context is not None and torch.is_grad_enabled() and output.requires_grad:
-            input_fact = x.detach()
-            site = self.capture_site
-            version = view.version
-
-            def queue(grad_output: Tensor) -> None:
-                context.queue(site, input_fact, grad_output.detach(), version)
-
-            output.register_hook(queue)
+        if self._backward_context is not None:
+            register_capture_hook(
+                output, self._backward_context, self.capture_site, x, view.version
+            )
         return output
 
     def atom_grads(self, x: Tensor, g_out: Tensor) -> Tensor:
@@ -249,10 +224,9 @@ class _ContinuousCSTMap(nn.Module):
             raise ValueError(
                 "g_out's final dimension must equal the output neuron width"
             )
-        x_flat = x.detach().reshape(-1, self.in_features)
-        g_flat = g_out.detach().reshape(-1, self.out_features)
-        if x_flat.shape[0] != g_flat.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
+        x_flat, g_flat = flatten_capture_pair(
+            x, g_out, self.in_features, self.out_features
+        )
         self._view()
         source, target, _ = self._live_factors()
         source = source.detach().to(device=x_flat.device, dtype=x_flat.dtype)
@@ -289,10 +263,11 @@ class _ContinuousCSTMap(nn.Module):
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
 
-        x_flat = x.detach().reshape(-1, self.in_features)
-        g_flat = g_out.detach().reshape(-1, self.out_features)
-        if x_flat.shape[0] != g_flat.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
+        x_flat, g_flat = flatten_capture_pair(
+            x, g_out, self.in_features, self.out_features
+        )
+        if count == 0:
+            return self.synapses.w.detach().new_zeros(0).to(x_flat)
         source = source.detach().to(device=x_flat.device, dtype=x_flat.dtype)
         target = target.detach().to(device=g_flat.device, dtype=g_flat.dtype)
         in_gate = self.in_neurons.gate_vector().to(x_flat)
@@ -309,8 +284,6 @@ class _ContinuousCSTMap(nn.Module):
                         dim=0
                     )
                 )
-        if not values:
-            return self.synapses.w.detach().new_zeros(0).to(x_flat)
         return torch.cat(values)
 
     def kernel_columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:

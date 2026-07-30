@@ -8,10 +8,29 @@ from torch.nn import functional as F
 from torch.nn.modules.utils import _pair
 from typing import Literal
 
+from torchcst._validation import require_int
 from torchcst.representation import ContinuousKernel
 from torchcst.storage import NeuronStore, SynapseStore
 
 from .cst_map import _ContinuousCSTMap
+
+
+def _positive_pair(value: int | tuple[int, int], name: str) -> tuple[int, int]:
+    pair = _pair(value)
+    if any(isinstance(item, bool) or not isinstance(item, int) for item in pair):
+        raise TypeError(f"{name} must contain ints")
+    if any(item <= 0 for item in pair):
+        raise ValueError(f"{name} values must be positive")
+    return pair
+
+
+def _nonnegative_pair(value: int | tuple[int, int], name: str) -> tuple[int, int]:
+    pair = _pair(value)
+    if any(isinstance(item, bool) or not isinstance(item, int) for item in pair):
+        raise TypeError(f"{name} must contain ints")
+    if any(item < 0 for item in pair):
+        raise ValueError(f"{name} values must be non-negative")
+    return pair
 
 
 def conv2d_isotropic_scales(
@@ -40,11 +59,8 @@ def conv2d_isotropic_scales(
     chart while atoms and candidates keep being drawn from the old cube moves
     the defect rather than fixing it.
     """
-    size = CSTConv2d._positive_pair(kernel_size, "kernel_size")
-    if isinstance(in_channels, bool) or not isinstance(in_channels, int):
-        raise TypeError("in_channels must be an int")
-    if in_channels <= 0:
-        raise ValueError("in_channels must be positive")
+    size = _positive_pair(kernel_size, "kernel_size")
+    require_int(in_channels, "in_channels", minimum=1)
     channel_steps = in_channels - 1
     spatial_steps = max(size) - 1
     if channel_steps <= 0 or spatial_steps <= 0:
@@ -73,14 +89,11 @@ def conv2d_neuron_coordinates(
     Both grids lie in ``[0, 1]`` so they pair directly with
     ``RepresentationSpec.continuous(3, 1)``.
 
-    ⚠ The default scales produce an **anisotropic** input chart: each axis is
-    spread over the whole of ``[0, 1]`` however many lattice points it
-    carries, so the channel axis has spacing ``1/(C-1)`` and each tap axis
-    has spacing ``0.5``.  Paired with an isotropic kernel that is a
-    representation defect rather than a convention --
-    :func:`conv2d_isotropic_scales` returns the scales that remove it.  The
-    default is left alone only because changing it would silently re-place
-    every chart in every existing experiment.
+    ⚠ The default scales produce an **anisotropic** input chart -- a
+    representation defect when paired with an isotropic kernel; see
+    :func:`conv2d_isotropic_scales` for the full account and the scales that
+    remove it. The default is left alone only because changing it would
+    silently re-place every chart in every existing experiment.
     """
     if isinstance(in_channels, bool) or not isinstance(in_channels, int):
         raise TypeError("in_channels must be an int")
@@ -88,7 +101,7 @@ def conv2d_neuron_coordinates(
         raise TypeError("out_channels must be an int")
     if in_channels <= 0 or out_channels <= 0:
         raise ValueError("channel counts must be positive")
-    size = CSTConv2d._positive_pair(kernel_size, "kernel_size")
+    size = _positive_pair(kernel_size, "kernel_size")
     for value, name in (
         (channel_scale, "channel_scale"),
         (spatial_scale, "spatial_scale"),
@@ -146,17 +159,16 @@ class CSTConv2d(_ContinuousCSTMap):
         implementation: Literal["unfold", "materialized"] = "unfold",
         track_mass: bool = True,
     ) -> None:
-        super().__init__(in_neurons, out_neurons, synapses, kernel, kernel_out, track_mass=track_mass)
-        if isinstance(in_channels, bool) or not isinstance(in_channels, int):
-            raise TypeError("in_channels must be an int")
-        if in_channels <= 0:
-            raise ValueError("in_channels must be positive")
+        super().__init__(
+            in_neurons, out_neurons, synapses, kernel, kernel_out, track_mass=track_mass
+        )
+        require_int(in_channels, "in_channels", minimum=1)
         if implementation not in ("unfold", "materialized"):
             raise ValueError("implementation must be 'unfold' or 'materialized'")
-        self.kernel_size = self._positive_pair(kernel_size, "kernel_size")
-        self.stride = self._positive_pair(stride, "stride")
-        self.dilation = self._positive_pair(dilation, "dilation")
-        self.padding = self._nonnegative_pair(padding, "padding")
+        self.kernel_size = _positive_pair(kernel_size, "kernel_size")
+        self.stride = _positive_pair(stride, "stride")
+        self.dilation = _positive_pair(dilation, "dilation")
+        self.padding = _nonnegative_pair(padding, "padding")
         expected = in_channels * self.kernel_size[0] * self.kernel_size[1]
         if self.in_features != expected:
             raise ValueError(
@@ -169,24 +181,6 @@ class CSTConv2d(_ContinuousCSTMap):
         self.bias = (
             nn.Parameter(synapses.w.new_zeros(self.out_channels)) if bias else None
         )
-
-    @staticmethod
-    def _positive_pair(value: int | tuple[int, int], name: str) -> tuple[int, int]:
-        pair = _pair(value)
-        if any(isinstance(item, bool) or not isinstance(item, int) for item in pair):
-            raise TypeError(f"{name} must contain ints")
-        if any(item <= 0 for item in pair):
-            raise ValueError(f"{name} values must be positive")
-        return pair
-
-    @staticmethod
-    def _nonnegative_pair(value: int | tuple[int, int], name: str) -> tuple[int, int]:
-        pair = _pair(value)
-        if any(isinstance(item, bool) or not isinstance(item, int) for item in pair):
-            raise TypeError(f"{name} must contain ints")
-        if any(item < 0 for item in pair):
-            raise ValueError(f"{name} values must be non-negative")
-        return pair
 
     def dense_weight(self) -> Tensor:
         """Materialize the effective represented filter.

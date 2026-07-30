@@ -8,6 +8,8 @@ from .capture import (
     Observation,
     ObservationTiming,
     ReducedObservation,
+    flatten_capture_pair,
+    register_capture_hook,
 )
 from .batched_conv import batched_conv_dense_weights
 from .cst_conv import CSTConv2d, conv2d_isotropic_scales, conv2d_neuron_coordinates
@@ -17,22 +19,24 @@ from .graphed_step import GraphedCellRunner, capturable_sgd_step, make_momentum_
 ComputeLinear = CSTConv2d | CSTLinear | EntryLinear | NeuronGatedLinear | RankOneLinear
 
 __all__ = [
-    "batched_conv_dense_weights",
     "BackwardContext",
-    "capturable_sgd_step",
+    "CSTConv2d",
+    "CSTLinear",
     "CaptureBatch",
     "CaptureMode",
     "ComputeLinear",
-    "CSTConv2d",
-    "CSTLinear",
-    "conv2d_isotropic_scales",
-    "conv2d_neuron_coordinates",
     "EntryLinear",
     "GraphedCellRunner",
-    "make_momentum_buffers",
     "NeuronGatedLinear",
     "Observation",
     "ObservationTiming",
     "RankOneLinear",
     "ReducedObservation",
+    "batched_conv_dense_weights",
+    "capturable_sgd_step",
+    "conv2d_isotropic_scales",
+    "conv2d_neuron_coordinates",
+    "flatten_capture_pair",
+    "make_momentum_buffers",
+    "register_capture_hook",
 ]

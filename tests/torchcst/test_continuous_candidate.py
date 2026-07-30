@@ -15,7 +15,10 @@ from torchcst.instruments import (
     RefinementSchedule,
     WeightedMeasurement,
 )
-from torchcst.instruments.continuous_candidate import _coarse_spacing, _sample_local_uniform
+from torchcst.instruments._candidate_sampling import (
+    _coarse_spacing,
+    _sample_local_uniform,
+)
 from torchcst.policy import (
     EvenBudgetDistributor,
     MagnitudeCourt,

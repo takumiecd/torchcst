@@ -9,6 +9,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
+from torchcst.compute import flatten_capture_pair
 from torchcst.policy.registry import RetiredCandidateRegistry
 from torchcst.storage import SynapseStore, SynapseView
 
@@ -77,6 +78,8 @@ class GradFieldEMA:
         if signed_gradient.ndim != 1 or signed_gradient.numel() != view.ids.numel():
             raise ValueError("gradient must align with the packed live IDs")
         samples = signed_gradient.detach().abs()
+        # Host-side per-atom loop by design: state is an id-keyed dict and
+        # the live atom count is small.
         for position, raw_id in enumerate(view.ids.tolist()):
             entity_id = int(raw_id)
             old = self._state.get(entity_id)
@@ -213,6 +216,7 @@ class CandidateField:
         return self._lineages.clone()
 
     def _occupied(self, view: SynapseView) -> set[int]:
+        # Host-side by design: the live atom count is small.
         out_size = prod(self.bounds_out)
         result: set[int] = set()
         for source, target in zip(view.s.detach().cpu(), view.t.detach().cpu()):
@@ -222,13 +226,21 @@ class CandidateField:
         return result
 
     def reconcile(self, view: SynapseView | None = None) -> SynapseView:
+        """Rebuild the candidate pool when structure or retirements changed."""
         view = self.store.view() if view is None else view
         registry_state = frozenset(
             key for key in self.registry.snapshot() if key[0] == view.site
         )
         if view.version == self._version and registry_state == self._registry_state:
             return view
+        selected = self._select_pool(view)
+        self._materialize_pool(selected)
+        self._version = view.version
+        self._registry_state = registry_state
+        return view
 
+    def _select_pool(self, view: SynapseView) -> list[int]:
+        """Pick up to ``pool_size`` unoccupied, unretired lineages at random."""
         in_size = prod(self.bounds_in)
         out_size = prod(self.bounds_out)
         occupied = self._occupied(view)
@@ -239,15 +251,17 @@ class CandidateField:
             and not self.registry.is_retired(view.site, lineage)
         ]
         count = min(self.pool_size, len(available))
-        if count < len(available):
-            generator_device = getattr(self.rng, "device", torch.device("cpu"))
-            order = torch.randperm(
-                len(available), generator=self.rng, device=generator_device
-            )[:count].cpu()
-            selected = [available[index] for index in order.tolist()]
-        else:
-            selected = available
+        if count == len(available):
+            return available
+        generator_device = getattr(self.rng, "device", torch.device("cpu"))
+        order = torch.randperm(
+            len(available), generator=self.rng, device=generator_device
+        )[:count].cpu()
+        return [available[index] for index in order.tolist()]
 
+    def _materialize_pool(self, selected: list[int]) -> None:
+        """Decode selected lineages to coordinates, carrying surviving scores."""
+        out_size = prod(self.bounds_out)
         old = {
             int(lineage): self._scores[position]
             for position, lineage in enumerate(self._lineages.tolist())
@@ -269,13 +283,10 @@ class CandidateField:
             else self.store.t.new_zeros((0, self.store.d_out))
         )
         self._lineages = torch.tensor(selected, dtype=torch.int64)
-        self._scores = self.store.w.detach().new_zeros(count)
+        self._scores = self.store.w.detach().new_zeros(len(selected))
         for position, lineage in enumerate(selected):
             if lineage in old:
                 self._scores[position] = old[lineage].to(self._scores)
-        self._version = view.version
-        self._registry_state = registry_state
-        return view
 
     def coordinates(self) -> tuple[Tensor, Tensor]:
         self.reconcile()
@@ -297,10 +308,7 @@ class CandidateField:
 
     def _measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
         del module
-        x_flat = x.detach().reshape(-1, x.shape[-1])
-        g_flat = g_out.detach().reshape(-1, g_out.shape[-1])
-        if x_flat.shape[0] != g_flat.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
+        x_flat, g_flat = flatten_capture_pair(x, g_out, x.shape[-1], g_out.shape[-1])
         source = self._s[:, 0].to(device=x_flat.device)
         target = self._t[:, 0].to(device=g_flat.device)
         gradient = (
