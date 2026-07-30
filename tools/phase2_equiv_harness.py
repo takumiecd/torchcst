@@ -432,7 +432,11 @@ def _lc_response_run(seed: int) -> _FixtureResult:
     )
     outputs = NeuronStore("outputs", 2, initial_live=1)
     module = NeuronGatedLinear(EntryLinear(synapses, 3, 2), out_neurons=outputs)
-    policy = LC_response(
+    if TREE_NATIVE:
+        from torchcst.policy.recipes import LC_response as _LC_response_impl
+    else:
+        _LC_response_impl = LC_response
+    policy = _LC_response_impl(
         event_interval=1,
         birth_end_event=1,
         birth_budget=0,

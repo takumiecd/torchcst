@@ -337,3 +337,57 @@ def RENT(
         priceable=True,
         label="RENT",
     )
+
+
+@dataclass(frozen=True)
+class _BuiltInterface:
+    """Concrete interface rule set: the output of :meth:`NeuronLifecycle.build`."""
+
+    retention: Any | None
+    composer: Any | None
+    incident: Any | None
+
+
+@dataclass(frozen=True)
+class NeuronLifecycle:
+    """Language-2 composition for the interface seat (design note: neuron は
+    「層の間」の子ノード).
+
+    ``retention_factory`` builds the neuron court (``NeuronRetire`` output;
+    the retire→incident-synapse-death cascade itself is the root's planning
+    act, not the interface's). ``composer_factory``/``incident_factory``
+    together build the RESPONSE-phase capability: ungate one dormant neuron
+    plus its declared count of incident synapse births, as one bundle.
+    Either capability may be absent. Like ``SynapseLifecycle``, an interface
+    lifecycle never carries a cadence; the root's phases decide when a
+    response window is open.
+    """
+
+    retention_factory: Callable[[], Any | None] = _no_prune
+    composer_factory: Callable[[], Any | None] = _no_prune
+    incident_factory: Callable[[], Any | None] = _no_prune
+    label: str = "interface"
+
+    def __post_init__(self) -> None:
+        for name in ("retention_factory", "composer_factory", "incident_factory"):
+            if not callable(getattr(self, name)):
+                raise TypeError(f"{name} must be callable")
+        if not isinstance(self.label, str) or not self.label:
+            raise ValueError("label must be a non-empty string")
+
+    def build(self) -> _BuiltInterface:
+        retention = self.retention_factory()
+        composer = self.composer_factory()
+        incident = self.incident_factory()
+        if (composer is None) != (incident is None):
+            raise ValueError(
+                f"{self.label}: a response capability needs both a composer "
+                "and an incident proposer"
+            )
+        if retention is None and composer is None:
+            raise ValueError(
+                f"{self.label} must provide a retention court or a response"
+            )
+        return _BuiltInterface(
+            retention=retention, composer=composer, incident=incident
+        )

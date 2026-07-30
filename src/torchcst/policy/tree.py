@@ -331,6 +331,7 @@ class RentEconomy:
     budget: int = 2**31 - 1
     distributor: BudgetDistributor = field(default_factory=EvenBudgetDistributor)
     quota: QuotaPolicy | None = None
+    interface: Any | None = None
     _built_default: _BuiltLifecycle = field(init=False, repr=False, compare=False)
     _built_overrides: tuple[tuple[str, _BuiltLifecycle], ...] = field(
         init=False, repr=False, compare=False
@@ -340,6 +341,10 @@ class RentEconomy:
     def __post_init__(self) -> None:
         if self.quota is not None and not isinstance(self.quota, QuotaPolicy):
             raise TypeError("quota must satisfy the QuotaPolicy protocol or be None")
+        if self.interface is not None and not callable(
+            getattr(self.interface, "build", None)
+        ):
+            raise TypeError("interface must be a NeuronLifecycle or None")
         if isinstance(self.lam, bool) or not isinstance(self.lam, (int, float)):
             raise TypeError("lam must be a real number")
         lam = float(self.lam)
@@ -395,6 +400,7 @@ class QuotaRegime:
         default_factory=lambda: EvenBudgetDistributor(replacement_only=True)
     )
     quota: QuotaPolicy | None = None
+    interface: Any | None = None
     profit: Any | None = None
     _built_default: _BuiltLifecycle = field(init=False, repr=False, compare=False)
     _built_overrides: tuple[tuple[str, _BuiltLifecycle], ...] = field(
@@ -405,6 +411,10 @@ class QuotaRegime:
     def __post_init__(self) -> None:
         if self.quota is not None and not isinstance(self.quota, QuotaPolicy):
             raise TypeError("quota must satisfy the QuotaPolicy protocol or be None")
+        if self.interface is not None and not callable(
+            getattr(self.interface, "build", None)
+        ):
+            raise TypeError("interface must be a NeuronLifecycle or None")
         if self.profit is not None and (
             not callable(getattr(self.profit, "price_for", None))
             or not callable(getattr(self.profit, "adjudicate", None))
@@ -512,7 +522,7 @@ def _bind_root(
     every rule is multi-site by construction via per-site instrument
     binding), so bind() and compile() price and compose identically.
     """
-    from .runtime import EndpointChild, SiteBinding, SynapseChild
+    from .runtime import EndpointChild, InterfaceChild, SiteBinding, SynapseChild
 
     for site, binding in bindings.items():
         if not isinstance(binding, SiteBinding):
@@ -546,9 +556,21 @@ def _bind_root(
         quota = ConstantQuota(
             StructuralQuota(synapse_birth=root.budget, synapse_absorb=root.budget)
         )
+    interface = getattr(root, "interface", None)
+    out_stores = {
+        id(binding.endpoints()[1])
+        for binding in bindings.values()
+        if binding.endpoints()[1] is not None
+    }
+    endpoints: list[Any] = []
+    for store in neuron_stores:
+        if interface is not None and id(store) in out_stores:
+            endpoints.append(InterfaceChild(store, interface.build()))
+        else:
+            endpoints.append(EndpointChild(store))
     return RuntimeTree(
         children=tuple(children),
-        endpoints=tuple(EndpointChild(store) for store in neuron_stores),
+        endpoints=tuple(endpoints),
         cadence=root.cadence,
         distributor=root.distributor,
         quota=quota,
@@ -597,18 +619,26 @@ class EventPlan:
         """Phase-major op order for the op log: absorbs, deaths, births."""
         from torchcst.storage import SynapseDeath
 
+        from torchcst.storage import NeuronRetire, NeuronUngate
+
         absorbs: list[Any] = []
         deaths: list[Any] = []
+        retires: list[Any] = []
+        ungates: list[Any] = []
         births: list[Any] = []
         for ops in self.ops_by_site.values():
             for op in ops:
                 if isinstance(op, SynapseDeath):
                     deaths.append(op)
+                elif isinstance(op, NeuronRetire):
+                    retires.append(op)
+                elif isinstance(op, NeuronUngate):
+                    ungates.append(op)
                 elif hasattr(op, "dying"):
                     absorbs.append(op)
                 else:
                     births.append(op)
-        return (*absorbs, *deaths, *births)
+        return (*absorbs, *deaths, *retires, *ungates, *births)
 
 
 @dataclass(frozen=True)
@@ -662,14 +692,14 @@ class RuntimeTree:
     @property
     def requires(self) -> tuple[Any, ...]:
         seen: list[Any] = []
-        for child in self.children:
+        for child in (*self.children, *self.endpoints):
             for requirement in child.requires:
                 if requirement not in seen:
                     seen.append(requirement)
         return tuple(seen)
 
     def bind_instruments(self, instruments_by_site: Mapping[str, Mapping[str, Any]]) -> None:
-        for child in self.children:
+        for child in (*self.children, *self.endpoints):
             site_instruments = instruments_by_site.get(child.store.site)
             if site_instruments is None:
                 continue
@@ -715,6 +745,7 @@ class RuntimeTree:
         self,
         deaths_by_site: dict[str, list[Any]],
         budget: int | None,
+        kind: str = "synapse_prune",
     ) -> tuple[dict[str, list[Any]], dict[str, int]]:
         """Enforce an optional logical prune limit, court order preserved."""
         from .contract import BudgetRequest
@@ -725,7 +756,7 @@ class RuntimeTree:
                     site,
                     0,
                     sum(int(op.ids.numel()) for op in operations),
-                    "synapse_prune",
+                    kind,
                 )
                 for site, operations in deaths_by_site.items()
                 if operations
@@ -743,7 +774,7 @@ class RuntimeTree:
             )
             if not valid:
                 raise RuntimeError(
-                    "distributor exceeded the 'synapse_prune' structural quota"
+                    f"distributor exceeded the {kind!r} structural quota"
                 )
             by_site = dict(zip((request.site for request in requests), grants))
             capped: dict[str, list[Any]] = {}
@@ -790,6 +821,8 @@ class RuntimeTree:
         deaths_by_site: dict[str, list[Any]] = {}
         births_by_site: dict[str, list[Any]] = {}
         dying_by_site: dict[str, set[int]] = {}
+        retires_by_site: dict[str, list[Any]] = {}
+        ungates_by_site: dict[str, list[Any]] = {}
 
         if not frozen:
             from .runtime import PlanRegistryView, view_after
@@ -861,18 +894,91 @@ class RuntimeTree:
             deaths_by_site, replacement = self._cap_prune(
                 deaths_by_site, event_quota.synapse_prune
             )
-            birth_grants = self._allocate(
-                event_quota.synapse_birth, "synapse_birth", replacement
+
+            # Interface adjudication: neuron courts decide, and the
+            # retire -> incident-synapse-death cascade is planned here (the
+            # cross-child coordination the old engine performed at commit in
+            # _expand_retirements). Cascaded deaths join the plan and the
+            # birth-stage simulation but never the replacement counts, and
+            # they bypass the synapse court's immunity -- family-defined
+            # incident deaths, exactly as before.
+            cascade_by_site: dict[str, list[Any]] = {
+                child.store.site: [] for child in self.children
+            }
+            neuron_decisions: dict[str, list[Any]] = {}
+            for endpoint in self.endpoints:
+                decide = getattr(endpoint, "decide_retention", None)
+                if decide is None:
+                    continue
+                decided = list(decide(endpoint.store.view(), clock))
+                if decided:
+                    neuron_decisions[endpoint.store.site] = decided
+            if neuron_decisions:
+                capped, _ = self._cap_prune(
+                    neuron_decisions, event_quota.neuron_prune, kind="neuron_prune"
+                )
+                for site, retires in capped.items():
+                    if retires:
+                        retires_by_site[site] = list(retires)
+                for endpoint in self.endpoints:
+                    site = endpoint.store.site
+                    for retire in retires_by_site.get(site, ()):
+                        for child in self.children:
+                            in_store, out_store = child.binding.endpoints()
+                            base = post_absorb[child]
+                            incident: list[Any] = []
+                            if in_store is endpoint.store:
+                                incident.append(
+                                    child.store.spec.incident_synapse_ids(
+                                        base, retire.ids, side="in"
+                                    )
+                                )
+                            if out_store is endpoint.store:
+                                incident.append(
+                                    child.store.spec.incident_synapse_ids(
+                                        base, retire.ids, side="out"
+                                    )
+                                )
+                            for ids in incident:
+                                if ids.numel():
+                                    cascade_by_site[child.store.site].append(
+                                        SynapseDeath(child.store.site, ids)
+                                    )
+                                    _retire_planned(child, base, ids)
+
+            response_phase = getattr(signal, "phase", None) is Phase.RESPONSE
+            birth_grants = (
+                {child.store.site: 0 for child in self.children}
+                if response_phase
+                else self._allocate(
+                    event_quota.synapse_birth, "synapse_birth", replacement
+                )
             )
+            pre_birth_views: dict[Any, Any] = {}
             for child in self.children:
                 site = child.store.site
                 pre_birth = view_after(
-                    post_absorb[child], tuple(deaths_by_site[site])
+                    post_absorb[child],
+                    tuple((*deaths_by_site[site], *cascade_by_site[site])),
                 )
+                pre_birth_views[child] = pre_birth
                 proposals = child.propose_births(
                     pre_birth, birth_grants[site], plan_registry, rng
                 )
                 births_by_site[site] = [proposal.op for proposal in proposals]
+            for site, cascades in cascade_by_site.items():
+                deaths_by_site[site].extend(cascades)
+
+            if response_phase:
+                self._plan_response(
+                    signal=signal,
+                    event_quota=event_quota,
+                    pre_birth_views=pre_birth_views,
+                    births_by_site=births_by_site,
+                    ungates_by_site=ungates_by_site,
+                    plan_registry=plan_registry,
+                    rng=rng,
+                )
 
         # Root dedup duty: naked deaths merge into one union op per site
         # (the old engine's _deduplicate_synapse_deaths, now a planning act).
@@ -906,6 +1012,14 @@ class RuntimeTree:
             )
             for child in self.children
         }
+        for endpoint in self.endpoints:
+            site = endpoint.store.site
+            neuron_ops = (
+                *retires_by_site.get(site, ()),
+                *ungates_by_site.get(site, ()),
+            )
+            if neuron_ops:
+                ops_by_site[site] = neuron_ops
 
         audit_ages = None
         audit_thresholds = None
@@ -937,6 +1051,80 @@ class RuntimeTree:
             audit_thresholds=audit_thresholds,
         )
 
+    def _plan_response(
+        self,
+        *,
+        signal: Any,
+        event_quota: StructuralQuota,
+        pre_birth_views: dict[Any, Any],
+        births_by_site: dict[str, list[Any]],
+        ungates_by_site: dict[str, list[Any]],
+        plan_registry: Any,
+        rng: Any,
+    ) -> None:
+        """Plan RESPONSE bundles: ungate a dormant neuron + its incident
+        births, walking the snapshot's dormant list where the old loop walked
+        mid-event commits. Between bundles the partner site's view grows by
+        the planned births (``view_after``), which is exactly what the old
+        per-bundle commit gave the next composition."""
+        from .bundle import bundle_birth_count
+        from .runtime import view_after as _view_after
+        from torchcst.storage import NeuronUngate
+
+        remaining_ungates = event_quota.neuron_birth
+        remaining_births = event_quota.synapse_birth
+        if remaining_ungates == 0 or remaining_births == 0:
+            return
+        for endpoint in self.endpoints:
+            if remaining_ungates == 0 or remaining_births == 0:
+                break
+            if not getattr(endpoint, "can_respond", False):
+                continue
+            partners = tuple(
+                child
+                for child in self.children
+                if child.binding.endpoints()[1] is endpoint.store
+            )
+            for partner in partners:
+                if remaining_ungates == 0 or remaining_births == 0:
+                    break
+                site = partner.store.site
+                for target in endpoint.dormant_ids().tolist():
+                    if remaining_ungates == 0 or remaining_births == 0:
+                        break
+                    synapse_view = _view_after(
+                        pre_birth_views[partner], tuple(births_by_site[site])
+                    )
+                    bundle = endpoint.compose_response(
+                        event_index=signal.event_index,
+                        synapse_view=synapse_view,
+                        target_id=int(target),
+                        registry=plan_registry,
+                        rng=rng,
+                        birth_budget=remaining_births,
+                    )
+                    if bundle is None:
+                        break
+                    distribute = getattr(self.distributor, "allocate_bundles", None)
+                    accepted = (
+                        tuple(distribute(remaining_births, (bundle,)))
+                        if distribute is not None
+                        else (
+                            (bundle,)
+                            if bundle_birth_count(bundle) <= remaining_births
+                            else ()
+                        )
+                    )
+                    if len(accepted) != 1 or accepted[0] is not bundle:
+                        break
+                    for op in bundle.ops:
+                        if isinstance(op, NeuronUngate):
+                            ungates_by_site.setdefault(op.site, []).append(op)
+                            remaining_ungates -= int(op.ids.numel())
+                        else:
+                            births_by_site.setdefault(op.site, []).append(op)
+                    remaining_births -= bundle_birth_count(bundle)
+
     # -- two-phase execution (ruling 1: whole-event abort) -----------------
 
     def _two_phase(self, ops_by_site: Mapping[str, tuple[Any, ...]]) -> str | None:
@@ -946,7 +1134,7 @@ class RuntimeTree:
         """
         prepared: list[tuple[Any, Any, Any]] = []
         try:
-            for child in self.children:
+            for child in (*self.children, *self.endpoints):
                 ops = ops_by_site.get(child.store.site, ())
                 if not ops:
                     continue
@@ -988,6 +1176,10 @@ class RuntimeTree:
     def stateful_components(self) -> tuple[Any, ...]:
         """Every rule/court whose state a world checkpoint must cover."""
         seen: list[Any] = []
+        for endpoint in self.endpoints:
+            court = getattr(endpoint, "_court", None)
+            if court is not None and callable(getattr(court, "state_dict", None)):
+                seen.append(court)
         for child in self.children:
             for rule in child.rules:
                 if (

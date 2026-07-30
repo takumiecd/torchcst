@@ -98,6 +98,7 @@ def view_after(view: SynapseView, ops: tuple[Any, ...]) -> SynapseView:
     )
     position_of = {int(entity): index for index, entity in enumerate(view.ids.tolist())}
     dying: set[int] = set()
+    births: list[Any] = []
     for op in ops:
         if hasattr(op, "dying"):
             rows = torch.tensor(
@@ -108,19 +109,43 @@ def view_after(view: SynapseView, ops: tuple[Any, ...]) -> SynapseView:
             dying.add(int(op.dying))
         elif isinstance(op, SynapseDeath):
             dying.update(int(v) for v in op.ids.tolist())
+        elif hasattr(op, "lineage"):
+            births.append(op)
     keep = torch.tensor(
         [int(entity) not in dying for entity in view.ids.tolist()], dtype=torch.bool
     )
     rows = torch.nonzero(keep, as_tuple=False).flatten()
+    ids = view.ids.index_select(0, rows)
+    s = view.s.index_select(0, rows.to(view.s.device))
+    t = view.t.index_select(0, rows.to(view.t.device))
+    w_kept = w.index_select(0, rows.to(w.device))
+    mass = (w.abs() * scale).index_select(0, rows.to(w.device))
+    lineages = view.lineages.index_select(0, rows)
+    if births:
+        # Planned births join the simulated view under synthetic negative
+        # ids: entity ids are assigned only at commit, and nothing in a plan
+        # may target a not-yet-born atom, so the placeholder is unreachable
+        # by construction; positions/lineages are what later stages read.
+        next_fake = -1
+        for op in births:
+            count = int(op.w.numel())
+            fake = torch.arange(next_fake, next_fake - count, -1, dtype=torch.int64)
+            next_fake -= count
+            ids = torch.cat((ids, fake))
+            s = torch.cat((s, op.s.to(s.dtype)))
+            t = torch.cat((t, op.t.to(t.dtype)))
+            w_kept = torch.cat((w_kept, op.w.to(w_kept.dtype)))
+            mass = torch.cat((mass, op.w.abs().to(mass.dtype)))
+            lineages = torch.cat((lineages, op.lineage))
     return SynapseView(
         site=view.site,
         version=view.version,
-        ids=view.ids.index_select(0, rows),
-        s=view.s.index_select(0, rows.to(view.s.device)),
-        t=view.t.index_select(0, rows.to(view.t.device)),
-        w=w.index_select(0, rows.to(w.device)),
-        mass=(w.abs() * scale).index_select(0, rows.to(w.device)),
-        lineages=view.lineages.index_select(0, rows),
+        ids=ids,
+        s=s,
+        t=t,
+        w=w_kept,
+        mass=mass,
+        lineages=lineages,
         bounds_in=view.bounds_in,
         bounds_out=view.bounds_out,
         domain_in=view.domain_in,
@@ -181,6 +206,15 @@ class EndpointChild:
     @property
     def requires(self) -> tuple[Any, ...]:
         return ()
+
+    def bind_instruments(self, instruments: dict[str, Any]) -> None:
+        del instruments
+
+    def prepare(self, ops: tuple[Any, ...]) -> tuple[Any, torch.Tensor]:
+        return self.store.prepare(tuple(ops)), torch.zeros(0, dtype=torch.int64)
+
+    def commit(self, ticket: Any) -> None:
+        self.store.commit(ticket)
 
     def tick_age(self) -> None:
         self.store.age.tick()
@@ -381,3 +415,100 @@ class SynapseChild:
 
     def tick_age(self) -> None:
         self.store.age.tick()
+
+
+class InterfaceChild(EndpointChild):
+    """The interface seat with rules: one neuron store's court and, when the
+    lifecycle declares it, the RESPONSE capability (ungate + incident synapse
+    births composed as one bundle). Extends the bare :class:`EndpointChild`
+    seat, so the root's uniform child protocol (tick/prepare/commit) needs no
+    special cases."""
+
+    def __init__(self, store: NeuronStore, built: Any) -> None:
+        super().__init__(store)
+        self._court = built.retention
+        self._composer = built.composer
+        self._incident = built.incident
+
+    @property
+    def requires(self) -> tuple[Any, ...]:
+        seen: list[Any] = []
+        for rule in (self._court, self._incident):
+            for requirement in getattr(rule, "requires", ()):
+                if requirement not in seen:
+                    seen.append(requirement)
+        return tuple(seen)
+
+    @property
+    def immunity_events(self) -> int:
+        return int(getattr(self._court, "immunity_events", 0))
+
+    @property
+    def can_respond(self) -> bool:
+        return self._composer is not None
+
+    def bind_instruments(self, instruments: dict[str, Any]) -> None:
+        for rule in (self._court, self._incident):
+            if rule is None or not tuple(getattr(rule, "requires", ())):
+                continue
+            binder = getattr(rule, "bind_instruments", None)
+            if binder is not None:
+                binder(self.store.site, instruments)
+
+    def view(self) -> Any:
+        return self.store.view()
+
+    def ages(self, view: Any) -> torch.Tensor:
+        return self.store.age.values.index_select(
+            0, view.ids.detach().to(device="cpu")
+        )
+
+    def audit_threshold(self, view: Any) -> float | None:
+        rent_ratio = getattr(self._court, "rent_ratio", None)
+        if rent_ratio is None or view.mass.numel() == 0:
+            return None
+        mass = view.mass.detach().to(device="cpu").to(torch.float64)
+        return float(torch.quantile(mass, 0.5)) * float(rent_ratio)
+
+    def decide_retention(self, view: Any, clock: Clock) -> tuple[Any, ...]:
+        from torchcst.storage import NeuronRetire
+
+        if self._court is None:
+            return ()
+        decided = tuple(self._court.decide(view, self.ages(view), clock))
+        if not all(isinstance(op, NeuronRetire) for op in decided):
+            raise TypeError("neuron retention may return only NeuronRetire")
+        ages = self.store.age.values
+        for retire in decided:
+            picked = ages.index_select(0, retire.ids.detach().to(device="cpu"))
+            if bool((picked < self.immunity_events).any()):
+                ids = retire.ids.detach().to(device="cpu")
+                protected = ids[picked < self.immunity_events].tolist()
+                raise RuntimeError(
+                    f"court attempted to prune immune entity IDs {protected}"
+                )
+        return decided
+
+    def dormant_ids(self) -> torch.Tensor:
+        return self.store.dormant_ids()
+
+    def compose_response(
+        self,
+        *,
+        event_index: int,
+        synapse_view: Any,
+        target_id: int,
+        registry: Any,
+        rng: torch.Generator,
+        birth_budget: int,
+    ) -> Any | None:
+        return self._composer.compose_response(
+            event_index=event_index,
+            neuron_store=self.store,
+            synapse_view=synapse_view,
+            proposer=self._incident,
+            registry=registry,
+            rng=rng,
+            neuron_id=target_id,
+            birth_budget=birth_budget,
+        )

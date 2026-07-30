@@ -14,12 +14,13 @@ deleted.
 
 from __future__ import annotations
 
+from .bundle import BundleComposer
 from .cadences import BirthWindowCadence, PeriodicCadence
 from .contract import EvenBudgetDistributor, StructuralQuota
 from .courts import RentCourt
-from .families import SynapseLifecycle
+from .families import NeuronLifecycle, SynapseLifecycle
 from .profit import ProfitCourt
-from .proposers import Bounds, UniformBirth, UniformEntryBirth
+from .proposers import Bounds, IncidentOutputBirth, UniformBirth, UniformEntryBirth
 from .quotas import QuotaWindow, WindowedQuota
 from .tree import QuotaRegime
 
@@ -123,4 +124,92 @@ def GrowthByProfit(
         cadence=PeriodicCadence(event_interval=event_interval, freeze_event=None),
         distributor=EvenBudgetDistributor(),
         profit=ProfitCourt(min_profit=min_profit, cost_rate=price),
+    )
+
+
+def LC_response(
+    *,
+    event_interval: int = 200,
+    birth_start_event: int = 1,
+    birth_end_event: int = 5,
+    birth_budget: int = 5,
+    freeze_event: int | None = 10,
+    response_events: tuple[int, int] = (11, 15),
+    response_ungates_per_event: int = 1,
+    response_birth_budget: int = 5,
+    incident_births: int = 5,
+    immunity_events: int = 3,
+    rent_ratio: float = 0.3,
+    strikes: int = 2,
+    bounds_in: Bounds | None = None,
+    bounds_out: Bounds | None = None,
+    initial_weight: float = 0.0,
+    initial_gate: float = 1.0e-3,
+) -> QuotaRegime:
+    """5c lifecycle plus the Phase 3-B ungate response window, as a tree.
+
+    Same parts as the retired ``catalog.LC_response`` preset. The neuron
+    side lives where the design note seats it: a ``NeuronLifecycle`` on the
+    interface, carrying the neuron ``RentCourt`` (whose retires the root
+    cascades into incident synapse deaths) and the RESPONSE capability
+    (``BundleComposer`` + ``IncidentOutputBirth``, one dormant neuron ungated
+    with its declared incident births per bundle).
+    """
+
+    def make_birth(lam: float | None) -> UniformEntryBirth:
+        del lam
+        return UniformEntryBirth(bounds_in, bounds_out, initial_weight)
+
+    method = SynapseLifecycle(
+        birth_factory=make_birth,
+        prune_factory=lambda: RentCourt(
+            immunity_events=immunity_events,
+            rent_ratio=rent_ratio,
+            strikes=strikes,
+        ),
+        priceable=False,
+        label="LC_response",
+    )
+    interface = NeuronLifecycle(
+        retention_factory=lambda: RentCourt(
+            immunity_events=immunity_events,
+            rent_ratio=rent_ratio,
+            strikes=strikes,
+        ),
+        composer_factory=lambda: BundleComposer(
+            incident_births=incident_births,
+            initial_gate=initial_gate,
+        ),
+        incident_factory=lambda: IncidentOutputBirth(initial_weight),
+        label="LC_response.interface",
+    )
+    return QuotaRegime(
+        budget=birth_budget,
+        method=method,
+        cadence=BirthWindowCadence(
+            event_interval=event_interval,
+            birth_end_event=birth_end_event,
+            freeze_event=freeze_event,
+            response_events=response_events,
+        ),
+        quota=WindowedQuota(
+            (
+                QuotaWindow(
+                    birth_start_event,
+                    birth_end_event,
+                    StructuralQuota(synapse_birth=birth_budget),
+                ),
+                QuotaWindow(
+                    response_events[0],
+                    response_events[1],
+                    StructuralQuota(
+                        synapse_birth=response_birth_budget,
+                        neuron_birth=response_ungates_per_event,
+                    ),
+                ),
+            ),
+            default=StructuralQuota(),
+        ),
+        distributor=EvenBudgetDistributor(),
+        interface=interface,
     )
