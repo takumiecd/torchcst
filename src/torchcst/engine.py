@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from types import MappingProxyType
 from typing import Any
 
 import torch
@@ -34,35 +33,21 @@ from torchcst.instruments import (
 )
 from torchcst.optim import OptimizerStateFollower
 from torchcst.storage import (
-    NeuronKick,
     NeuronRetire,
     NeuronStore,
-    NeuronUngate,
-    NeuronView,
-    SynapseBirth,
     SynapseDeath,
-    SynapseMerge,
     SynapseStore,
-    SynapseView,
-    commit_all,
-    prepare_all,
 )
-from .policy.arbiter import make_arbiter
-from .policy.bundle import Op, ProposalBundle
+from .policy.bundle import Op
 from .policy.runtime import SiteBinding
-from .policy.tree import QuotaRegime, RentEconomy, RuntimeTree
+from .policy.tree import RuntimeTree
 from .policy.contract import (
     Clock,
     InstrumentSpec,
     InstrumentRequirement,
     ObservationRequest,
-    Policy,
-    PolicyContext,
-    StructuralPlan,
-    StructuralPolicy,
 )
-from .policy.profit import TrialSession, TrialTransaction
-from .policy.registry import RetiredCandidateRegistry
+from .policy.profit import TrialTransaction
 
 
 class StructuralEngine:
@@ -86,19 +71,12 @@ class StructuralEngine:
         if isinstance(policy, type):
             policy = policy()
         # Any object with bind() is a policy-tree root -- the shipped
-        # families or a researcher's own coordination (the StructuralPolicy
-        # successor path: author a lifecycle under a standard family, or, for
-        # exotic coordination, a whole root exposing the same bind contract).
-        tree_root = callable(getattr(policy, "bind", None))
-        if not tree_root:
-            adapter = getattr(policy, "as_policy", None)
-            if adapter is not None:
-                policy = adapter()
-            if not isinstance(policy, (Policy, StructuralPolicy)):
-                raise TypeError(
-                    "policy must be a policy-tree root, a Policy, a "
-                    "StructuralPolicy, or provide as_policy()"
-                )
+        # families or a researcher's own coordination (docs/policy-tree-
+        # phase2.md: the tree is the sole execution path; a researcher who
+        # wants exotic coordination authors their own root exposing the same
+        # bind contract instead of a StructuralPolicy).
+        if not callable(getattr(policy, "bind", None)):
+            raise TypeError("policy must be a policy-tree root providing bind()")
         if not isinstance(stores, dict) or not stores:
             raise ValueError("stores must be a non-empty dict")
         for site, store in stores.items():
@@ -120,10 +98,6 @@ class StructuralEngine:
         if not self.synapse_stores:
             raise ValueError("StructuralEngine requires at least one SynapseStore")
         self.policy = policy
-        self._composed_policy = isinstance(policy, Policy)
-        self._tree: RuntimeTree | None = None
-        self._arbiter = None if tree_root else make_arbiter(policy)
-        self.registry = RetiredCandidateRegistry()
         self.clock = Clock(update_step=0, event_index=0)
         if rng is not None and not isinstance(rng, torch.Generator):
             raise TypeError("rng must be a torch.Generator or None")
@@ -149,20 +123,17 @@ class StructuralEngine:
         self._op_log: list[tuple[int, Op]] = []
         self.modules = self._validate_modules(modules)
         self.capture_modes = self._normalize_capture_modes(capture_mode)
-        if tree_root:
-            # The linear stack (docs/policy-tree-phase2.md): bind the tree
-            # once -- children take their stores by reference, the root takes
-            # its children, and from here on the engine reads only the
-            # tree's aggregated declarations (requires, registry, cadence).
-            bindings = {
-                site: SiteBinding(store=store, module=self.modules.get(site))
-                for site, store in self.synapse_stores.items()
-            }
-            self._tree = policy.bind(bindings, tuple(self.neuron_stores.values()))
-            self.registry = self._tree.registry
-            requirements = tuple(self._tree.requires)
-        else:
-            requirements = tuple(policy.requires)
+        # The linear stack (docs/policy-tree-phase2.md): bind the tree once --
+        # children take their stores by reference, the root takes its
+        # children, and from here on the engine reads only the tree's
+        # aggregated declarations (requires, registry, cadence).
+        bindings = {
+            site: SiteBinding(store=store, module=self.modules.get(site))
+            for site, store in self.synapse_stores.items()
+        }
+        self._tree: RuntimeTree = policy.bind(bindings, tuple(self.neuron_stores.values()))
+        self.registry = self._tree.registry
+        requirements = tuple(self._tree.requires)
         if not all(
             isinstance(requirement, (InstrumentSpec, ObservationRequest))
             for requirement in requirements
@@ -388,39 +359,7 @@ class StructuralEngine:
         return result
 
     def _bind_instruments(self) -> None:
-        if self._tree is not None:
-            self._tree.bind_instruments(self.instruments)
-            return
-        components = (
-            (
-                self.policy.active_cadence,
-                self.policy.quota,
-                *self.policy.observations,
-                *self.policy.proposal_rules,
-                self.policy.active_distributor,
-                self.policy.synapse_retention_rule,
-                self.policy.synapse_absorb_rule,
-                self.policy.composer,
-                self.policy.profit,
-                self.policy.neuron_retention_rule,
-            )
-            if self._composed_policy
-            else (self.policy,)
-        )
-        for component in components:
-            if component is None:
-                continue
-            requested = tuple(getattr(component, "requires", ()))
-            if not requested:
-                continue
-            binder = getattr(component, "bind_instruments", None)
-            if binder is None:
-                continue
-            for site, instruments in self.instruments.items():
-                binder(
-                    site,
-                    {spec.name: instruments[spec.name] for spec in requested},
-                )
+        self._tree.bind_instruments(self.instruments)
 
     @property
     def capture_active(self) -> bool:
@@ -509,12 +448,7 @@ class StructuralEngine:
             raise RuntimeError("an update is already active")
         update_id = self.clock.update_step + 1
         candidate = Clock(update_id, self.clock.event_index + 1)
-        if self._tree is not None:
-            observing = self._tree.observing(candidate)
-        elif self._composed_policy:
-            observing = self.policy.active_cadence.observing(candidate)
-        else:
-            observing = self.policy.capture(candidate)
+        observing = self._tree.observing(candidate)
         self._capture_active = bool(self._requirements) and bool(observing)
         reducers, raw_sites = (
             self._prepare_capture() if self._capture_active else ({}, frozenset())
@@ -645,416 +579,6 @@ class StructuralEngine:
         self._capture_active = False
         self._backward_finalized = False
 
-    @staticmethod
-    def _ages(
-        store: SynapseStore | NeuronStore, view: SynapseView | NeuronView
-    ) -> torch.Tensor:
-        if isinstance(store, SynapseStore):
-            slots = store._slots.slots_of(view.ids)
-        else:
-            slots = view.ids
-        return store.age.values.index_select(0, slots)
-
-    def _proposal_view(self, store: SynapseStore, view: SynapseView) -> SynapseView:
-        bounds_in = getattr(store.spec.domain_in, "bounds", None)
-        bounds_out = getattr(store.spec.domain_out, "bounds", None)
-        if bounds_in is None and store.spec.kernel_in == "delta":
-            bounds_in = tuple(
-                int(view.s[:, column].max()) + 1 if view.s.numel() else 1
-                for column in range(store.d_in)
-            )
-        if bounds_out is None and store.spec.kernel_out == "delta":
-            bounds_out = tuple(
-                int(view.t[:, column].max()) + 1 if view.t.numel() else 1
-                for column in range(store.d_out)
-            )
-        return SynapseView(
-            site=view.site,
-            version=view.version,
-            ids=view.ids,
-            s=view.s,
-            t=view.t,
-            w=view.w,
-            mass=view.mass,
-            lineages=store.lineage.values.index_select(0, store._slots.live_slots),
-            bounds_in=bounds_in,
-            bounds_out=bounds_out,
-            domain_in=store.spec.domain_in,
-            domain_out=store.spec.domain_out,
-            retired_in=self._retired_endpoint_ids(store.site, "in"),
-            retired_out=self._retired_endpoint_ids(store.site, "out"),
-        )
-
-    def _policy_context(self, clock: Clock) -> PolicyContext:
-        """Build an immutable lookup surface for a whole-policy decision."""
-        synapses = {
-            site: self._proposal_view(store, store.view())
-            for site, store in self.synapse_stores.items()
-        }
-        neurons = {
-            site: store.view() for site, store in self.neuron_stores.items()
-        }
-        ages = {
-            site: self._ages(store, synapses[site])
-            for site, store in self.synapse_stores.items()
-        }
-        ages.update(
-            {
-                site: self._ages(store, neurons[site])
-                for site, store in self.neuron_stores.items()
-            }
-        )
-        instruments = {
-            site: MappingProxyType(dict(site_instruments))
-            for site, site_instruments in self.instruments.items()
-        }
-        return PolicyContext(
-            clock=clock,
-            synapses=MappingProxyType(synapses),
-            neurons=MappingProxyType(neurons),
-            ages=MappingProxyType(ages),
-            instruments=MappingProxyType(instruments),
-            registry=self.registry,
-            rng=self.rng,
-        )
-
-    def _retired_endpoint_ids(self, site: str, side: str) -> torch.Tensor:
-        module = self.modules.get(site)
-        if module is None:
-            return torch.zeros(0, dtype=torch.int64)
-        endpoints = self._module_endpoints(module)
-        endpoint = endpoints[0] if side == "in" else endpoints[1]
-        return (
-            torch.zeros(0, dtype=torch.int64)
-            if endpoint is None
-            else endpoint.retired_ids()
-        )
-
-    def _check_immunity(
-        self,
-        store: SynapseStore | NeuronStore,
-        deaths: tuple[SynapseDeath | NeuronRetire, ...],
-        immunity_events: int,
-    ) -> None:
-        for death in deaths:
-            slots = (
-                store._slots.slots_of(death.ids)
-                if isinstance(store, SynapseStore)
-                else death.ids.detach().to(device="cpu")
-            )
-            ages = store.age.values.index_select(0, slots)
-            if bool((ages < immunity_events).any()):
-                ids = death.ids.detach().to(device="cpu")
-                protected = ids[ages < immunity_events].tolist()
-                raise RuntimeError(
-                    f"court attempted to prune immune entity IDs {protected}"
-                )
-
-    def _expand_retirements(self, ops: tuple[Op, ...]) -> tuple[Op, ...]:
-        """Add family-defined incident deaths to the same atomic plan."""
-        expanded: list[Op] = list(ops)
-        retirements = [op for op in ops if isinstance(op, NeuronRetire)]
-        for retirement in retirements:
-            neuron_store = self.neuron_stores.get(retirement.site)
-            if neuron_store is None:
-                continue
-            for synapse_site, module in self.modules.items():
-                synapse_store = self.synapse_stores[synapse_site]
-                view = synapse_store.view()
-                incident: list[torch.Tensor] = []
-                in_neurons, out_neurons = self._module_endpoints(module)
-                if in_neurons is neuron_store:
-                    incident.append(
-                        synapse_store.spec.incident_synapse_ids(
-                            view, retirement.ids, side="in"
-                        )
-                    )
-                if out_neurons is neuron_store:
-                    incident.append(
-                        synapse_store.spec.incident_synapse_ids(
-                            view, retirement.ids, side="out"
-                        )
-                    )
-                ids = (
-                    torch.cat(incident).unique()
-                    if incident
-                    else torch.zeros(0, dtype=torch.int64)
-                )
-                if ids.numel():
-                    expanded.append(SynapseDeath(synapse_site, ids))
-        return self._deduplicate_synapse_deaths(tuple(expanded))
-
-    @staticmethod
-    def _deduplicate_synapse_deaths(ops: tuple[Op, ...]) -> tuple[Op, ...]:
-        deaths: dict[str, list[torch.Tensor]] = {}
-        result: list[Op] = []
-        for op in ops:
-            if isinstance(op, SynapseDeath):
-                deaths.setdefault(op.site, []).append(op.ids)
-            else:
-                result.append(op)
-        for site, columns in deaths.items():
-            ids = (
-                torch.cat(columns).unique()
-                if columns
-                else torch.zeros(0, dtype=torch.int64)
-            )
-            if ids.numel():
-                result.append(SynapseDeath(site, ids))
-        return tuple(result)
-
-    def _prepare_atomic_unit(
-        self, ops: tuple[Op, ...]
-    ) -> tuple[tuple[Any, ...], tuple[Op, ...], tuple[tuple[str, torch.Tensor], ...]]:
-        expanded = self._expand_retirements(ops)
-        self._validate_birth_endpoints(expanded)
-        by_site: dict[str, list[Op]] = {}
-        for op in expanded:
-            store = self.stores.get(op.site)
-            if store is None:
-                raise KeyError(f"operation targets unknown site {op.site!r}")
-            neuron_op = isinstance(op, (NeuronUngate, NeuronRetire, NeuronKick))
-            if neuron_op != isinstance(store, NeuronStore):
-                raise TypeError("operation type does not match its target store")
-            by_site.setdefault(op.site, []).append(op)
-
-        retired: list[tuple[str, torch.Tensor]] = []
-        for site, site_ops in by_site.items():
-            store = self.stores[site]
-            if not isinstance(store, SynapseStore):
-                continue
-            for op in site_ops:
-                if isinstance(op, SynapseDeath):
-                    slots = store._slots.slots_of(op.ids)
-                    retired.append(
-                        (
-                            site,
-                            store.lineage.values.index_select(0, slots).clone(),
-                        )
-                    )
-                elif isinstance(op, SynapseMerge):
-                    slots = store._slots.slots_of(op.id_pairs.reshape(-1))
-                    retired.append(
-                        (
-                            site,
-                            store.lineage.values.index_select(0, slots).clone(),
-                        )
-                    )
-        tickets = prepare_all(
-            (self.stores[site], tuple(site_ops)) for site, site_ops in by_site.items()
-        )
-        neuron_court = (
-            self.policy.neuron_retention_rule if self._composed_policy else None
-        )
-        if neuron_court is not None:
-            immunity = int(getattr(neuron_court, "immunity_events", 0))
-            for site, store in self.neuron_stores.items():
-                retirements = tuple(
-                    op
-                    for op in expanded
-                    if isinstance(op, NeuronRetire) and op.site == site
-                )
-                self._check_immunity(store, retirements, immunity)
-        return tickets, expanded, tuple(retired)
-
-    def _validate_birth_endpoints(self, ops: tuple[Op, ...]) -> None:
-        """Reject entry births into already/pending-retired chart endpoints."""
-        pending: dict[str, set[int]] = {}
-        for op in ops:
-            if isinstance(op, NeuronRetire):
-                pending.setdefault(op.site, set()).update(op.ids.tolist())
-        for op in ops:
-            if not isinstance(op, SynapseBirth):
-                continue
-            module = self.modules.get(op.site)
-            store = self.synapse_stores.get(op.site)
-            if (
-                module is None
-                or store is None
-                or store.spec.retirement != "endpoint_cascade"
-            ):
-                continue
-            in_neurons, out_neurons = self._module_endpoints(module)
-            for side, endpoint, coordinates in (
-                ("input", in_neurons, op.s),
-                ("output", out_neurons, op.t),
-            ):
-                if endpoint is None:
-                    continue
-                forbidden = set(endpoint.retired_ids().tolist())
-                forbidden.update(pending.get(endpoint.site, set()))
-                if (
-                    forbidden
-                    and coordinates.shape[1] == 1
-                    and any(
-                        int(value) in forbidden
-                        for value in coordinates[:, 0].detach().cpu().tolist()
-                    )
-                ):
-                    raise ValueError(f"entry birth targets a retired {side} neuron")
-
-    def _commit_atomic_unit(
-        self,
-        prepared: tuple[
-            tuple[Any, ...], tuple[Op, ...], tuple[tuple[str, torch.Tensor], ...]
-        ],
-    ) -> tuple[Op, ...]:
-        # Optimizer-state reconciliation is not repeated here: each store's
-        # commit fires its FollowerHub (grow/birth/death), and the
-        # OptimizerStateFollower subscribed in __init__ zeroes and grows
-        # slot-indexed moments from those notifications. Storage is the single
-        # emission point for mutation consequences (Phase 2 S1).
-        tickets, expanded, retired = prepared
-        commit_all(tickets)
-        for site, lineages in retired:
-            self.registry.retire(site, lineages)
-        return expanded
-
-    def _apply_atomic_unit(self, ops: tuple[Op, ...]) -> tuple[Op, ...]:
-        if not ops:
-            return ()
-        return self._commit_atomic_unit(self._prepare_atomic_unit(ops))
-
-    def apply_proposals(
-        self, proposals: tuple[Op | ProposalBundle, ...] | list[Op | ProposalBundle]
-    ) -> tuple[Op, ...]:
-        """Apply independent proposal units, dropping only invalid bundles.
-
-        Standalone operations are their own units.  A bundle's prepare failure
-        is a rejection, while failures of standalone operations remain caller
-        errors.  Commit is attempted only after every store in a unit prepared.
-        """
-        applied: list[Op] = []
-        for proposal in tuple(proposals):
-            if isinstance(proposal, ProposalBundle):
-                if not proposal.atomic:
-                    raise ValueError("step 6 supports only atomic bundles")
-                try:
-                    prepared = self._prepare_atomic_unit(proposal.ops)
-                except (
-                    KeyError,
-                    TypeError,
-                    ValueError,
-                    RuntimeError,
-                    NotImplementedError,
-                ):
-                    continue
-                applied.extend(self._commit_atomic_unit(prepared))
-            else:
-                applied.extend(self._apply_atomic_unit((proposal,)))
-        return tuple(applied)
-
-    def _audit_event_context(
-        self,
-    ) -> tuple[dict[str, dict[int, int]], dict[str, float | None]]:
-        """Snapshot only facts needed to explain the upcoming adjudication."""
-        ages_by_id: dict[str, dict[int, int]] = {}
-        thresholds: dict[str, float | None] = {}
-        for site, store in self.stores.items():
-            view = store.view()
-            ages = self._ages(store, view)
-            ages_by_id[site] = {
-                int(entity_id): int(age)
-                for entity_id, age in zip(view.ids.tolist(), ages.tolist())
-            }
-            court = None
-            if self._composed_policy:
-                court = (
-                    self.policy.synapse_retention_rule
-                    if isinstance(store, SynapseStore)
-                    else self.policy.neuron_retention_rule
-                )
-            rent_ratio = getattr(court, "rent_ratio", None)
-            if rent_ratio is None or view.mass.numel() == 0:
-                thresholds[site] = None
-            else:
-                # Transfer before widening: MPS has no float64 dtype, and a
-                # combined device/dtype conversion can execute the cast on the
-                # source backend before the CPU copy.
-                mass = view.mass.detach().to(device="cpu").to(torch.float64)
-                thresholds[site] = float(torch.quantile(mass, 0.5)) * float(rent_ratio)
-        return ages_by_id, thresholds
-
-    def _publish_audit(
-        self,
-        ops: tuple[Op, ...],
-        context: tuple[dict[str, dict[int, int]], dict[str, float | None]],
-    ) -> None:
-        ages_by_id, thresholds = context
-        by_site: dict[str, list[Op]] = {site: [] for site in self.stores}
-        prune_ages: dict[str, list[int]] = {site: [] for site in self.stores}
-        for op in ops:
-            by_site[op.site].append(op)
-            if isinstance(op, (SynapseDeath, NeuronRetire)):
-                prune_ages[op.site].extend(
-                    ages_by_id[op.site][int(entity_id)]
-                    for entity_id in op.ids.detach().to(device="cpu").tolist()
-                )
-
-        views = {site: store.view() for site, store in self.stores.items()}
-        record = AuditRecord(
-            event_index=self.clock.event_index,
-            applied_ops={site: tuple(site_ops) for site, site_ops in by_site.items()},
-            live_counts={site: int(view.ids.numel()) for site, view in views.items()},
-            live_ids={site: view.ids for site, view in views.items()},
-            mass_snapshots={site: view.mass for site, view in views.items()},
-            prune_ages={
-                site: torch.tensor(values, dtype=torch.int64)
-                for site, values in prune_ages.items()
-            },
-            rent_thresholds=thresholds,
-        )
-        for subscriber in tuple(self._audit_subscribers):
-            subscriber.push(record)
-
-    def _apply_profit_trial(
-        self,
-        trial_ops: tuple[Op, ...],
-        objective: Callable[[], float] | None,
-        polish: Callable[[], None] | None,
-    ) -> tuple[Op, ...]:
-        """Run one selected proposal batch through the isolated profit path.
-
-        Any op type :class:`~torchcst.policy.profit.ProfitCourt` can price
-        (``SynapseBirth``/``SynapseDeath``/``SynapseMerge``) may pass through
-        here: dispatch is keyed on ``policy.profit`` being configured, not on
-        op type, so a pure profit-gated growth policy (only births) and a
-        merge-trial policy (only merges) share one adjudication path.
-
-        ``polish`` runs once, after the trial ops apply and before the after-
-        objective read, entirely inside the transaction: a rejected trial
-        rolls polish back along with everything else.  This is the finite-
-        polish extension point :class:`~torchcst.policy.profit.TrialTransaction`
-        anticipated from the start.  A zero-amplitude birth (this framework's
-        RigL-style convention) has no effect on the objective until polished,
-        so profit-gated growth policies need a ``polish`` callback to ever
-        show positive realized profit; a merge trial needs none, since the
-        merge already carries live weight.
-        """
-        if not trial_ops:
-            return ()
-        profit = self.policy.profit
-        if profit is None:
-            raise RuntimeError("this proposal requires an opt-in ProfitCourt")
-        if objective is None:
-            raise RuntimeError("a profit-priced proposal requires objective=")
-        if polish is not None and not callable(polish):
-            raise TypeError("polish must be callable or None")
-        transaction = TrialTransaction(self)
-        session = TrialSession(objective, transaction)
-        try:
-            session.begin()
-            price = profit.price_for(trial_ops, self.synapse_stores)
-            applied = self._apply_atomic_unit(tuple(trial_ops))
-            if polish is not None:
-                polish()
-            accepted = profit.adjudicate(applied, price, session)
-        except BaseException:
-            if transaction.active:
-                transaction.rollback()
-            raise
-        return applied if accepted else ()
-
     def _validate_step_call(
         self,
         objective: Callable[[], float] | None,
@@ -1062,20 +586,13 @@ class StructuralEngine:
     ) -> None:
         if polish is not None and objective is None:
             raise RuntimeError("polish requires objective=")
-        if objective is not None and self._tree is not None:
+        if objective is not None:
             if self._tree.profit is None:
                 raise RuntimeError(
                     "objective is unavailable when the tree has no profit court"
                 )
             if not callable(objective):
                 raise TypeError("objective must be callable or None")
-            return
-        if objective is not None and (
-            not self._composed_policy or self.policy.profit is None
-        ):
-            raise RuntimeError("objective is unavailable when policy.profit is None")
-        if objective is not None and not callable(objective):
-            raise TypeError("objective must be callable or None")
 
     def _ensure_capture_queue_is_released(self) -> None:
         if (
@@ -1087,44 +604,6 @@ class StructuralEngine:
                 "finalize_backward() must release the capture queue before step()"
             )
 
-    def _finish_event(
-        self,
-        applied: tuple[Op, ...],
-        audit_context: (
-            tuple[dict[str, dict[int, int]], dict[str, float | None]] | None
-        ),
-    ) -> tuple[Op, ...]:
-        """Advance event-owned state and publish the completed result."""
-        for store in self.stores.values():
-            store.age.tick()
-        self._op_log.extend((self.clock.event_index, op) for op in applied)
-        if audit_context is not None:
-            self._publish_audit(applied, audit_context)
-        self._reset_event_instruments()
-        return applied
-
-    def _check_plan_immunity(self, plan: StructuralPlan) -> None:
-        """Enforce the whole policy's declared age protection before apply."""
-        operations: list[Op] = []
-        for proposal in plan.proposals:
-            operations.extend(
-                proposal.ops if isinstance(proposal, ProposalBundle) else (proposal,)
-            )
-        for site, store in self.synapse_stores.items():
-            deaths = tuple(
-                op
-                for op in operations
-                if isinstance(op, SynapseDeath) and op.site == site
-            )
-            self._check_immunity(store, deaths, plan.synapse_immunity_events)
-        for site, store in self.neuron_stores.items():
-            retirements = tuple(
-                op
-                for op in operations
-                if isinstance(op, NeuronRetire) and op.site == site
-            )
-            self._check_immunity(store, retirements, plan.neuron_immunity_events)
-
     def step(
         self,
         objective: Callable[[], float] | None = None,
@@ -1132,16 +611,14 @@ class StructuralEngine:
     ) -> tuple[Op, ...]:
         """Advance one update; only a profit-priced policy may read objective.
 
-        Event orchestration (cadence/schedule normalization, absorb/retention/
-        proposal collection and adjudication, response bundling -- or, for a
-        first-class :class:`~torchcst.policy.contract.StructuralPolicy`,
-        ``plan()``) lives in the policy-side :class:`~.policy.arbiter.EventArbiter`
-        (``policy/arbiter.py``), not here. This method is the mechanism-only
-        remainder: ask the arbiter for this event's outcome, then either
-        advance ``update_step`` only (no event occurred) or return the
-        already-applied ops (the arbiter finished the event, including audit
-        and age ticks, via the engine's own mechanism methods before
-        returning).
+        Event orchestration (cadence normalization, absorb/retention/proposal
+        collection and adjudication, response bundling) lives entirely on the
+        bound policy-tree root (``policy/tree.py``'s ``RuntimeTree``), not
+        here. This method is the mechanism-only remainder: ask the tree for
+        this event's outcome via :meth:`_step_tree`, which returns the
+        already-applied ops (the tree finished the event, including audit and
+        age ticks, before returning) or ``()`` if no event occurred at this
+        update.
         """
         self._validate_step_call(objective, polish)
         self._ensure_capture_queue_is_released()
@@ -1153,13 +630,7 @@ class StructuralEngine:
                 update_step=self.clock.update_step + 1,
                 event_index=self.clock.event_index + 1,
             )
-            if self._tree is not None:
-                return self._step_tree(candidate, objective, polish)
-            applied = self._arbiter.propose_event(self, candidate, objective, polish)
-            if applied is None:
-                self.clock = Clock(candidate.update_step, self.clock.event_index)
-                return ()
-            return applied
+            return self._step_tree(candidate, objective, polish)
         finally:
             # A failed policy component may consume the structural event, but it
             # must never leave autograd capture attached to the next update.
