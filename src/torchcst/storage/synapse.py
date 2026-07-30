@@ -274,6 +274,11 @@ class SynapseStore(nn.Module):
         """The current physical slot capacity."""
         return self._slots.capacity
 
+    @property
+    def k_live(self) -> int:
+        """The number of live atoms."""
+        return self._slots.k_live
+
     def live_ids(self) -> Tensor:
         """Live entity IDs in physical-slot order."""
         return self._slots.ids_of(self._slots.live_slots)

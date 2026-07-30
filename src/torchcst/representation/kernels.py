@@ -85,17 +85,8 @@ class ContinuousKernel(nn.Module):
             self.sigma = nn.Parameter(value)
         else:
             self.register_buffer("sigma", value)
-        # Whether forward() re-checks sigma's finiteness/positivity on every
-        # call (see forward's docstring note below). This construction-time
-        # check above always runs regardless: it is a one-time cost, not the
-        # per-call host sync forward's guard incurs, so validate_sigma never
-        # weakens the *library* default (True) for any existing caller --
-        # only a caller who can prove sigma stays positive and finite by
-        # construction on every subsequent write (e.g. reparameterizing as
-        # log_sigma and writing exp(log_sigma), never touching the buffer
-        # any other way) should pass False. Mirrors the track_mass precedent
-        # in _ContinuousCSTMap: an opt-out for provably-dead-weight
-        # per-forward bookkeeping, default True everywhere else.
+        # Per-call sigma re-validation flag; the contract and the opt-out
+        # conditions live in the class docstring.
         self._validate_sigma = validate_sigma
 
     @property
@@ -117,11 +108,8 @@ class ContinuousKernel(nn.Module):
             raise TypeError("continuous coordinates must have floating dtypes")
         sigma = self.sigma.to(device=query.device, dtype=query.dtype)
         if self._validate_sigma:
-            # Two host syncs (bool(), bool()) on every call. torch._assert_async
-            # would avoid them but poisons the CUDA context on failure, which
-            # is too weak a contract for this library's default -- see
-            # validate_sigma's docstring note in __init__ for who may
-            # disable this and why.
+            # Two host syncs per call; see the class docstring for the
+            # contract and who may disable this.
             if not bool(torch.isfinite(sigma)) or bool(sigma <= 0):
                 raise ValueError("sigma must remain finite and positive")
         centers = centers.to(device=query.device, dtype=query.dtype)

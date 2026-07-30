@@ -1,4 +1,4 @@
-"""座標domainとrepresentation仕様の公開面。"""
+"""Public surface of coordinate domains and representation specifications."""
 
 from .domains import Box, CoordinateDomain, IntegerGrid, ParameterRole, Role, Sphere
 from .gram import AbsorbAssessment, AbsorbPlanStep, GramService

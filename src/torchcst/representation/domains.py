@@ -1,4 +1,4 @@
-"""座標domainの動的契約と標準domain実装。"""
+"""The coordinate-domain contract and the standard domain implementations."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from torch import Tensor
 
 
 class ParameterRole(str, Enum):
-    """座標tensorが学習parameterか固定bufferかを表す。"""
+    """Whether a coordinate tensor is a learnable parameter or a fixed buffer."""
 
     PARAMETER = "parameter"
     BUFFER = "buffer"
@@ -22,7 +22,8 @@ Role = ParameterRole
 
 @runtime_checkable
 class CoordinateDomain(Protocol):
-    """座標の検証・勾配射影・retraction・optimizer state射影を所有する契約。"""
+    """Owns coordinate validation, gradient projection, retraction, and
+    optimizer-state projection for one coordinate space."""
 
     def parameter_role(self) -> ParameterRole: ...
 
@@ -41,8 +42,54 @@ class CoordinateDomain(Protocol):
     ) -> None: ...
 
 
+def _as_axis_tuple(
+    value: float | Sequence[float], dim: int, name: str
+) -> tuple[float, ...]:
+    """Normalize a scalar-or-per-axis bound to one float per axis."""
+    if isinstance(value, Tensor):
+        if value.ndim == 0:
+            return (float(value),) * dim
+        if value.ndim != 1 or value.numel() != dim:
+            raise ValueError(f"{name} must be a scalar or have dim entries")
+        return tuple(float(item) for item in value.detach().cpu())
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return (float(value),) * dim
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        values = tuple(value)
+        if len(values) != dim:
+            raise ValueError(f"{name} must be a scalar or have dim entries")
+        return tuple(float(item) for item in values)
+    raise TypeError(f"{name} must be a real scalar or a sequence of them")
+
+
+def _validate_float_coords(coords: Tensor, dim: int, name: str) -> None:
+    """Shared rank/dtype/dimension checks for continuous coordinate rows."""
+    if not isinstance(coords, Tensor):
+        raise TypeError("coords must be a Tensor")
+    if coords.ndim != 2:
+        raise ValueError(f"{name} coords must be rank 2")
+    if not coords.is_floating_point():
+        raise TypeError(f"{name} coords must have a floating dtype")
+    if coords.shape[1] != dim:
+        raise ValueError(f"{name} coordinate dimension does not match dim")
+
+
+def _validate_coord_grad_pair(
+    coords: Tensor, grad: Tensor, dim: int, name: str
+) -> None:
+    """Shared checks for a (coords, grad) pair handed to projection methods."""
+    if not isinstance(coords, Tensor) or not isinstance(grad, Tensor):
+        raise TypeError("coords and grad must be Tensors")
+    if coords.ndim != 2 or coords.shape[1] != dim:
+        raise ValueError(f"{name} coords have the wrong shape")
+    if coords.shape != grad.shape:
+        raise ValueError("coords and grad must have equal shape")
+    if not coords.is_floating_point() or not grad.is_floating_point():
+        raise TypeError(f"{name} coords and grad must have floating dtypes")
+
+
 class IntegerGrid:
-    """delta entry座標をint64 bufferとして扱う距離なし整数格子。"""
+    """A metric-free integer lattice treating delta entry coordinates as int64 buffers."""
 
     def __init__(self, bounds: int | tuple[int, ...] | None = None) -> None:
         if isinstance(bounds, int):
@@ -54,11 +101,11 @@ class IntegerGrid:
         self.bounds = bounds
 
     def parameter_role(self) -> ParameterRole:
-        """整数座標をbufferとして宣言する。"""
+        """Integer coordinates are fixed buffers."""
         return ParameterRole.BUFFER
 
     def validate_birth(self, coords: Tensor) -> None:
-        """birth座標のrank・dtype・任意境界を検証する。"""
+        """Check birth coordinates for rank, dtype, and optional bounds."""
         if not isinstance(coords, Tensor):
             raise TypeError("coords must be a Tensor")
         if coords.ndim != 2:
@@ -74,7 +121,7 @@ class IntegerGrid:
             raise ValueError("IntegerGrid coordinates are out of bounds")
 
     def sample(self, n: int, rng: torch.Generator) -> Tensor:
-        """境界内から一様に整数行を標本化する（行の重複を許す）。"""
+        """Draw integer rows uniformly within bounds (duplicate rows allowed)."""
         _validate_sample_args(n, rng)
         if self.bounds is None:
             raise ValueError("IntegerGrid.sample requires bounds")
@@ -88,7 +135,7 @@ class IntegerGrid:
         return torch.stack(columns, dim=1).to(dtype=torch.int64)
 
     def lineage_key(self, coords: Tensor) -> Tensor:
-        """mixed-radix encodeにより各整数座標へ決定的なkeyを与える。"""
+        """Assign each integer coordinate a deterministic mixed-radix key."""
         self.validate_birth(coords)
         if self.bounds is None:
             raise ValueError("IntegerGrid.lineage_key requires bounds")
@@ -103,20 +150,20 @@ class IntegerGrid:
         return result
 
     def project_grad(self, coords: Tensor, grad: Tensor) -> Tensor:
-        """固定buffer座標への勾配を零へ射影する。"""
+        """Project gradients on fixed buffer coordinates to zero."""
         if coords.shape != grad.shape:
             raise ValueError("coords and grad must have equal shape")
         return torch.zeros_like(grad)
 
     def retract(self, coords: Tensor) -> Tensor:
-        """整数格子上の座標を検証してそのまま返す。"""
+        """Validate lattice coordinates and return them unchanged."""
         self.validate_birth(coords)
         return coords
 
     def project_state(
         self, coords: Tensor, opt_state: MutableMapping[str, object]
     ) -> None:
-        """固定buffer座標にはoptimizer stateが無いことを検証する。"""
+        """Assert that fixed buffer coordinates own no optimizer state."""
         self.validate_birth(coords)
         if opt_state:
             raise ValueError("IntegerGrid buffer coordinates cannot own optimizer state")
@@ -150,14 +197,7 @@ class Sphere:
         return ParameterRole.PARAMETER
 
     def validate_birth(self, coords: Tensor) -> None:
-        if not isinstance(coords, Tensor):
-            raise TypeError("coords must be a Tensor")
-        if coords.ndim != 2:
-            raise ValueError("Sphere coords must be rank 2")
-        if not coords.is_floating_point():
-            raise TypeError("Sphere coords must have a floating dtype")
-        if coords.shape[1] != self.dim:
-            raise ValueError("Sphere coordinate dimension does not match dim")
+        _validate_float_coords(coords, self.dim, "Sphere")
         norms = torch.linalg.vector_norm(coords, dim=1)
         if not bool(torch.isfinite(norms).all()):
             raise ValueError("Sphere coordinates must be finite")
@@ -186,18 +226,13 @@ class Sphere:
 
     def project_grad(self, coords: Tensor, grad: Tensor) -> Tensor:
         """Project a row-wise gradient onto the tangent space at ``coords``."""
-        self._validate_pair(coords, grad)
+        _validate_coord_grad_pair(coords, grad, self.dim, "Sphere")
         radial = (coords * grad).sum(dim=1, keepdim=True)
         return grad - radial * coords
 
     def retract(self, coords: Tensor) -> Tensor:
         """Normalize every row, rejecting undefined zero-row retractions."""
-        if not isinstance(coords, Tensor) or coords.ndim != 2:
-            raise ValueError("Sphere coords must be a rank-2 Tensor")
-        if not coords.is_floating_point():
-            raise TypeError("Sphere coords must have a floating dtype")
-        if coords.shape[1] != self.dim:
-            raise ValueError("Sphere coordinate dimension does not match dim")
+        _validate_float_coords(coords, self.dim, "Sphere")
         norms = torch.linalg.vector_norm(coords, dim=1, keepdim=True)
         if bool((norms == 0).any()):
             raise ValueError("Sphere cannot retract a zero row")
@@ -226,16 +261,6 @@ class Sphere:
             ):
                 with torch.no_grad():
                     value.copy_(self.project_grad(coords, value))
-
-    def _validate_pair(self, coords: Tensor, other: Tensor) -> None:
-        if not isinstance(coords, Tensor) or not isinstance(other, Tensor):
-            raise TypeError("coords and grad must be Tensors")
-        if coords.ndim != 2 or coords.shape[1] != self.dim:
-            raise ValueError("Sphere coords have the wrong shape")
-        if coords.shape != other.shape:
-            raise ValueError("coords and grad must have equal shape")
-        if not coords.is_floating_point() or not other.is_floating_point():
-            raise TypeError("Sphere coords and grad must have floating dtypes")
 
 
 class Box:
@@ -280,8 +305,8 @@ class Box:
             raise TypeError("Box dim must be an int")
         if dim <= 0:
             raise ValueError("Box dim must be positive")
-        lower = self._as_axis_tuple(lo, dim, "lo")
-        upper = self._as_axis_tuple(hi, dim, "hi")
+        lower = _as_axis_tuple(lo, dim, "Box lo")
+        upper = _as_axis_tuple(hi, dim, "Box hi")
         if any(not isfinite(value) for value in lower + upper):
             raise ValueError("Box bounds must be finite")
         if any(low >= high for low, high in zip(lower, upper)):
@@ -298,10 +323,7 @@ class Box:
         self.lo: float | tuple[float, ...] = lower[0] if self.uniform else lower
         self.hi: float | tuple[float, ...] = upper[0] if self.uniform else upper
         self.bounds = (self.lo, self.hi)
-        # volume ** (1/dim): the edge of the cube with this box's volume.
-        self.width = float(
-            torch.tensor(self.widths, dtype=torch.float64).log().mean().exp()
-        ) if not self.uniform else float(self.widths[0])
+        self.width = self._geometric_mean_width()
         self._lo_row = torch.tensor(lower, dtype=torch.float64).reshape(1, dim)
         self._hi_row = torch.tensor(upper, dtype=torch.float64).reshape(1, dim)
         # `retract` runs once per layer per training step, so the per-axis
@@ -309,24 +331,13 @@ class Box:
         # from the host on every call. A cube never reaches this path at all.
         self._row_cache: dict[tuple[torch.device, torch.dtype], tuple[Tensor, Tensor]] = {}
 
-    @staticmethod
-    def _as_axis_tuple(
-        value: float | Sequence[float], dim: int, name: str
-    ) -> tuple[float, ...]:
-        if isinstance(value, Tensor):
-            if value.ndim == 0:
-                return (float(value),) * dim
-            if value.ndim != 1 or value.numel() != dim:
-                raise ValueError(f"Box {name} must be a scalar or have dim entries")
-            return tuple(float(item) for item in value.detach().cpu())
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return (float(value),) * dim
-        if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            values = tuple(value)
-            if len(values) != dim:
-                raise ValueError(f"Box {name} must be a scalar or have dim entries")
-            return tuple(float(item) for item in values)
-        raise TypeError(f"Box {name} must be a real scalar or a sequence of them")
+    def _geometric_mean_width(self) -> float:
+        """``volume ** (1/dim)``: the edge of the cube with this box's volume."""
+        if self.uniform:
+            return float(self.widths[0])
+        return float(
+            torch.tensor(self.widths, dtype=torch.float64).log().mean().exp()
+        )
 
     def _rows(self, like: Tensor) -> tuple[Tensor, Tensor]:
         key = (like.device, like.dtype)
@@ -343,14 +354,7 @@ class Box:
         return ParameterRole.PARAMETER
 
     def validate_birth(self, coords: Tensor) -> None:
-        if not isinstance(coords, Tensor):
-            raise TypeError("coords must be a Tensor")
-        if coords.ndim != 2:
-            raise ValueError("Box coords must be rank 2")
-        if not coords.is_floating_point():
-            raise TypeError("Box coords must have a floating dtype")
-        if coords.shape[1] != self.dim:
-            raise ValueError("Box coordinate dimension does not match dim")
+        _validate_float_coords(coords, self.dim, "Box")
         if not bool(torch.isfinite(coords).all()):
             raise ValueError("Box coordinates must be finite")
         if self.uniform:
@@ -379,17 +383,12 @@ class Box:
 
     def project_grad(self, coords: Tensor, grad: Tensor) -> Tensor:
         """Return the Euclidean gradient unchanged."""
-        self._validate_pair(coords, grad)
+        _validate_coord_grad_pair(coords, grad, self.dim, "Box")
         return grad
 
     def retract(self, coords: Tensor) -> Tensor:
         """Retract by coordinate-wise clamping to the closed box."""
-        if not isinstance(coords, Tensor) or coords.ndim != 2:
-            raise ValueError("Box coords must be a rank-2 Tensor")
-        if not coords.is_floating_point():
-            raise TypeError("Box coords must have a floating dtype")
-        if coords.shape[1] != self.dim:
-            raise ValueError("Box coordinate dimension does not match dim")
+        _validate_float_coords(coords, self.dim, "Box")
         if not bool(torch.isfinite(coords).all()):
             raise ValueError("Box coordinates must be finite")
         if self.uniform:
@@ -405,16 +404,6 @@ class Box:
             raise ValueError("Box coords must be a rank-2 Tensor")
         if coords.shape[1] != self.dim:
             raise ValueError("Box coordinate dimension does not match dim")
-
-    def _validate_pair(self, coords: Tensor, grad: Tensor) -> None:
-        if not isinstance(coords, Tensor) or not isinstance(grad, Tensor):
-            raise TypeError("coords and grad must be Tensors")
-        if coords.ndim != 2 or coords.shape[1] != self.dim:
-            raise ValueError("Box coords have the wrong shape")
-        if coords.shape != grad.shape:
-            raise ValueError("coords and grad must have equal shape")
-        if not coords.is_floating_point() or not grad.is_floating_point():
-            raise TypeError("Box coords and grad must have floating dtypes")
 
 
 def _validate_sample_args(n: int, rng: torch.Generator) -> None:

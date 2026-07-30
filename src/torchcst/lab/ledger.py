@@ -13,6 +13,20 @@ from torch import Tensor
 from torchcst.storage import SynapseBirth, SynapseDeath
 
 
+def canonical_json_bytes(payload: Any) -> bytes:
+    """Serialize ``payload`` to the lab's canonical, hash-stable JSON bytes."""
+    return (
+        json.dumps(
+            payload,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
 class Ledger:
     """Record structural operations, counters, and file provenance as JSON."""
 
@@ -187,18 +201,8 @@ class Ledger:
         ):
             raise ValueError("ledger provenance must map paths to hashes")
 
-    @staticmethod
-    def _canonical_bytes(payload: Any) -> bytes:
-        return (
-            json.dumps(
-                payload,
-                allow_nan=False,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            )
-            + "\n"
-        ).encode("utf-8")
+    # Kept as a method name for callers that reach it through the class.
+    _canonical_bytes = staticmethod(canonical_json_bytes)
 
     @classmethod
     def _json_copy(cls, value: Any) -> Any:

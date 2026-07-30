@@ -1,4 +1,4 @@
-"""representation familyを一意に記述する最小仕様。"""
+"""The minimal specification that uniquely describes a representation family."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .kernels import CONTINUOUS_KERNELS
 
 @dataclass(frozen=True)
 class RepresentationSpec:
-    """familyのdomain・kernel・site・価格・退役意味論を束ねる。"""
+    """Bundle a family's domains, kernels, sites, atom price, and retirement semantics."""
 
     domain_in: CoordinateDomain = field(default_factory=IntegerGrid)
     domain_out: CoordinateDomain = field(default_factory=IntegerGrid)
@@ -41,22 +41,19 @@ class RepresentationSpec:
                 self.domain_out, IntegerGrid
             ):
                 raise TypeError("entry family requires IntegerGrid domains")
-        elif rank_one:
-            if not isinstance(self.domain_in, Sphere) or not isinstance(
-                self.domain_out, Sphere
-            ):
-                raise TypeError("rank-one family requires Sphere domains")
-            expected = self.domain_in.dim + self.domain_out.dim + 1
-            if self.atom_cost != expected:
-                raise ValueError("rank-one atom_cost must be d_in + d_out + 1")
         else:
-            if not isinstance(self.domain_in, Box) or not isinstance(
-                self.domain_out, Box
+            family, domain_type = (
+                ("rank-one", Sphere) if rank_one else ("continuous", Box)
+            )
+            if not isinstance(self.domain_in, domain_type) or not isinstance(
+                self.domain_out, domain_type
             ):
-                raise TypeError("continuous family requires Box domains")
+                raise TypeError(
+                    f"{family} family requires {domain_type.__name__} domains"
+                )
             expected = self.domain_in.dim + self.domain_out.dim + 1
             if self.atom_cost != expected:
-                raise ValueError("continuous atom_cost must be d_in + d_out + 1")
+                raise ValueError(f"{family} atom_cost must be d_in + d_out + 1")
         expected_retirement = "endpoint_cascade" if entry else "gate_only"
         if self.retirement != expected_retirement:
             raise ValueError(
@@ -70,7 +67,7 @@ class RepresentationSpec:
         bounds_in: int | tuple[int, ...] | None = None,
         bounds_out: int | tuple[int, ...] | None = None,
     ) -> RepresentationSpec:
-        """IntegerGrid×deltaのentry family仕様を生成する。"""
+        """Create the IntegerGrid×delta entry-family spec."""
         return cls(
             domain_in=IntegerGrid(bounds_in),
             domain_out=IntegerGrid(bounds_out),
@@ -78,7 +75,7 @@ class RepresentationSpec:
 
     @classmethod
     def rank_one(cls, d_in: int, d_out: int) -> RepresentationSpec:
-        """Sphere×Sphere×scalarのrank-one atom family仕様を生成する。"""
+        """Create the Sphere×Sphere×scalar rank-one atom-family spec."""
         return cls(
             domain_in=Sphere(d_in),
             domain_out=Sphere(d_out),
@@ -200,17 +197,7 @@ class RepresentationSpec:
         two-atom effect into the one-atom family before deleting its parents.
         Entry atoms deliberately have no merge on their discrete lattice.
         """
-        if self.kernel_in != self.kernel_out or self.kernel_in != "dot":
-            raise ValueError("entry-family merge is undefined on the discrete lattice")
-        for name, value in (("s1", s1), ("t1", t1), ("s2", s2), ("t2", t2)):
-            if not isinstance(value, Tensor) or value.ndim != 1:
-                raise ValueError(f"{name} must be a rank-1 Tensor")
-        if s1.shape != s2.shape or t1.shape != t2.shape:
-            raise ValueError("merge factor dimensions must match")
-        if s1.numel() != self.domain_in.dim or t1.numel() != self.domain_out.dim:
-            raise ValueError("merge factors do not match the representation domains")
-        if not all(value.is_floating_point() for value in (s1, t1, s2, t2)):
-            raise TypeError("rank-one merge factors must have floating dtypes")
+        self._validate_merge_factors(s1, t1, s2, t2)
         reference = s1
         left = torch.stack((s1, s2)).to(reference)
         right = torch.stack((t1, t2)).to(reference)
@@ -242,6 +229,21 @@ class RepresentationSpec:
             target.to(dtype=result_dtype),
             weight.to(dtype=result_dtype),
         )
+
+    def _validate_merge_factors(
+        self, s1: Tensor, t1: Tensor, s2: Tensor, t2: Tensor
+    ) -> None:
+        if self.kernel_in != self.kernel_out or self.kernel_in != "dot":
+            raise ValueError("entry-family merge is undefined on the discrete lattice")
+        for name, value in (("s1", s1), ("t1", t1), ("s2", s2), ("t2", t2)):
+            if not isinstance(value, Tensor) or value.ndim != 1:
+                raise ValueError(f"{name} must be a rank-1 Tensor")
+        if s1.shape != s2.shape or t1.shape != t2.shape:
+            raise ValueError("merge factor dimensions must match")
+        if s1.numel() != self.domain_in.dim or t1.numel() != self.domain_out.dim:
+            raise ValueError("merge factors do not match the representation domains")
+        if not all(value.is_floating_point() for value in (s1, t1, s2, t2)):
+            raise TypeError("rank-one merge factors must have floating dtypes")
 
     @staticmethod
     def _canonical_sign(vector: Tensor) -> Tensor:

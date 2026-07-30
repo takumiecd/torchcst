@@ -48,6 +48,25 @@ class AuditRecord:
             raise TypeError("event_index must be an int")
         if self.event_index < 0:
             raise ValueError("event_index must be non-negative")
+        sites, ids = self._validated_sites()
+        # Defensive copies: the record must stay immutable even if the caller
+        # later mutates the tensors it passed in.
+        copied: dict[str, dict[str, Any]] = {
+            "applied_ops": {},
+            "live_counts": {},
+            "mass_snapshots": {},
+            "prune_ages": {},
+            "rent_thresholds": {},
+            "live_ids": {},
+        }
+        for site in sorted(sites):
+            for field_name, value in self._copied_site_slice(site, ids).items():
+                copied[field_name][site] = value
+        for field_name, mapping in copied.items():
+            object.__setattr__(self, field_name, mapping)
+
+    def _validated_sites(self) -> tuple[set[str], Mapping[str, Tensor]]:
+        """Check that every site mapping covers the same site keys."""
         sites = set(self.live_counts)
         for values in (
             self.applied_ops,
@@ -65,57 +84,37 @@ class AuditRecord:
             }
         if set(ids) != sites:
             raise ValueError("live_ids must have the same site keys as live_counts")
+        return sites, ids
 
-        copied_ops: dict[str, tuple[Any, ...]] = {}
-        copied_counts: dict[str, int] = {}
-        copied_mass: dict[str, Tensor] = {}
-        copied_ages: dict[str, Tensor] = {}
-        copied_thresholds: dict[str, float | None] = {}
-        copied_ids: dict[str, Tensor] = {}
-        for site in sorted(sites):
-            if not isinstance(site, str) or not site:
-                raise ValueError("audit sites must be non-empty strings")
-            count = self.live_counts[site]
-            if isinstance(count, bool) or not isinstance(count, int) or count < 0:
-                raise ValueError("live counts must be non-negative ints")
-            mass = _tensor_copy(self.mass_snapshots[site]).reshape(-1)
-            site_ids = _tensor_copy(ids[site]).reshape(-1)
-            ages = _tensor_copy(self.prune_ages[site]).reshape(-1)
-            if site_ids.dtype != torch.int64 or ages.dtype != torch.int64:
-                raise TypeError("audit IDs and ages must have dtype int64")
-            if mass.numel() != count or site_ids.numel() != count:
-                raise ValueError("live IDs and mass must align with live count")
-            threshold = self.rent_thresholds[site]
-            if threshold is not None:
-                threshold = float(threshold)
-                if not isfinite(threshold) or threshold < 0:
-                    raise ValueError("rent thresholds must be finite and non-negative")
-            copied_ops[site] = tuple(deepcopy(op) for op in self.applied_ops[site])
-            copied_counts[site] = count
-            copied_mass[site] = mass
-            copied_ages[site] = ages
-            copied_thresholds[site] = threshold
-            copied_ids[site] = site_ids
-        object.__setattr__(self, "applied_ops", copied_ops)
-        object.__setattr__(self, "live_counts", copied_counts)
-        object.__setattr__(self, "mass_snapshots", copied_mass)
-        object.__setattr__(self, "prune_ages", copied_ages)
-        object.__setattr__(self, "rent_thresholds", copied_thresholds)
-        object.__setattr__(self, "live_ids", copied_ids)
-
-    # Short aliases keep interactive analysis readable without changing the
-    # explicit serialized field names above.
-    @property
-    def ops(self) -> Mapping[str, tuple[Any, ...]]:
-        return self.applied_ops
-
-    @property
-    def k_live(self) -> Mapping[str, int]:
-        return self.live_counts
-
-    @property
-    def mass(self) -> Mapping[str, Tensor]:
-        return self.mass_snapshots
+    def _copied_site_slice(
+        self, site: str, ids: Mapping[str, Tensor]
+    ) -> dict[str, Any]:
+        """Validate and defensively copy one site's slice of every field."""
+        if not isinstance(site, str) or not site:
+            raise ValueError("audit sites must be non-empty strings")
+        count = self.live_counts[site]
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError("live counts must be non-negative ints")
+        mass = _tensor_copy(self.mass_snapshots[site]).reshape(-1)
+        site_ids = _tensor_copy(ids[site]).reshape(-1)
+        ages = _tensor_copy(self.prune_ages[site]).reshape(-1)
+        if site_ids.dtype != torch.int64 or ages.dtype != torch.int64:
+            raise TypeError("audit IDs and ages must have dtype int64")
+        if mass.numel() != count or site_ids.numel() != count:
+            raise ValueError("live IDs and mass must align with live count")
+        threshold = self.rent_thresholds[site]
+        if threshold is not None:
+            threshold = float(threshold)
+            if not isfinite(threshold) or threshold < 0:
+                raise ValueError("rent thresholds must be finite and non-negative")
+        return {
+            "applied_ops": tuple(deepcopy(op) for op in self.applied_ops[site]),
+            "live_counts": count,
+            "mass_snapshots": mass,
+            "prune_ages": ages,
+            "rent_thresholds": threshold,
+            "live_ids": site_ids,
+        }
 
 
 @runtime_checkable
@@ -167,15 +166,12 @@ class EconomyAudit:
         strikes: int = 1,
         maturity_events: int | None = None,
     ) -> None:
+        if maturity_events is None:
+            maturity_events = immunity_events + strikes - 1
         for name, value in (
             ("immunity_events", immunity_events),
             ("strikes", strikes),
-            (
-                "maturity_events",
-                immunity_events + strikes - 1
-                if maturity_events is None
-                else maturity_events,
-            ),
+            ("maturity_events", maturity_events),
         ):
             if isinstance(value, bool) or not isinstance(value, int):
                 raise TypeError(f"{name} must be an int")
@@ -183,11 +179,7 @@ class EconomyAudit:
                 raise ValueError(f"{name} must be non-negative")
         self.immunity_events = immunity_events
         self.strikes = strikes
-        self.maturity_events = (
-            immunity_events + strikes - 1
-            if maturity_events is None
-            else maturity_events
-        )
+        self.maturity_events = maturity_events
         self._records: list[AuditRecord] = []
         self._losses: list[LossRecord] = []
 
@@ -216,19 +208,18 @@ class EconomyAudit:
             raise ValueError("loss value must be finite")
         self._losses.append(LossRecord(update_step, reading))
 
-    @property
-    def K(self) -> dict[str, tuple[int, ...]]:
-        sites = sorted(
-            {site for record in self._records for site in record.live_counts}
+    def _sites(self, field_name: str) -> list[str]:
+        """Every site that appears in ``field_name`` across all records, sorted."""
+        return sorted(
+            {site for record in self._records for site in getattr(record, field_name)}
         )
-        return {
-            site: tuple(record.live_counts[site] for record in self._records)
-            for site in sites
-        }
 
     @property
-    def k(self) -> dict[str, tuple[int, ...]]:
-        return self.K
+    def K(self) -> dict[str, tuple[int, ...]]:
+        return {
+            site: tuple(record.live_counts[site] for record in self._records)
+            for site in self._sites("live_counts")
+        }
 
     def k_series(self, site: str) -> tuple[int, ...]:
         try:
@@ -246,9 +237,7 @@ class EconomyAudit:
 
     @property
     def churn_by_site(self) -> dict[str, tuple[int, ...]]:
-        sites = sorted(
-            {site for record in self._records for site in record.applied_ops}
-        )
+        sites = self._sites("applied_ops")
         return {
             site: tuple(
                 sum(
@@ -309,11 +298,8 @@ class EconomyAudit:
 
     @property
     def thrash_rate_by_site(self) -> dict[str, float]:
-        sites = sorted(
-            {site for record in self._records for site in record.prune_ages}
-        )
         result: dict[str, float] = {}
-        for site in sites:
+        for site in self._sites("prune_ages"):
             columns = [record.prune_ages[site] for record in self._records]
             total = sum(int(column.numel()) for column in columns)
             young = sum(
@@ -332,21 +318,9 @@ class EconomyAudit:
         return structural[-1] if structural else None
 
     @property
-    def quiescence_event(self) -> int | None:
-        return self.last_structural_event
-
-    @property
-    def quiescence_step(self) -> int | None:
-        """Compatibility name; structural time here is the event index."""
-        return self.last_structural_event
-
-    @property
     def rent_margins(self) -> dict[str, tuple[RentMargin, ...]]:
-        sites = sorted(
-            {site for record in self._records for site in record.mass_snapshots}
-        )
         result: dict[str, tuple[RentMargin, ...]] = {}
-        for site in sites:
+        for site in self._sites("mass_snapshots"):
             summaries: list[RentMargin] = []
             for record in self._records:
                 mass = record.mass_snapshots[site].to(dtype=torch.float64)
@@ -362,7 +336,3 @@ class EconomyAudit:
                 summaries.append(RentMargin(record.event_index, site, minimum, median))
             result[site] = tuple(summaries)
         return result
-
-    @property
-    def rent_margin(self) -> dict[str, tuple[RentMargin, ...]]:
-        return self.rent_margins
