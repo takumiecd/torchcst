@@ -47,10 +47,10 @@ def make_momentum_buffers(
     When ``register`` (the default), each buffer is also installed as
     ``optimizer.state[param]["momentum_buffer"]`` -- the *same* tensor
     object, not a copy. This is load-bearing for any cell with a
-    structural engine attached: a birth/death event calls
-    ``SynapseStore.reconcile_optimizer_state(optimizer, reset_slots)``
-    internally (``torchcst.engine.StructuralEngine._commit_atomic_unit``),
-    which zeroes ``optimizer.state[param]["momentum_buffer"]`` at the
+    structural engine attached: a birth/death event's store commit fires its
+    ``FollowerHub``, which notifies the subscribed
+    ``OptimizerStateFollower`` (see ``torchcst.optim``), which zeroes
+    ``optimizer.state[param]["momentum_buffer"]`` at the
     born/dead physical slots -- this is what gives a newly-born atom fresh
     (zero) momentum instead of inheriting whatever the slot's previous,
     now-dead occupant had accumulated, and it is exactly the behavior real

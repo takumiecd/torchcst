@@ -8,14 +8,12 @@ from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import ContinuousGradientRequest
 from torchcst.policy import (
-    ActionSpec,
-    ConstantQuota,
     EvenBudgetDistributor,
     MagnitudeCourt,
     PeriodicCadence,
-    Policy,
+    QuotaRegime,
     ScoredBirth,
-    StructuralQuota,
+    SynapseLifecycle,
 )
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -63,16 +61,18 @@ def build_example(*, capture_mode: str = "inline_reduced"):
         chunk_size=8,
         timing=timing,
     )
-    birth = ScoredBirth(scorer, initial_weight=0.0)
-    policy = Policy(
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: ScoredBirth(scorer, initial_weight=0.0),
+        prune_factory=lambda: MagnitudeCourt(drop_fraction=0.0),
+        priceable=False,
+        label="gaussian_gradient_birth",
+    )
+    policy = QuotaRegime(
+        budget=1,
+        method=method,
         cadence=PeriodicCadence(
             event_interval=1,
             observe_window=1,
-        ),
-        quota=ConstantQuota(StructuralQuota(synapse_birth=1)),
-        actions=(
-            ActionSpec.synapse_prune(MagnitudeCourt(drop_fraction=0.0)),
-            ActionSpec.synapse_birth(birth),
         ),
         distributor=EvenBudgetDistributor(),
     )
