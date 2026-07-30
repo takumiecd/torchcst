@@ -625,6 +625,49 @@ class _ReplaceOnePolicy:
         return StructuralPlan((bundle,), synapse_immunity_events=0)
 
 
+class _ReplaceOneBirth:
+    """Deterministic replacement birth for the tree re-expression: the k-th
+    firing births lineage k (mod grid), matching the whole-policy original's
+    event_index rotation."""
+
+    requires: tuple = ()
+
+    def __init__(self, bounds_in: int, bounds_out: int) -> None:
+        self.bounds_in = bounds_in
+        self.bounds_out = bounds_out
+        self.fired = 0
+
+    def propose(self, view, budget, registry, rng):
+        del registry, rng
+        if budget < 1:
+            return ()
+        self.fired += 1
+        lineage = self.fired % (self.bounds_in * self.bounds_out)
+        s_val, t_val = divmod(lineage, self.bounds_out)
+        return (
+            SynapseBirth(
+                view.site,
+                torch.tensor([[s_val]], dtype=torch.int64),
+                torch.tensor([[t_val]], dtype=torch.int64),
+                torch.tensor([0.0]),
+                torch.tensor([lineage], dtype=torch.int64),
+            ),
+        )
+
+
+class _FirstIdCourt:
+    """Kill the oldest live atom unconditionally (immunity 0)."""
+
+    requires: tuple = ()
+    immunity_events: int = 0
+
+    def decide(self, view, ages, clock):
+        del ages, clock
+        if view.ids.numel() == 0:
+            return ()
+        return (SynapseDeath(view.site, view.ids[:1]),)
+
+
 def _structural_policy_build(seed: int):
     bounds_in, bounds_out = 4, 3
     store = SynapseStore(
@@ -643,7 +686,20 @@ def _structural_policy_build(seed: int):
     )
     module = EntryLinear(store, bounds_in, bounds_out)
     optimizer = torch.optim.SGD(store.parameters(), lr=0.05)
-    policy = _ReplaceOnePolicy(site="entry", bounds_in=bounds_in, bounds_out=bounds_out)
+    if TREE_NATIVE:
+        from torchcst.policy.families import SynapseLifecycle
+
+        method = SynapseLifecycle(
+            birth_factory=lambda lam: _ReplaceOneBirth(bounds_in, bounds_out),
+            prune_factory=_FirstIdCourt,
+            priceable=False,
+            label="replace-one",
+        )
+        policy = QuotaRegime(
+            budget=1, method=method, cadence=PeriodicCadence(event_interval=3)
+        )
+    else:
+        policy = _ReplaceOnePolicy(site="entry", bounds_in=bounds_in, bounds_out=bounds_out)
     engine = StructuralEngine(
         {"entry": store}, policy, modules={"entry": module}, optimizer=optimizer, seed=seed
     )

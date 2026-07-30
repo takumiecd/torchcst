@@ -85,7 +85,11 @@ class StructuralEngine:
     ) -> None:
         if isinstance(policy, type):
             policy = policy()
-        tree_root = isinstance(policy, (QuotaRegime, RentEconomy))
+        # Any object with bind() is a policy-tree root -- the shipped
+        # families or a researcher's own coordination (the StructuralPolicy
+        # successor path: author a lifecycle under a standard family, or, for
+        # exotic coordination, a whole root exposing the same bind contract).
+        tree_root = callable(getattr(policy, "bind", None))
         if not tree_root:
             adapter = getattr(policy, "as_policy", None)
             if adapter is not None:
