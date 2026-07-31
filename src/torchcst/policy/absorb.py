@@ -1,28 +1,23 @@
-"""Stage 3 of ``docs/absorb-and-gram-design.md``: absorb policy wiring.
+"""Stage 3b of ``docs/absorb-and-gram-design.md``: absorb policy wiring.
 
-Two authoring paths share the same absorb-chain logic (design section 5):
+:class:`AbsorbCourt` is a tree-native lifecycle part: an
+``OpProposer``-shaped rule (``propose(view, budget, registry, rng)``) that
+:func:`~torchcst.policy.families.RENT` places as a
+:class:`~torchcst.policy.families.SynapseLifecycle`'s ``absorb_factory``.
+The tree is the sole authoring path for absorb (the earlier whole-policy
+``AbsorbPolicy`` route is retired; see git history for its accounting).
 
-- :class:`AbsorbPolicy` (**stage 3a**) is a first-class
-  :class:`~torchcst.policy.contract.StructuralPolicy`
-  (``docs/policy-authoring.md``, authoring path 2): one object implementing
-  ``capture``, ``plan``, ``bind_instruments``, and ``on_applied``, with no
-  cadence, distributor, or court decomposition.
-- :class:`AbsorbCourt` (**stage 3b**) is the composed-route reincarnation of
-  the same plan logic: an ``ActionSpec.synapse_absorb(...)`` part with a
-  ``propose(view, budget, registry, rng)`` method, usable alongside any other
-  ``ActionSpec`` in a :class:`~torchcst.policy.contract.Policy`.
-
-Both build a :class:`~torchcst.representation.gram.GramService` from the live
+:class:`AbsorbCourt` builds a
+:class:`~torchcst.representation.gram.GramService` from the live
 :class:`~torchcst.storage.synapse.SynapseView` and the
 :class:`~torchcst.instruments.base.KernelPort` bound at construction (via the
-public :class:`~torchcst.instruments.base.KernelPortRequest`), plan a
+public :class:`~torchcst.instruments.base.KernelPortRequest`), plans a
 sequential absorb chain (:meth:`GramService.plan_chain`) capped at ``rent``,
-map the resulting live-view positions to entity IDs, and emit the ordered
+maps the resulting live-view positions to entity IDs, and emits the ordered
 :class:`~torchcst.storage.synapse.SynapseAbsorb` ops as one atomic
 :class:`~torchcst.policy.bundle.ProposalBundle` -- "in list order inside one
 atomic ticket" per the design's section 1, which a flat tuple of standalone
-ops passed through :meth:`~torchcst.engine.StructuralEngine.apply_proposals`
-would *not* give (each standalone op there becomes its own commit).
+ops would *not* give (each standalone op becomes its own commit).
 
 Acceptance is the single number ``cost <= rent``; ``alpha`` is only ever the
 delivery manifest, never an acceptance input (design section 1).
@@ -31,18 +26,21 @@ delivery manifest, never an acceptance input (design section 1).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import isfinite
 from typing import Any, Callable
 
 import torch
 from torch import Tensor
 
-from torchcst.instruments import KernelPort, KernelPortRequest
+from torchcst._validation import require_int, require_real
+
+# Submodule import: torchcst.instruments' package __init__ may itself be
+# mid-import (it reaches back into torchcst.policy), so policy modules must
+# import instrument symbols from their defining modules.
+from torchcst.instruments.base import KernelPort, KernelPortRequest
 from torchcst.representation.gram import AbsorbPlanStep, GramService
 from torchcst.storage import SynapseAbsorb, SynapseDeath, SynapseView
 
 from .bundle import Op, ProposalBundle
-from .contract import Clock, PolicyContext, StructuralPlan
 from .registry import RetiredCandidateRegistry
 
 
@@ -64,19 +62,6 @@ class AbsorbAuditEntry:
     res2_D: float
     delta_w_frobenius: float
     alpha_norm: float
-
-
-def _validate_real(value: Any, name: str, *, allow_zero: bool = True) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TypeError(f"{name} must be a real number")
-    value = float(value)
-    if not isfinite(value):
-        raise ValueError(f"{name} must be finite")
-    if allow_zero and value < 0:
-        raise ValueError(f"{name} must be non-negative")
-    if not allow_zero and value <= 0:
-        raise ValueError(f"{name} must be positive")
-    return value
 
 
 def _reassess_step(gram: GramService, step: AbsorbPlanStep) -> tuple[float, float, Tensor]:
@@ -133,200 +118,27 @@ def _dying_amplitude(step: AbsorbPlanStep, res2_d: float, alpha: Tensor) -> floa
 
 
 @dataclass
-class AbsorbPolicy:
-    """Whole StructuralPolicy: GramService absorb chains at a fixed cadence.
-
-    ``site`` names the one :class:`~torchcst.storage.synapse.SynapseStore`
-    this policy acts on. ``event_interval`` is the cadence (an absorb event
-    is attempted every ``event_interval`` updates, mirroring
-    :class:`~torchcst.policy.cadences.PeriodicCadence`'s field name).
-    ``rent`` is the fixed cost cap (``GramService.plan_chain``'s
-    ``cost_cap``) -- a threshold parameter, never a measured profit: this
-    policy has no objective access anywhere. ``radius``/``ridge`` configure
-    the ``GramService`` built fresh from the live view at each event.
-    ``budget`` optionally caps the number of absorbs planned per event
-    (``None`` means unlimited, i.e. plan until no eligible candidate
-    remains). ``data`` is an optional zero-argument batch provider called
-    once per event to supply ``GramService``'s ``[n, n_in]`` D-metric batch;
-    the identity metric is used when it is ``None``.
-    """
-
-    site: str
-    event_interval: int
-    rent: float
-    radius: float
-    ridge: float
-    budget: int | None = None
-    data: Callable[[], Tensor] | None = None
-    requires: tuple[KernelPortRequest, ...] = field(init=False, repr=False)
-    audit_log: list[AbsorbAuditEntry] = field(default_factory=list, init=False)
-    _request: KernelPortRequest = field(init=False, repr=False)
-    _port: KernelPort | None = field(default=None, init=False, repr=False)
-    _pending_ops: tuple[SynapseAbsorb, ...] = field(
-        default=(), init=False, repr=False
-    )
-    _pending_entries: tuple[AbsorbAuditEntry, ...] = field(
-        default=(), init=False, repr=False
-    )
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.site, str) or not self.site:
-            raise ValueError("site must be a non-empty string")
-        if isinstance(self.event_interval, bool) or not isinstance(
-            self.event_interval, int
-        ):
-            raise TypeError("event_interval must be an int")
-        if self.event_interval <= 0:
-            raise ValueError("event_interval must be positive")
-        self.rent = _validate_real(self.rent, "rent")
-        self.radius = _validate_real(self.radius, "radius", allow_zero=False)
-        self.ridge = _validate_real(self.ridge, "ridge")
-        if self.budget is not None:
-            if isinstance(self.budget, bool) or not isinstance(self.budget, int):
-                raise TypeError("budget must be an int or None")
-            if self.budget < 0:
-                raise ValueError("budget must be non-negative")
-        if self.data is not None and not callable(self.data):
-            raise TypeError("data must be a callable batch provider or None")
-        self._request = KernelPortRequest()
-        self.requires = (self._request,)
-
-    def bind_instruments(self, site: str, instruments: dict[str, Any]) -> None:
-        """Receive this site's KernelPort, built once at engine construction."""
-        if site != self.site:
-            return
-        self._port = instruments[self._request.name].port
-
-    def capture(self, clock: Clock) -> bool:
-        """This policy never observes backward statistics; it is loss-blind."""
-        del clock
-        return False
-
-    def plan(self, context: PolicyContext) -> StructuralPlan | None:
-        if context.clock.update_step == 0 or context.clock.update_step % self.event_interval:
-            return None
-        if self._port is None:
-            raise RuntimeError(
-                f"AbsorbPolicy has no KernelPort bound for site {self.site!r}; "
-                "was the engine constructed with a matching compute module?"
-            )
-        view = context.synapses[self.site]
-        if view.ids.numel() < 2:
-            # Quiescent: fewer than two live atoms means no possible receiver.
-            self._pending_ops = ()
-            self._pending_entries = ()
-            return StructuralPlan()
-
-        k_in, k_out = self._port.columns(view.s, view.t)
-        batch = None
-        if self.data is not None:
-            batch = self.data()
-            if not isinstance(batch, Tensor):
-                raise TypeError("data provider must return a Tensor")
-        gram = GramService(
-            k_out,
-            k_in,
-            view.w,
-            view.s,
-            view.t,
-            radius=self.radius,
-            ridge=self.ridge,
-            data=batch,
-        )
-        steps = gram.plan_chain(budget=self.budget, cost_cap=self.rent)
-        if not steps:
-            # Quiescent: nothing is below rent at this event.
-            self._pending_ops = ()
-            self._pending_entries = ()
-            return StructuralPlan()
-
-        ops: list[SynapseAbsorb] = []
-        entries: list[AbsorbAuditEntry] = []
-        event_index = context.clock.event_index
-        for step in steps:
-            res2_d, res2_f, alpha = _reassess_step(gram, step)
-            c_dying = _dying_amplitude(step, res2_d, alpha)
-            ops.append(
-                SynapseAbsorb(
-                    site=self.site,
-                    dying=int(view.ids[step.dying]),
-                    receivers=view.ids.index_select(0, step.receivers),
-                    delta_w=step.delta_w,
-                )
-            )
-            entries.append(
-                AbsorbAuditEntry(
-                    event_index=event_index,
-                    dying=int(view.ids[step.dying]),
-                    receiver_count=int(step.receivers.numel()),
-                    cost=step.cost,
-                    res2_D=res2_d,
-                    delta_w_frobenius=c_dying * (res2_f ** 0.5),
-                    alpha_norm=float(alpha.norm()),
-                )
-            )
-        self._pending_ops = tuple(ops)
-        self._pending_entries = tuple(entries)
-        bundle = ProposalBundle(f"absorb:{event_index}", tuple(ops))
-        return StructuralPlan((bundle,))
-
-    def on_applied(
-        self, context: PolicyContext, operations: tuple[Any, ...]
-    ) -> None:
-        """Record audit diagnostics only for absorbs that actually committed.
-
-        The whole planned chain is one atomic :class:`ProposalBundle`: either
-        every planned op committed (``operations`` then holds exactly the
-        same op *objects* this policy emitted, in order -- the engine's
-        prepare/commit path never reconstructs
-        ``SynapseAbsorb``/``SynapseBirth``/``SynapseDeath`` instances) or the
-        bundle's ``prepare()`` failed atomically and none did. Ops are
-        compared by identity, not ``==``: a dataclass ``__eq__`` over
-        ``SynapseAbsorb``'s Tensor fields would raise on any multi-element
-        ``receivers``/``delta_w``, since tuple comparison forces each paired
-        field through ``bool()``.
-        """
-        del context
-        pending_ops, pending_entries = self._pending_ops, self._pending_entries
-        self._pending_ops = ()
-        self._pending_entries = ()
-        applied = tuple(
-            op
-            for op in operations
-            if isinstance(op, SynapseAbsorb) and op.site == self.site
-        )
-        if len(applied) != len(pending_ops) or any(
-            a is not b for a, b in zip(applied, pending_ops)
-        ):
-            return
-        self.audit_log.extend(pending_entries)
-
-
-@dataclass
 class AbsorbCourt:
-    """Stage 3b: absorb as a detachable ``ActionSpec.synapse_absorb(...)`` part.
+    """Stage 3b: absorb as a tree-native ``SynapseLifecycle.absorb_factory`` part.
 
-    The composed-route reincarnation of :class:`AbsorbPolicy`'s plan logic
-    (design section 5, stage 3b item 2): at each engine-issued call it builds
+    Design section 5, stage 3b item 2: at each root-issued call it builds
     a fresh :class:`~torchcst.representation.gram.GramService` from the live
     view and the site's :class:`~torchcst.instruments.base.KernelPort`, runs
     :meth:`~torchcst.representation.gram.GramService.plan_chain` capped at
     ``rent``, and emits the ordered absorb ops as one atomic
     :class:`~torchcst.policy.bundle.ProposalBundle`.
 
-    Unlike :class:`AbsorbPolicy`, an atom with **no live neighbor at all**
-    can never appear as a ``plan_chain`` candidate (a chain step always needs
-    a receiver) -- but the design still wants it priced: distance is
-    symmetric, so a neighborless atom can also never be anyone else's
-    receiver, and is therefore untouched by the chain simulation. When
-    ``include_isolated`` (default), every such atom whose full cost
-    ``0.5 * c**2 * ||psi||_D**2 < rent`` is emitted as a plain
-    :class:`~torchcst.storage.synapse.SynapseDeath` in the *same* bundle --
-    "receiver-less absorb IS pure prune, so a RENT policy needs no separate
-    prune court" (design section 5, stage 3b item 2).
+    An atom with **no live neighbor at all** can never appear as a
+    ``plan_chain`` candidate (a chain step always needs a receiver) -- but the
+    design still wants it priced: distance is symmetric, so a neighborless
+    atom can also never be anyone else's receiver, and is therefore untouched
+    by the chain simulation. When ``include_isolated`` (default), every such
+    atom whose full cost ``0.5 * c**2 * ||psi||_D**2 < rent`` is emitted as a
+    plain :class:`~torchcst.storage.synapse.SynapseDeath` in the *same*
+    bundle -- "receiver-less absorb IS pure prune, so a RENT policy needs no
+    separate prune court" (design section 5, stage 3b item 2).
 
-    ``budget`` (like :class:`AbsorbPolicy`'s field of the same name) caps how
-    many chain steps :meth:`~torchcst.representation.gram.GramService.
+    ``budget`` caps how many chain steps :meth:`~torchcst.representation.gram.GramService.
     plan_chain` may plan in one call; the engine's own per-event
     ``StructuralQuota.synapse_absorb`` allocation (the ``budget`` argument
     :meth:`propose` receives) is a second, independent cap on the *total*
@@ -357,9 +169,9 @@ class AbsorbCourt:
     _ports: dict[str, KernelPort] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self.rent = _validate_real(self.rent, "rent")
-        self.radius = _validate_real(self.radius, "radius", allow_zero=False)
-        self.ridge = _validate_real(self.ridge, "ridge")
+        self.rent = require_real(self.rent, "rent", nonnegative=True)
+        self.radius = require_real(self.radius, "radius", positive=True)
+        self.ridge = require_real(self.ridge, "ridge", nonnegative=True)
         if self.budget is not None:
             if isinstance(self.budget, bool) or not isinstance(self.budget, int):
                 raise TypeError("budget must be an int or None")
@@ -386,26 +198,45 @@ class AbsorbCourt:
         rng: torch.Generator,
     ) -> tuple[Op | ProposalBundle, ...]:
         del registry, rng
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         if budget == 0 or view.ids.numel() == 0:
             return ()
+        gram = self._build_gram(view)
+        # ``event_marker`` (the store version) stands in for the event index
+        # on AbsorbAuditEntry: the court never sees the clock, and the
+        # version increments exactly once per applied event.
+        event_marker = int(view.version)
+        chain_budget = budget if self.budget is None else min(self.budget, budget)
+        ops, entries, absorbed = self._chain_ops(
+            gram, view, chain_budget, event_marker
+        )
+        if self.include_isolated:
+            isolated_ops, isolated_entries = self._isolated_deaths(
+                gram, view, budget - len(ops), absorbed, event_marker
+            )
+            ops.extend(isolated_ops)
+            entries.extend(isolated_entries)
+        if not ops:
+            return ()
+        self.audit_log.extend(entries)
+        bundle = ProposalBundle(f"absorb:{view.site}:{event_marker}", tuple(ops))
+        return (bundle,)
+
+    def _build_gram(self, view: SynapseView) -> GramService:
+        """One fresh position-only Gram over the live view, per court call."""
         port = self._ports.get(view.site)
         if port is None:
             raise RuntimeError(
                 f"AbsorbCourt has no KernelPort bound for site {view.site!r}; "
                 "was the engine constructed with a matching compute module?"
             )
-
         k_in, k_out = port.columns(view.s, view.t)
         batch = None
         if self.data is not None:
             batch = self.data()
             if not isinstance(batch, Tensor):
                 raise TypeError("data provider must return a Tensor")
-        gram = GramService(
+        return GramService(
             k_out,
             k_in,
             view.w,
@@ -415,12 +246,18 @@ class AbsorbCourt:
             ridge=self.ridge,
             data=batch,
         )
-        chain_budget = budget if self.budget is None else min(self.budget, budget)
-        steps = gram.plan_chain(budget=chain_budget, cost_cap=self.rent)
 
+    def _chain_ops(
+        self,
+        gram: GramService,
+        view: SynapseView,
+        chain_budget: int,
+        event_marker: int,
+    ) -> tuple[list[Op], list[AbsorbAuditEntry], set[int]]:
+        """Plan the rent-capped absorb chain and map positions to entity IDs."""
+        steps = gram.plan_chain(budget=chain_budget, cost_cap=self.rent)
         ops: list[Op] = []
         entries: list[AbsorbAuditEntry] = []
-        event_marker = int(view.version)
         absorbed_positions: set[int] = set()
         for step in steps:
             absorbed_positions.add(step.dying)
@@ -446,36 +283,41 @@ class AbsorbCourt:
                         alpha_norm=float(alpha.norm()),
                     )
                 )
+        return ops, entries, absorbed_positions
 
-        remaining = budget - len(steps)
-        if self.include_isolated:
-            for position in range(gram.k_live):
-                if remaining <= 0:
-                    break
-                if position in absorbed_positions:
-                    continue
-                if gram.neighbors(position).numel():
-                    continue
-                assessment = gram.residual(position)
-                full_cost = 0.5 * float(gram.w[position]) ** 2 * assessment.res2_D
-                if full_cost >= self.rent:
-                    continue
-                ops.append(SynapseDeath(view.site, view.ids[position].reshape(1)))
-                entries.append(
-                    AbsorbAuditEntry(
-                        event_index=event_marker,
-                        dying=int(view.ids[position]),
-                        receiver_count=0,
-                        cost=full_cost,
-                        res2_D=assessment.res2_D,
-                        delta_w_frobenius=0.0,
-                        alpha_norm=0.0,
-                    )
+    def _isolated_deaths(
+        self,
+        gram: GramService,
+        view: SynapseView,
+        remaining: int,
+        absorbed_positions: set[int],
+        event_marker: int,
+    ) -> tuple[list[Op], list[AbsorbAuditEntry]]:
+        """Price neighborless atoms as receiver-less absorbs (pure prunes)."""
+        ops: list[Op] = []
+        entries: list[AbsorbAuditEntry] = []
+        for position in range(gram.k_live):
+            if remaining <= 0:
+                break
+            if position in absorbed_positions:
+                continue
+            if gram.neighbors(position).numel():
+                continue
+            assessment = gram.residual(position)
+            full_cost = 0.5 * float(gram.w[position]) ** 2 * assessment.res2_D
+            if full_cost >= self.rent:
+                continue
+            ops.append(SynapseDeath(view.site, view.ids[position].reshape(1)))
+            entries.append(
+                AbsorbAuditEntry(
+                    event_index=event_marker,
+                    dying=int(view.ids[position]),
+                    receiver_count=0,
+                    cost=full_cost,
+                    res2_D=assessment.res2_D,
+                    delta_w_frobenius=0.0,
+                    alpha_norm=0.0,
                 )
-                remaining -= 1
-
-        if not ops:
-            return ()
-        self.audit_log.extend(entries)
-        bundle = ProposalBundle(f"absorb:{view.site}:{event_marker}", tuple(ops))
-        return (bundle,)
+            )
+            remaining -= 1
+        return ops, entries

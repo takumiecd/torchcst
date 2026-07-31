@@ -1,4 +1,4 @@
-"""torchcst storage層の公開面。"""
+"""Public surface of the torchcst storage layer."""
 
 from .mechanics import (
     AgeColumn,
@@ -24,7 +24,6 @@ from .neuron import (
     NeuronView,
 )
 from .synapse import (
-    EntityStore,
     SynapseAbsorb,
     SynapseBirth,
     SynapseDeath,
@@ -32,6 +31,9 @@ from .synapse import (
     SynapseMerge,
     SynapseStore,
     SynapseView,
+)
+from .transaction import (
+    EntityStore,
     Ticket,
     commit_all,
     prepare_all,
@@ -39,14 +41,13 @@ from .synapse import (
 
 __all__ = [
     "AgeColumn",
+    "DORMANT",
     "EntityStore",
     "Follower",
     "FollowerHub",
     "IdAllocator",
-    "LineageColumn",
-    "DORMANT",
     "LIVE",
-    "RETIRED",
+    "LineageColumn",
     "NeuronKick",
     "NeuronOp",
     "NeuronRetire",
@@ -54,6 +55,7 @@ __all__ = [
     "NeuronStore",
     "NeuronUngate",
     "NeuronView",
+    "RETIRED",
     "SlotBirth",
     "SlotChange",
     "SlotDeath",

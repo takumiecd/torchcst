@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import torch
 
+from torchcst.compute import EntryLinear, NeuronGatedLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import (
-    ActionSpec,
     BudgetRequest,
     CallableQuota,
     ConstantQuota,
     EvenBudgetDistributor,
     MagnitudeCourt,
+    NeuronLifecycle,
     PeriodicCadence,
     Phase,
-    Policy,
+    QuotaRegime,
     StructuralQuota,
+    SynapseLifecycle,
     UniformEntryBirth,
 )
 from torchcst.policy.contract import Clock
@@ -61,7 +63,7 @@ def test_distributor_allocates_logical_quota_not_storage_slots() -> None:
     assert not hasattr(distributor, "prepare")
 
 
-def test_engine_runs_policy_with_separate_cadence_and_quota() -> None:
+def test_engine_runs_tree_with_separate_cadence_and_quota() -> None:
     store = SynapseStore(
         "edge",
         1,
@@ -69,19 +71,20 @@ def test_engine_runs_policy_with_separate_cadence_and_quota() -> None:
         capacity=2,
         spec=RepresentationSpec.entry(bounds_in=1, bounds_out=2),
     )
-    policy = Policy(
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: UniformEntryBirth(bounds_in=1, bounds_out=2),
+        prune_factory=lambda: MagnitudeCourt(0.0),
+        priceable=False,
+        label="test",
+    )
+    root = QuotaRegime(
+        budget=1,
+        method=method,
         cadence=PeriodicCadence(event_interval=1),
-        quota=ConstantQuota(StructuralQuota(synapse_birth=1)),
-        actions=(
-            ActionSpec.synapse_prune(MagnitudeCourt(0.0)),
-            ActionSpec.synapse_birth(
-                UniformEntryBirth(bounds_in=1, bounds_out=2)
-            ),
-        ),
         distributor=EvenBudgetDistributor(),
     )
 
-    operations = StructuralEngine({store.site: store}, policy, seed=4).step()
+    operations = StructuralEngine({store.site: store}, root, seed=4).step()
     assert sum(isinstance(operation, SynapseBirth) for operation in operations) == 1
     assert store.live_ids().numel() == 1
 
@@ -140,14 +143,21 @@ def test_synapse_prune_quota_caps_court_decision() -> None:
             )
         ]
     )
-    policy = Policy(
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: UniformEntryBirth(bounds_in=1, bounds_out=4),
+        prune_factory=lambda: MagnitudeCourt(1.0),
+        priceable=False,
+        label="test",
+    )
+    root = QuotaRegime(
+        budget=0,
+        method=method,
         cadence=PeriodicCadence(event_interval=1),
         quota=ConstantQuota(StructuralQuota(synapse_prune=2)),
-        actions=(ActionSpec.synapse_prune(MagnitudeCourt(1.0)),),
         distributor=EvenBudgetDistributor(),
     )
 
-    operations = StructuralEngine({store.site: store}, policy).step()
+    operations = StructuralEngine({store.site: store}, root).step()
 
     deaths = [
         operation
@@ -177,14 +187,21 @@ def test_unbounded_prune_quota_preserves_court_decision() -> None:
             )
         ]
     )
-    policy = Policy(
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: UniformEntryBirth(bounds_in=1, bounds_out=2),
+        prune_factory=lambda: MagnitudeCourt(1.0),
+        priceable=False,
+        label="test",
+    )
+    root = QuotaRegime(
+        budget=0,
+        method=method,
         cadence=PeriodicCadence(event_interval=1),
         quota=ConstantQuota(StructuralQuota()),
-        actions=(ActionSpec.synapse_prune(MagnitudeCourt(1.0)),),
         distributor=EvenBudgetDistributor(),
     )
 
-    StructuralEngine({store.site: store}, policy).step()
+    StructuralEngine({store.site: store}, root).step()
 
     assert store.live_ids().numel() == 0
 
@@ -200,15 +217,33 @@ def test_neuron_prune_quota_caps_court_decision() -> None:
     neurons = NeuronStore("outputs", 3, initial_live=3)
     with torch.no_grad():
         neurons.gate.copy_(torch.tensor([0.1, 0.2, 0.3]))
-    policy = Policy(
+    # The interface seat (NeuronLifecycle) only binds to a neuron store that
+    # is some synapse module's out_neurons (policy/tree.py's _bind_root); a
+    # bare NeuronStore with no compute module never becomes an InterfaceChild
+    # and so would never have its court consulted at all.
+    module = NeuronGatedLinear(EntryLinear(synapses, 1, 3), out_neurons=neurons)
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: UniformEntryBirth(bounds_in=1, bounds_out=3),
+        priceable=False,
+        label="test",
+    )
+    interface = NeuronLifecycle(
+        retention_factory=lambda: MagnitudeCourt(1.0),
+        label="test-interface",
+    )
+    root = QuotaRegime(
+        budget=0,
+        method=method,
         cadence=PeriodicCadence(event_interval=1),
         quota=ConstantQuota(StructuralQuota(neuron_prune=1)),
-        actions=(ActionSpec.neuron_prune(MagnitudeCourt(1.0)),),
         distributor=EvenBudgetDistributor(),
+        interface=interface,
     )
 
     operations = StructuralEngine(
-        {synapses.site: synapses, neurons.site: neurons}, policy
+        {synapses.site: synapses, neurons.site: neurons},
+        root,
+        modules={synapses.site: module},
     ).step()
 
     retirements = [

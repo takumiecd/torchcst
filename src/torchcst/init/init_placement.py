@@ -11,7 +11,7 @@ D-weighted marginal-gain quantity ``GramService`` uses for absorb
 (:func:`logdet_greedy`), and a variance-preservation rule for amplitudes
 (:func:`variance_amplitudes`).
 
-This module imports only ``torch`` and
+This module imports only ``torch``, private torchcst helpers, and
 :class:`torchcst.storage.synapse.SynapseBirth` (for the wrapping helper). It
 does not import ``torchcst.engine``, ``torchcst.policy``,
 ``torchcst.instruments``, ``torchcst.compute``, or
@@ -20,9 +20,10 @@ themselves (e.g. via ``KernelPort.columns`` or a compute module's
 ``kernel_columns``) and pass them in.
 
 Gram convention (matches :class:`torchcst.representation.gram.GramService`
-exactly, restated here since this module must not import it): for atoms
-with output-side kernel columns ``U`` (``[n_out, N]``) and input-side kernel
-columns ``V`` (``[n_in, N]``), the D-weighted Gram is assembled separably
+exactly; both build their D metric through the same private helper): for
+atoms with output-side kernel columns ``U`` (``[n_out, N]``) and input-side
+kernel columns ``V`` (``[n_in, N]``), the D-weighted Gram is assembled
+separably
 
     Gamma_D[i, j] = (U[:, i] . U[:, j]) * (V[:, i]^T Sigma_x V[:, j])
 
@@ -40,6 +41,8 @@ from typing import Callable, Sequence
 import torch
 from torch import Tensor
 
+from torchcst._stats import data_second_moment
+from torchcst._validation import require_int, require_real
 from torchcst.storage.synapse import SynapseBirth
 
 __all__ = [
@@ -49,11 +52,6 @@ __all__ = [
     "variance_amplitudes",
     "to_synapse_births",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Function 1: coverage_lattice
-# ---------------------------------------------------------------------------
 
 
 def _as_axis_tuple(value: float | Sequence[float], dim: int, name: str) -> tuple[float, ...]:
@@ -74,21 +72,79 @@ def _as_axis_tuple(value: float | Sequence[float], dim: int, name: str) -> tuple
     raise TypeError(f"{name} must be a real scalar or a sequence of them")
 
 
-def _validate_positive_dim(value: int, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError(f"{name} must be an int")
-    if value <= 0:
-        raise ValueError(f"{name} must be positive")
-    return value
+def _validated_axis_bounds(
+    bounds: tuple[float | Sequence[float], float | Sequence[float]],
+    dim: int,
+    name: str,
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Normalize one ``(lo, hi)`` pair to finite, ordered per-axis tuples."""
+    if not (isinstance(bounds, tuple) and len(bounds) == 2):
+        raise TypeError(f"{name} must be a (lo, hi) tuple")
+    lows = _as_axis_tuple(bounds[0], dim, f"{name}[0]")
+    highs = _as_axis_tuple(bounds[1], dim, f"{name}[1]")
+    for lo, hi in zip(lows, highs):
+        if not (math.isfinite(lo) and math.isfinite(hi)):
+            raise ValueError(f"{name} must be finite")
+        if lo >= hi:
+            raise ValueError(f"{name} lo must be less than hi on every axis")
+    return lows, highs
 
 
-def _validate_positive_sigma(value: float, name: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TypeError(f"{name} must be a real number")
-    value = float(value)
-    if not math.isfinite(value) or value <= 0:
-        raise ValueError(f"{name} must be finite and positive")
-    return value
+def _search_spacing_multiplier(
+    K: int,
+    ext_per_axis: tuple[float, ...],
+    sigma_per_axis: tuple[float, ...],
+    total_count: Callable[[float], int],
+) -> float:
+    """Find the spacing multiplier whose lattice count best approximates ``K``.
+
+    ``total_count(mult)`` is monotonically non-increasing in ``mult`` (a
+    larger multiplier means coarser spacing), so a closed-form initial guess
+
+        mult0 = (prod_a(ext_a / sigma_a) / K) ** (1 / n_axes)
+
+    seeds a bounded, deterministic bisection on ``log(mult)`` that tracks the
+    best (closest-to-``K``) integer lattice count seen across ~60 iterations.
+    This is a deterministic best-approximation, not an exact solve (the true
+    objective is a step function of ``mult``): the search converges to the
+    crossing boundary of that step function to floating precision, which is
+    as exact as "best integer approximation" can mean here. No randomness is
+    used.
+    """
+    n_axes = len(ext_per_axis)
+    log_ratio = sum(
+        math.log(ext / sigma) for ext, sigma in zip(ext_per_axis, sigma_per_axis)
+    )
+    mult0 = math.exp((log_ratio - math.log(K)) / n_axes)
+
+    lo_mult = mult0 * 1e-3
+    hi_mult = mult0 * 1e3
+    for _ in range(20):
+        if total_count(lo_mult) >= K:
+            break
+        lo_mult *= 0.1
+    for _ in range(20):
+        if total_count(hi_mult) <= K:
+            break
+        hi_mult *= 10.0
+
+    lo_log, hi_log = math.log(lo_mult), math.log(hi_mult)
+    best_mult, best_diff = mult0, abs(total_count(mult0) - K)
+    for _ in range(60):
+        mid_log = 0.5 * (lo_log + hi_log)
+        mid_mult = math.exp(mid_log)
+        count = total_count(mid_mult)
+        diff = abs(count - K)
+        if diff < best_diff:
+            best_diff, best_mult = diff, mid_mult
+        if count > K:
+            lo_log = mid_log
+        elif count < K:
+            hi_log = mid_log
+        else:
+            best_mult = mid_mult
+            break
+    return best_mult
 
 
 def coverage_lattice(
@@ -121,72 +177,34 @@ def coverage_lattice(
     ``mult * sigma_out`` for output axes, where ``mult`` is either supplied
     directly via ``spacing`` (a one-shot override of the ``c`` multiplier --
     ``spacing`` and ``c`` are the same knob under two calling conventions)
-    or searched for via ``K`` (see below). Exactly one of ``K``/``spacing``
-    must be given; ``c`` is otherwise unused (it exists only as the
-    ``K``-search's fallback multiplier and its default value has no effect
-    when ``spacing`` is given directly).
-
-    When ``K`` is given: since the total lattice count ``M(mult)`` is
-    monotonically non-increasing in ``mult`` (a larger multiplier means
-    coarser spacing), a closed-form initial guess
-
-        mult0 = (prod_a(ext_a / sigma_a) / K) ** (1 / n_axes)
-
-    seeds a bounded, deterministic bisection on ``log(mult)`` that tracks
-    the best (closest-to-``K``) integer lattice count seen across ~60
-    iterations. This is a deterministic best-approximation, not an exact
-    solve (the true objective is a step function of ``mult``): the search
-    converges to the crossing boundary of that step function to floating
-    precision, which is as exact as "best integer approximation" can mean
-    here.
+    or searched for via ``K`` (see :func:`_search_spacing_multiplier`).
+    Exactly one of ``K``/``spacing`` must be given; ``c`` is otherwise unused
+    (it exists only as the ``K``-search's fallback multiplier and its default
+    value has no effect when ``spacing`` is given directly).
 
     No randomness is used anywhere in this function.
     """
-    d_in = _validate_positive_dim(d_in, "d_in")
-    d_out = _validate_positive_dim(d_out, "d_out")
-    sigma_in = _validate_positive_sigma(sigma_in, "sigma_in")
-    sigma_out = _validate_positive_sigma(sigma_out, "sigma_out")
-    if not (isinstance(bounds_in, tuple) and len(bounds_in) == 2):
-        raise TypeError("bounds_in must be a (lo, hi) tuple")
-    if not (isinstance(bounds_out, tuple) and len(bounds_out) == 2):
-        raise TypeError("bounds_out must be a (lo, hi) tuple")
-    lo_in = _as_axis_tuple(bounds_in[0], d_in, "bounds_in[0]")
-    hi_in = _as_axis_tuple(bounds_in[1], d_in, "bounds_in[1]")
-    lo_out = _as_axis_tuple(bounds_out[0], d_out, "bounds_out[0]")
-    hi_out = _as_axis_tuple(bounds_out[1], d_out, "bounds_out[1]")
-    for name, lows, highs in (("bounds_in", lo_in, hi_in), ("bounds_out", lo_out, hi_out)):
-        for lo, hi in zip(lows, highs):
-            if not (math.isfinite(lo) and math.isfinite(hi)):
-                raise ValueError(f"{name} must be finite")
-            if lo >= hi:
-                raise ValueError(f"{name} lo must be less than hi on every axis")
+    require_int(d_in, "d_in", minimum=1)
+    require_int(d_out, "d_out", minimum=1)
+    sigma_in = require_real(sigma_in, "sigma_in", positive=True)
+    sigma_out = require_real(sigma_out, "sigma_out", positive=True)
+    lo_in, hi_in = _validated_axis_bounds(bounds_in, d_in, "bounds_in")
+    lo_out, hi_out = _validated_axis_bounds(bounds_out, d_out, "bounds_out")
 
     if K is not None and spacing is not None:
         raise ValueError("exactly one of K or spacing must be given, not both")
     if K is None and spacing is None:
         raise ValueError("exactly one of K or spacing must be given")
     if spacing is not None:
-        if isinstance(spacing, bool) or not isinstance(spacing, (int, float)):
-            raise TypeError("spacing must be a real number")
-        spacing = float(spacing)
-        if not math.isfinite(spacing) or spacing <= 0:
-            raise ValueError("spacing must be finite and positive")
+        spacing = require_real(spacing, "spacing", positive=True)
     if K is not None:
-        if isinstance(K, bool) or not isinstance(K, int):
-            raise TypeError("K must be an int")
-        if K <= 0:
-            raise ValueError("K must be positive")
-    if isinstance(c, bool) or not isinstance(c, (int, float)):
-        raise TypeError("c must be a real number")
-    c = float(c)
-    if not math.isfinite(c) or c <= 0:
-        raise ValueError("c must be finite and positive")
+        require_int(K, "K", minimum=1)
+    require_real(c, "c", positive=True)
 
     lo_per_axis = lo_in + lo_out
     hi_per_axis = hi_in + hi_out
     ext_per_axis = tuple(hi - lo for lo, hi in zip(lo_per_axis, hi_per_axis))
     sigma_per_axis = (sigma_in,) * d_in + (sigma_out,) * d_out
-    n_axes = d_in + d_out
 
     def axis_counts_for(mult: float) -> tuple[int, ...]:
         counts = []
@@ -205,39 +223,9 @@ def coverage_lattice(
         mult = spacing
     else:
         assert K is not None
-        log_ratio = sum(
-            math.log(ext / sigma) for ext, sigma in zip(ext_per_axis, sigma_per_axis)
+        mult = _search_spacing_multiplier(
+            K, ext_per_axis, sigma_per_axis, total_count
         )
-        mult0 = math.exp((log_ratio - math.log(K)) / n_axes)
-
-        lo_mult = mult0 * 1e-3
-        hi_mult = mult0 * 1e3
-        for _ in range(20):
-            if total_count(lo_mult) >= K:
-                break
-            lo_mult *= 0.1
-        for _ in range(20):
-            if total_count(hi_mult) <= K:
-                break
-            hi_mult *= 10.0
-
-        lo_log, hi_log = math.log(lo_mult), math.log(hi_mult)
-        best_mult, best_diff = mult0, abs(total_count(mult0) - K)
-        for _ in range(60):
-            mid_log = 0.5 * (lo_log + hi_log)
-            mid_mult = math.exp(mid_log)
-            count = total_count(mid_mult)
-            diff = abs(count - K)
-            if diff < best_diff:
-                best_diff, best_mult = diff, mid_mult
-            if count > K:
-                lo_log = mid_log
-            elif count < K:
-                hi_log = mid_log
-            else:
-                best_mult = mid_mult
-                break
-        mult = best_mult
 
     counts = axis_counts_for(mult)
     axis_positions = [
@@ -247,11 +235,6 @@ def coverage_lattice(
     grids = torch.meshgrid(*axis_positions, indexing="ij")
     lattice = torch.stack([grid.reshape(-1) for grid in grids], dim=1)
     return lattice[:, :d_in].contiguous(), lattice[:, d_in:].contiguous()
-
-
-# ---------------------------------------------------------------------------
-# Function 2: logdet_greedy
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -270,17 +253,38 @@ class GreedySelection:
     gains: Tensor  # float [k_selected]
 
 
-def _validate_real(value: float, name: str, *, allow_none: bool = False) -> float | None:
-    if value is None:
-        if allow_none:
-            return None
-        raise TypeError(f"{name} must be a real number")
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise TypeError(f"{name} must be a real number")
-    value = float(value)
-    if not math.isfinite(value):
-        raise ValueError(f"{name} must be finite")
-    return value
+def _resolve_factors(
+    candidates_s: Tensor,
+    candidates_t: Tensor,
+    U: Tensor | None,
+    V: Tensor | None,
+    U_fn: Callable[[Tensor], Tensor] | None,
+    V_fn: Callable[[Tensor], Tensor] | None,
+) -> tuple[Tensor, Tensor]:
+    """Resolve the either/or factor supply into concrete ``(U, V)`` matrices."""
+    have_uv = U is not None or V is not None
+    have_fn = U_fn is not None or V_fn is not None
+    if have_uv and have_fn:
+        raise ValueError("supply either (U, V) or (U_fn, V_fn), not both")
+    if have_uv:
+        if U is None or V is None:
+            raise ValueError("both U and V must be given together")
+    elif have_fn:
+        if U_fn is None or V_fn is None:
+            raise ValueError("both U_fn and V_fn must be given together")
+        U = U_fn(candidates_t)
+        V = V_fn(candidates_s)
+    else:
+        raise ValueError("supply either (U, V) or (U_fn, V_fn)")
+
+    if not isinstance(U, Tensor) or not isinstance(V, Tensor):
+        raise TypeError("U and V must be Tensors")
+    if U.ndim != 2 or V.ndim != 2:
+        raise ValueError("U and V must be rank 2")
+    m_candidates = candidates_s.shape[0]
+    if U.shape[1] != m_candidates or V.shape[1] != m_candidates:
+        raise ValueError("U and V must have one column per candidate")
+    return U, V
 
 
 def logdet_greedy(
@@ -336,56 +340,24 @@ def logdet_greedy(
         raise ValueError("candidates_s and candidates_t must be rank 2")
     if candidates_s.shape[0] != candidates_t.shape[0]:
         raise ValueError("candidates_s and candidates_t must share their row count")
-
-    have_uv = U is not None or V is not None
-    have_fn = U_fn is not None or V_fn is not None
-    if have_uv and have_fn:
-        raise ValueError("supply either (U, V) or (U_fn, V_fn), not both")
-    if have_uv:
-        if U is None or V is None:
-            raise ValueError("both U and V must be given together")
-    elif have_fn:
-        if U_fn is None or V_fn is None:
-            raise ValueError("both U_fn and V_fn must be given together")
-        U = U_fn(candidates_t)
-        V = V_fn(candidates_s)
-    else:
-        raise ValueError("supply either (U, V) or (U_fn, V_fn)")
-
-    if not isinstance(U, Tensor) or not isinstance(V, Tensor):
-        raise TypeError("U and V must be Tensors")
-    if U.ndim != 2 or V.ndim != 2:
-        raise ValueError("U and V must be rank 2")
+    U, V = _resolve_factors(candidates_s, candidates_t, U, V, U_fn, V_fn)
     m_candidates = candidates_s.shape[0]
-    if U.shape[1] != m_candidates or V.shape[1] != m_candidates:
-        raise ValueError("U and V must have one column per candidate")
 
     if K is None and rent is None:
         raise ValueError("at least one of K or rent must be given")
     if K is not None:
-        if isinstance(K, bool) or not isinstance(K, int):
-            raise TypeError("K must be an int")
-        if K <= 0:
-            raise ValueError("K must be positive")
+        require_int(K, "K", minimum=1)
         K = min(K, m_candidates)
-    rent = _validate_real(rent, "rent", allow_none=True)
-    if rent is not None and rent <= 0:
-        raise ValueError("rent must be positive")
-    ridge = _validate_real(ridge, "ridge")
-    if ridge < 0:
-        raise ValueError("ridge must be non-negative")
-    jitter = _validate_real(jitter, "jitter")
-    if jitter <= 0:
-        raise ValueError("jitter must be positive")
+    if rent is not None:
+        rent = require_real(rent, "rent", positive=True)
+    ridge = require_real(ridge, "ridge", nonnegative=True)
+    jitter = require_real(jitter, "jitter", positive=True)
 
     sigma: Tensor | None = None
     if data is not None:
-        if not isinstance(data, Tensor):
-            raise TypeError("data must be a Tensor or None")
-        if data.ndim != 2 or data.shape[1] != V.shape[0]:
-            raise ValueError("data must have shape [n, n_in] matching V's rows")
-        data = data.detach().to(device=V.device, dtype=V.dtype)
-        sigma = (data.transpose(0, 1) @ data) / data.shape[0]
+        sigma = data_second_moment(
+            data, n_in=V.shape[0], device=V.device, dtype=V.dtype
+        )
 
     dtype = U.dtype
     device = U.device
@@ -416,6 +388,7 @@ def logdet_greedy(
         if log_rent is not None and log_gain < log_rent:
             break
 
+        # Accept z_star: one pivoted-Cholesky column, one rank-1 diag update.
         indices.append(z_star)
         gains.append(log_gain)
         l_pp = math.sqrt(best_value)
@@ -444,9 +417,44 @@ def logdet_greedy(
     )
 
 
-# ---------------------------------------------------------------------------
-# Function 3: variance_amplitudes
-# ---------------------------------------------------------------------------
+def _resolve_gamma(
+    U: Tensor | None,
+    V: Tensor | None,
+    Gamma: Tensor | None,
+    data: Tensor | None,
+) -> Tensor:
+    """Resolve the either/or Gram supply into one concrete ``[K, K]`` matrix."""
+    have_gamma = Gamma is not None
+    have_uv = U is not None or V is not None
+    if have_gamma and have_uv:
+        raise ValueError("supply either Gamma or (U, V), not both")
+    if have_gamma:
+        if data is not None:
+            raise ValueError("data is only used with the (U, V) path")
+        if not isinstance(Gamma, Tensor):
+            raise TypeError("Gamma must be a Tensor")
+        if Gamma.ndim != 2 or Gamma.shape[0] != Gamma.shape[1]:
+            raise ValueError("Gamma must be a square matrix")
+        return Gamma
+    if not have_uv:
+        raise ValueError("supply either Gamma or (U, V)")
+    if U is None or V is None:
+        raise ValueError("both U and V must be given together")
+    if not isinstance(U, Tensor) or not isinstance(V, Tensor):
+        raise TypeError("U and V must be Tensors")
+    if U.ndim != 2 or V.ndim != 2:
+        raise ValueError("U and V must be rank 2")
+    if U.shape[1] != V.shape[1]:
+        raise ValueError("U and V must have the same number of columns")
+    sigma: Tensor | None = None
+    if data is not None:
+        sigma = data_second_moment(
+            data, n_in=V.shape[0], device=V.device, dtype=V.dtype
+        )
+    ut_u = U.transpose(0, 1) @ U
+    v_metric = V if sigma is None else sigma @ V
+    vt_dv = V.transpose(0, 1) @ v_metric
+    return ut_u * vt_dv
 
 
 def variance_amplitudes(
@@ -475,48 +483,10 @@ def variance_amplitudes(
     runs once over the small, already-selected atom set, not a candidate
     pool or a hot-path live population.
     """
-    have_gamma = Gamma is not None
-    have_uv = U is not None or V is not None
-    if have_gamma and have_uv:
-        raise ValueError("supply either Gamma or (U, V), not both")
-    if have_gamma:
-        if data is not None:
-            raise ValueError("data is only used with the (U, V) path")
-        if not isinstance(Gamma, Tensor):
-            raise TypeError("Gamma must be a Tensor")
-        if Gamma.ndim != 2 or Gamma.shape[0] != Gamma.shape[1]:
-            raise ValueError("Gamma must be a square matrix")
-    elif have_uv:
-        if U is None or V is None:
-            raise ValueError("both U and V must be given together")
-        if not isinstance(U, Tensor) or not isinstance(V, Tensor):
-            raise TypeError("U and V must be Tensors")
-        if U.ndim != 2 or V.ndim != 2:
-            raise ValueError("U and V must be rank 2")
-        if U.shape[1] != V.shape[1]:
-            raise ValueError("U and V must have the same number of columns")
-        sigma: Tensor | None = None
-        if data is not None:
-            if not isinstance(data, Tensor):
-                raise TypeError("data must be a Tensor or None")
-            if data.ndim != 2 or data.shape[1] != V.shape[0]:
-                raise ValueError("data must have shape [n, n_in] matching V's rows")
-            data = data.detach().to(device=V.device, dtype=V.dtype)
-            sigma = (data.transpose(0, 1) @ data) / data.shape[0]
-        ut_u = U.transpose(0, 1) @ U
-        v_metric = V if sigma is None else sigma @ V
-        vt_dv = V.transpose(0, 1) @ v_metric
-        Gamma = ut_u * vt_dv
-    else:
-        raise ValueError("supply either Gamma or (U, V)")
-
-    if isinstance(target_second_moment, bool) or not isinstance(
-        target_second_moment, (int, float)
-    ):
-        raise TypeError("target_second_moment must be a real number")
-    target_second_moment = float(target_second_moment)
-    if not math.isfinite(target_second_moment) or target_second_moment <= 0:
-        raise ValueError("target_second_moment must be finite and positive")
+    Gamma = _resolve_gamma(U, V, Gamma, data)
+    target_second_moment = require_real(
+        target_second_moment, "target_second_moment", positive=True
+    )
     if not isinstance(generator, torch.Generator):
         raise TypeError("generator must be a torch.Generator")
 
@@ -532,11 +502,6 @@ def variance_amplitudes(
         )
     kappa = math.sqrt(target_second_moment / denom)
     return kappa * sign
-
-
-# ---------------------------------------------------------------------------
-# Helper: wrap into list[SynapseBirth]
-# ---------------------------------------------------------------------------
 
 
 def to_synapse_births(
@@ -558,7 +523,6 @@ def to_synapse_births(
     n = w.shape[0]
     if s.shape[0] != n or t.shape[0] != n:
         raise ValueError("s, t, and w must share their atom count")
-    if isinstance(lineage_start, bool) or not isinstance(lineage_start, int):
-        raise TypeError("lineage_start must be an int")
+    require_int(lineage_start, "lineage_start")
     lineage = torch.arange(lineage_start, lineage_start + n, dtype=torch.int64)
     return [SynapseBirth(site, s, t, w, lineage)]

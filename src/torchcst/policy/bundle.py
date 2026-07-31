@@ -7,6 +7,7 @@ from typing import Protocol
 
 import torch
 
+from torchcst._validation import require_int
 from torchcst.storage import (
     NeuronKick,
     NeuronRetire,
@@ -81,23 +82,11 @@ class BundleComposer:
     bundle_prefix: str = "response"
 
     def __post_init__(self) -> None:
-        if isinstance(self.incident_births, bool) or not isinstance(
-            self.incident_births, int
-        ):
-            raise TypeError("incident_births must be an int")
-        if self.incident_births <= 0:
-            raise ValueError("incident_births must be positive")
+        require_int(self.incident_births, "incident_births", minimum=1)
         if not torch.isfinite(torch.tensor(float(self.initial_gate))):
             raise ValueError("initial_gate must be finite")
         if not isinstance(self.bundle_prefix, str) or not self.bundle_prefix:
             raise ValueError("bundle_prefix must be a non-empty string")
-
-    @staticmethod
-    def compose(
-        bundle_id: str, ops: tuple[Op, ...], atomic: bool = True
-    ) -> ProposalBundle:
-        """Construct a general bundle without interpreting its operations."""
-        return ProposalBundle(bundle_id, ops, atomic)
 
     def compose_response(
         self,

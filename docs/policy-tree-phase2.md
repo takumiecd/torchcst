@@ -1,6 +1,12 @@
 # Policy Tree — Phase 2 設計ノート: 一直線の protocol stack
 
-起草: 2026-07-30（ユーザー裁定を受けて）。ステータス: **設計・レビュー待ち**。
+起草: 2026-07-30（ユーザー裁定を受けて）。
+ステータス: **S0〜S5 全段実装完了**（同日、branch feat/phase2-s0-harness）。
+木が唯一の実行経路。engine 1547→730 行。検証=旧世界で採取した事前登録指紋
+（tools/phase2_baseline.json・無変更のまま）に対し全7 fixture 統計的等価 PASS・
+テストスイート 260 passed（削除したテストは各 commit メッセージに理由つきで列挙）。
+残課題（Phase 2 スコープ外）: A束=capture/計器束縛の薄型化・merge の木語彙
+（SynapseLifecycle に merge slot なし・必要になった時に family として設計）。
 前提ノート: `policy-tree-design.md`（Phase 1 と語彙・family 裁定はそのまま生きる）。
 
 ## ユーザー裁定（2026-07-30・本ノートの公理）
@@ -99,15 +105,41 @@ NeuronLifecycle は「隣接2層の界面」の子として木に住む（policy
 1. **S0 統計的等価ハーネス**: 旧 main（3e6d40f）で基準統計（固定 seed 群の
    到達損失・K 軌跡・op 種別頻度）を採取し、以後の各段の合格判定器にする。
    bit 比較はここで退役。
-2. **S1 storage 発火**: follower 通知・監査イベントの発火点を storage に一本化。
+2. **S1 storage 発火**: 変異の帰結の発火点を storage に一本化。実体は
+   optimizer-state 整合の二重化解消（store.commit の FollowerHub 通知が唯一の
+   経路になる。engine 側の post-commit `reconcile_optimizer_state` 再実行を削除）。
+   **監査はここでは動かさない**: イベント級 AuditRecord は裁定文脈（rent 閾値・
+   prune 時点の age）を要するため、S3/S4 で「root の Plan＋子の commit ack」から
+   組み立てる形に置換する。store 級 commit 通知は FollowerHub が既に担っており、
+   それが「storage が発火する」の実体である。
 3. **S2 子の実行時化**: SynapseLifecycle → store 束縛済み子ノード
    （view 読み・PricedProposal・二相実行）。
 4. **S3 根の実行時裁定**: RentEconomy / QuotaRegime が毎イベント
    propose(EventView)→Plan を実装（λ フィルタ / budget top-k・カスケード・
    dedup・immunity）。cadence 応答も根へ。
-5. **S4 engine 削減**: トランザクション進行役＋capture サービスだけにする。
-   arbiter.py・composed/StructuralPolicy 経路・Independent・catalog preset 削除。
-   LC 系 recipe 化。
+5. **S4 engine 削減**（進行中・sub-step 分割）:
+   - S4a 済: RuntimeTree を QuotaPolicy 駆動に一般化（windowed 供給・prune cap は
+     root の計画行為）。recipes.LC が runtime 経路で指紋 PASS。
+   - S4b 済: profit trial = root の execute_trial サブプロトコル。checkpoint
+     (TrialTransaction) は全 family 共通の機構として engine が factory で貸すだけ
+     （trial の存在を知らない）。ordinary 半（absorb/retention）commit 後に
+     checkpoint → priced 半（birth/merge）→ polish → 裁定、が旧境界と同一。
+     recipes.GrowthByProfit 指紋 PASS（rollback 込み）。
+   - S4c 未: NeuronLifecycle（界面子）。実装指針: compose_response は
+     `neuron_id=` 明示指定を既に受けるので、snapshot の dormant_ids から root が
+     ターゲット列を計画し、bundle 間の依存は view_after を「計画済み birth の行
+     追加（合成負 id・lineage は op が持つ）」に拡張して解く。retire カスケードは
+     root の計画行為: SiteBinding.endpoints で当該 neuron store に接する synapse
+     子を特定し `spec.incident_synapse_ids` を子経由で照会して死を計画に加える。
+     LC_response recipe が lc_response_cascade 指紋を PASS したら完了。
+   - S4d 未: StructuralPolicy の後継 = 「root を自作する」研究者向け seam。
+     structural_policy_direct fixture を自作 root で再表現して指紋 PASS。
+   - S4e 未: 切除実行 — arbiter.py・composed/StructuralPolicy 経路・Independent・
+     _SiteProposer/_SiteRetentionCourt・compile() 経路・catalog preset
+     （LC_anti / LC_merge は歴史的 preset として recipe 化せず削除を許容、
+     コミットメッセージに記録。移すのは指紋が pin する LC / LC_response /
+     GrowthByProfit のみ）。engine の instruments reset・capture は現状維持
+     （A束は Phase 2 スコープ外の継続課題）。
 6. **S5 テスト再憲法化**: 旧テストのうち意味論に依存しない層（storage/compute/
    audit/replay）は維持、イベント編成系は新意味論で書き直し。S0 ハーネスで
    旧 main との統計的等価を最終確認。

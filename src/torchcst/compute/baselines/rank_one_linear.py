@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import torch
-from torch import Tensor, nn
+from torch import Tensor
 
 from torchcst.storage import SynapseStore, SynapseView
 
-from ..capture import BackwardContext
+from ..capture import flatten_capture_pair
+from ._control_base import _ControlLinear
 
 
-class RankOneLinear(nn.Module):
-    """Control family, not CST: a chart-free rank-one control (free u, v; no
-    kernel, no bandwidth) that sits outside the theory's representation
-    class and upper-bounds what coordinates alone can buy.
+class RankOneLinear(_ControlLinear):
+    """Linear map ``sum_k c_k u_k v_k^T`` without materializing dense ``W``.
 
-    Linear map ``sum_k c_k u_k v_k^T`` without materializing dense ``W``.
+    A control family, not CST: a chart-free rank-one control (free ``u``,
+    ``v``; no kernel, no bandwidth) that sits outside the theory's
+    representation class and upper-bounds what coordinates alone can buy.
     """
 
     def __init__(
@@ -24,57 +24,24 @@ class RankOneLinear(nn.Module):
         in_features: int,
         out_features: int,
     ) -> None:
-        super().__init__()
-        if not isinstance(store, SynapseStore):
-            raise TypeError("store must be a SynapseStore")
-        for name, value in (
-            ("in_features", in_features),
-            ("out_features", out_features),
-        ):
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise TypeError(f"{name} must be an int")
-            if value <= 0:
-                raise ValueError(f"{name} must be positive")
+        super().__init__(store, in_features, out_features)
         if store.d_in != in_features or store.d_out != out_features:
             raise ValueError("rank-one coordinate widths must equal feature widths")
         if store.spec.kernel_in != "dot" or store.spec.kernel_out != "dot":
             raise ValueError("RankOneLinear requires dot kernels")
-        self.store = store
-        self.in_features = in_features
-        self.out_features = out_features
-        self.capture_site = store.site
-        self._cached_version = -1
-        self._cached_view: SynapseView | None = None
-        self._cached_slots = torch.zeros(0, dtype=torch.int64)
-        self._backward_context: BackwardContext | None = None
 
-    def _view(self) -> SynapseView:
-        if self._cached_version != self.store.version:
-            view = self.store.view()
-            # Cache only detached structure; fresh differentiable gathers are
-            # made from store Parameters on every forward.
-            self._cached_view = SynapseView(
-                site=view.site,
-                version=view.version,
-                ids=view.ids,
-                s=view.s.detach(),
-                t=view.t.detach(),
-                w=view.w.detach(),
-                mass=view.mass.detach(),
-            )
-            self._cached_slots = self.store._slots.slots_of(view.ids)
-            self._cached_version = view.version
-        assert self._cached_view is not None
-        return self._cached_view
-
-    def set_backward_context(self, context: BackwardContext | None) -> None:
-        if context is not None and not isinstance(context, BackwardContext):
-            raise TypeError("context must be a BackwardContext or None")
-        self._backward_context = context
-
-    @property
-    def capture_enabled(self) -> bool:
-        return self._backward_context is not None
+    def _freeze_view(self, view: SynapseView) -> SynapseView:
+        # Cache only detached structure; fresh differentiable gathers are
+        # made from store Parameters on every forward.
+        return SynapseView(
+            site=view.site,
+            version=view.version,
+            ids=view.ids,
+            s=view.s.detach(),
+            t=view.t.detach(),
+            w=view.w.detach(),
+            mass=view.mass.detach(),
+        )
 
     def _live_factors(self) -> tuple[Tensor, Tensor, Tensor]:
         slots = self._cached_slots.to(device=self.store.w.device)
@@ -95,18 +62,7 @@ class RankOneLinear(nn.Module):
         target = target.to(device=x.device)
         weights = weights.to(device=x.device)
         output = ((x @ source.transpose(0, 1)) * weights) @ target
-
-        context = self._backward_context
-        if context is not None and torch.is_grad_enabled() and output.requires_grad:
-            input_fact = x.detach()
-            site = self.capture_site
-            version = view.version
-
-            def queue(grad_output: Tensor) -> None:
-                context.queue(site, input_fact, grad_output.detach(), version)
-
-            output.register_hook(queue)
-        return output
+        return self._capture_output(output, x, view.version)
 
     def atom_grads(self, x: Tensor, g_out: Tensor) -> Tensor:
         """Return signed ``dL/dw`` contributions in packed live-ID order."""
@@ -114,10 +70,9 @@ class RankOneLinear(nn.Module):
             raise ValueError("x's final dimension must equal in_features")
         if g_out.ndim == 0 or g_out.shape[-1] != self.out_features:
             raise ValueError("g_out's final dimension must equal out_features")
-        x_flat = x.detach().reshape(-1, self.in_features)
-        g_flat = g_out.detach().reshape(-1, self.out_features)
-        if x_flat.shape[0] != g_flat.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
+        x_flat, g_flat = flatten_capture_pair(
+            x, g_out, self.in_features, self.out_features
+        )
         self._view()
         source, target, _ = self._live_factors()
         source = source.detach().to(x_flat)

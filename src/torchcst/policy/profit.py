@@ -20,10 +20,9 @@ class TrialTransaction:
 
     The transaction covers all store parameters/buffers and structural extra
     state, optimizer state, stateful courts and instruments, the retired
-    registry, engine clock/op-log, the engine generator, and process RNG state.
-    It is intentionally heavyweight.  The step-8 MVP performs zero polish
-    updates inside a trial; future finite-polish implementations can use this
-    same boundary without weakening rollback.
+    registry, engine clock/op-log, the engine generator, and process RNG
+    state. It is intentionally heavyweight: any amount of polish may run
+    inside a trial without weakening rollback.
     """
 
     def __init__(self, engine: Any) -> None:
@@ -31,6 +30,14 @@ class TrialTransaction:
             raise TypeError("engine must provide structural engine state")
         self.engine = engine
         self._active = True
+        self._capture_stores()
+        self._capture_components()
+        self._capture_instruments()
+        self._capture_engine_state()
+        self._capture_rng()
+
+    def _capture_stores(self) -> None:
+        engine = self.engine
         self._store_states = {
             site: deepcopy(store.state_dict())
             for site, store in engine.stores.items()
@@ -40,12 +47,11 @@ class TrialTransaction:
             if engine.optimizer is None
             else deepcopy(engine.optimizer.state_dict())
         )
+
+    def _capture_components(self) -> None:
+        tree = getattr(self.engine, "_tree", None)
+        components = () if tree is None else tree.stateful_components()
         self._component_states: list[tuple[Any, Any]] = []
-        components = (
-            engine.policy.synapse_retention_rule,
-            engine.policy.neuron_retention_rule,
-            engine.policy.profit,
-        )
         seen: set[int] = set()
         for component in components:
             exporter = getattr(component, "state_dict", None)
@@ -53,18 +59,25 @@ class TrialTransaction:
                 continue
             seen.add(id(component))
             self._component_states.append((component, deepcopy(exporter())))
+
+    def _capture_instruments(self) -> None:
         self._instrument_states: list[tuple[Any, Any]] = []
-        for site_instruments in engine.instruments.values():
+        for site_instruments in self.engine.instruments.values():
             for instrument in dict.fromkeys(site_instruments.values()):
                 exporter = getattr(instrument, "state_dict", None)
                 if exporter is not None:
                     self._instrument_states.append(
                         (instrument, deepcopy(exporter()))
                     )
+
+    def _capture_engine_state(self) -> None:
+        engine = self.engine
         self._registry_state = deepcopy(engine.registry.state_dict())
         self._clock = deepcopy(engine.clock)
         self._op_log = deepcopy(engine._op_log)
-        self._rng_state = engine.rng.get_state().clone()
+
+    def _capture_rng(self) -> None:
+        self._rng_state = self.engine.rng.get_state().clone()
         self._torch_rng_state = torch.random.get_rng_state().clone()
         self._cuda_rng_states = (
             [state.clone() for state in torch.cuda.get_rng_state_all()]
@@ -117,9 +130,9 @@ class TrialTransaction:
 class TrialSession:
     """Objective capability sealed inside one transaction.
 
-    ``begin`` evaluates the pre-trial objective once. ``evaluate_after`` is
-    single-use.  Step 8 has no polish callback: the state between those reads
-    differs only by the prepared/committed structural trial.
+    ``begin`` evaluates the pre-trial objective once and ``evaluate_after``
+    is single-use; between the two reads the state differs only by the
+    committed structural trial plus whatever polish the caller ran.
     """
 
     def __init__(

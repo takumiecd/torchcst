@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The repo has a checked-in `.venv` (Python 3.11) and a `uv.lock`.
 
 ```bash
-.venv/bin/pytest                                   # full suite (~165 tests, ~2s)
+.venv/bin/pytest                                   # full suite (~260 tests, ~2s)
 .venv/bin/pytest tests/torchcst/test_scored_birth.py
 .venv/bin/pytest tests/torchcst/test_scored_birth.py::test_name
 .venv/bin/pytest -k "quota and not neuron"
@@ -23,8 +23,8 @@ works without installing the package.
 `torchcst` is the **framework** repository: reusable implementation plus executable
 API contracts only. Preregistrations, training runners, raw results, figures, and
 scientific reports belong in the sibling `cst` experiment repository. Do not add a
-catalog entry, a runner, or a result artifact here just to run one experiment —
-compose `Policy` directly in `cst` instead.
+recipe, a runner, or a result artifact here just to run one experiment — assemble
+a policy-tree root directly in `cst` instead.
 
 `docs/` mixes current reference with preserved superseded proposals. Read
 [`docs/README.md`](docs/README.md) before treating any design note as current API
@@ -51,7 +51,7 @@ born, retired, merged, or ungated.
 |---|---|
 | `compute/` | forward computation and delivery of module-boundary tensors (`CSTLinear`, `CSTConv2d`, `EntryLinear`/`RankOneLinear` controls, `NeuronGatedLinear`, `BackwardContext`) |
 | `instruments/` | backward-derived sufficient statistics and candidate fields |
-| `policy/` | cadence, quota, action rules, distributors, courts, catalog |
+| `policy/` | the policy tree: roots (`RentEconomy`/`QuotaRegime`), lifecycles, cadences, quotas, distributors, courts, recipes |
 | `engine.py` | hooks, clocks, orchestration, validation, atomic apply, audit, optimizer reconciliation |
 | `storage/` | entity IDs, physical slots, capacity, prepare/commit, followers |
 | `audit/`, `lab/` | one-way event sinks; deterministic experiment/replay helpers |
@@ -65,13 +65,18 @@ The boundaries that are easy to violate:
   counts; `BudgetDistributor` divides that count across sites/actions. Physical
   placement stays private to `SynapseStore` and `SlotPool.prepare()`. A future CSR
   or block-sparse layout replaces the *storage allocator*, not the quota API.
-- **The engine, not a user-supplied planner, assembles the plan** for composed
-  policies (order: cadence → quota → prune courts + prune caps → budget requests
-  → distribution → proposal rules → `StructuralPlan` → prepare-all → commit-all →
-  optimizer/lineage/audit reconciliation).
-- **Ordinary policies are loss-blind.** Only an opt-in profit trial
-  (`policy/profit.py`) may evaluate an objective, and `engine.step(objective=...)`
-  raises unless the composed policy declares one.
+- **The tree root, not the engine or a user-supplied planner, assembles the
+  plan.** `root.bind(...)` produces the live `RuntimeTree`; per event its
+  `EventDraft` stages run in fixed order (absorb → retention → interface
+  retire/cascade → birth → response bundles), every stage reading simulated
+  post-plan state, and the root then conducts prepare-all → commit-all →
+  audit/lineage reconciliation. The engine only drives clocks, capture, and
+  the transaction boundary (`engine -> root -> children -> storage`, one
+  direction).
+- **Ordinary policies are loss-blind.** Only an opt-in profit court
+  (`policy/profit.py`, attached as `QuotaRegime(profit=...)`) may evaluate an
+  objective, and `engine.step(objective=...)` raises when the tree has no
+  profit court.
 - **Audit subscribers are one-way sinks** and cannot feed back into policy.
 
 ### Update lifecycle (an API contract, not a convention)
@@ -125,35 +130,38 @@ must be one bundle so a half-connected neuron cannot commit.
 
 ## Extending
 
-Two equally public authoring paths — see [`docs/policy-authoring.md`](docs/policy-authoring.md):
+The policy tree is the sole authoring path (`docs/policy-tree-phase2.md`; the
+older composed-`Policy` and whole-`StructuralPolicy` surfaces described in
+[`docs/policy-authoring.md`](docs/policy-authoring.md) are retired):
 
-1. **Composed `Policy`** — `cadence=`, `quota=`, `observations=`, `actions=`
-   (`ActionSpec.synapse_birth(...)` etc.), `distributor=`. Use when those
-   boundaries fit the algorithm.
-2. **Whole `StructuralPolicy`** — one object implementing `capture(clock)`,
-   `plan(context) -> StructuralPlan | None`, optional `on_applied(...)` and
-   `bind_instruments(...)`. Use when decomposition would hide coupling. It needs no
-   cadence, distributor, or court.
+1. **A named method** — `cSET()`, `cRigL()`, `cRES()`, `RENT()` return a
+   `SynapseLifecycle`; place it under a root (`RentEconomy(lam=...)` or
+   `QuotaRegime(budget=...)`) with the root-owned `cadence=`, optional
+   `quota=`/`distributor=`/`overrides={site-glob: lifecycle}`, and bind via
+   `StructuralEngine`.
+2. **A hand-composed `SynapseLifecycle`** — `birth_factory` /
+   `prune_factory` / `absorb_factory` callables; `NeuronLifecycle` fills the
+   interface seat (neuron court and/or the RESPONSE ungate+incident-birth
+   capability). `policy/recipes.py` holds the few named, validated whole-tree
+   assemblies (`LC`, `LC_response`, `GrowthByProfit`).
 
 A new backward statistic is a frozen request with `build(context)` plus an
 instrument implementing `prepare`, one timing-specific measurement method, and
 `finalize_update`. **No `StructuralEngine` edit and no instrument registration step
 is required.** (`InstrumentSpec` remains only for the legacy built-in catalog.)
 
-### Migration aliases still accepted
-
-`proposers=` / `retention=` → `actions=`; `schedule=` → `cadence=`; `allocator=` →
-`distributor=`; `BudgetAllocator` → `BudgetDistributor`. New code must use the
-current names.
+The migration aliases the composed-`Policy` surface once accepted
+(`proposers=`/`schedule=`/`allocator=`/`BudgetAllocator`) were removed with it;
+only the current names exist.
 
 ### Deliberately unsupported
 
 These raise explicit errors rather than silently degrading: synapse/neuron **kick**
-operations, entry-family merge, **generic composed-policy neuron birth**, and
-distributed structural coordination. Note that `ActionSpec.neuron_birth(...)`
-exists but its composed distribution/execution route is *not* implemented — coupled
-neuron+synapse birth must be authored today as a whole `StructuralPolicy` emitting
-an atomic `ProposalBundle`. See the operation matrix in
+operations, entry-family merge, generic standalone neuron birth, and distributed
+structural coordination. Coupled neuron+synapse birth is authored as a
+`NeuronLifecycle` RESPONSE capability (`BundleComposer` + `IncidentOutputBirth`),
+which emits the ungate and its incident births as one atomic `ProposalBundle` so a
+half-connected neuron cannot commit. See the operation matrix in
 [`docs/framework-design.md`](docs/framework-design.md).
 
 ## Tests

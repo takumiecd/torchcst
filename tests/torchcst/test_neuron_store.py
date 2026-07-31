@@ -132,6 +132,6 @@ def test_prepare_all_and_commit_all_accept_mixed_store_tickets() -> None:
     assert synapses.live_ids().tolist() == [0]
 
 
-def test_learnable_mu_is_explicitly_deferred() -> None:
-    with pytest.raises(TypeError, match="step 9"):
+def test_learnable_mu_is_explicitly_rejected() -> None:
+    with pytest.raises(TypeError, match="learnable mu is not supported"):
         NeuronStore("hidden", 2, mu=torch.nn.Parameter(torch.arange(2.0)))

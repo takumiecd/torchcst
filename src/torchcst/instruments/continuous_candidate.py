@@ -1,4 +1,10 @@
-"""Continuous-chart candidate scoring instrument (cRigL/cRES)."""
+"""Continuous-chart candidate scoring instrument (cRigL/cRES).
+
+Reading order: linear-algebra helpers, :class:`RefinementSchedule`,
+:class:`ContinuousCandidateField`, :class:`ContinuousCandidateRequest`.
+Pool sampling (uniform / hardcore / local refinement draws) lives in
+:mod:`torchcst.instruments._candidate_sampling`.
+"""
 
 from __future__ import annotations
 
@@ -10,12 +16,26 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from torchcst.compute import ObservationTiming
+from torchcst._validation import require_int
+from torchcst.compute import ObservationTiming, flatten_capture_pair
 from torchcst.representation import Box
 from torchcst.storage import SynapseStore, SynapseView
 
-from .base import InstrumentBuildContext, KernelPort, WeightedMeasurement, weighted_sum
-from .scored import CandidateSnapshot
+# _coarse_spacing is re-exported here for external callers of the private API.
+from ._candidate_sampling import PoolSampler, _coarse_spacing
+from .base import (
+    CandidateSnapshot,
+    InstrumentBuildContext,
+    KernelPort,
+    WeightedMeasurement,
+    weighted_sum,
+)
+
+__all__ = [
+    "ContinuousCandidateField",
+    "ContinuousCandidateRequest",
+    "RefinementSchedule",
+]
 
 
 def _normalize_rows(x: Tensor, eps: float) -> Tensor:
@@ -55,190 +75,6 @@ def _solve_gram(gamma: Tensor, rhs: Tensor, eps: float) -> Tensor:
     except torch.linalg.LinAlgError:
         pass
     return torch.linalg.pinv(gamma) @ rhs
-
-
-def _sample_uniform(
-    domain_in: Box, domain_out: Box, m: int, rng: torch.Generator, like_source: Tensor, like_target: Tensor
-) -> tuple[Tensor, Tensor]:
-    source = domain_in.sample(m, rng).to(like_source)
-    target = domain_out.sample(m, rng).to(like_target)
-    return source, target
-
-
-def _coarse_spacing(domain: Box, pool_size: int) -> float:
-    """Closed-form expected nearest-neighbour spacing for a uniform pool.
-
-    ``width * pool_size ** (-1/dim)`` is the same ``M^(-1/dim)`` scaling
-    Stage 0 measured empirically for the 3D input chart (M candidates,
-    dim-3 domain -> spacing scales as ``M^(-1/3)``). Using the closed form
-    instead of an actual nearest-neighbour computation on a realized pool
-    means computing a refinement radius costs no extra ``cdist``/host-sync
-    beyond the sampling that already happens.
-
-    ``domain.width`` rather than ``domain.hi - domain.lo``: the law is
-    ``(volume / M) ** (1/dim)``, and ``Box.width`` is exactly
-    ``volume ** (1/dim)`` -- identical to ``hi - lo`` on a cube, and defined
-    on an anisotropic box, where ``hi - lo`` is not a single number at all.
-    """
-    if pool_size <= 0:
-        return domain.width
-    return domain.width * (float(pool_size) ** (-1.0 / domain.dim))
-
-
-def _sample_local_uniform(
-    domain: Box, centers: Tensor, radius: float, samples_per_winner: int, rng: torch.Generator
-) -> Tensor:
-    """Draw ``samples_per_winner`` points around each row of ``centers``.
-
-    Points are drawn uniformly from the axis-aligned cube of half-width
-    ``radius`` centered on each row, then clamped into ``domain`` via
-    :meth:`Box.retract` -- the same coordinate clip every candidate already
-    goes through at birth, so a winner near the domain boundary gets a
-    truncated (not reflected or wrapped) local box.
-    """
-    k = centers.shape[0]
-    if k == 0 or samples_per_winner == 0:
-        return centers.new_zeros((0, domain.dim))
-    device = getattr(rng, "device", torch.device("cpu"))
-    unit = torch.rand((k * samples_per_winner, domain.dim), generator=rng, device=device)
-    offsets = unit.mul(2.0 * radius).add(-radius)
-    anchors = centers.to(device=device, dtype=offsets.dtype).repeat_interleave(samples_per_winner, dim=0)
-    return domain.retract(anchors + offsets)
-
-
-def _sample_local(
-    domain_in: Box,
-    domain_out: Box,
-    winners_source: Tensor,
-    winners_target: Tensor,
-    samples_per_winner: int,
-    radius_in: float,
-    radius_out: float,
-    rng: torch.Generator,
-    like_source: Tensor,
-    like_target: Tensor,
-    *,
-    sampling: str,
-    live_source: Tensor,
-    live_target: Tensor,
-    sigma: float | None,
-    attempts: int,
-) -> tuple[Tensor, Tensor]:
-    """Sample a local refinement pool anchored on each coarse winner.
-
-    For ``sampling="hardcore"`` this mirrors ``_sample_hardcore``'s
-    rejection + documented-uniform-fallback contract (candidates must clear
-    ``sigma`` from every live atom), except every retry re-centers on the
-    same winners rather than the whole domain: falling back to whole-domain
-    sampling on a hardcore miss would defeat the point of refining locally.
-    """
-    k = winners_source.shape[0]
-    m = k * samples_per_winner
-
-    def _draw() -> tuple[Tensor, Tensor]:
-        source = _sample_local_uniform(domain_in, winners_source, radius_in, samples_per_winner, rng).to(
-            like_source
-        )
-        target = _sample_local_uniform(domain_out, winners_target, radius_out, samples_per_winner, rng).to(
-            like_target
-        )
-        return source, target
-
-    if sampling != "hardcore" or m == 0:
-        return _draw()
-
-    assert sigma is not None
-    live_source = live_source.to(like_source)
-    live_target = live_target.to(like_target)
-    if live_source.shape[0] == 0:
-        return _draw()
-
-    kept_source: list[Tensor] = []
-    kept_target: list[Tensor] = []
-    collected = 0
-    for _ in range(attempts):
-        if collected >= m:
-            break
-        cand_source, cand_target = _draw()
-        d_in = torch.cdist(cand_source, live_source)
-        d_out = torch.cdist(cand_target, live_target)
-        joint = torch.sqrt(d_in.square() + d_out.square())
-        keep = joint.amin(dim=1) > sigma
-        if bool(keep.any()):
-            kept_source.append(cand_source[keep])
-            kept_target.append(cand_target[keep])
-            collected += int(keep.sum())
-    source = torch.cat(kept_source, dim=0) if kept_source else like_source.new_zeros((0, domain_in.dim))
-    target = torch.cat(kept_target, dim=0) if kept_target else like_target.new_zeros((0, domain_out.dim))
-    if source.shape[0] >= m:
-        return source[:m], target[:m]
-    # Budget exhausted: documented fallback to a fresh local uniform draw
-    # for the remainder, same rationale as `_sample_hardcore`.
-    remaining = m - source.shape[0]
-    fill_source, fill_target = _draw()
-    return (
-        torch.cat((source, fill_source[:remaining]), dim=0),
-        torch.cat((target, fill_target[:remaining]), dim=0),
-    )
-
-
-def _sample_hardcore(
-    domain_in: Box,
-    domain_out: Box,
-    live_source: Tensor,
-    live_target: Tensor,
-    m: int,
-    sigma: float,
-    attempts: int,
-    rng: torch.Generator,
-    like_source: Tensor,
-    like_target: Tensor,
-) -> tuple[Tensor, Tensor]:
-    """Rejection-sample candidates farther than ``sigma`` from every live atom.
-
-    Distance is Euclidean in the joint (source, target) chart.  Sampling
-    stops after ``attempts`` rounds; any shortfall is documented and filled
-    with plain uniform draws, since a nearly-covered domain can make strict
-    rejection sampling fail to reach a full pool within a bounded budget.
-    """
-    live_source = live_source.to(like_source)
-    live_target = live_target.to(like_target)
-    k_live = live_source.shape[0]
-    kept_source: list[Tensor] = []
-    kept_target: list[Tensor] = []
-    collected = 0
-    for _ in range(attempts):
-        if collected >= m:
-            break
-        draw = m - collected
-        cand_source = domain_in.sample(draw, rng).to(like_source)
-        cand_target = domain_out.sample(draw, rng).to(like_target)
-        if k_live:
-            d_in = torch.cdist(cand_source, live_source)
-            d_out = torch.cdist(cand_target, live_target)
-            joint = torch.sqrt(d_in.square() + d_out.square())
-            keep = joint.amin(dim=1) > sigma
-        else:
-            keep = torch.ones(draw, dtype=torch.bool, device=cand_source.device)
-        if bool(keep.any()):
-            kept_source.append(cand_source[keep])
-            kept_target.append(cand_target[keep])
-            collected += int(keep.sum())
-    source = (
-        torch.cat(kept_source, dim=0) if kept_source else like_source.new_zeros((0, domain_in.dim))
-    )
-    target = (
-        torch.cat(kept_target, dim=0) if kept_target else like_target.new_zeros((0, domain_out.dim))
-    )
-    if source.shape[0] >= m:
-        return source[:m], target[:m]
-    # Budget exhausted (e.g. a nearly-covered domain): documented fallback to
-    # plain uniform sampling for the remainder rather than looping forever.
-    remaining = m - source.shape[0]
-    fill_source, fill_target = _sample_uniform(
-        domain_in, domain_out, remaining, rng, like_source, like_target
-    )
-    return torch.cat((source, fill_source), dim=0), torch.cat((target, fill_target), dim=0)
 
 
 @dataclass(frozen=True)
@@ -293,15 +129,9 @@ class RefinementSchedule:
     rounds: int = 1
 
     def __post_init__(self) -> None:
-        for field_name, value in (
-            ("top_k", self.top_k),
-            ("samples_per_winner", self.samples_per_winner),
-            ("rounds", self.rounds),
-        ):
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise TypeError(f"{field_name} must be an int")
-            if value <= 0:
-                raise ValueError(f"{field_name} must be positive")
+        require_int(self.top_k, "top_k", minimum=1)
+        require_int(self.samples_per_winner, "samples_per_winner", minimum=1)
+        require_int(self.rounds, "rounds", minimum=1)
         if not isfinite(float(self.radius_multiplier)) or float(self.radius_multiplier) <= 0:
             raise ValueError("radius_multiplier must be a positive finite float")
         object.__setattr__(self, "radius_multiplier", float(self.radius_multiplier))
@@ -359,22 +189,21 @@ class ContinuousCandidateField:
     across such calls.
 
     **Certificate convention: R_{t-1}=0.** ``G`` accumulates the signed,
-    weighted microbatch sum *within* one observation window exactly as
-    documented above, but it is consumed -- not merely observed -- by the
-    structural event that reads it: :class:`~torchcst.engine.StructuralEngine`
-    resets every bound ``ContinuousCandidateField`` (alongside every
+    weighted microbatch sum *within* one observation window, but it is
+    consumed -- not merely observed -- by the structural event that reads
+    it: :class:`~torchcst.engine.StructuralEngine` resets every bound
+    ``ContinuousCandidateField`` (alongside every
     :class:`~torchcst.instruments.CertificateSubspace`) at the end of each
-    structural event that actually applies (``_finish_event``), regardless of
-    whether that specific instrument's scores were the ones a proposer used.
-    This is the theory's "the residual before this window is treated as
-    zero" convention: each event's :meth:`candidate_snapshot` reads a
-    certificate accumulated purely since the *previous* event, never a
-    cumulative, pre-optimizer-step sum spanning multiple events (the defect
-    ``docs/absorb-and-gram-design.md``'s Stage 3b-fix section describes and
-    ``cst/scripts/diag_birth_gain_calibration.py`` measured). A caller that
-    never reaches a structural event (e.g. only ever calls
-    :meth:`candidate_snapshot` diagnostically) must still call :meth:`reset`
-    explicitly, exactly as before this convention was wired into the engine.
+    structural event that actually applies, regardless of whether that
+    specific instrument's scores were the ones a proposer used. This is the
+    theory's "the residual before this window is treated as zero"
+    convention: each event's :meth:`candidate_snapshot` reads a certificate
+    accumulated purely since the *previous* event, never a cumulative,
+    pre-optimizer-step sum spanning multiple events (the defect
+    ``docs/absorb-and-gram-design.md``'s Stage 3b-fix section describes). A
+    caller that never reaches a structural event (e.g. only ever calls
+    :meth:`candidate_snapshot` diagnostically) must call :meth:`reset`
+    explicitly at its own event boundary.
     """
 
     def __init__(
@@ -412,10 +241,22 @@ class ContinuousCandidateField:
         self.hardcore_attempts = hardcore_attempts
         self.eps = eps
         self.refinement = refinement
+        self._sampler = PoolSampler(
+            domain_in=store.spec.domain_in,
+            domain_out=store.spec.domain_out,
+            rng=rng,
+            like_source=store.s,
+            like_target=store.t,
+            sampling=sampling,
+            sigma=sigma,
+            attempts=hardcore_attempts,
+        )
         self._version = -1
         self._source = store.s.detach().new_zeros((0, store.d_in))
         self._target = store.t.detach().new_zeros((0, store.d_out))
         self._G: Tensor | None = None
+
+    # ---- capture lifecycle -----------------------------------------------
 
     def prepare(self, view: SynapseView, module: Any) -> None:
         """Resample the candidate pool only after the structural version changes."""
@@ -423,35 +264,15 @@ class ContinuousCandidateField:
             raise ValueError("instrument was prepared with another compute module")
         if view.version == self._version:
             return
-        domain_in = self.store.spec.domain_in
-        domain_out = self.store.spec.domain_out
-        if self.sampling == "hardcore":
-            assert self.sigma is not None
-            self._source, self._target = _sample_hardcore(
-                domain_in,
-                domain_out,
-                view.s,
-                view.t,
-                self.pool_size,
-                self.sigma,
-                self.hardcore_attempts,
-                self.rng,
-                self.store.s,
-                self.store.t,
-            )
-        else:
-            self._source, self._target = _sample_uniform(
-                domain_in, domain_out, self.pool_size, self.rng, self.store.s, self.store.t
-            )
+        self._source, self._target = self._sampler.pool(
+            view.s, view.t, self.pool_size
+        )
         self._version = view.version
 
     def _measure(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
         if module is not self.module:
             raise ValueError("instrument measured another compute module")
-        x_flat = x.detach().reshape(-1, x.shape[-1])
-        g_flat = g_out.detach().reshape(-1, g_out.shape[-1])
-        if x_flat.shape[0] != g_flat.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
+        x_flat, g_flat = flatten_capture_pair(x, g_out, x.shape[-1], g_out.shape[-1])
         return {"matrix": g_flat.transpose(0, 1) @ x_flat}
 
     def reduce_backward(self, module: Any, x: Tensor, g_out: Tensor) -> dict[str, Tensor]:
@@ -480,15 +301,10 @@ class ContinuousCandidateField:
     def reset(self) -> None:
         """Begin the next observation window without changing shape/device.
 
-        :class:`~torchcst.engine.StructuralEngine` calls this automatically
-        at the end of every structural event that applies (the same
-        per-event sweep that resets every
-        :class:`~torchcst.instruments.CertificateSubspace`), implementing the
-        R_{t-1}=0 certificate convention documented on the class -- a
-        structural event *consumes* ``G``, it does not merely observe it. A
-        caller driving this instrument outside the engine (e.g. a
-        diagnostic) must still call this explicitly at its own event
-        boundary; nothing here depends on the engine.
+        This is the consumption half of the R_{t-1}=0 certificate convention
+        (see the class docstring): the engine calls it at the end of every
+        applied structural event; a caller driving this instrument outside
+        the engine must call it at its own event boundary.
         """
         if self._G is not None:
             self._G.zero_()
@@ -502,25 +318,29 @@ class ContinuousCandidateField:
         candidate directions, this is ``G`` in its native loss-gradient
         units -- exactly what
         :class:`~torchcst.policy.scored.ScoredBirth`'s entrance-side
-        loss-unit settlement needs (design doc Stage 3b-fix item 2) to
-        compute ``<G, psi>_F`` against an *un-normalized* candidate atom
-        matrix ``psi``.
+        loss-unit settlement needs to compute ``<G, psi>_F`` against an
+        *un-normalized* candidate atom matrix ``psi``.
         """
         base = self.store.s.detach()
         if self._G is None:
             return base.new_zeros((self.module.out_features, self.module.in_features))
         return self._G.detach().to(base)
 
+    # ---- scoring ---------------------------------------------------------
+
     def _score(
-        self, source: Tensor, target: Tensor, gradient: Tensor, live_source: Tensor, live_target: Tensor
+        self,
+        source: Tensor,
+        target: Tensor,
+        gradient: Tensor,
+        live_source: Tensor,
+        live_target: Tensor,
     ) -> Tensor:
         """Score one arbitrary ``(source, target)`` pool against ``gradient``.
 
-        Factored out of :meth:`candidate_snapshot` so coarse-to-fine
-        refinement can rescore locally-resampled candidates through the
-        exact same raw/deflated rule as the coarse pool -- both scoring
-        modes go through this one path, so ``mode="raw"`` (cRigL) and
-        ``mode="deflated"`` (cRES) stay comparable under refinement too.
+        Both scoring modes go through this one path, so ``mode="raw"``
+        (cRigL) and ``mode="deflated"`` (cRES) stay comparable under
+        refinement too.
         """
         k_live = live_source.shape[0]
         k_in_pool, k_out_pool = self.port.columns(source, target)
@@ -536,18 +356,22 @@ class ContinuousCandidateField:
         u_live = _normalize_rows(k_out_live.transpose(0, 1), self.eps)
         v_live = _normalize_rows(k_in_live.transpose(0, 1), self.eps)
 
-        b = (u_live * (v_live @ gradient.transpose(0, 1))).sum(dim=1)
-        cross = (u_pool @ u_live.transpose(0, 1)) * (v_pool @ v_live.transpose(0, 1))
+        live_scores = (u_live * (v_live @ gradient.transpose(0, 1))).sum(dim=1)
+        pool_live_overlap = (u_pool @ u_live.transpose(0, 1)) * (
+            v_pool @ v_live.transpose(0, 1)
+        )
         gram = (u_live @ u_live.transpose(0, 1)) * (v_live @ v_live.transpose(0, 1))
 
-        coeffs = _solve_gram(gram, cross.transpose(0, 1), self.eps)  # [K, M]
-        proj_self = (cross * coeffs.transpose(0, 1)).sum(dim=1)
-        proj_grad = coeffs.transpose(0, 1) @ b
+        coeffs = _solve_gram(gram, pool_live_overlap.transpose(0, 1), self.eps)  # [K, M]
+        proj_self = (pool_live_overlap * coeffs.transpose(0, 1)).sum(dim=1)
+        proj_grad = coeffs.transpose(0, 1) @ live_scores
 
         residual = (1.0 - proj_self).clamp_min(0.0)
         valid = residual > self.eps
         safe_residual = residual.clamp_min(self.eps)
-        return torch.where(valid, (raw - proj_grad) / safe_residual.sqrt(), torch.zeros_like(raw))
+        return torch.where(
+            valid, (raw - proj_grad) / safe_residual.sqrt(), torch.zeros_like(raw)
+        )
 
     def _refine(
         self,
@@ -584,50 +408,40 @@ class ContinuousCandidateField:
         radius_in = _coarse_spacing(domain_in, self.pool_size) * schedule.radius_multiplier
         radius_out = _coarse_spacing(domain_out, self.pool_size) * schedule.radius_multiplier
 
+        def shrunk(radius: float, dim: int) -> float:
+            # The next round searches inside the box just sampled, which
+            # holds `samples_per_winner` points -- that box's own density,
+            # not the original coarse pool's, sets how far the next round
+            # may look, so the search keeps zooming in round over round.
+            return (
+                2.0
+                * radius
+                * (schedule.samples_per_winner ** (-1.0 / dim))
+                * schedule.radius_multiplier
+            )
+
         for _ in range(schedule.rounds):
             top_k = min(schedule.top_k, scores.numel())
             if top_k == 0:
                 break
             winners = torch.argsort(scores.abs(), descending=True, stable=True)[:top_k]
-            winners_source = source.index_select(0, winners)
-            winners_target = target.index_select(0, winners)
-            refined_source, refined_target = _sample_local(
-                domain_in,
-                domain_out,
-                winners_source,
-                winners_target,
+            refined_source, refined_target = self._sampler.local(
+                source.index_select(0, winners),
+                target.index_select(0, winners),
                 schedule.samples_per_winner,
                 radius_in,
                 radius_out,
-                self.rng,
-                self.store.s,
-                self.store.t,
-                sampling=self.sampling,
-                live_source=live_source,
-                live_target=live_target,
-                sigma=self.sigma,
-                attempts=self.hardcore_attempts,
+                live_source,
+                live_target,
             )
-            refined_scores = self._score(refined_source, refined_target, gradient, live_source, live_target)
+            refined_scores = self._score(
+                refined_source, refined_target, gradient, live_source, live_target
+            )
             source = torch.cat((source, refined_source), dim=0)
             target = torch.cat((target, refined_target), dim=0)
             scores = torch.cat((scores, refined_scores), dim=0)
-            # The next round searches inside the box just sampled, which
-            # holds `samples_per_winner` points -- that box's own density,
-            # not the original coarse pool's, sets how far the next round
-            # may look, so the search keeps zooming in round over round.
-            radius_in = (
-                2.0
-                * radius_in
-                * (schedule.samples_per_winner ** (-1.0 / domain_in.dim))
-                * schedule.radius_multiplier
-            )
-            radius_out = (
-                2.0
-                * radius_out
-                * (schedule.samples_per_winner ** (-1.0 / domain_out.dim))
-                * schedule.radius_multiplier
-            )
+            radius_in = shrunk(radius_in, domain_in.dim)
+            radius_out = shrunk(radius_out, domain_out.dim)
         return source, target, scores
 
     def candidate_snapshot(self) -> CandidateSnapshot:
@@ -650,13 +464,17 @@ class ContinuousCandidateField:
         scores = self._score(source, target, gradient, live_source, live_target)
 
         if self.refinement is not None:
-            source, target, scores = self._refine(source, target, scores, gradient, live_source, live_target)
+            source, target, scores = self._refine(
+                source, target, scores, gradient, live_source, live_target
+            )
 
         return CandidateSnapshot(
             source.detach().clone(),
             target.detach().clone(),
             scores.detach(),
         )
+
+    # ---- serialization ---------------------------------------------------
 
     def state_dict(self) -> dict[str, Any]:
         return {
@@ -695,38 +513,36 @@ class ContinuousCandidateRequest:
     refinement: RefinementSchedule | None = None
 
     def __post_init__(self) -> None:
-        if isinstance(self.pool_size, bool) or not isinstance(self.pool_size, int):
-            raise TypeError("pool_size must be an int")
-        if self.pool_size <= 0:
-            raise ValueError("pool_size must be positive")
+        self._validate_fields()
+        self._validate_cross_field()
+        object.__setattr__(self, "sigma", None if self.sigma is None else float(self.sigma))
+        object.__setattr__(self, "eps", float(self.eps))
+        try:
+            resolved_timing = ObservationTiming(self.timing)
+        except ValueError as exc:
+            raise ValueError("timing must be backward_inline or after_backward") from exc
+        object.__setattr__(self, "timing", resolved_timing)
+
+    def _validate_fields(self) -> None:
+        require_int(self.pool_size, "pool_size", minimum=1)
         if self.mode not in {"raw", "deflated"}:
             raise ValueError("mode must be 'raw' or 'deflated'")
         if self.sampling not in {"uniform", "hardcore"}:
             raise ValueError("sampling must be 'uniform' or 'hardcore'")
-        if self.sampling == "hardcore":
-            if self.sigma is None or not isfinite(float(self.sigma)) or float(self.sigma) <= 0:
-                raise ValueError("hardcore sampling requires a positive finite sigma")
-        elif self.sigma is not None:
-            raise ValueError("sigma is only meaningful for hardcore sampling")
-        if isinstance(self.hardcore_attempts, bool) or not isinstance(
-            self.hardcore_attempts, int
-        ):
-            raise TypeError("hardcore_attempts must be an int")
-        if self.hardcore_attempts <= 0:
-            raise ValueError("hardcore_attempts must be positive")
+        require_int(self.hardcore_attempts, "hardcore_attempts", minimum=1)
         if not isfinite(float(self.eps)) or float(self.eps) <= 0:
             raise ValueError("eps must be a positive finite float")
         if not isinstance(self.name, str) or not self.name:
             raise ValueError("name must be a non-empty string")
         if self.refinement is not None and not isinstance(self.refinement, RefinementSchedule):
             raise TypeError("refinement must be a RefinementSchedule or None")
-        try:
-            resolved_timing = ObservationTiming(self.timing)
-        except ValueError as exc:
-            raise ValueError("timing must be backward_inline or after_backward") from exc
-        object.__setattr__(self, "sigma", None if self.sigma is None else float(self.sigma))
-        object.__setattr__(self, "eps", float(self.eps))
-        object.__setattr__(self, "timing", resolved_timing)
+
+    def _validate_cross_field(self) -> None:
+        if self.sampling == "hardcore":
+            if self.sigma is None or not isfinite(float(self.sigma)) or float(self.sigma) <= 0:
+                raise ValueError("hardcore sampling requires a positive finite sigma")
+        elif self.sigma is not None:
+            raise ValueError("sigma is only meaningful for hardcore sampling")
 
     def build(self, context: InstrumentBuildContext) -> ContinuousCandidateField:
         return ContinuousCandidateField(

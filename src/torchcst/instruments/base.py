@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import torch
 from torch import Tensor
 
-from torchcst.policy.registry import RetiredCandidateRegistry
 from torchcst.storage import SynapseStore, SynapseView
+
+if TYPE_CHECKING:
+    # Annotation-only: a runtime import here would close the
+    # instruments <-> policy cycle (policy modules import instrument types).
+    from torchcst.policy.registry import RetiredCandidateRegistry
 
 
 Measurement = Mapping[str, Tensor]
@@ -22,6 +26,39 @@ class WeightedMeasurement:
 
     values: Measurement
     weight: float
+
+
+@dataclass(frozen=True)
+class CandidateSnapshot:
+    """Coordinates, ranking scores, and optional representation-owned lineages.
+
+    The shared cross-instrument result type: every candidate-scoring
+    instrument's ``candidate_snapshot()`` returns one of these.
+    """
+
+    source: Tensor
+    target: Tensor
+    scores: Tensor
+    lineages: Tensor | None = None
+
+    def __post_init__(self) -> None:
+        if self.source.ndim != 2 or self.target.ndim != 2:
+            raise ValueError("candidate coordinates must be rank 2")
+        if self.scores.ndim != 1:
+            raise ValueError("candidate scores must be rank 1")
+        count = self.scores.numel()
+        if self.source.shape[0] != count or self.target.shape[0] != count:
+            raise ValueError("candidate coordinates and scores must align")
+        if self.lineages is not None:
+            if self.lineages.ndim != 1 or self.lineages.dtype != torch.int64:
+                raise TypeError("candidate lineages must be rank-1 int64")
+            if self.lineages.numel() != count:
+                raise ValueError("candidate lineages and scores must align")
+        object.__setattr__(self, "source", self.source.detach())
+        object.__setattr__(self, "target", self.target.detach())
+        object.__setattr__(self, "scores", self.scores.detach())
+        if self.lineages is not None:
+            object.__setattr__(self, "lineages", self.lineages.detach())
 
 
 @dataclass(frozen=True)

@@ -9,8 +9,10 @@ from typing import Any, Sequence
 import torch
 from torch import Tensor, nn
 
+from torchcst._validation import cat_or_empty, require_int
+
 from .mechanics import AgeColumn, FollowerHub, LineageColumn
-from .synapse import Ticket
+from .transaction import Ticket, validate_ticket
 
 
 class NeuronState(IntEnum):
@@ -58,7 +60,7 @@ class NeuronRetire:
 
 @dataclass(frozen=True)
 class NeuronKick:
-    """Reserved continuous-coordinate operation (implementation step 9)."""
+    """Reserved continuous-coordinate op; deliberately unsupported today."""
 
     site: str
     ids: Tensor
@@ -78,9 +80,9 @@ class _NeuronBatch:
 class NeuronStore(nn.Module):
     """A fixed-width chart whose entity IDs are stable chart indices.
 
-    ``mu`` is deliberately a buffer in implementation step 6.  Learnable
-    neuron coordinates belong to the continuous-coordinate work in step 9 and
-    are rejected here instead of being silently registered as parameters.
+    ``mu`` is deliberately a buffer: learnable neuron coordinates are not
+    supported, and a parameter (or grad-requiring) ``mu`` is rejected here
+    instead of being silently registered.
     """
 
     DEFAULT_UNGATE = 1.0e-3
@@ -98,10 +100,7 @@ class NeuronStore(nn.Module):
         super().__init__()
         if not isinstance(site, str) or not site:
             raise ValueError("site must be a non-empty string")
-        if isinstance(n_max, bool) or not isinstance(n_max, int):
-            raise TypeError("n_max must be an int")
-        if n_max <= 0:
-            raise ValueError("n_max must be positive")
+        require_int(n_max, "n_max", minimum=1)
         self.site = site
         self.n_max = n_max
 
@@ -111,9 +110,7 @@ class NeuronStore(nn.Module):
         if isinstance(mu, nn.Parameter) or (
             isinstance(mu, Tensor) and mu.requires_grad
         ):
-            raise TypeError(
-                "learnable mu (ParameterRole.PARAMETER) is deferred to step 9"
-            )
+            raise TypeError("learnable mu is not supported; mu must be a plain Tensor")
         if mu is None:
             coordinate = torch.arange(n_max, dtype=torch.int64, device=device)
         else:
@@ -176,26 +173,26 @@ class NeuronStore(nn.Module):
         """The physical chart width; it never changes."""
         return self.n_max
 
+    def _ids_in_state(self, target: NeuronState) -> Tensor:
+        """Chart IDs currently in ``target`` state, ascending, on CPU."""
+        matches = self.state.detach().to(device="cpu") == int(target)
+        return torch.nonzero(matches, as_tuple=False).flatten().to(torch.int64)
+
     def _live_ids_cpu(self) -> Tensor:
-        return torch.nonzero(
-            self.state.detach().to(device="cpu") == int(NeuronState.LIVE),
-            as_tuple=False,
-        ).flatten().to(torch.int64)
+        return self._ids_in_state(NeuronState.LIVE)
 
     def live_ids(self) -> Tensor:
-        return self._live_ids_cpu()
+        return self._ids_in_state(NeuronState.LIVE)
 
     def dormant_ids(self) -> Tensor:
-        return torch.nonzero(
-            self.state.detach().to(device="cpu") == int(NeuronState.DORMANT),
-            as_tuple=False,
-        ).flatten().to(torch.int64)
+        return self._ids_in_state(NeuronState.DORMANT)
 
     def retired_ids(self) -> Tensor:
-        return torch.nonzero(
-            self.state.detach().to(device="cpu") == int(NeuronState.RETIRED),
-            as_tuple=False,
-        ).flatten().to(torch.int64)
+        return self._ids_in_state(NeuronState.RETIRED)
+
+    def ages_of(self, ids: Tensor) -> Tensor:
+        """Structural ages for chart IDs, aligned with ``ids``."""
+        return self.age.values.index_select(0, self._validate_ids(ids))
 
     def followers(self) -> FollowerHub:
         return self._hub
@@ -220,16 +217,13 @@ class NeuronStore(nn.Module):
             lineages=self.lineage.values.index_select(0, ids),
         )
 
+    # ---- prepare: validate and freeze ------------------------------------
+
     def prepare(self, ops: Sequence[NeuronOp]) -> Ticket:
         """Validate and snapshot one transition batch without mutation."""
         ops = tuple(ops)
         if not ops:
-            batch = _NeuronBatch(
-                torch.zeros(0, dtype=torch.int64),
-                self.gate.detach().new_zeros((0,)),
-                torch.zeros(0, dtype=torch.int64),
-            )
-            return Ticket(self, self._version, batch, empty=True)
+            return self._empty_ticket()
 
         ungate_ids: list[Tensor] = []
         ungate_values: list[Tensor] = []
@@ -237,51 +231,65 @@ class NeuronStore(nn.Module):
         touched: set[int] = set()
         state = self.state.detach().to(device="cpu")
         for op in ops:
-            if isinstance(op, NeuronKick):
-                raise NotImplementedError("NeuronKick is deferred to step 9")
-            if not isinstance(op, (NeuronUngate, NeuronRetire)):
-                raise TypeError(f"unsupported neuron op type {type(op)!r}")
-            if op.site != self.site:
-                raise ValueError(
-                    f"op.site={op.site!r} does not match store site={self.site!r}"
-                )
-            ids = self._validate_ids(op.ids)
-            duplicate = touched.intersection(ids.tolist())
-            if duplicate or ids.unique().numel() != ids.numel():
-                raise ValueError("neuron IDs may appear only once per batch")
-            touched.update(ids.tolist())
-            expected = (
-                NeuronState.DORMANT
-                if isinstance(op, NeuronUngate)
-                else NeuronState.LIVE
-            )
-            actual = state.index_select(0, ids)
-            if bool((actual != int(expected)).any()):
-                invalid = ids[actual != int(expected)].tolist()
-                raise ValueError(
-                    f"neuron IDs {invalid} are not {expected.name}"
-                )
+            ids = self._check_transition(op, state, touched)
             if isinstance(op, NeuronUngate):
                 ungate_ids.append(ids)
                 ungate_values.append(self._gate_values(op.gate, ids.numel()))
             else:
                 retire_ids.append(ids)
-        born = torch.cat(ungate_ids) if ungate_ids else torch.zeros(0, dtype=torch.int64)
-        values = (
-            torch.cat(ungate_values)
-            if ungate_values
-            else self.gate.detach().new_zeros((0,))
+        batch = _NeuronBatch(
+            ungate_ids=cat_or_empty(ungate_ids),
+            ungate_gate=cat_or_empty(ungate_values, like=self.gate),
+            retire_ids=cat_or_empty(retire_ids),
         )
-        dead = torch.cat(retire_ids) if retire_ids else torch.zeros(0, dtype=torch.int64)
-        return Ticket(self, self._version, _NeuronBatch(born, values, dead))
+        return Ticket(self, self._version, batch)
+
+    def _empty_ticket(self) -> Ticket:
+        batch = _NeuronBatch(
+            ungate_ids=torch.zeros(0, dtype=torch.int64),
+            ungate_gate=self.gate.detach().new_zeros((0,)),
+            retire_ids=torch.zeros(0, dtype=torch.int64),
+        )
+        return Ticket(self, self._version, batch, empty=True)
+
+    def _check_transition(
+        self, op: NeuronOp, state: Tensor, touched: set[int]
+    ) -> Tensor:
+        """Validate one op's IDs against the op's required current state.
+
+        ``touched`` accumulates every ID used earlier in the same batch, so an
+        ID can appear in at most one transition per ticket.
+        """
+        if isinstance(op, NeuronKick):
+            raise NotImplementedError("NeuronKick is not implemented")
+        if not isinstance(op, (NeuronUngate, NeuronRetire)):
+            raise TypeError(f"unsupported neuron op type {type(op)!r}")
+        if op.site != self.site:
+            raise ValueError(
+                f"op.site={op.site!r} does not match store site={self.site!r}"
+            )
+        ids = self._validate_ids(op.ids)
+        duplicate = touched.intersection(ids.tolist())
+        if duplicate or ids.unique().numel() != ids.numel():
+            raise ValueError("neuron IDs may appear only once per batch")
+        touched.update(ids.tolist())
+        expected = (
+            NeuronState.DORMANT if isinstance(op, NeuronUngate) else NeuronState.LIVE
+        )
+        actual = state.index_select(0, ids)
+        if bool((actual != int(expected)).any()):
+            invalid = ids[actual != int(expected)].tolist()
+            raise ValueError(f"neuron IDs {invalid} are not {expected.name}")
+        return ids
+
+    # ---- commit: write ---------------------------------------------------
 
     def commit(self, ticket: Ticket) -> None:
         """Apply a current, unused transition ticket exactly once."""
         self._validate_ticket(ticket)
         if ticket.empty:
             with torch.no_grad():
-                inactive = self.state != int(NeuronState.LIVE)
-                self.gate.masked_fill_(inactive.to(device=self.gate.device), 0.0)
+                self._zero_inactive_gates()
             ticket._used = True
             return
         batch = ticket.batch
@@ -299,8 +307,7 @@ class NeuronStore(nn.Module):
                     batch.ungate_ids.to(device=self.gate.device),
                     batch.ungate_gate,
                 )
-            inactive = self.state != int(NeuronState.LIVE)
-            self.gate.masked_fill_(inactive.to(device=self.gate.device), 0.0)
+            self._zero_inactive_gates()
         if batch.retire_ids.numel():
             self._hub.notify_death(batch.retire_ids)
         if batch.ungate_ids.numel():
@@ -310,6 +317,18 @@ class NeuronStore(nn.Module):
 
     def apply(self, ops: Sequence[NeuronOp]) -> None:
         self.commit(self.prepare(ops))
+
+    def _zero_inactive_gates(self) -> None:
+        """Force exact zeros on every non-LIVE gate entry."""
+        inactive = self.state != int(NeuronState.LIVE)
+        self.gate.masked_fill_(inactive.to(device=self.gate.device), 0.0)
+
+    def _validate_ticket(self, ticket: Ticket) -> None:
+        validate_ticket(ticket, self, self._version)
+        if not isinstance(ticket.batch, _NeuronBatch):
+            raise TypeError("ticket batch is not a neuron batch")
+
+    # ---- optimizer maintenance and serialization -------------------------
 
     def reconcile_optimizer_state(
         self, optimizer: torch.optim.Optimizer, reset_ids: Tensor | None = None
@@ -338,18 +357,6 @@ class NeuronStore(nn.Module):
             raise ValueError("unsupported NeuronStore extra-state schema")
         self._hub.load_state_dict(state["followers"])
         self._version = int(state["version"])
-
-    def _validate_ticket(self, ticket: Ticket) -> None:
-        if not isinstance(ticket, Ticket):
-            raise TypeError("ticket must be a Ticket")
-        if ticket.store is not self:
-            raise ValueError("ticket belongs to another store")
-        if ticket._used:
-            raise RuntimeError("ticket has already been committed")
-        if ticket.version != self._version:
-            raise RuntimeError("ticket is stale")
-        if not isinstance(ticket.batch, _NeuronBatch):
-            raise TypeError("ticket batch is not a neuron batch")
 
     def _gate_values(self, value: Tensor | float | None, count: int) -> Tensor:
         if value is None:

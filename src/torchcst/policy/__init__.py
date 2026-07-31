@@ -1,34 +1,44 @@
-"""Public policy surface for CST-native v4 step 2."""
+"""Public policy surface: the tree-native linear stack (docs/policy-tree-phase2.md).
 
-from .absorb import AbsorbAuditEntry, AbsorbCourt, AbsorbPolicy
-from .catalog import LC, LC_anti, LC_merge, LC_response, GrowthByProfit
+``engine -> root -> children -> storage``, one direction only. A root
+(:class:`RentEconomy` or :class:`QuotaRegime`) is built from named methods
+(:func:`cSET`, :func:`cRigL`, :func:`cRES`, :func:`RENT`) or a
+hand-composed :class:`~torchcst.policy.families.SynapseLifecycle`, and
+``root.bind(...)`` produces the live :class:`~torchcst.policy.tree.RuntimeTree`
+:class:`~torchcst.engine.StructuralEngine` drives. :mod:`recipes` holds the
+few named, validated whole-tree assemblies (``LC``, ``LC_response``,
+``GrowthByProfit``).
+"""
+
+from .absorb import AbsorbAuditEntry, AbsorbCourt
 from .bundle import BundleComposer, Op, ProposalBundle, bundle_birth_count
+from .cadences import BirthWindowCadence, PeriodicCadence
 from .contract import (
-    ActionKind,
-    ActionSpec,
-    BudgetAllocator,
     BudgetDistributor,
     BudgetRequest,
     Cadence,
     Clock,
-    EvenBudgetAllocator,
     EvenBudgetDistributor,
-    EventDirective,
     EventSignal,
     InstrumentSpec,
     ObservationRequest,
     OpProposer,
     Phase,
-    Policy,
-    PolicyContext,
-    RetentionCourt,
     QuotaPolicy,
-    Schedule,
-    StructuralPlan,
-    StructuralPolicy,
+    RetentionCourt,
     StructuralQuota,
 )
 from .courts import MagnitudeCourt, RentCourt
+from .families import (
+    RENT,
+    NeuronLifecycle,
+    SynapseLifecycle,
+    cRES,
+    cRigL,
+    cSET,
+    thinned,
+)
+from .profit import ProfitCourt, TrialSession, TrialTransaction
 from .proposers import (
     GradFieldTopKBirth,
     IncidentOutputBirth,
@@ -37,83 +47,73 @@ from .proposers import (
     UniformBirth,
     UniformEntryBirth,
 )
-from .profit import ProfitCourt, TrialSession, TrialTransaction
-from .registry import RetiredCandidateRegistry
-from .scored import ScoredBirth, TopKSelector
-from .cadences import BirthWindowCadence, PeriodicCadence
 from .quotas import CallableQuota, ConstantQuota, QuotaWindow, WindowedQuota
-from .schedules import BirthWindowSchedule, PeriodicSchedule, ResponseWindow
-from .families import RENT, SynapseLifecycle, cRES, cRigL, cSET, thinned
-from .tree import Independent, QuotaRegime, RentEconomy
-from .tree import compile as compile_tree
+from .registry import RetiredCandidateRegistry
+from .runtime import (
+    EndpointChild,
+    InterfaceChild,
+    PricedProposal,
+    SiteBinding,
+    SynapseChild,
+)
+from .scored import ScoredBirth, TopKSelector
+from .tree import QuotaRegime, RentEconomy, RuntimeTree
+from . import recipes
 
 __all__ = [
     "AbsorbAuditEntry",
     "AbsorbCourt",
-    "AbsorbPolicy",
-    "ActionKind",
-    "ActionSpec",
-    "BirthWindowSchedule",
     "BirthWindowCadence",
-    "BudgetAllocator",
     "BudgetDistributor",
     "BudgetRequest",
-    "bundle_birth_count",
     "BundleComposer",
-    "Clock",
     "Cadence",
     "CallableQuota",
-    "compile_tree",
+    "Clock",
     "ConstantQuota",
-    "EvenBudgetAllocator",
+    "EndpointChild",
     "EvenBudgetDistributor",
-    "EventDirective",
     "EventSignal",
     "GradFieldTopKBirth",
-    "GrowthByProfit",
-    "Independent",
-    "InstrumentSpec",
-    "ObservationRequest",
     "IncidentOutputBirth",
-    "LC",
-    "LC_anti",
-    "LC_merge",
-    "LC_response",
+    "InstrumentSpec",
+    "InterfaceChild",
     "MagnitudeCourt",
     "MergeProposer",
-    "OrthogonalBirth",
+    "NeuronLifecycle",
+    "ObservationRequest",
     "Op",
     "OpProposer",
-    "PeriodicSchedule",
+    "OrthogonalBirth",
     "PeriodicCadence",
     "Phase",
-    "Policy",
-    "PolicyContext",
-    "ProposalBundle",
+    "PricedProposal",
     "ProfitCourt",
+    "ProposalBundle",
+    "QuotaPolicy",
     "QuotaRegime",
+    "QuotaWindow",
+    "RENT",
     "RentCourt",
     "RentEconomy",
-    "RENT",
-    "QuotaPolicy",
-    "QuotaWindow",
-    "ResponseWindow",
     "RetentionCourt",
     "RetiredCandidateRegistry",
-    "Schedule",
+    "RuntimeTree",
     "ScoredBirth",
-    "StructuralPlan",
-    "StructuralPolicy",
+    "SiteBinding",
     "StructuralQuota",
+    "SynapseChild",
     "SynapseLifecycle",
-    "thinned",
+    "TopKSelector",
     "TrialSession",
     "TrialTransaction",
-    "TopKSelector",
-    "UniformEntryBirth",
     "UniformBirth",
+    "UniformEntryBirth",
     "WindowedQuota",
-    "cSET",
-    "cRigL",
+    "bundle_birth_count",
     "cRES",
+    "cRigL",
+    "cSET",
+    "recipes",
+    "thinned",
 ]

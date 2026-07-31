@@ -8,7 +8,10 @@ from enum import Enum
 from math import isfinite
 from types import MappingProxyType
 
+import torch
 from torch import Tensor
+
+from torchcst._validation import require_int
 
 
 class CaptureMode(str, Enum):
@@ -29,6 +32,53 @@ ReducedPayload = Mapping[str, Tensor]
 CaptureReducer = Callable[[str, Tensor, Tensor, int], ReducedPayload]
 
 
+def flatten_capture_pair(
+    x: Tensor, g_out: Tensor, in_features: int, out_features: int
+) -> tuple[Tensor, Tensor]:
+    """Detach and flatten one captured ``(x, g_out)`` pair to aligned 2-D batches."""
+    x_flat = x.detach().reshape(-1, in_features)
+    g_flat = g_out.detach().reshape(-1, out_features)
+    if x_flat.shape[0] != g_flat.shape[0]:
+        raise ValueError("captured x and g_out batch dimensions do not align")
+    return x_flat, g_flat
+
+
+def register_capture_hook(
+    output: Tensor,
+    context: "BackwardContext",
+    site: str,
+    x: Tensor,
+    version: int,
+) -> None:
+    """Arm one output tensor to queue ``(x, g_out)`` when its gradient arrives.
+
+    A no-op when autograd is disabled or ``output`` carries no gradient, so
+    inference-only forwards never pay for capture.
+    """
+    if not torch.is_grad_enabled() or not output.requires_grad:
+        return
+    input_fact = x.detach()
+
+    def queue(grad_output: Tensor) -> None:
+        context.queue(site, input_fact, grad_output.detach(), version)
+
+    output.register_hook(queue)
+
+
+def _validated_fact_fields(
+    site: str, version: int, update_id: int, micro_weight: float
+) -> float:
+    """Shared field checks for both observation kinds; returns the weight."""
+    if not isinstance(site, str) or not site:
+        raise ValueError("site must be a non-empty string")
+    require_int(version, "version")
+    require_int(update_id, "update_id")
+    weight = float(micro_weight)
+    if not isfinite(weight):
+        raise ValueError("micro_weight must be finite")
+    return weight
+
+
 @dataclass(frozen=True)
 class Observation:
     """One detached module-boundary observation from a backward pass."""
@@ -41,17 +91,11 @@ class Observation:
     micro_weight: float
 
     def __post_init__(self) -> None:
-        if not isinstance(self.site, str) or not self.site:
-            raise ValueError("site must be a non-empty string")
         if not isinstance(self.x, Tensor) or not isinstance(self.g_out, Tensor):
             raise TypeError("x and g_out must be Tensors")
-        if isinstance(self.version, bool) or not isinstance(self.version, int):
-            raise TypeError("version must be an int")
-        if isinstance(self.update_id, bool) or not isinstance(self.update_id, int):
-            raise TypeError("update_id must be an int")
-        weight = float(self.micro_weight)
-        if not isfinite(weight):
-            raise ValueError("micro_weight must be finite")
+        weight = _validated_fact_fields(
+            self.site, self.version, self.update_id, self.micro_weight
+        )
         object.__setattr__(self, "x", self.x.detach())
         object.__setattr__(self, "g_out", self.g_out.detach())
         object.__setattr__(self, "micro_weight", weight)
@@ -68,8 +112,6 @@ class ReducedObservation:
     micro_weight: float
 
     def __post_init__(self) -> None:
-        if not isinstance(self.site, str) or not self.site:
-            raise ValueError("site must be a non-empty string")
         if not isinstance(self.values, Mapping):
             raise TypeError("values must be a mapping")
         values: dict[str, Tensor] = {}
@@ -79,13 +121,9 @@ class ReducedObservation:
             if not isinstance(value, Tensor):
                 raise TypeError("reduced values must be Tensors")
             values[name] = value.detach()
-        if isinstance(self.version, bool) or not isinstance(self.version, int):
-            raise TypeError("version must be an int")
-        if isinstance(self.update_id, bool) or not isinstance(self.update_id, int):
-            raise TypeError("update_id must be an int")
-        weight = float(self.micro_weight)
-        if not isfinite(weight):
-            raise ValueError("micro_weight must be finite")
+        weight = _validated_fact_fields(
+            self.site, self.version, self.update_id, self.micro_weight
+        )
         object.__setattr__(self, "values", MappingProxyType(values))
         object.__setattr__(self, "micro_weight", weight)
 
@@ -130,10 +168,7 @@ class BackwardContext:
         reducers: Mapping[str, CaptureReducer] | None = None,
         raw_sites: Collection[str] | None = None,
     ) -> None:
-        if isinstance(update_id, bool) or not isinstance(update_id, int):
-            raise TypeError("update_id must be an int")
-        if update_id < 0:
-            raise ValueError("update_id must be non-negative")
+        require_int(update_id, "update_id", minimum=0)
         self.update_id = update_id
         if reducers is None:
             reducers = {}
@@ -164,18 +199,22 @@ class BackwardContext:
 
     @property
     def queued(self) -> int:
+        """Every fact held by this context, weighted or not."""
         return self.raw_queued + self.reduced_queued
 
     @property
     def raw_queued(self) -> int:
+        """Raw ``(x, g_out)`` facts held, weighted or not."""
         return len(self._pending) + len(self._observations)
 
     @property
     def reduced_queued(self) -> int:
+        """Hook-reduced facts held, weighted or not."""
         return len(self._pending_reduced) + len(self._reduced)
 
     @property
     def pending(self) -> int:
+        """Facts still awaiting their ``observe_microbatch(weight)`` boundary."""
         return len(self._pending) + len(self._pending_reduced)
 
     def queue(self, site: str, x: Tensor, g_out: Tensor, version: int) -> None:
@@ -244,15 +283,6 @@ class BackwardContext:
         self._reduced = []
         self._closed = True
         return batch
-
-    def finalize(self) -> tuple[Observation, ...]:
-        """Backward-compatible raw-only finalization API."""
-        batch = self.finalize_capture()
-        if batch.reduced:
-            raise RuntimeError(
-                "reduced capture requires finalize_capture(), not finalize()"
-            )
-        return batch.observations
 
     def clear(self) -> None:
         """Drop all references and close the context after an aborted update."""

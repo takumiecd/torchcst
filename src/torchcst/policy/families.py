@@ -27,7 +27,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from torchcst.instruments import ContinuousCandidateRequest
+# Submodule import; see policy/absorb.py's note on the instruments cycle.
+from torchcst.instruments.continuous_candidate import ContinuousCandidateRequest
 
 from .absorb import AbsorbCourt
 from .courts import MagnitudeCourt
@@ -43,13 +44,36 @@ from .scored import ScoredBirth
 _request_counter = itertools.count()
 
 
-def _no_prune() -> None:
+def _no_rule() -> None:
+    """Default factory for an absent rule slot."""
     return None
 
 
-def _no_absorb(lam: float | None) -> None:
+def _no_priced_rule(lam: float | None) -> None:
+    """Default factory for an absent rule slot that would receive ``lam``."""
     del lam
     return None
+
+
+def _deflated_scored_birth_factory(
+    *, pool_size: int, initial_weight: float, ridge: float
+) -> Callable[[float | None], ScoredBirth]:
+    """Shared cRES/RENT birth factory: deflated candidate scoring, rent-gated.
+
+    Each call reserves a fresh instrument-request name (see
+    ``_request_counter``), so two lifecycles never collide on hyperparameters.
+    """
+    name = f"continuous_candidate_field#{next(_request_counter)}"
+
+    def make_birth(lam: float | None) -> ScoredBirth:
+        request = ContinuousCandidateRequest(
+            pool_size=pool_size, mode="deflated", name=name
+        )
+        return ScoredBirth(
+            request=request, initial_weight=initial_weight, rent=lam, ridge=ridge
+        )
+
+    return make_birth
 
 
 @dataclass(frozen=True)
@@ -143,8 +167,8 @@ class SynapseLifecycle:
     """
 
     birth_factory: Callable[[float | None], Any | None]
-    prune_factory: Callable[[], Any | None] = _no_prune
-    absorb_factory: Callable[[float | None], Any | None] = _no_absorb
+    prune_factory: Callable[[], Any | None] = _no_rule
+    absorb_factory: Callable[[float | None], Any | None] = _no_priced_rule
     every: int = 1
     priceable: bool = False
     label: str = "lifecycle"
@@ -282,18 +306,10 @@ def cRES(
     the existing ``cRES``-style composition (deflated growth capped by
     ``QuotaRegime``'s budget, magnitude-based prune).
     """
-    name = f"continuous_candidate_field#{next(_request_counter)}"
-
-    def make_birth(lam: float | None) -> ScoredBirth:
-        request = ContinuousCandidateRequest(
-            pool_size=pool_size, mode="deflated", name=name
-        )
-        return ScoredBirth(
-            request=request, initial_weight=initial_weight, rent=lam, ridge=ridge
-        )
-
     return SynapseLifecycle(
-        birth_factory=make_birth,
+        birth_factory=_deflated_scored_birth_factory(
+            pool_size=pool_size, initial_weight=initial_weight, ridge=ridge
+        ),
         prune_factory=lambda: MagnitudeCourt(drop_fraction),
         priceable=True,
         label="cRES",
@@ -316,15 +332,6 @@ def RENT(
     price: ``QuotaRegime``/``Independent`` (``lam=None``) are rejected
     because ``AbsorbCourt`` itself requires a real ``rent`` value.
     """
-    name = f"continuous_candidate_field#{next(_request_counter)}"
-
-    def make_birth(lam: float | None) -> ScoredBirth:
-        request = ContinuousCandidateRequest(
-            pool_size=pool_size, mode="deflated", name=name
-        )
-        return ScoredBirth(
-            request=request, initial_weight=initial_weight, rent=lam, ridge=ridge
-        )
 
     def make_absorb(lam: float | None) -> AbsorbCourt:
         return AbsorbCourt(
@@ -332,8 +339,64 @@ def RENT(
         )
 
     return SynapseLifecycle(
-        birth_factory=make_birth,
+        birth_factory=_deflated_scored_birth_factory(
+            pool_size=pool_size, initial_weight=initial_weight, ridge=ridge
+        ),
         absorb_factory=make_absorb,
         priceable=True,
         label="RENT",
     )
+
+
+@dataclass(frozen=True)
+class _BuiltInterface:
+    """Concrete interface rule set: the output of :meth:`NeuronLifecycle.build`."""
+
+    retention: Any | None
+    composer: Any | None
+    incident: Any | None
+
+
+@dataclass(frozen=True)
+class NeuronLifecycle:
+    """Language-2 composition for the interface seat (design note: neuron は
+    「層の間」の子ノード).
+
+    ``retention_factory`` builds the neuron court (``NeuronRetire`` output;
+    the retire→incident-synapse-death cascade itself is the root's planning
+    act, not the interface's). ``composer_factory``/``incident_factory``
+    together build the RESPONSE-phase capability: ungate one dormant neuron
+    plus its declared count of incident synapse births, as one bundle.
+    Either capability may be absent. Like ``SynapseLifecycle``, an interface
+    lifecycle never carries a cadence; the root's phases decide when a
+    response window is open.
+    """
+
+    retention_factory: Callable[[], Any | None] = _no_rule
+    composer_factory: Callable[[], Any | None] = _no_rule
+    incident_factory: Callable[[], Any | None] = _no_rule
+    label: str = "interface"
+
+    def __post_init__(self) -> None:
+        for name in ("retention_factory", "composer_factory", "incident_factory"):
+            if not callable(getattr(self, name)):
+                raise TypeError(f"{name} must be callable")
+        if not isinstance(self.label, str) or not self.label:
+            raise ValueError("label must be a non-empty string")
+
+    def build(self) -> _BuiltInterface:
+        retention = self.retention_factory()
+        composer = self.composer_factory()
+        incident = self.incident_factory()
+        if (composer is None) != (incident is None):
+            raise ValueError(
+                f"{self.label}: a response capability needs both a composer "
+                "and an incident proposer"
+            )
+        if retention is None and composer is None:
+            raise ValueError(
+                f"{self.label} must provide a retention court or a response"
+            )
+        return _BuiltInterface(
+            retention=retention, composer=composer, incident=incident
+        )

@@ -1,6 +1,7 @@
 """Observation instruments exposed by CST-native v4."""
 
 from .base import (
+    CandidateSnapshot,
     CaptureInstrument,
     DeferredCaptureInstrument,
     InlineCaptureInstrument,
@@ -20,26 +21,22 @@ from .continuous_candidate import (
     RefinementSchedule,
 )
 from .gradfield import CandidateField, GradFieldEMA
-from .scored import (
-    CandidateSnapshot,
-    ContinuousGradientRequest,
-    ContinuousGradientScores,
-)
+from .scored import ContinuousGradientRequest, ContinuousGradientScores
 
 __all__ = [
     "CandidateField",
     "CandidateSnapshot",
     "CaptureInstrument",
-    "DeferredCaptureInstrument",
     "CertificateSnapshot",
     "CertificateSubspace",
     "ContinuousCandidateField",
     "ContinuousCandidateRequest",
-    "GradFieldEMA",
     "ContinuousGradientRequest",
     "ContinuousGradientScores",
-    "InstrumentBuildContext",
+    "DeferredCaptureInstrument",
+    "GradFieldEMA",
     "InlineCaptureInstrument",
+    "InstrumentBuildContext",
     "KernelPort",
     "KernelPortInstrument",
     "KernelPortRequest",

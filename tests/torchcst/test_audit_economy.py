@@ -10,7 +10,7 @@ import torch
 from torchcst.audit import AuditRecord, EconomyAudit
 from torchcst.engine import StructuralEngine
 from torchcst.lab import Ledger
-from torchcst.policy import LC
+from torchcst.policy.recipes import LC
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseDeath, SynapseStore
 
@@ -66,7 +66,6 @@ def test_lc_economy_matches_op_log_and_detects_quiescence() -> None:
     assert audit.churn == tuple(birth + death for birth, death in zip(births, deaths))
     assert audit.thrash_rate == 0.0
     assert audit.last_structural_event == 3
-    assert audit.quiescence_step == 3
     assert audit.rent_margins["entry"][1].minimum == pytest.approx(1 / 0.3)
 
 

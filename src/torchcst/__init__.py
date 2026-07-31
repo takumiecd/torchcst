@@ -1,46 +1,11 @@
-"""CST-native v4契約の実装パッケージ。"""
+"""torchcst: the CST-native v4 contract implementation.
 
-from .audit import (
-    Accounting,
-    ActiveParameterReport,
-    AuditRecord,
-    AuditSubscriber,
-    EconomyAudit,
-    LossRecord,
-    RentMargin,
-)
-from .representation import (
-    Box,
-    ContinuousKernel,
-    CoordinateDomain,
-    GaussianKernel,
-    IntegerGrid,
-    RepresentationSpec,
-    Sphere,
-    TriangularKernel,
-)
-from .policy import (
-    ActionKind,
-    ActionSpec,
-    BirthWindowCadence,
-    BudgetDistributor,
-    CallableQuota,
-    ConstantQuota,
-    EvenBudgetDistributor,
-    LC_merge,
-    MergeProposer,
-    PeriodicCadence,
-    PolicyContext,
-    ProfitCourt,
-    ScoredBirth,
-    StructuralPlan,
-    StructuralPolicy,
-    StructuralQuota,
-    TopKSelector,
-    TrialSession,
-    TrialTransaction,
-)
-from . import baselines
+Import blocks follow the five-responsibility layout (see CLAUDE.md):
+compute, instruments, policy, engine, storage -- plus representation,
+audit/lab sinks, and optimizer helpers.
+"""
+
+# compute/: forward computation and module-boundary tensor delivery.
 from .compute import (
     BackwardContext,
     CaptureMode,
@@ -52,6 +17,9 @@ from .compute import (
     conv2d_isotropic_scales,
     conv2d_neuron_coordinates,
 )
+from . import baselines
+
+# instruments/: backward-derived statistics and candidate fields.
 from .instruments import (
     CandidateField,
     CandidateSnapshot,
@@ -61,18 +29,41 @@ from .instruments import (
     ContinuousGradientScores,
     DeferredCaptureInstrument,
     GradFieldEMA,
-    InstrumentBuildContext,
     InlineCaptureInstrument,
+    InstrumentBuildContext,
 )
+
+# policy/: cadence, quota, rules, distributors, courts.
+from .policy import (
+    BirthWindowCadence,
+    BudgetDistributor,
+    CallableQuota,
+    ConstantQuota,
+    EvenBudgetDistributor,
+    MergeProposer,
+    PeriodicCadence,
+    ProfitCourt,
+    ScoredBirth,
+    StructuralQuota,
+    TopKSelector,
+    TrialSession,
+    TrialTransaction,
+)
+
+# engine: hooks, clocks, orchestration, atomic apply.
+from .engine import StructuralEngine
+
+# storage/: entity IDs, physical slots, two-phase apply.
 from .storage import (
-    AgeColumn,
     DORMANT,
+    LIVE,
+    RETIRED,
+    AgeColumn,
     EntityStore,
     Follower,
     FollowerHub,
     IdAllocator,
     LineageColumn,
-    LIVE,
     NeuronKick,
     NeuronOp,
     NeuronRetire,
@@ -80,7 +71,6 @@ from .storage import (
     NeuronStore,
     NeuronUngate,
     NeuronView,
-    RETIRED,
     SlotPool,
     SynapseBirth,
     SynapseDeath,
@@ -92,56 +82,74 @@ from .storage import (
     commit_all,
     prepare_all,
 )
-from .engine import StructuralEngine
+
+# representation/: coordinate domains, kernels, family specs.
+from .representation import (
+    Box,
+    ContinuousKernel,
+    CoordinateDomain,
+    GaussianKernel,
+    IntegerGrid,
+    RepresentationSpec,
+    Sphere,
+    TriangularKernel,
+)
+
+# audit/: one-way aggregate record sinks.
+from .audit import (
+    Accounting,
+    ActiveParameterReport,
+    AuditRecord,
+    AuditSubscriber,
+    EconomyAudit,
+    LossRecord,
+    RentMargin,
+)
+
+# optimizer helpers.
 from .optim import OptimizerStateFollower
 
 __all__ = [
-    "ActionKind",
-    "ActionSpec",
     "Accounting",
     "ActiveParameterReport",
     "AgeColumn",
     "AuditRecord",
     "AuditSubscriber",
     "BackwardContext",
-    "baselines",
     "BirthWindowCadence",
-    "CaptureMode",
     "Box",
-    "CandidateField",
-    "CandidateSnapshot",
     "BudgetDistributor",
-    "CallableQuota",
-    "ConstantQuota",
-    "CertificateSnapshot",
-    "CertificateSubspace",
-    "CoordinateDomain",
-    "ContinuousGradientRequest",
-    "ContinuousGradientScores",
-    "DeferredCaptureInstrument",
-    "ComputeLinear",
     "CSTConv2d",
     "CSTLinear",
-    "conv2d_isotropic_scales",
-    "conv2d_neuron_coordinates",
-    "EntityStore",
+    "CallableQuota",
+    "CandidateField",
+    "CandidateSnapshot",
+    "CaptureMode",
+    "CertificateSnapshot",
+    "CertificateSubspace",
+    "ComputeLinear",
+    "ConstantQuota",
+    "ContinuousGradientRequest",
+    "ContinuousGradientScores",
+    "ContinuousKernel",
+    "CoordinateDomain",
+    "DORMANT",
+    "DeferredCaptureInstrument",
     "EconomyAudit",
+    "EntityStore",
     "EvenBudgetDistributor",
     "Follower",
     "FollowerHub",
-    "GradFieldEMA",
-    "ContinuousKernel",
     "GaussianKernel",
+    "GradFieldEMA",
     "IdAllocator",
-    "IntegerGrid",
-    "InstrumentBuildContext",
     "InlineCaptureInstrument",
+    "InstrumentBuildContext",
+    "IntegerGrid",
+    "LIVE",
     "LineageColumn",
-    "LC_merge",
     "LossRecord",
     "MergeProposer",
-    "DORMANT",
-    "LIVE",
     "NeuronKick",
     "NeuronOp",
     "NeuronRetire",
@@ -153,29 +161,29 @@ __all__ = [
     "ObservationTiming",
     "OptimizerStateFollower",
     "PeriodicCadence",
-    "PolicyContext",
-    "RentMargin",
-    "ScoredBirth",
     "ProfitCourt",
     "RETIRED",
+    "RentMargin",
     "RepresentationSpec",
+    "ScoredBirth",
     "SlotPool",
+    "Sphere",
+    "StructuralEngine",
+    "StructuralQuota",
     "SynapseBirth",
     "SynapseDeath",
     "SynapseKick",
     "SynapseMerge",
     "SynapseStore",
     "SynapseView",
-    "StructuralEngine",
-    "StructuralPlan",
-    "StructuralPolicy",
-    "StructuralQuota",
-    "Sphere",
-    "TriangularKernel",
     "Ticket",
     "TopKSelector",
     "TrialSession",
     "TrialTransaction",
+    "TriangularKernel",
+    "baselines",
     "commit_all",
+    "conv2d_isotropic_scales",
+    "conv2d_neuron_coordinates",
     "prepare_all",
 ]

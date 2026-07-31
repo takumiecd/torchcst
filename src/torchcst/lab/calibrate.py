@@ -133,6 +133,8 @@ class CalibrationRun(AuditSubscriber):
     """
 
     def __init__(self, engine: Any, train_step: Callable[..., None]) -> None:
+        # Imported here, not at module top: torchcst.engine imports the whole
+        # policy/instrument stack, and lab must stay importable without it.
         from torchcst.engine import StructuralEngine
 
         if not isinstance(engine, StructuralEngine):
@@ -141,19 +143,7 @@ class CalibrationRun(AuditSubscriber):
             raise TypeError("train_step must be callable")
         self.engine = engine
         self.train_step = train_step
-        callback_signature: Signature = signature(train_step)
-        try:
-            callback_signature.bind(engine, 1)
-        except TypeError:
-            try:
-                callback_signature.bind(engine)
-            except TypeError as exc:
-                raise TypeError(
-                    "train_step must accept (engine, update_step) or (engine)"
-                ) from exc
-            self._callback_takes_step = False
-        else:
-            self._callback_takes_step = True
+        self._callback_takes_step = self._accepts_step_argument(train_step, engine)
         self._known_ids = {
             site: set(store.view().ids.tolist())
             for site, store in engine.stores.items()
@@ -162,22 +152,42 @@ class CalibrationRun(AuditSubscriber):
         self._events: dict[tuple[str, int], list[int]] = {}
         engine.subscribe_audit(self)
 
+    @staticmethod
+    def _accepts_step_argument(train_step: Callable[..., None], engine: Any) -> bool:
+        """Whether the callback binds as ``(engine, update_step)`` or ``(engine)``."""
+        callback_signature: Signature = signature(train_step)
+        try:
+            callback_signature.bind(engine, 1)
+            return True
+        except TypeError:
+            pass
+        try:
+            callback_signature.bind(engine)
+            return False
+        except TypeError as exc:
+            raise TypeError(
+                "train_step must accept (engine, update_step) or (engine)"
+            ) from exc
+
     def push(self, record: AuditRecord) -> None:
         assert record.live_ids is not None
         for site, ids in record.live_ids.items():
             masses = record.mass_snapshots[site]
-            current = {int(entity_id) for entity_id in ids.tolist()}
             known = self._known_ids.setdefault(site, set())
             for position, raw_id in enumerate(ids.tolist()):
                 entity_id = int(raw_id)
                 key = (site, entity_id)
                 if entity_id not in known:
+                    # First sighting during the run: a newborn to track.
                     self._trajectories[key] = []
                     self._events[key] = []
-                if key in self._trajectories:
-                    self._trajectories[key].append(float(masses[position]))
+                trajectory = self._trajectories.get(key)
+                if trajectory is not None:
+                    # Tracked newborns only; atoms alive before the run stay
+                    # known-but-untracked.
+                    trajectory.append(float(masses[position]))
                     self._events[key].append(record.event_index)
-            known.update(current)
+            known.update(int(entity_id) for entity_id in ids.tolist())
 
     @property
     def trajectories(self) -> dict[tuple[str, int], tuple[float, ...]]:

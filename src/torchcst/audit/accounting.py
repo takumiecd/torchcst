@@ -40,7 +40,7 @@ class Accounting:
                 )
             if site != store.site:
                 raise ValueError("store mapping keys must equal store.site")
-            by_site[site] = int(store._slots.k_live) * int(store.spec.atom_cost)
+            by_site[site] = int(store.k_live) * int(store.spec.atom_cost)
         return ActiveParameterReport(by_site, sum(by_site.values()))
 
     @staticmethod

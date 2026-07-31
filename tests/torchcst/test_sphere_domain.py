@@ -7,7 +7,7 @@ import torch
 
 from torchcst.compute import RankOneLinear
 from torchcst.engine import StructuralEngine
-from torchcst.policy import LC
+from torchcst.policy.recipes import LC
 from torchcst.representation import IntegerGrid, RepresentationSpec, Sphere
 from torchcst.storage import SynapseBirth, SynapseStore
 

@@ -11,11 +11,10 @@ from torchcst.compute import CSTLinear, ObservationTiming
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import InstrumentBuildContext, WeightedMeasurement
 from torchcst.policy import (
-    ConstantQuota,
     EvenBudgetDistributor,
     PeriodicCadence,
-    Policy,
-    StructuralQuota,
+    QuotaRegime,
+    SynapseLifecycle,
 )
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -69,6 +68,27 @@ class _TimingRequest:
         return instrument_type(self.name)
 
 
+class _ObservingBirth:
+    """Requests instruments but never actually proposes a birth.
+
+    Stands in for ``Policy(observations=...)`` -- a place to declare
+    instrument requests unconnected to any structural action -- which the
+    tree vocabulary has no equivalent field for: a
+    :class:`~torchcst.policy.families.SynapseLifecycle` only carries
+    birth/prune/absorb rules, and each of those already carries its own
+    ``requires``. A birth rule that requests instruments and proposes
+    nothing (``budget=0`` below ensures it is never even asked to) is the
+    natural tree-native place to observe without acting.
+    """
+
+    def __init__(self, requests: tuple) -> None:
+        self.requires = tuple(requests)
+
+    def propose(self, view, budget, registry, rng):
+        del view, budget, registry, rng
+        return ()
+
+
 def _parts():
     store = SynapseStore(
         "edge",
@@ -100,10 +120,15 @@ def _parts():
     module = CSTLinear(inputs, outputs, store, GaussianKernel(0.5).double())
     inline = _TimingRequest("inline", ObservationTiming.BACKWARD_INLINE)
     deferred = _TimingRequest("deferred", ObservationTiming.AFTER_BACKWARD)
-    policy = Policy(
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: _ObservingBirth((inline, deferred)),
+        priceable=False,
+        label="observing",
+    )
+    policy = QuotaRegime(
+        budget=0,
+        method=method,
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
-        quota=ConstantQuota(StructuralQuota()),
-        observations=(inline, deferred),
         distributor=EvenBudgetDistributor(),
     )
     return store, inputs, outputs, module, policy

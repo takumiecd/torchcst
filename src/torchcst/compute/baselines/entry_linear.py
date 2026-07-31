@@ -2,23 +2,23 @@
 
 from __future__ import annotations
 
-import torch
-from torch import Tensor, nn
+from torch import Tensor
 
 from torchcst.storage import SynapseStore, SynapseView
 
-from ..capture import BackwardContext
+from ..capture import flatten_capture_pair
+from ._control_base import _ControlLinear
 
 
-class EntryLinear(nn.Module):
-    """Control family, not CST: the entry family (one atom == one sparse
-    matrix entry), i.e. the DST/SET/RigL baseline and the sigma->0 limit of
-    the triangular kernel family.
+class EntryLinear(_ControlLinear):
+    """Sparse linear map backed by entry-family ``(source, target, weight)`` rows.
 
-    Sparse linear map backed by entry-family ``(source, target, weight)`` rows.
+    A control family, not CST: one atom is one sparse matrix entry -- the
+    DST/SET/RigL baseline, and the sigma->0 limit of the triangular kernel
+    family.
 
     The module is a read-only compute edge: it neither creates operations nor
-    mutates the store.  No dense weight matrix is materialized by ``forward``.
+    mutates the store, and ``forward`` materializes no dense weight matrix.
     """
 
     def __init__(
@@ -27,69 +27,30 @@ class EntryLinear(nn.Module):
         in_features: int,
         out_features: int,
     ) -> None:
-        super().__init__()
-        if not isinstance(store, SynapseStore):
-            raise TypeError("store must be a SynapseStore")
-        for name, value in (
-            ("in_features", in_features),
-            ("out_features", out_features),
-        ):
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise TypeError(f"{name} must be an int")
-            if value <= 0:
-                raise ValueError(f"{name} must be positive")
+        super().__init__(store, in_features, out_features)
         if store.d_in != 1 or store.d_out != 1:
             raise ValueError("EntryLinear requires scalar entry coordinates")
         if store.spec.kernel_in != "delta" or store.spec.kernel_out != "delta":
             raise ValueError("EntryLinear requires delta kernels")
-        # Keep the store registered as a child so model.parameters() includes w.
-        self.store = store
-        self.in_features = in_features
-        self.out_features = out_features
-        self.capture_site = store.site
-        self._cached_version = -1
-        self._cached_view: SynapseView | None = None
-        self._cached_slots = torch.zeros(0, dtype=torch.int64)
-        self._backward_context: BackwardContext | None = None
 
-    def _view(self) -> SynapseView:
-        if self._cached_version != self.store.version:
-            view = self.store.view()
-            source = view.s[:, 0]
-            target = view.t[:, 0]
-            if bool(((source < 0) | (source >= self.in_features)).any()):
-                raise ValueError("entry source coordinate exceeds in_features")
-            if bool(((target < 0) | (target >= self.out_features)).any()):
-                raise ValueError("entry target coordinate exceeds out_features")
-            # The cached read is structural.  Do not retain the index-select
-            # autograd graph carried by SynapseView.w across training updates.
-            self._cached_view = SynapseView(
-                site=view.site,
-                version=view.version,
-                ids=view.ids,
-                s=view.s,
-                t=view.t,
-                w=view.w.detach(),
-                mass=view.mass.detach(),
-            )
-            self._cached_slots = self.store._slots.slots_of(view.ids)
-            self._cached_version = view.version
-        assert self._cached_view is not None
-        return self._cached_view
-
-    def set_backward_context(self, context: BackwardContext | None) -> None:
-        """Enable capture for one engine-owned update, or disable it."""
-        if context is not None and not isinstance(context, BackwardContext):
-            raise TypeError("context must be a BackwardContext or None")
-        self._backward_context = context
-
-    @property
-    def capture_enabled(self) -> bool:
-        return self._backward_context is not None
-
-    def _live_weights(self) -> Tensor:
-        slots = self._cached_slots.to(device=self.store.w.device)
-        return self.store.w.index_select(0, slots)
+    def _freeze_view(self, view: SynapseView) -> SynapseView:
+        source = view.s[:, 0]
+        target = view.t[:, 0]
+        if bool(((source < 0) | (source >= self.in_features)).any()):
+            raise ValueError("entry source coordinate exceeds in_features")
+        if bool(((target < 0) | (target >= self.out_features)).any()):
+            raise ValueError("entry target coordinate exceeds out_features")
+        # The cached read is structural.  Do not retain the index-select
+        # autograd graph carried by SynapseView.w across training updates.
+        return SynapseView(
+            site=view.site,
+            version=view.version,
+            ids=view.ids,
+            s=view.s,
+            t=view.t,
+            w=view.w.detach(),
+            mass=view.mass.detach(),
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         if not isinstance(x, Tensor):
@@ -103,18 +64,7 @@ class EntryLinear(nn.Module):
         contributions = x.index_select(-1, source) * weights
         output = contributions.new_zeros((*x.shape[:-1], self.out_features))
         output = output.index_add(-1, target, contributions)
-
-        context = self._backward_context
-        if context is not None and torch.is_grad_enabled() and output.requires_grad:
-            input_fact = x.detach()
-            site = self.capture_site
-            version = view.version
-
-            def queue(grad_output: Tensor) -> None:
-                context.queue(site, input_fact, grad_output.detach(), version)
-
-            output.register_hook(queue)
-        return output
+        return self._capture_output(output, x, view.version)
 
     def atom_grads(self, x: Tensor, g_out: Tensor) -> Tensor:
         """Return signed ``dL/dw`` contributions in packed live-ID order."""
@@ -122,10 +72,9 @@ class EntryLinear(nn.Module):
             raise ValueError("x's final dimension must equal in_features")
         if g_out.ndim == 0 or g_out.shape[-1] != self.out_features:
             raise ValueError("g_out's final dimension must equal out_features")
-        x_flat = x.detach().reshape(-1, self.in_features)
-        g_flat = g_out.detach().reshape(-1, self.out_features)
-        if x_flat.shape[0] != g_flat.shape[0]:
-            raise ValueError("captured x and g_out batch dimensions do not align")
+        x_flat, g_flat = flatten_capture_pair(
+            x, g_out, self.in_features, self.out_features
+        )
         view = self._view()
         source = view.s[:, 0].to(device=x_flat.device)
         target = view.t[:, 0].to(device=g_flat.device)

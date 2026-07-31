@@ -77,6 +77,50 @@ from torch import Tensor
 from .cst_conv import CSTConv2d
 
 
+def _validate_batch_group(
+    layers: Sequence[CSTConv2d],
+) -> tuple[torch.device, torch.dtype]:
+    """Check every layer is batchable with the first; return shared placement."""
+    for layer in layers:
+        if not isinstance(layer, CSTConv2d):
+            raise TypeError("layers must all be CSTConv2d instances")
+    ref = layers[0]
+    device = ref.synapses.w.device
+    dtype = ref.synapses.w.dtype
+    for layer in layers:
+        if layer.capture_enabled:
+            raise ValueError(
+                "batched_conv_dense_weights does not support a layer with an "
+                "active capture context; route it through dense_weight()/"
+                "the reference forward path instead"
+            )
+        if layer._track_mass:
+            raise ValueError(
+                "batched_conv_dense_weights never refreshes synapses.mass_scale; "
+                "pass only layers built with track_mass=False, or call "
+                "dense_weight() directly for a layer that needs the diagnostic"
+            )
+        if layer.in_features != ref.in_features or layer.out_features != ref.out_features:
+            raise ValueError(
+                "batched_conv_dense_weights requires every layer to share "
+                "in_features and out_features"
+            )
+        if (
+            type(layer.kernel_in) is not type(ref.kernel_in)
+            or type(layer.kernel_out) is not type(ref.kernel_out)
+        ):
+            raise ValueError(
+                "batched_conv_dense_weights requires every layer to share "
+                "kernel_in/kernel_out family"
+            )
+        if layer.synapses.w.device != device or layer.synapses.w.dtype != dtype:
+            raise ValueError(
+                "batched_conv_dense_weights requires every layer to share "
+                "device and dtype"
+            )
+    return device, dtype
+
+
 def batched_conv_dense_weights(layers: Sequence[CSTConv2d]) -> list[Tensor]:
     """Materialize dense conv filters for a group of same-shaped layers.
 
@@ -117,44 +161,9 @@ def batched_conv_dense_weights(layers: Sequence[CSTConv2d]) -> list[Tensor]:
         raise TypeError("layers must be a sequence of CSTConv2d")
     if not layers:
         return []
-    for layer in layers:
-        if not isinstance(layer, CSTConv2d):
-            raise TypeError("layers must all be CSTConv2d instances")
-        if layer.capture_enabled:
-            raise ValueError(
-                "batched_conv_dense_weights does not support a layer with an "
-                "active capture context; route it through dense_weight()/"
-                "the reference forward path instead"
-            )
-        if layer._track_mass:
-            raise ValueError(
-                "batched_conv_dense_weights never refreshes synapses.mass_scale; "
-                "pass only layers built with track_mass=False, or call "
-                "dense_weight() directly for a layer that needs the diagnostic"
-            )
+    device, dtype = _validate_batch_group(layers)
 
     ref = layers[0]
-    n_in, n_out = ref.in_features, ref.out_features
-    kernel_in_type = type(ref.kernel_in)
-    kernel_out_type = type(ref.kernel_out)
-    device = ref.synapses.w.device
-    dtype = ref.synapses.w.dtype
-    for layer in layers:
-        if layer.in_features != n_in or layer.out_features != n_out:
-            raise ValueError(
-                "batched_conv_dense_weights requires every layer to share "
-                "in_features and out_features"
-            )
-        if type(layer.kernel_in) is not kernel_in_type or type(layer.kernel_out) is not kernel_out_type:
-            raise ValueError(
-                "batched_conv_dense_weights requires every layer to share "
-                "kernel_in/kernel_out family"
-            )
-        if layer.synapses.w.device != device or layer.synapses.w.dtype != dtype:
-            raise ValueError(
-                "batched_conv_dense_weights requires every layer to share device and dtype"
-            )
-
     for layer in layers:
         # _live_factors reads self._cached_slots, which _view() populates
         # (and refreshes only when synapses.version has changed) -- must run

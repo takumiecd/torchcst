@@ -1,4 +1,4 @@
-"""Amplitude/coordinate分離learning rateのためのparameter group分割。"""
+"""Optimizer-state following and amplitude/coordinate parameter grouping."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping
 import torch
 from torch import nn
 
+from ._validation import require_int
 from .storage import SynapseStore
 
 
@@ -18,6 +19,10 @@ class OptimizerStateFollower:
     follower treats every non-scalar state tensor whose leading dimension
     matches the store capacity as slot-indexed state. Those tensors are padded
     on growth and cleared whenever a slot dies or is reused.
+
+    An engine-owned optimizer gets one follower subscribed automatically per
+    store; :meth:`SynapseStore.reconcile_optimizer_state` is the manual
+    counterpart for hand-driven stores.
     """
 
     def __init__(
@@ -42,7 +47,7 @@ class OptimizerStateFollower:
         return self._capacity
 
     @staticmethod
-    def _slots(slots: torch.Tensor) -> torch.Tensor:
+    def _validated_slots(slots: torch.Tensor) -> torch.Tensor:
         if not isinstance(slots, torch.Tensor):
             raise TypeError("slots must be a Tensor")
         if slots.ndim != 1 or slots.dtype != torch.int64:
@@ -50,6 +55,7 @@ class OptimizerStateFollower:
         return slots.detach().to(device="cpu")
 
     def _slot_tensors(self, parameter: nn.Parameter):
+        """Yield the state tensors of ``parameter`` indexed by slot capacity."""
         state = self._optimizer.state.get(parameter)
         if not state:
             return
@@ -62,7 +68,7 @@ class OptimizerStateFollower:
                 yield state, name, value
 
     def _zero_rows(self, slots: torch.Tensor) -> None:
-        slots = self._slots(slots)
+        slots = self._validated_slots(slots)
         if slots.numel() and bool(((slots < 0) | (slots >= self._capacity)).any()):
             raise IndexError("optimizer follower slots are outside capacity")
         for parameter in self._parameters:
@@ -72,26 +78,15 @@ class OptimizerStateFollower:
 
     def grow(self, new_capacity: int) -> None:
         """Zero-pad all materialized slot tensors to ``new_capacity``."""
-        if isinstance(new_capacity, bool) or not isinstance(new_capacity, int):
-            raise TypeError("new_capacity must be an int")
+        require_int(new_capacity, "new_capacity")
         if new_capacity < self._capacity:
             raise ValueError("OptimizerStateFollower cannot shrink")
         if new_capacity == self._capacity:
             return
-        old_capacity = self._capacity
         for parameter in self._parameters:
-            state = self._optimizer.state.get(parameter)
-            if not state:
-                continue
-            for name, value in tuple(state.items()):
-                if (
-                    not isinstance(value, torch.Tensor)
-                    or value.ndim == 0
-                    or value.shape[0] != old_capacity
-                ):
-                    continue
+            for state, name, value in self._slot_tensors(parameter):
                 grown = value.new_zeros((new_capacity, *value.shape[1:]))
-                grown[:old_capacity].copy_(value)
+                grown[: self._capacity].copy_(value)
                 state[name] = grown
         self._capacity = new_capacity
 
@@ -104,7 +99,7 @@ class OptimizerStateFollower:
 
     def on_remap(self, old_to_new: torch.Tensor) -> None:
         """Move surviving rows according to an old-slot to new-slot mapping."""
-        mapping = self._slots(old_to_new)
+        mapping = self._validated_slots(old_to_new)
         if mapping.numel() != self._capacity:
             raise ValueError("old_to_new must align with follower capacity")
         old = torch.nonzero(mapping >= 0, as_tuple=False).flatten()
@@ -131,12 +126,9 @@ class OptimizerStateFollower:
             or state.get("schema") != "torchcst-optimizer-state-follower-v1"
         ):
             raise ValueError("unsupported OptimizerStateFollower state schema")
-        capacity = state.get("capacity")
-        if isinstance(capacity, bool) or not isinstance(capacity, int):
-            raise TypeError("optimizer follower capacity must be an int")
-        if capacity < 0:
-            raise ValueError("optimizer follower capacity must be non-negative")
-        self._capacity = capacity
+        self._capacity = require_int(
+            state.get("capacity"), "optimizer follower capacity", minimum=0
+        )
 
 
 def parameter_groups(
@@ -146,13 +138,13 @@ def parameter_groups(
     coordinate_lr: float,
     default_lr: float,
 ) -> list[dict[str, object]]:
-    """SynapseStoreのw/座標/その他をcst repo踏襲の3群learning rateへ分ける。
+    """Split parameters into amplitude / coordinate / default learning-rate groups.
 
-    cstリポジトリの precedent (``cst.optim.parameter_groups``,
-    ``amplitude_lr=1e-3``, ``coordinate_lr=2e-4``) に倣い、振幅 ``w`` と座標
-    ``s``/``t`` へ異なるlearning rateを割り当てる。座標が buffer role
-    (entry familyのIntegerGridなど) の場合は ``nn.Parameter`` ではないため
-    optimizerの対象外であり、このgroup分割にも現れない。
+    Every :class:`SynapseStore` amplitude ``w`` goes into the amplitude group
+    and every learnable coordinate ``s``/``t`` into the coordinate group;
+    remaining parameters take ``default_lr``. Coordinates with a buffer role
+    (e.g. the entry family's ``IntegerGrid``) are not parameters and never
+    appear in any group.
     """
     modules: list[nn.Module] = (
         [stores_or_model]

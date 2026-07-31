@@ -4,39 +4,25 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from torchcst._validation import require_int
+
 from .contract import Clock, EventSignal, Phase
 
 
-def _positive_int(value: int, name: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError(f"{name} must be an int")
-    if value <= 0:
-        raise ValueError(f"{name} must be positive")
+def _validate_observe_window(observe_window: int, event_interval: int) -> None:
+    require_int(observe_window, "observe_window")
+    if not 0 <= observe_window <= event_interval:
+        raise ValueError("observe_window must be in [0, event_interval]")
 
 
 @dataclass(frozen=True)
-class PeriodicCadence:
-    """Fire at a fixed update interval without deciding operation supply."""
+class _IntervalCadence:
+    """Shared timing core: fixed update interval, pre-event observe window.
 
-    event_interval: int = 500
-    freeze_event: int | None = None
-    observe_window: int = 0
-
-    def __post_init__(self) -> None:
-        _positive_int(self.event_interval, "event_interval")
-        if self.freeze_event is not None:
-            _positive_int(self.freeze_event, "freeze_event")
-        if isinstance(self.observe_window, bool) or not isinstance(
-            self.observe_window, int
-        ):
-            raise TypeError("observe_window must be an int")
-        if not 0 <= self.observe_window <= self.event_interval:
-            raise ValueError("observe_window must be in [0, event_interval]")
-
-    def phase(self, clock: Clock) -> Phase:
-        if self.freeze_event is not None and clock.event_index >= self.freeze_event:
-            return Phase.FROZEN
-        return Phase.GROW
+    Subclasses own ``event_interval``/``observe_window`` fields and the
+    :meth:`phase` schedule; event firing and the observation window are
+    identical across cadences.
+    """
 
     def event(self, clock: Clock) -> EventSignal | None:
         if clock.update_step == 0 or clock.update_step % self.event_interval:
@@ -53,7 +39,27 @@ class PeriodicCadence:
 
 
 @dataclass(frozen=True)
-class BirthWindowCadence:
+class PeriodicCadence(_IntervalCadence):
+    """Fire at a fixed update interval without deciding operation supply."""
+
+    event_interval: int = 500
+    freeze_event: int | None = None
+    observe_window: int = 0
+
+    def __post_init__(self) -> None:
+        require_int(self.event_interval, "event_interval", minimum=1)
+        if self.freeze_event is not None:
+            require_int(self.freeze_event, "freeze_event", minimum=1)
+        _validate_observe_window(self.observe_window, self.event_interval)
+
+    def phase(self, clock: Clock) -> Phase:
+        if self.freeze_event is not None and clock.event_index >= self.freeze_event:
+            return Phase.FROZEN
+        return Phase.GROW
+
+
+@dataclass(frozen=True)
+class BirthWindowCadence(_IntervalCadence):
     """Grow, sweep, freeze, and optional response timing without quotas."""
 
     event_interval: int = 200
@@ -63,16 +69,11 @@ class BirthWindowCadence:
     response_events: tuple[int, int] | None = None
 
     def __post_init__(self) -> None:
-        _positive_int(self.event_interval, "event_interval")
-        _positive_int(self.birth_end_event, "birth_end_event")
+        require_int(self.event_interval, "event_interval", minimum=1)
+        require_int(self.birth_end_event, "birth_end_event", minimum=1)
         if self.freeze_event is not None and self.freeze_event <= self.birth_end_event:
             raise ValueError("freeze_event must follow the birth window")
-        if isinstance(self.observe_window, bool) or not isinstance(
-            self.observe_window, int
-        ):
-            raise TypeError("observe_window must be an int")
-        if not 0 <= self.observe_window <= self.event_interval:
-            raise ValueError("observe_window must be in [0, event_interval]")
+        _validate_observe_window(self.observe_window, self.event_interval)
         if self.response_events is not None:
             if (
                 not isinstance(self.response_events, tuple)
@@ -80,7 +81,7 @@ class BirthWindowCadence:
             ):
                 raise TypeError("response_events must be a (start, end) tuple")
             start, end = self.response_events
-            _positive_int(start, "response start_event")
+            require_int(start, "response start_event", minimum=1)
             if end < start:
                 raise ValueError("response end_event must not precede start_event")
             if start <= self.birth_end_event:
@@ -104,16 +105,3 @@ class BirthWindowCadence:
         if self.freeze_event is None or clock.event_index < self.freeze_event:
             return Phase.SWEEP
         return Phase.FROZEN
-
-    def event(self, clock: Clock) -> EventSignal | None:
-        if clock.update_step == 0 or clock.update_step % self.event_interval:
-            return None
-        return EventSignal(clock.event_index, self.phase(clock))
-
-    def observing(self, clock: Clock) -> bool:
-        if clock.update_step == 0 or self.observe_window == 0:
-            return False
-        if self.phase(clock) is Phase.FROZEN:
-            return False
-        distance_to_event = (-clock.update_step) % self.event_interval
-        return distance_to_event < self.observe_window

@@ -9,7 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from .ledger import Ledger
+from .ledger import canonical_json_bytes
 
 
 def _freeze(value: Any) -> Any:
@@ -75,12 +75,12 @@ class Arm:
 
     @property
     def sha256(self) -> str:
-        return hashlib.sha256(Ledger._canonical_bytes(self.payload())).hexdigest()
+        return hashlib.sha256(canonical_json_bytes(self.payload())).hexdigest()
 
     def to_json(self, path: str | Path | None = None) -> str:
         """Return canonical self-hashed JSON and optionally write those bytes."""
         document = {**self.payload(), "sha256": self.sha256}
-        raw = Ledger._canonical_bytes(document)
+        raw = canonical_json_bytes(document)
         if path is not None:
             Path(path).write_bytes(raw)
         return raw.decode("utf-8")

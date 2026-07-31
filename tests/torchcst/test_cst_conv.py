@@ -13,11 +13,12 @@ from torchcst.compute import CSTConv2d, conv2d_neuron_coordinates
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import GradFieldEMA
 from torchcst.policy import (
-    EvenBudgetAllocator,
+    EvenBudgetDistributor,
     InstrumentSpec,
     MagnitudeCourt,
-    PeriodicSchedule,
-    Policy,
+    PeriodicCadence,
+    QuotaRegime,
+    SynapseLifecycle,
 )
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -207,11 +208,17 @@ class _ObserveLiveAtoms:
 def test_engine_capture_observes_unfolded_patch_rows(capture_mode: str) -> None:
     store, _, conv = _parts()
     proposer = _ObserveLiveAtoms()
-    policy = Policy(
-        schedule=PeriodicSchedule(event_interval=1, birth_budget=0, observe_window=1),
-        proposers=(proposer,),
-        allocator=EvenBudgetAllocator(),
-        retention=MagnitudeCourt(0.0),
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: proposer,
+        prune_factory=lambda: MagnitudeCourt(0.0),
+        priceable=False,
+        label="observe-live-atoms",
+    )
+    policy = QuotaRegime(
+        budget=0,
+        method=method,
+        cadence=PeriodicCadence(event_interval=1, observe_window=1),
+        distributor=EvenBudgetDistributor(),
     )
     stores = {
         store.site: store,

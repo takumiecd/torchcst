@@ -1,4 +1,4 @@
-"""slot配置と付随状態の共通機構。"""
+"""Physical slot placement and the follower state that rides along with it."""
 
 from __future__ import annotations
 
@@ -10,9 +10,14 @@ from typing import Any, Callable, Protocol, Sequence
 import torch
 from torch import Tensor
 
+from torchcst._validation import as_id_vector, cat_or_empty, require_int
+
 
 class IdAllocator:
-    """int64 IDをnever-reuseな単調列から払い出す（上位bitは将来の用途に予約）。"""
+    """Issue int64 IDs from a monotonically increasing, never-reused sequence.
+
+    The upper bits of the ID space are reserved for future use.
+    """
 
     def __init__(self, start: int = 0) -> None:
         if start < 0:
@@ -21,16 +26,16 @@ class IdAllocator:
 
     @property
     def next_id(self) -> int:
-        """次回払い出すIDを返す。"""
+        """The ID the next issue will hand out."""
         return self._next
 
     def preview(self, n: int) -> Tensor:
-        """状態を変えずに次のID列を返す。"""
+        """Return the next ID sequence without advancing the counter."""
         self._validate_count(n)
         return torch.arange(self._next, self._next + n, dtype=torch.int64)
 
     def issue(self, n: int) -> Tensor:
-        """次のID列を払い出してカウンタを進める。"""
+        """Hand out the next ID sequence and advance the counter."""
         ids = self.preview(n)
         self._next += n
         return ids
@@ -43,32 +48,24 @@ class IdAllocator:
         """Restore a counter previously returned by :meth:`state_dict`."""
         if not isinstance(state, Mapping):
             raise TypeError("allocator state must be a mapping")
-        next_id = state.get("next_id")
-        if isinstance(next_id, bool) or not isinstance(next_id, int):
-            raise TypeError("allocator next_id must be an int")
-        if next_id < 0:
-            raise ValueError("allocator next_id must be non-negative")
-        self._next = next_id
+        self._next = require_int(state.get("next_id"), "allocator next_id", minimum=0)
 
     def _validate_count(self, n: int) -> None:
-        if isinstance(n, bool) or not isinstance(n, int):
-            raise TypeError("n must be an int")
-        if n < 0:
-            raise ValueError("n must be non-negative")
+        require_int(n, "n", minimum=0)
         if self._next + n > torch.iinfo(torch.int64).max:
             raise OverflowError("int64 entity ID space exhausted")
 
 
 @dataclass(frozen=True)
 class SlotBirth:
-    """物理slotをcount個確保する要求。"""
+    """Request to claim ``count`` physical slots."""
 
     count: int
 
 
 @dataclass(frozen=True)
 class SlotDeath:
-    """entity IDに対応する物理slotを解放する要求。"""
+    """Request to release the physical slots backing these entity IDs."""
 
     ids: Tensor
 
@@ -78,7 +75,7 @@ SlotOp = SlotBirth | SlotDeath
 
 @dataclass(frozen=True)
 class SlotChange:
-    """slot batch適用後の物理row差分。"""
+    """The physical-row delta a committed slot batch produced."""
 
     born_ids: Tensor
     born_slots: Tensor
@@ -89,8 +86,8 @@ class SlotChange:
 
 
 @dataclass(frozen=True)
-class _SlotPlan:
-    """mutation前に検証済みのslot変更計画。"""
+class SlotPlan:
+    """A validated slot change awaiting commit. Opaque outside this module."""
 
     pool: SlotPool
     version: int
@@ -98,7 +95,11 @@ class _SlotPlan:
 
 
 class SlotPool:
-    """never-reuse IDと再利用可能slotを分離し、容量を倍々に拡張する。"""
+    """Map never-reused entity IDs onto reusable physical slots.
+
+    Capacity grows geometrically (doubling) only when the live count no
+    longer fits; there is no whole-tensor reallocation per event.
+    """
 
     def __init__(
         self,
@@ -107,10 +108,7 @@ class SlotPool:
         max_capacity: int | None = None,
         allocator: IdAllocator | None = None,
     ) -> None:
-        if isinstance(capacity, bool) or not isinstance(capacity, int):
-            raise TypeError("capacity must be an int")
-        if capacity < 0:
-            raise ValueError("capacity must be non-negative")
+        require_int(capacity, "capacity", minimum=0)
         if max_capacity is not None and max_capacity < capacity:
             raise ValueError("max_capacity must be at least capacity")
         self.capacity = capacity
@@ -124,17 +122,17 @@ class SlotPool:
 
     @property
     def version(self) -> int:
-        """slot配置のversionを返す。"""
+        """The current slot-placement version."""
         return self._version
 
     @property
     def k_live(self) -> int:
-        """生存entity数を返す。"""
+        """The number of live entities."""
         return len(self._id_to_slot)
 
     @property
     def live_slots(self) -> Tensor:
-        """同一version中は再構築しない昇順live slot列を返す。"""
+        """Ascending live slots, rebuilt at most once per version."""
         if self._live_slots_cache_version != self._version:
             self._live_slots_cache = torch.nonzero(
                 self._slot_to_id >= 0, as_tuple=False
@@ -144,8 +142,8 @@ class SlotPool:
         return self._live_slots_cache
 
     def slots_of(self, ids: Tensor) -> Tensor:
-        """生存entity IDを物理slotへ解決する。"""
-        ids = self._validate_vector(ids, "ids")
+        """Resolve live entity IDs to their physical slots."""
+        ids = as_id_vector(ids, "ids")
         try:
             values = [self._id_to_slot[int(id_)] for id_ in ids.tolist()]
         except KeyError as exc:
@@ -153,8 +151,8 @@ class SlotPool:
         return torch.tensor(values, dtype=torch.int64)
 
     def ids_of(self, slots: Tensor) -> Tensor:
-        """生存物理slotをentity IDへ解決する。"""
-        slots = self._validate_vector(slots, "slots")
+        """Resolve live physical slots to their entity IDs."""
+        slots = as_id_vector(slots, "slots")
         invalid = (slots < 0) | (slots >= self.capacity)
         if bool(invalid.any()):
             raise KeyError(f"slots out of range: {slots[invalid].tolist()}")
@@ -163,10 +161,12 @@ class SlotPool:
             raise KeyError(f"slots not live: {slots[ids < 0].tolist()}")
         return ids
 
-    def prepare(self, ops: Sequence[SlotOp]) -> _SlotPlan:
-        """slot op列を一切mutationせず検証して計画する。"""
+    def prepare(self, ops: Sequence[SlotOp]) -> SlotPlan:
+        """Validate a slot-op batch into a plan without any mutation."""
         n_birth, death_ids = self._normalize_ops(ops)
         death_slots = self.slots_of(death_ids)
+        # Placement rule: births reuse previously freed slots and slots dying
+        # in this same batch, in ascending order, before any capacity growth.
         free = torch.nonzero(self._slot_to_id < 0, as_tuple=False).flatten().tolist()
         available = sorted(free + death_slots.tolist())
         required = self.k_live - death_ids.numel() + n_birth
@@ -181,10 +181,10 @@ class SlotPool:
             old_capacity=self.capacity,
             new_capacity=new_capacity,
         )
-        return _SlotPlan(pool=self, version=self._version, change=change)
+        return SlotPlan(pool=self, version=self._version, change=change)
 
-    def commit(self, plan: _SlotPlan) -> SlotChange:
-        """検証済みslot計画を現在versionへ一度だけ適用する。"""
+    def commit(self, plan: SlotPlan) -> SlotChange:
+        """Apply a validated plan to the current version, exactly once."""
         if plan.pool is not self:
             raise ValueError("slot plan belongs to another pool")
         if plan.version != self._version:
@@ -210,7 +210,7 @@ class SlotPool:
         return change
 
     def apply(self, ops: Sequence[SlotOp]) -> SlotChange:
-        """slot op列をprepareして直ちにcommitする。"""
+        """Prepare a slot-op batch and commit it immediately."""
         return self.commit(self.prepare(ops))
 
     def state_dict(self) -> dict[str, Any]:
@@ -232,12 +232,35 @@ class SlotPool:
 
     def load_state_dict(self, state: Mapping[str, Any]) -> None:
         """Restore a complete physical-slot snapshot."""
+        (
+            capacity,
+            slot_to_id,
+            mapping,
+            version,
+            cache,
+            cache_version,
+        ) = self._validated_pool_state(state)
+        self.capacity = capacity
+        self.max_capacity = state.get("max_capacity")
+        self._allocator.load_state_dict(state.get("allocator", {}))
+        self._id_to_slot = mapping
+        self._slot_to_id = slot_to_id.detach().cpu().clone()
+        self._version = version
+        self._live_slots_cache = None if cache is None else cache.detach().cpu().clone()
+        self._live_slots_cache_version = cache_version
+
+    @staticmethod
+    def _validated_pool_state(
+        state: Mapping[str, Any],
+    ) -> tuple[int, Tensor, dict[int, int], int, Tensor | None, int]:
+        """Check a snapshot for shape, dtype, and internal consistency."""
         if not isinstance(state, Mapping):
             raise TypeError("slot-pool state must be a mapping")
         capacity = state.get("capacity")
         slot_to_id = state.get("slot_to_id")
         mapping = state.get("id_to_slot")
         version = state.get("version")
+        cache = state.get("live_slots_cache")
         cache_version = state.get("live_slots_cache_version")
         if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity < 0:
             raise ValueError("invalid slot-pool capacity")
@@ -249,8 +272,7 @@ class SlotPool:
             raise TypeError("id_to_slot must be a mapping")
         if isinstance(version, bool) or not isinstance(version, int) or version < 0:
             raise ValueError("invalid slot-pool version")
-        if isinstance(cache_version, bool) or not isinstance(cache_version, int):
-            raise TypeError("live slot cache version must be an int")
+        require_int(cache_version, "live slot cache version")
         restored_mapping = {int(key): int(value) for key, value in mapping.items()}
         expected_mapping = {
             int(entity_id): slot
@@ -259,42 +281,25 @@ class SlotPool:
         }
         if restored_mapping != expected_mapping:
             raise ValueError("slot-pool mappings are inconsistent")
-        cache = state.get("live_slots_cache")
         if cache is not None and (
             not isinstance(cache, Tensor)
             or cache.ndim != 1
             or cache.dtype != torch.int64
         ):
             raise TypeError("live_slots_cache must be a rank-1 int64 Tensor or None")
-        self.capacity = capacity
-        self.max_capacity = state.get("max_capacity")
-        self._allocator.load_state_dict(state.get("allocator", {}))
-        self._id_to_slot = restored_mapping
-        self._slot_to_id = slot_to_id.detach().cpu().clone()
-        self._version = version
-        self._live_slots_cache = None if cache is None else cache.detach().cpu().clone()
-        self._live_slots_cache_version = cache_version
+        return capacity, slot_to_id, restored_mapping, version, cache, cache_version
 
     def _normalize_ops(self, ops: Sequence[SlotOp]) -> tuple[int, Tensor]:
         n_birth = 0
         deaths: list[Tensor] = []
         for op in ops:
             if isinstance(op, SlotBirth):
-                if isinstance(op.count, bool) or not isinstance(op.count, int):
-                    raise TypeError("SlotBirth.count must be an int")
-                if op.count < 0:
-                    raise ValueError("SlotBirth.count must be non-negative")
-                n_birth += op.count
+                n_birth += require_int(op.count, "SlotBirth.count", minimum=0)
             elif isinstance(op, SlotDeath):
-                ids = self._validate_vector(op.ids, "SlotDeath.ids")
-                deaths.append(ids)
+                deaths.append(as_id_vector(op.ids, "SlotDeath.ids"))
             else:
                 raise TypeError(f"unsupported slot op type {type(op)!r}")
-        death_ids = (
-            torch.cat(deaths)
-            if deaths
-            else torch.zeros(0, dtype=torch.int64)
-        )
+        death_ids = cat_or_empty(deaths)
         if death_ids.unique().numel() != death_ids.numel():
             raise ValueError("death ids must not contain duplicates")
         return n_birth, death_ids
@@ -309,19 +314,9 @@ class SlotPool:
             raise RuntimeError("capacity exhausted")
         return new_capacity
 
-    @staticmethod
-    def _validate_vector(value: Tensor, name: str) -> Tensor:
-        if not isinstance(value, Tensor):
-            raise TypeError(f"{name} must be a Tensor")
-        if value.ndim != 1:
-            raise ValueError(f"{name} must be rank 1")
-        if value.dtype != torch.int64:
-            raise TypeError(f"{name} must have dtype int64")
-        return value.detach().to(device="cpu").clone()
-
 
 class Follower(Protocol):
-    """再利用slotをdeathでclearしbirthで初期化する付随状態の契約。"""
+    """Slot-aligned auxiliary state that clears on death and initializes on birth."""
 
     def grow(self, new_capacity: int) -> None: ...
 
@@ -333,19 +328,19 @@ class Follower(Protocol):
 
 
 class FollowerHub:
-    """grow・birth・death・remapを全followerへ同順序で通知する。"""
+    """Broadcast grow/birth/death/remap to every follower in subscription order."""
 
     def __init__(self, capacity: int = 0) -> None:
         self.capacity = capacity
         self._followers: list[Follower] = []
 
     def subscribe(self, follower: Follower) -> None:
-        """followerを現在容量へgrowして購読登録する。"""
+        """Grow the follower to the current capacity and register it."""
         follower.grow(self.capacity)
         self._followers.append(follower)
 
     def notify_grow(self, new_capacity: int) -> None:
-        """全followerを新容量へ拡張する。"""
+        """Grow every follower to the new capacity."""
         if new_capacity < self.capacity:
             raise ValueError("FollowerHub cannot shrink")
         if new_capacity == self.capacity:
@@ -355,19 +350,23 @@ class FollowerHub:
         self.capacity = new_capacity
 
     def notify_birth(self, slots: Tensor, lineage: Tensor) -> None:
-        """全followerのbirth slotを必ず初期化する。"""
+        """Initialize the birth slots of every follower."""
         if slots.numel() != lineage.numel():
             raise ValueError("birth slots and lineage must have equal length")
         for follower in self._followers:
             follower.on_birth(slots, lineage)
 
     def notify_death(self, slots: Tensor) -> None:
-        """全followerのdeath slotを必ずclearする。"""
+        """Clear the death slots of every follower."""
         for follower in self._followers:
             follower.on_death(slots)
 
     def notify_remap(self, old_to_new: Tensor) -> None:
-        """全followerへold-to-new slot写像を通知する。"""
+        """Broadcast an old-to-new slot mapping to every follower.
+
+        No current store emits remaps; this is the reserved hook for a future
+        compacting storage layout.
+        """
         for follower in self._followers:
             follower.on_remap(old_to_new)
 
@@ -387,8 +386,7 @@ class FollowerHub:
             raise TypeError("follower-hub state must be a mapping")
         capacity = state.get("capacity")
         states = state.get("followers")
-        if isinstance(capacity, bool) or not isinstance(capacity, int):
-            raise TypeError("follower-hub capacity must be an int")
+        require_int(capacity, "follower-hub capacity")
         if not isinstance(states, list) or len(states) != len(self._followers):
             raise ValueError("follower snapshot does not match subscriptions")
         self.capacity = capacity
@@ -401,44 +399,68 @@ class FollowerHub:
                 follower.__dict__.update(deepcopy(follower_state))
 
 
-class AgeColumn:
-    """birth後の構造event数をslotごとに保持する標準follower。"""
+class _Int64Column:
+    """Slot-aligned int64 follower column with a fixed vacant-slot fill value.
+
+    Subclasses set ``_fill`` and define what :meth:`on_birth` writes; growth,
+    death, remap, and (de)serialization are identical across columns.
+    """
+
+    _fill: int = 0
+
+    def __init__(self, capacity: int = 0) -> None:
+        self.values = torch.full((capacity,), self._fill, dtype=torch.int64)
+
+    def grow(self, new_capacity: int) -> None:
+        """Extend the column, preserving existing values."""
+        if new_capacity < self.values.numel():
+            raise ValueError(f"{type(self).__name__} cannot shrink")
+        if new_capacity == self.values.numel():
+            return
+        grown = torch.full((new_capacity,), self._fill, dtype=torch.int64)
+        grown[: self.values.numel()] = self.values
+        self.values = grown
+
+    def on_death(self, slots: Tensor) -> None:
+        """Reset dead slots to the vacant fill value."""
+        self.values[slots] = self._fill
+
+    def on_remap(self, old_to_new: Tensor) -> None:
+        """Carry surviving slots' values to their mapped destinations."""
+        remapped = torch.full_like(self.values, self._fill)
+        old = torch.nonzero(old_to_new >= 0, as_tuple=False).flatten()
+        remapped[old_to_new[old]] = self.values[old]
+        self.values = remapped
+
+    def state_dict(self) -> dict[str, Tensor]:
+        return {"values": self.values.clone()}
+
+    def load_state_dict(self, state: Mapping[str, Any]) -> None:
+        values = state.get("values") if isinstance(state, Mapping) else None
+        if not isinstance(values, Tensor) or values.ndim != 1:
+            raise TypeError(f"{type(self).__name__} state requires a rank-1 Tensor")
+        self.values = values.detach().cpu().clone().to(dtype=torch.int64)
+
+
+class AgeColumn(_Int64Column):
+    """Standard follower counting structural events since each slot's birth."""
+
+    _fill = 0
 
     def __init__(
         self,
         capacity: int = 0,
         live_slots: Callable[[], Tensor] | None = None,
     ) -> None:
-        self.values = torch.zeros(capacity, dtype=torch.int64)
+        super().__init__(capacity)
         self._live_slots = live_slots
 
-    def grow(self, new_capacity: int) -> None:
-        """既存ageを保ったまま列を拡張する。"""
-        if new_capacity < self.values.numel():
-            raise ValueError("AgeColumn cannot shrink")
-        if new_capacity == self.values.numel():
-            return
-        grown = torch.zeros(new_capacity, dtype=torch.int64)
-        grown[: self.values.numel()] = self.values
-        self.values = grown
-
     def on_birth(self, slots: Tensor, lineage: Tensor) -> None:
-        """birth slotのageを0へ初期化する。"""
+        """Start birth slots at age zero."""
         self.values[slots] = 0
-
-    def on_death(self, slots: Tensor) -> None:
-        """death slotのageをclearする。"""
-        self.values[slots] = 0
-
-    def on_remap(self, old_to_new: Tensor) -> None:
-        """生存slotのageを写像先へ移す。"""
-        remapped = torch.zeros_like(self.values)
-        old = torch.nonzero(old_to_new >= 0, as_tuple=False).flatten()
-        remapped[old_to_new[old]] = self.values[old]
-        self.values = remapped
 
     def tick(self, live_slots: Tensor | None = None) -> None:
-        """live slotだけのageを1増やす。"""
+        """Increment the age of live slots only."""
         slots = live_slots
         if slots is None:
             if self._live_slots is None:
@@ -446,52 +468,12 @@ class AgeColumn:
             slots = self._live_slots()
         self.values[slots] += 1
 
-    def state_dict(self) -> dict[str, Tensor]:
-        return {"values": self.values.clone()}
 
-    def load_state_dict(self, state: Mapping[str, Any]) -> None:
-        values = state.get("values") if isinstance(state, Mapping) else None
-        if not isinstance(values, Tensor) or values.ndim != 1:
-            raise TypeError("AgeColumn state requires a rank-1 Tensor")
-        self.values = values.detach().cpu().clone().to(dtype=torch.int64)
+class LineageColumn(_Int64Column):
+    """Standard follower keeping each slot's int64 lineage key from its birth op."""
 
-
-class LineageColumn:
-    """birth op由来のint64 lineage keyをslotごとに保持する標準follower。"""
-
-    def __init__(self, capacity: int = 0) -> None:
-        self.values = torch.full((capacity,), -1, dtype=torch.int64)
-
-    def grow(self, new_capacity: int) -> None:
-        """既存lineageを保ったまま列を拡張する。"""
-        if new_capacity < self.values.numel():
-            raise ValueError("LineageColumn cannot shrink")
-        if new_capacity == self.values.numel():
-            return
-        grown = torch.full((new_capacity,), -1, dtype=torch.int64)
-        grown[: self.values.numel()] = self.values
-        self.values = grown
+    _fill = -1
 
     def on_birth(self, slots: Tensor, lineage: Tensor) -> None:
-        """birth slotへlineage keyを設定する。"""
+        """Record the lineage keys of birth slots."""
         self.values[slots] = lineage
-
-    def on_death(self, slots: Tensor) -> None:
-        """death slotのlineageをclearする。"""
-        self.values[slots] = -1
-
-    def on_remap(self, old_to_new: Tensor) -> None:
-        """生存slotのlineageを写像先へ移す。"""
-        remapped = torch.full_like(self.values, -1)
-        old = torch.nonzero(old_to_new >= 0, as_tuple=False).flatten()
-        remapped[old_to_new[old]] = self.values[old]
-        self.values = remapped
-
-    def state_dict(self) -> dict[str, Tensor]:
-        return {"values": self.values.clone()}
-
-    def load_state_dict(self, state: Mapping[str, Any]) -> None:
-        values = state.get("values") if isinstance(state, Mapping) else None
-        if not isinstance(values, Tensor) or values.ndim != 1:
-            raise TypeError("LineageColumn state requires a rank-1 Tensor")
-        self.values = values.detach().cpu().clone().to(dtype=torch.int64)

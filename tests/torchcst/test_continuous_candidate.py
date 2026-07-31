@@ -15,13 +15,17 @@ from torchcst.instruments import (
     RefinementSchedule,
     WeightedMeasurement,
 )
-from torchcst.instruments.continuous_candidate import _coarse_spacing, _sample_local_uniform
+from torchcst.instruments._candidate_sampling import (
+    _coarse_spacing,
+    _sample_local_uniform,
+)
 from torchcst.policy import (
-    EvenBudgetAllocator,
+    EvenBudgetDistributor,
     MagnitudeCourt,
-    PeriodicSchedule,
-    Policy,
+    PeriodicCadence,
+    QuotaRegime,
     ScoredBirth,
+    SynapseLifecycle,
     TopKSelector,
 )
 from torchcst.representation import Box, GaussianKernel, RepresentationSpec
@@ -276,11 +280,20 @@ def _scored_birth_parts(mode: str = "raw", pool_size: int = 6):
     store, module = _build_module()
     request = ContinuousCandidateRequest(pool_size=pool_size, mode=mode)
     proposer = ScoredBirth(request)
-    policy = Policy(
-        schedule=PeriodicSchedule(event_interval=1, birth_budget=2, observe_window=1),
-        proposers=(proposer,),
-        allocator=EvenBudgetAllocator(),
-        retention=MagnitudeCourt(0.0),
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: proposer,
+        prune_factory=lambda: MagnitudeCourt(0.0),
+        priceable=False,
+        label="scored-birth",
+    )
+    policy = QuotaRegime(
+        budget=2,
+        method=method,
+        cadence=PeriodicCadence(event_interval=1, observe_window=1),
+        # QuotaRegime's own default distributor is replacement_only=True,
+        # which would cap the birth grant at the (always-zero, since
+        # MagnitudeCourt(0.0) never prunes) death count.
+        distributor=EvenBudgetDistributor(),
     )
     engine = StructuralEngine(
         {

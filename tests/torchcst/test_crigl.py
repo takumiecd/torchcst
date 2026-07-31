@@ -7,7 +7,8 @@ import torch
 from torchcst.compute import EntryLinear
 from torchcst.engine import StructuralEngine
 from torchcst.lab import Ledger
-from torchcst.policy import LC, PeriodicCadence, QuotaRegime, cRigL
+from torchcst.policy import PeriodicCadence, QuotaRegime, cRigL
+from torchcst.policy.recipes import LC
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseStore
 
@@ -28,7 +29,7 @@ def _crigl_policy(
         cadence=PeriodicCadence(
             event_interval=event_interval, observe_window=observe_window
         ),
-    ).compile()
+    )
 
 
 def _engine(policy, *, capture_mode="deferred"):

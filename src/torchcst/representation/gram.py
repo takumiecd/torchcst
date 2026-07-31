@@ -37,6 +37,9 @@ from math import isfinite
 import torch
 from torch import Tensor
 
+from torchcst._stats import data_second_moment
+from torchcst._validation import require_int, require_real
+
 
 @dataclass(frozen=True)
 class AbsorbAssessment:
@@ -103,6 +106,35 @@ class GramService:
         data: Tensor | None = None,
         chunk_size: int = 2048,
     ) -> None:
+        self._validate_factors(U, V, w, s, t)
+        dtype = w.dtype
+        device = w.device
+        radius = require_real(radius, "radius", positive=True)
+        ridge = require_real(ridge, "ridge", nonnegative=True)
+        require_int(chunk_size, "chunk_size", minimum=1)
+
+        sigma: Tensor | None = None
+        if data is not None:
+            sigma = data_second_moment(
+                data, n_in=V.shape[0], device=device, dtype=dtype
+            )
+
+        self.U = U.detach()
+        self.V = V.detach()
+        self.w = w.detach()
+        self.s = s.detach()
+        self.t = t.detach()
+        self.radius = radius
+        self.ridge = ridge
+        self.chunk_size = chunk_size
+        self.device = device
+        self.dtype = dtype
+        self._sigma = sigma
+        self._z = torch.cat([self.s, self.t], dim=1)
+
+    @staticmethod
+    def _validate_factors(U: Tensor, V: Tensor, w: Tensor, s: Tensor, t: Tensor) -> None:
+        """Check the five live-snapshot tensors for rank, alignment, and placement."""
         for name, value in (("U", U), ("V", V), ("w", w), ("s", s), ("t", t)):
             if not isinstance(value, Tensor):
                 raise TypeError(f"{name} must be a Tensor")
@@ -120,54 +152,11 @@ class GramService:
         for name, value in (("U", U), ("V", V), ("w", w), ("s", s), ("t", t)):
             if not value.is_floating_point():
                 raise TypeError(f"{name} must have a floating dtype")
-        dtype = w.dtype
-        device = w.device
         for name, value in (("U", U), ("V", V), ("s", s), ("t", t)):
-            if value.dtype != dtype:
+            if value.dtype != w.dtype:
                 raise TypeError(f"{name} must share w's dtype")
-            if value.device != device:
+            if value.device != w.device:
                 raise TypeError(f"{name} must share w's device")
-
-        if isinstance(radius, bool) or not isinstance(radius, (int, float)):
-            raise TypeError("radius must be a real number")
-        radius = float(radius)
-        if not isfinite(radius) or radius <= 0:
-            raise ValueError("radius must be finite and positive")
-        if isinstance(ridge, bool) or not isinstance(ridge, (int, float)):
-            raise TypeError("ridge must be a real number")
-        ridge = float(ridge)
-        if not isfinite(ridge) or ridge < 0:
-            raise ValueError("ridge must be finite and non-negative")
-        if isinstance(chunk_size, bool) or not isinstance(chunk_size, int):
-            raise TypeError("chunk_size must be an int")
-        if chunk_size <= 0:
-            raise ValueError("chunk_size must be positive")
-
-        sigma: Tensor | None = None
-        if data is not None:
-            if not isinstance(data, Tensor):
-                raise TypeError("data must be a Tensor or None")
-            if data.ndim != 2 or data.shape[1] != V.shape[0]:
-                raise ValueError("data must have shape [n, n_in] matching V's rows")
-            if not data.is_floating_point():
-                raise TypeError("data must have a floating dtype")
-            if data.shape[0] < 1:
-                raise ValueError("data must have at least one row")
-            data = data.detach().to(device=device, dtype=dtype)
-            sigma = (data.transpose(0, 1) @ data) / data.shape[0]
-
-        self.U = U.detach()
-        self.V = V.detach()
-        self.w = w.detach()
-        self.s = s.detach()
-        self.t = t.detach()
-        self.radius = radius
-        self.ridge = ridge
-        self.chunk_size = chunk_size
-        self.device = device
-        self.dtype = dtype
-        self._sigma = sigma
-        self._z = torch.cat([self.s, self.t], dim=1)
 
     @property
     def k_live(self) -> int:
@@ -290,20 +279,9 @@ class GramService:
         steps: list[AbsorbPlanStep] = []
 
         while budget is None or len(steps) < budget:
-            best: tuple[float, int, AbsorbAssessment] | None = None
-            for k in candidates:
-                if not bool(alive[k]):
-                    continue
-                neigh_all = static_neighbors[k]
-                neigh_alive = neigh_all[alive[neigh_all]] if neigh_all.numel() else neigh_all
-                if neigh_alive.numel() == 0:
-                    continue
-                assessment = self._assess(k, neigh_alive)
-                candidate_cost = 0.5 * float(running_w[k]) ** 2 * assessment.res2_D
-                if cost_cap is not None and candidate_cost > cost_cap:
-                    continue
-                if best is None or candidate_cost < best[0]:
-                    best = (candidate_cost, k, assessment)
+            best = self._cheapest_candidate(
+                candidates, static_neighbors, alive, running_w, cost_cap
+            )
             if best is None:
                 break
             step_cost, dying, assessment = best
@@ -320,6 +298,35 @@ class GramService:
                 )
             )
         return steps
+
+    def _cheapest_candidate(
+        self,
+        candidates: list[int],
+        static_neighbors: dict[int, Tensor],
+        alive: Tensor,
+        running_w: Tensor,
+        cost_cap: float | None,
+    ) -> tuple[float, int, AbsorbAssessment] | None:
+        """Re-assess every eligible candidate against still-alive neighbors
+        and return the cheapest ``(cost, position, assessment)``, or ``None``
+        when no candidate remains eligible (dead, neighborless, or over cap)."""
+        best: tuple[float, int, AbsorbAssessment] | None = None
+        for k in candidates:
+            if not bool(alive[k]):
+                continue
+            neigh_all = static_neighbors[k]
+            neigh_alive = (
+                neigh_all[alive[neigh_all]] if neigh_all.numel() else neigh_all
+            )
+            if neigh_alive.numel() == 0:
+                continue
+            assessment = self._assess(k, neigh_alive)
+            candidate_cost = 0.5 * float(running_w[k]) ** 2 * assessment.res2_D
+            if cost_cap is not None and candidate_cost > cost_cap:
+                continue
+            if best is None or candidate_cost < best[0]:
+                best = (candidate_cost, k, assessment)
+        return best
 
     def _assess(self, k: int, neigh: Tensor) -> AbsorbAssessment:
         idx_k = torch.tensor([k], dtype=torch.int64, device=self.device)

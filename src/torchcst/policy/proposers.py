@@ -9,7 +9,10 @@ from typing import Any, Mapping
 import torch
 from torch import Tensor
 
-from torchcst.instruments import CertificateSubspace
+from torchcst._validation import require_int
+
+# Submodule import; see policy/absorb.py's note on the instruments cycle.
+from torchcst.instruments.certificate import CertificateSubspace
 from torchcst.representation import CoordinateDomain, IntegerGrid, Sphere
 from torchcst.storage import SynapseBirth, SynapseMerge, SynapseView
 
@@ -27,13 +30,6 @@ def _bounds(value: Bounds | None, width: int, name: str) -> tuple[int, ...]:
     if len(values) != width or any(bound <= 0 for bound in values):
         raise ValueError(f"{name} must contain {width} positive bounds")
     return tuple(int(bound) for bound in values)
-
-
-def _encode(row: tuple[int, ...], bounds: tuple[int, ...]) -> int:
-    value = 0
-    for coordinate, bound in zip(row, bounds):
-        value = value * bound + coordinate
-    return value
 
 
 def _decode(value: int, bounds: tuple[int, ...]) -> tuple[int, ...]:
@@ -123,10 +119,7 @@ class UniformBirth:
         registry: RetiredCandidateRegistry,
         rng: torch.Generator,
     ) -> tuple[SynapseBirth, ...]:
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         if budget == 0:
             return ()
         domain_in = _view_domain(view, "in", self.bounds_in)
@@ -160,8 +153,9 @@ class UniformBirth:
             SynapseBirth(view.site, source, target, weights, lineages),
         )
 
-    @staticmethod
+    @classmethod
     def _sample_integer(
+        cls,
         view: SynapseView,
         budget: int,
         registry: RetiredCandidateRegistry,
@@ -170,24 +164,7 @@ class UniformBirth:
         domain_out: IntegerGrid,
     ) -> tuple[Tensor, Tensor, Tensor]:
         assert domain_in.bounds is not None and domain_out.bounds is not None
-        in_size = prod(domain_in.bounds)
-        out_size = prod(domain_out.bounds)
-        occupied: set[int] = set()
-        source_keys = domain_in.lineage_key(view.s.to(dtype=torch.int64))
-        target_keys = domain_out.lineage_key(view.t.to(dtype=torch.int64))
-        occupied.update(
-            int(source) * out_size + int(target)
-            for source, target in zip(source_keys.tolist(), target_keys.tolist())
-        )
-        available = {
-            lineage
-            for lineage in range(in_size * out_size)
-            if lineage not in occupied and not registry.is_retired(view.site, lineage)
-            and _decode(lineage // out_size, domain_in.bounds)[0]
-            not in _retired_ids(view, "in")
-            and _decode(lineage % out_size, domain_out.bounds)[0]
-            not in _retired_ids(view, "out")
-        }
+        available = cls._available_lineages(view, registry, domain_in, domain_out)
         count = min(budget, len(available))
         if count == 0:
             return (
@@ -195,11 +172,66 @@ class UniformBirth:
                 view.t.new_zeros((0, view.t.shape[1])),
                 torch.zeros(0, dtype=torch.int64),
             )
+        selected = cls._rejection_sample(
+            available, count, rng, domain_in, domain_out
+        )
+        if len(selected) < count:
+            cls._exhaustive_fill(
+                selected, available, count, rng, domain_in, domain_out
+            )
+        lineages = torch.tensor(tuple(selected), dtype=torch.int64)
+        source = torch.stack([pair[0] for pair in selected.values()]).to(view.s)
+        target = torch.stack([pair[1] for pair in selected.values()]).to(view.t)
+        return source, target, lineages
+
+    @staticmethod
+    def _available_lineages(
+        view: SynapseView,
+        registry: RetiredCandidateRegistry,
+        domain_in: IntegerGrid,
+        domain_out: IntegerGrid,
+    ) -> set[int]:
+        """Every grid lineage that is unoccupied, unretired, and endpoint-live."""
+        out_size = prod(domain_out.bounds)
+        source_keys = domain_in.lineage_key(view.s.to(dtype=torch.int64))
+        target_keys = domain_out.lineage_key(view.t.to(dtype=torch.int64))
+        occupied = {
+            int(source) * out_size + int(target)
+            for source, target in zip(source_keys.tolist(), target_keys.tolist())
+        }
+        retired_in = _retired_ids(view, "in")
+        retired_out = _retired_ids(view, "out")
+
+        def endpoint_live(lineage: int) -> bool:
+            source_axis = _decode(lineage // out_size, domain_in.bounds)[0]
+            target_axis = _decode(lineage % out_size, domain_out.bounds)[0]
+            return source_axis not in retired_in and target_axis not in retired_out
+
+        return {
+            lineage
+            for lineage in range(prod(domain_in.bounds) * out_size)
+            if lineage not in occupied
+            and not registry.is_retired(view.site, lineage)
+            and endpoint_live(lineage)
+        }
+
+    @staticmethod
+    def _rejection_sample(
+        available: set[int],
+        count: int,
+        rng: torch.Generator,
+        domain_in: IntegerGrid,
+        domain_out: IntegerGrid,
+    ) -> dict[int, tuple[Tensor, Tensor]]:
+        """Draw through each domain's own sampler until ``count`` distinct hits.
+
+        Bounded by an attempt limit so a nearly full grid falls through to
+        :meth:`_exhaustive_fill` instead of looping forever.
+        """
+        out_size = prod(domain_out.bounds)
         selected: dict[int, tuple[Tensor, Tensor]] = {}
-        # Sampling flows through each domain.  The finite fallback guarantees
-        # completion even when rejection sampling faces a nearly full grid.
         attempts = 0
-        limit = max(32, 8 * in_size * out_size)
+        limit = max(32, 8 * prod(domain_in.bounds) * out_size)
         while len(selected) < count and attempts < limit:
             draw = min(max(4, 2 * (count - len(selected))), limit - attempts)
             sources = domain_in.sample(draw, rng)
@@ -213,21 +245,29 @@ class UniformBirth:
                     if len(selected) == count:
                         break
             attempts += draw
-        if len(selected) < count:
-            remaining = sorted(available.difference(selected))
-            generator_device = getattr(rng, "device", torch.device("cpu"))
-            order = torch.randperm(len(remaining), generator=rng, device=generator_device)
-            for position in order[: count - len(selected)].cpu().tolist():
-                lineage = remaining[position]
-                source_key, target_key = divmod(lineage, out_size)
-                selected[lineage] = (
-                    torch.tensor(_decode(source_key, domain_in.bounds), dtype=torch.int64),
-                    torch.tensor(_decode(target_key, domain_out.bounds), dtype=torch.int64),
-                )
-        lineages = torch.tensor(tuple(selected), dtype=torch.int64)
-        source = torch.stack([pair[0] for pair in selected.values()]).to(view.s)
-        target = torch.stack([pair[1] for pair in selected.values()]).to(view.t)
-        return source, target, lineages
+        return selected
+
+    @staticmethod
+    def _exhaustive_fill(
+        selected: dict[int, tuple[Tensor, Tensor]],
+        available: set[int],
+        count: int,
+        rng: torch.Generator,
+        domain_in: IntegerGrid,
+        domain_out: IntegerGrid,
+    ) -> None:
+        """Complete ``selected`` from the finite remainder, in random order."""
+        out_size = prod(domain_out.bounds)
+        remaining = sorted(available.difference(selected))
+        generator_device = getattr(rng, "device", torch.device("cpu"))
+        order = torch.randperm(len(remaining), generator=rng, device=generator_device)
+        for position in order[: count - len(selected)].cpu().tolist():
+            lineage = remaining[position]
+            source_key, target_key = divmod(lineage, out_size)
+            selected[lineage] = (
+                torch.tensor(_decode(source_key, domain_in.bounds), dtype=torch.int64),
+                torch.tensor(_decode(target_key, domain_out.bounds), dtype=torch.int64),
+            )
 
 
 # Compatibility name retained exactly as an alias, not a second implementation.
@@ -263,10 +303,7 @@ class MergeProposer:
         registry: RetiredCandidateRegistry,
         rng: torch.Generator,
     ) -> tuple[SynapseMerge, ...]:
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         if not isinstance(view.domain_in, Sphere) or not isinstance(
             view.domain_out, Sphere
         ):
@@ -274,7 +311,9 @@ class MergeProposer:
         if budget == 0 or view.ids.numel() < 2:
             return ()
 
-        candidates: list[tuple[float, int, int, int, int]] = []
+        # Negated score puts the plain tuple sort in descending-similarity
+        # order, with the sorted id pair as a deterministic tie-break.
+        candidates: list[tuple[float, int, int]] = []
         source = view.s.detach()
         target = view.t.detach()
         ids = view.ids.detach().cpu()
@@ -286,11 +325,11 @@ class MergeProposer:
                 )
                 if score >= self.similarity_threshold:
                     first_id, second_id = sorted((int(ids[left]), int(ids[right])))
-                    candidates.append((-score, first_id, second_id, left, right))
+                    candidates.append((-score, first_id, second_id))
         candidates.sort()
         used: set[int] = set()
         selected: list[tuple[int, int]] = []
-        for _, first_id, second_id, _, _ in candidates:
+        for _, first_id, second_id in candidates:
             if first_id in used or second_id in used:
                 continue
             selected.append((first_id, second_id))
@@ -343,10 +382,7 @@ class OrthogonalBirth:
         registry: RetiredCandidateRegistry,
         rng: torch.Generator,
     ) -> tuple[SynapseBirth, ...]:
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         if budget == 0:
             return ()
         domain_in = _view_domain(view, "in", None)
@@ -408,10 +444,7 @@ class IncidentOutputBirth:
         registry: RetiredCandidateRegistry,
         rng: torch.Generator,
     ) -> tuple[SynapseBirth, ...]:
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         if budget == 0:
             return ()
         domain_in = _view_domain(view, "in", None)
@@ -505,10 +538,7 @@ class GradFieldTopKBirth:
         registry: RetiredCandidateRegistry,
         rng: torch.Generator,
     ) -> tuple[SynapseBirth, ...]:
-        if isinstance(budget, bool) or not isinstance(budget, int):
-            raise TypeError("budget must be an int")
-        if budget < 0:
-            raise ValueError("budget must be non-negative")
+        require_int(budget, "budget", minimum=0)
         if budget == 0:
             return ()
         try:
