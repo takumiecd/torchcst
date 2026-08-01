@@ -353,20 +353,41 @@ class RuntimeTree:
             names = {getattr(req, "name", None) for req in endpoint.requires}
             if not names:
                 continue
-            providers = [
-                instruments_by_site[child.site]
+            # A neuron boundary has two sides and the tree is the only object
+            # that knows both: the producer measures the gate field, and the
+            # consumer says how strongly each row is answered downstream --
+            # the missing factor in an interior boundary's solve curvature.
+            producers = [
+                child
                 for child in self.children
                 if child.binding.endpoints()[1] is endpoint.store
                 and child.site in instruments_by_site
             ]
-            if len(providers) != 1:
+            if len(producers) != 1:
                 raise ValueError(
                     "an instrumented interface requires exactly one upstream "
                     "synapse child"
                 )
-            endpoint.bind_instruments(
-                {name: inst for name, inst in providers[0].items() if name in names}
-            )
+            bound = {
+                name: inst
+                for name, inst in instruments_by_site[producers[0].site].items()
+                if name in names
+            }
+            consumers = [
+                child
+                for child in self.children
+                if child.binding.endpoints()[0] is endpoint.store
+            ]
+            if len(consumers) == 1:
+                consumer = getattr(consumers[0].binding, "module", None)
+                if consumer is not None and callable(
+                    getattr(consumer, "input_row_energy", None)
+                ):
+                    for instrument in bound.values():
+                        setter = getattr(instrument, "set_consumer", None)
+                        if callable(setter):
+                            setter(consumer)
+            endpoint.bind_instruments(bound)
 
     # -- cadence (root-owned) ----------------------------------------------
 

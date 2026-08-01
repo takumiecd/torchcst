@@ -126,7 +126,13 @@ class CSTBlock(nn.Module):
             return None
         return self._gate_grads.pop(0)
 
-    def gate_tangent(self, x: Tensor, g_gated: Tensor) -> tuple[Tensor, Tensor]:
+    def gate_tangent(
+        self,
+        x: Tensor,
+        g_gated: Tensor,
+        *,
+        row_energy: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor]:
         """Return the gate field and the activation energy for every chart row.
 
         ``x`` is the block's captured input and ``g_gated`` the gradient of
@@ -135,13 +141,18 @@ class CSTBlock(nn.Module):
         value is exactly ``dL/dgamma``, and it stays exact -- and nonzero --
         for a dormant row.
 
-        The second value is ``sum(activation^2)``.  That is the exact solve
-        curvature only at a *terminal* boundary, where the activation is
-        already the model's output direction (the FC-2 topology).  At a hidden
-        boundary the feature of ``gamma_j`` in output space is the activation
-        times the consumer's row response, so a caller that wants a true
-        Newton step must scale this by the consumer map's row energy; used
-        unscaled it yields a conservative step, not a wrong direction.
+        The second value is the solve curvature ``sum(activation^2)``, scaled
+        by ``row_energy`` when given.  At a *terminal* boundary the activation
+        already is the model's output direction (the FC-2 topology) and no
+        scale is needed.  At a hidden boundary the feature of ``gamma_j`` in
+        output space is the activation times the consumer's response to row
+        ``j``, so pass the consumer's
+        :meth:`~torchcst.compute.CSTLinear.input_row_energy`; without it the
+        step is conservative rather than wrong.
+
+        The remaining constant is the objective's own curvature, which a
+        loss-blind policy may not read.  The tree's realized-profit trial (or a
+        damped acceptance ladder) is what absorbs it.
         """
         activated = self.activated_rows(x)
         g_flat = g_gated if g_gated.ndim == 2 else g_gated.reshape(
@@ -150,10 +161,12 @@ class CSTBlock(nn.Module):
         if g_flat.shape != activated.shape:
             raise ValueError("gate gradient does not match the activation shape")
         g_flat = g_flat.to(activated)
-        return (
-            (g_flat * activated).sum(dim=0),
-            activated.square().sum(dim=0),
-        )
+        curvature = activated.square().sum(dim=0)
+        if row_energy is not None:
+            if row_energy.shape != curvature.shape:
+                raise ValueError("row_energy must have one entry per chart row")
+            curvature = curvature * row_energy.to(curvature)
+        return ((g_flat * activated).sum(dim=0), curvature)
 
     def activated_rows(self, x: Tensor) -> Tensor:
         """Return ``activation(synapse_map(x))`` with no gate and no capture."""

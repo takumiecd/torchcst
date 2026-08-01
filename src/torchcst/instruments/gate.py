@@ -58,24 +58,51 @@ class GateTangentRequest:
 
 
 class GateTangent:
-    """Accumulate gate evidence without selecting or activating neurons."""
+    """Accumulate gate evidence without selecting or activating neurons.
+
+    Two topologies deliver the same field.  A terminal ``CSTLinear`` applies
+    the boundary gate itself and reconstructs its pre-gate output.  A
+    :class:`~torchcst.compute.CSTBlock` owns the gate for a boundary that may
+    be *hidden*, so it queues the post-gate gradient during backward and the
+    instrument pairs it with the recomputed activation -- the only form in
+    which a dormant row's field is nonzero at all.
+    """
 
     def __init__(self, module: Any, neuron_store: Any, *, name: str) -> None:
-        if not callable(getattr(module, "output_gate_tangent", None)):
+        self._block_mode = callable(getattr(module, "take_gate_grad", None))
+        if not self._block_mode and not callable(
+            getattr(module, "output_gate_tangent", None)
+        ):
             raise TypeError("gate tangent requires a CST module output gate")
         if neuron_store is None:
             raise TypeError("gate tangent requires an output NeuronStore")
         self.name = name
         self.module = module
         self.neuron_store = neuron_store
+        self._consumer: Any | None = None
         self._synapse_version = -1
         self._gradient: Tensor | None = None
         self._curvature: Tensor | None = None
         self._weighted_batches = 0.0
 
+    def set_consumer(self, module: Any) -> None:
+        """Name the map that reads this boundary, for the solve curvature.
+
+        Without it the gate solve at a hidden boundary is conservative: the
+        activation energy alone ignores how strongly the consumer answers each
+        row.  A terminal boundary has no consumer and needs none.
+        """
+        if module is not None and not callable(
+            getattr(module, "input_row_energy", None)
+        ):
+            raise TypeError("a gate-field consumer must expose input_row_energy()")
+        self._consumer = module
+
     def prepare(self, view: SynapseView, module: Any) -> None:
         if module is not self.module:
             raise ValueError("instrument was prepared with another compute module")
+        if self._block_mode:
+            module.reset_gate_capture()
         if self._synapse_version not in (-1, view.version):
             self.reset()
         self._synapse_version = view.version
@@ -86,7 +113,21 @@ class GateTangent:
         x_flat, _ = flatten_capture_pair(
             x, g_out, int(module.in_features), int(module.out_features)
         )
-        gradient, curvature = module.output_gate_tangent(x, g_out)
+        if self._block_mode:
+            gate_grad = module.take_gate_grad()
+            if gate_grad is None:
+                raise RuntimeError(
+                    "no queued post-gate gradient; the block's forward and the "
+                    "engine's capture must run once per microbatch"
+                )
+            row_energy = (
+                None if self._consumer is None else self._consumer.input_row_energy()
+            )
+            gradient, curvature = module.gate_tangent(
+                x, gate_grad, row_energy=row_energy
+            )
+        else:
+            gradient, curvature = module.output_gate_tangent(x, g_out)
         # Autograd's boundary gradient carries mean reduction. FC-2 solves
         # against a summed per-example field and summed feature square.
         return {

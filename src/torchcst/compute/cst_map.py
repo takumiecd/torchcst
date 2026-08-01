@@ -377,6 +377,27 @@ class _ContinuousCSTMap(nn.Module):
             k_in, k_out = self._kernel_matrices(source, target)
             return ((self._gated_x(x_flat) @ k_in) * weights) @ k_out.transpose(0, 1)
 
+    def input_row_energy(self) -> Tensor:
+        """Return ``sum_o M[j, o]^2`` for the represented map ``M``.
+
+        How strongly each input row is answered downstream.  A neuron gate at
+        this map's *input* boundary scales a feature that this map then carries
+        into output space, so its solve curvature is the activation energy
+        times this response.  Computed from the Gram of the outgoing kernel, so
+        the ``[in_features, out_features]`` matrix is never materialized.
+        """
+        self._view()
+        source, target, weights = self._live_factors()
+        with torch.no_grad():
+            k_in, k_out = self._kernel_matrices(
+                source.detach(), target.detach()
+            )
+            if self._gate_output:
+                k_out = self.out_neurons.gate_vector().to(k_out)[:, None] * k_out
+            weighted_in = k_in * weights.detach().to(k_in)
+            gram_out = k_out.transpose(0, 1) @ k_out
+            return (weighted_in @ gram_out).mul(weighted_in).sum(dim=1)
+
     def kernel_columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
         """Evaluate read-only kernel columns for arbitrary source/target rows.
 
