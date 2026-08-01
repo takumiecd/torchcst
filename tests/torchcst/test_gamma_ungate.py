@@ -25,7 +25,9 @@ class _NoBirth:
         return ()
 
 
-def _run(capture_mode: str) -> tuple[NeuronUngate, torch.Tensor, torch.Tensor]:
+def _run(
+    capture_mode: str, *, gate_scale: float | None = None
+) -> tuple[NeuronUngate, torch.Tensor, torch.Tensor]:
     store = SynapseStore(
         "continuous",
         1,
@@ -66,7 +68,7 @@ def _run(capture_mode: str) -> tuple[NeuronUngate, torch.Tensor, torch.Tensor]:
     root = QuotaRegime(
         budget=1,
         method=method,
-        interface=gamma_ungate(),
+        interface=gamma_ungate(gate_scale=gate_scale),
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
         quota=ConstantQuota(StructuralQuota(neuron_birth=1)),
         distributor=EvenBudgetDistributor(),
@@ -89,33 +91,33 @@ def _run(capture_mode: str) -> tuple[NeuronUngate, torch.Tensor, torch.Tensor]:
     return operation, expected_gradient, curvature
 
 
-def test_gamma_ungate_selects_dormant_field_and_solves_a_damped_gate() -> None:
+def _expected(gradient, curvature, chosen, dormant):
+    # A relative ridge conditions the solve, as on the synapse side: a weakly
+    # answered row otherwise asks for a gate orders of magnitude past the live
+    # scale (measured at -241 in a two-layer stack before the guard).
+    ridge = 1.0e-4 * curvature[dormant].abs().mean()
+    return -gradient[chosen] / (curvature[chosen] + ridge)
+
+
+def test_gamma_ungate_selects_dormant_field_and_solves_an_unbounded_gate() -> None:
     operation, gradient, curvature = _run("deferred")
     dormant = torch.tensor([1, 2])
     chosen = dormant[torch.argmax(gradient[dormant].abs())]
     assert operation.ids.tolist() == [int(chosen)]
-    # The solve carries a relative ridge, like the synapse-side tangent Gram:
-    # a weakly answered row otherwise asks for a gate orders of magnitude past
-    # the live scale (measured at -241 in a two-layer stack before the guard).
-    ridge = 1.0e-4 * curvature[dormant].abs().mean()
-    solved = -gradient[chosen] / (curvature[chosen] + ridge)
-    live_scale = 1.0  # the store's one live neuron carries gate 1.0
-    torch.testing.assert_close(
-        operation.gate,
-        solved.clamp(-live_scale, live_scale).reshape(1),
-    )
+    solved = _expected(gradient, curvature, chosen, dormant)
+    # The magnitude is whatever the measurement says. This fixture's solve
+    # exceeds the live scale, and is committed at that size: what is safe is
+    # the profit trial's question, not a cap's.
+    assert abs(float(solved)) > 1.0
+    torch.testing.assert_close(operation.gate, solved.reshape(1))
 
 
-def test_gamma_ungate_caps_a_woken_gate_at_the_live_scale() -> None:
-    operation, gradient, curvature = _run("deferred")
+def test_gate_scale_reinstates_a_cap_for_experiments_that_want_one() -> None:
+    operation, gradient, curvature = _run("deferred", gate_scale=1.0)
     dormant = torch.tensor([1, 2])
     chosen = dormant[torch.argmax(gradient[dormant].abs())]
-    ridge = 1.0e-4 * curvature[dormant].abs().mean()
-    undamped = float(-gradient[chosen] / (curvature[chosen] + ridge))
-    # This fixture's raw solve overshoots, so the cap is load-bearing here:
-    # a neuron joins at a magnitude the layer already carries, and the excess
-    # is left to ordinary training rather than committed in one step.
-    assert abs(undamped) > 1.0
+    assert abs(float(_expected(gradient, curvature, chosen, dormant))) > 1.0
+    # The store's one live neuron carries gate 1.0, so that is the cap.
     assert float(operation.gate.abs().max()) == 1.0
 
 

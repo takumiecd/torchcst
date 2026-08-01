@@ -62,7 +62,10 @@ def _chart(site: str, n_max: int, live: int) -> NeuronStore:
     return NeuronStore(site, n_max, mu=mu, initial_live=live, dtype=torch.float64)
 
 
-def _world(*, blocked: bool):
+LADDER = (1.0, 0.5, 0.25, 0.1, 0.01)
+
+
+def _world(*, blocked: bool, damping: tuple[float, ...] = LADDER):
     """Two CST layers over one hidden store, gated once or twice."""
     first, second = _synapses("layer1"), _synapses("layer2")
     inputs = _chart("x", D_IN, D_IN)
@@ -95,7 +98,7 @@ def _world(*, blocked: bool):
         distributor=EvenBudgetDistributor(),
         quota=ConstantQuota(StructuralQuota(synapse_birth=2, neuron_birth=1)),
         interface=gamma_ungate(),
-        profit=ProfitCourt(min_profit=0.0),
+        profit=ProfitCourt(min_profit=0.0, damping=damping),
     )
     optimizer = torch.optim.Adam(
         [*first.parameters(), *second.parameters()], lr=0.01
@@ -164,6 +167,29 @@ def test_a_hidden_neuron_grows_only_when_one_owner_applies_its_gate() -> None:
         isinstance(op, NeuronUngate) for ops, _ in doubled for op in ops
     )
     assert blocked[-1][1] < blocked[0][1]
+
+
+def test_an_unbounded_solve_lands_only_through_the_ladder() -> None:
+    # The gate solve is deliberately uncapped, so a weakly answered row asks
+    # for hundreds of times the live scale. Without a ladder that is simply
+    # rejected -- correct size or nothing -- and the ladder is what turns the
+    # same measurement into a magnitude that pays. FC-1's preregistered rungs
+    # stop at 0.1, which is not deep enough for a gate: this ladder needs 0.01.
+    x, y = _problem()
+
+    engine, forward, hidden, optimizer, modules = _world(blocked=True, damping=())
+    without = _train(engine, forward, optimizer, modules, x, y, 12)
+    assert not any(
+        isinstance(op, NeuronUngate) for ops, _ in without for op in ops
+    )
+    assert int(hidden.live_ids().numel()) == H_LIVE
+
+    engine, forward, hidden, optimizer, modules = _world(blocked=True)
+    with_ladder = _train(engine, forward, optimizer, modules, x, y, 12)
+    assert any(
+        isinstance(op, NeuronUngate) for ops, _ in with_ladder for op in ops
+    )
+    assert int(hidden.live_ids().numel()) > H_LIVE
 
 
 def test_the_dormant_gate_field_is_nonzero_and_exact_in_a_stack() -> None:

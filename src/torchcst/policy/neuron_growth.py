@@ -16,19 +16,25 @@ from torchcst.storage import NeuronStore, NeuronUngate
 class GammaUngate:
     """Select dormant IDs by exact ``|dL/dgamma|`` and solve their gates.
 
-    The solve carries the same two guards the synapse side already needs.  A
-    weakly answered row has near-zero curvature, and the raw Newton step then
-    asks for a gate hundreds of times the live scale -- the gate-side form of
-    FC-1's near-singular tangent Gram and its huge cancelling amplitudes.  A
-    relative ridge damps the solve, and the live gate scale caps the step, so
-    a woken neuron enters at a magnitude the rest of the layer already lives
-    at instead of dominating it.
+    A relative ridge damps the solve, as on the synapse side: a weakly
+    answered row has near-zero curvature and the raw Newton step then asks for
+    a gate hundreds of times the live scale -- the gate-side form of FC-1's
+    near-singular tangent Gram and its huge cancelling amplitudes.  That is a
+    conditioning guard on the *solve*, and it stays.
+
+    The solved magnitude itself is deliberately unbounded.  Capping it at the
+    live scale would decide by fiat what the measurement already answers, and
+    would permanently pin a woken neuron below whatever the chart happened to
+    start at.  Whether a magnitude is safe is settled by the root's realized
+    profit trial -- and, when a ladder is configured, by re-offering it smaller
+    rather than by truncating it up front.  ``gate_scale`` reinstates the cap
+    for experiments that want it.
     """
 
     request: GateTangentRequest
     curvature_floor: float = 1.0e-12
     ridge: float = 1.0e-4
-    gate_scale: float = 1.0
+    gate_scale: float | None = None
     requires: tuple[GateTangentRequest, ...] = field(init=False)
     _instruments: dict[str, Any] = field(default_factory=dict, init=False)
 
@@ -37,7 +43,10 @@ class GammaUngate:
             self.curvature_floor, "curvature_floor", positive=True
         )
         self.ridge = require_real(self.ridge, "ridge", nonnegative=True)
-        self.gate_scale = require_real(self.gate_scale, "gate_scale", positive=True)
+        if self.gate_scale is not None:
+            self.gate_scale = require_real(
+                self.gate_scale, "gate_scale", positive=True
+            )
         self.requires = (self.request,)
 
     def bind_instruments(self, site: str, instruments: dict[str, Any]) -> None:
@@ -63,7 +72,7 @@ class GammaUngate:
     def _live_scale(
         self, store: NeuronStore, gate: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Cap a solved gate at the magnitude the live neurons already carry."""
+        """Opt-in cap at the magnitude the live neurons already carry."""
         live = store.live_ids()
         if live.numel():
             values = store.gate.detach().index_select(
@@ -120,7 +129,8 @@ class GammaUngate:
                 self.curvature_floor
             ) + self._ridge_of(curvature.index_select(0, candidates))
             gate = -gradient.index_select(0, chosen) / damped
-            gate = gate.clamp(*self._live_scale(store, gate))
+            if self.gate_scale is not None:
+                gate = gate.clamp(*self._live_scale(store, gate))
             nonzero = torch.isfinite(gate) & (gate != 0)
             ids = ids[nonzero.cpu()]
             gate = gate[nonzero]

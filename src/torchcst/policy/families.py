@@ -531,6 +531,7 @@ class NeuronLifecycle:
 def gamma_ungate(
     *,
     curvature_floor: float = 1.0e-12,
+    gate_scale: float | None = None,
     timing: Any = "after_backward",
 ) -> NeuronLifecycle:
     """Independent dormant-neuron birth using a solved output gate gamma."""
@@ -538,7 +539,9 @@ def gamma_ungate(
     request = GateTangentRequest(name=name, timing=timing)
     return NeuronLifecycle(
         ungate_factory=lambda: GammaUngate(
-            request=request, curvature_floor=curvature_floor
+            request=request,
+            curvature_floor=curvature_floor,
+            gate_scale=gate_scale,
         ),
         label="gamma_ungate",
     )
