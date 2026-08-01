@@ -161,6 +161,50 @@ compare representation families without changing the surrounding machinery.
 Neither control owns neuron state; experiments that require neuron gates or
 endpoint-aware response compose an explicit `NeuronGatedLinear` wrapper.
 
+### Stacking layers, and who owns a neuron's gate
+
+A neuron's gate belongs to the neuron and must be applied exactly once. A raw
+`CSTLinear` applies both of its endpoints' gates itself, which is right for a
+single map but wrong for a stack: wiring two together gates the shared hidden
+store twice, so a neuron enters the composed function as `gamma^2`, its
+derivative at a dormant `gamma=0` is identically zero, and **no dormant neuron
+in a deep network can ever be woken**. Compose with `CSTBlock` instead — a
+gate-free map, an activation, then the producing store's gate, once:
+
+```python
+block1 = CSTBlock(
+    CSTLinear(inputs, hidden, syn1, kernel,
+              gate_input=False, gate_output=False),
+    activation=F.gelu,
+)
+block2 = CSTBlock(
+    CSTLinear(hidden, outputs, syn2, kernel,
+              gate_input=False, gate_output=False)
+)
+logits = block2(block1(x))
+```
+
+`gate_input=False, gate_output=False` does not remove gating; it moves it to
+the block, which is what keeps the composition linear in `gamma`. A terminal
+map that no CST layer consumes keeps the default `True` and gates itself.
+
+> [!IMPORTANT]
+> `NeuronStore.gate` is an `nn.Parameter`, but nothing puts it in your
+> optimizer for you. A neuron woken by a growth policy is solved once and then
+> never moves again unless you train it — its gate can sit near zero forever
+> while the chart still reports it live. Pass the neuron stores' parameters to
+> your optimizer, at a **smaller step than the synapse rate** (about a tenth in
+> exploratory MNIST runs): a gate is a low-curvature direction, and the rate
+> that suits synapse coordinates drives it to run away.
+
+Dormant rows are masked out of `gate_vector()`, so they receive exactly zero
+gradient — ordinary training can never wake a neuron by itself, which is the
+policy tree's job. Training only ever moves gates the policy already opened.
+
+When diagnosing a growth run, count *effective* width (live rows whose gate is
+not near zero), not live rows. The two can differ by a factor of ten, and a
+comparison against a fixed-width control is meaningless when they do.
+
 The current implementation is built around five explicit responsibilities:
 
 ```text
