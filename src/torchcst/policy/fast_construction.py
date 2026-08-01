@@ -55,7 +55,7 @@ def _gram_rhs(
     source: Tensor,
     target: Tensor,
     evidence: TangentSnapshot,
-) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     k_in, k_out = _columns(port, source, target)
     covariance = evidence.covariance.to(k_in)
     cross = evidence.cross.to(device=k_out.device, dtype=k_out.dtype)
@@ -74,6 +74,30 @@ def _profile(
 ) -> tuple[Tensor, Tensor]:
     gram, rhs, _, _ = _gram_rhs(port, source, target, evidence)
     return rhs[0], gram[0, 0].clamp_min(torch.finfo(gram.dtype).tiny)
+
+
+def _candidate_profiles(
+    port: Any,
+    source: Tensor,
+    target: Tensor,
+    evidence: TangentSnapshot,
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Return paired-candidate ``(g, a)`` without materializing a pool Gram.
+
+    Candidate search only needs the diagonal profile of each paired
+    ``(source[j], target[j])``.  Forming the full ``pool_size²`` Gram is both
+    unnecessary and prohibitive at FC-1's default pool size.
+    """
+    k_in, k_out = _columns(port, source, target)
+    covariance = evidence.covariance.to(k_in)
+    cross = evidence.cross.to(device=k_out.device, dtype=k_out.dtype)
+    rhs = torch.einsum("ok,oi,ik->k", k_out, cross, k_in)
+    input_curvature = (k_in * (covariance @ k_in)).sum(dim=0)
+    output_curvature = k_out.square().sum(dim=0)
+    diagonal = (input_curvature * output_curvature).clamp_min(
+        torch.finfo(k_in.dtype).tiny
+    )
+    return rhs, diagonal
 
 
 def _gain(rhs: Tensor, step: Tensor, gram: Tensor) -> float:
@@ -206,9 +230,9 @@ class TangentRefit:
             gain = _gain(rhs, delta, gram)
             if gain <= 0.0 or (self.rent is not None and gain < self.rent):
                 return ()
-            weights = view.w + delta.to(view.w)
-            source = view.s.clone()
-            target = view.t.clone()
+            weights = (view.w.detach() + delta.to(view.w)).detach()
+            source = view.s.detach().clone()
+            target = view.t.detach().clone()
             if self.position_iters:
                 source, target, weights = self._polish_positions(
                     source,
@@ -348,11 +372,8 @@ class TangentBirth:
                 else float("inf")
             )
             for _ in range(budget):
-                gram, rhs, k_in_pool, k_out_pool = _gram_rhs(
+                rhs, diag = _candidate_profiles(
                     port, source_pool, target_pool, residual
-                )
-                diag = torch.diagonal(gram).clamp_min(
-                    torch.finfo(gram.dtype).tiny
                 )
                 gains = rhs.square() / (2.0 * diag)
                 order = torch.argsort(gains, descending=True, stable=True)

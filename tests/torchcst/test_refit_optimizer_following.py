@@ -66,4 +66,3 @@ def test_refit_optimizer_following_is_role_selective() -> None:
     for name, value in before[store.w].items():
         assert optimizer.state[store.w][name][0] == 0
         torch.testing.assert_close(optimizer.state[store.w][name][1], value[1])
-

@@ -102,4 +102,3 @@ def test_cvp_is_equivalent_in_deferred_and_inline_timing() -> None:
     inline = _run("inline_reduced")
     for left, right in zip(deferred, inline):
         torch.testing.assert_close(left, right)
-

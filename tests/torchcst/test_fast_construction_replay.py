@@ -39,4 +39,3 @@ def _equal(left: tuple[tuple[torch.Tensor, ...], ...], right: object) -> bool:
 def test_csfw_replay_is_bit_identical_for_one_seed() -> None:
     assert _equal(_trajectory(2026), _trajectory(2026))
     assert not _equal(_trajectory(2026), _trajectory(2027))
-

@@ -104,3 +104,11 @@ Gram backfit）と付録 G/H（深さの接線版・γ 場）。**式は付録�
   移行は受理 birth 数ではなく root 発行 event 数で決めるため、profit rejection
   があっても位相がずれない。深いネットワークの小核は store 初期化の責務であり、
   recipe は各層が非空であることを呼び出し側の前提として明記する。
+- 受け入れテストは「runner・結果は cst 側」という責務境界を守り、16k-step の
+  学習 runner を torchcst に複製しない。代わりに fc1 スクリプトを直接 import し、
+  同じ seed-777 MNIST 12k subset、`H=64`、`K=256`、`σ=0.1` で policy-tree が
+  出す event-time 軌跡を比較する。cVP は3連続 Gram solve、cSFW-grow は3 seeds ×
+  16逐次 birth（deflation 込み）を照合し、各 op を `ProfitCourt` の実損失非増加に
+  通す。連続4096候補と fc1 離散格子ピークの位置は bit 一致を要求せず、最初の
+  profile gain が各 seed で格子オラクルの70%以上、solve 値は数値誤差内一致を
+  統計的等価の受理線とする。

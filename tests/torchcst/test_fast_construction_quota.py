@@ -83,4 +83,3 @@ def test_csfw_obeys_event_timing_quota_and_never_pairs_a_death() -> None:
     assert 0 < sum(int(op.w.numel()) for op in births) <= 2
     assert not any(isinstance(op, SynapseDeath) for op in operations)
     assert store.live_ids().numel() == 1 + sum(int(op.w.numel()) for op in births)
-
