@@ -20,9 +20,15 @@ current API documentation.
 - [`winning_recipe_design.md`](winning_recipe_design.md) — v4 architecture and
   accepted invariants behind the current implementation. Some planned modules
   and distributed paths described there are still future work.
-- [`fast-construction-family.md`](fast-construction-family.md) — design-only
-  contract for the cSFW / cVP / cELM methods (FASTCON arc). Implementation is
-  gated on policy-tree Phase 2 S2 and the FC-0 experiment outcome.
+- [`fast-construction-family.md`](fast-construction-family.md) — contract for
+  the cSFW / cVP methods and the Refit op (FASTCON arc). Shipped 2026-08-01;
+  each section carries an "実装（2026-08-01）" note where the drafted contract
+  and the implementation differ (`cELM` is still unimplemented, and the drafted
+  `polish_iters=3` default lost to `0` plus periodic backfit).
+- [`family-implementation-brief.md`](family-implementation-brief.md) — the
+  handoff spec that fast-construction was built from: frozen defaults from the
+  FC-0/1/2 experiments (§2) and the implementation decisions recorded while
+  building it (§6). Read it before changing a family default.
 
 ## Historical decision records
 

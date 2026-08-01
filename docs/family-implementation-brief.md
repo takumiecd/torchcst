@@ -104,6 +104,26 @@ Gram backfit）と付録 G/H（深さの接線版・γ 場）。**式は付録�
   移行は受理 birth 数ではなく root 発行 event 数で決めるため、profit rejection
   があっても位相がずれない。深いネットワークの小核は store 初期化の責務であり、
   recipe は各層が非空であることを呼び出し側の前提として明記する。
+- **Refit は `StructuralQuota` の枠外**。`RuntimeSynapseChild.propose_refits` は
+  refit 規則に固定 budget 1 を渡し、1 イベントにつき最大 1 枚の表しか許さない
+  （`StructuralQuota` に refit 項は追加しない）。根拠: quota は**操作＝原子の売買**
+  の数を制限する logical budget であり、Refit は原子を買わず売らない
+  （`ProfitCourt.price_for` でも `delta_params += 0`）。したがって「何イベント目から
+  何 birth ごとに backfit するか」は quota ではなく方法私有の cadence
+  （`every_births` / `start_after_events`）が持ち、**支払いの是非**は root の値札
+  （`rent=λ`）と profit trial が持つ。この分業を崩すと「backfit の cadence は root
+  所有」の裁定と、logical quota ≠ storage allocation の境界の両方が濁る。
+- **誕生振幅は既存 live の `max|w|` にクランプする**（`TangentBirth`）。解析 solve は
+  接線 Gram が準特異なとき巨大相殺 w を出し、それが FC-1 で観測された「σ/10 の位置
+  摂動で崩壊する狭い谷」の入口になる。ridge 1e-4 は Gram 側の対策、このクランプは
+  出力側の同じ病理に対する二重の歯止め。層が空（live なし）のときはクランプせず、
+  最初の核だけは solve 値をそのまま使う。イベント内 deflation は**クランプ後**の
+  振幅で残差を引くので、連打の帳簿と commit 値は一致する。既知の非対称: 解析値札
+  （`rent=λ` 閾に使う gain）はクランプ**前**の最適 gain なので、クランプが効いた原子
+  では gain を過大評価する。実測受理（profit trial）は commit 値で測るため安全側に
+  倒れるが、RentEconomy 下で λ フィルタだけに頼る構成では効きうる — クランプ後の
+  gain 再評価は、原子別 bandwidth と同じく次の改訂候補。
+
 - 受け入れテストは「runner・結果は cst 側」という責務境界を守り、16k-step の
   学習 runner を torchcst に複製しない。代わりに fc1 スクリプトを直接 import し、
   同じ seed-777 MNIST 12k subset、`H=64`、`K=256`、`σ=0.1` で policy-tree が
