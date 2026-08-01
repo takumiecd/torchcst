@@ -137,18 +137,21 @@ class TangentRefit:
     state: _EvidenceState
     ridge: float = 1.0e-4
     rent: float | None = None
-    every_births: int | str = 1
+    every_births: int | str | None = 1
+    start_after_events: int = 0
     position_iters: int = 0
     trust: float = 0.01
     consume: bool = True
     _last_refit_count: dict[str, int] = field(default_factory=dict, init=False)
+    _event_counts: dict[str, int] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.ridge = require_real(self.ridge, "ridge", nonnegative=True)
         if self.rent is not None:
             self.rent = require_real(self.rent, "rent", nonnegative=True)
-        if self.every_births != "K/10":
+        if self.every_births is not None and self.every_births != "K/10":
             require_int(self.every_births, "every_births", minimum=1)
+        require_int(self.start_after_events, "start_after_events", minimum=0)
         require_int(self.position_iters, "position_iters", minimum=0)
         self.trust = require_real(self.trust, "trust", positive=True)
 
@@ -160,6 +163,8 @@ class TangentRefit:
         self.state.bind(site, instruments)
 
     def _period(self, view: SynapseView) -> int:
+        if self.every_births is None:
+            return 0
         if self.every_births != "K/10":
             return int(self.every_births)
         return max(1, ceil(max(int(view.ids.numel()), 1) / 10))
@@ -173,16 +178,22 @@ class TangentRefit:
     ) -> tuple[SynapseRefit, ...]:
         del registry, rng
         require_int(budget, "budget", minimum=0)
+        event_count = self._event_counts.get(view.site, 0) + 1
+        self._event_counts[view.site] = event_count
+        if event_count <= self.start_after_events:
+            return ()
         if budget == 0:
             return ()
         count = int(view.ids.numel())
         if count == 0:
             return ()
-        last = self._last_refit_count.get(view.site, 0)
-        if count - last < self._period(view):
-            return ()
+        if self.every_births is not None:
+            last = self._last_refit_count.get(view.site, 0)
+            if count - last < self._period(view):
+                return ()
         evidence, port = self.state.read(view)
-        self._last_refit_count[view.site] = count
+        if self.every_births is not None:
+            self._last_refit_count[view.site] = count
         try:
             if evidence.weighted_batches == 0.0:
                 return ()

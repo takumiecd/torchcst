@@ -98,3 +98,9 @@ Gram backfit）と付録 G/H（深さの接線版・γ 場）。**式は付録�
 - `cSFW(polish_iters=...)` の既定は、旧 family 契約ノート起草時の `3` ではなく、
   FC-0/1 完走後に凍結された本 brief の `0` を採用する。縮約 Newton は
   `polish_iters>0` と周期 backfit の位置更新で利用できる部品として残す。
+- 標準 recipe の「grow 序盤 → cVP 運転」は、最初の `growth_events` 回を
+  **純 cSFW-grow**（birth のみ）、次の root event から **毎イベント cVP-only**
+  （位置更新なしの全振幅 Refit）と解釈する。成長中に cVP を同時実行しない。
+  移行は受理 birth 数ではなく root 発行 event 数で決めるため、profit rejection
+  があっても位相がずれない。深いネットワークの小核は store 初期化の責務であり、
+  recipe は各層が非空であることを呼び出し側の前提として明記する。

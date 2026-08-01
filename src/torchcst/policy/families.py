@@ -385,7 +385,7 @@ def cVP(
             state=state,
             ridge=ridge,
             rent=lam,
-            every_births=1,
+            every_births=None,
             position_iters=0,
             consume=True,
         )
@@ -402,6 +402,9 @@ def cSFW(
     *,
     polish_iters: int = 0,
     backfit: int | str | None = "K/10",
+    backfit_start_event: int = 0,
+    backfit_position_iters: int = 1,
+    backfit_consume: bool = False,
     pool_size: int = 4096,
     multistart: int = 4,
     trust: float = 0.01,
@@ -416,7 +419,7 @@ def cSFW(
     backfit cadence; position backfit performs one family-private damped
     Newton iteration while ordinary SGD continues between events.
     """
-    if backfit is not None and backfit != "K/10":
+    if backfit is not None and backfit not in {"K/10", "event"}:
         if isinstance(backfit, bool) or not isinstance(backfit, int):
             raise TypeError("backfit must be a positive int, 'K/10', or None")
         if backfit < 1:
@@ -441,10 +444,11 @@ def cSFW(
             state=state,
             ridge=ridge,
             rent=lam,
-            every_births=backfit,
-            position_iters=1,
+            every_births=None if backfit == "event" else backfit,
+            start_after_events=backfit_start_event,
+            position_iters=backfit_position_iters,
             trust=trust,
-            consume=False,
+            consume=backfit_consume,
         )
 
     return SynapseLifecycle(
