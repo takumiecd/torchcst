@@ -97,6 +97,18 @@ class OptimizerStateFollower:
     def on_death(self, slots: torch.Tensor) -> None:
         self._zero_rows(slots)
 
+    def on_refit(self, slots: torch.Tensor) -> None:
+        """Reset solved scalar amplitudes while preserving coordinate moments."""
+        slots = self._validated_slots(slots)
+        if slots.numel() and bool(((slots < 0) | (slots >= self._capacity)).any()):
+            raise IndexError("optimizer follower slots are outside capacity")
+        for parameter in self._parameters:
+            if parameter.ndim != 1:
+                continue
+            for _, _, value in self._slot_tensors(parameter):
+                if slots.numel():
+                    value.index_fill_(0, slots.to(value.device), 0)
+
     def on_remap(self, old_to_new: torch.Tensor) -> None:
         """Move surviving rows according to an old-slot to new-slot mapping."""
         mapping = self._validated_slots(old_to_new)

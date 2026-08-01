@@ -45,6 +45,7 @@ __all__ = [
     "SynapseDeath",
     "SynapseKick",
     "SynapseMerge",
+    "SynapseRefit",
     "SynapseOp",
     "SynapseStore",
     "SynapseView",
@@ -148,7 +149,31 @@ class SynapseAbsorb:
     delta_w: Tensor
 
 
-SynapseOp = SynapseBirth | SynapseDeath | SynapseMerge | SynapseKick | SynapseAbsorb
+@dataclass(frozen=True)
+class SynapseRefit:
+    """Replace the parameters of existing atoms by logical entity ID.
+
+    ``w`` is mandatory. ``s`` and ``t`` are optional whole-table columns: a
+    missing column preserves every corresponding coordinate.  The op carries
+    values only, so prepare, audit, and replay can inspect the complete
+    mutation before commit.
+    """
+
+    site: str
+    ids: Tensor
+    w: Tensor
+    s: Tensor | None = None
+    t: Tensor | None = None
+
+
+SynapseOp = (
+    SynapseBirth
+    | SynapseDeath
+    | SynapseMerge
+    | SynapseKick
+    | SynapseAbsorb
+    | SynapseRefit
+)
 
 
 @dataclass(frozen=True)
@@ -157,6 +182,16 @@ class _AbsorbBatch:
 
     receiver_slots: Tensor
     delta_w: Tensor
+
+
+@dataclass(frozen=True)
+class _RefitBatch:
+    """Refit table frozen into physical slots during prepare."""
+
+    slots: Tensor
+    w: Tensor
+    s: Tensor | None
+    t: Tensor | None
 
 
 @dataclass(frozen=True)
@@ -169,6 +204,7 @@ class _SynapseBatch:
     lineage: Tensor
     slot_plan: SlotPlan
     absorbs: _AbsorbBatch
+    refits: _RefitBatch
 
 
 class SynapseStore(nn.Module):
@@ -328,10 +364,12 @@ class SynapseStore(nn.Module):
         if not ops:
             return self._empty_ticket()
 
-        births, merges, absorbs, slot_ops = self._normalize_ops(ops)
+        births, merges, absorbs, refits, slot_ops = self._normalize_ops(ops)
         if merges:
             births.append(self._materialize_merges(merges, births))
-        batch = self._freeze_batch(births, self._slots.prepare(slot_ops), absorbs)
+        batch = self._freeze_batch(
+            births, self._slots.prepare(slot_ops), absorbs, refits
+        )
         return Ticket(self, self._version, batch)
 
     def _normalize_ops(
@@ -340,6 +378,7 @@ class SynapseStore(nn.Module):
         list[SynapseBirth],
         list[SynapseMerge],
         _AbsorbBatch,
+        _RefitBatch,
         list[SlotBirth | SlotDeath],
     ]:
         """Validate public operations and derive their slot-level plan.
@@ -359,11 +398,23 @@ class SynapseStore(nn.Module):
         dead_ids: set[int] = set()
         absorb_receiver_slots: list[Tensor] = []
         absorb_delta_w: list[Tensor] = []
+        refit_slots: list[Tensor] = []
+        refit_w: list[Tensor] = []
+        refit_s: list[Tensor | None] = []
+        refit_t: list[Tensor | None] = []
+        refit_ids: set[int] = set()
         for op in ops:
             if isinstance(op, SynapseKick):
                 raise NotImplementedError("SynapseKick is not implemented")
             if not isinstance(
-                op, (SynapseBirth, SynapseDeath, SynapseMerge, SynapseAbsorb)
+                op,
+                (
+                    SynapseBirth,
+                    SynapseDeath,
+                    SynapseMerge,
+                    SynapseAbsorb,
+                    SynapseRefit,
+                ),
             ):
                 raise TypeError(f"unsupported synapse op type {type(op)!r}")
             if op.site != self.site:
@@ -392,6 +443,17 @@ class SynapseStore(nn.Module):
                 absorb_receiver_slots.append(receiver_slots)
                 absorb_delta_w.append(delta_w)
                 continue
+            if isinstance(op, SynapseRefit):
+                ids, slots, weight, source, target = self._validate_refit(op)
+                duplicate = refit_ids.intersection(ids.tolist())
+                if duplicate:
+                    raise ValueError("SynapseRefit IDs must not repeat in one ticket")
+                refit_ids.update(ids.tolist())
+                refit_slots.append(slots)
+                refit_w.append(weight)
+                refit_s.append(source)
+                refit_t.append(target)
+                continue
             self._validate_birth(op)
             births.append(op)
             slot_ops.append(SlotBirth(op.w.shape[0]))
@@ -399,7 +461,14 @@ class SynapseStore(nn.Module):
             receiver_slots=cat_or_empty(absorb_receiver_slots),
             delta_w=cat_or_empty(absorb_delta_w, like=self.w),
         )
-        return births, merges, absorbs, slot_ops
+        overlap = dead_ids.intersection(refit_ids)
+        if overlap:
+            raise ValueError(
+                f"SynapseRefit cannot target atoms dying in the same ticket: "
+                f"{sorted(overlap)}"
+            )
+        refits = self._freeze_refits(refit_slots, refit_w, refit_s, refit_t)
+        return births, merges, absorbs, refits, slot_ops
 
     def _validate_birth(self, op: SynapseBirth) -> None:
         if not all(
@@ -489,6 +558,83 @@ class SynapseStore(nn.Module):
         delta_w = op.delta_w.detach().to(self.w).clone()
         return receiver_slots, delta_w
 
+    def _validate_refit(
+        self, op: SynapseRefit
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor | None, Tensor | None]:
+        if not isinstance(op.ids, Tensor) or not isinstance(op.w, Tensor):
+            raise TypeError("SynapseRefit ids and w must be Tensors")
+        ids = self._validate_ids(op.ids, "SynapseRefit.ids")
+        if ids.numel() == 0:
+            raise ValueError("SynapseRefit must contain at least one atom")
+        if ids.unique().numel() != ids.numel():
+            raise ValueError("SynapseRefit ids must not contain duplicates")
+        if op.w.ndim != 1 or op.w.numel() != ids.numel():
+            raise ValueError("SynapseRefit w must be rank 1 and align with ids")
+        if not (op.w.is_floating_point() or op.w.is_complex()):
+            raise TypeError("SynapseRefit w must have a floating or complex dtype")
+
+        source = self._validate_refit_coordinates(
+            op.s, ids.numel(), self.d_in, "s", self.spec.domain_in
+        )
+        target = self._validate_refit_coordinates(
+            op.t, ids.numel(), self.d_out, "t", self.spec.domain_out
+        )
+        slots = self._slots.slots_of(ids)
+        return (
+            ids,
+            slots,
+            op.w.detach().to(self.w).clone(),
+            None if source is None else source.detach().to(self.s).clone(),
+            None if target is None else target.detach().to(self.t).clone(),
+        )
+
+    @staticmethod
+    def _validate_refit_coordinates(
+        value: Tensor | None,
+        count: int,
+        width: int,
+        name: str,
+        domain: Any,
+    ) -> Tensor | None:
+        if value is None:
+            return None
+        if not isinstance(value, Tensor):
+            raise TypeError(f"SynapseRefit {name} must be a Tensor or None")
+        if value.ndim != 2 or value.shape != (count, width):
+            raise ValueError(
+                f"SynapseRefit {name} must have shape [{count}, {width}]"
+            )
+        domain.validate_birth(value)
+        return value
+
+    def _freeze_refits(
+        self,
+        slot_columns: list[Tensor],
+        weight_columns: list[Tensor],
+        source_columns: list[Tensor | None],
+        target_columns: list[Tensor | None],
+    ) -> _RefitBatch:
+        if not slot_columns:
+            return self._empty_refit_batch()
+        have_source = [value is not None for value in source_columns]
+        have_target = [value is not None for value in target_columns]
+        if len(set(have_source)) > 1 or len(set(have_target)) > 1:
+            raise ValueError(
+                "all SynapseRefit ops in one ticket must use the same optional columns"
+            )
+        source = None
+        target = None
+        if all(have_source):
+            source = torch.cat([value for value in source_columns if value is not None])
+        if all(have_target):
+            target = torch.cat([value for value in target_columns if value is not None])
+        return _RefitBatch(
+            slots=cat_or_empty(slot_columns),
+            w=torch.cat(weight_columns).detach().to(self.w).clone(),
+            s=None if source is None else source.detach().to(self.s).clone(),
+            t=None if target is None else target.detach().to(self.t).clone(),
+        )
+
     def _validate_ids(self, ids: Tensor, name: str = "SynapseDeath.ids") -> Tensor:
         return as_id_vector(ids, name)
 
@@ -547,11 +693,15 @@ class SynapseStore(nn.Module):
         return torch.arange(start, start + count, dtype=torch.int64)
 
     def _freeze_batch(
-        self, births: list[SynapseBirth], slot_plan: SlotPlan, absorbs: _AbsorbBatch
+        self,
+        births: list[SynapseBirth],
+        slot_plan: SlotPlan,
+        absorbs: _AbsorbBatch,
+        refits: _RefitBatch,
     ) -> _SynapseBatch:
         """Detach proposal tensors so later caller mutation cannot alter a ticket."""
         if not births:
-            return self._empty_batch(slot_plan, absorbs)
+            return self._empty_batch(slot_plan, absorbs, refits)
         return _SynapseBatch(
             s=torch.cat([op.s for op in births]).detach().to(self.s).clone(),
             t=torch.cat([op.t for op in births]).detach().to(self.t).clone(),
@@ -564,9 +714,12 @@ class SynapseStore(nn.Module):
             ),
             slot_plan=slot_plan,
             absorbs=absorbs,
+            refits=refits,
         )
 
-    def _empty_batch(self, slot_plan: SlotPlan, absorbs: _AbsorbBatch) -> _SynapseBatch:
+    def _empty_batch(
+        self, slot_plan: SlotPlan, absorbs: _AbsorbBatch, refits: _RefitBatch
+    ) -> _SynapseBatch:
         return _SynapseBatch(
             s=self.s.new_zeros((0, self.d_in)),
             t=self.t.new_zeros((0, self.d_out)),
@@ -574,16 +727,29 @@ class SynapseStore(nn.Module):
             lineage=torch.zeros(0, dtype=torch.int64),
             slot_plan=slot_plan,
             absorbs=absorbs,
+            refits=refits,
         )
 
     def _empty_ticket(self) -> Ticket:
-        batch = self._empty_batch(self._slots.prepare(()), self._empty_absorb_batch())
+        batch = self._empty_batch(
+            self._slots.prepare(()),
+            self._empty_absorb_batch(),
+            self._empty_refit_batch(),
+        )
         return Ticket(self, self._version, batch, empty=True)
 
     def _empty_absorb_batch(self) -> _AbsorbBatch:
         return _AbsorbBatch(
             receiver_slots=torch.zeros(0, dtype=torch.int64),
             delta_w=self.w.detach().new_zeros((0,)),
+        )
+
+    def _empty_refit_batch(self) -> _RefitBatch:
+        return _RefitBatch(
+            slots=torch.zeros(0, dtype=torch.int64),
+            w=self.w.detach().new_zeros((0,)),
+            s=None,
+            t=None,
         )
 
     # ---- commit: write ---------------------------------------------------
@@ -601,6 +767,8 @@ class SynapseStore(nn.Module):
 
         committed = self._slots.commit(ticket.batch.slot_plan)
         self._write(ticket.batch, committed)
+        if ticket.batch.refits.slots.numel():
+            self._hub.notify_refit(ticket.batch.refits.slots)
         if committed.dead_slots.numel():
             self._hub.notify_death(committed.dead_slots)
         if committed.born_slots.numel():
@@ -630,6 +798,17 @@ class SynapseStore(nn.Module):
         dead = change.dead_slots.to(device=self.w.device)
         born = change.born_slots.to(device=self.w.device)
         with torch.no_grad():
+            if batch.refits.slots.numel():
+                refit_slots = batch.refits.slots.to(device=self.w.device)
+                self.w.index_copy_(0, refit_slots, batch.refits.w)
+                if batch.refits.s is not None:
+                    self.s.index_copy_(0, refit_slots, batch.refits.s)
+                if batch.refits.t is not None:
+                    self.t.index_copy_(0, refit_slots, batch.refits.t)
+                if batch.refits.s is not None or batch.refits.t is not None:
+                    self.mass_scale.index_fill_(
+                        0, refit_slots.to(self.mass_scale.device), 1.0
+                    )
             if batch.absorbs.receiver_slots.numel():
                 # Applied before the dead-row zeroing below so a row that is
                 # both an earlier absorb's receiver *and* a later absorb's

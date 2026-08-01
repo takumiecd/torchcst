@@ -29,6 +29,7 @@ from .synapse import (
     SynapseDeath,
     SynapseKick,
     SynapseMerge,
+    SynapseRefit,
     SynapseStore,
     SynapseView,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "SynapseDeath",
     "SynapseKick",
     "SynapseMerge",
+    "SynapseRefit",
     "SynapseStore",
     "SynapseView",
     "Ticket",

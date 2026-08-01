@@ -324,6 +324,8 @@ class Follower(Protocol):
 
     def on_death(self, slots: Tensor) -> None: ...
 
+    def on_refit(self, slots: Tensor) -> None: ...
+
     def on_remap(self, old_to_new: Tensor) -> None: ...
 
 
@@ -360,6 +362,13 @@ class FollowerHub:
         """Clear the death slots of every follower."""
         for follower in self._followers:
             follower.on_death(slots)
+
+    def notify_refit(self, slots: Tensor) -> None:
+        """Notify followers that existing rows received solved amplitudes."""
+        for follower in self._followers:
+            callback = getattr(follower, "on_refit", None)
+            if callback is not None:
+                callback(slots)
 
     def notify_remap(self, old_to_new: Tensor) -> None:
         """Broadcast an old-to-new slot mapping to every follower.
@@ -424,6 +433,10 @@ class _Int64Column:
     def on_death(self, slots: Tensor) -> None:
         """Reset dead slots to the vacant fill value."""
         self.values[slots] = self._fill
+
+    def on_refit(self, slots: Tensor) -> None:
+        """A parameter refit does not change structural follower columns."""
+        del slots
 
     def on_remap(self, old_to_new: Tensor) -> None:
         """Carry surviving slots' values to their mapped destinations."""

@@ -87,3 +87,11 @@ Gram backfit）と付録 G/H（深さの接線版・γ 場）。**式は付録�
 - 各段階を独立の commit にし、設計判断は commit メッセージに記録。
   仕様の曖昧さに当たったら**勝手に契約を変えず**、この brief か
   fast-construction-family.md への追記として判断を残すこと。
+
+## 6. 実装判断の追記（2026-08-01）
+
+- `Refit` の表は、現行 `SynapseStore` が原子ごとに所有する `w` と任意の
+  `s` / `t` を更新対象とする。現行 representation の σ は原子行ではなく
+  compute 側 kernel が所有する共有 parameter であり、storage op から更新すると
+  一直線依存と「唯一の storage 変更」に反する。このため原子別 `σ'` 列は、原子別
+  bandwidth を representation/storage 契約として別途導入するまで実装しない。
