@@ -22,6 +22,11 @@ from .continuous_candidate import (
 )
 from .gradfield import CandidateField, GradFieldEMA
 from .scored import ContinuousGradientRequest, ContinuousGradientScores
+from .tangent import (
+    TangentSnapshot,
+    TangentStatistics,
+    TangentStatisticsRequest,
+)
 
 __all__ = [
     "CandidateField",
@@ -42,6 +47,9 @@ __all__ = [
     "KernelPortRequest",
     "Measurement",
     "RefinementSchedule",
+    "TangentSnapshot",
+    "TangentStatistics",
+    "TangentStatisticsRequest",
     "WeightedMeasurement",
     "checked_measurement",
     "weighted_sum",
