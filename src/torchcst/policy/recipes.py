@@ -180,6 +180,8 @@ def FastConstruction(
         distributor=EvenBudgetDistributor(),
         profit=ProfitCourt(min_profit=min_profit, cost_rate=price),
     )
+
+
 def LC_response(
     *,
     event_interval: int = 200,

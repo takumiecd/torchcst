@@ -55,7 +55,8 @@ def _gram_rhs(
     source: Tensor,
     target: Tensor,
     evidence: TangentSnapshot,
-) -> tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Return ``(gram, rhs, k_in, k_out)`` for the given atom coordinates."""
     k_in, k_out = _columns(port, source, target)
     covariance = evidence.covariance.to(k_in)
     cross = evidence.cross.to(device=k_out.device, dtype=k_out.dtype)
@@ -81,7 +82,7 @@ def _candidate_profiles(
     source: Tensor,
     target: Tensor,
     evidence: TangentSnapshot,
-) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Return paired-candidate ``(g, a)`` without materializing a pool Gram.
 
     Candidate search only needs the diagonal profile of each paired
@@ -241,11 +242,11 @@ class TangentRefit:
                     evidence,
                     port,
                     k_in,
-                k_out,
-                delta,
-                view.domain_in,
-                view.domain_out,
-            )
+                    k_out,
+                    delta,
+                    view.domain_in,
+                    view.domain_out,
+                )
             return (
                 SynapseRefit(
                     view.site,
