@@ -33,10 +33,14 @@ class _ContinuousCSTMap(nn.Module):
         kernel_out: ContinuousKernel | None = None,
         *,
         track_mass: bool = True,
+        gate_input: bool = True,
+        gate_output: bool = True,
     ) -> None:
         super().__init__()
         if not isinstance(track_mass, bool):
             raise TypeError("track_mass must be a bool")
+        if not isinstance(gate_input, bool) or not isinstance(gate_output, bool):
+            raise TypeError("gate_input and gate_output must be bools")
         if not isinstance(in_neurons, NeuronStore) or not isinstance(
             out_neurons, NeuronStore
         ):
@@ -76,6 +80,18 @@ class _ContinuousCSTMap(nn.Module):
         # _refresh_mass_scale's per-call bookkeeping (including the
         # host-syncing checks in SynapseStore.set_mass_scale).
         self._track_mass = track_mass
+        # A neuron's gate belongs to the neuron, and must be applied exactly
+        # once. This map applies its endpoints' gates itself only for backward
+        # compatibility with callers that wire raw CSTLinears together; in that
+        # topology a shared hidden store is gated twice (once as layer 1's
+        # output, once as layer 2's input), so the neuron enters the composed
+        # function as ``gamma^2`` and a dormant ``gamma=0`` has identically zero
+        # first derivative -- it can never be woken. :class:`CSTBlock` is the
+        # supported composition: pass ``gate_input=False, gate_output=False``
+        # and let the block apply the producing store's gate once, after the
+        # activation, keeping the composition linear in gamma.
+        self._gate_input = gate_input
+        self._gate_output = gate_output
         self._cached_version = -1
         self._cached_view: SynapseView | None = None
         self._cached_slots = torch.zeros(0, dtype=torch.int64)
@@ -134,6 +150,25 @@ class _ContinuousCSTMap(nn.Module):
             self.synapses.w.index_select(0, slots),
         )
 
+    def _gated_x(self, x: Tensor) -> Tensor:
+        """Apply the incoming gate, unless the producer already applied it."""
+        if not self._gate_input:
+            return x
+        return x * self.in_neurons.gate_vector().to(
+            device=x.device, dtype=x.dtype
+        )
+
+    def _gated_g(self, g_flat: Tensor) -> Tensor:
+        """Route a captured output gradient back through the outgoing gate.
+
+        Captured ``g_out`` is the gradient of the tensor this module actually
+        returned.  When ``gate_output=False`` that tensor is already pre-gate,
+        so applying the gate again here would double-count it.
+        """
+        if not self._gate_output:
+            return g_flat
+        return g_flat * self.out_neurons.gate_vector().to(g_flat)
+
     def set_backward_context(self, context: BackwardContext | None) -> None:
         if context is not None and not isinstance(context, BackwardContext):
             raise TypeError("context must be a BackwardContext or None")
@@ -180,6 +215,9 @@ class _ContinuousCSTMap(nn.Module):
         if unchanged:
             return
         in_gate = self.in_neurons.gate_vector().detach().to(k_in)
+        # Mass keeps both boundary gates even when this map does not apply the
+        # outgoing one: mass measures an atom's effective magnitude in the
+        # composed network, and the consumer applies that gate on our behalf.
         out_gate = self.out_neurons.gate_vector().detach().to(k_out)
         scale = torch.linalg.vector_norm(
             in_gate[:, None] * k_in.detach(), dim=0
@@ -202,13 +240,13 @@ class _ContinuousCSTMap(nn.Module):
         k_in, k_out = self._kernel_matrices(source, target)
         self._refresh_mass_scale(k_in, k_out)
 
-        in_gate = self.in_neurons.gate_vector().to(device=x.device, dtype=x.dtype)
-        gated_x = x * in_gate
+        gated_x = self._gated_x(x)
         output = ((gated_x @ k_in) * weights) @ k_out.transpose(0, 1)
-        out_gate = self.out_neurons.gate_vector().to(
-            device=output.device, dtype=output.dtype
-        )
-        output = output * out_gate
+        if self._gate_output:
+            out_gate = self.out_neurons.gate_vector().to(
+                device=output.device, dtype=output.dtype
+            )
+            output = output * out_gate
 
         if self._backward_context is not None:
             register_capture_hook(
@@ -233,11 +271,9 @@ class _ContinuousCSTMap(nn.Module):
         target = target.detach().to(device=g_flat.device, dtype=g_flat.dtype)
         with torch.no_grad():
             k_in, k_out = self._kernel_matrices(source, target)
-            in_gate = self.in_neurons.gate_vector().to(x_flat)
-            out_gate = self.out_neurons.gate_vector().to(g_flat)
-            return (((x_flat * in_gate) @ k_in) * ((g_flat * out_gate) @ k_out)).sum(
-                dim=0
-            )
+            gated_x = self._gated_x(x_flat)
+            gated_g = self._gated_g(g_flat)
+            return ((gated_x @ k_in) * (gated_g @ k_out)).sum(dim=0)
 
     def candidate_weight_grads(
         self,
@@ -270,8 +306,8 @@ class _ContinuousCSTMap(nn.Module):
             return self.synapses.w.detach().new_zeros(0).to(x_flat)
         source = source.detach().to(device=x_flat.device, dtype=x_flat.dtype)
         target = target.detach().to(device=g_flat.device, dtype=g_flat.dtype)
-        in_gate = self.in_neurons.gate_vector().to(x_flat)
-        out_gate = self.out_neurons.gate_vector().to(g_flat)
+        gated_x = self._gated_x(x_flat)
+        gated_g = self._gated_g(g_flat)
         values: list[Tensor] = []
         with torch.no_grad():
             for start in range(0, count, chunk_size):
@@ -280,9 +316,7 @@ class _ContinuousCSTMap(nn.Module):
                     source[start:stop], target[start:stop]
                 )
                 values.append(
-                    (((x_flat * in_gate) @ k_in) * ((g_flat * out_gate) @ k_out)).sum(
-                        dim=0
-                    )
+                    ((gated_x @ k_in) * (gated_g @ k_out)).sum(dim=0)
                 )
         return torch.cat(values)
 
@@ -296,7 +330,17 @@ class _ContinuousCSTMap(nn.Module):
         ``sum(g_out * pre_gate)`` remains exact for dormant rows whose gate is
         zero.  The second value is the diagonal curvature proxy used by the
         FC-2 scalar gate solve.
+
+        Only a map that actually applies the outgoing gate can measure this
+        field: with ``gate_output=False`` the captured gradient belongs to the
+        pre-gate tensor and the gate lives past an intervening nonlinearity,
+        so the consumer's :meth:`input_gate_tangent` is the correct probe.
         """
+        if not self._gate_output:
+            raise RuntimeError(
+                "output_gate_tangent requires gate_output=True; measure this "
+                "boundary with the consumer's input_gate_tangent instead"
+            )
         x_flat, g_flat = flatten_capture_pair(
             x, g_out, self.in_features, self.out_features
         )
@@ -307,14 +351,31 @@ class _ContinuousCSTMap(nn.Module):
         weights = weights.detach().to(x_flat)
         with torch.no_grad():
             k_in, k_out = self._kernel_matrices(source, target)
-            in_gate = self.in_neurons.gate_vector().to(x_flat)
-            pre_gate = (((x_flat * in_gate) @ k_in) * weights) @ k_out.transpose(
-                0, 1
-            )
+            gated_x = self._gated_x(x_flat)
+            pre_gate = ((gated_x @ k_in) * weights) @ k_out.transpose(0, 1)
             return (
                 (g_flat * pre_gate).sum(dim=0),
                 pre_gate.square().sum(dim=0),
             )
+
+    def pre_gate_rows(self, x: Tensor) -> Tensor:
+        """Return the ungated map applied to rows, with no capture.
+
+        The gate-free value a neuron gate multiplies.  :class:`CSTBlock` uses
+        it to reconstruct its activation from a captured input, which is what
+        keeps the dormant gate field exact.
+        """
+        x_flat = x if x.ndim == 2 else x.reshape(-1, x.shape[-1])
+        if x_flat.shape[-1] != self.in_features:
+            raise ValueError("x's final dimension must equal the input neuron width")
+        self._view()
+        source, target, weights = self._live_factors()
+        source = source.detach().to(x_flat)
+        target = target.detach().to(x_flat)
+        weights = weights.detach().to(x_flat)
+        with torch.no_grad():
+            k_in, k_out = self._kernel_matrices(source, target)
+            return ((self._gated_x(x_flat) @ k_in) * weights) @ k_out.transpose(0, 1)
 
     def kernel_columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
         """Evaluate read-only kernel columns for arbitrary source/target rows.

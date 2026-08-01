@@ -13,6 +13,7 @@ from torchcst.compute import (
     CaptureBatch,
     CaptureMode,
     ComputeLinear,
+    CSTBlock,
     CSTConv2d,
     CSTLinear,
     EntryLinear,
@@ -266,7 +267,14 @@ class StructuralEngine:
                 raise ValueError(f"module targets unknown site {site!r}")
             if not isinstance(
                 module,
-                (EntryLinear, RankOneLinear, NeuronGatedLinear, CSTLinear, CSTConv2d),
+                (
+                    EntryLinear,
+                    RankOneLinear,
+                    NeuronGatedLinear,
+                    CSTLinear,
+                    CSTConv2d,
+                    CSTBlock,
+                ),
             ):
                 raise TypeError("modules values must be supported compute modules")
             if (
