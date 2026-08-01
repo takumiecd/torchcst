@@ -31,7 +31,7 @@ from torchcst.storage import (
 )
 
 from .bundle import ProposalBundle, bundle_birth_count
-from .contract import Phase, StructuralQuota
+from .contract import BudgetRequest, Phase, StructuralQuota
 from .runtime import PlanRegistryView, view_after
 
 
@@ -133,6 +133,7 @@ class EventDraft:
         self.retires: dict[str, list[Any]] = {}
         self.ungates: dict[str, list[Any]] = {}
         self.replacement: dict[str, int] = {}
+        self.neuron_birth_spent = 0
         self.post_absorb: dict[Any, Any] = {}
         self.pre_birth: dict[Any, Any] = {}
 
@@ -229,17 +230,45 @@ class EventDraft:
             decided = list(decide(endpoint.view(), self.clock))
             if decided:
                 decisions[endpoint.site] = decided
-        if not decisions:
-            return
-        capped, _ = self.tree._cap_prune(
-            decisions, quota.neuron_prune, kind="neuron_prune"
+        if decisions:
+            capped, _ = self.tree._cap_prune(
+                decisions, quota.neuron_prune, kind="neuron_prune"
+            )
+            for site, retires in capped.items():
+                if retires:
+                    self.retires[site] = list(retires)
+            for endpoint in self.tree.endpoints:
+                for retire in self.retires.get(endpoint.site, ()):
+                    self._cascade_retire(endpoint, retire)
+        self._independent_ungate(quota.neuron_birth)
+
+    def _independent_ungate(self, budget: int) -> None:
+        responders = tuple(
+            endpoint
+            for endpoint in self.tree.endpoints
+            if getattr(endpoint, "can_ungate", False)
         )
-        for site, retires in capped.items():
-            if retires:
-                self.retires[site] = list(retires)
-        for endpoint in self.tree.endpoints:
-            for retire in self.retires.get(endpoint.site, ()):
-                self._cascade_retire(endpoint, retire)
+        if not responders or budget == 0:
+            return
+        requests = tuple(
+            BudgetRequest(
+                endpoint.site,
+                0,
+                int(endpoint.dormant_ids().numel()),
+                "neuron_birth",
+            )
+            for endpoint in responders
+        )
+        grants = self.tree._validated_grants(
+            budget, requests, "neuron_birth", cap_by_request=True
+        )
+        for endpoint, grant in zip(responders, grants):
+            proposed = endpoint.propose_ungates(grant, self.rng)
+            if proposed:
+                self.ungates.setdefault(endpoint.site, []).extend(proposed)
+                self.neuron_birth_spent += sum(
+                    int(op.ids.numel()) for op in proposed
+                )
 
     def _cascade_retire(self, endpoint: Any, retire: Any) -> None:
         """Plan the incident-synapse deaths one neuron retire implies."""
@@ -285,7 +314,10 @@ class EventDraft:
         Walks each responding endpoint's dormant list; between bundles the
         partner's simulated view grows by the births already planned, so
         each composition sees its predecessors' atoms."""
-        budget = _ResponseBudget(quota.neuron_birth, quota.synapse_birth)
+        budget = _ResponseBudget(
+            max(0, quota.neuron_birth - self.neuron_birth_spent),
+            quota.synapse_birth,
+        )
         if budget.exhausted:
             return
         for endpoint in self.tree.endpoints:

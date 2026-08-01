@@ -38,6 +38,7 @@ from .families import (
     cSET,
     cSFW,
     cVP,
+    gamma_ungate,
     thinned,
 )
 from .profit import ProfitCourt, TrialSession, TrialTransaction
@@ -118,6 +119,7 @@ __all__ = [
     "cSET",
     "cSFW",
     "cVP",
+    "gamma_ungate",
     "recipes",
     "thinned",
 ]

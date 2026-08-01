@@ -41,6 +41,7 @@ import torch
 from torchcst.storage import (
     NeuronRetire,
     NeuronStore,
+    NeuronUngate,
     SynapseAbsorb,
     SynapseBirth,
     SynapseDeath,
@@ -587,10 +588,11 @@ class InterfaceChild(EndpointChild):
         self._court = built.retention
         self._composer = built.composer
         self._incident = built.incident
+        self._ungate = built.ungate
 
     @property
     def requires(self) -> tuple[Any, ...]:
-        return dedup_requires((self._court, self._incident))
+        return dedup_requires((self._court, self._incident, self._ungate))
 
     @property
     def immunity_events(self) -> int:
@@ -600,8 +602,16 @@ class InterfaceChild(EndpointChild):
     def can_respond(self) -> bool:
         return self._composer is not None
 
+    @property
+    def can_ungate(self) -> bool:
+        return self._ungate is not None
+
     def bind_instruments(self, instruments: dict[str, Any]) -> None:
-        _bind_rule_instruments((self._court, self._incident), self.store.site, instruments)
+        _bind_rule_instruments(
+            (self._court, self._incident, self._ungate),
+            self.store.site,
+            instruments,
+        )
 
     def audit_threshold(self, view: Any) -> float | None:
         return _rent_threshold(self._court, view)
@@ -620,6 +630,18 @@ class InterfaceChild(EndpointChild):
 
     def dormant_ids(self) -> torch.Tensor:
         return self.store.dormant_ids()
+
+    def propose_ungates(
+        self, budget: int, rng: torch.Generator
+    ) -> tuple[Any, ...]:
+        if self._ungate is None or budget == 0:
+            return ()
+        proposed = tuple(self._ungate.propose(self.store, budget, rng))
+        if not all(isinstance(op, NeuronUngate) for op in proposed):
+            raise TypeError("independent ungate rule may return only NeuronUngate")
+        if sum(int(op.ids.numel()) for op in proposed) > budget:
+            raise RuntimeError("ungate rule exceeded its allocated neuron quota")
+        return proposed
 
     def compose_response(
         self,

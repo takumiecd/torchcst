@@ -30,10 +30,12 @@ from typing import Any
 # Submodule import; see policy/absorb.py's note on the instruments cycle.
 from torchcst.instruments.continuous_candidate import ContinuousCandidateRequest
 from torchcst.instruments.tangent import TangentStatisticsRequest
+from torchcst.instruments.gate import GateTangentRequest
 
 from .absorb import AbsorbCourt
 from .courts import MagnitudeCourt
 from .fast_construction import TangentBirth, TangentRefit, _EvidenceState
+from .neuron_growth import GammaUngate
 from .proposers import Bounds, GradFieldTopKBirth, UniformEntryBirth
 from .scored import ScoredBirth
 
@@ -460,6 +462,7 @@ class _BuiltInterface:
     retention: Any | None
     composer: Any | None
     incident: Any | None
+    ungate: Any | None
 
 
 @dataclass(frozen=True)
@@ -480,10 +483,16 @@ class NeuronLifecycle:
     retention_factory: Callable[[], Any | None] = _no_rule
     composer_factory: Callable[[], Any | None] = _no_rule
     incident_factory: Callable[[], Any | None] = _no_rule
+    ungate_factory: Callable[[], Any | None] = _no_rule
     label: str = "interface"
 
     def __post_init__(self) -> None:
-        for name in ("retention_factory", "composer_factory", "incident_factory"):
+        for name in (
+            "retention_factory",
+            "composer_factory",
+            "incident_factory",
+            "ungate_factory",
+        ):
             if not callable(getattr(self, name)):
                 raise TypeError(f"{name} must be callable")
         if not isinstance(self.label, str) or not self.label:
@@ -493,15 +502,39 @@ class NeuronLifecycle:
         retention = self.retention_factory()
         composer = self.composer_factory()
         incident = self.incident_factory()
+        ungate = self.ungate_factory()
         if (composer is None) != (incident is None):
             raise ValueError(
                 f"{self.label}: a response capability needs both a composer "
                 "and an incident proposer"
             )
-        if retention is None and composer is None:
+        if composer is not None and ungate is not None:
+            raise ValueError(
+                f"{self.label}: independent ungate and bundled response are exclusive"
+            )
+        if retention is None and composer is None and ungate is None:
             raise ValueError(
                 f"{self.label} must provide a retention court or a response"
             )
         return _BuiltInterface(
-            retention=retention, composer=composer, incident=incident
+            retention=retention,
+            composer=composer,
+            incident=incident,
+            ungate=ungate,
         )
+
+
+def gamma_ungate(
+    *,
+    curvature_floor: float = 1.0e-12,
+    timing: Any = "after_backward",
+) -> NeuronLifecycle:
+    """Independent dormant-neuron birth using a solved output gate gamma."""
+    name = f"gate_tangent#{next(_request_counter)}"
+    request = GateTangentRequest(name=name, timing=timing)
+    return NeuronLifecycle(
+        ungate_factory=lambda: GammaUngate(
+            request=request, curvature_floor=curvature_floor
+        ),
+        label="gamma_ungate",
+    )

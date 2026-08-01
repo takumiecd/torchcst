@@ -10,7 +10,13 @@ from typing import Any
 
 import torch
 
-from torchcst.storage import SynapseBirth, SynapseDeath, SynapseMerge, SynapseRefit
+from torchcst.storage import (
+    NeuronUngate,
+    SynapseBirth,
+    SynapseDeath,
+    SynapseMerge,
+    SynapseRefit,
+)
 
 from .contract import InstrumentSpec
 
@@ -217,6 +223,9 @@ class ProfitCourt:
     ) -> float:
         delta_params = 0
         for op in tuple(trial_ops):
+            if isinstance(op, NeuronUngate):
+                delta_params += int(op.ids.numel())
+                continue
             try:
                 store = stores[op.site]  # type: ignore[attr-defined]
                 atom_cost = int(store.spec.atom_cost)  # type: ignore[attr-defined]

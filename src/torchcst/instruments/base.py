@@ -157,6 +157,10 @@ class KernelPortInstrument:
         del module
         return {"kernel_port_probe": x.new_zeros(())}
 
+    def reduce_backward(self, module: Any, x: Tensor, g_out: Tensor) -> Measurement:
+        """Return the same placeholder when a global inline override is used."""
+        return self.measure_after_backward(module, x, g_out)
+
     def finalize_update(
         self, measurements: tuple[WeightedMeasurement, ...], view: SynapseView
     ) -> None:

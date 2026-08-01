@@ -286,6 +286,36 @@ class _ContinuousCSTMap(nn.Module):
                 )
         return torch.cat(values)
 
+    def output_gate_tangent(
+        self, x: Tensor, g_out: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        """Return exact output-gate gradient and squared feature norm.
+
+        The pre-gate output is reconstructed from the captured input and the
+        current synapse measure.  It is independent of the output gate, so
+        ``sum(g_out * pre_gate)`` remains exact for dormant rows whose gate is
+        zero.  The second value is the diagonal curvature proxy used by the
+        FC-2 scalar gate solve.
+        """
+        x_flat, g_flat = flatten_capture_pair(
+            x, g_out, self.in_features, self.out_features
+        )
+        self._view()
+        source, target, weights = self._live_factors()
+        source = source.detach().to(x_flat)
+        target = target.detach().to(g_flat)
+        weights = weights.detach().to(x_flat)
+        with torch.no_grad():
+            k_in, k_out = self._kernel_matrices(source, target)
+            in_gate = self.in_neurons.gate_vector().to(x_flat)
+            pre_gate = (((x_flat * in_gate) @ k_in) * weights) @ k_out.transpose(
+                0, 1
+            )
+            return (
+                (g_flat * pre_gate).sum(dim=0),
+                pre_gate.square().sum(dim=0),
+            )
+
     def kernel_columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
         """Evaluate read-only kernel columns for arbitrary source/target rows.
 

@@ -29,6 +29,9 @@ from .instruments import (
     ContinuousGradientScores,
     DeferredCaptureInstrument,
     GradFieldEMA,
+    GateTangent,
+    GateTangentRequest,
+    GateTangentSnapshot,
     InlineCaptureInstrument,
     InstrumentBuildContext,
     TangentSnapshot,
@@ -53,6 +56,7 @@ from .policy import (
     TrialTransaction,
     cSFW,
     cVP,
+    gamma_ungate,
 )
 
 # engine: hooks, clocks, orchestration, atomic apply.
@@ -148,6 +152,9 @@ __all__ = [
     "FollowerHub",
     "GaussianKernel",
     "GradFieldEMA",
+    "GateTangent",
+    "GateTangentRequest",
+    "GateTangentSnapshot",
     "IdAllocator",
     "InlineCaptureInstrument",
     "InstrumentBuildContext",
@@ -195,6 +202,7 @@ __all__ = [
     "commit_all",
     "cSFW",
     "cVP",
+    "gamma_ungate",
     "conv2d_isotropic_scales",
     "conv2d_neuron_coordinates",
     "prepare_all",

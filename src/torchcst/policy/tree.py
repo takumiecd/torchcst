@@ -46,6 +46,7 @@ from torchcst.audit import AuditRecord
 from torchcst.storage import (
     NeuronRetire,
     NeuronStore,
+    NeuronUngate,
     SynapseBirth,
     SynapseDeath,
     SynapseMerge,
@@ -340,13 +341,31 @@ class RuntimeTree:
         return dedup_requires((*self.children, *self.endpoints))
 
     def bind_instruments(self, instruments_by_site: Mapping[str, Mapping[str, Any]]) -> None:
-        for child in (*self.children, *self.endpoints):
+        for child in self.children:
             site_instruments = instruments_by_site.get(child.site)
             if site_instruments is None:
                 continue
             names = {getattr(req, "name", None) for req in child.requires}
             child.bind_instruments(
                 {name: inst for name, inst in site_instruments.items() if name in names}
+            )
+        for endpoint in self.endpoints:
+            names = {getattr(req, "name", None) for req in endpoint.requires}
+            if not names:
+                continue
+            providers = [
+                instruments_by_site[child.site]
+                for child in self.children
+                if child.binding.endpoints()[1] is endpoint.store
+                and child.site in instruments_by_site
+            ]
+            if len(providers) != 1:
+                raise ValueError(
+                    "an instrumented interface requires exactly one upstream "
+                    "synapse child"
+                )
+            endpoint.bind_instruments(
+                {name: inst for name, inst in providers[0].items() if name in names}
             )
 
     # -- cadence (root-owned) ----------------------------------------------
@@ -572,7 +591,9 @@ class RuntimeTree:
             priced_ops: list[Any] = []
             plain_ops: list[Any] = []
             for op in ops:
-                if isinstance(op, (SynapseBirth, SynapseMerge, SynapseRefit)):
+                if isinstance(
+                    op, (SynapseBirth, SynapseMerge, SynapseRefit, NeuronUngate)
+                ):
                     priced_ops.append(op)
                 else:
                     plain_ops.append(op)
@@ -615,7 +636,11 @@ class RuntimeTree:
             session = TrialSession(objective, transaction)
             session.begin()
             price = self.profit.price_for(
-                trial_flat, {child.site: child.store for child in self.children}
+                trial_flat,
+                {
+                    child.site: child.store
+                    for child in (*self.children, *self.endpoints)
+                },
             )
             reason = self._two_phase(trial)
             if reason is not None:

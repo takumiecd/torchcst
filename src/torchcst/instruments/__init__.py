@@ -21,6 +21,7 @@ from .continuous_candidate import (
     RefinementSchedule,
 )
 from .gradfield import CandidateField, GradFieldEMA
+from .gate import GateTangent, GateTangentRequest, GateTangentSnapshot
 from .scored import ContinuousGradientRequest, ContinuousGradientScores
 from .tangent import (
     TangentSnapshot,
@@ -40,6 +41,9 @@ __all__ = [
     "ContinuousGradientScores",
     "DeferredCaptureInstrument",
     "GradFieldEMA",
+    "GateTangent",
+    "GateTangentRequest",
+    "GateTangentSnapshot",
     "InlineCaptureInstrument",
     "InstrumentBuildContext",
     "KernelPort",
