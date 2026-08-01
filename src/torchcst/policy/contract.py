@@ -208,7 +208,14 @@ class EvenBudgetDistributor:
             for index, request in enumerate(requests):
                 cap = (
                     request.replacement_count
-                    if self.replacement_only or request.kind.endswith("_prune")
+                    if self.replacement_only
+                    or request.kind.endswith("_prune")
+                    # A neuron is born by ungating a row of a fixed chart, so
+                    # this request's count is the dormant rows actually
+                    # available -- a hard capacity, not a replacement
+                    # allowance. Granting past it cannot be spent, and the
+                    # grant validator rejects the whole event for it.
+                    or request.kind == "neuron_birth"
                     else budget
                 )
                 if allocations[index] >= cap:

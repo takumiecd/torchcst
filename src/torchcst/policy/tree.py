@@ -37,7 +37,7 @@ import fnmatch
 
 import torch
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import isfinite
 from typing import Any
 
@@ -639,6 +639,30 @@ class RuntimeTree:
                 trial[site] = tuple(priced_ops)
         return ordinary, trial
 
+    def _damped(self, plan: Mapping[str, Any], scale: float) -> dict[str, Any]:
+        """Re-offer a priced plan at a fraction of its solved magnitude.
+
+        Only *insertions* are damped -- a birth's amplitude and an ungate's
+        gate. Those are the values a local solve chose without knowing the
+        rest of training, and the ones that arrive as a shock. A refit
+        re-solves amplitudes that are already carrying their share, and its
+        blow-up mode is the near-singular Gram, which its own ridge answers.
+        """
+        if scale >= 1.0:
+            return dict(plan)
+        damped: dict[str, Any] = {}
+        for site, ops in plan.items():
+            attempt = []
+            for op in ops:
+                if isinstance(op, SynapseBirth):
+                    attempt.append(replace(op, w=op.w * scale))
+                elif isinstance(op, NeuronUngate) and op.gate is not None:
+                    attempt.append(replace(op, gate=op.gate * scale))
+                else:
+                    attempt.append(op)
+            damped[site] = tuple(attempt)
+        return damped
+
     def execute_trial(
         self,
         plan: EventPlan,
@@ -667,29 +691,43 @@ class RuntimeTree:
             return self._finish(ordinary_flat, None)
         if objective is None:
             raise RuntimeError("a profit-priced proposal requires objective=")
-        transaction = begin_transaction()
-        try:
-            session = TrialSession(objective, transaction)
-            session.begin()
-            price = self.profit.price_for(
-                trial_flat,
-                {
-                    child.site: child.store
-                    for child in (*self.children, *self.endpoints)
-                },
-            )
-            reason = self._two_phase(trial)
-            if reason is not None:
-                transaction.rollback()
-                return self._finish(ordinary_flat, reason)
-            if polish is not None:
-                polish()
-            accepted = self.profit.adjudicate(trial_flat, price, session)
-        except BaseException:
-            if transaction.active:
-                transaction.rollback()
-            raise
-        applied = (*ordinary_flat, *trial_flat) if accepted else ordinary_flat
+        # A solved insertion is optimal under a local model that knows nothing
+        # about the rest of training, and late in training entering at full
+        # strength is what FC-1 found to be a bomb. Each rung re-offers the
+        # same operations at a fraction of their solved magnitude; the first
+        # one that actually pays is kept. An empty ladder is the plain
+        # all-or-nothing trial.
+        ladder = tuple(getattr(self.profit, "damping", ()) or ()) or (1.0,)
+        accepted = False
+        offered: tuple[Any, ...] = trial_flat
+        for scale in ladder:
+            attempt = self._damped(trial, scale)
+            offered = tuple(op for site, ops in attempt.items() for op in ops)
+            transaction = begin_transaction()
+            try:
+                session = TrialSession(objective, transaction)
+                session.begin()
+                price = self.profit.price_for(
+                    offered,
+                    {
+                        child.site: child.store
+                        for child in (*self.children, *self.endpoints)
+                    },
+                )
+                reason = self._two_phase(attempt)
+                if reason is not None:
+                    transaction.rollback()
+                    return self._finish(ordinary_flat, reason)
+                if polish is not None:
+                    polish()
+                accepted = self.profit.adjudicate(offered, price, session)
+            except BaseException:
+                if transaction.active:
+                    transaction.rollback()
+                raise
+            if accepted:
+                break
+        applied = (*ordinary_flat, *offered) if accepted else ordinary_flat
         return self._finish(applied, None)
 
     def _post_ids(self) -> dict[str, Any]:

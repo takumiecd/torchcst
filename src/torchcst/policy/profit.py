@@ -204,6 +204,7 @@ class ProfitCourt:
 
     min_profit: float = 0.0
     cost_rate: float = 0.0
+    damping: tuple[float, ...] = ()
     requires: tuple[InstrumentSpec, ...] = field(
         default=(), init=False, repr=False
     )
@@ -215,6 +216,12 @@ class ProfitCourt:
             raise ValueError("min_profit must be finite")
         if not isfinite(self.cost_rate) or self.cost_rate < 0:
             raise ValueError("cost_rate must be finite and non-negative")
+        ladder = tuple(float(value) for value in self.damping)
+        if any(not isfinite(v) or not 0.0 < v <= 1.0 for v in ladder):
+            raise ValueError("damping rungs must lie in (0, 1]")
+        if any(later >= earlier for earlier, later in zip(ladder, ladder[1:])):
+            raise ValueError("damping rungs must strictly decrease")
+        self.damping = ladder
 
     def price_for(
         self,
