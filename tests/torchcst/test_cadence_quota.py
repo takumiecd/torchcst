@@ -23,6 +23,7 @@ from torchcst.policy import (
 from torchcst.policy.contract import Clock
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import (
+    NeuronUngate,
     NeuronRetire,
     NeuronStore,
     SynapseBirth,
@@ -253,3 +254,95 @@ def test_neuron_prune_quota_caps_court_decision() -> None:
     ]
     assert sum(operation.ids.numel() for operation in retirements) == 1
     assert neurons.live_ids().numel() == 2
+
+
+def _growing_world(*, quota=None):
+    """One CST block whose output chart has dormant rows to grow into."""
+    from torchcst.compute import CSTBlock, CSTLinear
+    from torchcst.policy import cSFW, gamma_ungate
+    from torchcst.representation import GaussianKernel
+
+    store = SynapseStore(
+        "layer",
+        1,
+        1,
+        32,
+        spec=RepresentationSpec.continuous(1, 1, bounds=(0.0, 1.0)),
+        dtype=torch.float64,
+    )
+    grid = torch.linspace(0.1, 0.9, 6, dtype=torch.float64)[:, None]
+    store.apply(
+        [
+            SynapseBirth(
+                "layer",
+                grid.clone(),
+                grid.flip(0).clone(),
+                torch.full((6,), 0.05, dtype=torch.float64),
+                torch.arange(6),
+            )
+        ]
+    )
+    mu_in = torch.linspace(0.0, 1.0, 4, dtype=torch.float64)[:, None]
+    mu_out = torch.linspace(0.0, 1.0, 6, dtype=torch.float64)[:, None]
+    inputs = NeuronStore("in", 4, mu=mu_in, initial_live=4, dtype=torch.float64)
+    outputs = NeuronStore("out", 6, mu=mu_out, initial_live=2, dtype=torch.float64)
+    block = CSTBlock(
+        CSTLinear(
+            inputs,
+            outputs,
+            store,
+            GaussianKernel(0.2).double(),
+            gate_input=False,
+            gate_output=False,
+        )
+    )
+    root = QuotaRegime(
+        budget=1,
+        method=cSFW(backfit=None, pool_size=16, multistart=1),
+        cadence=PeriodicCadence(event_interval=1, observe_window=1),
+        distributor=EvenBudgetDistributor(),
+        quota=quota,
+        interface=gamma_ungate(),
+    )
+    engine = StructuralEngine(
+        {"layer": store, "in": inputs, "out": outputs},
+        root,
+        modules={"layer": block},
+        seed=5,
+    )
+    return engine, block, outputs
+
+
+def _one_event(engine, block) -> tuple:
+    x = torch.tensor(
+        [[1.0, -0.5, 0.8, 0.2], [-0.3, 1.1, -0.7, 0.4]], dtype=torch.float64
+    )
+    upstream = torch.ones((2, 6), dtype=torch.float64)
+    engine.begin_update()
+    block(x).backward(upstream)
+    engine.observe_microbatch()
+    engine.finalize_backward()
+    return engine.step()
+
+
+def test_a_synthesized_quota_feeds_every_seat_that_can_spend_it() -> None:
+    # A root handed a growing interface but no explicit quota used to
+    # synthesize neuron_birth=0 and grow nothing, silently: a zero ceiling is
+    # a legal quota, so there was no error to notice.
+    engine, block, outputs = _growing_world()
+
+    operations = _one_event(engine, block)
+
+    assert any(isinstance(op, NeuronUngate) for op in operations)
+    assert outputs.live_ids().numel() > 2
+
+
+def test_an_explicit_quota_still_overrides_the_synthesized_one() -> None:
+    engine, block, outputs = _growing_world(
+        quota=ConstantQuota(StructuralQuota(synapse_birth=1, neuron_birth=0))
+    )
+
+    operations = _one_event(engine, block)
+
+    assert not any(isinstance(op, NeuronUngate) for op in operations)
+    assert outputs.live_ids().numel() == 2

@@ -243,10 +243,15 @@ class EventDraft:
         self._independent_ungate(quota.neuron_birth)
 
     def _independent_ungate(self, budget: int) -> None:
+        # A chart with nothing dormant cannot spend a neuron grant, and the
+        # distributor is free to hand one out anyway (a birth kind is capped by
+        # the budget, not by its replacement count), which the grant validator
+        # then rejects for the whole event. Ask only for seats that can use it.
         responders = tuple(
             endpoint
             for endpoint in self.tree.endpoints
             if getattr(endpoint, "can_ungate", False)
+            and int(endpoint.dormant_ids().numel())
         )
         if not responders or budget == 0:
             return

@@ -277,11 +277,6 @@ def _bind_root(
             f"override pattern(s) {unmatched!r} match no bound site "
             f"{sorted(bindings)!r}"
         )
-    quota = root.quota
-    if quota is None:
-        quota = ConstantQuota(
-            StructuralQuota(synapse_birth=root.budget, synapse_absorb=root.budget)
-        )
     interface = getattr(root, "interface", None)
     out_stores = {
         id(binding.endpoints()[1])
@@ -294,6 +289,26 @@ def _bind_root(
             endpoints.append(InterfaceChild(store, interface.build()))
         else:
             endpoints.append(EndpointChild(store))
+    quota = root.quota
+    if quota is None:
+        # A synthesized quota reads the budget for *every* seat that can spend
+        # it. Filling only the synapse counts would leave a root that was
+        # handed a growing interface unable to grow a single neuron -- silently
+        # and with no error, since a quota of zero is a legal ceiling. An
+        # explicit quota= overrides this and remains the way to say "grow
+        # synapses but not neurons".
+        grows_neurons = any(
+            getattr(endpoint, "can_ungate", False)
+            or getattr(endpoint, "can_respond", False)
+            for endpoint in endpoints
+        )
+        quota = ConstantQuota(
+            StructuralQuota(
+                synapse_birth=root.budget,
+                synapse_absorb=root.budget,
+                neuron_birth=root.budget if grows_neurons else 0,
+            )
+        )
     return RuntimeTree(
         children=tuple(children),
         endpoints=tuple(endpoints),
