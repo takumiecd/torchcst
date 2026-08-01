@@ -31,6 +31,9 @@ from .instruments import (
     GradFieldEMA,
     InlineCaptureInstrument,
     InstrumentBuildContext,
+    TangentSnapshot,
+    TangentStatistics,
+    TangentStatisticsRequest,
 )
 
 # policy/: cadence, quota, rules, distributors, courts.
@@ -48,6 +51,8 @@ from .policy import (
     TopKSelector,
     TrialSession,
     TrialTransaction,
+    cSFW,
+    cVP,
 )
 
 # engine: hooks, clocks, orchestration, atomic apply.
@@ -76,6 +81,7 @@ from .storage import (
     SynapseDeath,
     SynapseKick,
     SynapseMerge,
+    SynapseRefit,
     SynapseStore,
     SynapseView,
     Ticket,
@@ -174,15 +180,21 @@ __all__ = [
     "SynapseDeath",
     "SynapseKick",
     "SynapseMerge",
+    "SynapseRefit",
     "SynapseStore",
     "SynapseView",
     "Ticket",
     "TopKSelector",
+    "TangentSnapshot",
+    "TangentStatistics",
+    "TangentStatisticsRequest",
     "TrialSession",
     "TrialTransaction",
     "TriangularKernel",
     "baselines",
     "commit_all",
+    "cSFW",
+    "cVP",
     "conv2d_isotropic_scales",
     "conv2d_neuron_coordinates",
     "prepare_all",

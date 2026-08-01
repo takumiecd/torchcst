@@ -95,3 +95,6 @@ Gram backfit）と付録 G/H（深さの接線版・γ 場）。**式は付録�
   compute 側 kernel が所有する共有 parameter であり、storage op から更新すると
   一直線依存と「唯一の storage 変更」に反する。このため原子別 `σ'` 列は、原子別
   bandwidth を representation/storage 契約として別途導入するまで実装しない。
+- `cSFW(polish_iters=...)` の既定は、旧 family 契約ノート起草時の `3` ではなく、
+  FC-0/1 完走後に凍結された本 brief の `0` を採用する。縮約 Newton は
+  `polish_iters>0` と周期 backfit の位置更新で利用できる部品として残す。

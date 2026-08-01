@@ -36,6 +36,8 @@ from .families import (
     cRES,
     cRigL,
     cSET,
+    cSFW,
+    cVP,
     thinned,
 )
 from .profit import ProfitCourt, TrialSession, TrialTransaction
@@ -114,6 +116,8 @@ __all__ = [
     "cRES",
     "cRigL",
     "cSET",
+    "cSFW",
+    "cVP",
     "recipes",
     "thinned",
 ]

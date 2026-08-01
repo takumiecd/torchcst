@@ -18,6 +18,7 @@ from torchcst.storage import (
     SynapseDeath,
     SynapseKick,
     SynapseMerge,
+    SynapseRefit,
     SynapseView,
 )
 
@@ -30,6 +31,7 @@ Op = (
     | SynapseMerge
     | SynapseKick
     | SynapseAbsorb
+    | SynapseRefit
     | NeuronUngate
     | NeuronRetire
     | NeuronKick

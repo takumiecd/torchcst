@@ -27,6 +27,7 @@ from torchcst.storage import (
     NeuronUngate,
     SynapseAbsorb,
     SynapseDeath,
+    SynapseRefit,
 )
 
 from .bundle import ProposalBundle, bundle_birth_count
@@ -57,6 +58,7 @@ class EventPlan:
         deaths: list[Any] = []
         retires: list[Any] = []
         ungates: list[Any] = []
+        refits: list[Any] = []
         births: list[Any] = []
         for ops in self.ops_by_site.values():
             for op in ops:
@@ -68,9 +70,11 @@ class EventPlan:
                     ungates.append(op)
                 elif isinstance(op, SynapseAbsorb):
                     absorbs.append(op)
+                elif isinstance(op, SynapseRefit):
+                    refits.append(op)
                 else:
                     births.append(op)
-        return (*absorbs, *deaths, *retires, *ungates, *births)
+        return (*absorbs, *deaths, *retires, *ungates, *refits, *births)
 
 
 @dataclass(frozen=True)
@@ -125,6 +129,7 @@ class EventDraft:
             child.site: [] for child in tree.children
         }
         self.births: dict[str, list[Any]] = {}
+        self.refits: dict[str, list[Any]] = {}
         self.retires: dict[str, list[Any]] = {}
         self.ungates: dict[str, list[Any]] = {}
         self.replacement: dict[str, int] = {}
@@ -265,6 +270,9 @@ class EventDraft:
                 self.post_absorb[child],
                 tuple((*self.deaths[site], *self.cascades[site])),
             )
+            refits = child.propose_refits(simulated, self.registry, self.rng)
+            self.refits[site] = list(refits)
+            simulated = view_after(simulated, tuple(refits))
             self.pre_birth[child] = simulated
             proposals = child.propose_births(
                 simulated, grants[site], self.registry, self.rng
@@ -410,6 +418,7 @@ class EventDraft:
                 (
                     *self.absorbs.get(child.site, ()),
                     *merged_deaths.get(child.site, ()),
+                    *self.refits.get(child.site, ()),
                     *self.births.get(child.site, ()),
                 )
             )

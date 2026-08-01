@@ -10,7 +10,7 @@ from typing import Any
 
 import torch
 
-from torchcst.storage import SynapseBirth, SynapseDeath, SynapseMerge
+from torchcst.storage import SynapseBirth, SynapseDeath, SynapseMerge, SynapseRefit
 
 from .contract import InstrumentSpec
 
@@ -228,6 +228,9 @@ class ProfitCourt:
                 delta_params += int(op.w.numel()) * atom_cost
             elif isinstance(op, SynapseDeath):
                 delta_params -= int(op.ids.numel()) * atom_cost
+            elif isinstance(op, SynapseRefit):
+                # A refit changes values but neither buys nor retires atoms.
+                delta_params += 0
             else:
                 raise TypeError(f"unsupported profit-priced op {type(op)!r}")
         return self.cost_rate * delta_params

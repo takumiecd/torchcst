@@ -45,6 +45,7 @@ from torchcst.storage import (
     SynapseBirth,
     SynapseDeath,
     SynapseMerge,
+    SynapseRefit,
     SynapseStore,
     SynapseView,
 )
@@ -143,6 +144,7 @@ def view_after(view: SynapseView, ops: tuple[Any, ...]) -> SynapseView:
     """
     w, mass_scale = _apply_absorb_deltas(view, ops)
     ids, s, t, w, mass, lineages = _drop_dying_rows(view, ops, w, mass_scale)
+    s, t, w, mass = _apply_refits(ids, s, t, w, mass, ops)
     births = [op for op in ops if isinstance(op, SynapseBirth)]
     if births:
         ids, s, t, w, mass, lineages = _append_planned_births(
@@ -164,6 +166,43 @@ def view_after(view: SynapseView, ops: tuple[Any, ...]) -> SynapseView:
         retired_in=view.retired_in,
         retired_out=view.retired_out,
     )
+
+
+def _apply_refits(
+    ids: torch.Tensor,
+    s: torch.Tensor,
+    t: torch.Tensor,
+    w: torch.Tensor,
+    mass: torch.Tensor,
+    ops: tuple[Any, ...],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Apply ID-addressed Refit tables to a simulated packed view."""
+    position_of = {int(entity): index for index, entity in enumerate(ids.tolist())}
+    s = s.clone()
+    t = t.clone()
+    w = w.clone()
+    mass = mass.clone()
+    for op in ops:
+        if not isinstance(op, SynapseRefit):
+            continue
+        rows = torch.tensor(
+            [position_of[int(entity)] for entity in op.ids.tolist()],
+            dtype=torch.int64,
+        )
+        device_rows = rows.to(w.device)
+        old_abs = w.index_select(0, device_rows).abs()
+        scale = torch.where(
+            old_abs > 0,
+            mass.index_select(0, device_rows) / old_abs,
+            torch.ones_like(old_abs),
+        )
+        w.index_copy_(0, device_rows, op.w.to(w))
+        mass.index_copy_(0, device_rows, op.w.abs().to(mass) * scale.to(mass))
+        if op.s is not None:
+            s.index_copy_(0, rows.to(s.device), op.s.to(s))
+        if op.t is not None:
+            t.index_copy_(0, rows.to(t.device), op.t.to(t))
+    return s, t, w, mass
 
 
 def _apply_absorb_deltas(
@@ -352,6 +391,7 @@ class SynapseChild:
         self._birth = built.birth
         self._prune = built.prune
         self._absorb = built.absorb
+        self._refit = built.refit
 
     # ------------------------------------------------------------------
     # Static declarations the root aggregates.
@@ -359,11 +399,16 @@ class SynapseChild:
 
     @property
     def rules(self) -> tuple[Any | None, Any | None, Any | None]:
+        """The established birth/prune/absorb inspection tuple."""
         return (self._birth, self._prune, self._absorb)
 
     @property
+    def all_rules(self) -> tuple[Any | None, ...]:
+        return (*self.rules, self._refit)
+
+    @property
     def requires(self) -> tuple[Any, ...]:
-        return dedup_requires(self.rules)
+        return dedup_requires(self.all_rules)
 
     @property
     def immunity_events(self) -> int:
@@ -376,7 +421,7 @@ class SynapseChild:
         child's store already -- the root routes per-store instrument maps to
         per-store children, so no site string crosses this boundary.
         """
-        _bind_rule_instruments(self.rules, self.store.site, instruments)
+        _bind_rule_instruments(self.all_rules, self.store.site, instruments)
 
     # ------------------------------------------------------------------
     # Store reads (the dense child<->storage edge).
@@ -478,6 +523,21 @@ class SynapseChild:
         if sum(proposal.cost for proposal in priced) > budget:
             raise RuntimeError("proposer exceeded its allocated operation budget")
         return tuple(priced)
+
+    def propose_refits(
+        self,
+        view: SynapseView,
+        registry: Any,
+        rng: torch.Generator,
+    ) -> tuple[SynapseRefit, ...]:
+        if self._refit is None:
+            return ()
+        proposed = tuple(self._refit.propose(view, 1, registry, rng))
+        if not all(isinstance(op, SynapseRefit) for op in proposed):
+            raise TypeError("refit rule may return only SynapseRefit")
+        if len(proposed) > 1:
+            raise RuntimeError("refit rule may emit at most one table per event")
+        return proposed
 
     # ------------------------------------------------------------------
     # Two-phase execution (the only structural write path to this store).

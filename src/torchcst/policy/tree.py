@@ -43,7 +43,14 @@ from typing import Any
 
 from torchcst._validation import require_int
 from torchcst.audit import AuditRecord
-from torchcst.storage import NeuronRetire, NeuronStore, SynapseBirth, SynapseDeath, SynapseMerge
+from torchcst.storage import (
+    NeuronRetire,
+    NeuronStore,
+    SynapseBirth,
+    SynapseDeath,
+    SynapseMerge,
+    SynapseRefit,
+)
 
 from .contract import (
     BudgetDistributor,
@@ -542,7 +549,7 @@ class RuntimeTree:
             if court is not None and callable(getattr(court, "state_dict", None)):
                 seen.append(court)
         for child in self.children:
-            for rule in child.rules:
+            for rule in child.all_rules:
                 if (
                     rule is not None
                     and callable(getattr(rule, "state_dict", None))
@@ -565,7 +572,7 @@ class RuntimeTree:
             priced_ops: list[Any] = []
             plain_ops: list[Any] = []
             for op in ops:
-                if isinstance(op, (SynapseBirth, SynapseMerge)):
+                if isinstance(op, (SynapseBirth, SynapseMerge, SynapseRefit)):
                     priced_ops.append(op)
                 else:
                     plain_ops.append(op)

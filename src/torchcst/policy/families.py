@@ -29,9 +29,11 @@ from typing import Any
 
 # Submodule import; see policy/absorb.py's note on the instruments cycle.
 from torchcst.instruments.continuous_candidate import ContinuousCandidateRequest
+from torchcst.instruments.tangent import TangentStatisticsRequest
 
 from .absorb import AbsorbCourt
 from .courts import MagnitudeCourt
+from .fast_construction import TangentBirth, TangentRefit, _EvidenceState
 from .proposers import Bounds, GradFieldTopKBirth, UniformEntryBirth
 from .scored import ScoredBirth
 
@@ -83,6 +85,7 @@ class _BuiltLifecycle:
     birth: Any | None
     prune: Any | None
     absorb: Any | None
+    refit: Any | None
 
 
 @dataclass
@@ -169,12 +172,18 @@ class SynapseLifecycle:
     birth_factory: Callable[[float | None], Any | None]
     prune_factory: Callable[[], Any | None] = _no_rule
     absorb_factory: Callable[[float | None], Any | None] = _no_priced_rule
+    refit_factory: Callable[[float | None], Any | None] = _no_priced_rule
     every: int = 1
     priceable: bool = False
     label: str = "lifecycle"
 
     def __post_init__(self) -> None:
-        for name in ("birth_factory", "prune_factory", "absorb_factory"):
+        for name in (
+            "birth_factory",
+            "prune_factory",
+            "absorb_factory",
+            "refit_factory",
+        ):
             if not callable(getattr(self, name)):
                 raise TypeError(f"{name} must be callable")
         if isinstance(self.every, bool) or not isinstance(self.every, int):
@@ -205,17 +214,24 @@ class SynapseLifecycle:
             )
         birth = self.birth_factory(lam)
         absorb = self.absorb_factory(lam)
+        refit = self.refit_factory(lam)
         prune = self.prune_factory()
         if self.every > 1:
             if birth is not None:
                 birth = _ThinnedProposer(birth, self.every)
             if absorb is not None:
                 absorb = _ThinnedProposer(absorb, self.every)
+            if refit is not None:
+                refit = _ThinnedProposer(refit, self.every)
             if prune is not None:
                 prune = _ThinnedCourt(prune, self.every)
-        if birth is None and absorb is None:
-            raise ValueError(f"{self.label} must provide a birth or absorb rule")
-        return _BuiltLifecycle(birth=birth, prune=prune, absorb=absorb)
+        if birth is None and absorb is None and refit is None:
+            raise ValueError(
+                f"{self.label} must provide a birth, absorb, or refit rule"
+            )
+        return _BuiltLifecycle(
+            birth=birth, prune=prune, absorb=absorb, refit=refit
+        )
 
 
 def thinned(lifecycle: SynapseLifecycle, every: int) -> SynapseLifecycle:
@@ -345,6 +361,95 @@ def RENT(
         absorb_factory=make_absorb,
         priceable=True,
         label="RENT",
+    )
+
+
+def cVP(
+    *,
+    ridge: float = 1.0e-4,
+    timing: Any = "after_backward",
+) -> SynapseLifecycle:
+    """Variable projection: solve all amplitudes at every root event.
+
+    Coordinates remain ordinary learnable parameters between events.  The
+    solve is the FC-1 tangent ``delta-w`` Gram step with relative ridge
+    ``1e-4`` by default; the resulting table is one atomic ``SynapseRefit``.
+    """
+    name = f"tangent_statistics#{next(_request_counter)}"
+    state = _EvidenceState(TangentStatisticsRequest(name=name, timing=timing))
+
+    def make_refit(lam: float | None) -> TangentRefit:
+        return TangentRefit(
+            state=state,
+            ridge=ridge,
+            rent=lam,
+            every_births=1,
+            position_iters=0,
+            consume=True,
+        )
+
+    return SynapseLifecycle(
+        birth_factory=_no_priced_rule,
+        refit_factory=make_refit,
+        priceable=True,
+        label="cVP",
+    )
+
+
+def cSFW(
+    *,
+    polish_iters: int = 0,
+    backfit: int | str | None = "K/10",
+    pool_size: int = 4096,
+    multistart: int = 4,
+    trust: float = 0.01,
+    ridge: float = 1.0e-4,
+    timing: Any = "after_backward",
+) -> SynapseLifecycle:
+    """Pure-growth tangent birth with periodic amplitude/position backfit.
+
+    Births are sequential inside one event and deflate the tangent cross
+    moment after every accepted atom.  No prune rule is installed.  The
+    experimentally frozen defaults are zero birth-time polish and a K/10
+    backfit cadence; position backfit performs one family-private damped
+    Newton iteration while ordinary SGD continues between events.
+    """
+    if backfit is not None and backfit != "K/10":
+        if isinstance(backfit, bool) or not isinstance(backfit, int):
+            raise TypeError("backfit must be a positive int, 'K/10', or None")
+        if backfit < 1:
+            raise ValueError("backfit must be positive")
+    name = f"tangent_statistics#{next(_request_counter)}"
+    state = _EvidenceState(TangentStatisticsRequest(name=name, timing=timing))
+
+    def make_birth(lam: float | None) -> TangentBirth:
+        return TangentBirth(
+            state=state,
+            pool_size=pool_size,
+            multistart=multistart,
+            polish_iters=polish_iters,
+            trust=trust,
+            rent=lam,
+        )
+
+    def make_refit(lam: float | None) -> TangentRefit | None:
+        if backfit is None:
+            return None
+        return TangentRefit(
+            state=state,
+            ridge=ridge,
+            rent=lam,
+            every_births=backfit,
+            position_iters=1,
+            trust=trust,
+            consume=False,
+        )
+
+    return SynapseLifecycle(
+        birth_factory=make_birth,
+        refit_factory=make_refit,
+        priceable=True,
+        label="cSFW",
     )
 
 
