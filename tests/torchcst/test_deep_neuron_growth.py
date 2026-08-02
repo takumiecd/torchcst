@@ -1,12 +1,13 @@
 """Neuron growth at a *hidden* boundary, which needs one gate owner.
 
-The field a growth policy ranks on is ``dL/dgamma`` at ``gamma=0``.  When two
-raw ``CSTLinear`` maps are wired together they both apply the shared store's
-gate, so a neuron enters the composed function as ``gamma^2`` and that field is
+The field a growth policy ranks on is ``dL/dgamma`` at ``gamma=0``.  A raw
+``CSTLinear`` map is purely synaptic and never applies a gate itself; if a
+caller gates the shared hidden store twice on the way from one map to the
+next, a neuron enters the composed function as ``gamma^2`` and that field is
 identically zero -- not small, zero -- and no dormant neuron can ever be woken.
-:class:`~torchcst.compute.CSTBlock` gives the boundary one owner and applies the
-gate once, after the activation, which puts ``gamma`` back on the same footing
-as a synapse amplitude.
+:class:`~torchcst.compute.CSTBoundary` gives the boundary one owner and applies
+the gate once, after the activation, which puts ``gamma`` back on the same
+footing as a synapse amplitude.
 
 These tests pin the difference directly: the same hidden store, the same data,
 the same policy, growing or frozen depending only on who applies the gate.
@@ -17,7 +18,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from torchcst.compute import CSTBlock, CSTLinear
+from torchcst.compute import CSTBoundary, CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import (
     ConstantQuota,
@@ -66,29 +67,31 @@ LADDER = (1.0, 0.5, 0.25, 0.1, 0.01)
 
 
 def _world(*, blocked: bool, damping: tuple[float, ...] = LADDER):
-    """Two CST layers over one hidden store, gated once or twice."""
+    """Two CST layers over one hidden store, gated once or twice.
+
+    Both endpoints of the stack ("h" and "y") are ``out_neurons`` of a synapse
+    child, so both need a :class:`CSTBoundary` owning their output boundary --
+    that is what makes the gate-tangent instrument buildable at all, in either
+    world.
+    """
     first, second = _synapses("layer1"), _synapses("layer2")
     inputs = _chart("x", D_IN, D_IN)
     hidden = _chart("h", H_MAX, H_LIVE)
     outputs = _chart("y", D_OUT, D_OUT)
     kernel = GaussianKernel(0.1).double()
+    one = CSTLinear(inputs, hidden, first, kernel)
+    two = CSTLinear(hidden, outputs, second, kernel)
+    producer = CSTBoundary(one, activation=F.gelu)
+    terminal = CSTBoundary(two)
     if blocked:
-        one = CSTBlock(
-            CSTLinear(
-                inputs, hidden, first, kernel, gate_input=False, gate_output=False
-            ),
-            activation=F.gelu,
-        )
-        two = CSTBlock(
-            CSTLinear(
-                hidden, outputs, second, kernel, gate_input=False, gate_output=False
-            )
-        )
-        forward = lambda x: two(one(x))  # noqa: E731
+        forward = lambda x: terminal(two(producer(one(x))))  # noqa: E731
     else:
-        one = CSTLinear(inputs, hidden, first, kernel)
-        two = CSTLinear(hidden, outputs, second, kernel)
-        forward = lambda x: two(F.gelu(one(x)))  # noqa: E731
+        # What a user could still wrongly write now that the flags are gone:
+        # take the once-gated hidden activation and have the consumer
+        # multiply the hidden gate again -- gating the shared store twice.
+        def forward(x):
+            h = producer(one(x))
+            return terminal(two(h * hidden.gate_vector()))
 
     root = QuotaRegime(
         budget=2,
@@ -195,7 +198,7 @@ def test_an_unbounded_solve_lands_only_through_the_ladder() -> None:
 def test_the_dormant_gate_field_is_nonzero_and_exact_in_a_stack() -> None:
     x, y = _problem()
     _, forward, hidden, _, modules = _world(blocked=True)
-    producer = modules[0]
+    producer = modules[0].out_boundary
 
     producer.reset_gate_capture()
     (forward(x) - y).square().sum().backward()

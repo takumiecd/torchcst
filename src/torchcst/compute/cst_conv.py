@@ -137,6 +137,13 @@ class CSTConv2d(_ContinuousCSTMap):
     represented map, giving the translation-equivariant contract of
     :class:`torch.nn.Conv2d` without depending on :class:`CSTLinear`.
 
+    Unlike :class:`CSTLinear`, this module keeps applying both endpoint gates
+    itself: a :class:`~torchcst.compute.CSTBoundary` composes as an
+    activation-space scale on a map's *output*, but the input side here is
+    per ``(channel, ky, kx)`` tap, not a feature a boundary could gate before
+    the map runs. Deep boundary composition over a conv (``CSTBoundary(conv,
+    ...)``) is accordingly not supported; a conv is always its own endpoint.
+
     Grouped convolution and non-zero padding modes are intentionally outside
     this first compute contract. Bias is a conventional per-output-channel
     parameter and is not part of the synapse store.
@@ -229,7 +236,19 @@ class CSTConv2d(_ContinuousCSTMap):
         )
         batch, _, locations = patches.shape
         patch_rows = patches.transpose(1, 2).reshape(-1, self.in_features)
-        output = self._forward_rows(patch_rows)
+        # The map is purely synaptic, so this endpoint applies both gates
+        # itself: the input gate before the map (capture then sees gated
+        # patches -- the "x already gated by the upstream boundary" contract
+        # a CSTBoundary stack relies on) and the output gate after it.
+        in_gate = self.in_neurons.gate_vector().to(
+            device=patch_rows.device, dtype=patch_rows.dtype
+        )
+        gated_patches = patch_rows * in_gate
+        output = self._forward_rows(gated_patches)
+        out_gate = self.out_neurons.gate_vector().to(
+            device=output.device, dtype=output.dtype
+        )
+        output = output * out_gate
         if self.bias is not None:
             output = output + self.bias
         height, width = self._output_shape(x.shape[-2], x.shape[-1])

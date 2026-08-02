@@ -49,7 +49,7 @@ born, retired, merged, or ungated.
 
 | Package | Owns |
 |---|---|
-| `compute/` | forward computation and delivery of module-boundary tensors (`CSTLinear`, `CSTConv2d`, `EntryLinear`/`RankOneLinear` controls, `NeuronGatedLinear`, `BackwardContext`) |
+| `compute/` | forward computation and delivery of module-boundary tensors (`CSTLinear`, `CSTConv2d`, `CSTBoundary`, `EntryLinear`/`RankOneLinear` controls, `NeuronGatedLinear`, `BackwardContext`) |
 | `instruments/` | backward-derived sufficient statistics and candidate fields |
 | `policy/` | the policy tree: roots (`RentEconomy`/`QuotaRegime`), lifecycles, cadences, quotas, distributors, courts, recipes |
 | `engine.py` | hooks, clocks, orchestration, validation, atomic apply, audit, optimizer reconciliation |

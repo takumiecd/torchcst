@@ -13,7 +13,6 @@ from torchcst.compute import (
     CaptureBatch,
     CaptureMode,
     ComputeLinear,
-    CSTBlock,
     CSTConv2d,
     CSTLinear,
     EntryLinear,
@@ -273,7 +272,6 @@ class StructuralEngine:
                     NeuronGatedLinear,
                     CSTLinear,
                     CSTConv2d,
-                    CSTBlock,
                 ),
             ):
                 raise TypeError("modules values must be supported compute modules")

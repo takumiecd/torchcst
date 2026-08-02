@@ -12,7 +12,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from torchcst.compute import CSTBlock, CSTLinear
+from torchcst.compute import CSTBoundary, CSTLinear
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
@@ -38,22 +38,20 @@ def _world():
     inputs = NeuronStore("x", D_IN, mu=mu(D_IN), initial_live=D_IN, dtype=torch.float64)
     hidden = NeuronStore("h", H_MAX, mu=mu(H_MAX), initial_live=H_LIVE,
                          dtype=torch.float64)
-    block = CSTBlock(
-        CSTLinear(inputs, hidden, store, GaussianKernel(0.2).double(),
-                  gate_input=False, gate_output=False),
-        activation=F.gelu,
-    )
+    linear = CSTLinear(inputs, hidden, store, GaussianKernel(0.2).double())
+    boundary = CSTBoundary(linear, activation=F.gelu)
+    forward = lambda inp: boundary(linear(inp))  # noqa: E731
     generator = torch.Generator().manual_seed(4)
     x = torch.randn(32, D_IN, dtype=torch.float64, generator=generator)
     target = torch.randn(32, H_MAX, dtype=torch.float64, generator=generator)
-    return store, hidden, block, x, target
+    return store, hidden, linear, boundary, forward, x, target
 
 
 def test_a_gate_is_learnable_but_dormant_rows_stay_the_policys_alone() -> None:
-    _, hidden, block, x, target = _world()
+    _, hidden, _, _, forward, x, target = _world()
     assert isinstance(hidden.gate, torch.nn.Parameter)
 
-    (block(x) - target).square().sum().backward()
+    (forward(x) - target).square().sum().backward()
 
     assert hidden.gate.grad is not None
     live = hidden.live_ids()
@@ -65,7 +63,7 @@ def test_a_gate_is_learnable_but_dormant_rows_stay_the_policys_alone() -> None:
 
 
 def test_an_untrained_gate_never_moves_from_what_one_solve_chose() -> None:
-    store, hidden, block, x, target = _world()
+    store, hidden, linear, boundary, forward, x, target = _world()
     # A neuron the policy woke at a small solved value, with only the synapse
     # side handed to the optimizer -- the omission this repo's own experiments
     # made first.
@@ -77,15 +75,16 @@ def test_an_untrained_gate_never_moves_from_what_one_solve_chose() -> None:
 
     for _ in range(50):
         optimizer.zero_grad()
-        block.zero_grad(set_to_none=True)
-        (block(x) - target).square().mean().backward()
+        linear.zero_grad(set_to_none=True)
+        boundary.zero_grad(set_to_none=True)
+        (forward(x) - target).square().mean().backward()
         optimizer.step()
 
     assert float(hidden.gate[woken]) == 0.02
 
 
 def test_training_the_gate_moves_it_and_widens_the_effective_chart() -> None:
-    store, hidden, block, x, target = _world()
+    store, hidden, linear, boundary, forward, x, target = _world()
     woken = int(hidden.dormant_ids()[0])
     with torch.no_grad():
         hidden.gate[woken] = 0.02
@@ -105,8 +104,9 @@ def test_training_the_gate_moves_it_and_widens_the_effective_chart() -> None:
     for _ in range(600):
         optimizer.zero_grad()
         gate_optimizer.zero_grad()
-        block.zero_grad(set_to_none=True)
-        (block(x) - target).square().mean().backward()
+        linear.zero_grad(set_to_none=True)
+        boundary.zero_grad(set_to_none=True)
+        (forward(x) - target).square().mean().backward()
         optimizer.step()
         gate_optimizer.step()
 

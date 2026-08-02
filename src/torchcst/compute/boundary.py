@@ -1,57 +1,65 @@
-"""A CST layer that owns its neurons' gate, applied exactly once.
+"""A neuron boundary that owns its gate, applied exactly once.
 
-``CSTLinear`` applies both endpoint gates itself.  That is fine for a single
-map, but wiring two of them together gates the shared hidden store twice --
-once as layer 1's output, once as layer 2's input -- so a neuron enters the
-composed function as ``gamma^2``.  A dormant ``gamma=0`` then has identically
-zero first derivative and can never be woken: the growth field is not merely
-hard to measure, it is exactly zero.
+A raw :class:`~torchcst.compute.CSTLinear` map is purely synaptic and never
+applies a neuron gate. Wiring two maps together over a shared hidden store by
+gating each map's own endpoints would gate that store twice -- once as layer
+1's output, once as layer 2's input -- so a neuron enters the composed
+function as ``gamma^2``. A dormant ``gamma=0`` then has identically zero first
+derivative and can never be woken: the growth field is not merely hard to
+measure, it is exactly zero.
 
-This block is the supported composition.  It wraps a gate-free map and applies
-the *producing* store's gate once, after the activation:
+``CSTBoundary`` is the supported composition. It takes the *map's output* and
+applies ``normalize -> activation -> gate``, exactly once:
 
-    h = gamma * activation(synapse_map(x))
+    y = gamma * activation(normalize(pre))
 
 ``gamma`` multiplies a factor that does not contain it, exactly like a synapse
 amplitude multiplies its kernel outer product, so the dormant field is exact
-and nonzero and the same scalar solve applies.
+and nonzero and the same scalar solve applies. Composition is then explicit:
+
+    y = boundary(map(x))
+
+and a stack is ``b2(m2(b1(m1(x))))``. A terminal boundary -- the topology a
+single, non-composed ``CSTLinear`` used to be -- is simply
+``CSTBoundary(map)`` with no activation: ``forward = pre * gate``. The
+network's raw input is never gated by anything unless a caller multiplies it
+by ``store.gate_vector()`` themselves; nothing upstream of the first map owns
+that boundary.
 
 An optional ``normalize`` module centers the pre-activation before the
 activation is applied:
 
-    h = gamma * activation(normalize(synapse_map(x)))
+    y = gamma * activation(normalize(pre))
 
 A CST layer has no bias and no normalization of its own, so nothing keeps the
 sum of its atoms centered; a narrow coordinate domain then saturates the
-activation and freezes training at chance once the layer is stacked. Passing
+activation and freezes training at chance once boundaries are stacked. Passing
 the closure ``lambda p: activation(norm(p))`` as ``activation`` "works" but
 leaves ``norm``'s parameters owned by nobody -- forget to add them to the
 optimizer and they silently never train. ``normalize`` is a real submodule
-attribute instead, so it is picked up by ``block.parameters()`` for free.
+attribute instead, so it is picked up by ``boundary.parameters()`` for free.
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
 import torch
 from torch import Tensor, nn
 
-from torchcst.storage import NeuronStore, SynapseStore
+from torchcst.storage import NeuronStore
 
-from .capture import BackwardContext
 from .cst_map import _ContinuousCSTMap
 
-__all__ = ["CSTBlock"]
+__all__ = ["CSTBoundary"]
 
 
-class CSTBlock(nn.Module):
-    """Gate-free CST map + activation + one application of the output gate.
+class CSTBoundary(nn.Module):
+    """Apply ``normalize -> activation -> gate`` to a map's output, once.
 
-    The wrapped map must be constructed with ``gate_input=False`` and
-    ``gate_output=False``: this block, not the map, owns the boundary gate.
-    An incoming boundary is gated by whoever produced it (an upstream block,
-    or an explicit gate on the network's raw input).
+    Takes the map's output (``pre``), not the map's input: it does not call
+    the map itself, so composition is explicit at the call site
+    (``boundary(map(x))``).
     """
 
     def __init__(
@@ -63,66 +71,43 @@ class CSTBlock(nn.Module):
         super().__init__()
         if not isinstance(linear, _ContinuousCSTMap):
             raise TypeError("linear must be a continuous CST compute module")
-        if linear._gate_input or linear._gate_output:
+        if linear.out_boundary is not None:
             raise ValueError(
-                "CSTBlock owns the boundary gate: build the map with "
-                "gate_input=False, gate_output=False"
+                "linear already has a CSTBoundary owning its output boundary"
             )
         if activation is not None and not callable(activation):
             raise TypeError("activation must be callable or None")
         if normalize is not None and not isinstance(normalize, nn.Module):
             raise TypeError(
                 "normalize must be an nn.Module or None -- a plain callable "
-                "would not register its parameters on the block"
+                "would not register its parameters on the boundary"
             )
-        self.linear = linear
+        # Stored non-registered: linear is the producer, not a submodule of
+        # this boundary. Registering it here would duplicate parameter
+        # ownership (linear.parameters() already covers them) and, since
+        # linear.out_boundary now points back at self, create a module cycle.
+        self.__dict__["_linear"] = linear
+        linear.__dict__["_out_boundary"] = self
         self.activation = activation
         # An nn.Module assigned as an attribute is auto-registered as a
         # submodule, so its parameters (e.g. a LayerNorm's weight/bias) show
-        # up in block.parameters() without the caller wiring them in by hand.
+        # up in boundary.parameters() without the caller wiring them in by
+        # hand.
         self.normalize = normalize
         self.in_features = linear.in_features
         self.out_features = linear.out_features
-        self.capture_site = linear.capture_site
         # One entry per forward, in forward order -- the same order the engine
         # queues its own (x, g_out) facts, which is what lets a gate instrument
         # pair the two per microbatch under gradient accumulation.
         self._gate_grads: list[Tensor] = []
 
     @property
-    def store(self) -> SynapseStore:
-        return self.linear.store
-
-    @property
     def out_neurons(self) -> NeuronStore:
-        return self.linear.out_neurons
-
-    @property
-    def in_neurons(self) -> NeuronStore:
-        return self.linear.in_neurons
-
-    def set_backward_context(self, context: BackwardContext | None) -> None:
-        self.linear.set_backward_context(context)
-
-    @property
-    def capture_enabled(self) -> bool:
-        return self.linear.capture_enabled
-
-    def __getattr__(self, name: str) -> Any:
-        """Delegate the map's remaining compute capabilities (kernel ports…)."""
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            pass
-        linear = (self.__dict__.get("_modules") or {}).get("linear")
-        if linear is None:
-            raise AttributeError(name)
-        return getattr(linear, name)
+        return self._linear.out_neurons
 
     # -- forward ----------------------------------------------------------
 
-    def forward(self, x: Tensor) -> Tensor:
-        pre = self.linear(x)
+    def forward(self, pre: Tensor) -> Tensor:
         activated = self._normalize_and_activate(pre)
         gate = self.out_neurons.gate_vector().to(
             device=activated.device, dtype=activated.dtype
@@ -158,23 +143,23 @@ class CSTBlock(nn.Module):
     ) -> tuple[Tensor, Tensor]:
         """Return the gate field and the activation energy for every chart row.
 
-        ``x`` is the block's captured input and ``g_gated`` the gradient of
-        its *returned* tensor.  The activation is recomputed from ``x`` through
-        the gate-free map, so neither factor involves ``gamma``: the first
-        value is exactly ``dL/dgamma``, and it stays exact -- and nonzero --
-        for a dormant row.
+        ``x`` is the captured input to the producing map and ``g_gated`` the
+        gradient of this boundary's *returned* tensor. The activation is
+        recomputed from ``x`` through the gate-free map, so neither factor
+        involves ``gamma``: the first value is exactly ``dL/dgamma``, and it
+        stays exact -- and nonzero -- for a dormant row.
 
         The second value is the solve curvature ``sum(activation^2)``, scaled
-        by ``row_energy`` when given.  At a *terminal* boundary the activation
-        already is the model's output direction (the FC-2 topology) and no
-        scale is needed.  At a hidden boundary the feature of ``gamma_j`` in
-        output space is the activation times the consumer's response to row
-        ``j``, so pass the consumer's
+        by ``row_energy`` when given. At a *terminal* boundary the activation
+        already is the model's output direction and no scale is needed. At a
+        hidden boundary the feature of ``gamma_j`` in output space is the
+        activation times the consumer's response to row ``j``, so pass the
+        consumer's
         :meth:`~torchcst.compute.CSTLinear.input_row_energy`; without it the
         step is conservative rather than wrong.
 
         The remaining constant is the objective's own curvature, which a
-        loss-blind policy may not read.  The tree's realized-profit trial (or a
+        loss-blind policy may not read. The tree's realized-profit trial (or a
         damped acceptance ladder) is what absorbs it.
         """
         activated = self.activated_rows(x)
@@ -192,9 +177,9 @@ class CSTBlock(nn.Module):
         return ((g_flat * activated).sum(dim=0), curvature)
 
     def activated_rows(self, x: Tensor) -> Tensor:
-        """Return ``activation(normalize(synapse_map(x)))`` with no gate, no capture."""
+        """Return ``activation(normalize(map(x)))`` with no gate, no capture."""
         with torch.no_grad():
-            pre = self.linear.pre_gate_rows(x)
+            pre = self._linear.pre_gate_rows(x)
             return self._normalize_and_activate(pre)
 
     def _normalize_and_activate(self, pre: Tensor) -> Tensor:

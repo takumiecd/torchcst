@@ -164,29 +164,26 @@ endpoint-aware response compose an explicit `NeuronGatedLinear` wrapper.
 ### Stacking layers, and who owns a neuron's gate
 
 A neuron's gate belongs to the neuron and must be applied exactly once. A raw
-`CSTLinear` applies both of its endpoints' gates itself, which is right for a
-single map but wrong for a stack: wiring two together gates the shared hidden
-store twice, so a neuron enters the composed function as `gamma^2`, its
-derivative at a dormant `gamma=0` is identically zero, and **no dormant neuron
-in a deep network can ever be woken**. Compose with `CSTBlock` instead — a
-gate-free map, an activation, then the producing store's gate, once:
+`CSTLinear` is purely synaptic and never applies a gate itself: wiring two maps
+together by gating each map's own endpoints would gate the shared hidden store
+twice, so a neuron enters the composed function as `gamma^2`, its derivative
+at a dormant `gamma=0` is identically zero, and **no dormant neuron in a deep
+network can ever be woken**. Compose with `CSTBoundary` instead — it takes a
+map's output and applies normalize/activation, then the producing store's
+gate, exactly once:
 
 ```python
-block1 = CSTBlock(
-    CSTLinear(inputs, hidden, syn1, kernel,
-              gate_input=False, gate_output=False),
-    activation=F.gelu,
-)
-block2 = CSTBlock(
-    CSTLinear(hidden, outputs, syn2, kernel,
-              gate_input=False, gate_output=False)
-)
-logits = block2(block1(x))
+m1 = CSTLinear(inputs, hidden, syn1, kernel)
+m2 = CSTLinear(hidden, outputs, syn2, kernel)
+b1 = CSTBoundary(m1, activation=F.gelu)
+b2 = CSTBoundary(m2, activation=F.gelu)
+logits = b2(m2(b1(m1(x))))
 ```
 
-`gate_input=False, gate_output=False` does not remove gating; it moves it to
-the block, which is what keeps the composition linear in `gamma`. A terminal
-map that no CST layer consumes keeps the default `True` and gates itself.
+Composition is explicit at the call site — `boundary(map(x))` — which is what
+keeps the composition linear in `gamma`. A terminal map that no further CST
+layer consumes is wrapped in a boundary with no activation:
+`CSTBoundary(m)`, whose forward is simply `pre * gate`.
 
 > [!IMPORTANT]
 > `NeuronStore.gate` is an `nn.Parameter`, but nothing puts it in your

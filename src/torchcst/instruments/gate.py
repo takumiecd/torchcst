@@ -53,31 +53,34 @@ class GateTangentRequest:
 
     def build(self, context: InstrumentBuildContext) -> GateTangent:
         module = context.module
-        neuron_store = getattr(module, "out_neurons", None)
-        return GateTangent(module, neuron_store, name=self.name)
+        boundary = getattr(module, "out_boundary", None)
+        if boundary is None:
+            raise TypeError(
+                "gate tangent requires a CSTBoundary owning this map's "
+                "output boundary"
+            )
+        return GateTangent(module, boundary, module.out_neurons, name=self.name)
 
 
 class GateTangent:
     """Accumulate gate evidence without selecting or activating neurons.
 
-    Two topologies deliver the same field.  A terminal ``CSTLinear`` applies
-    the boundary gate itself and reconstructs its pre-gate output.  A
-    :class:`~torchcst.compute.CSTBlock` owns the gate for a boundary that may
-    be *hidden*, so it queues the post-gate gradient during backward and the
-    instrument pairs it with the recomputed activation -- the only form in
-    which a dormant row's field is nonzero at all.
+    The producing map is purely synaptic; the owning
+    :class:`~torchcst.compute.CSTBoundary` applies the gate exactly once, so
+    it queues the post-gate gradient during backward and this instrument
+    pairs it with the boundary's recomputed activation -- the only form in
+    which a dormant row's field is nonzero at all. A terminal boundary is
+    simply a ``CSTBoundary`` with no activation: the same mechanism applies.
     """
 
-    def __init__(self, module: Any, neuron_store: Any, *, name: str) -> None:
-        self._block_mode = callable(getattr(module, "take_gate_grad", None))
-        if not self._block_mode and not callable(
-            getattr(module, "output_gate_tangent", None)
-        ):
-            raise TypeError("gate tangent requires a CST module output gate")
+    def __init__(self, module: Any, boundary: Any, neuron_store: Any, *, name: str) -> None:
+        if not callable(getattr(boundary, "take_gate_grad", None)):
+            raise TypeError("gate tangent requires a CSTBoundary output gate")
         if neuron_store is None:
             raise TypeError("gate tangent requires an output NeuronStore")
         self.name = name
         self.module = module
+        self.boundary = boundary
         self.neuron_store = neuron_store
         self._consumer: Any | None = None
         self._synapse_version = -1
@@ -101,8 +104,7 @@ class GateTangent:
     def prepare(self, view: SynapseView, module: Any) -> None:
         if module is not self.module:
             raise ValueError("instrument was prepared with another compute module")
-        if self._block_mode:
-            module.reset_gate_capture()
+        self.boundary.reset_gate_capture()
         if self._synapse_version not in (-1, view.version):
             self.reset()
         self._synapse_version = view.version
@@ -113,21 +115,18 @@ class GateTangent:
         x_flat, _ = flatten_capture_pair(
             x, g_out, int(module.in_features), int(module.out_features)
         )
-        if self._block_mode:
-            gate_grad = module.take_gate_grad()
-            if gate_grad is None:
-                raise RuntimeError(
-                    "no queued post-gate gradient; the block's forward and the "
-                    "engine's capture must run once per microbatch"
-                )
-            row_energy = (
-                None if self._consumer is None else self._consumer.input_row_energy()
+        gate_grad = self.boundary.take_gate_grad()
+        if gate_grad is None:
+            raise RuntimeError(
+                "no queued post-gate gradient; the boundary's forward and the "
+                "engine's capture must run once per microbatch"
             )
-            gradient, curvature = module.gate_tangent(
-                x, gate_grad, row_energy=row_energy
-            )
-        else:
-            gradient, curvature = module.output_gate_tangent(x, g_out)
+        row_energy = (
+            None if self._consumer is None else self._consumer.input_row_energy()
+        )
+        gradient, curvature = self.boundary.gate_tangent(
+            x, gate_grad, row_energy=row_energy
+        )
         # Autograd's boundary gradient carries mean reduction. FC-2 solves
         # against a summed per-example field and summed feature square.
         return {

@@ -1,6 +1,6 @@
-"""``CSTBlock(..., normalize=...)``: an owned pre-activation normalizer.
+"""``CSTBoundary(..., normalize=...)``: an owned pre-activation normalizer.
 
-Centering the pre-activation is needed to stack CST blocks at all (see
+Centering the pre-activation is needed to stack CST boundaries at all (see
 ``README.md``, "Stacking layers, and who owns a neuron's gate"): a CST layer
 has no bias and no normalization of its own, so nothing keeps the sum of its
 atoms centered, and a narrow domain saturates the activation and freezes
@@ -12,12 +12,12 @@ normalizer that silently never trains.
 ``normalize`` must:
   * default to ``None`` (identity), leaving today's behavior bit-identical;
   * apply to the *pre-activation*, before ``activation``;
-  * show up in ``block.parameters()`` once assigned, because it is a real
+  * show up in ``boundary.parameters()`` once assigned, because it is a real
     submodule rather than a closure;
-  * be fed the exact same tensor by :meth:`CSTBlock.forward` and by
-    :meth:`CSTBlock.activated_rows` (the reconstruction
-    :meth:`CSTBlock.gate_tangent` uses for the dormant-gate field) -- this is
-    the part most likely to go subtly wrong, so it is checked directly via
+  * be fed the exact same tensor by :meth:`CSTBoundary.forward` and by
+    :meth:`CSTBoundary.activated_rows` (the reconstruction
+    :meth:`CSTBoundary.gate_tangent` uses for the dormant-gate field) -- this
+    is the part most likely to go subtly wrong, so it is checked directly via
     the algebraic identity ``d(gate*activated)/dgate == activated``.
 """
 
@@ -28,7 +28,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from torchcst.compute import CSTBlock, CSTLinear
+from torchcst.compute import CSTBoundary, CSTLinear
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
@@ -53,30 +53,26 @@ def _world(normalize: nn.Module | None):
     mu = lambda n: torch.linspace(0.0, 1.0, n, dtype=torch.float64)[:, None]  # noqa: E731
     inputs = NeuronStore("x", D_IN, mu=mu(D_IN), initial_live=D_IN, dtype=torch.float64)
     hidden = NeuronStore("h", H_MAX, mu=mu(H_MAX), initial_live=H_LIVE, dtype=torch.float64)
-    block = CSTBlock(
-        CSTLinear(inputs, hidden, store, GaussianKernel(0.2).double(),
-                  gate_input=False, gate_output=False),
-        activation=F.gelu,
-        normalize=normalize,
-    )
+    linear = CSTLinear(inputs, hidden, store, GaussianKernel(0.2).double())
+    boundary = CSTBoundary(linear, activation=F.gelu, normalize=normalize)
     generator = torch.Generator().manual_seed(4)
     x = torch.randn(32, D_IN, dtype=torch.float64, generator=generator)
-    return hidden, block, x
+    return hidden, linear, boundary, x
 
 
 def test_default_normalize_is_none_and_output_is_unchanged() -> None:
-    hidden, block, x = _world(normalize=None)
+    hidden, linear, boundary, x = _world(normalize=None)
 
-    assert block.normalize is None
+    assert boundary.normalize is None
     live = hidden.live_ids()
-    manual = F.gelu(block.linear.pre_gate_rows(x)).index_select(1, live)
-    torch.testing.assert_close(block(x).index_select(1, live), manual)
+    manual = F.gelu(linear.pre_gate_rows(x)).index_select(1, live)
+    torch.testing.assert_close(boundary(linear(x)).index_select(1, live), manual)
 
 
 def test_normalize_is_rejected_unless_it_is_a_real_module() -> None:
     mu = lambda n: torch.linspace(0.0, 1.0, n, dtype=torch.float64)[:, None]  # noqa: E731
     with pytest.raises(TypeError, match="nn.Module"):
-        CSTBlock(
+        CSTBoundary(
             CSTLinear(
                 NeuronStore("x", D_IN, mu=mu(D_IN), initial_live=D_IN, dtype=torch.float64),
                 NeuronStore("h", H_MAX, mu=mu(H_MAX), initial_live=H_LIVE, dtype=torch.float64),
@@ -86,7 +82,6 @@ def test_normalize_is_rejected_unless_it_is_a_real_module() -> None:
                     dtype=torch.float64,
                 ),
                 GaussianKernel(0.2).double(),
-                gate_input=False, gate_output=False,
             ),
             normalize=lambda t: t,
         )
@@ -94,23 +89,27 @@ def test_normalize_is_rejected_unless_it_is_a_real_module() -> None:
 
 def test_normalize_applies_to_the_pre_activation_and_owns_its_parameters() -> None:
     norm = nn.LayerNorm(H_MAX, dtype=torch.float64)
-    hidden, block, x = _world(normalize=norm)
+    hidden, linear, boundary, x = _world(normalize=norm)
 
-    assert block.normalize is norm
-    owned = dict(block.named_parameters())
+    assert boundary.normalize is norm
+    owned = dict(boundary.named_parameters())
     assert "normalize.weight" in owned and "normalize.bias" in owned
     assert owned["normalize.weight"] is norm.weight
     assert owned["normalize.bias"] is norm.bias
 
     # Applied before the activation, not after: activation(normalize(pre)),
     # not normalize(activation(pre)).
-    pre = block.linear.pre_gate_rows(x)
+    pre = linear.pre_gate_rows(x)
     expected = F.gelu(norm(pre))
     live = hidden.live_ids()
-    torch.testing.assert_close(block(x).index_select(1, live), expected.index_select(1, live))
+    torch.testing.assert_close(
+        boundary(linear(x)).index_select(1, live), expected.index_select(1, live)
+    )
 
     wrong_order = norm(F.gelu(pre))
-    assert not torch.allclose(block(x).index_select(1, live), wrong_order.index_select(1, live))
+    assert not torch.allclose(
+        boundary(linear(x)).index_select(1, live), wrong_order.index_select(1, live)
+    )
 
 
 def test_forward_and_activated_rows_feed_the_activation_the_same_tensor() -> None:
@@ -120,12 +119,12 @@ def test_forward_and_activated_rows_feed_the_activation_the_same_tensor() -> Non
     ``gate_tangent`` reconstructs from) directly exercises whether the two
     call sites were kept in sync when a normalizer sits in between."""
     norm = nn.LayerNorm(H_MAX, dtype=torch.float64)
-    hidden, block, x = _world(normalize=norm)
+    hidden, linear, boundary, x = _world(normalize=norm)
     live = hidden.live_ids()
 
     torch.testing.assert_close(
-        block(x).index_select(1, live),
-        block.activated_rows(x).index_select(1, live),
+        boundary(linear(x)).index_select(1, live),
+        boundary.activated_rows(x).index_select(1, live),
     )
 
 
@@ -136,15 +135,15 @@ def test_gate_tangent_reconstruction_matches_true_backprop_through_normalize() -
     autograd -- and it will disagree the moment the reconstruction and the
     forward pass normalize the pre-activation differently."""
     norm = nn.LayerNorm(H_MAX, dtype=torch.float64)
-    hidden, block, x = _world(normalize=norm)
+    hidden, linear, boundary, x = _world(normalize=norm)
     live = hidden.live_ids()
 
-    out = block(x)
+    out = boundary(linear(x))
     loss = out.square().sum()
     loss.backward()
     true_grad = hidden.gate.grad.index_select(0, live)
 
-    g_gated = block.take_gate_grad()
+    g_gated = boundary.take_gate_grad()
     assert g_gated is not None
-    reconstructed_grad, _ = block.gate_tangent(x, g_gated)
+    reconstructed_grad, _ = boundary.gate_tangent(x, g_gated)
     torch.testing.assert_close(reconstructed_grad.index_select(0, live), true_grad)

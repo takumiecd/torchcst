@@ -257,8 +257,8 @@ def test_neuron_prune_quota_caps_court_decision() -> None:
 
 
 def _growing_world(*, quota=None):
-    """One CST block whose output chart has dormant rows to grow into."""
-    from torchcst.compute import CSTBlock, CSTLinear
+    """One CST map + terminal boundary whose output chart has dormant rows."""
+    from torchcst.compute import CSTBoundary, CSTLinear
     from torchcst.policy import cSFW, gamma_ungate
     from torchcst.representation import GaussianKernel
 
@@ -286,16 +286,8 @@ def _growing_world(*, quota=None):
     mu_out = torch.linspace(0.0, 1.0, 6, dtype=torch.float64)[:, None]
     inputs = NeuronStore("in", 4, mu=mu_in, initial_live=4, dtype=torch.float64)
     outputs = NeuronStore("out", 6, mu=mu_out, initial_live=2, dtype=torch.float64)
-    block = CSTBlock(
-        CSTLinear(
-            inputs,
-            outputs,
-            store,
-            GaussianKernel(0.2).double(),
-            gate_input=False,
-            gate_output=False,
-        )
-    )
+    linear = CSTLinear(inputs, outputs, store, GaussianKernel(0.2).double())
+    boundary = CSTBoundary(linear)
     root = QuotaRegime(
         budget=1,
         method=cSFW(backfit=None, pool_size=16, multistart=1),
@@ -307,19 +299,19 @@ def _growing_world(*, quota=None):
     engine = StructuralEngine(
         {"layer": store, "in": inputs, "out": outputs},
         root,
-        modules={"layer": block},
+        modules={"layer": linear},
         seed=5,
     )
-    return engine, block, outputs
+    return engine, linear, boundary, outputs
 
 
-def _one_event(engine, block) -> tuple:
+def _one_event(engine, linear, boundary) -> tuple:
     x = torch.tensor(
         [[1.0, -0.5, 0.8, 0.2], [-0.3, 1.1, -0.7, 0.4]], dtype=torch.float64
     )
     upstream = torch.ones((2, 6), dtype=torch.float64)
     engine.begin_update()
-    block(x).backward(upstream)
+    boundary(linear(x)).backward(upstream)
     engine.observe_microbatch()
     engine.finalize_backward()
     return engine.step()
@@ -329,20 +321,20 @@ def test_a_synthesized_quota_feeds_every_seat_that_can_spend_it() -> None:
     # A root handed a growing interface but no explicit quota used to
     # synthesize neuron_birth=0 and grow nothing, silently: a zero ceiling is
     # a legal quota, so there was no error to notice.
-    engine, block, outputs = _growing_world()
+    engine, linear, boundary, outputs = _growing_world()
 
-    operations = _one_event(engine, block)
+    operations = _one_event(engine, linear, boundary)
 
     assert any(isinstance(op, NeuronUngate) for op in operations)
     assert outputs.live_ids().numel() > 2
 
 
 def test_an_explicit_quota_still_overrides_the_synthesized_one() -> None:
-    engine, block, outputs = _growing_world(
+    engine, linear, boundary, outputs = _growing_world(
         quota=ConstantQuota(StructuralQuota(synapse_birth=1, neuron_birth=0))
     )
 
-    operations = _one_event(engine, block)
+    operations = _one_event(engine, linear, boundary)
 
     assert not any(isinstance(op, NeuronUngate) for op in operations)
     assert outputs.live_ids().numel() == 2

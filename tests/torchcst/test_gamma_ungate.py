@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from torchcst.compute import CSTLinear
+from torchcst.compute import CSTBoundary, CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import (
     ConstantQuota,
@@ -62,6 +62,7 @@ def _run(
         dtype=torch.float64,
     )
     module = CSTLinear(inputs, outputs, store, GaussianKernel(0.4).double())
+    boundary = CSTBoundary(module)
     method = SynapseLifecycle(
         birth_factory=lambda lam: _NoBirth(), priceable=False, label="no-birth"
     )
@@ -81,10 +82,10 @@ def _run(
     )
     x = torch.tensor([[1.0, -0.5], [0.25, 1.5]], dtype=torch.float64)
     upstream = torch.tensor([[0.1, -0.8, 0.3], [-0.2, 0.5, -0.9]], dtype=torch.float64)
-    raw_gradient, curvature = module.output_gate_tangent(x, upstream)
+    raw_gradient, curvature = boundary.gate_tangent(x, upstream)
     expected_gradient = raw_gradient * x.shape[0]
     engine.begin_update()
-    module(x).backward(upstream)
+    boundary(module(x)).backward(upstream)
     engine.observe_microbatch()
     engine.finalize_backward()
     operation = next(op for op in engine.step() if isinstance(op, NeuronUngate))
