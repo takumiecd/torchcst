@@ -206,14 +206,22 @@ not near zero), not live rows. The two can differ by a factor of ten, and a
 comparison against a fixed-width control is meaningless when they do.
 
 > [!IMPORTANT]
-> **Center the pre-activation of every stacked block.** A `LayerNorm` before the
-> block's activation is enough, and a learnable bias is **not** — once the layer
-> is dead the bias receives no gradient either and cannot climb out. A CST layer
-> has no bias and no normalization of its own, so nothing keeps the sum of its
-> atoms centered, and a stack fails in both directions without one: narrow
-> coordinate domains saturate the activation and freeze training at chance,
-> wide ones diverge outright. In exploratory MNIST runs exactly one domain
-> width trained at all without centering; with it, every width did.
+> **Clip the gradient norm.** A coordinate gradient carries a factor of
+> `1/sigma` that an amplitude gradient does not, so the two never share a
+> magnitude: measured on MNIST at `sigma=0.1`, coordinates reached a norm of
+> 4.5e4 against 823 for amplitudes, spiking after every structural event.
+> Unclipped runs diverge seed-dependently. `clip_grad_norm_(params, 5.0)` over
+> the whole parameter set is what the FASTCON experiments use. Giving
+> coordinates a smaller learning rate is not a substitute — a fifth of the rate
+> does not answer a fiftyfold gap.
+>
+> **Center the pre-activation of every stacked block** as well. A `LayerNorm`
+> before the block's activation is enough, and a learnable bias is **not** —
+> once the layer is dead the bias receives no gradient either and cannot climb
+> out. A CST layer has no bias and no normalization of its own, so nothing keeps
+> the sum of its atoms centered, and a narrow domain will saturate the
+> activation and freeze training at chance. With clipping in place this is worth
+> one to two points at a well-sized domain, and much more at a badly sized one.
 
 A single CST layer feeding a dense head does not need this — its head absorbs
 what a CST consumer does not — which is why the failure only appears once you
