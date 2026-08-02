@@ -205,13 +205,19 @@ When diagnosing a growth run, count *effective* width (live rows whose gate is
 not near zero), not live rows. The two can differ by a factor of ten, and a
 comparison against a fixed-width control is meaningless when they do.
 
-Stacking also needs something the representation does not supply. A CST layer
-has no bias and no normalization, so nothing centers the sum of its atoms:
-stack two, and the pre-activations drift as atoms accumulate until every hidden
-row sits in the activation's flat region, gradients vanish, and training
-freezes. Center the pre-activation yourself — a `LayerNorm` before the block's
-activation is enough. A learnable bias is **not**: once the layer is dead the
-bias receives no gradient either and cannot climb out.
+> [!IMPORTANT]
+> **Center the pre-activation of every stacked block.** A `LayerNorm` before the
+> block's activation is enough, and a learnable bias is **not** — once the layer
+> is dead the bias receives no gradient either and cannot climb out. A CST layer
+> has no bias and no normalization of its own, so nothing keeps the sum of its
+> atoms centered, and a stack fails in both directions without one: narrow
+> coordinate domains saturate the activation and freeze training at chance,
+> wide ones diverge outright. In exploratory MNIST runs exactly one domain
+> width trained at all without centering; with it, every width did.
+
+A single CST layer feeding a dense head does not need this — its head absorbs
+what a CST consumer does not — which is why the failure only appears once you
+stack.
 
 ### Choosing the coordinate domain
 
@@ -233,6 +239,12 @@ mu = torch.linspace(0.0, 3.0, H_MAX)[:, None]            # chart spans the same 
 > moved accuracy from 0.874 to 0.93 with `sigma` untouched. Too wide fails the
 > other way: atoms can no longer cover the space, births stop being accepted,
 > and the live count collapses.
+>
+> This is a choice you make once, when you build the stores and charts. The
+> engine also projects live coordinates back inside the domain on every
+> structural event, but that is worth little: letting coordinates leave scored
+> slightly *better* on 10 of 12 seeds. Get the initial span right; do not count
+> on the projection to rescue a badly sized one.
 
 Both failure modes are visible without a validation set. Too narrow shows up as
 accuracy that stops responding to more atoms; too wide shows up as a live-atom
