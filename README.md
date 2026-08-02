@@ -205,6 +205,39 @@ When diagnosing a growth run, count *effective* width (live rows whose gate is
 not near zero), not live rows. The two can differ by a factor of ten, and a
 comparison against a fixed-width control is meaningless when they do.
 
+Stacking also needs something the representation does not supply. A CST layer
+has no bias and no normalization, so nothing centers the sum of its atoms:
+stack two, and the pre-activations drift as atoms accumulate until every hidden
+row sits in the activation's flat region, gradients vanish, and training
+freezes. Center the pre-activation yourself — a `LayerNorm` before the block's
+activation is enough. A learnable bias is **not**: once the layer is dead the
+bias receives no gradient either and cannot climb out.
+
+### Choosing the coordinate domain
+
+`bounds` is the coordinate range every atom and neuron chart lives on, and the
+kernel resolves two points only if they are more than about one `sigma` apart.
+So what a layer can represent is set by the *ratio* of the domain's extent to
+`sigma`, not by how many atoms or chart rows you allocate:
+
+```python
+RepresentationSpec.continuous(2, 1, bounds=(0.0, 3.0))   # 30 sigma-widths
+mu = torch.linspace(0.0, 3.0, H_MAX)[:, None]            # chart spans the same range
+```
+
+> [!IMPORTANT]
+> Size the domain at roughly **20–30 `sigma` widths**, and give the neuron
+> charts the same span. The default `bounds=(0.0, 1.0)` with `sigma=0.1` leaves
+> only about ten distinguishable positions, which caps the layer no matter how
+> many atoms it grows — in exploratory MNIST runs, widening the domain alone
+> moved accuracy from 0.874 to 0.93 with `sigma` untouched. Too wide fails the
+> other way: atoms can no longer cover the space, births stop being accepted,
+> and the live count collapses.
+
+Both failure modes are visible without a validation set. Too narrow shows up as
+accuracy that stops responding to more atoms; too wide shows up as a live-atom
+count that stalls far below its birth budget.
+
 The current implementation is built around five explicit responsibilities:
 
 ```text
