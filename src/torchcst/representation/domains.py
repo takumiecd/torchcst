@@ -293,6 +293,21 @@ class Box:
     box has no directional gauge or tangent-moment invariant: optimizer state
     remains meaningful after the coordinate itself is clamped to the box.
     ``lineage_key`` returns ``None`` by the common continuous-domain rule.
+
+    ``retract_in_training`` (default ``True``) controls only whether
+    :meth:`SynapseStore.retract_coordinates` -- called on every structural
+    event -- clamps *live* coordinates back into the box during training.
+    Measurement shows that projection is worth little there: letting
+    coordinates drift outside the box between structural events scored
+    slightly better on most seeds, and the box is really an initial-span
+    choice, not a constraint learning must obey.  Sampling
+    (:meth:`sample`/:meth:`SynapseStore` candidate pools) and structural
+    write validation (:meth:`validate_birth`) always enforce the box
+    regardless of this flag -- a candidate must still land inside the domain
+    it was drawn to represent; only the *ordinary training-time* clamp is
+    optional.  Set ``False`` to disable it; this is a per-instance flag, not
+    a global switch, so different sites in the same run may choose
+    differently.
     """
 
     def __init__(
@@ -300,11 +315,15 @@ class Box:
         lo: float | Sequence[float],
         hi: float | Sequence[float],
         dim: int,
+        *,
+        retract_in_training: bool = True,
     ) -> None:
         if isinstance(dim, bool) or not isinstance(dim, int):
             raise TypeError("Box dim must be an int")
         if dim <= 0:
             raise ValueError("Box dim must be positive")
+        if not isinstance(retract_in_training, bool):
+            raise TypeError("Box retract_in_training must be a bool")
         lower = _as_axis_tuple(lo, dim, "Box lo")
         upper = _as_axis_tuple(hi, dim, "Box hi")
         if any(not isfinite(value) for value in lower + upper):
@@ -312,6 +331,7 @@ class Box:
         if any(low >= high for low, high in zip(lower, upper)):
             raise ValueError("Box lo must be less than hi")
         self.dim = dim
+        self.retract_in_training = retract_in_training
         self.lo_per_axis = lower
         self.hi_per_axis = upper
         self.widths = tuple(high - low for low, high in zip(lower, upper))

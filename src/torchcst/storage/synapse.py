@@ -915,7 +915,15 @@ class SynapseStore(nn.Module):
     def retract_coordinates(
         self, optimizer: torch.optim.Optimizer | None = None
     ) -> None:
-        """Restore live coordinate gauges and project matching optimizer moments."""
+        """Restore live coordinate gauges and project matching optimizer moments.
+
+        A domain may opt out of the coordinate clamp specifically here (e.g.
+        ``Box(..., retract_in_training=False)``) while still enforcing its
+        bounds for sampling and structural-write validation; such a domain
+        exposes a ``retract_in_training`` attribute that this method checks.
+        Domains that do not expose it (``Sphere``, ``IntegerGrid``) keep
+        today's unconditional clamp.
+        """
         if optimizer is not None and not isinstance(optimizer, torch.optim.Optimizer):
             raise TypeError("optimizer must be a torch Optimizer or None")
         if optimizer is not None:
@@ -930,7 +938,7 @@ class SynapseStore(nn.Module):
             slots = cpu_slots.to(device=coordinate.device)
             with torch.no_grad():
                 live = coordinate.index_select(0, slots)
-                if live.numel():
+                if live.numel() and getattr(domain, "retract_in_training", True):
                     coordinate.index_copy_(0, slots, domain.retract(live))
                 if coordinate.grad is not None and live.numel():
                     projected = domain.project_grad(
