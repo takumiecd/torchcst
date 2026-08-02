@@ -15,6 +15,19 @@ the *producing* store's gate once, after the activation:
 ``gamma`` multiplies a factor that does not contain it, exactly like a synapse
 amplitude multiplies its kernel outer product, so the dormant field is exact
 and nonzero and the same scalar solve applies.
+
+An optional ``normalize`` module centers the pre-activation before the
+activation is applied:
+
+    h = gamma * activation(normalize(synapse_map(x)))
+
+A CST layer has no bias and no normalization of its own, so nothing keeps the
+sum of its atoms centered; a narrow coordinate domain then saturates the
+activation and freezes training at chance once the layer is stacked. Passing
+the closure ``lambda p: activation(norm(p))`` as ``activation`` "works" but
+leaves ``norm``'s parameters owned by nobody -- forget to add them to the
+optimizer and they silently never train. ``normalize`` is a real submodule
+attribute instead, so it is picked up by ``block.parameters()`` for free.
 """
 
 from __future__ import annotations
@@ -45,6 +58,7 @@ class CSTBlock(nn.Module):
         self,
         linear: _ContinuousCSTMap,
         activation: Callable[[Tensor], Tensor] | None = None,
+        normalize: nn.Module | None = None,
     ) -> None:
         super().__init__()
         if not isinstance(linear, _ContinuousCSTMap):
@@ -56,8 +70,17 @@ class CSTBlock(nn.Module):
             )
         if activation is not None and not callable(activation):
             raise TypeError("activation must be callable or None")
+        if normalize is not None and not isinstance(normalize, nn.Module):
+            raise TypeError(
+                "normalize must be an nn.Module or None -- a plain callable "
+                "would not register its parameters on the block"
+            )
         self.linear = linear
         self.activation = activation
+        # An nn.Module assigned as an attribute is auto-registered as a
+        # submodule, so its parameters (e.g. a LayerNorm's weight/bias) show
+        # up in block.parameters() without the caller wiring them in by hand.
+        self.normalize = normalize
         self.in_features = linear.in_features
         self.out_features = linear.out_features
         self.capture_site = linear.capture_site
@@ -100,7 +123,7 @@ class CSTBlock(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         pre = self.linear(x)
-        activated = pre if self.activation is None else self.activation(pre)
+        activated = self._normalize_and_activate(pre)
         gate = self.out_neurons.gate_vector().to(
             device=activated.device, dtype=activated.dtype
         )
@@ -169,7 +192,18 @@ class CSTBlock(nn.Module):
         return ((g_flat * activated).sum(dim=0), curvature)
 
     def activated_rows(self, x: Tensor) -> Tensor:
-        """Return ``activation(synapse_map(x))`` with no gate and no capture."""
+        """Return ``activation(normalize(synapse_map(x)))`` with no gate, no capture."""
         with torch.no_grad():
             pre = self.linear.pre_gate_rows(x)
-            return pre if self.activation is None else self.activation(pre)
+            return self._normalize_and_activate(pre)
+
+    def _normalize_and_activate(self, pre: Tensor) -> Tensor:
+        """Apply the shared pre-activation pipeline: normalize, then activate.
+
+        :meth:`forward` and :meth:`activated_rows` must feed the activation
+        the exact same tensor -- the dormant-gate field is reconstructed from
+        the latter and compared against gradients captured from the former --
+        so both call this one place rather than each inlining the two steps.
+        """
+        normalized = pre if self.normalize is None else self.normalize(pre)
+        return normalized if self.activation is None else self.activation(normalized)
