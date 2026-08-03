@@ -107,6 +107,38 @@ def _gain(rhs: Tensor, step: Tensor, gram: Tensor) -> float:
     return result if isfinite(result) else float("-inf")
 
 
+def _novelty_discount(
+    source: Tensor,
+    target: Tensor,
+    live_source: Tensor,
+    live_target: Tensor,
+    bandwidth: float,
+) -> Tensor:
+    """Per-candidate ``(1 - rho_max**2)`` against a set of reference atoms.
+
+    ``rho_ck = exp(-|s_c-s_k|^2/4*bandwidth^2) * exp(-|t_c-t_k|^2/4*bandwidth^2)``
+    is the coordinate-only overlap between candidate ``c`` and reference atom
+    ``k`` (twin-control.md Sec.3): the two-sided Gaussian kernel overlap that
+    would make ``c`` and ``k`` near-duplicates if both were live. This is
+    rung 1 of the ladder described there -- geometry only. It omits both the
+    captured-covariance correction to the numerator/denominator (rung 2,
+    ``g~``/``a~`` via ``Sigma_x``) and the local multi-neighbor Schur solve
+    (rung 3); it only ever discounts, and a candidate with no overlap at all
+    (``rho_max ~= 0``) is returned undiscounted.
+
+    ``rho_max`` is the maximum over reference atoms; an empty reference set
+    discounts nothing (returns ones).
+    """
+    if live_source.shape[0] == 0:
+        return source.new_ones(source.shape[0])
+    denom = 4.0 * bandwidth * bandwidth
+    d_source = torch.cdist(source, live_source.to(source)).square()
+    d_target = torch.cdist(target, live_target.to(target)).square()
+    rho = torch.exp(-(d_source + d_target) / denom)
+    rho_max = rho.max(dim=1).values
+    return (1.0 - rho_max.square()).clamp(0.0, 1.0)
+
+
 @dataclass
 class _EvidenceState:
     request: TangentStatisticsRequest
@@ -231,6 +263,19 @@ class TangentRefit:
             gain = _gain(rhs, delta, gram)
             if gain <= 0.0 or (self.rent is not None and gain < self.rent):
                 return ()
+            # Twin (near-duplicate) atoms make ``gram`` near-singular: the
+            # solve above can return a huge cancelling pair (twin-control.md
+            # Sec.1 -- observed w2max jump from 6.48 to 5.33e27 in the FC-5
+            # diagnostic). ``TangentBirth`` already bounds each solved
+            # amplitude at the pre-event live scale (see ``live_scale``
+            # below, computed the same way there); backfit had no such
+            # bound. Clamp the *applied* weights, not the delta, using the
+            # live max|w| measured before this refit touches anything.
+            live_scale = (
+                float(view.w.abs().max().detach().cpu())
+                if view.w.numel()
+                else float("inf")
+            )
             weights = (view.w.detach() + delta.to(view.w)).detach()
             source = view.s.detach().clone()
             target = view.t.detach().clone()
@@ -247,6 +292,8 @@ class TangentRefit:
                     view.domain_in,
                     view.domain_out,
                 )
+            if isfinite(live_scale):
+                weights = weights.clamp(-live_scale, live_scale)
             return (
                 SynapseRefit(
                     view.site,
@@ -315,7 +362,21 @@ class TangentRefit:
 
 @dataclass
 class TangentBirth:
-    """Sequential tangent birth with within-event rank-one deflation."""
+    """Sequential tangent birth with within-event rank-one deflation.
+
+    ``novelty``, when set to a kernel bandwidth ``sigma``, applies the
+    gain_perp novelty discount described in twin-control.md Sec.3: each
+    candidate's gain is multiplied by ``(1 - rho_max**2)`` where ``rho_max``
+    is its largest coordinate overlap (see :func:`_novelty_discount`) against
+    the live atoms *and* the atoms already accepted earlier in this same
+    event. A perfect twin of a live/just-born atom is discounted to exactly
+    zero gain and cannot be born; the discount only ever shrinks gain, so an
+    orthogonal high-gradient candidate ranks exactly as before. This is rung
+    1 of the ladder (coordinates only) -- it does not apply the g~/a~ Schur
+    correction that uses captured input covariance, nor the local
+    multi-neighbor Schur solve; ``novelty=None`` (the default) reproduces the
+    undiscounted behavior exactly.
+    """
 
     state: _EvidenceState
     pool_size: int = 4096
@@ -323,6 +384,7 @@ class TangentBirth:
     polish_iters: int = 0
     trust: float = 0.01
     rent: float | None = None
+    novelty: float | None = None
     _next_lineage: dict[str, int] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
@@ -332,6 +394,8 @@ class TangentBirth:
         self.trust = require_real(self.trust, "trust", positive=True)
         if self.rent is not None:
             self.rent = require_real(self.rent, "rent", nonnegative=True)
+        if self.novelty is not None:
+            self.novelty = require_real(self.novelty, "novelty", positive=True)
 
     @property
     def requires(self) -> tuple[Any, ...]:
@@ -372,11 +436,17 @@ class TangentBirth:
                 if view.w.numel()
                 else float("inf")
             )
+            live_source = view.s.detach()
+            live_target = view.t.detach()
             for _ in range(budget):
                 rhs, diag = _candidate_profiles(
                     port, source_pool, target_pool, residual
                 )
                 gains = rhs.square() / (2.0 * diag)
+                if self.novelty is not None:
+                    gains = gains * _novelty_discount(
+                        source_pool, target_pool, live_source, live_target, self.novelty
+                    )
                 order = torch.argsort(gains, descending=True, stable=True)
                 best: tuple[float, Tensor, Tensor, Tensor] | None = None
                 for index in order[: min(self.multistart, order.numel())]:
@@ -395,6 +465,11 @@ class TangentBirth:
                         )
                     g, a = _profile(port, s[None, :], t[None, :], residual)
                     gain = float((g.square() / (2.0 * a)).detach().cpu())
+                    if self.novelty is not None:
+                        discount = _novelty_discount(
+                            s[None, :], t[None, :], live_source, live_target, self.novelty
+                        )
+                        gain *= float(discount[0])
                     weight = (g / a).to(view.w)
                     if isfinite(live_scale):
                         weight = weight.clamp(-live_scale, live_scale)
@@ -407,6 +482,9 @@ class TangentBirth:
                 source.append(s)
                 target.append(t)
                 weights.append(weight)
+                if self.novelty is not None:
+                    live_source = torch.cat((live_source, s[None, :]), dim=0)
+                    live_target = torch.cat((live_target, t[None, :]), dim=0)
                 kin, kout = _columns(port, s[None, :], t[None, :])
                 covariance = residual.covariance.to(kin)
                 residual = TangentSnapshot(

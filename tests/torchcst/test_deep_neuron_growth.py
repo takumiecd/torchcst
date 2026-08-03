@@ -172,27 +172,38 @@ def test_a_hidden_neuron_grows_only_when_one_owner_applies_its_gate() -> None:
     assert blocked[-1][1] < blocked[0][1]
 
 
-def test_an_unbounded_solve_lands_only_through_the_ladder() -> None:
-    # The gate solve is deliberately uncapped, so a weakly answered row asks
-    # for hundreds of times the live scale. Without a ladder that is simply
-    # rejected -- correct size or nothing -- and the ladder is what turns the
-    # same measurement into a magnitude that pays. FC-1's preregistered rungs
-    # stop at 0.1, which is not deep enough for a gate: this ladder needs 0.01.
+def test_an_unbounded_solve_can_still_land_without_a_ladder() -> None:
+    # The gate solve is deliberately uncapped (GammaUngate's docstring): a
+    # weakly answered row can ask for hundreds of times the live scale, and
+    # whether that is safe is left entirely to the root's realized-loss
+    # trial rather than any upfront cap. This fixture's synapse grid --
+    # twelve atoms spaced closer than the kernel bandwidth -- used to make
+    # layer1/layer2's periodic tangent backfit solve a near-singular Gram
+    # into a huge cancelling amplitude pair (twin-control.md Sec.1); that
+    # corrupted state was what made the *undamped* (``damping=()``) gate
+    # trial fail here, so only the ladder's smaller rungs ever landed.
+    # ``TangentRefit`` now clamps every applied amplitude to the pre-event
+    # live scale (matching ``TangentBirth``'s own convention), so that
+    # corruption no longer happens: the gate solve is still genuinely
+    # uncapped and still lands at hundreds of times the live gate scale, but
+    # the realized-loss trial now accepts it at full size, with or without a
+    # ladder to fall back on.
     x, y = _problem()
 
-    engine, forward, hidden, optimizer, modules = _world(blocked=True, damping=())
-    without = _train(engine, forward, optimizer, modules, x, y, 12)
-    assert not any(
-        isinstance(op, NeuronUngate) for ops, _ in without for op in ops
-    )
-    assert int(hidden.live_ids().numel()) == H_LIVE
+    magnitudes: list[float] = []
+    for damping in ((), LADDER):
+        engine, forward, hidden, optimizer, modules = _world(
+            blocked=True, damping=damping
+        )
+        log = _train(engine, forward, optimizer, modules, x, y, 12)
+        ungates = [op for ops, _ in log for op in ops if isinstance(op, NeuronUngate)]
+        assert ungates, f"expected at least one ungate with damping={damping!r}"
+        assert int(hidden.live_ids().numel()) > H_LIVE
+        magnitudes.extend(float(g) for op in ungates for g in op.gate.flatten())
 
-    engine, forward, hidden, optimizer, modules = _world(blocked=True)
-    with_ladder = _train(engine, forward, optimizer, modules, x, y, 12)
-    assert any(
-        isinstance(op, NeuronUngate) for ops, _ in with_ladder for op in ops
-    )
-    assert int(hidden.live_ids().numel()) > H_LIVE
+    # The solve itself remains deliberately unbounded: some accepted gate is
+    # large relative to the initial live gate scale of 1.0.
+    assert max(abs(m) for m in magnitudes) > 10.0
 
 
 def test_the_dormant_gate_field_is_nonzero_and_exact_in_a_stack() -> None:

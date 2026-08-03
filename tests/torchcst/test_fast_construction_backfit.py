@@ -13,7 +13,13 @@ import torch
 
 from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
-from torchcst.policy import EvenBudgetDistributor, PeriodicCadence, QuotaRegime, cSFW
+from torchcst.policy import (
+    EvenBudgetDistributor,
+    PeriodicCadence,
+    QuotaRegime,
+    cSFW,
+    cVP,
+)
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import (
     NeuronStore,
@@ -24,7 +30,14 @@ from torchcst.storage import (
 )
 
 
-def _parts(method, *, seed: int = 4) -> tuple[StructuralEngine, CSTLinear, SynapseStore]:
+def _parts(
+    method,
+    *,
+    seed: int = 4,
+    source: torch.Tensor | None = None,
+    target: torch.Tensor | None = None,
+    weight: torch.Tensor | None = None,
+) -> tuple[StructuralEngine, CSTLinear, SynapseStore]:
     store = SynapseStore(
         "fc",
         1,
@@ -33,14 +46,20 @@ def _parts(method, *, seed: int = 4) -> tuple[StructuralEngine, CSTLinear, Synap
         spec=RepresentationSpec.continuous(1, 1, bounds=(0.0, 1.0)),
         dtype=torch.float64,
     )
+    if source is None:
+        source = torch.tensor([[0.25], [0.75]], dtype=torch.float64)
+    if target is None:
+        target = torch.tensor([[0.25], [0.75]], dtype=torch.float64)
+    if weight is None:
+        weight = torch.tensor([0.05, -0.05], dtype=torch.float64)
     store.apply(
         [
             SynapseBirth(
                 store.site,
-                torch.tensor([[0.25], [0.75]], dtype=torch.float64),
-                torch.tensor([[0.25], [0.75]], dtype=torch.float64),
-                torch.tensor([0.05, -0.05], dtype=torch.float64),
-                torch.arange(2),
+                source,
+                target,
+                weight,
+                torch.arange(weight.numel()),
             )
         ]
     )
@@ -148,3 +167,55 @@ def test_backfit_none_never_emits_a_refit() -> None:
 
     assert not any(isinstance(op, SynapseRefit) for ops in per_event for op in ops)
     assert any(isinstance(op, SynapseBirth) for ops in per_event for op in ops)
+
+
+def test_backfit_clamps_a_twin_gram_explosion_to_the_pre_refit_live_scale() -> None:
+    # Two near-duplicate atoms (twins, twin-control.md Sec.1) make the event
+    # -time tangent Gram near-singular. A tiny ridge lets the raw solve
+    # return a huge cancelling pair -- the FC-5 diagnostic saw a live w2max
+    # jump from 6.48 to 5.33e27 this way. TangentBirth already bounds every
+    # solved amplitude at the pre-event live scale; TangentRefit must do the
+    # same for its *applied* weights (not the delta).
+    gap = 1.0e-8
+    engine, module, store = _parts(
+        cVP(ridge=1.0e-12),
+        source=torch.tensor([[0.5], [0.5 + gap]], dtype=torch.float64),
+        target=torch.tensor([[0.5], [0.5 + gap]], dtype=torch.float64),
+        weight=torch.tensor([0.05, -0.05], dtype=torch.float64),
+    )
+    x, y = _problem()
+    live_scale_before = float(store.view().w.detach().abs().max())
+
+    ops = _run_event(engine, module, x, y)
+
+    refits = [op for op in ops if isinstance(op, SynapseRefit)]
+    assert len(refits) == 1
+    refit = refits[0]
+    assert bool(torch.isfinite(refit.w).all())
+    assert float(refit.w.abs().max()) <= live_scale_before + 1.0e-9
+
+
+def test_backfit_clamp_is_a_no_op_away_from_any_twin() -> None:
+    # Two well-separated atoms with a live scale large enough that the
+    # solved correction never approaches it: the clamp added alongside the
+    # twin case above must be transparent here, i.e. behave exactly as
+    # backfit did before that fix. Verified two ways: the applied weights
+    # land strictly inside the clamp bounds (so ``clamp`` was a no-op), and
+    # they match the value backfit produced before the clamp existed.
+    weight = torch.tensor([1.0, -1.0], dtype=torch.float64)
+    engine, module, store = _parts(cVP(ridge=1.0e-4), weight=weight)
+    x, y = _problem()
+    live_scale_before = float(store.view().w.detach().abs().max())
+
+    ops = _run_event(engine, module, x, y)
+
+    refits = [op for op in ops if isinstance(op, SynapseRefit)]
+    assert len(refits) == 1
+    refit = refits[0]
+    assert bool((refit.w.abs() < live_scale_before).all())
+    torch.testing.assert_close(
+        refit.w,
+        torch.tensor([0.8239584471648637, -0.22970732684406459], dtype=torch.float64),
+        rtol=1.0e-6,
+        atol=1.0e-9,
+    )
