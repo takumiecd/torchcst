@@ -57,6 +57,7 @@ from .policy import (
     cSFW,
     cVP,
     gamma_ungate,
+    neuron_absorb,
 )
 
 # engine: hooks, clocks, orchestration, atomic apply.
@@ -73,6 +74,7 @@ from .storage import (
     FollowerHub,
     IdAllocator,
     LineageColumn,
+    NeuronGateCredit,
     NeuronKick,
     NeuronOp,
     NeuronRetire,
@@ -163,6 +165,7 @@ __all__ = [
     "LineageColumn",
     "LossRecord",
     "MergeProposer",
+    "NeuronGateCredit",
     "NeuronKick",
     "NeuronOp",
     "NeuronRetire",
@@ -203,6 +206,7 @@ __all__ = [
     "cSFW",
     "cVP",
     "gamma_ungate",
+    "neuron_absorb",
     "conv2d_isotropic_scales",
     "conv2d_neuron_coordinates",
     "prepare_all",

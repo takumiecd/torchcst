@@ -39,9 +39,11 @@ from typing import Any
 import torch
 
 from torchcst.storage import (
+    NeuronGateCredit,
     NeuronRetire,
     NeuronStore,
     NeuronUngate,
+    NeuronView,
     SynapseAbsorb,
     SynapseBirth,
     SynapseDeath,
@@ -166,6 +168,59 @@ def view_after(view: SynapseView, ops: tuple[Any, ...]) -> SynapseView:
         domain_out=view.domain_out,
         retired_in=view.retired_in,
         retired_out=view.retired_out,
+    )
+
+
+def neuron_view_after(view: NeuronView, ops: tuple[Any, ...]) -> NeuronView:
+    """The neuron view as it will read once ``ops`` commit -- simulated, not
+    committed.
+
+    Mirrors :func:`view_after`'s reason for existing: the retention court
+    that runs right after a ``NeuronAbsorbCourt`` proposal (in
+    ``EventDraft.interface``) must judge the *post-merge* population -- a
+    row that just received a twin's mass, or a row that just retired into
+    one, is not the row the retention court should be scoring. Since
+    :class:`~torchcst.storage.NeuronGateCredit`/``NeuronRetire`` carry their
+    full effect explicitly (a credited delta, a dying id set), this is
+    exactly computable without touching the store.
+    """
+    gate = view.gate.clone()
+    position_of = {int(entity): index for index, entity in enumerate(view.ids.tolist())}
+    for op in ops:
+        if isinstance(op, NeuronGateCredit):
+            rows = torch.tensor(
+                [position_of[int(entity)] for entity in op.ids.tolist()],
+                dtype=torch.int64,
+            )
+            if rows.numel():
+                gate.index_add_(0, rows.to(gate.device), op.delta.to(gate))
+    dying: set[int] = set()
+    for op in ops:
+        if isinstance(op, NeuronRetire):
+            dying.update(int(v) for v in op.ids.tolist())
+    if dying:
+        keep = torch.tensor(
+            [int(entity) not in dying for entity in view.ids.tolist()],
+            dtype=torch.bool,
+        )
+        rows = torch.nonzero(keep, as_tuple=False).flatten()
+    else:
+        rows = torch.arange(view.ids.numel(), dtype=torch.int64)
+    ids = view.ids.index_select(0, rows)
+    mu = view.mu.index_select(0, rows.to(view.mu.device))
+    gate = gate.index_select(0, rows.to(gate.device))
+    mass = gate.abs()
+    lineages = (
+        view.lineages.index_select(0, rows) if view.lineages is not None else None
+    )
+    return NeuronView(
+        site=view.site,
+        version=view.version,
+        ids=ids,
+        mu=mu,
+        gate=gate,
+        mass=mass,
+        lineages=lineages,
     )
 
 
@@ -589,10 +644,11 @@ class InterfaceChild(EndpointChild):
         self._composer = built.composer
         self._incident = built.incident
         self._ungate = built.ungate
+        self._absorb = getattr(built, "absorb", None)
 
     @property
     def requires(self) -> tuple[Any, ...]:
-        return dedup_requires((self._court, self._incident, self._ungate))
+        return dedup_requires((self._court, self._incident, self._ungate, self._absorb))
 
     @property
     def immunity_events(self) -> int:
@@ -606,9 +662,13 @@ class InterfaceChild(EndpointChild):
     def can_ungate(self) -> bool:
         return self._ungate is not None
 
+    @property
+    def can_absorb(self) -> bool:
+        return self._absorb is not None
+
     def bind_instruments(self, instruments: dict[str, Any]) -> None:
         _bind_rule_instruments(
-            (self._court, self._incident, self._ungate),
+            (self._court, self._incident, self._ungate, self._absorb),
             self.store.site,
             instruments,
         )
@@ -627,6 +687,27 @@ class InterfaceChild(EndpointChild):
                 retire.ids, self.store.ages_of(retire.ids), self.immunity_events
             )
         return decided
+
+    def propose_absorb(
+        self, view: Any, budget: int, rng: torch.Generator
+    ) -> tuple[ProposalBundle, ...]:
+        """NeuronAbsorb proposals: see :class:`~torchcst.policy.neuron_absorb.
+        NeuronAbsorbCourt`. No registry -- unlike synapse absorb, a fixed
+        chart has no continuous-coordinate candidate reuse to track."""
+        if self._absorb is None or budget == 0:
+            return ()
+        proposed = tuple(self._absorb.propose(view, budget, rng))
+        for bundle in proposed:
+            if not isinstance(bundle, ProposalBundle):
+                raise TypeError("neuron absorb rule may return only ProposalBundle")
+            if not all(
+                isinstance(op, (NeuronGateCredit, NeuronRetire)) for op in bundle.ops
+            ):
+                raise TypeError(
+                    "neuron absorb bundle may contain only NeuronGateCredit/"
+                    "NeuronRetire ops"
+                )
+        return proposed
 
     def dormant_ids(self) -> torch.Tensor:
         return self.store.dormant_ids()

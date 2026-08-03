@@ -35,6 +35,7 @@ from torchcst.instruments.gate import GateTangentRequest
 from .absorb import AbsorbCourt
 from .courts import MagnitudeCourt
 from .fast_construction import TangentBirth, TangentRefit, _EvidenceState
+from .neuron_absorb import NeuronAbsorbCourt
 from .neuron_growth import GammaUngate
 from .proposers import Bounds, GradFieldTopKBirth, UniformEntryBirth
 from .scored import ScoredBirth
@@ -478,6 +479,7 @@ class _BuiltInterface:
     composer: Any | None
     incident: Any | None
     ungate: Any | None
+    absorb: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -493,12 +495,30 @@ class NeuronLifecycle:
     Either capability may be absent. Like ``SynapseLifecycle``, an interface
     lifecycle never carries a cadence; the root's phases decide when a
     response window is open.
+
+    ``absorb_factory`` builds the row-measure merge capability
+    (:class:`~torchcst.policy.neuron_absorb.NeuronAbsorbCourt` --
+    NeuronAbsorb, twin-control.md Sec.4). It is a *distinct* seat from
+    ``retention_factory``, not an alternate retention court: a retention
+    court's contract is "return only ``NeuronRetire``"
+    (:meth:`~torchcst.policy.runtime.InterfaceChild.decide_retention`
+    enforces this), but a merge also needs to credit the receiver's gate --
+    an op no ``RetentionCourt`` can return. ``EventDraft.interface`` runs
+    the absorb capability *before* the retention court, on the same live
+    view the retention court will then judge (post-merge), mirroring
+    exactly how the synapse side's ``absorb()`` stage runs before
+    ``retention()`` for synapse children (CLAUDE.md's fixed stage order:
+    "absorb → retention → interface retire/cascade → birth → response
+    bundles" -- for the neuron seat, that first "absorb" and the "interface
+    retire/cascade" phase are both housed inside ``EventDraft.interface``,
+    in that internal order).
     """
 
     retention_factory: Callable[[], Any | None] = _no_rule
     composer_factory: Callable[[], Any | None] = _no_rule
     incident_factory: Callable[[], Any | None] = _no_rule
     ungate_factory: Callable[[], Any | None] = _no_rule
+    absorb_factory: Callable[[], Any | None] = _no_rule
     label: str = "interface"
 
     def __post_init__(self) -> None:
@@ -507,6 +527,7 @@ class NeuronLifecycle:
             "composer_factory",
             "incident_factory",
             "ungate_factory",
+            "absorb_factory",
         ):
             if not callable(getattr(self, name)):
                 raise TypeError(f"{name} must be callable")
@@ -518,6 +539,7 @@ class NeuronLifecycle:
         composer = self.composer_factory()
         incident = self.incident_factory()
         ungate = self.ungate_factory()
+        absorb = self.absorb_factory()
         if (composer is None) != (incident is None):
             raise ValueError(
                 f"{self.label}: a response capability needs both a composer "
@@ -527,15 +549,17 @@ class NeuronLifecycle:
             raise ValueError(
                 f"{self.label}: independent ungate and bundled response are exclusive"
             )
-        if retention is None and composer is None and ungate is None:
+        if retention is None and composer is None and ungate is None and absorb is None:
             raise ValueError(
-                f"{self.label} must provide a retention court or a response"
+                f"{self.label} must provide a retention court, an absorb "
+                "court, or a response"
             )
         return _BuiltInterface(
             retention=retention,
             composer=composer,
             incident=incident,
             ungate=ungate,
+            absorb=absorb,
         )
 
 
@@ -565,3 +589,33 @@ def gamma_ungate(
         ),
         label="gamma_ungate",
     )
+
+
+def neuron_absorb(
+    *,
+    bandwidth: float,
+    rent: float,
+    threshold: float = 0.5,
+) -> NeuronLifecycle:
+    """Row-measure twin merge for the interface seat (NeuronAbsorb).
+
+    ``bandwidth`` is the geometry kernel scale in :func:`~torchcst.policy.
+    neuron_absorb.NeuronAbsorbCourt`'s ``rho_jk = exp(-|mu_j-mu_k|^2 /
+    4*bandwidth^2)`` (twin-control.md Sec.4); ``threshold`` is the minimum
+    ``rho_jk`` for a pair to even be considered a twin candidate;  ``rent``
+    is the acceptance line for ``cost <= rent`` (same single-number test as
+    :func:`RENT`'s ``AbsorbCourt``). This is stage 1 only -- geometry, no
+    activation-correlation factor -- see the court's own module docstring
+    for the full scope note and the Cauchy-Schwarz bound it never needs a
+    threshold to enforce.
+
+    A ``NeuronLifecycle`` built from just this factory has no retention
+    court and no response capability, which is legal: absorb alone is a
+    complete interface lifecycle (``NeuronLifecycle.build`` only requires
+    *some* capability, not specifically retention).
+    """
+
+    def make_absorb() -> NeuronAbsorbCourt:
+        return NeuronAbsorbCourt(bandwidth=bandwidth, rent=rent, threshold=threshold)
+
+    return NeuronLifecycle(absorb_factory=make_absorb, label="neuron_absorb")

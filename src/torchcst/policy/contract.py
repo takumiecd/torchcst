@@ -63,11 +63,18 @@ class StructuralQuota:
     synapse_merge: int = 0
     synapse_absorb: int = 0
     neuron_birth: int = 0
+    neuron_absorb: int = 0
     synapse_prune: int | None = None
     neuron_prune: int | None = None
 
     def __post_init__(self) -> None:
-        for name in ("synapse_birth", "synapse_merge", "synapse_absorb", "neuron_birth"):
+        for name in (
+            "synapse_birth",
+            "synapse_merge",
+            "synapse_absorb",
+            "neuron_birth",
+            "neuron_absorb",
+        ):
             require_int(getattr(self, name), name, minimum=0)
         for name in ("synapse_prune", "neuron_prune"):
             value = getattr(self, name)

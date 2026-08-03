@@ -59,6 +59,37 @@ class NeuronRetire:
 
 
 @dataclass(frozen=True)
+class NeuronGateCredit:
+    """Add ``delta`` to already-LIVE chart rows' gates; state never changes.
+
+    The row-measure write half of a NeuronAbsorb merge (twin-control.md
+    Sec.4 / fast_construction_mechanics.tex Sec.6: ``gamma_k <- gamma_k +
+    c*``). Neither existing op can express this: :class:`NeuronUngate`
+    requires a DORMANT row and treats its value as an *initial* write, and
+    :class:`NeuronRetire` only ever moves LIVE to RETIRED. Every id must
+    already be LIVE and stays LIVE. Duplicate ids (within one op, or across
+    several ``NeuronGateCredit`` ops in the same batch) accumulate via
+    ``index_add_`` -- two different dying rows crediting the same receiver
+    in one event is a legitimate, well-defined case, not a conflict.
+
+    Bundled with a :class:`NeuronRetire` of the dying row (via a
+    ``ProposalBundle``), this forms the NeuronAbsorb operation: one store,
+    two writes, atomic because both land in the same ``prepare``/``commit``
+    ticket. An id used by a ``NeuronGateCredit`` in a batch may not also
+    appear in that batch's ``NeuronUngate``/``NeuronRetire`` ids (see
+    :meth:`NeuronStore.prepare`) -- crediting a row that is simultaneously
+    changing state in the same commit is ambiguous (state-transition ops
+    force the gate to an initial value or to exact zero, so a same-batch
+    credit would be silently overwritten rather than genuinely lost or
+    kept, which :meth:`NeuronStore.prepare` refuses to guess at).
+    """
+
+    site: str
+    ids: Tensor
+    delta: Tensor
+
+
+@dataclass(frozen=True)
 class NeuronKick:
     """Reserved continuous-coordinate op; deliberately unsupported today."""
 
@@ -67,7 +98,7 @@ class NeuronKick:
     dmu: Tensor | None = None
 
 
-NeuronOp = NeuronUngate | NeuronRetire | NeuronKick
+NeuronOp = NeuronUngate | NeuronRetire | NeuronGateCredit | NeuronKick
 
 
 @dataclass(frozen=True)
@@ -75,6 +106,8 @@ class _NeuronBatch:
     ungate_ids: Tensor
     ungate_gate: Tensor
     retire_ids: Tensor
+    credit_ids: Tensor
+    credit_delta: Tensor
 
 
 class NeuronStore(nn.Module):
@@ -228,19 +261,29 @@ class NeuronStore(nn.Module):
         ungate_ids: list[Tensor] = []
         ungate_values: list[Tensor] = []
         retire_ids: list[Tensor] = []
+        credit_ids: list[Tensor] = []
+        credit_values: list[Tensor] = []
         touched: set[int] = set()
+        credited: set[int] = set()
         state = self.state.detach().to(device="cpu")
         for op in ops:
-            ids = self._check_transition(op, state, touched)
-            if isinstance(op, NeuronUngate):
-                ungate_ids.append(ids)
-                ungate_values.append(self._gate_values(op.gate, ids.numel()))
+            if isinstance(op, NeuronGateCredit):
+                ids = self._check_credit(op, state, touched, credited)
+                credit_ids.append(ids)
+                credit_values.append(self._credit_values(op.delta, ids.numel()))
             else:
-                retire_ids.append(ids)
+                ids = self._check_transition(op, state, touched, credited)
+                if isinstance(op, NeuronUngate):
+                    ungate_ids.append(ids)
+                    ungate_values.append(self._gate_values(op.gate, ids.numel()))
+                else:
+                    retire_ids.append(ids)
         batch = _NeuronBatch(
             ungate_ids=cat_or_empty(ungate_ids),
             ungate_gate=cat_or_empty(ungate_values, like=self.gate),
             retire_ids=cat_or_empty(retire_ids),
+            credit_ids=cat_or_empty(credit_ids),
+            credit_delta=cat_or_empty(credit_values, like=self.gate),
         )
         return Ticket(self, self._version, batch)
 
@@ -249,16 +292,21 @@ class NeuronStore(nn.Module):
             ungate_ids=torch.zeros(0, dtype=torch.int64),
             ungate_gate=self.gate.detach().new_zeros((0,)),
             retire_ids=torch.zeros(0, dtype=torch.int64),
+            credit_ids=torch.zeros(0, dtype=torch.int64),
+            credit_delta=self.gate.detach().new_zeros((0,)),
         )
         return Ticket(self, self._version, batch, empty=True)
 
     def _check_transition(
-        self, op: NeuronOp, state: Tensor, touched: set[int]
+        self, op: NeuronOp, state: Tensor, touched: set[int], credited: set[int]
     ) -> Tensor:
         """Validate one op's IDs against the op's required current state.
 
         ``touched`` accumulates every ID used earlier in the same batch, so an
-        ID can appear in at most one transition per ticket.
+        ID can appear in at most one transition per ticket. ``credited``
+        accumulates every ID a ``NeuronGateCredit`` in the same batch already
+        touched; a row changing state (ungate/retire) in the same commit as
+        it is credited is rejected -- see :class:`NeuronGateCredit`.
         """
         if isinstance(op, NeuronKick):
             raise NotImplementedError("NeuronKick is not implemented")
@@ -272,6 +320,12 @@ class NeuronStore(nn.Module):
         duplicate = touched.intersection(ids.tolist())
         if duplicate or ids.unique().numel() != ids.numel():
             raise ValueError("neuron IDs may appear only once per batch")
+        overlap = credited.intersection(ids.tolist())
+        if overlap:
+            raise ValueError(
+                f"neuron IDs {sorted(overlap)} cannot be both credited and "
+                "ungated/retired in the same batch"
+            )
         touched.update(ids.tolist())
         expected = (
             NeuronState.DORMANT if isinstance(op, NeuronUngate) else NeuronState.LIVE
@@ -280,6 +334,38 @@ class NeuronStore(nn.Module):
         if bool((actual != int(expected)).any()):
             invalid = ids[actual != int(expected)].tolist()
             raise ValueError(f"neuron IDs {invalid} are not {expected.name}")
+        return ids
+
+    def _check_credit(
+        self,
+        op: "NeuronGateCredit",
+        state: Tensor,
+        touched: set[int],
+        credited: set[int],
+    ) -> Tensor:
+        """Validate a gate-credit op: every id must already be LIVE.
+
+        Unlike ``touched`` (retire/ungate), repeated ids across several
+        credit ops -- or within one op's own ids -- are legal and accumulate
+        (see :class:`NeuronGateCredit`), so ``credited`` is only ever checked
+        against ``touched``, never against itself.
+        """
+        if op.site != self.site:
+            raise ValueError(
+                f"op.site={op.site!r} does not match store site={self.site!r}"
+            )
+        ids = self._validate_ids(op.ids)
+        overlap = touched.intersection(ids.tolist())
+        if overlap:
+            raise ValueError(
+                f"neuron IDs {sorted(overlap)} cannot be both credited and "
+                "ungated/retired in the same batch"
+            )
+        credited.update(ids.tolist())
+        actual = state.index_select(0, ids)
+        if bool((actual != int(NeuronState.LIVE)).any()):
+            invalid = ids[actual != int(NeuronState.LIVE)].tolist()
+            raise ValueError(f"neuron IDs {invalid} are not LIVE for gate credit")
         return ids
 
     # ---- commit: write ---------------------------------------------------
@@ -296,7 +382,19 @@ class NeuronStore(nn.Module):
         assert isinstance(batch, _NeuronBatch)
         born_device = batch.ungate_ids.to(device=self.state.device)
         dead_device = batch.retire_ids.to(device=self.state.device)
+        credit_device = batch.credit_ids.to(device=self.state.device)
         with torch.no_grad():
+            if credit_device.numel():
+                # Apply credits before any state transition, matching
+                # SynapseAbsorb's documented order ("receivers += then the
+                # existing death path"); disjoint id sets (enforced above)
+                # make the order immaterial to the result, only to the
+                # documented convention.
+                self.gate.index_add_(
+                    0,
+                    batch.credit_ids.to(self.gate.device),
+                    batch.credit_delta.to(self.gate),
+                )
             if dead_device.numel():
                 self.state.index_fill_(0, dead_device, int(NeuronState.RETIRED))
                 self.gate.index_fill_(0, dead_device.to(self.gate.device), 0.0)
@@ -374,6 +472,19 @@ class NeuronStore(nn.Module):
             raise TypeError("NeuronUngate.gate must be a Tensor, scalar, or None")
         if not bool(torch.isfinite(result).all()):
             raise ValueError("NeuronUngate.gate values must be finite")
+        return result
+
+    def _credit_values(self, value: Tensor, count: int) -> Tensor:
+        if not isinstance(value, Tensor):
+            raise TypeError("NeuronGateCredit.delta must be a Tensor")
+        if value.ndim == 0:
+            result = value.detach().to(self.gate).expand(count).clone()
+        elif value.ndim == 1 and value.numel() == count:
+            result = value.detach().to(self.gate).clone()
+        else:
+            raise ValueError("NeuronGateCredit.delta must be scalar or align with ids")
+        if not bool(torch.isfinite(result).all()):
+            raise ValueError("NeuronGateCredit.delta values must be finite")
         return result
 
     def _validate_ids(self, ids: Tensor) -> Tensor:

@@ -9,6 +9,7 @@ import torch
 
 from torchcst._validation import require_int
 from torchcst.storage import (
+    NeuronGateCredit,
     NeuronKick,
     NeuronRetire,
     NeuronStore,
@@ -34,6 +35,7 @@ Op = (
     | SynapseRefit
     | NeuronUngate
     | NeuronRetire
+    | NeuronGateCredit
     | NeuronKick
 )
 

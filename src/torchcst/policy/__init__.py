@@ -39,8 +39,10 @@ from .families import (
     cSFW,
     cVP,
     gamma_ungate,
+    neuron_absorb,
     thinned,
 )
+from .neuron_absorb import NeuronAbsorbCourt
 from .profit import ProfitCourt, TrialSession, TrialTransaction
 from .proposers import (
     GradFieldTopKBirth,
@@ -83,6 +85,7 @@ __all__ = [
     "InterfaceChild",
     "MagnitudeCourt",
     "MergeProposer",
+    "NeuronAbsorbCourt",
     "NeuronLifecycle",
     "ObservationRequest",
     "Op",
@@ -120,6 +123,7 @@ __all__ = [
     "cSFW",
     "cVP",
     "gamma_ungate",
+    "neuron_absorb",
     "recipes",
     "thinned",
 ]

@@ -23,6 +23,7 @@ from typing import Any, Mapping
 import torch
 
 from torchcst.storage import (
+    NeuronGateCredit,
     NeuronRetire,
     NeuronUngate,
     SynapseAbsorb,
@@ -32,7 +33,7 @@ from torchcst.storage import (
 
 from .bundle import ProposalBundle, bundle_birth_count
 from .contract import BudgetRequest, Phase, StructuralQuota
-from .runtime import PlanRegistryView, view_after
+from .runtime import PlanRegistryView, neuron_view_after, view_after
 
 
 @dataclass(frozen=True)
@@ -68,7 +69,7 @@ class EventPlan:
                     retires.append(op)
                 elif isinstance(op, NeuronUngate):
                     ungates.append(op)
-                elif isinstance(op, SynapseAbsorb):
+                elif isinstance(op, (SynapseAbsorb, NeuronGateCredit)):
                     absorbs.append(op)
                 elif isinstance(op, SynapseRefit):
                     refits.append(op)
@@ -132,9 +133,11 @@ class EventDraft:
         self.refits: dict[str, list[Any]] = {}
         self.retires: dict[str, list[Any]] = {}
         self.ungates: dict[str, list[Any]] = {}
+        self.neuron_absorbs: dict[str, list[Any]] = {}
         self.replacement: dict[str, int] = {}
         self.neuron_birth_spent = 0
         self.post_absorb: dict[Any, Any] = {}
+        self.post_neuron_absorb: dict[Any, Any] = {}
         self.pre_birth: dict[Any, Any] = {}
 
     # ------------------------------------------------------------------
@@ -221,13 +224,23 @@ class EventDraft:
         incident synapses (cross-child coordination planned by the root).
         Cascaded deaths join the plan and the birth-stage simulation but
         never the replacement counts, and they bypass the synapse court's
-        immunity -- family-defined incident deaths."""
+        immunity -- family-defined incident deaths.
+
+        Absorb-capable endpoints merge twin rows first, on this same
+        snapshot, and the retention court then judges the *simulated*
+        post-merge population -- the neuron-side echo of how the synapse
+        side's ``absorb()`` stage runs before ``retention()`` for synapse
+        children (CLAUDE.md's fixed stage order groups both of these inside
+        the single "interface retire/cascade" phase name, in that internal
+        order: absorb first, retention/cascade second)."""
+        self._neuron_absorb(quota.neuron_absorb)
         decisions: dict[str, list[Any]] = {}
         for endpoint in self.tree.endpoints:
             decide = getattr(endpoint, "decide_retention", None)
             if decide is None:
                 continue
-            decided = list(decide(endpoint.view(), self.clock))
+            view = self.post_neuron_absorb.get(endpoint, endpoint.view())
+            decided = list(decide(view, self.clock))
             if decided:
                 decisions[endpoint.site] = decided
         if decisions:
@@ -241,6 +254,79 @@ class EventDraft:
                 for retire in self.retires.get(endpoint.site, ()):
                     self._cascade_retire(endpoint, retire)
         self._independent_ungate(quota.neuron_birth)
+
+    def _neuron_absorb(self, budget: int) -> None:
+        """NeuronAbsorb stage: merge twin rows before any retention court
+        sees this event's neuron population.
+
+        ``quota.neuron_absorb`` is a ``StructuralQuota`` field distinct from
+        ``neuron_prune`` (mirroring ``synapse_absorb`` vs ``synapse_prune``
+        on the synapse side) and is allocated across every absorb-capable
+        endpoint with the same distributor the rest of the tree uses.
+
+        A row this stage retires or credits is deliberately *not* cascaded
+        into incident synapse deaths, unlike an ordinary ``NeuronRetire``.
+        twin-control.md/tex Sec.6 frame NeuronAbsorb as pure gate
+        bookkeeping with no edge to rewire -- the general cascade exists
+        because a synapse's endpoint reference is an entity id, and an
+        ordinary retire genuinely orphans it; NeuronAbsorb's dying row keeps
+        that same entity id permanently RETIRED with its gate force-zeroed
+        (``NeuronStore._zero_inactive_gates``), so any synapse still
+        addressing it reads an exact, permanent zero from then on -- dead
+        weight, never a wrong answer. This is a deliberate deviation from
+        cascading every retirement uniformly, made because the two designs
+        (fixed chart with id-addressed synapses vs. the idealized continuous
+        quadrature the design note describes) disagree here; see the
+        NeuronAbsorb work item's own report for the full reasoning.
+        """
+        capable = tuple(
+            endpoint
+            for endpoint in self.tree.endpoints
+            if getattr(endpoint, "can_absorb", False)
+        )
+        if not capable or budget == 0:
+            return
+        requests = tuple(
+            BudgetRequest(endpoint.site, 0, 0, "neuron_absorb")
+            for endpoint in capable
+        )
+        grants = self.tree._validated_grants(budget, requests, "neuron_absorb")
+        grant_by_site = dict(zip((endpoint.site for endpoint in capable), grants))
+        for endpoint in capable:
+            grant = grant_by_site.get(endpoint.site, 0)
+            if grant == 0:
+                continue
+            view = endpoint.view()
+            ops: list[Any] = []
+            dead: set[int] = set()
+            for bundle in endpoint.propose_absorb(view, grant, self.rng):
+                dying_ids, receiver_ids = self._neuron_absorb_participants(bundle)
+                if any(d in dead for d in dying_ids) or any(
+                    r in dead for r in receiver_ids
+                ):
+                    self.dropped.append(
+                        f"{endpoint.site}: conflicting neuron absorb dropped"
+                    )
+                    continue
+                dead.update(dying_ids)
+                ops.extend(bundle.ops)
+            if ops:
+                self.neuron_absorbs[endpoint.site] = ops
+                self.post_neuron_absorb[endpoint] = neuron_view_after(view, tuple(ops))
+
+    @staticmethod
+    def _neuron_absorb_participants(
+        bundle: ProposalBundle,
+    ) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        """(dying ids, receiver ids) inside one NeuronAbsorb bundle."""
+        dying: list[int] = []
+        receivers: list[int] = []
+        for op in bundle.ops:
+            if isinstance(op, NeuronRetire):
+                dying.extend(int(v) for v in op.ids.tolist())
+            elif isinstance(op, NeuronGateCredit):
+                receivers.extend(int(v) for v in op.ids.tolist())
+        return tuple(dying), tuple(receivers)
 
     def _independent_ungate(self, budget: int) -> None:
         # A chart with nothing dormant cannot spend a neuron grant, and the
@@ -464,6 +550,7 @@ class EventDraft:
         for endpoint in self.tree.endpoints:
             site = endpoint.site
             neuron_ops = (
+                *self.neuron_absorbs.get(site, ()),
                 *self.retires.get(site, ()),
                 *self.ungates.get(site, ()),
             )

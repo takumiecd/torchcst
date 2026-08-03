@@ -302,11 +302,19 @@ def _bind_root(
             or getattr(endpoint, "can_respond", False)
             for endpoint in endpoints
         )
+        # Same reasoning as grows_neurons above, for the absorb capability:
+        # an explicit quota= is the only other way to grant a nonzero
+        # neuron_absorb budget, and silently leaving it at zero would make
+        # an interface=neuron_absorb(...) binding a quiet no-op.
+        absorbs_neurons = any(
+            getattr(endpoint, "can_absorb", False) for endpoint in endpoints
+        )
         quota = ConstantQuota(
             StructuralQuota(
                 synapse_birth=root.budget,
                 synapse_absorb=root.budget,
                 neuron_birth=root.budget if grows_neurons else 0,
+                neuron_absorb=root.budget if absorbs_neurons else 0,
             )
         )
     return RuntimeTree(
