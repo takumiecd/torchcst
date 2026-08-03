@@ -25,8 +25,20 @@ class _NoBirth:
         return ()
 
 
+_DEFAULT_MU = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
+_DEFAULT_UPSTREAM = torch.tensor(
+    [[0.1, -0.8, 0.3], [-0.2, 0.5, -0.9]], dtype=torch.float64
+)
+
+
 def _run(
-    capture_mode: str, *, gate_scale: float | None = None
+    capture_mode: str,
+    *,
+    gate_scale: float | None = None,
+    novelty: float | None = None,
+    mu: torch.Tensor = _DEFAULT_MU,
+    initial_live: int = 1,
+    upstream: torch.Tensor = _DEFAULT_UPSTREAM,
 ) -> tuple[NeuronUngate, torch.Tensor, torch.Tensor]:
     store = SynapseStore(
         "continuous",
@@ -56,9 +68,9 @@ def _run(
     )
     outputs = NeuronStore(
         "outputs",
-        3,
-        mu=torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64),
-        initial_live=1,
+        mu.shape[0],
+        mu=mu,
+        initial_live=initial_live,
         dtype=torch.float64,
     )
     module = CSTLinear(inputs, outputs, store, GaussianKernel(0.4).double())
@@ -69,7 +81,7 @@ def _run(
     root = QuotaRegime(
         budget=1,
         method=method,
-        interface=gamma_ungate(gate_scale=gate_scale),
+        interface=gamma_ungate(gate_scale=gate_scale, novelty=novelty),
         cadence=PeriodicCadence(event_interval=1, observe_window=1),
         quota=ConstantQuota(StructuralQuota(neuron_birth=1)),
         distributor=EvenBudgetDistributor(),
@@ -81,7 +93,6 @@ def _run(
         capture_mode=capture_mode,
     )
     x = torch.tensor([[1.0, -0.5], [0.25, 1.5]], dtype=torch.float64)
-    upstream = torch.tensor([[0.1, -0.8, 0.3], [-0.2, 0.5, -0.9]], dtype=torch.float64)
     raw_gradient, curvature = boundary.gate_tangent(x, upstream)
     expected_gradient = raw_gradient * x.shape[0]
     engine.begin_update()
@@ -127,3 +138,54 @@ def test_gamma_ungate_is_equivalent_in_deferred_and_inline_timing() -> None:
     inline, _, _ = _run("inline_reduced")
     assert torch.equal(deferred.ids, inline.ids)
     torch.testing.assert_close(deferred.gate, inline.gate)
+
+
+# ``novelty`` mechanism (twin-control.md Sec.3/Sec.4, ladder rung 1): one
+# live row at mu=0.65 (matching the store's one atom, so it has the
+# strongest kernel coupling), a "near" dormant row at mu=0.63 close enough
+# to be a coordinate twin of the live row, and a "far" dormant row at
+# mu=0.1. The near row's raw field is larger (it sits where the synapse
+# atom couples most strongly), so it wins without a discount; the near row
+# also overlaps the live row in coordinate space, so novelty must be able to
+# demote it below the far row.
+_NOVELTY_MU = torch.tensor([[0.65], [0.63], [0.1]], dtype=torch.float64)
+_NOVELTY_UPSTREAM = torch.tensor(
+    [[0.1, -0.8, 0.3], [-0.2, 0.5, -0.9]], dtype=torch.float64
+)
+
+
+def test_novelty_none_still_prefers_the_larger_raw_field_near_a_live_row() -> None:
+    operation, gradient, _ = _run(
+        "deferred", mu=_NOVELTY_MU, upstream=_NOVELTY_UPSTREAM, novelty=None
+    )
+    dormant = torch.tensor([1, 2])
+    chosen = dormant[torch.argmax(gradient[dormant].abs())]
+    assert int(chosen) == 1
+    # Undiscounted: reproduces the pre-existing selection exactly.
+    assert operation.ids.tolist() == [1]
+
+
+def test_novelty_discounts_a_near_twin_row_below_a_farther_weaker_one() -> None:
+    baseline_op, gradient, _ = _run(
+        "deferred", mu=_NOVELTY_MU, upstream=_NOVELTY_UPSTREAM, novelty=None
+    )
+    assert baseline_op.ids.tolist() == [1]  # the near, twin-like row wins raw
+
+    discounted_op, _, _ = _run(
+        "deferred", mu=_NOVELTY_MU, upstream=_NOVELTY_UPSTREAM, novelty=0.05
+    )
+    # With the discount active, the near row (mu=0.63, 0.02 from the live
+    # row at mu=0.65 -- deep inside a sigma=0.05 overlap) is priced down
+    # below the farther, raw-weaker row (mu=0.1, essentially undiscounted).
+    assert discounted_op.ids.tolist() == [2]
+
+
+def test_novelty_leaves_a_candidate_far_from_every_live_row_unaffected() -> None:
+    mu = torch.tensor([[0.65], [0.1]], dtype=torch.float64)
+    upstream = torch.tensor([[0.1, -0.8], [-0.2, 0.5]], dtype=torch.float64)
+
+    without, _, _ = _run("deferred", mu=mu, upstream=upstream, novelty=None)
+    with_novelty, _, _ = _run("deferred", mu=mu, upstream=upstream, novelty=0.05)
+
+    assert without.ids.tolist() == with_novelty.ids.tolist()
+    torch.testing.assert_close(without.gate, with_novelty.gate)

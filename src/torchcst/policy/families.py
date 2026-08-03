@@ -410,6 +410,7 @@ def cSFW(
     trust: float = 0.01,
     ridge: float = 1.0e-4,
     timing: Any = "after_backward",
+    novelty: float | None = None,
 ) -> SynapseLifecycle:
     """Pure-growth tangent birth with periodic amplitude/position backfit.
 
@@ -418,6 +419,15 @@ def cSFW(
     experimentally frozen defaults are zero birth-time polish and a K/10
     backfit cadence; position backfit performs one family-private damped
     Newton iteration while ordinary SGD continues between events.
+
+    ``novelty``, when given a kernel bandwidth ``sigma``, opts into the
+    gain_perp novelty discount (twin-control.md Sec.3, ladder rung 1 --
+    coordinates only) on ``TangentBirth``'s candidate scoring: it discounts
+    (never boosts) each candidate's gain by its worst-case coordinate
+    overlap with live and within-event atoms, so a candidate that is a near
+    twin of something already present is priced down toward zero rather than
+    born. ``None`` (the default) reproduces the pre-existing, undiscounted
+    selection exactly.
     """
     if backfit is not None and backfit not in {"K/10", "event"}:
         if isinstance(backfit, bool) or not isinstance(backfit, int):
@@ -435,6 +445,7 @@ def cSFW(
             polish_iters=polish_iters,
             trust=trust,
             rent=lam,
+            novelty=novelty,
         )
 
     def make_refit(lam: float | None) -> TangentRefit | None:
@@ -533,8 +544,16 @@ def gamma_ungate(
     curvature_floor: float = 1.0e-12,
     gate_scale: float | None = None,
     timing: Any = "after_backward",
+    novelty: float | None = None,
 ) -> NeuronLifecycle:
-    """Independent dormant-neuron birth using a solved output gate gamma."""
+    """Independent dormant-neuron birth using a solved output gate gamma.
+
+    ``novelty``, when given a kernel bandwidth ``sigma``, opts ``GammaUngate``
+    into the geometry-only novelty discount from twin-control.md Sec.3/Sec.4:
+    a dormant row's selection field is discounted by its coordinate overlap
+    with the nearest live row, so waking a near-twin of a live row is priced
+    down. ``None`` (the default) reproduces the pre-existing selection.
+    """
     name = f"gate_tangent#{next(_request_counter)}"
     request = GateTangentRequest(name=name, timing=timing)
     return NeuronLifecycle(
@@ -542,6 +561,7 @@ def gamma_ungate(
             request=request,
             curvature_floor=curvature_floor,
             gate_scale=gate_scale,
+            novelty=novelty,
         ),
         label="gamma_ungate",
     )
