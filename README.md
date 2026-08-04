@@ -42,6 +42,28 @@ experiment repository):
 4. **Gradient clipping** — coordinate gradients scale as 1/σ; clipping is a
    family default, not an option.
 
+### The casting rule
+
+Factorize a layer, then cast each factor by its arity:
+
+> **Many-to-many factors (product spaces) go to CST; one-to-many and
+> many-to-one factors stay dense.**
+
+Parameter explosion happens only in product spaces (N×M), and that volume
+is what CST's compression pays for. A one-to-many / many-to-one factor is
+already near-minimal — its parameter count is linear in the larger side —
+so charting it buys nothing: an atom's price (coordinates plus amplitude)
+exceeds the values it would replace. The measured embodiment is
+`DepthwiseCSTConv2d`: the spatial `{h,w} → 1` factor (9 values per channel,
+many-to-one) is a plain depthwise conv, the channel `{in} → {out}` factor
+(the product space) is CST on lawful charts — a composition that beat every
+anchor of the conv arc, including the standalone factorized winner, at ~10k
+parameters. (Boundary note: the underlying variable is really the factor's
+*volume and structure* — a hypothetical many-to-one with a huge, smooth
+"many" side could still pay — but in practice a network's many-to-one
+factors are always small, so the arity rule and the volume arithmetic
+agree.)
+
 The conditions a machine can check are shipped as executable instruments.
 `torchcst.representation.propose_chart` returns a chart that is lawful *by
 construction* — box, dimension, and atom budget — whose `Box.sample` is the
