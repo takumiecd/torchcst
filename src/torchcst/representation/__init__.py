@@ -9,11 +9,16 @@ from .kernels import (
     TriangularKernel,
 )
 from .spec import RepresentationSpec
+from .proposal import ChartProposal, propose_chart
+from .survey import AxisSurvey, ChartSurvey, survey_chart
 
 __all__ = [
     "AbsorbAssessment",
     "AbsorbPlanStep",
+    "AxisSurvey",
     "Box",
+    "ChartProposal",
+    "ChartSurvey",
     "CONTINUOUS_KERNELS",
     "ContinuousKernel",
     "CoordinateDomain",
@@ -25,4 +30,6 @@ __all__ = [
     "Role",
     "Sphere",
     "TriangularKernel",
+    "propose_chart",
+    "survey_chart",
 ]
