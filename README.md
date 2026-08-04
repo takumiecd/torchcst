@@ -322,63 +322,55 @@ Python 3.10 or newer and PyTorch 2.0 or newer are required.
 
 The design principle above is executable end to end. For a hidden site —
 one whose populations have no data-pinned geometry — you never hand-place
-chart coordinates: you *propose* a lawful chart, *sample* it, and wire the
-site. This example runs as shown:
+chart coordinates or size boxes yourself: `CSTLinear.propose` runs the
+propose → sample → wire flow in one call. This example runs as shown:
 
 ```python
 import torch
 
 from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
-from torchcst.policy.recipes import LC
-from torchcst.representation import (
-    GaussianKernel,
-    RepresentationSpec,
-    propose_chart,
+from torchcst.policy import (
+    ConstantQuota,
+    EvenBudgetDistributor,
+    PeriodicCadence,
+    QuotaRegime,
+    StructuralQuota,
+    cSET,
 )
-from torchcst.storage import NeuronStore, SynapseStore
 
-SIGMA = 0.1
-rng = torch.Generator().manual_seed(0)
-
-# 1. Propose lawful charts for both hidden populations.  For 64 neurons at
-#    sigma=0.1 the proposal is a 2-D box spanning 10 sigma per axis with a
-#    floor of ~100 atoms (one per resolvable cell).  The defaults carry the
-#    measured envelope; every threshold is an argument (e.g.
-#    ``axis_extent=`` to recalibrate the 10-sigma target).
-prop_in = propose_chart(64, SIGMA)
-prop_out = propose_chart(32, SIGMA)
-
-# 2. The proposal *is* the initialization: uniform samples from the box are
-#    the measured winning placement (they beat grids and similarity-derived
-#    embeddings on every seed tested).
-mu_in = prop_in.box.sample(64, rng)
-mu_out = prop_out.box.sample(32, rng)
-
-# 3. Wire the site; the proposed boxes become the birth domains, so every
-#    future structural birth also lands inside the lawful envelope.
-inputs = NeuronStore("inputs", 64, mu=mu_in, initial_live=64)
-outputs = NeuronStore("outputs", 32, mu=mu_out, initial_live=32)
-synapses = SynapseStore(
-    "layer",
-    d_in=prop_in.dim,
-    d_out=prop_out.dim,
-    capacity=prop_in.recommended_atoms,
-    spec=RepresentationSpec.continuous(
-        prop_in.dim, prop_out.dim,
-        bounds=prop_in.box.bounds, bounds_out=prop_out.box.bounds,
-    ),
+# One call: lawful charts for both populations (2-D boxes spanning 10 sigma
+# per axis), neuron coordinates sampled uniformly from them (the measured
+# winning placement), stores wired with the boxes as birth domains, and an
+# atom capacity of one-per-resolvable-cell.  Every envelope constant is an
+# argument (e.g. ``axis_extent=``) with the measured value as its default.
+layer = CSTLinear.propose(
+    "layer", 64, 32, sigma=0.1, generator=torch.Generator().manual_seed(0)
 )
-layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(SIGMA))
-policy = LC(event_interval=1, birth_end_event=8, birth_budget=16,
-            freeze_event=16, initial_weight=1e-2)
+
+# The policy tree is the current authoring surface: a named method under a
+# root that owns cadence, quota, and distribution.  Note the distributor:
+# the QuotaRegime default is replacement-only (SET-style rewiring at
+# constant density), which never grows an initially empty store — pass a
+# growth distributor when starting from zero atoms.
+root = QuotaRegime(
+    budget=16,
+    method=cSET(initial_weight=1e-2),
+    cadence=PeriodicCadence(event_interval=1),
+    quota=ConstantQuota(StructuralQuota(synapse_birth=16)),
+    distributor=EvenBudgetDistributor(),
+)
+
 optimizer = torch.optim.Adam(layer.parameters(), lr=1e-3)
 engine = StructuralEngine(
-    {"layer": synapses, "inputs": inputs, "outputs": outputs},
-    policy, modules={"layer": layer}, optimizer=optimizer, seed=0,
+    layer.stores(),                       # {"layer", "layer.in", "layer.out"}
+    root,
+    modules={layer.capture_site: layer},
+    optimizer=optimizer,
+    seed=0,
 )
 
-# 4. The ordinary update lifecycle; atoms are born inside the lawful box.
+rng = torch.Generator().manual_seed(1)
 teacher = torch.randn(64, 32, generator=rng) * 0.1
 for step in range(20):
     x = torch.randn(128, 64, generator=rng)
@@ -397,6 +389,13 @@ further check. `survey_chart` is the *optional* diagnostic for every other
 chart: for a data-pinned site (image pixels, conv taps) the data supplies
 the coordinates, and the survey tells you which axes are genuine continua
 and which are quasi-discrete and must be handled by policy rather than SGD.
+
+`torchcst.policy.recipes` additionally holds a small catalog of named,
+validated whole-tree assemblies (`LC`, `LC_response`, `GrowthByProfit`).
+They are historical presets — `LC` is the "lifecycle champion" carried over
+from the pre-FASTCON 5c experiments — kept because their constants are
+contract-tested, not because they are recommended defaults; new work should
+compose the tree directly as above.
 
 ## Minimal lifecycle
 

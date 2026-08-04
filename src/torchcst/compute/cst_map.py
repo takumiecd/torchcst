@@ -103,6 +103,24 @@ class _ContinuousCSTMap(nn.Module):
         """Compatibility name shared by all CST compute modules."""
         return self.synapses
 
+    def stores(self) -> dict[str, NeuronStore | SynapseStore]:
+        """The engine-wiring dict: every store this map owns, keyed by site.
+
+        ``StructuralEngine`` takes exactly this mapping; a one-site model is
+        wired as ``StructuralEngine(layer.stores(), root, modules={layer.
+        capture_site: layer}, ...)``.  Raises when two stores share a site
+        name, because a dict would silently drop one of them.
+        """
+        entries = (self.synapses, self.in_neurons, self.out_neurons)
+        mapping: dict[str, NeuronStore | SynapseStore] = {}
+        for store in entries:
+            if store.site in mapping:
+                raise ValueError(
+                    f"store site {store.site!r} is not unique within this map"
+                )
+            mapping[store.site] = store
+        return mapping
+
     @staticmethod
     def _validate_neurons(store: NeuronStore, dim: int, name: str) -> None:
         if store.mu.ndim != 2:
