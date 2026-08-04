@@ -445,12 +445,13 @@ begin_update
 structural mutation boundaries. Policies that do not request observations add
 no tensor hooks, but they use the same lifecycle.
 
-## Authoring a policy
+## Adding a backward statistic
 
-Policies compose cadence, logical quota, observations, action rules, and a
-budget distributor. The engine—not a user-supplied planner—assembles their
-operations into a validated structural plan. A
-gradient-scored Gaussian birth requires no `StructuralEngine` modification:
+The policy tree (next section) is the authoring surface for structural
+behavior; extension of the *observation* side is independent of it. A new
+backward statistic is a frozen request plus an instrument — no
+`StructuralEngine` modification and no registration step. A gradient-scored
+Gaussian birth:
 
 ```python
 from torchcst.instruments import ContinuousGradientRequest
@@ -473,24 +474,23 @@ allocates continuous lineages, and emits `SynapseBirth` operations.
 
 Third-party observation requests implement `build(context)`. Their instruments
 implement `prepare`, one timing-specific measurement method, and
-`finalize_update`; the engine has no instrument-class registration step. See the
-[`policy authoring guide`](docs/policy-authoring.md), the
-[`capture lifecycle`](docs/capture-lifecycle.md), and the executable
+`finalize_update`; the engine has no instrument-class registration step. See
+the [`capture lifecycle`](docs/capture-lifecycle.md) and the executable
 [`Gaussian scored-birth example`](examples/gaussian_gradient_birth.py).
 The [`framework design map`](docs/framework-design.md) records the current
 responsibility boundaries, storage behavior, operation support matrix, and the
 recommended extension checklist.
 
-## Policy trees (v2 API, Phase 1 preview)
+## The policy tree
 
-The policy tree is the successor authoring surface described in
-[`docs/policy-tree-design.md`](docs/policy-tree-design.md): one root node owns
-the coordination mechanism (and the knobs that go with it — the cadence, and
-either a shared rent `lam` or an operation-count `budget`), while named method
-constructors describe what happens at each site. Phase 1 ships it as a
-compile-down adapter: `root.compile(stores)` folds the tree into the exact
-composed `Policy` that `StructuralEngine` already runs, so nothing about the
-engine, the update ordering, or existing composed policies changes.
+The policy tree is the sole authoring surface
+([`docs/policy-tree-design.md`](docs/policy-tree-design.md),
+[`docs/policy-tree-phase2.md`](docs/policy-tree-phase2.md)): one root node
+owns the coordination mechanism (and the knobs that go with it — the cadence,
+and either a shared rent `lam` or an operation-count `budget`), while named
+method constructors describe what happens at each site. `StructuralEngine`
+binds the root directly; the older composed-`Policy` surface was removed with
+the Phase 2 migration.
 
 ```python
 from torchcst.policy import (
@@ -518,8 +518,7 @@ root = RentEconomy(
     overrides={"stage2.*": thinned(cRES(), every=2)},
 )
 
-policy = root.compile(stores)  # a current-contract composed Policy
-engine = StructuralEngine(stores, policy, modules=modules, seed=0)
+engine = StructuralEngine(stores, root, modules=modules, seed=0)
 ```
 
 The vocabulary is layered so most users never leave level 3:
@@ -563,8 +562,8 @@ is symmetric, with no separate catalog spelling to disambiguate.
 - `SynapseStore` and `NeuronStore` with versioned prepare/commit mutation
 - slot reuse, capacity growth, age/lineage columns, and follower notifications
 - optimizer-state growth, reset, and coordinate-domain projection
-- lifecycle (`LC`), anti-subspace, response, and merge catalog policies, plus
-  the `cSET`/`cRigL`/`cRES`/`RENT` policy-tree method vocabulary
+- the `cSET`/`cRigL`/`cRES`/`RENT` policy-tree method vocabulary and the
+  `FastConstruction` recipe (cSFW-grow into solve-driven operation)
 - public observation-instrument factories and high-level scored-birth policy
   composition for third-party policies
 - atomic cross-store `ProposalBundle` application
