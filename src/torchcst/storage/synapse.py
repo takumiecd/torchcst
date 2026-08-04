@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
+import math
+
 import torch
 from torch import Tensor, nn
 
@@ -211,6 +213,78 @@ class SynapseStore(nn.Module):
     """Two-phase apply store packing spec-defined ``(s, t, w)`` atoms."""
 
     # ---- construction ----------------------------------------------------
+
+    @classmethod
+    def between(
+        cls,
+        site: str,
+        in_neurons: "Any",
+        out_neurons: "Any",
+        sigma: float,
+        *,
+        capacity: int | None = None,
+        kernel: str = "gaussian",
+        max_capacity: int | None = None,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> "SynapseStore":
+        """Build a continuous synapse store from the populations it connects.
+
+        Synapses depend on neurons, not the other way round: the coordinate
+        domains are read back from the *actual* per-axis extent of each
+        neuron chart (the same convention conv experiment builders use), so
+        birth candidates are drawn exactly over the space the neurons occupy
+        -- whether the charts were proposed, data-pinned, or hand-built.
+
+        ``capacity`` defaults to one atom per resolvable cell of the larger
+        endpoint chart (``∏ max(1, extent_d/σ)``) -- the measured coverage
+        floor with growth headroom, not a ceiling.  ``sigma`` is the kernel
+        bandwidth the compute module will use on these charts; it sets both
+        the cell estimate and nothing else (the kernel object itself lives
+        on the compute module).
+        """
+        if not sigma > 0.0:
+            raise ValueError(f"sigma must be positive, got {sigma}")
+
+        def chart_bounds(store: Any, name: str) -> tuple[tuple[float, ...], tuple[float, ...], float]:
+            mu = getattr(store, "mu", None)
+            if not isinstance(mu, Tensor) or not mu.is_floating_point():
+                raise TypeError(
+                    f"{name} must carry a floating-point coordinate chart; "
+                    "entry-family (index) populations have no continuous domain"
+                )
+            coords = mu if mu.ndim == 2 else mu.unsqueeze(1)
+            lo = coords.min(dim=0).values
+            hi = coords.max(dim=0).values
+            if bool((hi <= lo).any()):
+                raise ValueError(
+                    f"{name} chart has a degenerate axis (no extent); "
+                    "a continuous domain needs spread on every axis"
+                )
+            cells = 1.0
+            for width in (hi - lo).tolist():
+                cells *= max(1.0, width / float(sigma))
+            return tuple(lo.tolist()), tuple(hi.tolist()), cells
+
+        lo_in, hi_in, cells_in = chart_bounds(in_neurons, "in_neurons")
+        lo_out, hi_out, cells_out = chart_bounds(out_neurons, "out_neurons")
+        rows = capacity if capacity is not None else int(math.ceil(max(cells_in, cells_out)))
+        return cls(
+            site,
+            d_in=len(lo_in),
+            d_out=len(lo_out),
+            capacity=rows,
+            max_capacity=max_capacity,
+            spec=RepresentationSpec.continuous(
+                len(lo_in),
+                len(lo_out),
+                bounds=(lo_in, hi_in),
+                bounds_out=(lo_out, hi_out),
+                kernel=kernel,
+            ),
+            device=device,
+            dtype=dtype,
+        )
 
     def __init__(
         self,

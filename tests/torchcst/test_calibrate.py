@@ -11,7 +11,7 @@ from torchcst.lab import (
     immunity_from_tau,
     tau_rise,
 )
-from torchcst.policy.recipes import LC
+from tests.torchcst._recipes import LC
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseStore
 

@@ -143,7 +143,9 @@ older composed-`Policy` and whole-`StructuralPolicy` surfaces described in
    `prune_factory` / `absorb_factory` callables; `NeuronLifecycle` fills the
    interface seat (neuron court and/or the RESPONSE ungate+incident-birth
    capability). `policy/recipes.py` holds the few named, validated whole-tree
-   assemblies (`LC`, `LC_response`, `GrowthByProfit`).
+   assemblies in active research use (currently `FastConstruction`; the
+   historical 5c presets were removed — the test suite keeps a private `LC`
+   copy in `tests/torchcst/_recipes.py` as scaffolding).
 
 A new backward statistic is a frozen request with `build(context)` plus an
 instrument implementing `prepare`, one timing-specific measurement method, and

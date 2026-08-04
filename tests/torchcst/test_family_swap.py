@@ -5,7 +5,7 @@ from __future__ import annotations
 import torch
 
 from torchcst.engine import StructuralEngine
-from torchcst.policy.recipes import LC
+from tests.torchcst._recipes import LC
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseStore
 

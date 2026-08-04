@@ -8,7 +8,7 @@ import torch
 from torchcst.compute import BackwardContext, EntryLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import PeriodicCadence, QuotaRegime, cRigL
-from torchcst.policy.recipes import LC
+from tests.torchcst._recipes import LC
 from torchcst.representation import RepresentationSpec
 from torchcst.storage import SynapseBirth, SynapseStore
 

@@ -20,7 +20,7 @@ from torchcst.policy import (
     RetiredCandidateRegistry,
     SynapseLifecycle,
 )
-from torchcst.policy.recipes import LC
+from tests.torchcst._recipes import LC
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 

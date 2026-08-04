@@ -338,15 +338,26 @@ from torchcst.policy import (
     StructuralQuota,
     cSET,
 )
+from torchcst.representation import GaussianKernel
+from torchcst.storage import NeuronStore, SynapseStore
 
-# One call: lawful charts for both populations (2-D boxes spanning 10 sigma
-# per axis), neuron coordinates sampled uniformly from them (the measured
-# winning placement), stores wired with the boxes as birth domains, and an
-# atom capacity of one-per-resolvable-cell.  Every envelope constant is an
-# argument (e.g. ``axis_extent=``) with the measured value as its default.
-layer = CSTLinear.propose(
-    "layer", 64, 32, sigma=0.1, generator=torch.Generator().manual_seed(0)
-)
+# A CST layer is a composition, not a primitive.  Neurons come first: for a
+# hidden population, propose() builds a lawful chart (a 2-D box spanning
+# 10 sigma per axis) and samples the coordinates uniformly from it -- the
+# measured winning placement.  Every envelope constant is an argument
+# (e.g. ``axis_extent=``) with the measured value as its default.
+gen = torch.Generator().manual_seed(0)
+inputs = NeuronStore.propose("layer.in", 64, sigma=0.1, generator=gen)
+outputs = NeuronStore.propose("layer.out", 32, sigma=0.1, generator=gen)
+
+# Synapses depend on the neurons they connect: between() reads its domains
+# back from the actual per-axis extent of each chart and sizes capacity at
+# one atom per resolvable cell, so every future birth lands inside the
+# envelope -- whether the charts were proposed or data-pinned.
+synapses = SynapseStore.between("layer", inputs, outputs, sigma=0.1)
+
+# The layer merely applies the composed site.
+layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.1))
 
 # The policy tree is the current authoring surface: a named method under a
 # root that owns cadence, quota, and distribution.  Note the distributor:
@@ -390,91 +401,13 @@ chart: for a data-pinned site (image pixels, conv taps) the data supplies
 the coordinates, and the survey tells you which axes are genuine continua
 and which are quasi-discrete and must be handled by policy rather than SGD.
 
-`torchcst.policy.recipes` additionally holds a small catalog of named,
-validated whole-tree assemblies (`LC`, `LC_response`, `GrowthByProfit`).
-They are historical presets — `LC` is the "lifecycle champion" carried over
-from the pre-FASTCON 5c experiments — kept because their constants are
-contract-tested, not because they are recommended defaults; new work should
-compose the tree directly as above.
+`torchcst.policy.recipes` holds only assemblies in active research use —
+currently `FastConstruction` (cSFW-grow into solve-driven operation). The
+historical 5c presets (`LC`, `LC_response`, `GrowthByProfit`) were removed
+from the public surface; the mechanism test suite keeps a private copy of
+`LC` as scaffolding. New work composes the tree directly, as above.
 
-## Minimal lifecycle
-
-```python
-import torch
-
-from torchcst.compute import CSTLinear
-from torchcst.engine import StructuralEngine
-from torchcst.policy.recipes import LC
-from torchcst.representation import GaussianKernel, RepresentationSpec
-from torchcst.storage import NeuronStore, SynapseStore
-
-inputs = NeuronStore(
-    "inputs",
-    4,
-    mu=torch.linspace(0.0, 1.0, 4)[:, None],
-    initial_live=4,
-)
-outputs = NeuronStore(
-    "outputs",
-    3,
-    mu=torch.linspace(0.0, 1.0, 3)[:, None],
-    initial_live=3,
-)
-synapses = SynapseStore(
-    "layer",
-    d_in=1,
-    d_out=1,
-    capacity=16,
-    spec=RepresentationSpec.continuous(1, 1),
-)
-layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.2, learnable=True))
-policy = LC(
-    event_interval=1,
-    birth_end_event=4,
-    birth_budget=2,
-    freeze_event=8,
-    initial_weight=1e-2,
-)
-optimizer = torch.optim.Adam(layer.parameters(), lr=1e-3)
-engine = StructuralEngine(
-    {"layer": synapses, "inputs": inputs, "outputs": outputs},
-    policy,
-    modules={"layer": layer},
-    optimizer=optimizer,
-    seed=0,
-)
-
-x = torch.randn(8, 4)
-target = torch.randn(8, 3)
-
-engine.begin_update()
-optimizer.zero_grad()
-loss = (layer(x) - target).square().mean()
-loss.backward()
-engine.observe_microbatch()
-engine.finalize_backward()
-optimizer.step()
-applied_ops = engine.step()
-```
-
-`LC` means “lifecycle champion.” It is a convenience preset retained from the
-internal 5c experiments, not a gradient optimizer and not a required part of
-`CSTLinear`. Adam updates the differentiable values; `LC` controls discrete
-structure at `engine.step()` by composing a cadence, an operation quota, birth
-and prune rules, and a budget distributor.
-
-In the configuration above, a structural event occurs after every optimizer
-update. Events 1–4 may add up to two uniformly sampled continuous atoms per
-event. Events 5–7 add no atoms but continue the rent-based cleanup sweep, and
-event 8 onward is structurally frozen. The default rent rule protects a
-newborn atom for three events and then removes it after two consecutive events
-below 30% of the live population's median functional mass.
-
-These `LC` constants are a historical catalog preset, not universal CST
-hyperparameters. Continuous-kernel experiments should calibrate retention
-thresholds and immunity for their kernel profile, bandwidth, coordinate
-domain, and training timescale. Users can instead compose `Policy` directly;
-see the [policy authoring guide](docs/policy-authoring.md).
+## Observation timing
 
 Each observation request declares its execution timing. `after_backward`
 keeps detached module-boundary `x`/`g_out` tensors and measures them in

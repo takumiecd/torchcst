@@ -15,9 +15,60 @@ import torch
 
 from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
-from torchcst.policy.recipes import GrowthByProfit
+from torchcst.policy.cadences import PeriodicCadence
+from torchcst.policy.contract import EvenBudgetDistributor
+from torchcst.policy.families import SynapseLifecycle
+from torchcst.policy.profit import ProfitCourt
+from torchcst.policy.proposers import Bounds, UniformBirth
+from torchcst.policy.tree import QuotaRegime
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
+
+
+# The retired GrowthByProfit recipe, kept privately: this file's real
+# subject is the engine's profit-trial contract (polish inside the trial,
+# rollback of a rejected trial including its polish), which needs a
+# profit-gated tree to exercise.
+def _growth_by_profit(
+    *,
+    event_interval: int = 1,
+    atoms_per_event: int = 1,
+    price: float = 0.0,
+    min_profit: float = 0.0,
+    initial_weight: float = 0.0,
+    bounds_in: Bounds | None = None,
+    bounds_out: Bounds | None = None,
+) -> QuotaRegime:
+    """Greedy profit-gated forward construction (theory U-2) as a tree.
+
+    Same parts as the retired ``catalog.GrowthByProfit`` preset: every event
+    proposes ``atoms_per_event`` uniform candidates and the root's profit
+    court keeps them only when the realized loss reduction beats the price.
+    No prune -- the run's natural stop is U-2's predicted K*(price). The
+    trial itself is the root's own subprotocol (docs/policy-tree-phase2.md
+    ruling 2); the engine only lends its checkpoint mechanism.
+    """
+
+    def make_birth(lam: float | None) -> UniformBirth:
+        del lam
+        return UniformBirth(
+            bounds_in=bounds_in,
+            bounds_out=bounds_out,
+            initial_weight=initial_weight,
+        )
+
+    method = SynapseLifecycle(
+        birth_factory=make_birth,
+        priceable=False,
+        label="GrowthByProfit",
+    )
+    return QuotaRegime(
+        budget=atoms_per_event,
+        method=method,
+        cadence=PeriodicCadence(event_interval=event_interval, freeze_event=None),
+        distributor=EvenBudgetDistributor(),
+        profit=ProfitCourt(min_profit=min_profit, cost_rate=price),
+    )
 
 
 def _assert_equal(left: Any, right: Any) -> None:
@@ -61,7 +112,7 @@ def _engine(price: float, *, capacity: int = 8, seed: int = 3):
     )
     kernel = GaussianKernel(0.5).double()
     module = CSTLinear(inputs, outputs, store, kernel)
-    policy = GrowthByProfit(
+    policy = _growth_by_profit(
         event_interval=1,
         atoms_per_event=1,
         price=price,

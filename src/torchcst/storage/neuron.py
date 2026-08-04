@@ -120,6 +120,42 @@ class NeuronStore(nn.Module):
 
     DEFAULT_UNGATE = 1.0e-3
 
+    @classmethod
+    def propose(
+        cls,
+        site: str,
+        n: int,
+        sigma: float,
+        *,
+        dim: int | None = None,
+        axis_extent: float | None = None,
+        generator: torch.Generator | None = None,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> "NeuronStore":
+        """Build a hidden population on a lawful, sampled chart.
+
+        The neurons-first entry point of the propose → sample → wire flow:
+        the chart comes from :func:`torchcst.representation.propose_chart`
+        (lawful by construction) and the coordinates are uniform samples
+        from its box — the measured winning placement.  All ``n`` neurons
+        start live.  Wire synapses afterwards with
+        :meth:`torchcst.storage.SynapseStore.between`, which derives its
+        domains from the populations it connects.
+
+        Populations with data-pinned geometry (pixels, taps) must not use
+        this — pass the data's own coordinates to the constructor instead.
+        """
+        from torchcst.representation import propose_chart
+
+        extra = {} if axis_extent is None else {"axis_extent": axis_extent}
+        proposal = propose_chart(n, sigma, dim=dim, **extra)
+        rng = generator if generator is not None else torch.Generator()
+        mu = proposal.box.sample(n, rng)
+        if dtype is not None:
+            mu = mu.to(dtype)
+        return cls(site, n, mu=mu, initial_live=n, device=device, dtype=dtype)
+
     def __init__(
         self,
         site: str,

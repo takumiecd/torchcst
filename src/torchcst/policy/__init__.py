@@ -6,8 +6,8 @@
 hand-composed :class:`~torchcst.policy.families.SynapseLifecycle`, and
 ``root.bind(...)`` produces the live :class:`~torchcst.policy.tree.RuntimeTree`
 :class:`~torchcst.engine.StructuralEngine` drives. :mod:`recipes` holds the
-few named, validated whole-tree assemblies (``LC``, ``LC_response``,
-``GrowthByProfit``).
+few named, validated whole-tree assemblies in active research use
+(currently ``FastConstruction``).
 """
 
 from .absorb import AbsorbAuditEntry, AbsorbCourt
