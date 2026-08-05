@@ -9,7 +9,10 @@ tests pin the contract at three depths:
 * ``backward`` -- the gradients the structural instruments score agree too;
 * one full engine update -- observation, scoring, and the applied structural
   operations agree, which is the part that reads gradients back out of a capture
-  and could silently see zeros on a device it was never run on.
+  and could silently see zeros on a device it was never run on;
+* cSFW's position backfit, whose family-private damped-Newton solve assembles a
+  small float64 system on the *host* while the atoms it moves live on the
+  accelerator -- see ``test_csfw_position_backfit_runs_on_cuda``.
 
 Skipped when no CUDA device is present, so the suite stays green on a laptop.
 """
@@ -29,9 +32,10 @@ from torchcst.policy import (
     QuotaRegime,
     ScoredBirth,
     SynapseLifecycle,
+    cSFW,
 )
 from torchcst.representation import GaussianKernel, RepresentationSpec
-from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
+from torchcst.storage import NeuronStore, SynapseBirth, SynapseRefit, SynapseStore
 
 cuda_only = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="requires a CUDA device"
@@ -164,3 +168,83 @@ def test_one_structural_update_matches_cpu() -> None:
     torch.testing.assert_close(
         results["cuda"]["weights"], results["cpu"]["weights"], rtol=1e-5, atol=1e-6
     )
+
+
+def _csfw_backfit_parts(device: str):
+    """A cSFW site whose refit rule actually moves coordinates.
+
+    ``backfit="event"`` with ``backfit_position_iters=1`` is the one
+    configuration that reaches ``_polish``; the shipped ``FastConstruction``
+    recipe pins ``backfit_position_iters=0``, which is why no existing test
+    exercised this path on any device.
+    """
+    inputs = NeuronStore(
+        "inputs", N_IN, mu=torch.linspace(0.0, 1.0, N_IN)[:, None],
+        initial_live=N_IN, device=device,
+    )
+    outputs = NeuronStore(
+        "outputs", N_OUT, mu=torch.linspace(0.0, 1.0, N_OUT)[:, None],
+        initial_live=N_OUT, device=device,
+    )
+    synapses = SynapseStore(
+        "layer", d_in=1, d_out=1, capacity=CAPACITY,
+        spec=RepresentationSpec.continuous(1, 1), device=device,
+    )
+    synapses.apply(
+        [
+            SynapseBirth(
+                "layer",
+                torch.tensor([[0.3], [0.7]]),
+                torch.tensor([[0.4], [0.6]]),
+                torch.tensor([0.1, -0.2]),
+                torch.tensor([0, 1], dtype=torch.int64),
+            )
+        ]
+    )
+    layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.2))
+    policy = QuotaRegime(
+        budget=1,
+        method=cSFW(
+            polish_iters=0,
+            backfit="event",
+            backfit_position_iters=1,
+            pool_size=64,
+            multistart=2,
+        ),
+        cadence=PeriodicCadence(event_interval=1, observe_window=1),
+        distributor=EvenBudgetDistributor(),
+    )
+    optimizer = torch.optim.Adam(layer.parameters(), lr=1e-3)
+    engine = StructuralEngine(
+        {"layer": synapses, "inputs": inputs, "outputs": outputs},
+        policy, modules={"layer": layer}, optimizer=optimizer, seed=7,
+    )
+    return layer, synapses, optimizer, engine
+
+
+@cuda_only
+def test_csfw_position_backfit_runs_on_cuda() -> None:
+    """Regression: ``_polish``'s host-side 6x6 Newton step must come back to
+    the atoms' device.  Before the fix this raised ``Expected all tensors to
+    be on the same device`` on the first refit event of any CUDA run."""
+    results = {}
+    for device in ("cpu", "cuda"):
+        layer, synapses, optimizer, engine = _csfw_backfit_parts(device)
+        x, target = batch(device)
+        applied = []
+        for _ in range(3):
+            engine.begin_update()
+            optimizer.zero_grad()
+            (layer(x) - target).square().mean().backward()
+            engine.observe_microbatch()
+            engine.finalize_backward()
+            optimizer.step()
+            applied.extend(engine.step())
+        results[device] = {
+            "refits": sum(isinstance(op, SynapseRefit) for op in applied),
+            "kinds": [type(op).__name__ for op in applied],
+            "live": int(synapses.live_ids().numel()),
+        }
+    assert results["cpu"]["refits"] > 0, "the CPU run never reached the polish path"
+    assert results["cuda"]["kinds"] == results["cpu"]["kinds"]
+    assert results["cuda"]["live"] == results["cpu"]["live"]

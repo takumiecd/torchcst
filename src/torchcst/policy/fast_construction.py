@@ -550,6 +550,13 @@ def _polish(
         return float((-g.square() / (2.0 * a)).detach().cpu())
 
     damping = 1.0e-4
+    # The finite-difference system is at most 6x6 and its entries arrive as
+    # host floats from ``objective``, so it is assembled and solved on the CPU
+    # in float64 regardless of where the atoms live: an accelerator gains
+    # nothing at this size, CUDA float64 runs at 1/64 throughput, and MPS has
+    # no float64 at all. Only the resulting step crosses back to ``theta``'s
+    # device (see ``candidate`` below) -- without that hop this whole path
+    # raised a device mismatch the moment the atoms were not on the CPU.
     for _ in range(iterations):
         center = objective(theta)
         eye = torch.eye(dimension, dtype=torch.float64)
@@ -588,8 +595,11 @@ def _polish(
             if norm > trust:
                 step *= trust / norm
             candidate = (
-                theta.to(torch.float64) + step
-            ).clamp(low.to(torch.float64), high.to(torch.float64)).to(theta)
+                theta.to(device="cpu", dtype=torch.float64) + step
+            ).clamp(
+                low.to(device="cpu", dtype=torch.float64),
+                high.to(device="cpu", dtype=torch.float64),
+            ).to(theta)
             if objective(candidate) < center:
                 accepted = candidate
                 damping = max(damping * 0.3, 1.0e-8)
