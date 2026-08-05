@@ -261,11 +261,18 @@ class AbsorbCourt:
         absorbed_positions: set[int] = set()
         for step in steps:
             absorbed_positions.add(step.dying)
+            # ``step.receivers`` are live-view positions on the *atoms'*
+            # device, while ``view.ids`` is the store's host-side id tensor:
+            # the lookup must happen on the id tensor's device, or
+            # ``index_select`` raises on any accelerator.
+            receivers = view.ids.index_select(
+                0, step.receivers.to(view.ids.device)
+            )
             ops.append(
                 SynapseAbsorb(
                     site=view.site,
                     dying=int(view.ids[step.dying]),
-                    receivers=view.ids.index_select(0, step.receivers),
+                    receivers=receivers,
                     delta_w=step.delta_w,
                 )
             )

@@ -12,7 +12,13 @@ tests pin the contract at three depths:
   and could silently see zeros on a device it was never run on;
 * cSFW's position backfit, whose family-private damped-Newton solve assembles a
   small float64 system on the *host* while the atoms it moves live on the
-  accelerator -- see ``test_csfw_position_backfit_runs_on_cuda``.
+  accelerator -- see ``test_csfw_position_backfit_runs_on_cuda``;
+* ``AbsorbCourt``, which maps ``GramService`` live-view *positions* (atoms'
+  device) through the store's host-side ``ids`` tensor -- see
+  ``test_absorb_court_runs_on_cuda``.
+
+The last two are the same defect twice: a host-side index meeting a
+device-side tensor in a code path no test had ever run off the CPU.
 
 Skipped when no CUDA device is present, so the suite stays green on a laptop.
 """
@@ -26,16 +32,25 @@ from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import ContinuousGradientRequest
 from torchcst.policy import (
+    AbsorbCourt,
+    ConstantQuota,
     EvenBudgetDistributor,
     MagnitudeCourt,
     PeriodicCadence,
     QuotaRegime,
     ScoredBirth,
+    StructuralQuota,
     SynapseLifecycle,
     cSFW,
 )
 from torchcst.representation import GaussianKernel, RepresentationSpec
-from torchcst.storage import NeuronStore, SynapseBirth, SynapseRefit, SynapseStore
+from torchcst.storage import (
+    NeuronStore,
+    SynapseAbsorb,
+    SynapseBirth,
+    SynapseRefit,
+    SynapseStore,
+)
 
 cuda_only = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="requires a CUDA device"
@@ -247,4 +262,68 @@ def test_csfw_position_backfit_runs_on_cuda() -> None:
         }
     assert results["cpu"]["refits"] > 0, "the CPU run never reached the polish path"
     assert results["cuda"]["kinds"] == results["cpu"]["kinds"]
+    assert results["cuda"]["live"] == results["cpu"]["live"]
+
+
+def _absorb_parts(device: str):
+    """Three near-duplicate atoms: two of them are absorbable into the third."""
+    store = SynapseStore(
+        "edge", 1, 1, capacity=12,
+        spec=RepresentationSpec.continuous(1, 1, bounds=(0.0, 1.0)), device=device,
+    )
+    inputs = NeuronStore(
+        "edge_in", 1, mu=torch.zeros(1, 1), initial_live=1, device=device,
+    )
+    outputs = NeuronStore(
+        "edge_out", 2, mu=torch.tensor([[0.0], [1.0]]), initial_live=2, device=device,
+    )
+    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.1))
+    store.apply(
+        [
+            SynapseBirth(
+                store.site,
+                torch.tensor([[0.50], [0.5001], [0.4999]]),
+                torch.tensor([[0.50], [0.5001], [0.4999]]),
+                torch.tensor([1.0, -0.7, 0.4]),
+                torch.arange(3, dtype=torch.int64),
+            )
+        ]
+    )
+    method = SynapseLifecycle(
+        birth_factory=lambda lam: None,
+        absorb_factory=lambda lam: AbsorbCourt(rent=1.0, radius=0.01, ridge=1.0e-9),
+        priceable=False,
+        label="absorb-only",
+    )
+    root = QuotaRegime(
+        budget=0,
+        method=method,
+        cadence=PeriodicCadence(event_interval=1),
+        quota=ConstantQuota(StructuralQuota(synapse_absorb=1)),
+        distributor=EvenBudgetDistributor(),
+    )
+    engine = StructuralEngine(
+        {"edge": store, "edge_in": inputs, "edge_out": outputs},
+        root,
+        modules={"edge": module},
+    )
+    return store, engine
+
+
+@cuda_only
+def test_absorb_court_runs_on_cuda() -> None:
+    """Regression: ``AbsorbCourt`` maps ``GramService`` positions (atoms'
+    device) through the store's host-side ``ids``.  Before the fix this raised
+    ``Expected all tensors to be on the same device`` on the first absorb of
+    any CUDA run -- the same defect as the cSFW polish one above."""
+    results = {}
+    for device in ("cpu", "cuda"):
+        store, engine = _absorb_parts(device)
+        applied = engine.step()
+        results[device] = {
+            "absorbs": sum(isinstance(op, SynapseAbsorb) for op in applied),
+            "live": int(store.view().ids.numel()),
+        }
+    assert results["cpu"]["absorbs"] == 1, "the CPU run never absorbed"
+    assert results["cuda"]["absorbs"] == results["cpu"]["absorbs"]
     assert results["cuda"]["live"] == results["cpu"]["live"]
