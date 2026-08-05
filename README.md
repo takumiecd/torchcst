@@ -64,6 +64,19 @@ parameters. (Boundary note: the underlying variable is really the factor's
 factors are always small, so the arity rule and the volume arithmetic
 agree.)
 
+The rule casts *chart* placement, not coordinates as such. The FC-9 arc's
+`OffsetCSTConv2d` removes even the factorization: one atom lives on the
+product domain `input-channel chart × displacement box`, its spatial
+displacement Δ acting on the **data side** as a bilinear read position
+(dense position gradients by construction — no tap-lattice vacuum) while
+only the channel axes carry kernels. Measured at parity it matches
+`DepthwiseCSTConv2d` at every width, scales monotonically on the atom
+ladder where the separable form's budget law stalls, and its forward
+materializes the equivalent dense kernel per call so the conv itself runs
+at `nn.Conv2d` cost, independent of the atom count. Because Δ is two extra
+axes of the source coordinate, birth candidates, scored birth, and box
+retraction apply unchanged.
+
 The conditions a machine can check are shipped as executable instruments.
 `torchcst.representation.propose_chart` returns a chart that is lawful *by
 construction* — box, dimension, and atom budget — whose `Box.sample` is the

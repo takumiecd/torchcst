@@ -22,7 +22,18 @@ class _ContinuousCSTMap(nn.Module):
     The kernel objects and the store's spec must name the same family, so a
     store calibrated for one profile cannot be driven by another: mass and
     rent constants are family-specific.
+
+    ``input_offset_axes`` declares how many trailing axes of the *source*
+    coordinate are not chart axes matched by the kernel but displacement
+    axes with their own evaluation rule (e.g. spatial offsets applied to
+    the data side).  The input population's chart then spans only the
+    leading ``d_in - input_offset_axes`` axes; a concrete map that sets
+    this must also override :meth:`_kernel_matrices` to slice the source
+    accordingly.
     """
+
+    #: Trailing non-chart source axes; see the class docstring.
+    input_offset_axes: int = 0
 
     def __init__(
         self,
@@ -59,7 +70,13 @@ class _ContinuousCSTMap(nn.Module):
             synapses.spec.domain_out, Box
         ):
             raise ValueError("continuous CST maps require Box coordinate domains")
-        self._validate_neurons(in_neurons, synapses.d_in, "in_neurons")
+        if not 0 <= self.input_offset_axes < synapses.d_in:
+            raise ValueError(
+                "input_offset_axes must leave at least one chart axis"
+            )
+        self._validate_neurons(
+            in_neurons, synapses.d_in - self.input_offset_axes, "in_neurons"
+        )
         self._validate_neurons(out_neurons, synapses.d_out, "out_neurons")
 
         self.in_neurons = in_neurons
