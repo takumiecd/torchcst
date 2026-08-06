@@ -237,3 +237,24 @@ def test_engine_lifecycle_grows_atoms_with_displacements():
     view = block.synapses.view()
     # Born candidates carried their own displacement, inside the box.
     assert float(view.s[:, -2:].abs().max()) <= 1.5
+
+
+def test_integer_extent_box_boundary_atom_stays_in_grid():
+    # A ±1.0 displacement box (kernel_size 2) clamps drifted atoms to exactly
+    # ±1.0; the stencil base cell must cap at r-1 instead of leaving the R=3
+    # grid (the S1 radius-gate crash).
+    gen = torch.Generator().manual_seed(0)
+    block = OffsetCSTConv2d.propose(
+        "mix", 8, 6, 2, SIGMA, generator=gen,
+    ).double()
+    with torch.no_grad():
+        block.synapses.s[:, -2:] = 5.0  # everything clamps to +1.0 exactly
+    x = torch.randn(2, 8, 6, 6, dtype=torch.float64)
+    out = block(x)
+    assert torch.isfinite(out).all()
+    assert block.dense_weight().shape[-1] == 3
+    # the boundary atom reads exactly the +1 integer shift: compare against
+    # explicitly setting the displacement inside the box epsilon-close
+    with torch.no_grad():
+        block.synapses.s[:, -2:] = 1.0 - 1e-9
+    assert torch.allclose(out, block(x), atol=1e-6)

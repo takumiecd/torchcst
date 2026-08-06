@@ -256,10 +256,16 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         delta = source[:, self.chart_d_in:]
         dy = delta[:, 0].clamp(self._off_lo[0], self._off_hi[0])
         dx = delta[:, 1].clamp(self._off_lo[1], self._off_hi[1])
-        iy_f, ix_f = dy.detach().floor(), dx.detach().floor()
+        r = self._r_int
+        # The corner base cell must satisfy base+1 <= r. A box with integer
+        # extent puts clamped displacements exactly on r (floor(r) + 1 would
+        # leave the grid), so cap the base at r-1: the boundary atom then
+        # carries fractional weight 1.0 on its far corner -- same value,
+        # in bounds, gradient unchanged.
+        iy_f = dy.detach().floor().clamp(-r, r - 1)
+        ix_f = dx.detach().floor().clamp(-r, r - 1)
         ay, ax = dy - iy_f, dx - ix_f
         iy, ix = iy_f.long(), ix_f.long()
-        r = self._r_int
         span = 2 * r + 1
         rows = torch.stack((iy, iy, iy + 1, iy + 1), dim=1) + r
         cols = torch.stack((ix, ix + 1, ix, ix + 1), dim=1) + r
