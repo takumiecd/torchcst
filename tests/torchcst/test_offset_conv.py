@@ -276,3 +276,43 @@ def test_compute_dtype_materialization_close_to_full_precision():
             block.in_neurons, block.out_neurons, block.synapses,
             block.kernel_in, compute_dtype=torch.int32,
         )
+
+
+def _grads_of(block, x, proj):
+    block.zero_grad()
+    (block(x) * proj).sum().backward()
+    s = block.synapses
+    return {
+        "s": s.s.grad.clone(), "t": s.t.grad.clone(), "w": s.w.grad.clone(),
+        "sigma": block.kernel_in.sigma.grad.clone(),
+    }
+
+
+def test_lean_materialize_matches_default_path_values_and_grads():
+    gen = torch.Generator().manual_seed(0)
+    ref = OffsetCSTConv2d.propose("mix", 8, 6, 3, SIGMA, generator=gen).double()
+    lean = OffsetCSTConv2d(
+        ref.in_neurons, ref.out_neurons, ref.synapses, ref.kernel_in,
+        track_mass=False, lean_materialize=True,
+    ).double()
+    # drift one atom onto the clamp boundary so the masked-gradient branch
+    # is exercised too
+    with torch.no_grad():
+        ref.synapses.s[0, -2:] = 3.0
+    x = torch.randn(2, 8, 6, 6, dtype=torch.float64)
+    proj = torch.randn(2, 6, 6, 6, dtype=torch.float64)
+    assert torch.allclose(ref.dense_weight(), lean.dense_weight(), atol=1e-12)
+    g_ref = _grads_of(ref, x, proj)
+    g_lean = _grads_of(lean, x, proj)
+    for key in g_ref:
+        assert torch.allclose(g_ref[key], g_lean[key], atol=1e-9), key
+
+
+def test_lean_materialize_validation():
+    gen = torch.Generator().manual_seed(0)
+    block = OffsetCSTConv2d.propose("mix", 8, 6, 3, SIGMA, generator=gen)
+    with pytest.raises(ValueError):
+        OffsetCSTConv2d(
+            block.in_neurons, block.out_neurons, block.synapses,
+            block.kernel_in, lean_materialize=True,  # track_mass defaults True
+        )
