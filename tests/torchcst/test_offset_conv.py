@@ -258,3 +258,21 @@ def test_integer_extent_box_boundary_atom_stays_in_grid():
     with torch.no_grad():
         block.synapses.s[:, -2:] = 1.0 - 1e-9
     assert torch.allclose(out, block(x), atol=1e-6)
+
+
+def test_compute_dtype_materialization_close_to_full_precision():
+    gen = torch.Generator().manual_seed(0)
+    block = OffsetCSTConv2d.propose("mix", 8, 6, 3, SIGMA, generator=gen)
+    x = torch.randn(2, 8, 6, 6, generator=torch.Generator().manual_seed(1))
+    full = block(x)
+    block.compute_dtype = torch.bfloat16
+    reduced = block(x)
+    rel = (full - reduced).abs().max() / full.abs().max()
+    assert float(rel) < 5e-2  # bf16 mantissa; contraction accumulates fp32
+    block(x).square().mean().backward()
+    assert block.synapses.s.grad is not None  # grads flow through the cast
+    with pytest.raises(TypeError):
+        OffsetCSTConv2d(
+            block.in_neurons, block.out_neurons, block.synapses,
+            block.kernel_in, compute_dtype=torch.int32,
+        )

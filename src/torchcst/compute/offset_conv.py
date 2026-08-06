@@ -103,6 +103,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         kernel_out: ContinuousKernel | None = None,
         stride: int | tuple[int, int] = 1,
         track_mass: bool = True,
+        compute_dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__(
             in_neurons, out_neurons, synapses, kernel, kernel_out,
@@ -126,6 +127,13 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         self._r_int = max(1, int(math.ceil(radius)))
         self.in_channels = self.in_features
         self.out_channels = self.out_features
+        # Optional reduced-precision materialization: the kernel-column /
+        # stencil contraction runs in this dtype (tensor cores accumulate in
+        # fp32, so W keeps ~fp32 fidelity); parameters, conv, and gradients
+        # stay in the parameter dtype. None = full precision (default).
+        if compute_dtype is not None and not compute_dtype.is_floating_point:
+            raise TypeError("compute_dtype must be a floating dtype or None")
+        self.compute_dtype = compute_dtype
 
     # -- construction ----------------------------------------------------------
 
@@ -298,7 +306,14 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         # K ~ 7000 on wide layers -- the measured fc10a OOM). Staging through
         # [out, span^2, K] keeps the peak at span^2/in_features of that.
         scaled = (k_out * weights)[:, None, :] * stencil.transpose(0, 1)[None]
-        weight = torch.einsum("osk,ck->ocs", scaled, k_in)
+        if self.compute_dtype is not None and weights.dtype != self.compute_dtype:
+            weight = torch.einsum(
+                "osk,ck->ocs",
+                scaled.to(self.compute_dtype),
+                k_in.to(self.compute_dtype),
+            ).to(weights.dtype)
+        else:
+            weight = torch.einsum("osk,ck->ocs", scaled, k_in)
         return weight.reshape(self.out_features, self.in_features, span, span)
 
     # -- forward ---------------------------------------------------------------
