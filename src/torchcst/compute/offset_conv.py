@@ -287,7 +287,12 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
             k_in * torch.linalg.vector_norm(stencil, dim=1).detach(), k_out
         )
         span = 2 * self._r_int + 1
-        weight = torch.einsum("ok,ck,ks->ocs", k_out * weights, k_in, stencil)
+        # Contraction order matters at large K: the single three-factor einsum
+        # is free to materialize an [out, in, K] intermediate (gigabytes at
+        # K ~ 7000 on wide layers -- the measured fc10a OOM). Staging through
+        # [out, span^2, K] keeps the peak at span^2/in_features of that.
+        scaled = (k_out * weights)[:, None, :] * stencil.transpose(0, 1)[None]
+        weight = torch.einsum("osk,ck->ocs", scaled, k_in)
         return weight.reshape(self.out_features, self.in_features, span, span)
 
     # -- forward ---------------------------------------------------------------
