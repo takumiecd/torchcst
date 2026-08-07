@@ -14,6 +14,7 @@ from torchcst.compute import (
     CaptureMode,
     ComputeLinear,
     CSTConv2d,
+    OffsetCSTConv2d,
     CSTLinear,
     EntryLinear,
     NeuronGatedLinear,
@@ -272,6 +273,7 @@ class StructuralEngine:
                     NeuronGatedLinear,
                     CSTLinear,
                     CSTConv2d,
+                    OffsetCSTConv2d,
                 ),
             ):
                 raise TypeError("modules values must be supported compute modules")

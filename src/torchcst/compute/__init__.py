@@ -1,5 +1,6 @@
 """CST compute modules, control families, and backward-capture primitives."""
 
+from .backends import Factored, Materialized, NativeTruncated
 from .baselines import EntryLinear, NeuronGatedLinear, RankOneLinear
 from .boundary import CSTBoundary
 from .capture import (
@@ -16,11 +17,19 @@ from .batched_conv import batched_conv_dense_weights
 from .cst_conv import CSTConv2d, conv2d_isotropic_scales, conv2d_neuron_coordinates
 from .cst_linear import CSTLinear
 from .depthwise_conv import DepthwiseCSTConv2d
+from .offset_conv import OffsetCSTConv2d
 from .graphed_step import GraphedCellRunner, capturable_sgd_step, make_momentum_buffers
 
 # CSTBoundary is not a site module: the engine never sees one, only the maps
 # whose output boundary it owns (reachable via map.out_boundary).
-ComputeLinear = CSTConv2d | CSTLinear | EntryLinear | NeuronGatedLinear | RankOneLinear
+ComputeLinear = (
+    CSTConv2d
+    | CSTLinear
+    | EntryLinear
+    | NeuronGatedLinear
+    | OffsetCSTConv2d
+    | RankOneLinear
+)
 
 __all__ = [
     "BackwardContext",
@@ -32,8 +41,12 @@ __all__ = [
     "CaptureMode",
     "ComputeLinear",
     "EntryLinear",
+    "Factored",
     "GraphedCellRunner",
+    "Materialized",
+    "NativeTruncated",
     "NeuronGatedLinear",
+    "OffsetCSTConv2d",
     "Observation",
     "ObservationTiming",
     "RankOneLinear",

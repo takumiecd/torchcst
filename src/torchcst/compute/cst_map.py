@@ -8,6 +8,7 @@ from torch import Tensor, nn
 from torchcst.representation import Box, ContinuousKernel
 from torchcst.storage import NeuronStore, SynapseStore, SynapseView
 
+from .backends.factored import apply_rows
 from .capture import BackwardContext, flatten_capture_pair, register_capture_hook
 
 
@@ -22,7 +23,18 @@ class _ContinuousCSTMap(nn.Module):
     The kernel objects and the store's spec must name the same family, so a
     store calibrated for one profile cannot be driven by another: mass and
     rent constants are family-specific.
+
+    ``input_offset_axes`` declares how many trailing axes of the *source*
+    coordinate are not chart axes matched by the kernel but displacement
+    axes with their own evaluation rule (e.g. spatial offsets applied to
+    the data side).  The input population's chart then spans only the
+    leading ``d_in - input_offset_axes`` axes; a concrete map that sets
+    this must also override :meth:`_kernel_matrices` to slice the source
+    accordingly.
     """
+
+    #: Trailing non-chart source axes; see the class docstring.
+    input_offset_axes: int = 0
 
     def __init__(
         self,
@@ -59,7 +71,13 @@ class _ContinuousCSTMap(nn.Module):
             synapses.spec.domain_out, Box
         ):
             raise ValueError("continuous CST maps require Box coordinate domains")
-        self._validate_neurons(in_neurons, synapses.d_in, "in_neurons")
+        if not 0 <= self.input_offset_axes < synapses.d_in:
+            raise ValueError(
+                "input_offset_axes must leave at least one chart axis"
+            )
+        self._validate_neurons(
+            in_neurons, synapses.d_in - self.input_offset_axes, "in_neurons"
+        )
         self._validate_neurons(out_neurons, synapses.d_out, "out_neurons")
 
         self.in_neurons = in_neurons
@@ -238,7 +256,7 @@ class _ContinuousCSTMap(nn.Module):
         k_in, k_out = self._kernel_matrices(source, target)
         self._refresh_mass_scale(k_in, k_out)
 
-        output = ((x @ k_in) * weights) @ k_out.transpose(0, 1)
+        output = apply_rows(x, k_in, k_out, weights)
 
         if self._backward_context is not None:
             register_capture_hook(
@@ -325,7 +343,7 @@ class _ContinuousCSTMap(nn.Module):
         weights = weights.detach().to(x_flat)
         with torch.no_grad():
             k_in, k_out = self._kernel_matrices(source, target)
-            return ((x_flat @ k_in) * weights) @ k_out.transpose(0, 1)
+            return apply_rows(x_flat, k_in, k_out, weights)
 
     def input_row_energy(self) -> Tensor:
         """Return ``sum_o M[j, o]^2`` for the represented map ``M``.

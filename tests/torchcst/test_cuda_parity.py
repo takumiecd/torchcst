@@ -28,7 +28,12 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchcst.compute import CSTLinear
+from torchcst.compute import (
+    CSTLinear,
+    Factored,
+    Materialized,
+    NativeTruncated,
+)
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import ContinuousGradientRequest
 from torchcst.policy import (
@@ -308,6 +313,95 @@ def _absorb_parts(device: str):
         modules={"edge": module},
     )
     return store, engine
+
+
+def _path_parts(device: str):
+    """One shared site, four CSTLinear execution paths over it."""
+    dtype = torch.float32
+    store = SynapseStore(
+        "paths", 2, 2, capacity=8,
+        spec=RepresentationSpec.continuous(2, 2, bounds=(-1.0, 1.0)),
+        device=device, dtype=dtype,
+    )
+    generator = torch.Generator().manual_seed(11)
+    store.apply(
+        [
+            SynapseBirth(
+                "paths",
+                torch.rand(8, 2, generator=generator, dtype=dtype) * 2 - 1,
+                torch.rand(8, 2, generator=generator, dtype=dtype) * 2 - 1,
+                torch.randn(8, generator=generator, dtype=dtype),
+                torch.arange(8, dtype=torch.int64),
+            )
+        ]
+    )
+    inputs = NeuronStore(
+        "paths_in", 6,
+        mu=torch.rand(6, 2, generator=generator, dtype=dtype) * 2 - 1,
+        initial_live=6, device=device, dtype=dtype,
+    )
+    outputs = NeuronStore(
+        "paths_out", 5,
+        mu=torch.rand(5, 2, generator=generator, dtype=dtype) * 2 - 1,
+        initial_live=5, device=device, dtype=dtype,
+    )
+    kernel = GaussianKernel(0.35)
+    common = (inputs, outputs, store, kernel)
+    return store, kernel, {
+        "factored": CSTLinear(*common, backend=Factored()),
+        "materialized": CSTLinear(*common, backend=Materialized()),
+        "lean": CSTLinear(
+            *common, track_mass=False, backend=Materialized(lean=True),
+        ),
+        # radius 6 sigma: the dropped tail (exp(-18)) sits far below the
+        # float32 comparison tolerance, so all four backends must agree.
+        "native": CSTLinear(
+            *common, track_mass=False, backend=NativeTruncated(radius=6.0),
+        ),
+    }
+
+
+@cuda_only
+def test_execution_paths_agree_on_cuda() -> None:
+    generator = torch.Generator().manual_seed(5)
+    x_cpu = torch.randn(7, 6, generator=generator)
+    upstream_cpu = torch.randn(7, 5, generator=generator)
+    results: dict[str, dict[str, dict[str, torch.Tensor]]] = {}
+    for device in ("cpu", "cuda"):
+        store, kernel, modules = _path_parts(device)
+        x = x_cpu.to(device)
+        upstream = upstream_cpu.to(device)
+        per_path = {}
+        for name, module in modules.items():
+            for parameter in (store.w, store.s, store.t, kernel.sigma):
+                parameter.grad = None
+            output = module(x)
+            output.backward(upstream)
+            per_path[name] = {
+                "out": output.detach().cpu(),
+                "w": store.w.grad.detach().cpu(),
+                "s": store.s.grad.detach().cpu(),
+                "t": store.t.grad.detach().cpu(),
+            }
+        results[device] = per_path
+    for device in ("cpu", "cuda"):
+        for name in ("materialized", "lean", "native"):
+            for key in ("out", "w", "s", "t"):
+                torch.testing.assert_close(
+                    results[device][name][key],
+                    results[device]["factored"][key],
+                    rtol=1e-4, atol=1e-5,
+                    msg=lambda formatted, name=name, key=key, device=device: (
+                        f"{device}:{name}:{key} disagrees with factored: "
+                        f"{formatted}"
+                    ),
+                )
+    for key in ("out", "w", "s", "t"):
+        torch.testing.assert_close(
+            results["cuda"]["factored"][key],
+            results["cpu"]["factored"][key],
+            rtol=1e-4, atol=1e-5,
+        )
 
 
 @cuda_only
