@@ -174,8 +174,11 @@ Y
 \odot g_{\mathrm{out}},
 ```
 
-without materializing $W$ during the forward pass. Here $\odot$ denotes
-broadcast elementwise multiplication.
+Here $\odot$ denotes broadcast elementwise multiplication. Whether this
+factorized expression is evaluated directly, or $W$ is built once per
+forward and applied as one GEMM, is an execution-backend choice — see
+[Execution backends](#execution-backends) below; the represented map is
+identical either way.
 
 The available continuous profiles are
 
@@ -202,6 +205,29 @@ Neuron chart coordinates $\mu$ are fixed buffers in the current
 implementation. Separately, a clock-driven structural policy decides when
 atoms or neurons are born, retired, merged, or ungated. This separates
 continuous parameter optimization from discrete changes to model structure.
+
+### Execution backends
+
+One measure, several ways to apply it. `torchcst.compute.backends` is the
+pure-function world (tensors in, tensors out; it never sees stores, capture,
+or the engine), and every compute module takes a `backend=` argument:
+
+| Backend | W | Costs and role |
+|---|---|---|
+| `Factored()` | never built | `((X Φ_in) ⊙ w) Φ_out^T`: `K(d_in+d_out)` FLOPs/row and a `[rows, K]` autograd intermediate — right only below the crossover `K < d_in d_out/(d_in+d_out)` |
+| `Materialized(lean=…, compute_dtype=…)` | built per forward | one cuBLAS GEMM / cuDNN conv; ceiling = dense speed, activation memory = dense. `lean=True` replaces the build's autograd with a closed-form chunked backward: peak O(chunk) at any K. The short-term workhorse |
+| `NativeTruncated(radius=…)` | never built | kernels truncated at `radius·σ`, rows routed through per-atom neighbor tables: `K(m_in+m_out)` FLOPs/row — **below the dense GEMM itself** in the lawful wide-domain regime, which neither other backend can reach. The long-term mainline; the PyTorch implementation is the semantics oracle a fused CUDA/Triton kernel must match |
+
+`backend="auto"` (the default) switches Factored/Materialized per forward on
+the live atom count. `OffsetCSTConv2d` accepts only `Materialized`: its
+measure is applied through `F.conv2d`, so the kernel is materialized by
+construction — a gather-style native conv (deformable-convolution-shaped) is
+future work.
+
+Under every backend, W is a compute intermediate and never state: parameters,
+gradients, and optimizer moments live on the atoms. `dense_weight()` stays
+public regardless of backend — it is the analysis surface for inspecting the
+weight the atoms currently represent.
 
 ### Choosing a compute module
 
