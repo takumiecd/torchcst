@@ -8,6 +8,7 @@ from torch import Tensor, nn
 from torchcst.representation import Box, ContinuousKernel
 from torchcst.storage import NeuronStore, SynapseStore, SynapseView
 
+from .backends.factored import apply_rows
 from .capture import BackwardContext, flatten_capture_pair, register_capture_hook
 
 
@@ -255,7 +256,7 @@ class _ContinuousCSTMap(nn.Module):
         k_in, k_out = self._kernel_matrices(source, target)
         self._refresh_mass_scale(k_in, k_out)
 
-        output = ((x @ k_in) * weights) @ k_out.transpose(0, 1)
+        output = apply_rows(x, k_in, k_out, weights)
 
         if self._backward_context is not None:
             register_capture_hook(
@@ -342,7 +343,7 @@ class _ContinuousCSTMap(nn.Module):
         weights = weights.detach().to(x_flat)
         with torch.no_grad():
             k_in, k_out = self._kernel_matrices(source, target)
-            return ((x_flat @ k_in) * weights) @ k_out.transpose(0, 1)
+            return apply_rows(x_flat, k_in, k_out, weights)
 
     def input_row_energy(self) -> Tensor:
         """Return ``sum_o M[j, o]^2`` for the represented map ``M``.

@@ -1,5 +1,6 @@
 """CST compute modules, control families, and backward-capture primitives."""
 
+from .backends import Factored, Materialized, NativeTruncated
 from .baselines import EntryLinear, NeuronGatedLinear, RankOneLinear
 from .boundary import CSTBoundary
 from .capture import (
@@ -40,7 +41,10 @@ __all__ = [
     "CaptureMode",
     "ComputeLinear",
     "EntryLinear",
+    "Factored",
     "GraphedCellRunner",
+    "Materialized",
+    "NativeTruncated",
     "NeuronGatedLinear",
     "OffsetCSTConv2d",
     "Observation",

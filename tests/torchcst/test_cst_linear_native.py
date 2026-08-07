@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchcst.compute import CSTLinear
-from torchcst.compute.cst_linear import _NativeTruncated
+from torchcst.compute import CSTLinear, Factored, NativeTruncated
+from torchcst.compute.backends.native import NativeTruncatedFunction
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
@@ -86,7 +86,7 @@ def _grads_of(forward, module, x, upstream):
 
 def test_native_matches_bruteforce_truncation_values_and_grads() -> None:
     store, kernel, module = _parts(
-        track_mass=False, support_radius=RADIUS
+        track_mass=False, backend=NativeTruncated(radius=RADIUS)
     )
     x = torch.randn(7, N_IN, dtype=torch.float64, requires_grad=True)
     upstream = torch.randn(7, N_OUT, dtype=torch.float64)
@@ -102,31 +102,31 @@ def test_native_matches_bruteforce_truncation_values_and_grads() -> None:
 
 
 def test_native_chunked_accumulation_is_exact(monkeypatch) -> None:
-    store, kernel, module = _parts(track_mass=False, support_radius=RADIUS)
+    store, kernel, module = _parts(track_mass=False, backend=NativeTruncated(radius=RADIUS))
     x = torch.randn(4, N_IN, dtype=torch.float64, requires_grad=True)
     upstream = torch.randn(4, N_OUT, dtype=torch.float64)
     whole = _grads_of(module, module, x, upstream)
-    monkeypatch.setattr(_NativeTruncated, "CHUNK", 3)
+    monkeypatch.setattr(NativeTruncatedFunction, "CHUNK", 3)
     chunked = _grads_of(module, module, x, upstream)
     for key in whole:
         torch.testing.assert_close(chunked[key], whole[key])
 
 
 def test_wide_radius_recovers_the_full_map() -> None:
-    store, kernel, ref = _parts(materialize=False)
+    store, kernel, ref = _parts(backend=Factored())
     native = CSTLinear(
         ref.in_neurons, ref.out_neurons, store, kernel,
-        track_mass=False, support_radius=100.0,
+        track_mass=False, backend=NativeTruncated(radius=100.0),
     )
     x = torch.randn(5, N_IN, dtype=torch.float64)
     torch.testing.assert_close(native(x), ref(x))
 
 
 def test_tight_radius_is_a_bounded_approximation() -> None:
-    store, kernel, ref = _parts(materialize=False)
+    store, kernel, ref = _parts(backend=Factored())
     native = CSTLinear(
         ref.in_neurons, ref.out_neurons, store, kernel,
-        track_mass=False, support_radius=3.0,
+        track_mass=False, backend=NativeTruncated(radius=3.0),
     )
     x = torch.randn(5, N_IN, dtype=torch.float64)
     full = ref(x)
@@ -135,7 +135,7 @@ def test_tight_radius_is_a_bounded_approximation() -> None:
 
 
 def test_out_of_support_atom_contributes_nothing_and_gets_no_pull() -> None:
-    store, kernel, module = _parts(track_mass=False, support_radius=RADIUS)
+    store, kernel, module = _parts(track_mass=False, backend=NativeTruncated(radius=RADIUS))
     with torch.no_grad():
         store.s[0] = torch.tensor([50.0, 50.0], dtype=torch.float64)
         store.t[0] = torch.tensor([50.0, 50.0], dtype=torch.float64)
@@ -149,7 +149,7 @@ def test_out_of_support_atom_contributes_nothing_and_gets_no_pull() -> None:
 
 
 def test_batched_rows_reshape_round_trip() -> None:
-    store, kernel, module = _parts(track_mass=False, support_radius=RADIUS)
+    store, kernel, module = _parts(track_mass=False, backend=NativeTruncated(radius=RADIUS))
     x = torch.randn(2, 3, N_IN, dtype=torch.float64)
     out = module(x)
     assert out.shape == (2, 3, N_OUT)
@@ -160,14 +160,12 @@ def test_batched_rows_reshape_round_trip() -> None:
 
 def test_native_validation() -> None:
     store, kernel, module = _parts()
-    build = lambda **kw: CSTLinear(  # noqa: E731
-        module.in_neurons, module.out_neurons, store, kernel, **kw
-    )
     with pytest.raises(ValueError, match="positive"):
-        build(track_mass=False, support_radius=0.0)
+        NativeTruncated(radius=0.0)
     with pytest.raises(TypeError, match="number"):
-        build(track_mass=False, support_radius=True)
+        NativeTruncated(radius=True)
     with pytest.raises(ValueError, match="track_mass=False"):
-        build(support_radius=2.0)
-    with pytest.raises(ValueError, match="auto"):
-        build(track_mass=False, support_radius=2.0, materialize=True)
+        CSTLinear(
+            module.in_neurons, module.out_neurons, store, kernel,
+            backend=NativeTruncated(radius=2.0),
+        )

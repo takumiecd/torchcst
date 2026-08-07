@@ -28,7 +28,12 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchcst.compute import CSTLinear
+from torchcst.compute import (
+    CSTLinear,
+    Factored,
+    Materialized,
+    NativeTruncated,
+)
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import ContinuousGradientRequest
 from torchcst.policy import (
@@ -343,15 +348,16 @@ def _path_parts(device: str):
     kernel = GaussianKernel(0.35)
     common = (inputs, outputs, store, kernel)
     return store, kernel, {
-        "factored": CSTLinear(*common, materialize=False),
-        "materialized": CSTLinear(*common, materialize=True),
+        "factored": CSTLinear(*common, backend=Factored()),
+        "materialized": CSTLinear(*common, backend=Materialized()),
         "lean": CSTLinear(
-            *common, track_mass=False, materialize=True,
-            lean_materialize=True,
+            *common, track_mass=False, backend=Materialized(lean=True),
         ),
         # radius 6 sigma: the dropped tail (exp(-18)) sits far below the
-        # float32 comparison tolerance, so all four paths must agree.
-        "native": CSTLinear(*common, track_mass=False, support_radius=6.0),
+        # float32 comparison tolerance, so all four backends must agree.
+        "native": CSTLinear(
+            *common, track_mass=False, backend=NativeTruncated(radius=6.0),
+        ),
     }
 
 

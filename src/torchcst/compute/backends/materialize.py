@@ -1,0 +1,231 @@
+"""The materialized backend: build W per forward, lean on cuBLAS/cuDNN.
+
+W is a compute intermediate, not state: rebuilt every forward (the atoms
+move every optimizer step), freed after backward, never owning gradient
+buffers or optimizer moments.  What persists is the atoms.
+
+Two build modes per map family:
+
+* the plain autograd product (:func:`linear_weight`, or the module's own
+  einsum for conv) -- fine until the retained ``[features, K, d]`` kernel
+  broadcasts hurt;
+* a ``Lean*`` autograd Function -- closed-form chunked backward saving
+  only the atom parameters, peak O(chunk) at any K.  Gaussian only.
+"""
+
+from __future__ import annotations
+
+import torch
+from torch import Tensor
+
+
+def gaussian_columns(mu: Tensor, coords: Tensor, sigma: Tensor) -> Tensor:
+    """``exp(-|mu_f - coord_k|^2 / 2 sigma^2)`` as ``[features, K]``."""
+    return torch.exp(
+        -(mu[:, None, :] - coords[None]).square().sum(-1)
+        / (2.0 * sigma.square())
+    )
+
+
+def _gaussian_pieces(mu: Tensor, coords: Tensor, sigma: Tensor):
+    """(values, mu - coord, squared distance) for analytic derivatives."""
+    diff = mu[:, None, :] - coords[None]
+    d2 = diff.square().sum(-1)
+    return torch.exp(-d2 / (2.0 * sigma.square())), diff, d2
+
+
+def linear_weight(
+    k_in: Tensor,
+    k_out: Tensor,
+    weights: Tensor,
+    compute_dtype: torch.dtype | None = None,
+) -> Tensor:
+    """``(k_out * w) @ k_in.T`` with optional reduced-precision contraction."""
+    scaled = k_out * weights
+    if compute_dtype is not None and weights.dtype != compute_dtype:
+        return (
+            scaled.to(compute_dtype)
+            @ k_in.to(compute_dtype).transpose(0, 1)
+        ).to(weights.dtype)
+    return scaled @ k_in.transpose(0, 1)
+
+
+class LeanLinearMaterialize(torch.autograd.Function):
+    """Atoms -> dense ``[out, in]`` weight with closed-form chunked backward.
+
+    Saves only the atom parameters and recomputes per-chunk in backward
+    with analytic Gaussian derivatives; peak memory is O(chunk)
+    regardless of K.  Gaussian kernels only; the caller enforces it.
+    """
+
+    CHUNK = 4096
+
+    @staticmethod
+    def forward(ctx, source, target, weights, mu_in, mu_out, sigma_in,
+                sigma_out, compute_dtype):
+        n_out, n_in = mu_out.shape[0], mu_in.shape[0]
+        weight = source.new_zeros(n_out, n_in)
+        with torch.no_grad():
+            for start in range(0, source.shape[0], LeanLinearMaterialize.CHUNK):
+                sl = slice(start, start + LeanLinearMaterialize.CHUNK)
+                ki = gaussian_columns(mu_in, source[sl], sigma_in)
+                ko = gaussian_columns(mu_out, target[sl], sigma_out)
+                weight += linear_weight(ki, ko, weights[sl], compute_dtype)
+        ctx.save_for_backward(source, target, weights, mu_in, mu_out,
+                              sigma_in, sigma_out)
+        return weight
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        source, target, weights, mu_in, mu_out, sigma_in, sigma_out = (
+            ctx.saved_tensors
+        )
+        g_source = torch.zeros_like(source)
+        g_target = torch.zeros_like(target)
+        g_w = torch.zeros_like(weights)
+        g_sig_in = torch.zeros_like(sigma_in)
+        g_sig_out = torch.zeros_like(sigma_out)
+        for start in range(0, source.shape[0], LeanLinearMaterialize.CHUNK):
+            sl = slice(start, start + LeanLinearMaterialize.CHUNK)
+            w = weights[sl]
+            ki, diff_in, d2_in = _gaussian_pieces(mu_in, source[sl], sigma_in)
+            ko, diff_out, d2_out = _gaussian_pieces(
+                mu_out, target[sl], sigma_out
+            )
+            m_in = grad_out.transpose(0, 1) @ ko                # [I, k]
+            m_out = grad_out @ ki                               # [O, k]
+            g_w[sl] = (m_in * ki).sum(0)
+            dko = m_out * w[None]
+            dki = m_in * w[None]
+            g_target[sl] = (
+                (dko * ko)[:, :, None] * diff_out
+            ).sum(0) / sigma_out.square()
+            g_source[sl] = (
+                (dki * ki)[:, :, None] * diff_in
+            ).sum(0) / sigma_in.square()
+            g_sig_out = g_sig_out + (dko * ko * d2_out).sum() / sigma_out.pow(3)
+            g_sig_in = g_sig_in + (dki * ki * d2_in).sum() / sigma_in.pow(3)
+        return (g_source, g_target, g_w, None, None, g_sig_in, g_sig_out, None)
+
+
+def bilinear_pieces(delta: Tensor, lo, hi, r: int):
+    """Shared stencil decomposition: cells, fractional weights, box mask."""
+    dy_raw, dx_raw = delta[:, 0], delta[:, 1]
+    dy = dy_raw.clamp(lo[0], hi[0])
+    dx = dx_raw.clamp(lo[1], hi[1])
+    in_y = ((dy_raw >= lo[0]) & (dy_raw <= hi[0])).to(delta.dtype)
+    in_x = ((dx_raw >= lo[1]) & (dx_raw <= hi[1])).to(delta.dtype)
+    iy_f = dy.detach().floor().clamp(-r, r - 1)
+    ix_f = dx.detach().floor().clamp(-r, r - 1)
+    ay, ax = dy - iy_f, dx - ix_f
+    span = 2 * r + 1
+    iy, ix = iy_f.long(), ix_f.long()
+    rows = torch.stack((iy, iy, iy + 1, iy + 1), dim=1) + r
+    cols = torch.stack((ix, ix + 1, ix, ix + 1), dim=1) + r
+    cells = rows * span + cols
+    one = torch.ones_like(ay)
+    vals = torch.stack(
+        ((one - ay) * (one - ax), (one - ay) * ax, ay * (one - ax), ay * ax),
+        dim=1,
+    )
+    return cells, vals, ay, ax, in_y, in_x, span
+
+
+class LeanConvMaterialize(torch.autograd.Function):
+    """Atoms -> dense conv kernel with closed-form, chunked backward.
+
+    The conv analogue of :class:`LeanLinearMaterialize`: the source's
+    trailing displacement axes expand to 4-cell bilinear stencils, and
+    the accumulated kernel is ``[out, in, span, span]``.  Peak memory is
+    O(chunk) regardless of K.  Gaussian kernels only.
+    """
+
+    CHUNK = 2048
+
+    @staticmethod
+    def forward(ctx, source, target, weights, mu_in, mu_out, sigma_in,
+                sigma_out, chart_d, r_int, off_lo, off_hi, compute_dtype):
+        span = 2 * r_int + 1
+        n_out, n_in = mu_out.shape[0], mu_in.shape[0]
+        weight = source.new_zeros(n_out, n_in, span * span)
+        with torch.no_grad():
+            for start in range(0, source.shape[0], LeanConvMaterialize.CHUNK):
+                sl = slice(start, start + LeanConvMaterialize.CHUNK)
+                ki = gaussian_columns(mu_in, source[sl, :chart_d], sigma_in)
+                ko = gaussian_columns(mu_out, target[sl], sigma_out)
+                cells, vals, *_ = bilinear_pieces(
+                    source[sl, chart_d:], off_lo, off_hi, r_int
+                )
+                stencil = source.new_zeros(
+                    ki.shape[1], span * span
+                ).scatter(1, cells, vals)
+                scaled = (ko * weights[sl])[:, None, :] * (
+                    stencil.transpose(0, 1)[None]
+                )
+                if compute_dtype is not None:
+                    weight += torch.einsum(
+                        "osk,ck->ocs",
+                        scaled.to(compute_dtype),
+                        ki.to(compute_dtype),
+                    ).to(weight.dtype)
+                else:
+                    weight += torch.einsum("osk,ck->ocs", scaled, ki)
+        ctx.save_for_backward(source, target, weights, mu_in, mu_out,
+                              sigma_in, sigma_out)
+        ctx.meta = (chart_d, r_int, off_lo, off_hi)
+        return weight.reshape(n_out, n_in, span, span)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        source, target, weights, mu_in, mu_out, sigma_in, sigma_out = (
+            ctx.saved_tensors
+        )
+        chart_d, r_int, off_lo, off_hi = ctx.meta
+        span = 2 * r_int + 1
+        grads = grad_out.reshape(grad_out.shape[0], grad_out.shape[1], -1)
+        g_source = torch.zeros_like(source)
+        g_target = torch.zeros_like(target)
+        g_w = torch.zeros_like(weights)
+        g_sig_in = torch.zeros_like(sigma_in)
+        g_sig_out = torch.zeros_like(sigma_out)
+        for start in range(0, source.shape[0], LeanConvMaterialize.CHUNK):
+            sl = slice(start, start + LeanConvMaterialize.CHUNK)
+            w = weights[sl]
+            ki, diff_in, d2_in = _gaussian_pieces(
+                mu_in, source[sl, :chart_d], sigma_in
+            )
+            ko, diff_out, d2_out = _gaussian_pieces(
+                mu_out, target[sl], sigma_out
+            )
+            cells, vals, ay, ax, in_y, in_x, _ = bilinear_pieces(
+                source[sl, chart_d:], off_lo, off_hi, r_int
+            )
+            stencil = source.new_zeros(
+                ki.shape[1], span * span
+            ).scatter(1, cells, vals)
+            m_stage = torch.einsum("ocs,ck->osk", grads, ki)   # [O, S, k]
+            n_stage = torch.einsum("ocs,ok->csk", grads, ko)   # [C, S, k]
+            a_stage = torch.einsum("osk,ok->sk", m_stage, ko)  # [S, k]
+            g_w[sl] = torch.einsum("sk,ks->k", a_stage, stencil)
+            dko = torch.einsum("osk,ks->ok", m_stage, stencil) * w[None]
+            dki = torch.einsum("csk,ks->ck", n_stage, stencil) * w[None]
+            g_target[sl] = (
+                (dko * ko)[:, :, None] * diff_out
+            ).sum(0) / sigma_out.square()
+            g_source[sl, :chart_d] = (
+                (dki * ki)[:, :, None] * diff_in
+            ).sum(0) / sigma_in.square()
+            g_sig_out = g_sig_out + (
+                (dko * ko * d2_out).sum() / sigma_out.pow(3)
+            )
+            g_sig_in = g_sig_in + (
+                (dki * ki * d2_in).sum() / sigma_in.pow(3)
+            )
+            d_cells = (a_stage * w[None]).transpose(0, 1).gather(1, cells)
+            one = torch.ones_like(ay)
+            dv_day = torch.stack((-(one - ax), -ax, one - ax, ax), dim=1)
+            dv_dax = torch.stack((-(one - ay), one - ay, -ay, ay), dim=1)
+            g_source[sl, chart_d] = (d_cells * dv_day).sum(1) * in_y
+            g_source[sl, chart_d + 1] = (d_cells * dv_dax).sum(1) * in_x
+        return (g_source, g_target, g_w, None, None, g_sig_in, g_sig_out,
+                None, None, None, None, None)

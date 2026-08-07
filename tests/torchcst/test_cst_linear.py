@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from torchcst.compute import CSTLinear
+from torchcst.compute import CSTLinear, Factored
 from torchcst.representation import GaussianKernel, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
@@ -59,10 +59,10 @@ def _parts() -> tuple[SynapseStore, GaussianKernel, CSTLinear]:
         dtype=torch.float64,
     )
     kernel = GaussianKernel(0.55).double()
-    # This file is the *factored* path's contract; the materialized path and
-    # the auto crossover live in test_cst_linear_materialize.py.
+    # This file is the *factored* backend's contract; the materialized
+    # backend and the auto crossover live in test_cst_linear_materialize.py.
     return store, kernel, CSTLinear(
-        inputs, outputs, store, kernel, materialize=False
+        inputs, outputs, store, kernel, backend=Factored()
     )
 
 

@@ -14,7 +14,7 @@ import math
 import pytest
 import torch
 
-from torchcst.compute import OffsetCSTConv2d
+from torchcst.compute import Factored, Materialized, OffsetCSTConv2d
 from torchcst.engine import StructuralEngine
 from torchcst.policy import (
     ConstantQuota,
@@ -265,17 +265,18 @@ def test_compute_dtype_materialization_close_to_full_precision():
     block = OffsetCSTConv2d.propose("mix", 8, 6, 3, SIGMA, generator=gen)
     x = torch.randn(2, 8, 6, 6, generator=torch.Generator().manual_seed(1))
     full = block(x)
-    block.compute_dtype = torch.bfloat16
-    reduced = block(x)
+    reduced_block = OffsetCSTConv2d(
+        block.in_neurons, block.out_neurons, block.synapses,
+        block.kernel_in,
+        backend=Materialized(compute_dtype=torch.bfloat16),
+    )
+    reduced = reduced_block(x)
     rel = (full - reduced).abs().max() / full.abs().max()
     assert float(rel) < 5e-2  # bf16 mantissa; contraction accumulates fp32
-    block(x).square().mean().backward()
+    reduced_block(x).square().mean().backward()
     assert block.synapses.s.grad is not None  # grads flow through the cast
     with pytest.raises(TypeError):
-        OffsetCSTConv2d(
-            block.in_neurons, block.out_neurons, block.synapses,
-            block.kernel_in, compute_dtype=torch.int32,
-        )
+        Materialized(compute_dtype=torch.int32)
 
 
 def _grads_of(block, x, proj):
@@ -293,7 +294,7 @@ def test_lean_materialize_matches_default_path_values_and_grads():
     ref = OffsetCSTConv2d.propose("mix", 8, 6, 3, SIGMA, generator=gen).double()
     lean = OffsetCSTConv2d(
         ref.in_neurons, ref.out_neurons, ref.synapses, ref.kernel_in,
-        track_mass=False, lean_materialize=True,
+        track_mass=False, backend=Materialized(lean=True),
     ).double()
     # drift one atom onto the clamp boundary so the masked-gradient branch
     # is exercised too
@@ -311,8 +312,14 @@ def test_lean_materialize_matches_default_path_values_and_grads():
 def test_lean_materialize_validation():
     gen = torch.Generator().manual_seed(0)
     block = OffsetCSTConv2d.propose("mix", 8, 6, 3, SIGMA, generator=gen)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="track_mass=False"):
         OffsetCSTConv2d(
             block.in_neurons, block.out_neurons, block.synapses,
-            block.kernel_in, lean_materialize=True,  # track_mass defaults True
+            block.kernel_in,
+            backend=Materialized(lean=True),  # track_mass defaults True
+        )
+    with pytest.raises(ValueError, match="only the Materialized backend"):
+        OffsetCSTConv2d(
+            block.in_neurons, block.out_neurons, block.synapses,
+            block.kernel_in, track_mass=False, backend=Factored(),
         )

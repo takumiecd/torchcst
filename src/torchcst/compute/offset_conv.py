@@ -62,6 +62,8 @@ from torchcst.representation import (
 )
 from torchcst.storage import NeuronStore, SynapseStore
 
+from .backends import Materialized, validate_backend
+from .backends.materialize import LeanConvMaterialize
 from .capture import register_capture_hook
 from .cst_map import _ContinuousCSTMap
 from .cst_conv import _positive_pair
@@ -78,139 +80,6 @@ def _axis_bounds(domain, dim: int) -> tuple[tuple[float, ...], tuple[float, ...]
     lo_t = (float(lo),) * dim if not isinstance(lo, (tuple, list)) else tuple(lo)
     hi_t = (float(hi),) * dim if not isinstance(hi, (tuple, list)) else tuple(hi)
     return lo_t, hi_t
-
-
-def _bilinear_pieces(delta: Tensor, lo, hi, r: int):
-    """Shared stencil decomposition: cells, fractional weights, box mask."""
-    dy_raw, dx_raw = delta[:, 0], delta[:, 1]
-    dy = dy_raw.clamp(lo[0], hi[0])
-    dx = dx_raw.clamp(lo[1], hi[1])
-    in_y = ((dy_raw >= lo[0]) & (dy_raw <= hi[0])).to(delta.dtype)
-    in_x = ((dx_raw >= lo[1]) & (dx_raw <= hi[1])).to(delta.dtype)
-    iy_f = dy.detach().floor().clamp(-r, r - 1)
-    ix_f = dx.detach().floor().clamp(-r, r - 1)
-    ay, ax = dy - iy_f, dx - ix_f
-    span = 2 * r + 1
-    iy, ix = iy_f.long(), ix_f.long()
-    rows = torch.stack((iy, iy, iy + 1, iy + 1), dim=1) + r
-    cols = torch.stack((ix, ix + 1, ix, ix + 1), dim=1) + r
-    cells = rows * span + cols
-    one = torch.ones_like(ay)
-    vals = torch.stack(
-        ((one - ay) * (one - ax), (one - ay) * ax, ay * (one - ax), ay * ax),
-        dim=1,
-    )
-    return cells, vals, ay, ax, in_y, in_x, span
-
-
-class _LeanMaterialize(torch.autograd.Function):
-    """Atoms -> dense kernel with closed-form, chunked backward.
-
-    The default autograd path retains every kernel-evaluation broadcast
-    ``[channels, K, d]`` and einsum intermediate for backward -- gigabytes
-    across sites at large K.  This Function saves only the atom parameters
-    and recomputes per-chunk in backward, with analytic Gaussian and
-    bilinear derivatives.  Peak memory is O(chunk) regardless of K.
-
-    Restriction: Gaussian kernels only (the closed-form derivative used
-    here); the caller enforces it.
-    """
-
-    CHUNK = 2048
-
-    @staticmethod
-    def forward(ctx, source, target, weights, mu_in, mu_out, sigma_in,
-                sigma_out, chart_d, r_int, off_lo, off_hi, compute_dtype):
-        span = 2 * r_int + 1
-        n_out, n_in = mu_out.shape[0], mu_in.shape[0]
-        W = source.new_zeros(n_out, n_in, span * span)
-        with torch.no_grad():
-            for start in range(0, source.shape[0], _LeanMaterialize.CHUNK):
-                sl = slice(start, start + _LeanMaterialize.CHUNK)
-                s_chart = source[sl, :chart_d]
-                ki = torch.exp(
-                    -(mu_in[:, None, :] - s_chart[None]).square().sum(-1)
-                    / (2.0 * sigma_in.square())
-                )
-                ko = torch.exp(
-                    -(mu_out[:, None, :] - target[sl][None]).square().sum(-1)
-                    / (2.0 * sigma_out.square())
-                )
-                cells, vals, *_ = _bilinear_pieces(
-                    source[sl, chart_d:], off_lo, off_hi, r_int
-                )
-                P = source.new_zeros(s_chart.shape[0], span * span).scatter(
-                    1, cells, vals
-                )
-                if compute_dtype is not None:
-                    scaled = ((ko * weights[sl])[:, None, :]
-                              * P.transpose(0, 1)[None]).to(compute_dtype)
-                    W += torch.einsum(
-                        "osk,ck->ocs", scaled, ki.to(compute_dtype)
-                    ).to(W.dtype)
-                else:
-                    scaled = (ko * weights[sl])[:, None, :] * P.transpose(0, 1)[None]
-                    W += torch.einsum("osk,ck->ocs", scaled, ki)
-        ctx.save_for_backward(source, target, weights, mu_in, mu_out,
-                              sigma_in, sigma_out)
-        ctx.meta = (chart_d, r_int, off_lo, off_hi)
-        return W.reshape(n_out, n_in, span, span)
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        source, target, weights, mu_in, mu_out, sigma_in, sigma_out = (
-            ctx.saved_tensors
-        )
-        chart_d, r_int, off_lo, off_hi = ctx.meta
-        span = 2 * r_int + 1
-        G = grad_out.reshape(grad_out.shape[0], grad_out.shape[1], -1)
-        g_source = torch.zeros_like(source)
-        g_target = torch.zeros_like(target)
-        g_w = torch.zeros_like(weights)
-        g_sig_in = sigma_in.new_zeros(())
-        g_sig_out = sigma_out.new_zeros(())
-        for start in range(0, source.shape[0], _LeanMaterialize.CHUNK):
-            sl = slice(start, start + _LeanMaterialize.CHUNK)
-            s_chart = source[sl, :chart_d]
-            w = weights[sl]
-            diff_in = mu_in[:, None, :] - s_chart[None]        # [C, k, dc]
-            diff_out = mu_out[:, None, :] - target[sl][None]   # [O, k, do]
-            d2_in = diff_in.square().sum(-1)
-            d2_out = diff_out.square().sum(-1)
-            ki = torch.exp(-d2_in / (2.0 * sigma_in.square()))
-            ko = torch.exp(-d2_out / (2.0 * sigma_out.square()))
-            cells, vals, ay, ax, in_y, in_x, _ = _bilinear_pieces(
-                source[sl, chart_d:], off_lo, off_hi, r_int
-            )
-            P = source.new_zeros(s_chart.shape[0], span * span).scatter(
-                1, cells, vals
-            )
-            M = torch.einsum("ocs,ck->osk", G, ki)   # [O, S, k]
-            N = torch.einsum("ocs,ok->csk", G, ko)   # [C, S, k]
-            A = torch.einsum("osk,ok->sk", M, ko)    # [S, k]
-            g_w[sl] = torch.einsum("sk,ks->k", A, P)
-            dko = torch.einsum("osk,ks->ok", M, P) * w[None]
-            dki = torch.einsum("csk,ks->ck", N, P) * w[None]
-            g_target[sl] = (
-                (dko * ko)[:, :, None] * diff_out
-            ).sum(0) / sigma_out.square()
-            g_source[sl, :chart_d] = (
-                (dki * ki)[:, :, None] * diff_in
-            ).sum(0) / sigma_in.square()
-            g_sig_out = g_sig_out + (
-                (dko * ko * d2_out).sum() / sigma_out.pow(3)
-            )
-            g_sig_in = g_sig_in + (
-                (dki * ki * d2_in).sum() / sigma_in.pow(3)
-            )
-            dP_cells = (A * w[None]).transpose(0, 1).gather(1, cells)  # [k, 4]
-            one = torch.ones_like(ay)
-            dv_day = torch.stack((-(one - ax), -ax, one - ax, ax), dim=1)
-            dv_dax = torch.stack((-(one - ay), one - ay, -ay, ay), dim=1)
-            g_source[sl, chart_d] = (dP_cells * dv_day).sum(1) * in_y
-            g_source[sl, chart_d + 1] = (dP_cells * dv_dax).sum(1) * in_x
-        return (g_source, g_target, g_w, None, None, g_sig_in, g_sig_out,
-                None, None, None, None, None)
 
 
 class OffsetCSTConv2d(_ContinuousCSTMap):
@@ -236,8 +105,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         kernel_out: ContinuousKernel | None = None,
         stride: int | tuple[int, int] = 1,
         track_mass: bool = True,
-        compute_dtype: torch.dtype | None = None,
-        lean_materialize: bool = False,
+        backend="auto",
     ) -> None:
         super().__init__(
             in_neurons, out_neurons, synapses, kernel, kernel_out,
@@ -261,28 +129,23 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         self._r_int = max(1, int(math.ceil(radius)))
         self.in_channels = self.in_features
         self.out_channels = self.out_features
-        # Optional reduced-precision materialization: the kernel-column /
-        # stencil contraction runs in this dtype (tensor cores accumulate in
-        # fp32, so W keeps ~fp32 fidelity); parameters, conv, and gradients
-        # stay in the parameter dtype. None = full precision (default).
-        if compute_dtype is not None and not compute_dtype.is_floating_point:
-            raise TypeError("compute_dtype must be a floating dtype or None")
-        self.compute_dtype = compute_dtype
-        # Large-K mode: closed-form chunked backward that saves only the atom
-        # parameters -- the default autograd path retains [channels, K, d]
-        # kernel broadcasts and einsum intermediates (gigabytes at K ~ 10^5).
-        # Gaussian-only (analytic derivative), and mass tracking is skipped
-        # (its kernel matrices would resurrect the memory this mode removes).
-        if lean_materialize:
-            if self.kernel_in.family != "gaussian" or (
-                self.kernel_out.family != "gaussian"
-            ):
-                raise ValueError("lean_materialize requires Gaussian kernels")
-            if track_mass:
-                raise ValueError(
-                    "lean_materialize requires track_mass=False"
-                )
-        self.lean_materialize = lean_materialize
+        # A conv applies its measure through F.conv2d, so the kernel is
+        # materialized by construction: the only backend freedom here is
+        # *how* the build runs (lean closed-form backward, compute_dtype).
+        backend = validate_backend(
+            backend,
+            kernel_in=self.kernel_in,
+            kernel_out=self.kernel_out,
+            track_mass=track_mass,
+        )
+        if backend == "auto":
+            backend = Materialized()
+        if not isinstance(backend, Materialized):
+            raise ValueError(
+                "OffsetCSTConv2d materializes its kernel by construction; "
+                "only the Materialized backend applies"
+            )
+        self.backend = backend
 
     # -- construction ----------------------------------------------------------
 
@@ -444,15 +307,15 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         """
         self._view()
         source, target, weights = self._live_factors()
-        if self.lean_materialize:
-            return _LeanMaterialize.apply(
+        if self.backend.lean:
+            return LeanConvMaterialize.apply(
                 source, target, weights,
                 self.in_neurons.mu.to(source),
                 self.out_neurons.mu.to(target),
                 self.kernel_in.sigma.to(source),
                 self.kernel_out.sigma.to(target),
                 self.chart_d_in, self._r_int, self._off_lo, self._off_hi,
-                self.compute_dtype,
+                self.backend.compute_dtype,
             )
         k_in, k_out = self._kernel_matrices(source, target)
         stencil = self._stencil(source)
@@ -465,11 +328,12 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         # K ~ 7000 on wide layers -- the measured fc10a OOM). Staging through
         # [out, span^2, K] keeps the peak at span^2/in_features of that.
         scaled = (k_out * weights)[:, None, :] * stencil.transpose(0, 1)[None]
-        if self.compute_dtype is not None and weights.dtype != self.compute_dtype:
+        compute_dtype = self.backend.compute_dtype
+        if compute_dtype is not None and weights.dtype != compute_dtype:
             weight = torch.einsum(
                 "osk,ck->ocs",
-                scaled.to(self.compute_dtype),
-                k_in.to(self.compute_dtype),
+                scaled.to(compute_dtype),
+                k_in.to(compute_dtype),
             ).to(weights.dtype)
         else:
             weight = torch.einsum("osk,ck->ocs", scaled, k_in)
