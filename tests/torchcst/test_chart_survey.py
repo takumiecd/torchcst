@@ -65,15 +65,48 @@ def test_lawful_2d_box_with_covering_atoms_is_clean():
     assert survey.notes == ()
 
 
-def test_wide_box_is_coverage_starved():
-    # ~30 sigma per axis with the same 64 atoms: ~850 cells, coverage < 0.1
-    # -- the fc7h / wide-box collapse regime, outside the advisory window.
+def test_wide_but_correctly_spaced_box_is_not_flagged():
+    # OVERTURNS the pre-DIM-K2 contract, which flagged this chart as
+    # coverage-starved.  ~30 sigma per axis with 64 neurons and 64 atoms is
+    # coverage 0.074, thirteen times under the old floor -- but its neuron
+    # spacing is 3.68 sigma, inside dim 2's measured 0.7-4.0 window, and
+    # DIM-K2 trained 2-D charts across that whole band (spacing 4.0 scored
+    # 0.4027 against the 0.4215 peak).  Coverage was reading a symptom.
     generator = torch.Generator().manual_seed(0)
     coords = torch.rand(64, 2, generator=generator) * 3.0
     survey = survey_chart(coords, 0.1, atoms=64)
     assert survey.coverage is not None and survey.coverage < 0.5
-    assert any("coverage-starved" in note for note in survey.notes)
-    assert any("advisory window" in note for note in survey.notes)
+    assert survey.lattice_spacing_over_sigma == pytest.approx(3.68, abs=0.02)
+    assert survey.in_spacing_window
+    assert survey.notes == ()
+
+
+def test_high_dimensional_joint_chart_is_flagged_by_spacing():
+    # The failure the coverage floor was actually fitted to: a 6-D joint chart
+    # whose spacing (7.18 sigma) has left dim 6's narrow 2.0-2.8 window.  The
+    # spacing note is the diagnosis; the coverage note now rides along with it
+    # instead of firing on its own.
+    coords = torch.rand(64, 6, generator=torch.Generator().manual_seed(1)) * 1.5
+    survey = survey_chart(coords, 0.1, atoms=64)
+    assert not survey.in_spacing_window
+    assert survey.lattice_spacing_over_sigma > 2.8
+    assert any("neuron spacing" in note and "above" in note for note in survey.notes)
+    assert any("coverage-starved as well" in note for note in survey.notes)
+
+
+def test_spacing_window_narrows_with_dimension():
+    from torchcst.representation.survey import RECOMMENDED_SPACING, spacing_window
+
+    # The measured shape: the band narrows and its centre rises with dimension.
+    assert spacing_window(1) == (0.7, 4.0)
+    assert spacing_window(6) == (2.0, 2.8)
+    for dim in range(1, 7):
+        low, high = spacing_window(dim)
+        assert low <= RECOMMENDED_SPACING <= high      # the universal spacing
+    # Unmeasured dimensions read conservatively: 5 intersects 4 and 6, and
+    # anything past the largest measured dimension inherits its band.
+    assert spacing_window(5) == (2.0, 2.8)
+    assert spacing_window(8) == spacing_window(6)
 
 
 def test_degenerate_axis_reported():
@@ -107,33 +140,60 @@ def test_propose_chart_round_trips_through_its_own_survey():
     from torchcst.representation import propose_chart
 
     proposal = propose_chart(64, 0.1)
-    assert proposal.dim == 2
-    assert proposal.box.bounds == (0.0, pytest.approx(1.0))
-    assert proposal.cells == pytest.approx(100.0)
-    assert proposal.recommended_atoms == 100
+    assert proposal.dim == 3                       # DEFAULT_DIM, DIM-K2's peak
+    assert proposal.spacing == pytest.approx(2.0)  # RECOMMENDED_SPACING
+    # extent = spacing * population**(1/dim) = 2 * 4 = 8 sigma per axis
+    assert proposal.box.bounds == (0.0, pytest.approx(0.8))
+    assert proposal.cells == pytest.approx(512.0)
+    assert proposal.recommended_atoms == 64        # one atom per neuron
     assert proposal.notes == ()
 
     rng = torch.Generator().manual_seed(0)
     coords = proposal.box.sample(64, rng)
     survey = survey_chart(coords, 0.1, atoms=proposal.recommended_atoms)
+    assert survey.in_spacing_window
     assert survey.notes == ()
 
 
-def test_propose_chart_scales_dimension_with_population():
+def test_propose_chart_reproduces_the_measured_optimum():
+    # DIM-K2's best arm over 105 runs: 1024 neurons at dim 3 with 20.2 sigma
+    # per axis and 1024 atoms.  The proposal must land on it unprompted --
+    # that is the whole claim of "lawful by construction".
     from torchcst.representation import propose_chart
 
-    assert propose_chart(8, 0.1).dim == 1
-    assert propose_chart(64, 0.1).dim == 2
-    assert propose_chart(500, 0.1).dim == 3
+    proposal = propose_chart(1024, 0.1)
+    assert proposal.dim == 3
+    assert proposal.box.hi / 0.1 == pytest.approx(20.16, abs=0.01)
+    assert proposal.recommended_atoms == 1024
+    assert proposal.notes == ()
+
+
+def test_propose_chart_holds_dimension_and_scales_extent_with_population():
+    # REPLACES the pre-DIM-K2 contract, where dim grew with population to keep
+    # cells >= population.  Distinguishability is a spacing property, so every
+    # dimension can hold any population; what scales with population is the
+    # extent needed to keep spacing fixed.
+    from torchcst.representation import propose_chart
+
+    for population in (8, 64, 500, 4096):
+        assert propose_chart(population, 0.1).dim == 3
+        assert propose_chart(population, 0.1).spacing == pytest.approx(2.0)
+    # extent ratio between 8 and 4096 neurons is (4096/8)**(1/3) = 8
+    small = propose_chart(8, 0.1).box.hi
+    large = propose_chart(4096, 0.1).box.hi
+    assert large / small == pytest.approx(8.0)
 
 
 def test_propose_chart_reports_forced_disagreements():
     from torchcst.representation import propose_chart
 
-    forced = propose_chart(64, 0.1, dim=1)
-    assert any("resolvable cells" in note for note in forced.notes)
-    starved = propose_chart(64, 0.1, atoms=10)
-    assert any("coverage-starved" in note for note in starved.notes)
+    # A forced dim=1 is no longer a disagreement: DIM-K2 trained dim 1 at the
+    # recommended spacing (0.4127 against the 0.4293 peak).
+    assert propose_chart(64, 0.1, dim=1).notes == ()
+    outside = propose_chart(64, 0.1, spacing=0.3)
+    assert any("below the measured" in note for note in outside.notes)
+    thin = propose_chart(64, 0.1, atoms=10)
+    assert any("fewer atoms than neurons" in note for note in thin.notes)
 
 
 def test_propose_chart_validation():
@@ -148,17 +208,20 @@ def test_propose_chart_validation():
     with pytest.raises(ValueError):
         propose_chart(64, 0.1, atoms=-1)
     with pytest.raises(ValueError):
-        propose_chart(64, 0.1, axis_extent=1.0)
+        propose_chart(64, 0.1, spacing=0.0)
 
 
 def test_thresholds_are_configurable():
     from torchcst.representation import propose_chart
 
-    # Wider lawful target: same population, differently sized lawful box.
-    wide = propose_chart(64, 0.1, axis_extent=20.0)
-    assert wide.dim == 2
-    assert wide.box.bounds == (0.0, pytest.approx(2.0))
-    assert wide.cells == pytest.approx(400.0)
+    # Sitting elsewhere in the measured band: same population and dimension,
+    # a proportionally larger box.  2.8 sigma is dim 3's upper bound, so this
+    # is still lawful and must not be flagged.
+    wide = propose_chart(64, 0.1, spacing=2.8)
+    assert wide.dim == 3
+    assert wide.box.bounds == (0.0, pytest.approx(1.12))
+    assert wide.spacing == pytest.approx(2.8)
+    assert wide.notes == ()
 
     # Raising the quasi-discrete threshold unflags the 5-sigma conv taps.
     input_mu, _ = conv2d_neuron_coordinates(16, 32, 3)

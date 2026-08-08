@@ -81,7 +81,12 @@ The conditions a machine can check are shipped as executable instruments.
 `torchcst.representation.propose_chart` returns a chart that is lawful *by
 construction* — box, dimension, and atom budget — whose `Box.sample` is the
 measured winning initialization; build hidden sites through it and no
-further check is needed. `survey_chart` is the optional diagnostic for
+further check is needed. Both instruments are written in **neuron spacing
+over σ**, which dim-economy DIM-K2 measured to be the quantity that orders
+accuracy: inside `SPACING_WINDOW`'s per-dimension band, coverage ranges over
+four orders of magnitude and per-axis extent over three with no effect, and
+leaving the band collapses every dimension. Extent is derived from spacing,
+not chosen. `survey_chart` is the optional diagnostic for
 charts you did **not** propose: hand-built ones, data-pinned ones (pixels,
 conv taps), or charts inherited from an experiment you are debugging. Every
 empirical threshold in both instruments is a keyword argument with the
