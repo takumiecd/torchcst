@@ -128,6 +128,7 @@ class NeuronStore(nn.Module):
         sigma: float,
         *,
         dim: int | None = None,
+        spacing: float | None = None,
         axis_extent: float | None = None,
         generator: torch.Generator | None = None,
         device: torch.device | str | None = None,
@@ -143,12 +144,25 @@ class NeuronStore(nn.Module):
         :meth:`torchcst.storage.SynapseStore.between`, which derives its
         domains from the populations it connects.
 
+        ``spacing`` is the chart law's own dial (neuron spacing in σ units);
+        ``axis_extent`` is the pre-spacing-law dial kept for callers that
+        still speak extent — it is the per-axis extent in σ units, and is
+        translated to the spacing it implies (``axis_extent / n**(1/dim)``)
+        before proposing.  Passing both is a contradiction and raises.
+
         Populations with data-pinned geometry (pixels, taps) must not use
         this — pass the data's own coordinates to the constructor instead.
         """
         from torchcst.representation import propose_chart
 
-        extra = {} if axis_extent is None else {"axis_extent": axis_extent}
+        if spacing is not None and axis_extent is not None:
+            raise ValueError("pass spacing or axis_extent, not both")
+        extra = {} if spacing is None else {"spacing": spacing}
+        if axis_extent is not None:
+            from torchcst.representation.proposal import DEFAULT_DIM
+
+            chosen = DEFAULT_DIM if dim is None else dim
+            extra = {"spacing": axis_extent / n ** (1.0 / chosen)}
         proposal = propose_chart(n, sigma, dim=dim, **extra)
         rng = generator if generator is not None else torch.Generator()
         mu = proposal.box.sample(n, rng)
