@@ -393,6 +393,15 @@ class SynapseStore(nn.Module):
         """Live entity IDs in physical-slot order."""
         return self._slots.ids_of(self._slots.live_slots)
 
+    def live_slots(self) -> Tensor:
+        """Physical slot indices of live atoms (CPU, int64).
+
+        For slot-indexed auxiliary state (optimizer moments, preconditioner
+        momentum): dead slots hold stale rows, so any per-slot statistic --
+        a median, a norm -- must be restricted to these indices.
+        """
+        return self._slots.live_slots.clone()
+
     def ages_of(self, ids: Tensor) -> Tensor:
         """Structural ages of live entities, aligned with ``ids``."""
         return self.age.values.index_select(0, self._slots.slots_of(ids))

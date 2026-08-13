@@ -120,7 +120,7 @@ from .audit import (
 )
 
 # optimizer helpers.
-from .optim import OptimizerStateFollower
+from .optim import CoordPreconditioner, OptimizerStateFollower
 
 __all__ = [
     "Accounting",
@@ -177,6 +177,7 @@ __all__ = [
     "NeuronView",
     "Observation",
     "ObservationTiming",
+    "CoordPreconditioner",
     "OptimizerStateFollower",
     "PeriodicCadence",
     "ProfitCourt",
