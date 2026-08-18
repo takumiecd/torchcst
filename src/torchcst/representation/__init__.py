@@ -4,6 +4,7 @@ from .domains import Box, CoordinateDomain, IntegerGrid, ParameterRole, Role, Sp
 from .gram import AbsorbAssessment, AbsorbPlanStep, GramService
 from .kernels import (
     CONTINUOUS_KERNELS,
+    AtomColumn,
     ContinuousKernel,
     GaussianKernel,
     OverlapScale,
@@ -22,6 +23,7 @@ __all__ = [
     "ChartProposal",
     "ChartSurvey",
     "CONTINUOUS_KERNELS",
+    "AtomColumn",
     "ContinuousKernel",
     "CoordinateDomain",
     "GaussianKernel",

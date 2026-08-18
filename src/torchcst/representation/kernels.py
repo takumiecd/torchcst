@@ -18,6 +18,8 @@ is the whole domain at every positive bandwidth.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from math import isfinite
 from typing import ClassVar
 
@@ -26,10 +28,75 @@ from torch import Tensor, nn
 
 from torchcst._validation import require_real
 
+from .domains import ParameterRole
+
 #: Kernel names that :class:`torchcst.representation.RepresentationSpec`
 #: accepts as a continuous family.  Kept here so the spec and the kernel
 #: modules cannot disagree about which families exist.
 CONTINUOUS_KERNELS: frozenset[str] = frozenset({"gaussian", "triangular"})
+
+#: Live family registry, keyed by :attr:`ContinuousKernel.family`.  Populated
+#: by ``__init_subclass__`` so a kernel defined outside this module is a
+#: first-class family: its name validates in a spec and its per-atom column
+#: declaration reaches the store without any edit here.  ``CONTINUOUS_KERNELS``
+#: stays the frozen built-in set for callers that import it.
+_KERNEL_FAMILIES: dict[str, type["ContinuousKernel"]] = {}
+
+
+def continuous_family_names() -> frozenset[str]:
+    """Every continuous family name a spec will accept right now."""
+    return frozenset(CONTINUOUS_KERNELS) | frozenset(_KERNEL_FAMILIES)
+
+
+def family_atom_columns(name: str) -> tuple["AtomColumn", ...]:
+    """Per-atom columns the named family requires beyond ``(s, t, w)``."""
+    kernel = _KERNEL_FAMILIES.get(name)
+    return () if kernel is None else tuple(kernel.atom_columns)
+
+
+@dataclass(frozen=True)
+class AtomColumn:
+    """One per-atom column a kernel family requires beyond ``(s, t, w)``.
+
+    A family that parameterises each atom with more than a position and an
+    amplitude -- a per-atom bandwidth, a Gabor frequency and phase -- declares
+    those columns here.  :class:`~torchcst.storage.SynapseStore` then installs
+    each one as a capacity-shaped slot column that follows birth, death,
+    remap, and capacity growth exactly like ``s`` and ``t`` do, and every view
+    and birth op carries it under :attr:`name`.
+
+    ``width`` is either a literal column width or a callable of the site's
+    ``(d_in, d_out)``, so a frequency vector conjugate to both charts is
+    declared once and sized per site.  ``init`` is the value a birth that does
+    *not* mention the column is given, which is what lets an existing policy
+    keep proposing plain ``(s, t, w)`` births at a site whose kernel has extra
+    columns: the atom is simply born at the family's neutral value.
+    """
+
+    name: str
+    width: int | Callable[[int, int], int] = 1
+    role: ParameterRole = ParameterRole.PARAMETER
+    init: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name.isidentifier():
+            raise ValueError("AtomColumn.name must be a Python identifier")
+        if self.name in {"s", "t", "w", "mass", "ids", "lineage"}:
+            raise ValueError(
+                f"AtomColumn.name {self.name!r} collides with a core column"
+            )
+        if not isinstance(self.role, ParameterRole):
+            raise TypeError("AtomColumn.role must be a ParameterRole")
+
+    def resolve_width(self, d_in: int, d_out: int) -> int:
+        """The concrete column width at a site of these chart dimensions."""
+        width = self.width(d_in, d_out) if callable(self.width) else self.width
+        width = int(width)
+        if width <= 0:
+            raise ValueError(
+                f"AtomColumn {self.name!r} resolved to a non-positive width"
+            )
+        return width
 
 
 class ContinuousKernel(nn.Module):
@@ -57,6 +124,18 @@ class ContinuousKernel(nn.Module):
 
     #: Spec-level family name; concrete kernels must override it.
     family: ClassVar[str] = ""
+
+    #: Per-atom columns this family needs beyond ``(s, t, w)``.  Empty for
+    #: every family whose atom is fully described by a position and an
+    #: amplitude, which is why declaring nothing leaves the store, the ops,
+    #: and the views byte-for-byte as they were.
+    atom_columns: ClassVar[tuple[AtomColumn, ...]] = ()
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        family = getattr(cls, "family", "")
+        if family:
+            _KERNEL_FAMILIES[family] = cls
 
     def __init__(
         self,
@@ -140,7 +219,31 @@ class ContinuousKernel(nn.Module):
             "that prices geometric twin overlap cannot use this kernel family"
         )
 
-    def forward(self, query: Tensor, centers: Tensor) -> Tensor:
+    def forward(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> Tensor:
+        """Kernel matrix between ``query`` rows and atom ``centers``.
+
+        ``columns`` delivers the family's declared per-atom values
+        (:attr:`atom_columns`), row-aligned with ``centers``: an atom's
+        frequency or bandwidth cannot be recovered from its position, so a
+        family that declares columns is handed them here rather than digging
+        into the store.  The isotropic families ignore the argument, which is
+        why every existing caller and subclass keeps working untouched -- a
+        family that needs the values overrides this method.
+        """
+        if columns:
+            for name, value in columns.items():
+                if not isinstance(value, Tensor):
+                    raise TypeError(f"column {name!r} must be a Tensor")
+                if value.ndim != 2 or value.shape[0] != centers.shape[0]:
+                    raise ValueError(
+                        f"column {name!r} must have one row per center "
+                        f"({centers.shape[0]}), got {tuple(value.shape)}"
+                    )
         if not isinstance(query, Tensor) or not isinstance(centers, Tensor):
             raise TypeError("query and centers must be Tensors")
         if query.ndim != 2 or centers.ndim != 2:

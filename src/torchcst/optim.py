@@ -469,6 +469,13 @@ def parameter_groups(
     remaining parameters take ``default_lr``. Coordinates with a buffer role
     (e.g. the entry family's ``IntegerGrid``) are not parameters and never
     appear in any group.
+
+    A kernel family's declared per-atom columns
+    (:class:`~torchcst.representation.AtomColumn`) land in the default group
+    deliberately, not by omission: a Gabor frequency is conjugate to position
+    and a per-atom bandwidth is a scale, so neither carries the amplitude's
+    nor the coordinate's units and neither may silently inherit their rate.
+    A family that wants its own schedule asks for its own group explicitly.
     """
     modules: list[nn.Module] = (
         [stores_or_model]

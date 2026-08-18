@@ -9,7 +9,12 @@ import torch
 from torch import Tensor
 
 from .domains import Box, CoordinateDomain, IntegerGrid, Sphere
-from .kernels import CONTINUOUS_KERNELS
+from .kernels import (
+    CONTINUOUS_KERNELS,
+    AtomColumn,
+    continuous_family_names,
+    family_atom_columns,
+)
 
 
 @dataclass(frozen=True)
@@ -28,7 +33,8 @@ class RepresentationSpec:
         entry = self.kernel_in == self.kernel_out == "delta"
         rank_one = self.kernel_in == self.kernel_out == "dot"
         continuous = (
-            self.kernel_in == self.kernel_out and self.kernel_in in CONTINUOUS_KERNELS
+            self.kernel_in == self.kernel_out
+            and self.kernel_in in continuous_family_names()
         )
         if not entry and not rank_one and not continuous:
             raise ValueError(
@@ -51,9 +57,16 @@ class RepresentationSpec:
                 raise TypeError(
                     f"{family} family requires {domain_type.__name__} domains"
                 )
-            expected = self.domain_in.dim + self.domain_out.dim + 1
+            extra = sum(
+                column.resolve_width(self.domain_in.dim, self.domain_out.dim)
+                for column in self.atom_columns()
+            )
+            expected = self.domain_in.dim + self.domain_out.dim + 1 + extra
             if self.atom_cost != expected:
-                raise ValueError(f"{family} atom_cost must be d_in + d_out + 1")
+                detail = " + kernel columns" if extra else ""
+                raise ValueError(
+                    f"{family} atom_cost must be d_in + d_out + 1{detail}"
+                )
         expected_retirement = "endpoint_cascade" if entry else "gate_only"
         if self.retirement != expected_retirement:
             raise ValueError(
@@ -117,16 +130,25 @@ class RepresentationSpec:
                 continue
             if not isinstance(value, tuple) or len(value) != 2:
                 raise TypeError(f"{name} must be a (lo, hi) tuple")
-        if kernel not in CONTINUOUS_KERNELS:
-            raise ValueError(f"kernel must be one of {sorted(CONTINUOUS_KERNELS)}")
+        if kernel not in continuous_family_names():
+            raise ValueError(
+                f"kernel must be one of {sorted(continuous_family_names())}"
+            )
         lo, hi = bounds
         lo_out, hi_out = bounds if bounds_out is None else bounds_out
+        # A family that parameterises its atoms with more than (s, t, w) makes
+        # each atom cost more; the declaration is the single source of truth
+        # for both the price and the store's columns.
+        extra = sum(
+            column.resolve_width(d_in, d_out)
+            for column in family_atom_columns(kernel)
+        )
         return cls(
             domain_in=Box(lo, hi, d_in),
             domain_out=Box(lo_out, hi_out, d_out),
             kernel_in=kernel,
             kernel_out=kernel,
-            atom_cost=d_in + d_out + 1,
+            atom_cost=d_in + d_out + 1 + extra,
             retirement="gate_only",
         )
 
@@ -165,7 +187,10 @@ class RepresentationSpec:
             raise ValueError("functional_mass tensors must share the atom count")
         if self.kernel_in == self.kernel_out == "delta":
             return w.abs()
-        if self.kernel_in == self.kernel_out and self.kernel_in in CONTINUOUS_KERNELS:
+        if (
+            self.kernel_in == self.kernel_out
+            and self.kernel_in in continuous_family_names()
+        ):
             raise RuntimeError(
                 "continuous functional mass requires SynapseStore.mass_scale"
             )
@@ -174,6 +199,16 @@ class RepresentationSpec:
             * torch.linalg.vector_norm(s, dim=1)
             * torch.linalg.vector_norm(t, dim=1)
         )
+
+    def atom_columns(self) -> tuple[AtomColumn, ...]:
+        """Per-atom columns this family's kernel requires beyond ``(s, t, w)``.
+
+        Empty for every built-in family, so a store built from an unchanged
+        spec installs exactly the columns it always did.
+        """
+        if self.kernel_in != self.kernel_out:
+            return ()
+        return family_atom_columns(self.kernel_in)
 
     def merge_atoms(
         self,

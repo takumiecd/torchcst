@@ -255,13 +255,15 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
 
     # -- representation --------------------------------------------------------
 
-    def _kernel_matrices(self, source: Tensor, target: Tensor):
+    def _kernel_matrices(self, source: Tensor, target: Tensor, columns=None):
         """Kernel columns over the chart axes only; Δ axes act via stencils."""
+        if columns is None:
+            columns = self._live_columns()
         in_mu = self.in_neurons.mu.to(device=source.device, dtype=source.dtype)
         out_mu = self.out_neurons.mu.to(device=target.device, dtype=target.dtype)
         return (
-            self.kernel_in(in_mu, source[:, : self.chart_d_in]),
-            self.kernel_out(out_mu, target),
+            self.kernel_in(in_mu, source[:, : self.chart_d_in], columns),
+            self.kernel_out(out_mu, target, columns),
         )
 
     def _stencil(self, source: Tensor) -> Tensor:
