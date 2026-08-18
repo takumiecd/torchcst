@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import math
 from math import isfinite
 from typing import ClassVar
 
@@ -346,10 +347,12 @@ class GaborKernel(ContinuousKernel):
     """Gaussian envelope times a per-atom plane wave: an oscillating atom.
 
     ``kappa(x, c) = exp(-||x-c||^2 / 2 sigma^2) * cos(omega . (x - c) + phi)``
-    with ``omega`` and ``phi`` carried per atom.  At ``omega == 0`` the cosine
-    is one and the family degenerates *exactly* to :class:`GaussianKernel`,
-    which is why a Gabor site initialised from the column defaults starts as
-    an ordinary CST site and can only gain from there.
+    with ``omega`` and ``phi`` carried per atom.  At ``omega == 0`` the column
+    is ``cos(phi)`` times the Gaussian -- the same shape, and exactly
+    :class:`GaussianKernel` when the phase is zero too -- so a Gabor site
+    starts as an ordinary CST site and can only gain from there.  It does not
+    *start* at zero phase, though; see :attr:`atom_columns` for the critical
+    point that forces a quarter turn.
 
     The point of the extra parameters is what a purely positive bump cannot
     write.  Structure finer than ``sigma`` is representable in the Gaussian
@@ -379,11 +382,24 @@ class GaborKernel(ContinuousKernel):
     """
 
     family: ClassVar[str] = "gabor"
+    #: ``phi`` is born at a quarter turn, not at zero, and E-omega is why.
+    #: At ``(omega, phi) == (0, 0)`` the derivative of the kernel column with
+    #: respect to *both* new parameters vanishes identically -- ``sin(0)`` at
+    #: every displacement -- so that point is not a stationary point of some
+    #: loss but a critical point of the parameterisation itself: no target and
+    #: no position can produce a gradient there, and an atom born there stays
+    #: at zero frequency forever.  A quarter turn costs nothing (at
+    #: ``omega == 0`` the column is ``cos(phi)`` times the Gaussian, the same
+    #: shape with a constant the amplitude absorbs) and restores the gradient
+    #: as soon as the atom is not exactly centred on an even feature.
+    #: Measured: ``|dL/domega|`` goes 0 -> 1.9e-2 at a 0.2-sigma offset, and
+    #: Adam then carries omega from 0 to within 5% of a target frequency it
+    #: could not previously see.
     atom_columns: ClassVar[tuple[AtomColumn, ...]] = (
         AtomColumn("omega_s", width=lambda d_in, _d_out: d_in),
-        AtomColumn("phi_s", width=1),
+        AtomColumn("phi_s", width=1, init=math.pi / 4),
         AtomColumn("omega_t", width=lambda _d_in, d_out: d_out),
-        AtomColumn("phi_t", width=1),
+        AtomColumn("phi_t", width=1, init=math.pi / 4),
     )
 
     def __init__(

@@ -35,7 +35,7 @@ def _grid(n=41):
     return torch.linspace(0.0, 1.0, n, dtype=torch.float64).reshape(-1, 1)
 
 
-def _site(kernel_name, *, positions, weights, extras=None):
+def _site(kernel_name, *, positions, weights, extras=None):  # noqa: D401
     count = weights.numel()
     store = SynapseStore(
         "gab",
@@ -70,14 +70,66 @@ def _site(kernel_name, *, positions, weights, extras=None):
     return CSTLinear(inputs, outputs, store, *kernels), store
 
 
-def test_zero_frequency_is_exactly_the_gaussian_family():
-    """The degeneracy that makes adopting this family free."""
+def test_zero_frequency_and_zero_phase_is_exactly_the_gaussian_family():
+    """The degeneracy that makes adopting this family free.
+
+    Stated at the point it holds, which is not the birth default: births start
+    at a quarter phase for the reason the next test measures.  At zero phase
+    the column is the Gaussian itself; at any other phase it is the same shape
+    times ``cos(phi)``, which the amplitude absorbs.
+    """
     positions = torch.tensor([[0.3], [0.6]], dtype=torch.float64)
     weights = torch.tensor([1.0, -0.5], dtype=torch.float64)
-    gabor, _ = _site("gabor", positions=positions, weights=weights)
+    zero_phase = {
+        "phi_s": torch.zeros(2, 1, dtype=torch.float64),
+        "phi_t": torch.zeros(2, 1, dtype=torch.float64),
+    }
+    gabor, _ = _site("gabor", positions=positions, weights=weights, extras=zero_phase)
     gaussian, _ = _site("gaussian", positions=positions, weights=weights)
     x = torch.eye(9, dtype=torch.float64)
     assert torch.allclose(gabor(x), gaussian(x), rtol=0, atol=0)
+
+
+def test_zero_phase_is_a_critical_point_that_the_birth_default_avoids():
+    """Why births do not start at zero phase (E-omega, 2026-08-18).
+
+    ``d/d omega cos(omega d + phi)`` is ``-d sin(omega d + phi)``, which at
+    ``(0, 0)`` is zero at *every* displacement: the column has no derivative
+    with respect to either new parameter there, so no target and no position
+    can move an atom off zero frequency.  It is a critical point of the
+    parameterisation, not a hard spot in some loss.  The birth default sits a
+    quarter turn away, where the derivative is alive.
+    """
+    kernel = GaborKernel(SIGMA, learnable=False, side="in").double()
+    x = _grid(129)
+    # Everything in sigma units: a feature oscillating 2.5 radians per sigma,
+    # and an atom sitting a fifth of a sigma off its centre.
+    centre = torch.tensor([[0.5 + 0.2 * SIGMA]], dtype=torch.float64)
+    gabor_target = kernel(
+        x,
+        torch.tensor([[0.5]], dtype=torch.float64),
+        {
+            "omega_s": torch.full((1, 1), 2.5 / SIGMA, dtype=torch.float64),
+            "phi_s": torch.zeros(1, 1, dtype=torch.float64),
+        },
+    ).reshape(-1)
+    target = gabor_target
+
+    def frequency_gradient(phase: float) -> float:
+        omega = torch.zeros(1, 1, dtype=torch.float64, requires_grad=True)
+        phi = torch.full((1, 1), phase, dtype=torch.float64, requires_grad=True)
+        column = kernel(x, centre, {"omega_s": omega, "phi_s": phi})
+        amplitude = torch.linalg.lstsq(
+            column.detach(), gabor_target.reshape(-1, 1)
+        ).solution
+        (column @ amplitude - target.reshape(-1, 1)).square().sum().backward()
+        return float(omega.grad.abs().sum())
+
+    assert frequency_gradient(0.0) == 0.0, "zero phase is the critical point"
+    default_phase = dict(
+        (column.name, column.init) for column in GaborKernel.atom_columns
+    )["phi_s"]
+    assert frequency_gradient(default_phase) > 1e-3, "the birth default is alive"
 
 
 def test_a_nonzero_frequency_makes_the_atom_change_sign():
