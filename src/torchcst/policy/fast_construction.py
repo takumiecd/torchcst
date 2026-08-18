@@ -18,6 +18,11 @@ from torchcst._validation import require_int, require_real
 from torchcst.instruments.base import KernelPortRequest
 from torchcst.instruments.tangent import TangentSnapshot, TangentStatisticsRequest
 from torchcst.representation import Box
+from torchcst.representation.kernels import (
+    OverlapScale,
+    pairwise_overlap,
+    require_overlap_scale,
+)
 from torchcst.storage import SynapseBirth, SynapseRefit, SynapseView
 
 from .proposers import _continuous_lineages
@@ -112,13 +117,15 @@ def _novelty_discount(
     target: Tensor,
     live_source: Tensor,
     live_target: Tensor,
-    bandwidth: float,
+    scale: OverlapScale,
 ) -> Tensor:
     """Per-candidate ``(1 - rho_max**2)`` against a set of reference atoms.
 
-    ``rho_ck = exp(-|s_c-s_k|^2/4*bandwidth^2) * exp(-|t_c-t_k|^2/4*bandwidth^2)``
+    ``rho_ck = overlap(|s_c-s_k|^2) * overlap(|t_c-t_k|^2)`` (one ``scale``
+    for both charts, as before -- a bare bandwidth selects the Gaussian form,
+    the site's kernel the family-generic one)
     is the coordinate-only overlap between candidate ``c`` and reference atom
-    ``k`` (twin-control.md Sec.3): the two-sided Gaussian kernel overlap that
+    ``k`` (twin-control.md Sec.3): the two-sided kernel overlap that
     would make ``c`` and ``k`` near-duplicates if both were live. This is
     rung 1 of the ladder described there -- geometry only. It omits both the
     captured-covariance correction to the numerator/denominator (rung 2,
@@ -131,10 +138,9 @@ def _novelty_discount(
     """
     if live_source.shape[0] == 0:
         return source.new_ones(source.shape[0])
-    denom = 4.0 * bandwidth * bandwidth
     d_source = torch.cdist(source, live_source.to(source)).square()
     d_target = torch.cdist(target, live_target.to(target)).square()
-    rho = torch.exp(-(d_source + d_target) / denom)
+    rho = pairwise_overlap(scale, d_source) * pairwise_overlap(scale, d_target)
     rho_max = rho.max(dim=1).values
     return (1.0 - rho_max.square()).clamp(0.0, 1.0)
 
@@ -364,7 +370,8 @@ class TangentRefit:
 class TangentBirth:
     """Sequential tangent birth with within-event rank-one deflation.
 
-    ``novelty``, when set to a kernel bandwidth ``sigma``, applies the
+    ``novelty``, when set to a kernel bandwidth ``sigma`` (or to the site's
+    own kernel, for a family-generic overlap), applies the
     gain_perp novelty discount described in twin-control.md Sec.3: each
     candidate's gain is multiplied by ``(1 - rho_max**2)`` where ``rho_max``
     is its largest coordinate overlap (see :func:`_novelty_discount`) against
@@ -384,7 +391,7 @@ class TangentBirth:
     polish_iters: int = 0
     trust: float = 0.01
     rent: float | None = None
-    novelty: float | None = None
+    novelty: OverlapScale | None = None
     _next_lineage: dict[str, int] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
@@ -395,7 +402,7 @@ class TangentBirth:
         if self.rent is not None:
             self.rent = require_real(self.rent, "rent", nonnegative=True)
         if self.novelty is not None:
-            self.novelty = require_real(self.novelty, "novelty", positive=True)
+            self.novelty = require_overlap_scale(self.novelty, "novelty")
 
     @property
     def requires(self) -> tuple[Any, ...]:

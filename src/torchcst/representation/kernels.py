@@ -24,6 +24,8 @@ from typing import ClassVar
 import torch
 from torch import Tensor, nn
 
+from torchcst._validation import require_real
+
 #: Kernel names that :class:`torchcst.representation.RepresentationSpec`
 #: accepts as a continuous family.  Kept here so the spec and the kernel
 #: modules cannot disagree about which families exist.
@@ -97,6 +99,47 @@ class ContinuousKernel(nn.Module):
         """Map squared endpoint distances to kernel values."""
         raise NotImplementedError
 
+    def profile_grad(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
+        """``d profile / d squared_distance``.
+
+        The family-dependent half of a coordinate Jacobian: for an atom at
+        ``c`` read by a neuron at ``x``, ``d kappa / d c = profile_grad *
+        2 (c - x)``, so a caller needing ``||d kappa / d c||^2`` forms
+        ``4 * profile_grad**2 * squared_distance`` and never has to know
+        which family it is holding.  :class:`~torchcst.optim.
+        CoordPreconditioner` is the in-tree consumer.
+
+        Families that cannot be differentiated in closed form leave this
+        unimplemented; the consumer then raises instead of silently
+        substituting a Gaussian derivative.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement profile_grad(); a "
+            "consumer that needs coordinate derivatives cannot use this "
+            "kernel family"
+        )
+
+    def overlap(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
+        """Normalised atom-atom overlap ``<kappa_j, kappa_k> / ||kappa||^2``.
+
+        The geometry factor ``rho_jk`` that twin-control courts price with:
+        ``1`` for coincident atoms, decaying to ``0`` as they separate.  It is
+        the *continuous* inner product of two kernel bumps, not a sampled
+        Gram -- courts that can afford the sampled version build a
+        :class:`~torchcst.representation.gram.GramService` from delivered
+        kernel columns instead, and are kernel-agnostic already.
+
+        Only families with a closed-form self-correlation implement it.  The
+        radial tent's is not elementary in general dimension, so
+        :class:`TriangularKernel` deliberately inherits the raise: a court
+        asked to price triangular twins must fail loudly rather than quote
+        Gaussian numbers for a non-Gaussian site.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement overlap(); a court "
+            "that prices geometric twin overlap cannot use this kernel family"
+        )
+
     def forward(self, query: Tensor, centers: Tensor) -> Tensor:
         if not isinstance(query, Tensor) or not isinstance(centers, Tensor):
             raise TypeError("query and centers must be Tensors")
@@ -131,6 +174,14 @@ class GaussianKernel(ContinuousKernel):
     def profile(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
         return torch.exp(-squared_distance / (2.0 * sigma.square()))
 
+    def profile_grad(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
+        return -self.profile(squared_distance, sigma) / (2.0 * sigma.square())
+
+    def overlap(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
+        # <G_j, G_k> / ||G||^2 for two unit-height Gaussians of one
+        # bandwidth: the correlation widens the variance to 2 sigma^2.
+        return torch.exp(-squared_distance / (4.0 * sigma.square()))
+
 
 class TriangularKernel(ContinuousKernel):
     """Global-bandwidth isotropic triangular kernel with compact support.
@@ -159,3 +210,49 @@ class TriangularKernel(ContinuousKernel):
         floor = torch.finfo(squared_distance.dtype).tiny
         distance = squared_distance.clamp_min(floor).sqrt()
         return torch.relu(1.0 - distance / sigma)
+
+    def profile_grad(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
+        # d/d(r^2) relu(1 - r/sigma) = -1/(2 sigma r) inside the support.
+        # The 1/r pole at a coincident endpoint is the one ``profile``
+        # already floors, and it cancels in the ``4 g^2 r^2`` form every
+        # in-tree consumer uses.
+        floor = torch.finfo(squared_distance.dtype).tiny
+        distance = squared_distance.clamp_min(floor).sqrt()
+        inside = (distance < sigma).to(squared_distance.dtype)
+        return -inside / (2.0 * sigma * distance)
+
+    # ``overlap`` is deliberately not implemented: the radial tent's
+    # self-correlation is not elementary in general dimension.
+
+
+#: What a twin-control court may price geometric overlap with: the site's own
+#: kernel (family-generic) or a bare Gaussian bandwidth (explicitly Gaussian).
+OverlapScale = ContinuousKernel | float
+
+
+def pairwise_overlap(scale: OverlapScale, squared_distance: Tensor) -> Tensor:
+    """Geometry overlap ``rho`` for squared coordinate distances.
+
+    ``scale`` is either the site's :class:`ContinuousKernel` -- the
+    family-generic form, which delegates to :meth:`ContinuousKernel.overlap`
+    and therefore *raises* rather than misprice a family with no closed-form
+    self-correlation -- or a bare positive bandwidth, which selects the
+    Gaussian ``exp(-d^2 / 4 sigma^2)`` explicitly.
+
+    The float form is kept because these courts are configured with a scale
+    rather than bound to a compute module (``propose`` sees only a view), and
+    because it is the form every registered experiment used.  It is now an
+    explicit request for Gaussian geometry, not an implicit assumption: a
+    non-Gaussian site should hand the court its kernel instead.
+    """
+    if isinstance(scale, ContinuousKernel):
+        sigma = scale.sigma.detach().to(squared_distance)
+        return scale.overlap(squared_distance, sigma)
+    return torch.exp(-squared_distance / (4.0 * float(scale) ** 2))
+
+
+def require_overlap_scale(value: object, name: str) -> OverlapScale:
+    """Validate a court's overlap scale: a kernel, or a positive real."""
+    if isinstance(value, ContinuousKernel):
+        return value
+    return require_real(value, name, positive=True)

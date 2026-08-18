@@ -151,7 +151,9 @@ class CoordPreconditioner:
     single learning rate either freezes the far tail or destabilizes the near
     atoms.  This preconditioner measures each atom's step by how much it moves
     the represented ``W`` -- the per-atom squared Jacobian norm ``J^2``, in
-    closed form from kernel column sums -- so near atoms fine-tune
+    closed form from kernel column sums (family-generic: the derivative
+    comes from the kernel's ``profile_grad``, so any family implementing it
+    is preconditioned correctly) -- so near atoms fine-tune
     (``step ~ 1/J``) and far atoms are suppressed only linearly
     (``step ~ J/lambda``) instead of exponentially.
 
@@ -238,19 +240,33 @@ class CoordPreconditioner:
         )
         return moment, mass
 
+    @staticmethod
+    def _columns(kernel, mu: torch.Tensor, centers: torch.Tensor):
+        """``(kappa, d kappa / d c per unit displacement)`` for one side.
+
+        The second return is ``2 * profile_grad``, the factor satisfying
+        ``d kappa / d c = factor * (c - x)``; squaring it against the radial
+        moment is what makes :meth:`_jacobian_sq` family-generic.
+        """
+        sigma = kernel.sigma.detach().to(centers)
+        squared_distance = torch.cdist(mu, centers).square()
+        return (
+            kernel.profile(squared_distance, sigma),
+            2.0 * kernel.profile_grad(squared_distance, sigma),
+        )
+
     @torch.no_grad()
     def _jacobian_sq(self):
         store = self.store
-        sigma = float(self.kernel_in.sigma.detach())
         mu_in = self.module.in_neurons.mu.to(store.s)
         mu_out = self.module.out_neurons.mu.to(store.t)
-        k_in = self.kernel_in(mu_in, store.s)  # [N_in, K]
-        k_out = self.kernel_out(mu_out, store.t)  # [N_out, K]
+        k_in, g_in = self._columns(self.kernel_in, mu_in, store.s)  # [N_in, K]
+        k_out, g_out = self._columns(self.kernel_out, mu_out, store.t)  # [N_out, K]
         w_sq = store.w.detach().square()
-        r_in, _ = self._radial_moment(k_in, mu_in, store.s)
-        r_out, _ = self._radial_moment(k_out, mu_out, store.t)
-        j_s = w_sq * k_out.square().sum(0) * r_in / sigma**4
-        j_t = w_sq * k_in.square().sum(0) * r_out / sigma**4
+        r_in, _ = self._radial_moment(g_in, mu_in, store.s)
+        r_out, _ = self._radial_moment(g_out, mu_out, store.t)
+        j_s = w_sq * k_out.square().sum(0) * r_in
+        j_t = w_sq * k_in.square().sum(0) * r_out
         return j_s, j_t
 
     def _materialize(self) -> None:

@@ -6,6 +6,8 @@ from .kernels import (
     CONTINUOUS_KERNELS,
     ContinuousKernel,
     GaussianKernel,
+    OverlapScale,
+    pairwise_overlap,
     TriangularKernel,
 )
 from .spec import RepresentationSpec
@@ -23,6 +25,8 @@ __all__ = [
     "ContinuousKernel",
     "CoordinateDomain",
     "GaussianKernel",
+    "OverlapScale",
+    "pairwise_overlap",
     "GramService",
     "IntegerGrid",
     "ParameterRole",
