@@ -235,6 +235,22 @@ class ContinuousKernel(nn.Module):
         why every existing caller and subclass keeps working untouched -- a
         family that needs the values overrides this method.
         """
+        sigma, centers = self._prepare(query, centers, columns)
+        squared_distance = (query[:, None, :] - centers[None, :, :]).square().sum(-1)
+        return self.profile(squared_distance, sigma)
+
+    def _prepare(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None,
+    ) -> tuple[Tensor, Tensor]:
+        """Validate a kernel call; return ``sigma`` and device-matched centers.
+
+        Split out of :meth:`forward` so a family that does not go through
+        :meth:`profile` -- :class:`GaborKernel` -- still gets one shared
+        validation path instead of a second, drifting copy.
+        """
         if columns:
             for name, value in columns.items():
                 if not isinstance(value, Tensor):
@@ -258,9 +274,7 @@ class ContinuousKernel(nn.Module):
             # contract and who may disable this.
             if not bool(torch.isfinite(sigma)) or bool(sigma <= 0):
                 raise ValueError("sigma must remain finite and positive")
-        centers = centers.to(device=query.device, dtype=query.dtype)
-        squared_distance = (query[:, None, :] - centers[None, :, :]).square().sum(-1)
-        return self.profile(squared_distance, sigma)
+        return sigma, centers.to(device=query.device, dtype=query.dtype)
 
 
 class GaussianKernel(ContinuousKernel):
@@ -326,6 +340,105 @@ class TriangularKernel(ContinuousKernel):
 
     # ``overlap`` is deliberately not implemented: the radial tent's
     # self-correlation is not elementary in general dimension.
+
+
+class GaborKernel(ContinuousKernel):
+    """Gaussian envelope times a per-atom plane wave: an oscillating atom.
+
+    ``kappa(x, c) = exp(-||x-c||^2 / 2 sigma^2) * cos(omega . (x - c) + phi)``
+    with ``omega`` and ``phi`` carried per atom.  At ``omega == 0`` the cosine
+    is one and the family degenerates *exactly* to :class:`GaussianKernel`,
+    which is why a Gabor site initialised from the column defaults starts as
+    an ordinary CST site and can only gain from there.
+
+    The point of the extra parameters is what a purely positive bump cannot
+    write.  Structure finer than ``sigma`` is representable in the Gaussian
+    dictionary only as the near-cancellation of two large opposite atoms --
+    the twin pairs whose amplitudes grow like ``exp((sigma/l)^2 / 2)`` -- and
+    that is a way of forging an oscillation the dictionary does not stock.
+    Stocking it makes the same structure an ``O(1)`` single atom.  The band
+    this opens runs from ``1/sigma`` up to the chart's Nyquist ``pi/spacing``:
+    a frequency the neuron grid cannot resolve buys nothing.
+
+    ``side`` selects which chart this instance reads, because the composition
+    ``W = K_out diag(w) K_in^T`` is a product of two per-side factors and a
+    jointly modulated 2-D Gabor does not factor through it.  Each side
+    therefore carries its own frequency and phase, and the represented atom is
+    the separable product of two 1-D Gabors -- oscillation along the input
+    chart, the output chart, or both.
+
+    Two inherited raises are deliberate.  There is no radial ``profile``: the
+    value depends on the *direction* of ``x - c`` (and on the phase), which a
+    squared distance has already discarded, so consumers that reduce a kernel
+    to its radial profile -- ``CoordPreconditioner``, the closed-form
+    backends -- refuse this family rather than silently using the envelope.
+    And ``overlap`` stays unimplemented because two Gabor atoms at the same
+    place with different frequencies are nearly orthogonal, not twins: an
+    absorb court keyed on distance alone would merge distinct atoms, so it
+    must fail loudly until it prices the full ``(mu, omega)`` address.
+    """
+
+    family: ClassVar[str] = "gabor"
+    atom_columns: ClassVar[tuple[AtomColumn, ...]] = (
+        AtomColumn("omega_s", width=lambda d_in, _d_out: d_in),
+        AtomColumn("phi_s", width=1),
+        AtomColumn("omega_t", width=lambda _d_in, d_out: d_out),
+        AtomColumn("phi_t", width=1),
+    )
+
+    def __init__(
+        self,
+        sigma: float | Tensor,
+        learnable: bool = True,
+        *,
+        side: str = "in",
+        validate_sigma: bool = True,
+    ) -> None:
+        if side not in ("in", "out"):
+            raise ValueError('side must be "in" or "out"')
+        super().__init__(sigma, learnable, validate_sigma=validate_sigma)
+        self.side = side
+
+    @property
+    def column_names(self) -> tuple[str, str]:
+        """The ``(frequency, phase)`` column names this instance reads."""
+        return ("omega_s", "phi_s") if self.side == "in" else ("omega_t", "phi_t")
+
+    def profile(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
+        raise NotImplementedError(
+            "GaborKernel has no radial profile: its value depends on the "
+            "direction of the displacement and on the atom's phase, both of "
+            "which a squared distance has discarded"
+        )
+
+    def envelope(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
+        """The Gaussian envelope alone, without the modulation."""
+        return torch.exp(-squared_distance / (2.0 * sigma.square()))
+
+    def forward(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> Tensor:
+        frequency_name, phase_name = self.column_names
+        if not columns or frequency_name not in columns or phase_name not in columns:
+            raise ValueError(
+                f"GaborKernel(side={self.side!r}) needs the {frequency_name!r} "
+                f"and {phase_name!r} columns; the site's store must declare "
+                "them (spec kernel 'gabor') and the caller must deliver them"
+            )
+        sigma, centers = self._prepare(query, centers, columns)
+        # The [N, K, d] displacement cube is unavoidable here -- the phase is
+        # a signed inner product, not a function of the distance -- so this
+        # family costs d times the isotropic families' kernel memory.
+        displacement = query[:, None, :] - centers[None, :, :]
+        squared_distance = displacement.square().sum(-1)
+        frequency = columns[frequency_name].to(displacement)
+        phase = columns[phase_name].to(displacement)
+        angle = (displacement * frequency[None, :, :]).sum(-1) + phase.reshape(1, -1)
+        return self.envelope(squared_distance, sigma) * torch.cos(angle)
+
 
 
 #: What a twin-control court may price geometric overlap with: the site's own
