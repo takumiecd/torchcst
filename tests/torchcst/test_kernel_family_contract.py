@@ -12,6 +12,8 @@ these tests forbid.
 
 from __future__ import annotations
 
+import math
+
 import pytest
 import torch
 
@@ -19,6 +21,7 @@ from torchcst import CoordPreconditioner
 from torchcst.compute import CSTLinear
 from torchcst.policy.neuron_absorb import _pairwise_rho
 from torchcst.representation import (
+    GaborKernel,
     GaussianKernel,
     RepresentationSpec,
     TriangularKernel,
@@ -133,3 +136,67 @@ def test_preconditioner_uses_the_triangular_derivative_not_the_gaussian_one():
 
     assert inside.sum() > 0, "fixture must place some neurons inside the support"
     assert torch.allclose(j_s, expected, rtol=1e-9, atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# scaled_columns: the family owes range, not scale
+# ---------------------------------------------------------------------------
+
+
+def _unit(k):
+    return k / torch.linalg.vector_norm(k, dim=0, keepdim=True)
+
+
+@pytest.mark.parametrize("kernel_cls", [GaussianKernel, TriangularKernel])
+def test_scaled_columns_points_the_same_way_as_forward(kernel_cls):
+    """The freedom the contract grants is scale per column -- and only that."""
+    kernel = kernel_cls(SIGMA).double()
+    mu = torch.linspace(-1.0, 1.0, 17, dtype=torch.float64).reshape(-1, 1)
+    centers = torch.tensor([[-0.3], [0.0], [0.42]], dtype=torch.float64)
+    torch.testing.assert_close(
+        _unit(kernel.scaled_columns(mu, centers)), _unit(kernel(mu, centers))
+    )
+
+
+def test_gabor_scaled_columns_points_the_same_way_as_forward():
+    """Including the family whose peak is not at its envelope's peak."""
+    kernel = GaborKernel(SIGMA).double()
+    mu = torch.linspace(-1.0, 1.0, 17, dtype=torch.float64).reshape(-1, 1)
+    centers = torch.tensor([[-0.3], [0.42]], dtype=torch.float64)
+    columns = {
+        "omega_s": torch.tensor([[3.0 / SIGMA], [0.0]], dtype=torch.float64),
+        "phi_s": torch.full((2, 1), math.pi / 4, dtype=torch.float64),
+    }
+    torch.testing.assert_close(
+        _unit(kernel.scaled_columns(mu, centers, columns)),
+        _unit(kernel(mu, centers, columns)),
+    )
+
+
+def test_gaussian_keeps_a_far_column_that_forward_underflows_away():
+    """The reason the method exists: forward loses the column, scaled keeps it.
+
+    An atom twenty sigma past the chart's edge casts a column every entry of
+    which is below float32's smallest normal.  ``forward`` returns zeros --
+    no value, no gradient, a ghost -- while ``scaled_columns`` returns the
+    same direction with its peak at one.
+    """
+    kernel = GaussianKernel(SIGMA)
+    mu = torch.linspace(-1.0, 1.0, 17).reshape(-1, 1)
+    centers = torch.tensor([[6.0]])
+
+    assert float(kernel(mu, centers).detach().abs().max()) == 0.0
+
+    scaled = kernel.scaled_columns(mu, centers).detach()
+    assert bool(torch.isfinite(scaled).all())
+    assert float(scaled.abs().max()) == pytest.approx(1.0)
+    assert int((scaled > 0).sum()) > 1  # a shape survives, not just one spike
+
+
+def test_triangular_returns_an_honest_zero_column_outside_its_support():
+    """A compact family's null column is geometry, not underflow -- and no NaN."""
+    kernel = TriangularKernel(SIGMA)
+    mu = torch.linspace(-1.0, 1.0, 17).reshape(-1, 1)
+    scaled = kernel.scaled_columns(mu, torch.tensor([[4.0]])).detach()
+    assert bool((scaled == 0).all())
+    assert bool(torch.isfinite(scaled).all())

@@ -220,6 +220,36 @@ class ContinuousKernel(nn.Module):
             "that prices geometric twin overlap cannot use this kernel family"
         )
 
+    def scaled_columns(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> Tensor:
+        """:meth:`forward`'s columns, each up to its own positive scale.
+
+        Same shape and same direction as :meth:`forward`, but every column is
+        free to carry an arbitrary positive factor, because each caller
+        divides that factor back out -- ``UnitFootprint`` normalises to unit
+        L2 norm.  Giving up the scale buys range: an atom far from every
+        neuron casts a column whose values underflow, and a column that has
+        already flattened to zero cannot be rescaled back.  In bf16/fp16 a
+        Gaussian starts losing columns around four sigma, well inside a
+        lawful chart, so this is not a corner case.
+
+        The generic form below divides by each column's largest magnitude,
+        which is exact for any family whose values survive being computed at
+        all -- the bounded profiles need nothing more.  A family built on an
+        exponential must override and fold the shift *inside* the exponent,
+        the same move softmax makes with its maximum.
+
+        A compactly supported family may return an honestly zero column, for
+        an atom outside every neuron's support.  That is a fact about the
+        geometry rather than a numerical failure, and callers clamp instead
+        of dividing by it.
+        """
+        return peak_scaled(self(query, centers, columns))
+
     def forward(
         self,
         query: Tensor,
@@ -299,6 +329,21 @@ class GaussianKernel(ContinuousKernel):
         # <G_j, G_k> / ||G||^2 for two unit-height Gaussians of one
         # bandwidth: the correlation widens the variance to 2 sigma^2.
         return torch.exp(-squared_distance / (4.0 * sigma.square()))
+
+    def scaled_columns(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> Tensor:
+        # Subtracting each column's nearest squared distance inside the
+        # exponent is exact -- it scales the column by exp(+d_min^2/2 sigma^2)
+        # -- and it means the largest entry is always exactly one, so no
+        # column ever underflows regardless of how far the atom has walked.
+        sigma, centers = self._prepare(query, centers, columns)
+        squared_distance = (query[:, None, :] - centers[None, :, :]).square().sum(-1)
+        nearest = squared_distance.amin(dim=0, keepdim=True)
+        return torch.exp(-(squared_distance - nearest) / (2.0 * sigma.square()))
 
 
 class TriangularKernel(ContinuousKernel):
@@ -431,12 +476,13 @@ class GaborKernel(ContinuousKernel):
         """The Gaussian envelope alone, without the modulation."""
         return torch.exp(-squared_distance / (2.0 * sigma.square()))
 
-    def forward(
+    def _components(
         self,
         query: Tensor,
         centers: Tensor,
-        columns: Mapping[str, Tensor] | None = None,
-    ) -> Tensor:
+        columns: Mapping[str, Tensor] | None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """``(squared_distance, angle, sigma)`` -- what both column forms share."""
         frequency_name, phase_name = self.column_names
         if not columns or frequency_name not in columns or phase_name not in columns:
             raise ValueError(
@@ -453,8 +499,37 @@ class GaborKernel(ContinuousKernel):
         frequency = columns[frequency_name].to(displacement)
         phase = columns[phase_name].to(displacement)
         angle = (displacement * frequency[None, :, :]).sum(-1) + phase.reshape(1, -1)
+        return squared_distance, angle, sigma
+
+    def forward(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> Tensor:
+        squared_distance, angle, sigma = self._components(query, centers, columns)
         return self.envelope(squared_distance, sigma) * torch.cos(angle)
 
+    def scaled_columns(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> Tensor:
+        # The envelope carries the whole dynamic range, so shifting it is
+        # enough; the fringe is already O(1).  The resulting column's peak is
+        # not one -- cos may be small where the envelope is largest -- which
+        # the contract allows, because the scale is divided out downstream.
+        squared_distance, angle, sigma = self._components(query, centers, columns)
+        nearest = squared_distance.amin(dim=0, keepdim=True)
+        return self.envelope(squared_distance - nearest, sigma) * torch.cos(angle)
+
+
+
+def peak_scaled(values: Tensor) -> Tensor:
+    """Divide each column by its largest magnitude, leaving zero columns zero."""
+    peak = values.abs().amax(dim=0, keepdim=True)
+    return values / peak.clamp_min(torch.finfo(values.dtype).tiny)
 
 
 #: What a twin-control court may price geometric overlap with: the site's own
