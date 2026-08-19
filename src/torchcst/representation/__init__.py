@@ -1,6 +1,7 @@
 """Public surface of coordinate domains and representation specifications."""
 
 from .domains import Box, CoordinateDomain, IntegerGrid, ParameterRole, Role, Sphere
+from .gauges import Amplitude, AmplitudeGauge, UnitFootprint, require_gauge
 from .gram import AbsorbAssessment, AbsorbPlanStep, GramService
 from .kernels import (
     CONTINUOUS_KERNELS,
@@ -18,6 +19,8 @@ from .survey import AxisSurvey, ChartSurvey, survey_chart
 
 __all__ = [
     "AbsorbAssessment",
+    "Amplitude",
+    "AmplitudeGauge",
     "AbsorbPlanStep",
     "AxisSurvey",
     "Box",
@@ -38,6 +41,8 @@ __all__ = [
     "Role",
     "Sphere",
     "TriangularKernel",
+    "UnitFootprint",
+    "require_gauge",
     "propose_chart",
     "survey_chart",
 ]
