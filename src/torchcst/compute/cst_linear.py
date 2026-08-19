@@ -52,16 +52,18 @@ class CSTLinear(_ContinuousCSTMap):
         *,
         track_mass: bool = True,
         backend="auto",
+        gauge=None,
     ) -> None:
         super().__init__(
             in_neurons, out_neurons, synapses, kernel, kernel_out,
-            track_mass=track_mass,
+            track_mass=track_mass, gauge=gauge,
         )
         self.backend = validate_backend(
             backend,
             kernel_in=self.kernel_in,
             kernel_out=self.kernel_out,
             track_mass=track_mass,
+            gauge=self.gauge,
         )
 
     def _resolved_backend(self, count: int):

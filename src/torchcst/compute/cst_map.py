@@ -7,7 +7,13 @@ from collections.abc import Mapping
 import torch
 from torch import Tensor, nn
 
-from torchcst.representation import Box, ContinuousKernel
+from torchcst.representation import (
+    Amplitude,
+    AmplitudeGauge,
+    Box,
+    ContinuousKernel,
+    require_gauge,
+)
 from torchcst.storage import NeuronStore, SynapseStore, SynapseView
 
 from .backends.factored import apply_rows
@@ -47,6 +53,7 @@ class _ContinuousCSTMap(nn.Module):
         kernel_out: ContinuousKernel | None = None,
         *,
         track_mass: bool = True,
+        gauge: AmplitudeGauge | None = None,
     ) -> None:
         super().__init__()
         if not isinstance(track_mass, bool):
@@ -87,6 +94,12 @@ class _ContinuousCSTMap(nn.Module):
         self.synapses = synapses
         self.kernel_in = kernel
         self.kernel_out = kernel if kernel_out is None else kernel_out
+        # Which half of `w * ||k||` this site's stored number is. Under the
+        # default the parameter is the amplitude and the columns arrive as
+        # cast; under UnitFootprint it is the atom's mass in W, the quantity
+        # rent already prices, and the coordinate's norm-escape back door is
+        # algebraically absent rather than merely small.
+        self.gauge = Amplitude() if gauge is None else require_gauge(gauge, "gauge")
         self.in_features = in_neurons.n_max
         self.out_features = out_neurons.n_max
         self.capture_site = synapses.site
@@ -230,8 +243,8 @@ class _ContinuousCSTMap(nn.Module):
         in_mu = self.in_neurons.mu.to(device=source.device, dtype=source.dtype)
         out_mu = self.out_neurons.mu.to(device=target.device, dtype=target.dtype)
         return (
-            self.kernel_in(in_mu, source, columns),
-            self.kernel_out(out_mu, target, columns),
+            self.gauge.columns(self.kernel_in, in_mu, source, columns),
+            self.gauge.columns(self.kernel_out, out_mu, target, columns),
         )
 
     def _current_mass_signature(self) -> tuple[int, ...]:

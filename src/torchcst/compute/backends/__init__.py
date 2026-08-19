@@ -31,6 +31,8 @@ from dataclasses import dataclass
 
 import torch
 
+from torchcst.representation import Amplitude
+
 
 @dataclass(frozen=True)
 class Factored:
@@ -88,12 +90,15 @@ class NativeTruncated:
 Backend = Factored | Materialized | NativeTruncated
 
 
-def validate_backend(backend, *, kernel_in, kernel_out, track_mass):
+def validate_backend(backend, *, kernel_in, kernel_out, track_mass, gauge=None):
     """Check a module's backend choice against its site; return it.
 
     The closed-form backends (lean materialization, native truncated)
     hard-require Gaussian kernels (analytic derivatives) and
     ``track_mass=False`` (mass would rebuild the full kernel matrices).
+    They also require the amplitude gauge: a normalising gauge needs each
+    column's norm, and not building the columns is the whole point of
+    these two paths.
     """
     if backend == "auto":
         return backend
@@ -111,6 +116,11 @@ def validate_backend(backend, *, kernel_in, kernel_out, track_mass):
             raise ValueError(f"{name} requires Gaussian kernels")
         if track_mass:
             raise ValueError(f"{name} requires track_mass=False")
+        if gauge is not None and not isinstance(gauge, Amplitude):
+            raise ValueError(
+                f"{name} requires the Amplitude gauge; a normalising gauge "
+                "needs the kernel columns this backend never materializes"
+            )
     return backend
 
 

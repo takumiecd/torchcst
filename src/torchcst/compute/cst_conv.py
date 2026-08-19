@@ -165,9 +165,11 @@ class CSTConv2d(_ContinuousCSTMap):
         bias: bool = True,
         implementation: Literal["unfold", "materialized"] = "unfold",
         track_mass: bool = True,
+        gauge=None,
     ) -> None:
         super().__init__(
-            in_neurons, out_neurons, synapses, kernel, kernel_out, track_mass=track_mass
+            in_neurons, out_neurons, synapses, kernel, kernel_out,
+            track_mass=track_mass, gauge=gauge,
         )
         require_int(in_channels, "in_channels", minimum=1)
         if implementation not in ("unfold", "materialized"):
