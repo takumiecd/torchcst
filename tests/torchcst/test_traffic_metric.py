@@ -130,3 +130,38 @@ def test_traffic_rows_must_be_a_non_negative_count():
     with pytest.raises((ValueError, TypeError)):
         CoordPreconditioner(module, cap_sigma=0.1, subscribe=False,
                             traffic_rows=-1)
+
+
+def test_chunking_the_atom_loop_changes_nothing_that_matters():
+    """Splitting the atoms is a loop, not an approximation.
+
+    Each atom's moment sums over its own column and touches no other atom, so
+    the split drops no term and divides no reduction.  It is not bit-identical
+    even so, and the reason is worth knowing: ``torch.cdist`` chooses between a
+    direct and a matmul path by input size, and the chunk width changes which
+    it takes.  The drift is last-place -- measured at 4e-15 relative in float64
+    -- so the tolerance here is tight enough that a real decomposition error
+    could not hide under it.
+    """
+    module, _ = _site(atoms=40, n_in=13, n_out=11)
+    whole = CoordPreconditioner(module, cap_sigma=0.1, subscribe=False)
+    split = CoordPreconditioner(module, cap_sigma=0.1, subscribe=False,
+                                chunk_elements=13 * 3)   # three atoms at a time
+
+    for a, b in zip(whole._jacobian_sq(), split._jacobian_sq()):
+        torch.testing.assert_close(a, b, rtol=1e-12, atol=0.0)
+
+
+def test_chunking_holds_under_the_traffic_metric_too():
+    module, _ = _site(atoms=40, n_in=13, n_out=11)
+    whole = CoordPreconditioner(module, cap_sigma=0.1, subscribe=False,
+                                traffic_rows=8)
+    split = CoordPreconditioner(module, cap_sigma=0.1, subscribe=False,
+                                traffic_rows=8, chunk_elements=13 * 3)
+    tilt = torch.logspace(1.0, -1.0, module.in_features, dtype=torch.float64)
+    for metric in (whole, split):
+        metric._x = torch.eye(module.in_features, dtype=torch.float64) * tilt
+        metric._g = torch.eye(module.out_features, dtype=torch.float64)
+
+    for a, b in zip(whole._jacobian_sq(), split._jacobian_sq()):
+        torch.testing.assert_close(a, b, rtol=1e-12, atol=0.0)

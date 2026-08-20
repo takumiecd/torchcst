@@ -1,146 +1,15 @@
-"""Optimizer-state following, coordinate preconditioning, and parameter grouping."""
+"""The coordinate optimizer: a step measured in how far it moves W."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 
 import torch
 from torch import Tensor, nn
 
-from ._validation import require_int
-from .storage import SynapseStore
-
-
-class OptimizerStateFollower:
-    """Keep slot-indexed optimizer tensors aligned with a mutable store.
-
-    Optimizers key state by :class:`~torch.nn.Parameter` identity. Growing a
-    parameter's storage therefore does not grow its optimizer moments. This
-    follower treats every non-scalar state tensor whose leading dimension
-    matches the store capacity as slot-indexed state. Those tensors are padded
-    on growth and cleared whenever a slot dies or is reused.
-
-    An engine-owned optimizer gets one follower subscribed automatically per
-    store; :meth:`SynapseStore.reconcile_optimizer_state` is the manual
-    counterpart for hand-driven stores.
-    """
-
-    def __init__(
-        self,
-        optimizer: torch.optim.Optimizer,
-        parameters: Iterable[nn.Parameter],
-    ) -> None:
-        if not isinstance(optimizer, torch.optim.Optimizer):
-            raise TypeError("optimizer must be a torch Optimizer")
-        params = tuple(parameters)
-        if not params or not all(isinstance(param, nn.Parameter) for param in params):
-            raise TypeError("parameters must contain at least one Parameter")
-        capacities = {int(param.shape[0]) for param in params if param.ndim > 0}
-        if len(capacities) != 1 or any(param.ndim == 0 for param in params):
-            raise ValueError("parameters must share one non-scalar leading capacity")
-        self._optimizer = optimizer
-        self._parameters = params
-        self._capacity = capacities.pop()
-
-    @property
-    def capacity(self) -> int:
-        return self._capacity
-
-    @staticmethod
-    def _validated_slots(slots: torch.Tensor) -> torch.Tensor:
-        if not isinstance(slots, torch.Tensor):
-            raise TypeError("slots must be a Tensor")
-        if slots.ndim != 1 or slots.dtype != torch.int64:
-            raise TypeError("slots must be a rank-1 int64 Tensor")
-        return slots.detach().to(device="cpu")
-
-    def _slot_tensors(self, parameter: nn.Parameter):
-        """Yield the state tensors of ``parameter`` indexed by slot capacity."""
-        state = self._optimizer.state.get(parameter)
-        if not state:
-            return
-        for name, value in tuple(state.items()):
-            if (
-                isinstance(value, torch.Tensor)
-                and value.ndim > 0
-                and value.shape[0] == self._capacity
-            ):
-                yield state, name, value
-
-    def _zero_rows(self, slots: torch.Tensor) -> None:
-        slots = self._validated_slots(slots)
-        if slots.numel() and bool(((slots < 0) | (slots >= self._capacity)).any()):
-            raise IndexError("optimizer follower slots are outside capacity")
-        for parameter in self._parameters:
-            for _, _, value in self._slot_tensors(parameter):
-                if slots.numel():
-                    value.index_fill_(0, slots.to(value.device), 0)
-
-    def grow(self, new_capacity: int) -> None:
-        """Zero-pad all materialized slot tensors to ``new_capacity``."""
-        require_int(new_capacity, "new_capacity")
-        if new_capacity < self._capacity:
-            raise ValueError("OptimizerStateFollower cannot shrink")
-        if new_capacity == self._capacity:
-            return
-        for parameter in self._parameters:
-            for state, name, value in self._slot_tensors(parameter):
-                grown = value.new_zeros((new_capacity, *value.shape[1:]))
-                grown[: self._capacity].copy_(value)
-                state[name] = grown
-        self._capacity = new_capacity
-
-    def on_birth(self, slots: torch.Tensor, lineage: torch.Tensor) -> None:
-        del lineage
-        self._zero_rows(slots)
-
-    def on_death(self, slots: torch.Tensor) -> None:
-        self._zero_rows(slots)
-
-    def on_refit(self, slots: torch.Tensor) -> None:
-        """Reset solved scalar amplitudes while preserving coordinate moments."""
-        slots = self._validated_slots(slots)
-        if slots.numel() and bool(((slots < 0) | (slots >= self._capacity)).any()):
-            raise IndexError("optimizer follower slots are outside capacity")
-        for parameter in self._parameters:
-            if parameter.ndim != 1:
-                continue
-            for _, _, value in self._slot_tensors(parameter):
-                if slots.numel():
-                    value.index_fill_(0, slots.to(value.device), 0)
-
-    def on_remap(self, old_to_new: torch.Tensor) -> None:
-        """Move surviving rows according to an old-slot to new-slot mapping."""
-        mapping = self._validated_slots(old_to_new)
-        if mapping.numel() != self._capacity:
-            raise ValueError("old_to_new must align with follower capacity")
-        old = torch.nonzero(mapping >= 0, as_tuple=False).flatten()
-        if old.numel() and bool((mapping[old] >= self._capacity).any()):
-            raise IndexError("optimizer follower remap targets outside capacity")
-        for parameter in self._parameters:
-            for state, name, value in self._slot_tensors(parameter):
-                remapped = torch.zeros_like(value)
-                if old.numel():
-                    source = old.to(value.device)
-                    target = mapping[old].to(value.device)
-                    remapped.index_copy_(0, target, value.index_select(0, source))
-                state[name] = remapped
-
-    def state_dict(self) -> dict[str, object]:
-        return {
-            "schema": "torchcst-optimizer-state-follower-v1",
-            "capacity": self._capacity,
-        }
-
-    def load_state_dict(self, state: Mapping[str, object]) -> None:
-        if (
-            not isinstance(state, Mapping)
-            or state.get("schema") != "torchcst-optimizer-state-follower-v1"
-        ):
-            raise ValueError("unsupported OptimizerStateFollower state schema")
-        self._capacity = require_int(
-            state.get("capacity"), "optimizer follower capacity", minimum=0
-        )
+from .._validation import require_int
+from ..storage import SynapseStore
+from . import metric
 
 
 class CoordPreconditioner:
@@ -187,6 +56,7 @@ class CoordPreconditioner:
         target_step: float = 0.01,
         subscribe: bool = True,
         traffic_rows: int = 0,
+        chunk_elements: int = 1 << 24,
     ) -> None:
         store = getattr(module, "synapses", None)
         kernel_in = getattr(module, "kernel_in", None)
@@ -208,6 +78,7 @@ class CoordPreconditioner:
         if not (isinstance(target_step, (int, float)) and target_step > 0):
             raise ValueError("target_step must be a positive number")
         require_int(traffic_rows, "traffic_rows", minimum=0)
+        require_int(chunk_elements, "chunk_elements", minimum=1)
         self.module = module
         self.store = store
         self.kernel_in = kernel_in
@@ -223,6 +94,14 @@ class CoordPreconditioner:
         # directly, rescoring a census under the traffic and watching conv1's
         # error fall from 0.36 to 0.16.  The same identity sits in here.
         self.traffic_rows = int(traffic_rows)
+        # How many elements one `[N, atoms]` temporary may reach before the
+        # atom loop splits -- a budget to set, not a fixed policy, because the
+        # split costs time and the memory it saves is only worth paying for
+        # once there is a shortage.  The metric holds four such temporaries, so
+        # the peak is about four times this in elements.  The default clears a
+        # ten-thousand-atom site against a fifteen-hundred-neuron chart in one
+        # pass, and starts splitting from roughly four times that.
+        self.chunk_elements = int(chunk_elements)
         self._x: torch.Tensor | None = None
         self._g: torch.Tensor | None = None
         if self.traffic_rows:
@@ -260,82 +139,37 @@ class CoordPreconditioner:
         if grad_output and isinstance(grad_output[0], torch.Tensor):
             self._g = self._sample(grad_output[0], self.traffic_rows)
 
-    def _weighted(self, columns: Tensor, traffic: Tensor | None) -> Tensor:
-        """``diag(k^T Sigma k)`` per atom -- the column norm the traffic sees."""
-        if traffic is None:
-            return columns.square().sum(0)
-        rows = traffic.to(device=columns.device, dtype=columns.dtype)
-        return (rows @ columns).square().sum(0) / rows.shape[0]
 
-    # ---- update rule (lm1d-frozen) ---------------------------------------
-
-    @staticmethod
-    @torch.no_grad()
-    def _radial_moment(k: torch.Tensor, mu: torch.Tensor, x: torch.Tensor):
-        """``sum_n k[n,i]^2 ||mu_n - x_i||^2`` without the ``[N, K, d]`` cube."""
-        k_sq = k.square()
-        mass = k_sq.sum(0)
-        mu_sq = mu.square().sum(1)
-        cross = k_sq.transpose(0, 1) @ mu  # [K, d]
-        moment = (
-            (k_sq * mu_sq[:, None]).sum(0)
-            - 2.0 * (cross * x).sum(1)
-            + mass * x.square().sum(1)
-        )
-        return moment, mass
-
-    @staticmethod
-    def _columns(kernel, mu: torch.Tensor, centers: torch.Tensor):
-        """``(kappa, d kappa / d c per unit displacement)`` for one side.
-
-        The second return is ``2 * profile_grad``, the factor satisfying
-        ``d kappa / d c = factor * (c - x)``; squaring it against the radial
-        moment is what makes :meth:`_jacobian_sq` family-generic.
-        """
-        sigma = kernel.sigma.detach().to(centers)
-        squared_distance = torch.cdist(mu, centers).square()
-        return (
-            kernel.profile(squared_distance, sigma),
-            2.0 * kernel.profile_grad(squared_distance, sigma),
-        )
-
-    @torch.no_grad()
     def _jacobian_sq(self):
         store = self.store
         mu_in = self.module.in_neurons.mu.to(store.s)
         mu_out = self.module.out_neurons.mu.to(store.t)
-        k_in, g_in = self._columns(self.kernel_in, mu_in, store.s)  # [N_in, K]
-        k_out, g_out = self._columns(self.kernel_out, mu_out, store.t)  # [N_out, K]
-        w_sq = store.w.detach().square()
-        if not self.traffic_rows:
-            r_in, _ = self._radial_moment(g_in, mu_in, store.s)
-            r_out, _ = self._radial_moment(g_out, mu_out, store.t)
-            return (w_sq * k_out.square().sum(0) * r_in,
-                    w_sq * k_in.square().sum(0) * r_out)
-        # The Gauss-Newton metric factorises the way K-FAC's does: the input
-        # side is weighted by the activations arriving, the output side by the
-        # gradients leaving.  Both are the layer's own, captured this step.
-        return (
-            w_sq * self._weighted(k_out, self._g)
-            * self._directional(g_in, mu_in, store.s, self._x),
-            w_sq * self._weighted(k_in, self._x)
-            * self._directional(g_out, mu_out, store.t, self._g),
+        atoms = store.s.shape[0]
+        width = max(mu_in.shape[0], mu_out.shape[0])
+        step = max(1, min(atoms, self.chunk_elements // max(width, 1)))
+        if step >= atoms:
+            return self._jacobian_block(mu_in, mu_out, slice(0, atoms))
+        j_s = store.s.new_zeros(atoms)
+        j_t = store.t.new_zeros(atoms)
+        for start in range(0, atoms, step):
+            block = slice(start, min(start + step, atoms))
+            j_s[block], j_t[block] = self._jacobian_block(mu_in, mu_out, block)
+        return j_s, j_t
+
+    @torch.no_grad()
+    def _jacobian_block(self, mu_in, mu_out, block):
+        store = self.store
+        k_in, g_in = metric.columns(self.kernel_in, mu_in, store.s[block])
+        k_out, g_out = metric.columns(self.kernel_out, mu_out, store.t[block])
+        w_sq = store.w.detach()[block].square()
+        return metric.jacobian_sq(
+            k_in=k_in, g_in=g_in, k_out=k_out, g_out=g_out,
+            mu_in=mu_in, mu_out=mu_out,
+            source=store.s[block], target=store.t[block], w_sq=w_sq,
+            traffic_in=self._x if self.traffic_rows else None,
+            traffic_out=self._g if self.traffic_rows else None,
         )
 
-    def _directional(self, factor: Tensor, mu: Tensor, centers: Tensor,
-                     traffic: Tensor | None) -> Tensor:
-        """``sum_i || Sigma^(1/2) d kappa / d c_i ||^2`` per atom.
-
-        One chart axis at a time, so the ``[N, K, d]`` displacement cube is
-        never built; each axis costs one ``[N, K]`` temporary, the same shape
-        the kernel matrix already occupies.
-        """
-        total = torch.zeros(centers.shape[0], device=centers.device,
-                            dtype=centers.dtype)
-        for axis in range(centers.shape[1]):
-            derivative = factor * (centers[:, axis][None, :] - mu[:, axis][:, None])
-            total = total + self._weighted(derivative, traffic)
-        return total
 
     def _materialize(self) -> None:
         store = self.store
@@ -521,73 +355,3 @@ class CoordPreconditioner:
             if value.shape[0] != self._capacity:
                 raise ValueError(f"preconditioner {name} does not match capacity")
             setattr(self, name, value.to(device).clone())
-
-
-def parameter_groups(
-    stores_or_model: nn.Module | Iterable[nn.Module],
-    *,
-    amplitude_lr: float,
-    coordinate_lr: float,
-    default_lr: float,
-) -> list[dict[str, object]]:
-    """Split parameters into amplitude / coordinate / default learning-rate groups.
-
-    Every :class:`SynapseStore` amplitude ``w`` goes into the amplitude group
-    and every learnable coordinate ``s``/``t`` into the coordinate group;
-    remaining parameters take ``default_lr``. Coordinates with a buffer role
-    (e.g. the entry family's ``IntegerGrid``) are not parameters and never
-    appear in any group.
-
-    A kernel family's declared per-atom columns
-    (:class:`~torchcst.representation.AtomColumn`) land in the default group
-    deliberately, not by omission: a Gabor frequency is conjugate to position
-    and a per-atom bandwidth is a scale, so neither carries the amplitude's
-    nor the coordinate's units and neither may silently inherit their rate.
-    A family that wants its own schedule asks for its own group explicitly.
-    """
-    modules: list[nn.Module] = (
-        [stores_or_model]
-        if isinstance(stores_or_model, nn.Module)
-        else list(stores_or_model)
-    )
-    if not modules:
-        raise ValueError("stores_or_model must contain at least one module")
-
-    amplitude_ids: set[int] = set()
-    coordinate_ids: set[int] = set()
-    for root in modules:
-        for submodule in root.modules():
-            if not isinstance(submodule, SynapseStore):
-                continue
-            weight = submodule.w
-            if isinstance(weight, nn.Parameter):
-                amplitude_ids.add(id(weight))
-            for name in ("s", "t"):
-                coordinate = getattr(submodule, name)
-                if isinstance(coordinate, nn.Parameter):
-                    coordinate_ids.add(id(coordinate))
-
-    amplitude_params: list[nn.Parameter] = []
-    coordinate_params: list[nn.Parameter] = []
-    default_params: list[nn.Parameter] = []
-    seen: set[int] = set()
-    for root in modules:
-        for parameter in root.parameters():
-            if not parameter.requires_grad or id(parameter) in seen:
-                continue
-            seen.add(id(parameter))
-            if id(parameter) in amplitude_ids:
-                amplitude_params.append(parameter)
-            elif id(parameter) in coordinate_ids:
-                coordinate_params.append(parameter)
-            else:
-                default_params.append(parameter)
-
-    groups: list[dict[str, object]] = []
-    if amplitude_params:
-        groups.append({"params": amplitude_params, "lr": amplitude_lr})
-    if coordinate_params:
-        groups.append({"params": coordinate_params, "lr": coordinate_lr})
-    if default_params:
-        groups.append({"params": default_params, "lr": default_lr})
-    return groups
