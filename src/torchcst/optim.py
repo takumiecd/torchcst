@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 
 import torch
-from torch import nn
+from torch import Tensor, nn
 
 from ._validation import require_int
 from .storage import SynapseStore
@@ -186,6 +186,7 @@ class CoordPreconditioner:
         beta: float = 0.9,
         target_step: float = 0.01,
         subscribe: bool = True,
+        traffic_rows: int = 0,
     ) -> None:
         store = getattr(module, "synapses", None)
         kernel_in = getattr(module, "kernel_in", None)
@@ -206,6 +207,7 @@ class CoordPreconditioner:
             raise ValueError("beta must be in [0, 1)")
         if not (isinstance(target_step, (int, float)) and target_step > 0):
             raise ValueError("target_step must be a positive number")
+        require_int(traffic_rows, "traffic_rows", minimum=0)
         self.module = module
         self.store = store
         self.kernel_in = kernel_in
@@ -213,6 +215,19 @@ class CoordPreconditioner:
         self.cap_sigma = float(cap_sigma)
         self.beta = float(beta)
         self.target_step = float(target_step)
+        # Traffic-weighted metric.  Zero keeps the Frobenius form this class has
+        # always used; a positive count subsamples that many rows of the site's
+        # own inputs and output gradients per step and weights the metric by
+        # them.  Frobenius is the metric of a customer base that arrives equally
+        # from every direction, which no layer has -- E-func measured the gap
+        # directly, rescoring a census under the traffic and watching conv1's
+        # error fall from 0.36 to 0.16.  The same identity sits in here.
+        self.traffic_rows = int(traffic_rows)
+        self._x: torch.Tensor | None = None
+        self._g: torch.Tensor | None = None
+        if self.traffic_rows:
+            module.register_forward_pre_hook(self._observe_input)
+            module.register_full_backward_hook(self._observe_gradient)
         self._capacity = store.capacity
         # Lazily materialized on the first step: the owning model may move
         # devices between construction and training (create state after .to).
@@ -222,6 +237,35 @@ class CoordPreconditioner:
         self.eta: float | None = None
         if subscribe:
             store.followers().subscribe(self)
+
+    # ---- traffic capture (off unless traffic_rows) ------------------------
+
+    @staticmethod
+    def _sample(tensor: Tensor, count: int) -> Tensor:
+        """The last axis kept, everything else flattened, then truncated.
+
+        Named apart from this class's follower-contract _rows, which it
+        would otherwise shadow -- silently, and only at call time.
+        """
+        flat = tensor.detach().reshape(-1, tensor.shape[-1])
+        return flat[:count] if flat.shape[0] > count else flat
+
+    def _observe_input(self, module, inputs) -> None:
+        del module
+        if inputs and isinstance(inputs[0], torch.Tensor):
+            self._x = self._sample(inputs[0], self.traffic_rows)
+
+    def _observe_gradient(self, module, grad_input, grad_output) -> None:
+        del module, grad_input
+        if grad_output and isinstance(grad_output[0], torch.Tensor):
+            self._g = self._sample(grad_output[0], self.traffic_rows)
+
+    def _weighted(self, columns: Tensor, traffic: Tensor | None) -> Tensor:
+        """``diag(k^T Sigma k)`` per atom -- the column norm the traffic sees."""
+        if traffic is None:
+            return columns.square().sum(0)
+        rows = traffic.to(device=columns.device, dtype=columns.dtype)
+        return (rows @ columns).square().sum(0) / rows.shape[0]
 
     # ---- update rule (lm1d-frozen) ---------------------------------------
 
@@ -263,11 +307,35 @@ class CoordPreconditioner:
         k_in, g_in = self._columns(self.kernel_in, mu_in, store.s)  # [N_in, K]
         k_out, g_out = self._columns(self.kernel_out, mu_out, store.t)  # [N_out, K]
         w_sq = store.w.detach().square()
-        r_in, _ = self._radial_moment(g_in, mu_in, store.s)
-        r_out, _ = self._radial_moment(g_out, mu_out, store.t)
-        j_s = w_sq * k_out.square().sum(0) * r_in
-        j_t = w_sq * k_in.square().sum(0) * r_out
-        return j_s, j_t
+        if not self.traffic_rows:
+            r_in, _ = self._radial_moment(g_in, mu_in, store.s)
+            r_out, _ = self._radial_moment(g_out, mu_out, store.t)
+            return (w_sq * k_out.square().sum(0) * r_in,
+                    w_sq * k_in.square().sum(0) * r_out)
+        # The Gauss-Newton metric factorises the way K-FAC's does: the input
+        # side is weighted by the activations arriving, the output side by the
+        # gradients leaving.  Both are the layer's own, captured this step.
+        return (
+            w_sq * self._weighted(k_out, self._g)
+            * self._directional(g_in, mu_in, store.s, self._x),
+            w_sq * self._weighted(k_in, self._x)
+            * self._directional(g_out, mu_out, store.t, self._g),
+        )
+
+    def _directional(self, factor: Tensor, mu: Tensor, centers: Tensor,
+                     traffic: Tensor | None) -> Tensor:
+        """``sum_i || Sigma^(1/2) d kappa / d c_i ||^2`` per atom.
+
+        One chart axis at a time, so the ``[N, K, d]`` displacement cube is
+        never built; each axis costs one ``[N, K]`` temporary, the same shape
+        the kernel matrix already occupies.
+        """
+        total = torch.zeros(centers.shape[0], device=centers.device,
+                            dtype=centers.dtype)
+        for axis in range(centers.shape[1]):
+            derivative = factor * (centers[:, axis][None, :] - mu[:, axis][:, None])
+            total = total + self._weighted(derivative, traffic)
+        return total
 
     def _materialize(self) -> None:
         store = self.store
