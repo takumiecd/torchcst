@@ -13,7 +13,11 @@ import torch
 
 from torchcst import CoordPreconditioner
 from torchcst.compute import CSTLinear
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import (
+    GaussianKernel,
+    L2NormalizedColumns,
+    RepresentationSpec,
+)
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
 SIGMA = 0.25
@@ -30,7 +34,7 @@ def _birth(store, source, target, weights, lineage_start=0):
     )
 
 
-def _site(capacity=4, atoms=3, d_in=2, d_out=1):
+def _site(capacity=4, atoms=3, d_in=2, d_out=1, gauge=None):
     """A double-precision continuous site with ``atoms`` live rows."""
     store = SynapseStore(
         "precond",
@@ -60,7 +64,7 @@ def _site(capacity=4, atoms=3, d_in=2, d_out=1):
         dtype=torch.float64,
     )
     module = CSTLinear(
-        inputs, outputs, store, GaussianKernel(SIGMA).double()
+        inputs, outputs, store, GaussianKernel(SIGMA).double(), gauge=gauge
     )
     return module, store
 
@@ -138,6 +142,41 @@ def test_two_steps_match_the_naive_reference() -> None:
     assert pc.eta == pytest.approx(eta)
     torch.testing.assert_close(pc.v_s, v_s)
     torch.testing.assert_close(pc.v_t, v_t)
+
+
+def test_preconditioner_uses_the_normalized_map_jacobian_under_the_l2_gauge():
+    module, store = _site(gauge=L2NormalizedColumns())
+    precond = CoordPreconditioner(module, cap_sigma=0.1, subscribe=False)
+    actual_s, actual_t = precond._jacobian_sq()
+    gauge = L2NormalizedColumns()
+
+    expected_s = []
+    expected_t = []
+    for slot in range(store.s.shape[0]):
+        weight = store.w.detach()[slot]
+        source = store.s.detach()[slot]
+        target = store.t.detach()[slot]
+
+        def represented(s, t, weight=weight):
+            column_in = gauge.columns(
+                module.kernel_in, module.in_neurons.mu, s[None, :]
+            )[:, 0]
+            column_out = gauge.columns(
+                module.kernel_out, module.out_neurons.mu, t[None, :]
+            )[:, 0]
+            return weight * column_out[:, None] * column_in[None, :]
+
+        jac_s = torch.autograd.functional.jacobian(
+            lambda s, target=target: represented(s, target), source
+        )
+        jac_t = torch.autograd.functional.jacobian(
+            lambda t, source=source: represented(source, t), target
+        )
+        expected_s.append(jac_s.square().sum())
+        expected_t.append(jac_t.square().sum())
+
+    torch.testing.assert_close(actual_s, torch.stack(expected_s))
+    torch.testing.assert_close(actual_t, torch.stack(expected_t))
 
 
 def test_eta_calibration_puts_the_live_median_step_at_target() -> None:

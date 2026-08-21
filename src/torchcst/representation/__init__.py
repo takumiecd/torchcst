@@ -1,7 +1,13 @@
 """Public surface of coordinate domains and representation specifications."""
 
 from .domains import Box, CoordinateDomain, IntegerGrid, ParameterRole, Role, Sphere
-from .gauges import Amplitude, AmplitudeGauge, UnitFootprint, require_gauge
+from .gauges import (
+    Amplitude,
+    AmplitudeGauge,
+    L2NormalizedColumns,
+    UnitFootprint,
+    require_gauge,
+)
 from .gram import AbsorbAssessment, AbsorbPlanStep, GramService
 from .kernels import (
     CONTINUOUS_KERNELS,
@@ -10,39 +16,40 @@ from .kernels import (
     GaborKernel,
     GaussianKernel,
     OverlapScale,
-    pairwise_overlap,
     TriangularKernel,
+    pairwise_overlap,
 )
-from .spec import RepresentationSpec
 from .proposal import ChartProposal, propose_chart
+from .spec import RepresentationSpec
 from .survey import AxisSurvey, ChartSurvey, survey_chart
 
 __all__ = [
+    "CONTINUOUS_KERNELS",
     "AbsorbAssessment",
+    "AbsorbPlanStep",
     "Amplitude",
     "AmplitudeGauge",
-    "AbsorbPlanStep",
+    "AtomColumn",
     "AxisSurvey",
     "Box",
     "ChartProposal",
     "ChartSurvey",
-    "CONTINUOUS_KERNELS",
-    "AtomColumn",
     "ContinuousKernel",
     "CoordinateDomain",
     "GaborKernel",
     "GaussianKernel",
-    "OverlapScale",
-    "pairwise_overlap",
     "GramService",
     "IntegerGrid",
+    "L2NormalizedColumns",
+    "OverlapScale",
     "ParameterRole",
     "RepresentationSpec",
     "Role",
     "Sphere",
     "TriangularKernel",
     "UnitFootprint",
-    "require_gauge",
+    "pairwise_overlap",
     "propose_chart",
+    "require_gauge",
     "survey_chart",
 ]

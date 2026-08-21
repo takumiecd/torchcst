@@ -49,6 +49,26 @@ def columns(kernel, mu: Tensor, centers: Tensor) -> tuple[Tensor, Tensor]:
     )
 
 
+def normalized_columns(kernel, mu: Tensor, centers: Tensor) -> tuple[Tensor, Tensor]:
+    """Unit columns and pre-projection coordinate-derivative factors.
+
+    The kernel supplies a profile and ``d profile / d squared_distance`` under
+    one arbitrary positive scale per column.  Dividing both by the profile
+    norm removes that scale.  :func:`projected_directional` then removes the
+    radial derivative of whichever scale the family chose, leaving the exact
+    derivative of the delivered L2-normalised column.
+
+    An honestly zero compact-support column returns a zero column and factor;
+    it therefore contributes zero metric rather than ``NaN``.
+    """
+    sigma = kernel.sigma.detach().to(centers)
+    squared_distance = torch.cdist(mu, centers).square()
+    value, profile_grad = kernel.scaled_profile_pair(squared_distance, sigma)
+    norm = torch.linalg.vector_norm(value, dim=0, keepdim=True)
+    divisor = norm.clamp_min(torch.finfo(value.dtype).tiny)
+    return value / divisor, 2.0 * profile_grad / divisor
+
+
 def weighted(matrix: Tensor, traffic: Tensor | None) -> Tensor:
     """``diag(k^T Sigma k)`` per atom -- the column norm the traffic sees.
 
@@ -75,6 +95,71 @@ def directional(factor: Tensor, mu: Tensor, centers: Tensor,
         derivative = factor * (centers[:, axis][None, :] - mu[:, axis][:, None])
         total = total + weighted(derivative, traffic)
     return total
+
+
+def projected_directional(
+    unit: Tensor,
+    factor: Tensor,
+    mu: Tensor,
+    centers: Tensor,
+    traffic: Tensor | None,
+    *,
+    per_axis: bool = False,
+) -> Tensor:
+    """Squared derivatives of an L2-normalised column after tangent projection.
+
+    ``factor * (center - mu)`` is the scaled raw derivative divided by the
+    scaled column norm.  Removing its component parallel to ``unit`` applies
+    ``I - unit unit^T`` and makes the result independent of the arbitrary
+    positive scale permitted by the kernel contract.
+    """
+    axes: list[Tensor] = []
+    for axis in range(centers.shape[1]):
+        derivative = factor * (
+            centers[:, axis][None, :] - mu[:, axis][:, None]
+        )
+        radial = (unit * derivative).sum(0, keepdim=True)
+        tangent = derivative - unit * radial
+        axes.append(weighted(tangent, traffic).clamp_min(0))
+    stacked = torch.stack(axes, dim=1)
+    return stacked if per_axis else stacked.sum(1)
+
+
+def gauged_jacobian_sq(
+    *,
+    unit_in: Tensor,
+    factor_in: Tensor,
+    unit_out: Tensor,
+    factor_out: Tensor,
+    mu_in: Tensor,
+    mu_out: Tensor,
+    source: Tensor,
+    target: Tensor,
+    mass_sq: Tensor,
+    traffic_in: Tensor | None = None,
+    traffic_out: Tensor | None = None,
+    per_axis: bool = False,
+) -> tuple[Tensor, Tensor]:
+    """Diagonal Frobenius pullback metric after L2 column normalisation.
+
+    Normalisation exactly decouples an atom's amplitude, source, and target
+    blocks.  This function keeps the diagonal within each source/target block
+    and ignores cross-atom coupling: a block-Jacobi diagonal approximation,
+    not a claim that the full ``J.T @ J`` is diagonal.
+    """
+    source_diag = projected_directional(
+        unit_in, factor_in, mu_in, source, traffic_in, per_axis=per_axis
+    )
+    target_diag = projected_directional(
+        unit_out, factor_out, mu_out, target, traffic_out, per_axis=per_axis
+    )
+    out_mass = weighted(unit_out, traffic_out)
+    in_mass = weighted(unit_in, traffic_in)
+    if per_axis:
+        out_mass = out_mass[:, None]
+        in_mass = in_mass[:, None]
+        mass_sq = mass_sq[:, None]
+    return mass_sq * out_mass * source_diag, mass_sq * in_mass * target_diag
 
 
 def jacobian_sq(*, k_in: Tensor, g_in: Tensor, k_out: Tensor, g_out: Tensor,

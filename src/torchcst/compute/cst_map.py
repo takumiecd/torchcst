@@ -96,9 +96,9 @@ class _ContinuousCSTMap(nn.Module):
         self.kernel_out = kernel if kernel_out is None else kernel_out
         # Which half of `w * ||k||` this site's stored number is. Under the
         # default the parameter is the amplitude and the columns arrive as
-        # cast; under UnitFootprint it is the atom's mass in W, the quantity
-        # rent already prices, and the coordinate's norm-escape back door is
-        # algebraically absent rather than merely small.
+        # cast; under L2NormalizedColumns it is the atom's mass in W, the
+        # quantity rent already prices, and the coordinate's norm-escape back
+        # door is algebraically absent rather than merely small.
         self.gauge = Amplitude() if gauge is None else require_gauge(gauge, "gauge")
         self.in_features = in_neurons.n_max
         self.out_features = out_neurons.n_max

@@ -199,6 +199,26 @@ class ContinuousKernel(nn.Module):
             "kernel family"
         )
 
+    def scaled_profile_pair(
+        self, squared_distance: Tensor, sigma: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        """Profile and its distance derivative under one shared column scale.
+
+        Each returned column may be multiplied by an arbitrary positive
+        factor, but the value and derivative must carry the *same* factor.
+        Consumers project the derivative off the column before dividing by
+        its norm, so both that factor and its position derivative disappear.
+        This is the derivative-side counterpart of :meth:`scaled_columns`.
+
+        The generic form is sufficient for bounded profiles.  Exponential
+        families override it to move their range-restoring shift inside the
+        exponent before either value is formed.
+        """
+        return (
+            self.profile(squared_distance, sigma),
+            self.profile_grad(squared_distance, sigma),
+        )
+
     def overlap(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
         """Normalised atom-atom overlap ``<kappa_j, kappa_k> / ||kappa||^2``.
 
@@ -230,8 +250,8 @@ class ContinuousKernel(nn.Module):
 
         Same shape and same direction as :meth:`forward`, but every column is
         free to carry an arbitrary positive factor, because each caller
-        divides that factor back out -- ``UnitFootprint`` normalises to unit
-        L2 norm.  Giving up the scale buys range: an atom far from every
+        divides that factor back out -- ``L2NormalizedColumns`` normalises to
+        unit L2 norm.  Giving up the scale buys range: an atom far from every
         neuron casts a column whose values underflow, and a column that has
         already flattened to zero cannot be rescaled back.  In bf16/fp16 a
         Gaussian starts losing columns around four sigma, well inside a
@@ -324,6 +344,15 @@ class GaussianKernel(ContinuousKernel):
 
     def profile_grad(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
         return -self.profile(squared_distance, sigma) / (2.0 * sigma.square())
+
+    def scaled_profile_pair(
+        self, squared_distance: Tensor, sigma: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        nearest = squared_distance.amin(dim=0, keepdim=True)
+        value = torch.exp(
+            -(squared_distance - nearest) / (2.0 * sigma.square())
+        )
+        return value, -value / (2.0 * sigma.square())
 
     def overlap(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
         # <G_j, G_k> / ||G||^2 for two unit-height Gaussians of one

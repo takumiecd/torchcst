@@ -18,9 +18,9 @@ gradient of a one-atom fit by parity in ``w`` separates the two terms exactly,
 and the escape half runs to three quarters of the alignment half, pointing
 outward regardless of whether the atom is any use where it stands.
 
-Under :class:`UnitFootprint` the stored number is the atom's Frobenius mass in
-``W`` -- the same quantity rent already prices -- because each chart's column
-is delivered at unit norm.  The escape term is then not suppressed but
+Under :class:`L2NormalizedColumns` every delivered chart column has unit L2
+norm, so the stored number is the atom's Frobenius mass in ``W`` -- the same
+quantity rent already prices.  The escape term is then not suppressed but
 algebraically absent: it equals ``w^2 . d||u||^2/ds`` and ``||u||`` is one by
 construction.  Measured over four chart spacings and three offsets, the even
 half falls from order one to machine epsilon.
@@ -59,8 +59,8 @@ class Amplitude:
 
 
 @dataclass(frozen=True)
-class UnitFootprint:
-    """Store the atom's mass in ``W``; deliver each chart's column at unit norm.
+class L2NormalizedColumns:
+    """L2-normalise chart columns and store the atom's Frobenius mass in ``W``.
 
     The amplitude a backend multiplies is then the Frobenius norm of the
     atom's rank-one contribution, so the optimizer moves the quantity the
@@ -89,11 +89,19 @@ class UnitFootprint:
         return scaled / norm.clamp_min(torch.finfo(scaled.dtype).tiny)
 
 
+#: Compatibility for sibling experiment runners pending their lane migration.
+#: New code should use :class:`L2NormalizedColumns`; both names denote exactly
+#: the same frozen class, so no second runtime gauge exists.
+UnitFootprint = L2NormalizedColumns
+
+
 #: What a compute module may be given as its amplitude gauge.
-AmplitudeGauge = Amplitude | UnitFootprint
+AmplitudeGauge = Amplitude | L2NormalizedColumns
 
 
 def require_gauge(value: object, name: str) -> AmplitudeGauge:
-    if not isinstance(value, (Amplitude, UnitFootprint)):
-        raise TypeError(f"{name} must be an Amplitude or UnitFootprint gauge")
+    if not isinstance(value, (Amplitude, L2NormalizedColumns)):
+        raise TypeError(
+            f"{name} must be an Amplitude or L2NormalizedColumns gauge"
+        )
     return value

@@ -8,6 +8,7 @@ import torch
 from torch import Tensor, nn
 
 from .._validation import require_int
+from ..representation import L2NormalizedColumns
 from ..storage import SynapseStore
 from . import metric
 
@@ -20,9 +21,13 @@ class CoordPreconditioner:
     single learning rate either freezes the far tail or destabilizes the near
     atoms.  This preconditioner measures each atom's step by how much it moves
     the represented ``W`` -- the per-atom squared Jacobian norm ``J^2``, in
-    closed form from kernel column sums (family-generic: the derivative
-    comes from the kernel's ``profile_grad``, so any family implementing it
-    is preconditioned correctly) -- so near atoms fine-tune
+    closed form from kernel column sums.  Under
+    :class:`~torchcst.representation.L2NormalizedColumns` it differentiates
+    the actually delivered normalised columns, including their tangent
+    projection; under :class:`~torchcst.representation.Amplitude` it retains
+    the frozen raw-column rule.  The family derivative comes from
+    ``profile_grad``, so any radial family implementing it is priced by its
+    own geometry.  Near atoms therefore fine-tune
     (``step ~ 1/J``) and far atoms are suppressed only linearly
     (``step ~ J/lambda``) instead of exponentially.
 
@@ -61,7 +66,11 @@ class CoordPreconditioner:
         store = getattr(module, "synapses", None)
         kernel_in = getattr(module, "kernel_in", None)
         kernel_out = getattr(module, "kernel_out", None)
-        if not isinstance(store, SynapseStore) or kernel_in is None:
+        if (
+            not isinstance(store, SynapseStore)
+            or kernel_in is None
+            or kernel_out is None
+        ):
             raise TypeError(
                 "module must be a continuous CST map with .synapses and kernels"
             )
@@ -159,9 +168,29 @@ class CoordPreconditioner:
     @torch.no_grad()
     def _jacobian_block(self, mu_in, mu_out, block):
         store = self.store
+        w_sq = store.w.detach()[block].square()
+        if isinstance(self.module.gauge, L2NormalizedColumns):
+            unit_in, factor_in = metric.normalized_columns(
+                self.kernel_in, mu_in, store.s[block]
+            )
+            unit_out, factor_out = metric.normalized_columns(
+                self.kernel_out, mu_out, store.t[block]
+            )
+            return metric.gauged_jacobian_sq(
+                unit_in=unit_in,
+                factor_in=factor_in,
+                unit_out=unit_out,
+                factor_out=factor_out,
+                mu_in=mu_in,
+                mu_out=mu_out,
+                source=store.s[block],
+                target=store.t[block],
+                mass_sq=w_sq,
+                traffic_in=self._x if self.traffic_rows else None,
+                traffic_out=self._g if self.traffic_rows else None,
+            )
         k_in, g_in = metric.columns(self.kernel_in, mu_in, store.s[block])
         k_out, g_out = metric.columns(self.kernel_out, mu_out, store.t[block])
-        w_sq = store.w.detach()[block].square()
         return metric.jacobian_sq(
             k_in=k_in, g_in=g_in, k_out=k_out, g_out=g_out,
             mu_in=mu_in, mu_out=mu_out,
@@ -190,15 +219,15 @@ class CoordPreconditioner:
         store = self.store
         if store.s.grad is None or store.t.grad is None:
             return
+        live = store.live_slots().to(store.s.device)
+        if live.numel() == 0:
+            return
         if self.v_s is None:
             self._materialize()
         sigma = float(self.kernel_in.sigma.detach())
-        live = store.live_slots().to(store.s.device)
         self.v_s.mul_(self.beta).add_(store.s.grad, alpha=1.0 - self.beta)
         self.v_t.mul_(self.beta).add_(store.t.grad, alpha=1.0 - self.beta)
         j_s, j_t = self._jacobian_sq()
-        if live.numel() == 0:
-            return
         lam_s = j_s.index_select(0, live).median().clamp(min=1e-30)
         lam_t = j_t.index_select(0, live).median().clamp(min=1e-30)
         raw_s = self.v_s / (j_s + lam_s)[:, None]
