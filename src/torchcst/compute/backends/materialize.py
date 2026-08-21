@@ -88,6 +88,21 @@ def _normalized_column_backward(
 
 _compiled_normalized_gaussian_pieces = None
 _compiled_normalized_column_backward = None
+_compiled_normalized_gaussian_columns = None
+
+
+def _l2_forward_columns(
+    compiled: bool, mu: Tensor, coords: Tensor, sigma: Tensor
+) -> Tensor:
+    """Build normalized columns eagerly or with a lazily fused CUDA graph."""
+    if not compiled or not coords.is_cuda:
+        return normalized_gaussian_columns(mu, coords, sigma)
+    global _compiled_normalized_gaussian_columns
+    if _compiled_normalized_gaussian_columns is None:
+        _compiled_normalized_gaussian_columns = torch.compile(
+            normalized_gaussian_columns, fullgraph=True
+        )
+    return _compiled_normalized_gaussian_columns(mu, coords, sigma)
 
 
 def _l2_backward_helpers(compiled: bool, source: Tensor):
@@ -203,16 +218,24 @@ class LeanL2LinearMaterialize(torch.autograd.Function):
         with torch.no_grad():
             column_elements = source.shape[0] * (n_in + n_out)
             if column_elements <= LeanL2LinearMaterialize.FULL_FORWARD_COLUMN_LIMIT:
-                ki = normalized_gaussian_columns(mu_in, source, sigma_in)
-                ko = normalized_gaussian_columns(mu_out, target, sigma_out)
+                ki = _l2_forward_columns(
+                    compile_backward, mu_in, source, sigma_in
+                )
+                ko = _l2_forward_columns(
+                    compile_backward, mu_out, target, sigma_out
+                )
                 weight = linear_weight(ki, ko, weights, compute_dtype)
             else:
                 for start in range(
                     0, source.shape[0], LeanL2LinearMaterialize.CHUNK
                 ):
                     sl = slice(start, start + LeanL2LinearMaterialize.CHUNK)
-                    ki = normalized_gaussian_columns(mu_in, source[sl], sigma_in)
-                    ko = normalized_gaussian_columns(mu_out, target[sl], sigma_out)
+                    ki = _l2_forward_columns(
+                        compile_backward, mu_in, source[sl], sigma_in
+                    )
+                    ko = _l2_forward_columns(
+                        compile_backward, mu_out, target[sl], sigma_out
+                    )
                     weight += linear_weight(ki, ko, weights[sl], compute_dtype)
         ctx.save_for_backward(source, target, weights, mu_in, mu_out,
                               sigma_in, sigma_out)
