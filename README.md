@@ -628,6 +628,8 @@ is symmetric, with no separate catalog spelling to disambiguate.
 - `SynapseStore` and `NeuronStore` with versioned prepare/commit mutation
 - slot reuse, capacity growth, age/lineage columns, and follower notifications
 - optimizer-state growth, reset, and coordinate-domain projection
+- `PullbackAdam` with explicit parameter-space or tangent-space moments for
+  L2-normalized continuous CST coordinates
 - the `cSET`/`cRigL`/`cRES`/`RENT` policy-tree method vocabulary and the
   `FastConstruction` recipe (cSFW-grow into solve-driven operation)
 - public observation-instrument factories and high-level scored-birth policy
@@ -656,7 +658,7 @@ src/torchcst/
 ├── representation/  # coordinate domains, kernels, family specification
 ├── storage/         # slot mechanics and mutable entity stores
 ├── engine.py        # StructuralEngine lifecycle and event orchestration
-└── optim.py         # parameter groups and optimizer-state follower
+└── optim/           # parameter groups, state followers, and coordinate optimizers
 ```
 
 The tests under `tests/torchcst/` are the executable contract. Design documents

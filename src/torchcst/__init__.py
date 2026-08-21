@@ -120,7 +120,7 @@ from .audit import (
 )
 
 # optimizer helpers.
-from .optim import CoordPreconditioner, OptimizerStateFollower
+from .optim import CoordPreconditioner, OptimizerStateFollower, PullbackAdam
 
 __all__ = [
     "Accounting",
@@ -181,6 +181,7 @@ __all__ = [
     "OptimizerStateFollower",
     "PeriodicCadence",
     "ProfitCourt",
+    "PullbackAdam",
     "RETIRED",
     "RentMargin",
     "RepresentationSpec",

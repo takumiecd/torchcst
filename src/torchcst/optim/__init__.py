@@ -9,9 +9,11 @@ with a mutating store, and ``groups`` decides which knobs may share a rate.
 from .follower import OptimizerStateFollower
 from .groups import parameter_groups
 from .precond import CoordPreconditioner
+from .pullback import PullbackAdam
 
 __all__ = [
     "CoordPreconditioner",
     "OptimizerStateFollower",
+    "PullbackAdam",
     "parameter_groups",
 ]

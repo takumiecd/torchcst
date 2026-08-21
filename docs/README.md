@@ -7,6 +7,9 @@ current API documentation.
 
 ## User guides
 
+- [`pullback-adam.md`](pullback-adam.md) — diagonal pullback geometry,
+  parameter-space versus tangent-space moments, optimizer ownership, and the
+  moving-frame limitation.
 - [`policy-authoring.md`](policy-authoring.md) — compose a policy, add a custom
   backward statistic without editing the engine, and test both capture modes.
 - [`capture-lifecycle.md`](capture-lifecycle.md) — hook timing, deferred versus
