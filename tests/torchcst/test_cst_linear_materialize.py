@@ -11,8 +11,15 @@ from torchcst.compute import (
     Factored,
     Materialized,
 )
-from torchcst.compute.backends.materialize import LeanLinearMaterialize
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.compute.backends.materialize import (
+    LeanL2LinearMaterialize,
+    LeanLinearMaterialize,
+)
+from torchcst.representation import (
+    GaussianKernel,
+    L2NormalizedColumns,
+    RepresentationSpec,
+)
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 N_IN, N_OUT, N_ATOMS = 4, 3, 10
@@ -112,6 +119,102 @@ def test_lean_materialize_matches_default_path_values_and_grads() -> None:
         torch.testing.assert_close(g_lean[key], g_ref[key])
 
 
+@pytest.mark.parametrize("compile_l2", [False, True])
+def test_l2_lean_materialize_matches_default_path_values_and_grads(
+    compile_l2,
+) -> None:
+    store, kernel, ref = _parts(
+        gauge=L2NormalizedColumns(), track_mass=False, backend=Materialized()
+    )
+    lean = CSTLinear(
+        ref.in_neurons,
+        ref.out_neurons,
+        store,
+        kernel,
+        gauge=L2NormalizedColumns(),
+        track_mass=False,
+        backend=Materialized(lean=True, compile_l2=compile_l2),
+    )
+    torch.testing.assert_close(ref.dense_weight(), lean.dense_weight())
+    x = torch.randn(5, N_IN, dtype=torch.float64, requires_grad=True)
+    upstream = torch.randn(5, N_OUT, dtype=torch.float64)
+    g_ref = _grads_of(ref, x, upstream)
+    g_lean = _grads_of(lean, x, upstream)
+    for key in g_ref:
+        torch.testing.assert_close(g_lean[key], g_ref[key])
+
+
+def test_l2_lean_uses_the_single_build_path_without_grad(monkeypatch) -> None:
+    _, _, lean = _parts(
+        gauge=L2NormalizedColumns(),
+        track_mass=False,
+        backend=Materialized(lean=True),
+    )
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("the chunked autograd Function ran under no_grad")
+
+    monkeypatch.setattr(LeanL2LinearMaterialize, "apply", forbidden)
+    with torch.no_grad():
+        weight = lean.dense_weight()
+    assert weight.shape == (N_OUT, N_IN)
+
+
+def test_eval_reuses_the_graph_free_weight_until_training_resumes(monkeypatch) -> None:
+    _, _, module = _parts(
+        gauge=L2NormalizedColumns(),
+        track_mass=False,
+        backend=Materialized(lean=True),
+    )
+    original = module.dense_weight
+    calls = 0
+
+    def counted_dense_weight():
+        nonlocal calls
+        calls += 1
+        return original()
+
+    monkeypatch.setattr(module, "dense_weight", counted_dense_weight)
+    x = torch.randn(5, N_IN, dtype=torch.float64)
+    module.eval()
+    with torch.no_grad():
+        first = module(x)
+        second = module(x)
+    torch.testing.assert_close(first, second)
+    assert calls == 1
+
+    module.train()
+    module.eval()
+    with torch.no_grad():
+        module(x)
+    assert calls == 2
+
+
+def test_eval_weight_cache_notices_an_in_place_parameter_write(monkeypatch) -> None:
+    store, _, module = _parts(
+        gauge=L2NormalizedColumns(),
+        track_mass=False,
+        backend=Materialized(lean=True),
+    )
+    original = module.dense_weight
+    calls = 0
+
+    def counted_dense_weight():
+        nonlocal calls
+        calls += 1
+        return original()
+
+    monkeypatch.setattr(module, "dense_weight", counted_dense_weight)
+    x = torch.randn(5, N_IN, dtype=torch.float64)
+    module.eval()
+    with torch.no_grad():
+        before = module(x)
+        store.w.mul_(1.01)
+        after = module(x)
+    assert calls == 2
+    assert not torch.equal(before, after)
+
+
 def test_lean_chunked_accumulation_is_exact(monkeypatch) -> None:
     # CHUNK smaller than K exercises the multi-chunk accumulation in both
     # directions of the Function.
@@ -122,6 +225,21 @@ def test_lean_chunked_accumulation_is_exact(monkeypatch) -> None:
     upstream = torch.randn(5, N_OUT, dtype=torch.float64)
     whole = _grads_of(lean, x, upstream)
     monkeypatch.setattr(LeanLinearMaterialize, "CHUNK", 3)
+    chunked = _grads_of(lean, x, upstream)
+    for key in whole:
+        torch.testing.assert_close(chunked[key], whole[key])
+
+
+def test_l2_lean_chunked_accumulation_is_exact(monkeypatch) -> None:
+    _, _, lean = _parts(
+        gauge=L2NormalizedColumns(),
+        track_mass=False,
+        backend=Materialized(lean=True),
+    )
+    x = torch.randn(5, N_IN, dtype=torch.float64, requires_grad=True)
+    upstream = torch.randn(5, N_OUT, dtype=torch.float64)
+    whole = _grads_of(lean, x, upstream)
+    monkeypatch.setattr(LeanL2LinearMaterialize, "CHUNK", 3)
     chunked = _grads_of(lean, x, upstream)
     for key in whole:
         torch.testing.assert_close(chunked[key], whole[key])
@@ -142,6 +260,28 @@ def test_lean_backward_passes_gradcheck() -> None:
     assert torch.autograd.gradcheck(
         lambda s, t, w, si, so: LeanLinearMaterialize.apply(
             s, t, w, mu_in, mu_out, si, so, None
+        ),
+        inputs,
+    )
+
+
+def test_l2_lean_backward_passes_gradcheck() -> None:
+    _, kernel, lean = _parts(
+        gauge=L2NormalizedColumns(),
+        track_mass=False,
+        backend=Materialized(lean=True),
+    )
+    lean._view()
+    source, target, weights = lean._live_factors()
+    mu_in = lean.in_neurons.mu.clone()
+    mu_out = lean.out_neurons.mu.clone()
+    inputs = tuple(
+        t.detach().clone().requires_grad_(True)
+        for t in (source, target, weights, kernel.sigma, kernel.sigma.clone())
+    )
+    assert torch.autograd.gradcheck(
+        lambda s, t, w, si, so: LeanL2LinearMaterialize.apply(
+            s, t, w, mu_in, mu_out, si, so, None, False
         ),
         inputs,
     )
@@ -207,6 +347,10 @@ def test_backend_validation() -> None:
         Materialized(compute_dtype=torch.int32)
     with pytest.raises(TypeError, match="lean"):
         Materialized(lean=1)
+    with pytest.raises(TypeError, match="compile_l2"):
+        Materialized(lean=True, compile_l2=1)
+    with pytest.raises(ValueError, match="lean=True"):
+        Materialized(compile_l2=True)
     with pytest.raises(ValueError, match="track_mass=False"):
         build(backend=Materialized(lean=True))  # track_mass defaults True
 

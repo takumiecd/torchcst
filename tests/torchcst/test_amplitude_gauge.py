@@ -23,7 +23,7 @@ import pytest
 import torch
 
 from torchcst.compute import CSTLinear
-from torchcst.compute.backends import Materialized, NativeTruncated
+from torchcst.compute.backends import NativeTruncated
 from torchcst.representation import (
     Amplitude,
     GaborKernel,
@@ -268,14 +268,14 @@ def test_the_amplitude_gauge_still_prices_mass_with_the_footprint():
     assert not torch.allclose(store.view().mass, store.view().w.abs())
 
 
-@pytest.mark.parametrize(
-    "backend",
-    [NativeTruncated(radius=3.0), Materialized(lean=True)],
-)
-def test_the_closed_form_backends_refuse_a_normalising_gauge(backend):
-    """They exist by not building the columns a normalising gauge must measure."""
+def test_native_truncated_refuses_a_normalising_gauge():
+    """Local truncation cannot know the exact full-column normalisation."""
     with pytest.raises(ValueError, match="Amplitude gauge"):
-        _site(gauge=L2NormalizedColumns(), backend=backend, track_mass=False)
+        _site(
+            gauge=L2NormalizedColumns(),
+            backend=NativeTruncated(radius=3.0),
+            track_mass=False,
+        )
 
 
 def _module_parity(module, store, x, target):

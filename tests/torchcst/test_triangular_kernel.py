@@ -188,6 +188,28 @@ def test_validate_sigma_false_skips_the_per_forward_guard() -> None:
     assert bool(torch.isfinite(values).all())
 
 
+def test_sigma_validation_is_cached_until_the_parameter_changes(monkeypatch) -> None:
+    kernel = GaussianKernel(0.3, learnable=False)
+    query = torch.tensor([[0.0], [1.0]])
+    centers = torch.tensor([[0.25]])
+    real_isfinite = torch.isfinite
+    calls = 0
+
+    def counted_isfinite(value):
+        nonlocal calls
+        calls += 1
+        return real_isfinite(value)
+
+    monkeypatch.setattr(torch, "isfinite", counted_isfinite)
+    kernel(query, centers)
+    kernel(query, centers)
+    assert calls == 1
+
+    kernel.sigma.add_(0.1)
+    kernel(query, centers)
+    assert calls == 2
+
+
 def test_validate_sigma_must_be_a_bool() -> None:
     with pytest.raises(TypeError):
         GaussianKernel(0.3, validate_sigma="no")  # type: ignore[arg-type]

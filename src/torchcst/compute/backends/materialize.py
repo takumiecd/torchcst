@@ -34,6 +34,81 @@ def _gaussian_pieces(mu: Tensor, coords: Tensor, sigma: Tensor):
     return torch.exp(-d2 / (2.0 * sigma.square())), diff, d2
 
 
+def normalized_gaussian_columns(mu: Tensor, coords: Tensor, sigma: Tensor) -> Tensor:
+    """Stable unit-L2 Gaussian columns as ``[features, K]``.
+
+    Subtracting the nearest squared distance only rescales a column.  The
+    following normalisation removes that scale exactly while keeping a value
+    of one in every non-empty column, so remote atoms cannot underflow before
+    they are normalised.
+    """
+    diff = mu[:, None, :] - coords[None]
+    d2 = diff.square().sum(-1)
+    values = torch.exp(
+        -(d2 - d2.amin(dim=0, keepdim=True)) / (2.0 * sigma.square())
+    )
+    return values / torch.linalg.vector_norm(values, dim=0, keepdim=True)
+
+
+def _normalized_gaussian_pieces(mu: Tensor, coords: Tensor, sigma: Tensor):
+    """(unit columns, mu - coord, centered squared distance).
+
+    Centering ``d2`` is a per-column scale choice.  Its derivative lies in the
+    radial column direction and is therefore deleted by the unit-sphere
+    tangent projection in :func:`_normalized_column_backward`.
+    """
+    diff = mu[:, None, :] - coords[None]
+    d2 = diff.square().sum(-1)
+    centered = d2 - d2.amin(dim=0, keepdim=True)
+    values = torch.exp(-centered / (2.0 * sigma.square()))
+    unit = values / torch.linalg.vector_norm(values, dim=0, keepdim=True)
+    return unit, diff, centered
+
+
+def _normalized_column_backward(
+    unit: Tensor,
+    grad_unit: Tensor,
+    diff: Tensor,
+    centered_d2: Tensor,
+    sigma: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """Coordinate and bandwidth gradients of unit Gaussian columns.
+
+    For ``u = k / ||k||``, the differential is
+    ``du = (I - uu.T) dk / ||k||``.  Multiplying the projected gradient by
+    ``dk = k dlog(k)`` cancels ``||k||`` and leaves the stable score below;
+    the unnormalised, potentially underflowing Gaussian is never needed.
+    """
+    tangent = grad_unit - unit * (unit * grad_unit).sum(dim=0, keepdim=True)
+    score = unit * tangent
+    grad_coord = (score[:, :, None] * diff).sum(0) / sigma.square()
+    grad_sigma = (score * centered_d2).sum() / sigma.pow(3)
+    return grad_coord, grad_sigma
+
+
+_compiled_normalized_gaussian_pieces = None
+_compiled_normalized_column_backward = None
+
+
+def _l2_backward_helpers(compiled: bool, source: Tensor):
+    """Return eager or lazily Inductor-fused L2 backward primitives."""
+    if not compiled or not source.is_cuda:
+        return _normalized_gaussian_pieces, _normalized_column_backward
+    global _compiled_normalized_gaussian_pieces
+    global _compiled_normalized_column_backward
+    if _compiled_normalized_gaussian_pieces is None:
+        _compiled_normalized_gaussian_pieces = torch.compile(
+            _normalized_gaussian_pieces, fullgraph=True
+        )
+        _compiled_normalized_column_backward = torch.compile(
+            _normalized_column_backward, fullgraph=True
+        )
+    return (
+        _compiled_normalized_gaussian_pieces,
+        _compiled_normalized_column_backward,
+    )
+
+
 def linear_weight(
     k_in: Tensor,
     k_out: Tensor,
@@ -106,6 +181,81 @@ class LeanLinearMaterialize(torch.autograd.Function):
             g_sig_out = g_sig_out + (dko * ko * d2_out).sum() / sigma_out.pow(3)
             g_sig_in = g_sig_in + (dki * ki * d2_in).sum() / sigma_in.pow(3)
         return (g_source, g_target, g_w, None, None, g_sig_in, g_sig_out, None)
+
+
+class LeanL2LinearMaterialize(torch.autograd.Function):
+    """Exact chunked materialisation for unit-L2 Gaussian columns.
+
+    Like :class:`LeanLinearMaterialize`, this builds the transient dense
+    weight but retains only atom parameters.  Backward recomputes one chunk of
+    normalised columns and applies the unit-sphere tangent projection, avoiding
+    the full autograd path's ``[features, K, d]`` broadcasts.
+    """
+
+    CHUNK = 4096
+    FULL_FORWARD_COLUMN_LIMIT = 32 * 1024 * 1024
+
+    @staticmethod
+    def forward(ctx, source, target, weights, mu_in, mu_out, sigma_in,
+                sigma_out, compute_dtype, compile_backward):
+        n_out, n_in = mu_out.shape[0], mu_in.shape[0]
+        weight = source.new_zeros(n_out, n_in)
+        with torch.no_grad():
+            column_elements = source.shape[0] * (n_in + n_out)
+            if column_elements <= LeanL2LinearMaterialize.FULL_FORWARD_COLUMN_LIMIT:
+                ki = normalized_gaussian_columns(mu_in, source, sigma_in)
+                ko = normalized_gaussian_columns(mu_out, target, sigma_out)
+                weight = linear_weight(ki, ko, weights, compute_dtype)
+            else:
+                for start in range(
+                    0, source.shape[0], LeanL2LinearMaterialize.CHUNK
+                ):
+                    sl = slice(start, start + LeanL2LinearMaterialize.CHUNK)
+                    ki = normalized_gaussian_columns(mu_in, source[sl], sigma_in)
+                    ko = normalized_gaussian_columns(mu_out, target[sl], sigma_out)
+                    weight += linear_weight(ki, ko, weights[sl], compute_dtype)
+        ctx.save_for_backward(source, target, weights, mu_in, mu_out,
+                              sigma_in, sigma_out)
+        ctx.compile_backward = bool(compile_backward)
+        return weight
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        source, target, weights, mu_in, mu_out, sigma_in, sigma_out = (
+            ctx.saved_tensors
+        )
+        g_source = torch.zeros_like(source)
+        g_target = torch.zeros_like(target)
+        g_w = torch.zeros_like(weights)
+        g_sig_in = torch.zeros_like(sigma_in)
+        g_sig_out = torch.zeros_like(sigma_out)
+        pieces, column_backward = _l2_backward_helpers(
+            ctx.compile_backward, source
+        )
+        for start in range(0, source.shape[0], LeanL2LinearMaterialize.CHUNK):
+            sl = slice(start, start + LeanL2LinearMaterialize.CHUNK)
+            w = weights[sl]
+            ki, diff_in, d2_in = pieces(
+                mu_in, source[sl], sigma_in
+            )
+            ko, diff_out, d2_out = pieces(
+                mu_out, target[sl], sigma_out
+            )
+            m_in = grad_out.transpose(0, 1) @ ko
+            m_out = grad_out @ ki
+            g_w[sl] = (m_in * ki).sum(0)
+            g_source[sl], chunk_sig_in = column_backward(
+                ki, m_in * w[None], diff_in, d2_in, sigma_in
+            )
+            g_target[sl], chunk_sig_out = column_backward(
+                ko, m_out * w[None], diff_out, d2_out, sigma_out
+            )
+            g_sig_in = g_sig_in + chunk_sig_in
+            g_sig_out = g_sig_out + chunk_sig_out
+        return (
+            g_source, g_target, g_w, None, None, g_sig_in, g_sig_out,
+            None, None,
+        )
 
 
 def bilinear_pieces(delta: Tensor, lo, hi, r: int):

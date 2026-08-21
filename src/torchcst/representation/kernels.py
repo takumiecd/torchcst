@@ -108,12 +108,14 @@ class ContinuousKernel(nn.Module):
     implementation may revive the old ``SynapseStore.add_extra`` design for
     that purpose.
 
-    ``forward`` validates that ``sigma`` is finite and positive on every
-    call by default (``validate_sigma=True``, construction time is always
-    validated regardless of this flag).  That guard costs two host syncs
-    per call -- ``torch._assert_async`` would avoid them but corrupts the
-    CUDA context on failure, too weak a contract for a general library, so
-    the default stays a hard, sync-costing ``raise``.  Pass
+    ``forward`` validates that ``sigma`` is finite and positive after every
+    mutation by default (``validate_sigma=True``, construction time is always
+    validated regardless of this flag).  The successful reading is cached by
+    tensor identity, mutation version, device, and dtype, so repeated use in a
+    forward/evaluation window pays no device-to-host traffic.  The combined
+    guard costs one host sync when it does run; ``torch._assert_async`` would
+    avoid it but corrupts the CUDA context on failure, too weak a contract for
+    a general library.  Pass
     ``validate_sigma=False`` only when a caller can prove sigma is positive
     and finite by construction on every write after ``__init__`` too (e.g.
     it is always written as ``exp(x)`` for some finite real ``x``, and
@@ -170,6 +172,7 @@ class ContinuousKernel(nn.Module):
         # Per-call sigma re-validation flag; the contract and the opt-out
         # conditions live in the class docstring.
         self._validate_sigma = validate_sigma
+        self._validated_sigma_signature: tuple[object, ...] | None = None
 
     @property
     def learnable(self) -> bool:
@@ -321,10 +324,14 @@ class ContinuousKernel(nn.Module):
             raise TypeError("continuous coordinates must have floating dtypes")
         sigma = self.sigma.to(device=query.device, dtype=query.dtype)
         if self._validate_sigma:
-            # Two host syncs per call; see the class docstring for the
-            # contract and who may disable this.
-            if not bool(torch.isfinite(sigma)) or bool(sigma <= 0):
+            signature = (
+                id(self.sigma), self.sigma._version, sigma.device, sigma.dtype
+            )
+            if self._validated_sigma_signature != signature and not bool(
+                torch.isfinite(sigma) & (sigma > 0)
+            ):
                 raise ValueError("sigma must remain finite and positive")
+            self._validated_sigma_signature = signature
         return sigma, centers.to(device=query.device, dtype=query.dtype)
 
 
