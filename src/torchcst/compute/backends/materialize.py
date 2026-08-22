@@ -72,18 +72,30 @@ def _normalized_column_backward(
     centered_d2: Tensor,
     sigma: Tensor,
 ) -> tuple[Tensor, Tensor]:
-    """Coordinate and bandwidth gradients of unit Gaussian columns.
+    """Atom, chart and bandwidth gradients of unit Gaussian columns.
 
     For ``u = k / ||k||``, the differential is
     ``du = (I - uu.T) dk / ||k||``.  Multiplying the projected gradient by
     ``dk = k dlog(k)`` cancels ``||k||`` and leaves the stable score below;
     the unnormalised, potentially underflowing Gaussian is never needed.
+
+    The same projection is what lets ``centered_d2``'s own dependence on the
+    chart be dropped: subtracting a per-column minimum rescales the column,
+    and a radial change is exactly what ``(I - uu.T)`` deletes -- for the
+    chart's points as much as for the atoms'.
     """
     tangent = grad_unit - unit * (unit * grad_unit).sum(dim=0, keepdim=True)
     score = unit * tangent
-    grad_coord = (score[:, :, None] * diff).sum(0) / sigma.square()
+    weighted = score[:, :, None] * diff
+    # ``diff`` is ``mu - coord``, so the two endpoints of one distance differ
+    # only in which axis is summed and in sign: the atom gathers over the
+    # chart's points, a chart point gathers over the atoms.  The expensive
+    # part is already built, so carrying the chart's gradient costs one more
+    # reduction of a tensor that had to exist anyway.
+    grad_coord = weighted.sum(0) / sigma.square()
+    grad_mu = -weighted.sum(1) / sigma.square()
     grad_sigma = (score * centered_d2).sum() / sigma.pow(3)
-    return grad_coord, grad_sigma
+    return grad_coord, grad_mu, grad_sigma
 
 
 _compiled_normalized_gaussian_pieces = None
@@ -140,6 +152,22 @@ def linear_weight(
     return scaled @ k_in.transpose(0, 1)
 
 
+def reject_learnable_chart(*charts: Tensor) -> None:
+    """Refuse a learnable ``mu`` the lean backward cannot differentiate.
+
+    The lean materializations hand back ``None`` for the chart coordinates,
+    which autograd reads as "no gradient" rather than as an error: a chart
+    made learnable here would train nothing and say nothing about it.  A
+    learnable chart belongs on the plain autograd build (``lean=False``)
+    until the closed forms carry ``mu`` too.
+    """
+    if any(chart is not None and chart.requires_grad for chart in charts):
+        raise NotImplementedError(
+            "a learnable neuron chart needs the autograd build: pass "
+            "Materialized(lean=False), whose backward differentiates mu"
+        )
+
+
 class LeanLinearMaterialize(torch.autograd.Function):
     """Atoms -> dense ``[out, in]`` weight with closed-form chunked backward.
 
@@ -153,6 +181,7 @@ class LeanLinearMaterialize(torch.autograd.Function):
     @staticmethod
     def forward(ctx, source, target, weights, mu_in, mu_out, sigma_in,
                 sigma_out, compute_dtype):
+        reject_learnable_chart(mu_in, mu_out)
         n_out, n_in = mu_out.shape[0], mu_in.shape[0]
         weight = source.new_zeros(n_out, n_in)
         with torch.no_grad():
@@ -252,6 +281,12 @@ class LeanL2LinearMaterialize(torch.autograd.Function):
         g_w = torch.zeros_like(weights)
         g_sig_in = torch.zeros_like(sigma_in)
         g_sig_out = torch.zeros_like(sigma_out)
+        # Every chunk of atoms touches every chart point, so the chart
+        # gradients accumulate across the loop rather than being written per
+        # slice the way the atoms' are.
+        learn_charts = mu_in.requires_grad or mu_out.requires_grad
+        g_mu_in = torch.zeros_like(mu_in) if learn_charts else None
+        g_mu_out = torch.zeros_like(mu_out) if learn_charts else None
         pieces, column_backward = _l2_backward_helpers(
             ctx.compile_backward, source
         )
@@ -267,17 +302,22 @@ class LeanL2LinearMaterialize(torch.autograd.Function):
             m_in = grad_out.transpose(0, 1) @ ko
             m_out = grad_out @ ki
             g_w[sl] = (m_in * ki).sum(0)
-            g_source[sl], chunk_sig_in = column_backward(
+            g_source[sl], chunk_mu_in, chunk_sig_in = column_backward(
                 ki, m_in * w[None], diff_in, d2_in, sigma_in
             )
-            g_target[sl], chunk_sig_out = column_backward(
+            g_target[sl], chunk_mu_out, chunk_sig_out = column_backward(
                 ko, m_out * w[None], diff_out, d2_out, sigma_out
             )
             g_sig_in = g_sig_in + chunk_sig_in
             g_sig_out = g_sig_out + chunk_sig_out
+            if learn_charts:
+                g_mu_in = g_mu_in + chunk_mu_in
+                g_mu_out = g_mu_out + chunk_mu_out
         return (
-            g_source, g_target, g_w, None, None, g_sig_in, g_sig_out,
-            None, None,
+            g_source, g_target, g_w,
+            g_mu_in if mu_in.requires_grad else None,
+            g_mu_out if mu_out.requires_grad else None,
+            g_sig_in, g_sig_out, None, None,
         )
 
 
@@ -318,6 +358,7 @@ class LeanConvMaterialize(torch.autograd.Function):
     @staticmethod
     def forward(ctx, source, target, weights, mu_in, mu_out, sigma_in,
                 sigma_out, chart_d, r_int, off_lo, off_hi, compute_dtype):
+        reject_learnable_chart(mu_in, mu_out)
         span = 2 * r_int + 1
         n_out, n_in = mu_out.shape[0], mu_in.shape[0]
         weight = source.new_zeros(n_out, n_in, span * span)

@@ -132,6 +132,35 @@ def test_prepare_all_and_commit_all_accept_mixed_store_tickets() -> None:
     assert synapses.live_ids().tolist() == [0]
 
 
-def test_learnable_mu_is_explicitly_rejected() -> None:
-    with pytest.raises(TypeError, match="learnable mu is not supported"):
-        NeuronStore("hidden", 2, mu=torch.nn.Parameter(torch.arange(2.0)))
+def test_a_continuous_chart_may_be_learnable() -> None:
+    """A float chart handed in as a Parameter keeps its sample points learnable.
+
+    The chart's points are coordinates like the atoms' own, and freezing them
+    caps the map at whatever effective rank the fixed lattice can express.
+    """
+    mu = torch.nn.Parameter(torch.tensor([[0.0, 0.0], [1.0, 0.5]]))
+    store = NeuronStore("hidden", 2, mu=mu)
+
+    assert isinstance(store.mu, torch.nn.Parameter)
+    assert store.mu.requires_grad
+    assert "mu" in dict(store.named_parameters())
+    # The store owns its copy: the caller's tensor is not aliased into it.
+    assert store.mu is not mu
+
+
+def test_an_index_chart_stays_a_buffer() -> None:
+    """``mu`` is the standard-basis index for entry and rank-one families.
+
+    There is nothing to descend on, so an integer chart is refused as a
+    Parameter rather than being silently cast to float -- which would change
+    what the chart means.
+    """
+    with pytest.raises(RuntimeError, match="floating point"):
+        torch.nn.Parameter(torch.arange(2))  # torch itself forbids it
+
+    default = NeuronStore("hidden", 2)
+    assert not isinstance(default.mu, torch.nn.Parameter)
+    assert default.mu.dtype == torch.int64
+
+    fixed = NeuronStore("hidden", 2, mu=torch.tensor([[0.0], [1.0]]))
+    assert not isinstance(fixed.mu, torch.nn.Parameter)
