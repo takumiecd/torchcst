@@ -281,18 +281,78 @@ def test_structural_state_and_follower_contract() -> None:
     assert store.w.grad is None  # rent optimizer owns the amplitude grads
 
 
+def test_decoupled_decay_owns_amplitudes_without_a_rent() -> None:
+    """A price outside the moments is a separate choice from a price inside.
+
+    Which optimizer owns ``w`` and where the price is charged were one
+    decision while ``rent`` alone conferred ownership; ``decay`` is the
+    other half, and either one is enough to take the amplitudes.
+    """
+    module, store = _line_site([0.2], [0.2], [0.5])
+    optimizer = PullbackAdam(
+        module, moment_space="tangent", cap_sigma=0.1,
+        decay=0.5, lr_w=0.01,
+    )
+
+    assert optimizer.owns_amplitudes
+    assert optimizer.rent is None
+
+    before = store.w.detach().clone()
+    store.s.grad = torch.full_like(store.s, 0.1)
+    store.t.grad = torch.full_like(store.t, -0.1)
+    store.w.grad = torch.full_like(store.w, 0.2)
+    optimizer.step()
+
+    assert not torch.equal(store.w.detach(), before)
+    assert optimizer.m_w is not None  # amplitude moments were allocated
+    optimizer.zero_grad()
+    assert store.w.grad is None
+
+
+def test_decoupled_decay_shrinks_by_its_own_rate() -> None:
+    """``w -= lr_w * decay * w``, charged after the Adam step.
+
+    With no loss gradient on the amplitudes the Adam term contributes
+    nothing, so what remains is exactly the decoupled factor -- the point of
+    decoupling being that ``sqrt(v)`` never touches it.
+    """
+    module, store = _line_site([0.2], [0.2], [0.5])
+    optimizer = PullbackAdam(
+        module, moment_space="tangent", cap_sigma=0.1,
+        decay=0.5, lr_w=0.01,
+    )
+    before = store.w.detach().clone()
+    store.s.grad = torch.zeros_like(store.s)
+    store.t.grad = torch.zeros_like(store.t)
+    store.w.grad = torch.zeros_like(store.w)  # only the price acts
+    optimizer.step()
+
+    torch.testing.assert_close(
+        store.w.detach(), before * (1.0 - 0.01 * 0.5), rtol=1e-6, atol=0.0
+    )
+
+
 def test_rejects_inconsistent_structural_configuration() -> None:
     module, _ = _line_site([0.2], [0.2], [0.5])
-    with pytest.raises(ValueError, match="rent and lr_w"):
+    with pytest.raises(ValueError, match="lr_w comes with"):
         PullbackAdam(
             module,
             moment_space="tangent",
             cap_sigma=0.1,
             rent=SmoothRent(0.1),
         )
-    with pytest.raises(ValueError, match="rent and lr_w"):
+    with pytest.raises(ValueError, match="lr_w comes with"):
         PullbackAdam(
             module, moment_space="tangent", cap_sigma=0.1, lr_w=0.01
+        )
+    with pytest.raises(ValueError, match="lr_w comes with"):
+        PullbackAdam(
+            module, moment_space="tangent", cap_sigma=0.1, decay=0.5
+        )
+    with pytest.raises(ValueError, match="decay"):
+        PullbackAdam(
+            module, moment_space="tangent", cap_sigma=0.1,
+            decay=-1.0, lr_w=0.01,
         )
     with pytest.raises(TypeError, match="repulsion"):
         PullbackAdam(

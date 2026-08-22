@@ -238,6 +238,11 @@ class PullbackAdam:
     The optional structural terms make this optimizer the site's single
     owner for the continuous lifecycle:
 
+    ``decay=`` (with ``lr_w``)
+        A decoupled price on the amplitudes, applied after the Adam step as
+        ``w -= lr_w * decay * w`` -- AdamW's own answer to an adaptive
+        denominator eating the price.  Independent of ``rent``: either one
+        gives the optimizer ownership of ``synapses.w``, and they compose.
     ``rent=SmoothRent(...)`` (with ``lr_w``)
         The optimizer also owns ``synapses.w``.  The rent gradient joins the
         amplitude gradient *before* Adam's moments, so settlement is priced
@@ -272,6 +277,7 @@ class PullbackAdam:
         damping: float = 1e-2,
         target_step: float = 0.01,
         rent: SmoothRent | None = None,
+        decay: float = 0.0,
         lr_w: float | None = None,
         repulsion: PairRepulsion | None = None,
         wall: bool = False,
@@ -326,8 +332,14 @@ class PullbackAdam:
             raise TypeError("compile_metric must be a bool")
         if rent is not None and not isinstance(rent, SmoothRent):
             raise TypeError("rent must be a SmoothRent")
-        if (rent is None) != (lr_w is None):
-            raise ValueError("rent and lr_w come together: both or neither")
+        if not isinstance(decay, (int, float)) or decay < 0:
+            raise ValueError("decay must be a non-negative number")
+        owns_amplitudes = rent is not None or decay > 0
+        if owns_amplitudes != (lr_w is not None):
+            raise ValueError(
+                "lr_w comes with amplitude ownership: pass it with rent "
+                "and/or decay, and only then"
+            )
         if lr_w is not None and (
             not isinstance(lr_w, (int, float)) or lr_w <= 0
         ):
@@ -353,6 +365,14 @@ class PullbackAdam:
         self.chunk_elements = int(chunk_elements)
         self.compile_metric = compile_metric
         self.rent = rent
+        self.decay = float(decay)
+        #: Whether this optimizer updates ``synapses.w``.  A price is two
+        #: independent choices -- who owns the amplitudes, and whether the
+        #: price is charged inside the moments (``rent``) or outside them
+        #: (``decay``) -- and they were entangled while ``rent`` alone
+        #: decided ownership.  The owning optimizer must be excluded from
+        #: the model optimizer's parameter groups either way.
+        self.owns_amplitudes = owns_amplitudes
         self.lr_w = None if lr_w is None else float(lr_w)
         self.repulsion = repulsion
         self.wall = wall
@@ -377,7 +397,7 @@ class PullbackAdam:
         self.m_t = torch.zeros_like(self.store.t)
         self.v_s = torch.zeros_like(self.store.s)
         self.v_t = torch.zeros_like(self.store.t)
-        if self.rent is not None:
+        if self.owns_amplitudes:
             self.m_w = torch.zeros_like(self.store.w)
             self.v_w = torch.zeros_like(self.store.w)
         self.travel = torch.zeros(
@@ -540,7 +560,7 @@ class PullbackAdam:
         store = self.store
         if store.s.grad is None or store.t.grad is None:
             return
-        if self.rent is not None and store.w.grad is None:
+        if self.owns_amplitudes and store.w.grad is None:
             return
         live = store.live_slots().to(store.s.device)
         if live.numel() == 0:
@@ -612,13 +632,15 @@ class PullbackAdam:
             (delta_s.square().sum(1) + delta_t.square().sum(1)).sqrt() / sigma
         )
 
-        if self.rent is not None:
+        if self.owns_amplitudes:
             assert self.m_w is not None and self.v_w is not None
             mask_w = mask_s[:, 0]
-            incoming_w = (
-                store.w.grad
-                + self.rent.gradient(store.w.detach(), self.step_count)
-            ) * mask_w
+            incoming_w = store.w.grad
+            if self.rent is not None:
+                incoming_w = incoming_w + self.rent.gradient(
+                    store.w.detach(), self.step_count
+                )
+            incoming_w = incoming_w * mask_w
             self.m_w.mul_(self.beta1).add_(
                 incoming_w, alpha=1.0 - self.beta1
             )
@@ -628,9 +650,13 @@ class PullbackAdam:
             direction_w = (self.m_w / correction1) / (
                 (self.v_w / correction2).sqrt() + self.eps
             )
-            store.w.sub_(
-                direction_w * (self.lr_w * float(lr_scale)) * mask_w
-            )
+            rate = self.lr_w * float(lr_scale)
+            store.w.sub_(direction_w * rate * mask_w)
+            if self.decay:
+                # Decoupled, in AdamW's sense: the price never reaches the
+                # moments, so `sqrt(v)` cannot normalise it away.  Charged
+                # after the step and on live rows only.
+                store.w.sub_(store.w.detach() * (rate * self.decay) * mask_w)
 
         if self.wall:
             box_in = store.spec.domain_in
@@ -647,7 +673,7 @@ class PullbackAdam:
     def zero_grad(self, set_to_none: bool = True) -> None:
         """Clear the gradients consumed by this optimizer."""
         parameters = [self.store.s, self.store.t]
-        if self.rent is not None:
+        if self.owns_amplitudes:
             parameters.append(self.store.w)
         for parameter in parameters:
             if parameter.grad is None:
@@ -748,7 +774,7 @@ class PullbackAdam:
             "schema": "torchcst-pullback-adam-v1",
             "moment_space": self.moment_space,
             "metric": self.metric,
-            "owns_w": self.rent is not None,
+            "owns_w": self.owns_amplitudes,
             "capacity": self._capacity,
             "step_count": self.step_count,
             "eta": self.eta,
@@ -771,7 +797,7 @@ class PullbackAdam:
             raise ValueError("PullbackAdam moment_space does not match state")
         if state.get("metric", "diag") != self.metric:
             raise ValueError("PullbackAdam metric does not match state")
-        if bool(state.get("owns_w", False)) != (self.rent is not None):
+        if bool(state.get("owns_w", False)) != self.owns_amplitudes:
             raise ValueError(
                 "PullbackAdam rent ownership does not match state"
             )
