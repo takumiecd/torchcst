@@ -12,6 +12,7 @@ from .._validation import require_int
 from ..representation import GaussianKernel, L2NormalizedColumns
 from ..storage import SynapseStore
 from . import metric
+from .forces import PairRepulsion, SmoothRent
 
 MomentSpace = Literal["parameter", "tangent"]
 MetricForm = Literal["diag", "block"]
@@ -234,6 +235,26 @@ class PullbackAdam:
     neither a dense represented weight nor a Jacobian-shaped moment is
     retained.
 
+    The optional structural terms make this optimizer the site's single
+    owner for the continuous lifecycle:
+
+    ``rent=SmoothRent(...)`` (with ``lr_w``)
+        The optimizer also owns ``synapses.w``.  The rent gradient joins the
+        amplitude gradient *before* Adam's moments, so settlement is priced
+        by carried map (``|dL/dw| > lam``); unprofitable amplitudes decay
+        continuously and near-zero atoms keep a sign-coherent residue that
+        turns their coordinate gradient into ascent of the squared
+        birth-score field.  The outer optimizer must then exclude ``w`` too.
+
+    ``repulsion=PairRepulsion(...)``
+        The overlap penalty's gradient joins the coordinate gradients:
+        atoms close on both sides repel, reserves spread over the chart,
+        and column collisions are prevented instead of merged away.
+
+    ``wall=True``
+        After each step, coordinates are clamped into the store's declared
+        coordinate domains, so wandering reserves stay on the chart.
+
     The owning optimizer must exclude ``module.synapses.s`` and ``.t`` and
     call :meth:`zero_grad` alongside its own ``zero_grad``.  Amplitudes and
     unrelated model parameters remain the owning optimizer's responsibility.
@@ -250,6 +271,11 @@ class PullbackAdam:
         eps: float = 1e-8,
         damping: float = 1e-2,
         target_step: float = 0.01,
+        rent: SmoothRent | None = None,
+        lr_w: float | None = None,
+        repulsion: PairRepulsion | None = None,
+        wall: bool = False,
+        seed: int = 0,
         subscribe: bool = True,
         chunk_elements: int = 1 << 24,
         compile_metric: bool = False,
@@ -298,6 +324,19 @@ class PullbackAdam:
         require_int(chunk_elements, "chunk_elements", minimum=1)
         if not isinstance(compile_metric, bool):
             raise TypeError("compile_metric must be a bool")
+        if rent is not None and not isinstance(rent, SmoothRent):
+            raise TypeError("rent must be a SmoothRent")
+        if (rent is None) != (lr_w is None):
+            raise ValueError("rent and lr_w come together: both or neither")
+        if lr_w is not None and (
+            not isinstance(lr_w, (int, float)) or lr_w <= 0
+        ):
+            raise ValueError("lr_w must be a positive number")
+        if repulsion is not None and not isinstance(repulsion, PairRepulsion):
+            raise TypeError("repulsion must be a PairRepulsion")
+        if not isinstance(wall, bool):
+            raise TypeError("wall must be a bool")
+        require_int(seed, "seed", minimum=0)
 
         self.module = module
         self.store = store
@@ -313,12 +352,20 @@ class PullbackAdam:
         self.target_step = float(target_step)
         self.chunk_elements = int(chunk_elements)
         self.compile_metric = compile_metric
+        self.rent = rent
+        self.lr_w = None if lr_w is None else float(lr_w)
+        self.repulsion = repulsion
+        self.wall = wall
+        self.seed = int(seed)
+        self._generator: torch.Generator | None = None
 
         self._capacity = store.capacity
         self.m_s: Tensor | None = None
         self.m_t: Tensor | None = None
         self.v_s: Tensor | None = None
         self.v_t: Tensor | None = None
+        self.m_w: Tensor | None = None
+        self.v_w: Tensor | None = None
         self.travel: Tensor | None = None
         self.step_count = 0
         self.eta: float | None = None
@@ -330,11 +377,24 @@ class PullbackAdam:
         self.m_t = torch.zeros_like(self.store.t)
         self.v_s = torch.zeros_like(self.store.s)
         self.v_t = torch.zeros_like(self.store.t)
+        if self.rent is not None:
+            self.m_w = torch.zeros_like(self.store.w)
+            self.v_w = torch.zeros_like(self.store.w)
         self.travel = torch.zeros(
             self.store.capacity,
             device=self.store.s.device,
             dtype=self.store.s.dtype,
         )
+
+    def _pair_generator(self) -> torch.Generator:
+        device = self.store.s.device
+        if (
+            self._generator is None
+            or self._generator.device != device
+        ):
+            self._generator = torch.Generator(device=device)
+            self._generator.manual_seed(self.seed)
+        return self._generator
 
     @staticmethod
     def _live_values(tensor: Tensor, live: Tensor) -> Tensor:
@@ -480,6 +540,8 @@ class PullbackAdam:
         store = self.store
         if store.s.grad is None or store.t.grad is None:
             return
+        if self.rent is not None and store.w.grad is None:
+            return
         live = store.live_slots().to(store.s.device)
         if live.numel() == 0:
             return
@@ -496,6 +558,17 @@ class PullbackAdam:
         mask_t = self._row_mask(store.t, live)
         incoming_s = store.s.grad * mask_s
         incoming_t = store.t.grad * mask_t
+        if self.repulsion is not None:
+            repulsion_s, repulsion_t = self.repulsion.gradient(
+                store.s.detach(),
+                store.t.detach(),
+                live,
+                self.kernel_in.sigma.detach().to(store.s),
+                self.kernel_out.sigma.detach().to(store.t),
+                self._pair_generator(),
+            )
+            incoming_s = incoming_s + repulsion_s
+            incoming_t = incoming_t + repulsion_t
         if self.moment_space == "tangent":
             incoming_s = whiten_s(incoming_s)
             incoming_t = whiten_t(incoming_t)
@@ -539,9 +612,44 @@ class PullbackAdam:
             (delta_s.square().sum(1) + delta_t.square().sum(1)).sqrt() / sigma
         )
 
+        if self.rent is not None:
+            assert self.m_w is not None and self.v_w is not None
+            mask_w = mask_s[:, 0]
+            incoming_w = (
+                store.w.grad
+                + self.rent.gradient(store.w.detach(), self.step_count)
+            ) * mask_w
+            self.m_w.mul_(self.beta1).add_(
+                incoming_w, alpha=1.0 - self.beta1
+            )
+            self.v_w.mul_(self.beta2).addcmul_(
+                incoming_w, incoming_w, value=1.0 - self.beta2
+            )
+            direction_w = (self.m_w / correction1) / (
+                (self.v_w / correction2).sqrt() + self.eps
+            )
+            store.w.sub_(
+                direction_w * (self.lr_w * float(lr_scale)) * mask_w
+            )
+
+        if self.wall:
+            box_in = store.spec.domain_in
+            box_out = store.spec.domain_out
+            store.s.clamp_(
+                min=store.s.new_tensor(box_in.lo_per_axis),
+                max=store.s.new_tensor(box_in.hi_per_axis),
+            )
+            store.t.clamp_(
+                min=store.t.new_tensor(box_out.lo_per_axis),
+                max=store.t.new_tensor(box_out.hi_per_axis),
+            )
+
     def zero_grad(self, set_to_none: bool = True) -> None:
-        """Clear the coordinate gradients consumed by this optimizer."""
-        for parameter in (self.store.s, self.store.t):
+        """Clear the gradients consumed by this optimizer."""
+        parameters = [self.store.s, self.store.t]
+        if self.rent is not None:
+            parameters.append(self.store.w)
+        for parameter in parameters:
             if parameter.grad is None:
                 continue
             if set_to_none:
@@ -562,20 +670,18 @@ class PullbackAdam:
 
     # ---- follower contract ------------------------------------------------
 
+    _ROW_NAMES = ("m_s", "m_t", "v_s", "v_t", "m_w", "v_w", "travel")
+
     def _rows(self):
         return (
             tensor
             for tensor in (
-                self.m_s,
-                self.m_t,
-                self.v_s,
-                self.v_t,
-                self.travel,
+                getattr(self, name) for name in self._ROW_NAMES
             )
             if tensor is not None
         )
 
-    def _zero_rows(self, slots: Tensor) -> None:
+    def _zero_rows(self, slots: Tensor, rows=None) -> None:
         if not isinstance(slots, Tensor):
             raise TypeError("slots must be a Tensor")
         slots = slots.detach().to("cpu")
@@ -583,8 +689,8 @@ class PullbackAdam:
             ((slots < 0) | (slots >= self._capacity)).any()
         ):
             raise IndexError("PullbackAdam follower slots are outside capacity")
-        for tensor in self._rows():
-            if slots.numel():
+        for tensor in self._rows() if rows is None else rows:
+            if tensor is not None and slots.numel():
                 tensor.index_fill_(0, slots.to(tensor.device), 0)
 
     def grow(self, new_capacity: int) -> None:
@@ -593,7 +699,7 @@ class PullbackAdam:
             raise ValueError("PullbackAdam cannot shrink")
         if new_capacity == self._capacity:
             return
-        for name in ("m_s", "m_t", "v_s", "v_t", "travel"):
+        for name in self._ROW_NAMES:
             tensor = getattr(self, name)
             if tensor is None:
                 continue
@@ -610,7 +716,9 @@ class PullbackAdam:
         self._zero_rows(slots)
 
     def on_refit(self, slots: Tensor) -> None:
-        """Amplitude refits leave coordinate moments untouched."""
+        """Amplitude refits invalidate only the amplitude moments."""
+        if self.m_w is not None:
+            self._zero_rows(slots, rows=(self.m_w, self.v_w))
 
     def on_remap(self, old_to_new: Tensor) -> None:
         mapping = old_to_new.detach().to("cpu")
@@ -619,7 +727,7 @@ class PullbackAdam:
         old = torch.nonzero(mapping >= 0, as_tuple=False).flatten()
         if old.numel() and bool((mapping[old] >= self._capacity).any()):
             raise IndexError("PullbackAdam remap targets outside capacity")
-        for name in ("m_s", "m_t", "v_s", "v_t", "travel"):
+        for name in self._ROW_NAMES:
             tensor = getattr(self, name)
             if tensor is None:
                 continue
@@ -640,6 +748,7 @@ class PullbackAdam:
             "schema": "torchcst-pullback-adam-v1",
             "moment_space": self.moment_space,
             "metric": self.metric,
+            "owns_w": self.rent is not None,
             "capacity": self._capacity,
             "step_count": self.step_count,
             "eta": self.eta,
@@ -647,6 +756,8 @@ class PullbackAdam:
             "m_t": snapshot(self.m_t),
             "v_s": snapshot(self.v_s),
             "v_t": snapshot(self.v_t),
+            "m_w": snapshot(self.m_w),
+            "v_w": snapshot(self.v_w),
             "travel": snapshot(self.travel),
         }
 
@@ -660,6 +771,10 @@ class PullbackAdam:
             raise ValueError("PullbackAdam moment_space does not match state")
         if state.get("metric", "diag") != self.metric:
             raise ValueError("PullbackAdam metric does not match state")
+        if bool(state.get("owns_w", False)) != (self.rent is not None):
+            raise ValueError(
+                "PullbackAdam rent ownership does not match state"
+            )
         capacity = require_int(
             state.get("capacity"), "PullbackAdam capacity", minimum=0
         )
@@ -678,7 +793,18 @@ class PullbackAdam:
             "m_t": self.store.t.shape,
             "v_s": self.store.s.shape,
             "v_t": self.store.t.shape,
+            "m_w": self.store.w.shape,
+            "v_w": self.store.w.shape,
             "travel": (capacity,),
+        }
+        targets = {
+            "m_s": self.store.s,
+            "v_s": self.store.s,
+            "m_t": self.store.t,
+            "v_t": self.store.t,
+            "m_w": self.store.w,
+            "v_w": self.store.w,
+            "travel": self.store.s,
         }
         for name, shape in shapes.items():
             value = state.get(name)
@@ -687,5 +813,4 @@ class PullbackAdam:
                 continue
             if not isinstance(value, Tensor) or value.shape != shape:
                 raise ValueError(f"PullbackAdam {name} has an invalid shape")
-            target = self.store.s if name in ("m_s", "v_s", "travel") else self.store.t
-            setattr(self, name, value.to(target).clone())
+            setattr(self, name, value.to(targets[name]).clone())
