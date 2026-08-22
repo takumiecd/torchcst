@@ -27,6 +27,8 @@ from typing import ClassVar
 import torch
 from torch import Tensor, nn
 
+from .._geometry import squared_distance_matrix
+
 from torchcst._validation import require_real
 
 from .domains import ParameterRole
@@ -290,7 +292,7 @@ class ContinuousKernel(nn.Module):
         family that needs the values overrides this method.
         """
         sigma, centers = self._prepare(query, centers, columns)
-        squared_distance = (query[:, None, :] - centers[None, :, :]).square().sum(-1)
+        squared_distance = squared_distance_matrix(query, centers)
         return self.profile(squared_distance, sigma)
 
     def _prepare(
@@ -377,7 +379,7 @@ class GaussianKernel(ContinuousKernel):
         # -- and it means the largest entry is always exactly one, so no
         # column ever underflows regardless of how far the atom has walked.
         sigma, centers = self._prepare(query, centers, columns)
-        squared_distance = (query[:, None, :] - centers[None, :, :]).square().sum(-1)
+        squared_distance = squared_distance_matrix(query, centers)
         nearest = squared_distance.amin(dim=0, keepdim=True)
         return torch.exp(-(squared_distance - nearest) / (2.0 * sigma.square()))
 

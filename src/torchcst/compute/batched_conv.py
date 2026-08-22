@@ -74,6 +74,8 @@ from typing import Sequence
 import torch
 from torch import Tensor
 
+from .._geometry import squared_norm_last
+
 from .cst_conv import CSTConv2d
 
 
@@ -192,8 +194,12 @@ def batched_conv_dense_weights(layers: Sequence[CSTConv2d]) -> list[Tensor]:
         [layer.kernel_out.sigma.to(device=device, dtype=dtype) for layer in layers]
     ).reshape(-1, 1, 1)
 
-    sq_in = (in_mu_stack[:, :, None, :] - s_stack[:, None, :, :]).square().sum(-1)  # [L, n_in, K]
-    sq_out = (out_mu_stack[:, :, None, :] - t_stack[:, None, :, :]).square().sum(-1)  # [L, n_out, K]
+    sq_in = squared_norm_last(
+        in_mu_stack[:, :, None, :] - s_stack[:, None, :, :]
+    )  # [L, n_in, K]
+    sq_out = squared_norm_last(
+        out_mu_stack[:, :, None, :] - t_stack[:, None, :, :]
+    )  # [L, n_out, K]
 
     k_in = ref.kernel_in.profile(sq_in, sigma_in_stack)  # [L, n_in, K]
     k_out = ref.kernel_out.profile(sq_out, sigma_out_stack)  # [L, n_out, K]

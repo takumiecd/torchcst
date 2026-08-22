@@ -18,19 +18,20 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
+from ..._geometry import squared_distance_matrix, squared_norm_last
+
 
 def gaussian_columns(mu: Tensor, coords: Tensor, sigma: Tensor) -> Tensor:
     """``exp(-|mu_f - coord_k|^2 / 2 sigma^2)`` as ``[features, K]``."""
     return torch.exp(
-        -(mu[:, None, :] - coords[None]).square().sum(-1)
-        / (2.0 * sigma.square())
+        -squared_distance_matrix(mu, coords) / (2.0 * sigma.square())
     )
 
 
 def _gaussian_pieces(mu: Tensor, coords: Tensor, sigma: Tensor):
     """(values, mu - coord, squared distance) for analytic derivatives."""
     diff = mu[:, None, :] - coords[None]
-    d2 = diff.square().sum(-1)
+    d2 = squared_norm_last(diff)
     return torch.exp(-d2 / (2.0 * sigma.square())), diff, d2
 
 
@@ -42,8 +43,7 @@ def normalized_gaussian_columns(mu: Tensor, coords: Tensor, sigma: Tensor) -> Te
     of one in every non-empty column, so remote atoms cannot underflow before
     they are normalised.
     """
-    diff = mu[:, None, :] - coords[None]
-    d2 = diff.square().sum(-1)
+    d2 = squared_distance_matrix(mu, coords)
     values = torch.exp(
         -(d2 - d2.amin(dim=0, keepdim=True)) / (2.0 * sigma.square())
     )
@@ -58,7 +58,7 @@ def _normalized_gaussian_pieces(mu: Tensor, coords: Tensor, sigma: Tensor):
     tangent projection in :func:`_normalized_column_backward`.
     """
     diff = mu[:, None, :] - coords[None]
-    d2 = diff.square().sum(-1)
+    d2 = squared_norm_last(diff)
     centered = d2 - d2.amin(dim=0, keepdim=True)
     values = torch.exp(-centered / (2.0 * sigma.square()))
     unit = values / torch.linalg.vector_norm(values, dim=0, keepdim=True)
