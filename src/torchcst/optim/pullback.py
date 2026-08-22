@@ -14,6 +14,7 @@ from ..storage import SynapseStore
 from . import metric
 
 MomentSpace = Literal["parameter", "tangent"]
+MetricForm = Literal["diag", "block"]
 
 
 def _gaussian_unit_factor(
@@ -54,7 +55,43 @@ def _gaussian_l2_metric_block(
     )
 
 
+def _gaussian_l2_metric_gram(
+    mu_in: Tensor,
+    mu_out: Tensor,
+    source: Tensor,
+    target: Tensor,
+    mass_sq: Tensor,
+    sigma_in: Tensor,
+    sigma_out: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """Pure-tensor Gaussian fast path for the within-atom metric blocks."""
+    unit_in, factor_in = _gaussian_unit_factor(mu_in, source, sigma_in)
+    unit_out, factor_out = _gaussian_unit_factor(mu_out, target, sigma_out)
+    return metric.gauged_jacobian_gram(
+        unit_in=unit_in,
+        factor_in=factor_in,
+        unit_out=unit_out,
+        factor_out=factor_out,
+        mu_in=mu_in,
+        mu_out=mu_out,
+        source=source,
+        target=target,
+        mass_sq=mass_sq,
+    )
+
+
+def _inverse_sqrt(blocks: Tensor) -> Tensor:
+    """Batched symmetric inverse square root of PSD ``[K, d, d]`` blocks."""
+    eigenvalues, eigenvectors = torch.linalg.eigh(blocks)
+    tiny = torch.finfo(blocks.dtype).tiny
+    inverted = eigenvalues.clamp_min(tiny).rsqrt()
+    return (eigenvectors * inverted[..., None, :]) @ eigenvectors.transpose(
+        -1, -2
+    )
+
+
 _compiled_gaussian_l2_metric_block = None
+_compiled_gaussian_l2_metric_gram = None
 
 
 def _metric_block(
@@ -109,6 +146,57 @@ def _metric_block(
     )
 
 
+def _metric_gram_block(
+    module: nn.Module,
+    mu_in: Tensor,
+    mu_out: Tensor,
+    source: Tensor,
+    target: Tensor,
+    mass_sq: Tensor,
+    *,
+    compiled: bool,
+) -> tuple[Tensor, Tensor]:
+    """Evaluate one within-atom metric-gram block, optionally compiled."""
+    if (
+        compiled
+        and source.is_cuda
+        and isinstance(module.kernel_in, GaussianKernel)
+        and isinstance(module.kernel_out, GaussianKernel)
+    ):
+        global _compiled_gaussian_l2_metric_gram
+        if _compiled_gaussian_l2_metric_gram is None:
+            _compiled_gaussian_l2_metric_gram = torch.compile(
+                _gaussian_l2_metric_gram, fullgraph=True
+            )
+        return _compiled_gaussian_l2_metric_gram(
+            mu_in,
+            mu_out,
+            source,
+            target,
+            mass_sq,
+            module.kernel_in.sigma.detach().to(source),
+            module.kernel_out.sigma.detach().to(target),
+        )
+
+    unit_in, factor_in = metric.normalized_columns(
+        module.kernel_in, mu_in, source
+    )
+    unit_out, factor_out = metric.normalized_columns(
+        module.kernel_out, mu_out, target
+    )
+    return metric.gauged_jacobian_gram(
+        unit_in=unit_in,
+        factor_in=factor_in,
+        unit_out=unit_out,
+        factor_out=factor_out,
+        mu_in=mu_in,
+        mu_out=mu_out,
+        source=source,
+        target=target,
+        mass_sq=mass_sq,
+    )
+
+
 class PullbackAdam:
     """Diagonal Adam for the learnable coordinates of one continuous CST site.
 
@@ -126,10 +214,25 @@ class PullbackAdam:
         moving-frame approximation: old moments are not parallel-transported
         when the tangent frame rotates.
 
-    Here ``G`` is the block-Jacobi diagonal approximation provided by
-    :func:`torchcst.optim.metric.gauged_jacobian_sq`, not a claim that the full
-    ``J.T @ J`` is diagonal.  Persistent state is coordinate-shaped; neither a
-    dense represented weight nor a Jacobian-shaped moment is retained.
+    ``metric`` selects how much of the within-atom pullback metric ``G`` is:
+
+    ``"diag"``
+        The per-axis diagonal from
+        :func:`torchcst.optim.metric.gauged_jacobian_sq`, exactly the
+        historical behaviour.
+
+    ``"block"``
+        The full per-atom, per-side axis Gram ``R_ab = <d_a, d_b>`` from
+        :func:`torchcst.optim.metric.gauged_jacobian_gram`.  Under L2 column
+        normalisation the amplitude row and the source-target cross block are
+        exactly zero, so these two small blocks are the complete within-atom
+        metric; ``G**-1/2`` becomes a batched ``d x d`` symmetric inverse
+        square root.
+
+    Neither form is a claim that the full ``J.T @ J`` is diagonal: cross-atom
+    coupling is always neglected.  Persistent state is coordinate-shaped;
+    neither a dense represented weight nor a Jacobian-shaped moment is
+    retained.
 
     The owning optimizer must exclude ``module.synapses.s`` and ``.t`` and
     call :meth:`zero_grad` alongside its own ``zero_grad``.  Amplitudes and
@@ -141,6 +244,7 @@ class PullbackAdam:
         module: nn.Module,
         *,
         moment_space: MomentSpace,
+        metric: MetricForm = "diag",
         cap_sigma: float,
         betas: tuple[float, float] = (0.9, 0.99),
         eps: float = 1e-8,
@@ -171,6 +275,8 @@ class PullbackAdam:
             raise ValueError(
                 "moment_space must be 'parameter' or 'tangent'"
             )
+        if metric not in ("diag", "block"):
+            raise ValueError("metric must be 'diag' or 'block'")
         if (
             not isinstance(betas, tuple)
             or len(betas) != 2
@@ -198,6 +304,7 @@ class PullbackAdam:
         self.kernel_in = kernel_in
         self.kernel_out = kernel_out
         self.moment_space: MomentSpace = moment_space
+        self.metric: MetricForm = metric
         self.cap_sigma = float(cap_sigma)
         self.beta1 = float(betas[0])
         self.beta2 = float(betas[1])
@@ -291,6 +398,81 @@ class PullbackAdam:
         )
 
     @torch.no_grad()
+    def _metric_gram(self, live: Tensor) -> tuple[Tensor, Tensor]:
+        """Return per-atom axis-Gram blocks in full-capacity layout."""
+        store = self.store
+        d_in = store.s.shape[1]
+        d_out = store.t.shape[1]
+        gram_s = store.s.new_zeros(store.s.shape[0], d_in, d_in)
+        gram_t = store.t.new_zeros(store.t.shape[0], d_out, d_out)
+        if live.numel() == 0:
+            return gram_s, gram_t
+
+        mu_in = self.module.in_neurons.mu.to(store.s)
+        mu_out = self.module.out_neurons.mu.to(store.t)
+        width = max(mu_in.shape[0], mu_out.shape[0], 1) * max(d_in, d_out, 1)
+        block_size = max(1, self.chunk_elements // width)
+        for start in range(0, live.numel(), block_size):
+            slots = live[start : start + block_size]
+            source = store.s.index_select(0, slots)
+            target = store.t.index_select(0, slots)
+            mass_sq = store.w.detach().index_select(0, slots).square()
+            block_s, block_t = _metric_gram_block(
+                self.module,
+                mu_in,
+                mu_out,
+                source,
+                target,
+                mass_sq,
+                compiled=self.compile_metric,
+            )
+            gram_s.index_copy_(0, slots, block_s)
+            gram_t.index_copy_(0, slots, block_t)
+        return gram_s, gram_t
+
+    def _effective_gram(
+        self, gram_s: Tensor, gram_t: Tensor, live: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        diagonals = torch.cat(
+            [
+                self._live_values(gram_s.diagonal(dim1=-2, dim2=-1), live),
+                self._live_values(gram_t.diagonal(dim1=-2, dim2=-1), live),
+            ]
+        )
+        tiny = torch.finfo(diagonals.dtype).tiny
+        reference = diagonals.median().clamp_min(tiny)
+
+        def damped(gram: Tensor) -> Tensor:
+            eye = torch.eye(
+                gram.shape[-1], device=gram.device, dtype=gram.dtype
+            )
+            return gram + (self.damping * reference) * eye
+
+        return damped(gram_s), damped(gram_t)
+
+    def _whiteners(self, live: Tensor):
+        """Per-side maps applying this step's effective ``G**-1/2``."""
+        if self.metric == "diag":
+            diagonal_s, diagonal_t = self._metric_diag(live)
+            effective_s, effective_t = self._effective_diag(
+                diagonal_s, diagonal_t, live
+            )
+            return (
+                lambda values: values / effective_s.sqrt(),
+                lambda values: values / effective_t.sqrt(),
+            )
+        gram_s, gram_t = self._metric_gram(live)
+        effective_s, effective_t = self._effective_gram(
+            gram_s, gram_t, live
+        )
+        inverse_s = _inverse_sqrt(effective_s)
+        inverse_t = _inverse_sqrt(effective_t)
+        return (
+            lambda values: torch.einsum("kab,kb->ka", inverse_s, values),
+            lambda values: torch.einsum("kab,kb->ka", inverse_t, values),
+        )
+
+    @torch.no_grad()
     def step(self, lr_scale: float = 1.0) -> None:
         """Consume current coordinate gradients and apply one Adam update."""
         if not isinstance(lr_scale, (int, float)) or lr_scale < 0:
@@ -309,17 +491,14 @@ class PullbackAdam:
         assert self.v_t is not None
         assert self.travel is not None
 
-        diagonal_s, diagonal_t = self._metric_diag(live)
-        effective_s, effective_t = self._effective_diag(
-            diagonal_s, diagonal_t, live
-        )
+        whiten_s, whiten_t = self._whiteners(live)
         mask_s = self._row_mask(store.s, live)
         mask_t = self._row_mask(store.t, live)
         incoming_s = store.s.grad * mask_s
         incoming_t = store.t.grad * mask_t
         if self.moment_space == "tangent":
-            incoming_s = incoming_s / effective_s.sqrt()
-            incoming_t = incoming_t / effective_t.sqrt()
+            incoming_s = whiten_s(incoming_s)
+            incoming_t = whiten_t(incoming_t)
 
         self.step_count += 1
         self.m_s.mul_(self.beta1).add_(incoming_s, alpha=1.0 - self.beta1)
@@ -338,8 +517,8 @@ class PullbackAdam:
         direction_t = (self.m_t / correction1) / (
             (self.v_t / correction2).sqrt() + self.eps
         )
-        raw_s = direction_s / effective_s.sqrt() * mask_s
-        raw_t = direction_t / effective_t.sqrt() * mask_t
+        raw_s = whiten_s(direction_s) * mask_s
+        raw_t = whiten_t(direction_t) * mask_t
 
         raw_norm = (raw_s.square().sum(1) + raw_t.square().sum(1)).sqrt()
         sigma = self.kernel_in.sigma.detach().to(raw_norm)
@@ -460,6 +639,7 @@ class PullbackAdam:
         return {
             "schema": "torchcst-pullback-adam-v1",
             "moment_space": self.moment_space,
+            "metric": self.metric,
             "capacity": self._capacity,
             "step_count": self.step_count,
             "eta": self.eta,
@@ -478,6 +658,8 @@ class PullbackAdam:
             raise ValueError("unsupported PullbackAdam state schema")
         if state.get("moment_space") != self.moment_space:
             raise ValueError("PullbackAdam moment_space does not match state")
+        if state.get("metric", "diag") != self.metric:
+            raise ValueError("PullbackAdam metric does not match state")
         capacity = require_int(
             state.get("capacity"), "PullbackAdam capacity", minimum=0
         )

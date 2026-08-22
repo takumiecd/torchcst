@@ -125,6 +125,74 @@ def projected_directional(
     return stacked if per_axis else stacked.sum(1)
 
 
+def projected_directional_gram(
+    unit: Tensor,
+    factor: Tensor,
+    mu: Tensor,
+    centers: Tensor,
+    traffic: Tensor | None,
+) -> Tensor:
+    """Per-atom Gram of the projected axis derivatives, ``[K, d, d]``.
+
+    The diagonal reproduces :func:`projected_directional` with
+    ``per_axis=True``; the off-diagonal entries are the within-atom axis
+    couplings the diagonal metric ignores.  On an irregular neuron cloud the
+    parity argument that kills them in the continuum does not apply, and they
+    carry most of the off-diagonal energy of ``J.T @ J``.
+    """
+    tangents: list[Tensor] = []
+    for axis in range(centers.shape[1]):
+        derivative = factor * (
+            centers[:, axis][None, :] - mu[:, axis][:, None]
+        )
+        radial = (unit * derivative).sum(0, keepdim=True)
+        tangent = derivative - unit * radial
+        if traffic is not None:
+            rows = traffic.to(device=tangent.device, dtype=tangent.dtype)
+            tangent = (rows @ tangent) / float(rows.shape[0]) ** 0.5
+        tangents.append(tangent)
+    stacked = torch.stack(tangents, dim=-1)
+    gram = torch.einsum("nka,nkb->kab", stacked, stacked)
+    gram.diagonal(dim1=-2, dim2=-1).clamp_min_(0)
+    return gram
+
+
+def gauged_jacobian_gram(
+    *,
+    unit_in: Tensor,
+    factor_in: Tensor,
+    unit_out: Tensor,
+    factor_out: Tensor,
+    mu_in: Tensor,
+    mu_out: Tensor,
+    source: Tensor,
+    target: Tensor,
+    mass_sq: Tensor,
+    traffic_in: Tensor | None = None,
+    traffic_out: Tensor | None = None,
+) -> tuple[Tensor, Tensor]:
+    """Within-atom source/target metric blocks after L2 column normalisation.
+
+    Same gauge as :func:`gauged_jacobian_sq`, but each side keeps the full
+    ``d x d`` axis Gram instead of only its diagonal.  Normalisation makes the
+    amplitude row and the source-target cross block exactly zero, so these two
+    small blocks are the complete within-atom metric; cross-atom coupling is
+    still neglected.
+    """
+    source_gram = projected_directional_gram(
+        unit_in, factor_in, mu_in, source, traffic_in
+    )
+    target_gram = projected_directional_gram(
+        unit_out, factor_out, mu_out, target, traffic_out
+    )
+    out_mass = weighted(unit_out, traffic_out)
+    in_mass = weighted(unit_in, traffic_in)
+    return (
+        (mass_sq * out_mass)[:, None, None] * source_gram,
+        (mass_sq * in_mass)[:, None, None] * target_gram,
+    )
+
+
 def gauged_jacobian_sq(
     *,
     unit_in: Tensor,

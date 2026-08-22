@@ -7,7 +7,10 @@ import torch
 
 from torchcst import PullbackAdam
 from torchcst.compute import CSTLinear
-from torchcst.optim.pullback import _gaussian_l2_metric_block
+from torchcst.optim.pullback import (
+    _gaussian_l2_metric_block,
+    _gaussian_l2_metric_gram,
+)
 from torchcst.representation import (
     GaussianKernel,
     L2NormalizedColumns,
@@ -72,6 +75,54 @@ def _site(*, atoms=2, capacity=None, d_in=1, d_out=1, normalized=True):
         store,
         GaussianKernel(0.35).double(),
         gauge=gauge,
+    )
+    return module, store
+
+
+def _scattered_site(*, atoms=3, d_in=2, d_out=2, seed=7):
+    """A multi-axis site whose neuron cloud is irregular.
+
+    ``_site`` replicates one 1-D grid across every chart axis, which makes
+    all axis derivatives identical; scattering the neurons is what gives the
+    within-atom axis Gram a non-trivial off-diagonal to test.
+    """
+    store = SynapseStore(
+        "pullback-block-test",
+        d_in,
+        d_out,
+        atoms,
+        spec=RepresentationSpec.continuous(d_in, d_out),
+        dtype=torch.float64,
+    )
+    generator = torch.Generator().manual_seed(seed)
+    source = torch.rand(atoms, d_in, generator=generator, dtype=torch.float64)
+    target = torch.rand(atoms, d_out, generator=generator, dtype=torch.float64)
+    weights = 0.5 + torch.rand(atoms, generator=generator, dtype=torch.float64)
+    store.apply([_birth(store, source, target, weights)])
+    inputs = NeuronStore(
+        "pullback-block-input",
+        9,
+        mu=torch.rand(9, d_in, generator=generator, dtype=torch.float64)
+        * 2.0
+        - 0.5,
+        initial_live=9,
+        dtype=torch.float64,
+    )
+    outputs = NeuronStore(
+        "pullback-block-output",
+        8,
+        mu=torch.rand(8, d_out, generator=generator, dtype=torch.float64)
+        * 2.0
+        - 0.5,
+        initial_live=8,
+        dtype=torch.float64,
+    )
+    module = CSTLinear(
+        inputs,
+        outputs,
+        store,
+        GaussianKernel(0.35).double(),
+        gauge=L2NormalizedColumns(),
     )
     return module, store
 
@@ -223,6 +274,149 @@ def test_fused_gaussian_formula_matches_the_generic_metric() -> None:
         torch.testing.assert_close(got, want)
 
 
+def test_block_metric_diagonal_matches_the_per_axis_diagonal() -> None:
+    module, store = _scattered_site()
+    optimizer = PullbackAdam(
+        module, moment_space="parameter", cap_sigma=0.1, metric="block"
+    )
+    live = store.live_slots()
+    gram_s, gram_t = optimizer._metric_gram(live)
+    diagonal_s, diagonal_t = optimizer._metric_diag(live)
+    torch.testing.assert_close(
+        gram_s.diagonal(dim1=-2, dim2=-1), diagonal_s
+    )
+    torch.testing.assert_close(
+        gram_t.diagonal(dim1=-2, dim2=-1), diagonal_t
+    )
+
+
+def test_block_metric_predicts_a_mixed_axis_weight_displacement() -> None:
+    module, store = _scattered_site(atoms=1)
+    optimizer = PullbackAdam(
+        module, moment_space="parameter", cap_sigma=0.1, metric="block"
+    )
+    live = store.live_slots()
+    gram_s, gram_t = optimizer._metric_gram(live)
+    coupling = gram_s[0, 0, 1].abs() / gram_s[0].diagonal().mean()
+    assert coupling > 0.05  # the fixture must exercise the off-diagonal
+
+    delta_s = torch.tensor([[2.0e-6, -1.4e-6]], dtype=store.s.dtype)
+    delta_t = torch.tensor([[-1.5e-6, 0.9e-6]], dtype=store.t.dtype)
+    before = module.dense_weight().detach()
+    with torch.no_grad():
+        store.s.add_(delta_s)
+        store.t.add_(delta_t)
+    after = module.dense_weight().detach()
+
+    actual = (after - before).square().sum()
+    predicted = (
+        delta_s[0] @ gram_s[0] @ delta_s[0]
+        + delta_t[0] @ gram_t[0] @ delta_t[0]
+    )
+    torch.testing.assert_close(actual, predicted, rtol=2e-5, atol=1e-18)
+
+    diagonal_only = (
+        gram_s[0].diagonal() @ delta_s[0].square()
+        + gram_t[0].diagonal() @ delta_t[0].square()
+    )
+    assert (diagonal_only - actual).abs() > 10.0 * (predicted - actual).abs()
+
+
+def test_fused_gaussian_gram_matches_the_generic_gram() -> None:
+    module, store = _scattered_site(atoms=2)
+    optimizer = PullbackAdam(
+        module, moment_space="parameter", cap_sigma=0.1, metric="block"
+    )
+    expected = optimizer._metric_gram(store.live_slots())
+    actual = _gaussian_l2_metric_gram(
+        module.in_neurons.mu,
+        module.out_neurons.mu,
+        store.s,
+        store.t,
+        store.w.square(),
+        module.kernel_in.sigma,
+        module.kernel_out.sigma,
+    )
+    for got, want in zip(actual, expected, strict=True):
+        torch.testing.assert_close(got, want)
+
+
+def test_block_metric_steps_deterministically_and_follows_lifecycle() -> None:
+    runs = []
+    for _ in range(2):
+        module, store = _scattered_site()
+        optimizer = PullbackAdam(
+            module, moment_space="tangent", cap_sigma=0.1, metric="block"
+        )
+        generator = torch.Generator().manual_seed(3)
+        for _ in range(3):
+            store.s.grad = torch.randn(
+                store.s.shape, generator=generator, dtype=torch.float64
+            )
+            store.t.grad = torch.randn(
+                store.t.shape, generator=generator, dtype=torch.float64
+            )
+            optimizer.step()
+        runs.append((store.s.detach().clone(), store.t.detach().clone()))
+    torch.testing.assert_close(runs[0][0], runs[1][0], rtol=0, atol=0)
+    torch.testing.assert_close(runs[0][1], runs[1][1], rtol=0, atol=0)
+
+    module, store = _scattered_site()
+    optimizer = PullbackAdam(
+        module, moment_space="tangent", cap_sigma=0.1, metric="block"
+    )
+    store.s.grad = torch.full_like(store.s, 0.3)
+    store.t.grad = torch.full_like(store.t, -0.2)
+    optimizer.step()
+    victim = store.live_ids()[:1]
+    store.apply(
+        [
+            SynapseDeath(store.site, victim),
+            _birth(
+                store,
+                [[0.5, 0.5]],
+                [[0.5, 0.5]],
+                [1.0],
+                lineage_start=10,
+            ),
+        ]
+    )
+    for name in ("m_s", "m_t", "v_s", "v_t", "travel"):
+        assert torch.count_nonzero(getattr(optimizer, name)[0]) == 0
+    store.s.grad = torch.full_like(store.s, 0.1)
+    store.t.grad = torch.full_like(store.t, 0.1)
+    optimizer.step()
+
+
+def test_block_metric_state_rejects_a_diag_optimizer() -> None:
+    module, store = _scattered_site()
+    optimizer = PullbackAdam(
+        module, moment_space="tangent", cap_sigma=0.1, metric="block"
+    )
+    store.s.grad = torch.full_like(store.s, 0.3)
+    store.t.grad = torch.full_like(store.t, -0.2)
+    optimizer.step()
+    state = optimizer.state_dict()
+    assert state["metric"] == "block"
+
+    twin_module, _ = _scattered_site()
+    restored = PullbackAdam(
+        twin_module, moment_space="tangent", cap_sigma=0.1, metric="block"
+    )
+    restored.load_state_dict(state)
+    torch.testing.assert_close(restored.m_s, optimizer.m_s)
+
+    diag_module, _ = _scattered_site()
+    diag = PullbackAdam(diag_module, moment_space="tangent", cap_sigma=0.1)
+    with pytest.raises(ValueError, match="metric"):
+        diag.load_state_dict(state)
+
+    legacy = dict(state)
+    del legacy["metric"]  # checkpoints written before the option existed
+    with pytest.raises(ValueError, match="metric"):
+        restored.load_state_dict(legacy)
+
+
 def test_state_is_coordinate_shaped_and_checkpoint_roundtrips() -> None:
     module, store = _site(atoms=3, d_in=2)
     optimizer = PullbackAdam(
@@ -295,6 +489,10 @@ def test_rejects_ambiguous_or_unsupported_configurations() -> None:
     raw_module, _ = _site(normalized=False)
     with pytest.raises(ValueError, match="moment_space"):
         PullbackAdam(module, moment_space="current", cap_sigma=0.1)
+    with pytest.raises(ValueError, match="metric"):
+        PullbackAdam(
+            module, moment_space="parameter", cap_sigma=0.1, metric="full"
+        )
     with pytest.raises(TypeError, match="L2NormalizedColumns"):
         PullbackAdam(raw_module, moment_space="parameter", cap_sigma=0.1)
     with pytest.raises(ValueError, match="betas"):
