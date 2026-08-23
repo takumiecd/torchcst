@@ -8,8 +8,12 @@ current API documentation.
 ## User guides
 
 - [`pullback-adam.md`](pullback-adam.md) — diagonal pullback geometry,
-  parameter-space versus tangent-space moments, optimizer ownership, and the
-  moving-frame limitation.
+  parameter-space versus tangent-space moments, step calibration and the
+  structural forces (rent / pair repulsion / wall), optimizer ownership, and
+  the moving-frame limitation. Its final "Chart coordinates" section covers
+  `ChartPullbackAdam` (AM3, 2026-08-23): the chart-point metric as a sum of
+  per-incidence pullbacks, shipped in `torchcst.optim.chart` with the
+  autograd-oracle mechanism tests in `test_chart_pullback.py`.
 - [`policy-authoring.md`](policy-authoring.md) — compose a policy, add a custom
   backward statistic without editing the engine, and test both capture modes.
 - [`capture-lifecycle.md`](capture-lifecycle.md) — hook timing, deferred versus

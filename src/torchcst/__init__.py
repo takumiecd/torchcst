@@ -121,6 +121,8 @@ from .audit import (
 
 # optimizer helpers.
 from .optim import (
+    ChartPullbackAdam,
+    ChartRepulsion,
     CoordPreconditioner,
     OptimizerStateFollower,
     PairRepulsion,
@@ -183,6 +185,8 @@ __all__ = [
     "NeuronView",
     "Observation",
     "ObservationTiming",
+    "ChartPullbackAdam",
+    "ChartRepulsion",
     "CoordPreconditioner",
     "OptimizerStateFollower",
     "PeriodicCadence",

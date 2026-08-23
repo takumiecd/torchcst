@@ -104,6 +104,224 @@ Adam is basis-dependent: applying Adam after projection into tangent
 coefficients is generally different from applying dense Adam first and then
 projecting its update.
 
+## Step calibration, cap, and travel
+
+The learning rate is not a free parameter. On the first step the joint
+per-atom norm of the whitened Adam direction,
+
+$$
+\rho_k=\sqrt{\lVert(\delta s_k)\rVert^2+\lVert(\delta t_k)\rVert^2},
+$$
+
+is measured over live atoms and the scalar $\eta$ is frozen so that the
+median displacement is `target_step` in kernel-sigma units:
+
+$$
+\eta=\frac{\texttt{target\_step}\cdot\sigma}{\operatorname{median}_k\rho_k}.
+$$
+
+Every subsequent step is clipped per atom at `cap_sigma`$\cdot\sigma$ on the
+same joint $s\oplus t$ norm, and the applied displacement accumulates into
+`travel` (a per-atom path length in sigma units — net displacement from init
+is a different quantity and is deliberately not tracked here; an atom can
+have large travel and zero net displacement).
+
+## Structural forces
+
+Three optional forces ship with the optimizer. All of them act inside
+`step()`; none of them require a loss term.
+
+**Rent** (`rent=SmoothRent(...)`, amplitude ownership). The rent gradient
+joins the amplitude gradient *before* the moments,
+
+$$
+g_w \leftarrow g_w+\lambda(t)\,\frac{w}{\sqrt{w^2+\varepsilon^2}},
+$$
+
+so a price larger than the loss-gradient scale is normalized away by
+$\sqrt{v}$ — the CL1 measurement: the effective charge saturates at the
+learning rate and $\lambda$ stops being the price. `decay=` is the
+decoupled alternative in AdamW's sense, charged after the step,
+
+$$
+w \leftarrow w-\texttt{lr\_w}\cdot\texttt{decay}\cdot w,
+$$
+
+which $\sqrt{v}$ cannot eat. They compose; either one hands the amplitudes
+to this optimizer.
+
+**Pair repulsion** (`repulsion=PairRepulsion(mu)`). The potential over live
+atoms,
+
+$$
+V=\mu_r\sum_{i<j}\exp\!\left(-\tfrac{1}{2}r_{ij}^2\right),
+\qquad
+r_{ij}^2=\frac{\lVert s_i-s_j\rVert^2}{\sigma_{\mathrm{in}}^2}
+        +\frac{\lVert t_i-t_j\rVert^2}{\sigma_{\mathrm{out}}^2},
+$$
+
+contributes $-\partial V/\partial(s,t)$ to the coordinate gradient before
+whitening and before the moments. Two atoms repel only when close on
+*both* sides — exactly when their columns collide. Amplitudes do not
+enter, so the force is mass-blind. Above the pair budget the sum is
+replaced by uniformly sampled ordered pairs, an unbiased stochastic
+gradient. Because the force enters before the moments, its magnitude is
+partially normalized away like rent: $\mu_r$ decides which term wins the
+*direction* of a coordinate's step, while the step *size* stays governed
+by the target-step calibration.
+
+**Wall** (`wall=True`). After the update, coordinates are clamped
+per axis into the store's chart box. Note the wall lives in this
+optimizer: coordinates trained by any other owner are unconfined.
+
+## Chart coordinates (`ChartPullbackAdam`)
+
+Status: designed and implemented 2026-08-23 (atom-mobility arc, AM3) —
+`torchcst.optim.chart`, mechanism tests in
+`tests/torchcst/test_chart_pullback.py`. The chart sample points
+$\mu_i$ of a `NeuronStore` are shared: one chart is read by every incident
+site-side (in lm1's FFN, the hidden chart is the `up` output side and the
+`down` input side).
+
+### The map and its Jacobian
+
+In the amplitude gauge a site represents
+
+$$
+W_{ij}=\sum_k w_k\,\Phi^{\mathrm{out}}_{ik}\,\Phi^{\mathrm{in}}_{jk},
+\qquad
+\Phi^{\mathrm{out}}_{ik}=\varphi\!\left(\frac{\mu^{\mathrm{out}}_i-t_k}{\sigma}\right),
+$$
+
+with the Gaussian $\varphi(z)=\exp(-\lVert z\rVert^2/2)$. A chart point
+$\mu_i$ on the output side of one site moves **row $i$** of that site's
+$W$ and nothing else:
+
+$$
+\frac{\partial W_{ij}}{\partial\mu_{i,a}}
+=\sum_k w_k\,\Phi^{\mathrm{in}}_{jk}\,\Phi^{\mathrm{out}}_{ik}\,
+ \frac{t_{k,a}-\mu_{i,a}}{\sigma^2}
+\;=\;\sum_k \beta^{(a)}_k\,\Phi^{\mathrm{in}}_{jk},
+\qquad
+\beta^{(a)}_k=w_k\Phi^{\mathrm{out}}_{ik}\frac{t_{k,a}-\mu_{i,a}}{\sigma^2}.
+$$
+
+An input-side incidence is the transpose statement (column $i$). Since
+$\mu_i$ appears in several sites, its full Jacobian maps into the
+*product* of the incident maps, $J(\mu_i):\mathbb{R}^d\to\bigoplus_m
+\mathbb{R}^{n_m}$, and the pullback of the product (Frobenius) metric is
+the **sum of the per-incidence pullbacks**:
+
+$$
+G(\mu_i)=\sum_{m\in\mathrm{inc}(i)} J_m(\mu_i)^\top J_m(\mu_i)
+\qquad(d\times d\ \text{per neuron}).
+$$
+
+The loss gradient needs no such assembly: $\mu$ is one shared parameter,
+so autograd already delivers $\partial L/\partial\mu_i$ summed over
+incidences (the lean L2 backward ships this since MN1).
+
+### The normalization spreads the perturbation
+
+The single-row statement above holds for the *raw* columns. Under
+`L2NormalizedColumns` it does not survive: the delivered side column is
+$p=v/\lVert v\rVert$, and since $\lVert v\rVert$ contains entry $i$,
+
+$$
+\frac{\partial p}{\partial\mu_{i,a}}
+= g_a\,(e_i - p\,p_i),
+\qquad
+g_a=\frac{\partial v_i/\partial\mu_{i,a}}{\lVert v\rVert},
+\qquad
+\left\lVert\frac{\partial p}{\partial\mu_{i,a}}\right\rVert^2
+= g_a^2\,(1-p_i^2),
+$$
+
+so one chart point perturbs **every row** of its side's columns. (An
+early draft claimed cross-neuron blocks vanish exactly by disjointness of
+rows; the autograd oracle in the tests refuted it — the derivation above
+is what the oracle confirms, to machine precision on a single atom.)
+Consequences:
+
+- cross-*incidence* coupling is still exactly zero (different components
+  of the product), but within one side the cross-neuron block is
+  $-\sum_k w_k^2\,g^{(i)}g^{(j)}p_ip_j$ per atom — second order in the
+  column entries, small for peaked columns, not zero;
+- the per-neuron $d\times d$ block is therefore the same deliberate
+  block-Jacobi cut the atom metric makes, and its *within-neuron* content
+  is exact per atom through the $(1-p_i^2)$ projection;
+- chart–atom cross coupling stays neglected — the one-owner split between
+  the chart optimizer and the site optimizers.
+
+### Closed form of the per-neuron block
+
+In the delivered (normalized) gauge the other side's column has unit norm
+and the projection is the $(1-p_i^2)$ factor above, so dropping cross-atom
+terms (the same neglect the atom metric makes) the implemented block is
+
+$$
+G_{ab}(\mu_i)\;\approx\;\sum_k w_k^2\,
+f_{ik}^2\,\big(1-p_{ik}^2\big)\,
+(\mu_{i,a}-c_{k,a})(\mu_{i,b}-c_{k,b}),
+$$
+
+where $(p, f)$ are exactly the ``(unit, factor)`` pair of
+`metric.normalized_columns` for the chart-side kernel and $c$ is the
+atom coordinate on that side — the same closed-form family the atom
+metric already computes, evaluated per incidence and summed per the
+product-metric section. Per atom the direction of
+$\partial p/\partial\mu_i$ is axis-independent, so each atom contributes
+a rank-one $d\times d$ term; the sum over atoms fills the block. Under
+`L2NormalizedColumns` the normalized column obeys
+$\langle u_k,\partial u_k/\partial\mu\rangle=0$ identically (differentiate
+$\lVert u_k\rVert^2=1$), so the amplitude–chart cross block vanishes for
+the same reason the amplitude–coordinate block does for atoms.
+
+### Moments, calibration, forces
+
+Everything downstream of the metric is unchanged in form, per chart
+instead of per site: tangent or parameter moments of
+$r_t=G^{-1/2}(\mu)\,g_t^\mu$; first-step $\eta$ from the median
+per-neuron step against the chart's own $\sigma$; per-neuron cap and
+travel (single-chart norm — a neuron has no second side). The repulsion
+is the single-sided specialization
+
+$$
+V=\mu_r\sum_{i<j}\exp\!\left(-\frac{\lVert\mu_i-\mu_j\rVert^2}{2\sigma^2}\right),
+$$
+
+and the wall clamps $\mu$ into the chart box.
+
+### Kernel genericity
+
+The chart metric must be written against the kernel contract, not the
+Gaussian: `metric.normalized_columns(kernel, mu, centers)` already
+delivers `(unit, factor)` for any registered radial family through
+`profile` / `profile_grad`, and the assembly above only uses the radial
+identity $\partial\kappa/\partial c=\texttt{factor}\cdot(c-x)$. The fused
+`_gaussian_*` functions are a compiled fast path, gated on
+`isinstance(..., GaussianKernel)`, and stay optional. Known limit of the
+contract (chart and atom metrics alike): the squared distance is computed
+outside the kernel with a scalar $\sigma$, so an axis-wise-$\sigma$
+family needs the kernel to own the distance — a separate contract
+extension, not part of this design.
+
+### Ownership and the rejected alternative
+
+One chart optimizer per `NeuronStore`, holding references to the incident
+sites (for the metric only — the gradient arrives pre-summed). The
+ordinary optimizer must exclude $\mu$, exactly as it excludes
+`synapses.s`/`synapses.t` today. Charts have no lifecycle, so the
+follower contract is trivial; index charts stay buffers (only continuous
+families are learnable).
+
+The per-site-copy alternative — unsharing $\mu$ so each site owns a
+private chart — was considered and rejected: the hidden activation's
+$i$-th component would be *written* at one position and *read* at
+another, which destroys the chart-as-position semantics that spacing
+laws, neighbour overlap, ceiling analysis, and repulsion all stand on,
+and doubles the chart parameters for the privilege.
+
 ## Optimizer ownership
 
 The ordinary optimizer must exclude `synapses.s` and `synapses.t` so that each
