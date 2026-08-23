@@ -7,12 +7,16 @@ module implements:
 
 - the Jacobian of one chart point stacks into the *product* of the incident
   maps, hence the pullback metric is the **sum of per-incidence pullbacks**;
-- within the chart family the per-neuron block is exact — two chart points
-  of one side move disjoint rows (or columns), and different incidences live
-  in different product components — so unlike the atom metric, per-neuron
-  blocks are not a block-Jacobi approximation.  What stays neglected is the
-  chart-atom cross coupling, the same one-owner split the site optimizer
-  already makes;
+- cross-*incidence* coupling really is zero (different components of the
+  product), but within one side the normalization makes one chart point
+  perturb every row, so the cross-neuron block is second order in the column
+  entries rather than zero.  The per-neuron block is therefore the same
+  deliberate block-Jacobi cut the atom metric makes — an early draft claimed
+  exactness by disjointness of rows and the autograd oracle in the tests
+  refuted it.  Its within-neuron content is exact per atom, through the
+  ``(1 - p_i^2)`` projection;
+- chart-atom cross coupling stays neglected, the same one-owner split the
+  site optimizer already makes;
 - the loss gradient needs no assembly: the chart is one shared parameter
   and autograd delivers ``mu.grad`` summed over incidences.
 
