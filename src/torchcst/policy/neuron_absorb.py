@@ -16,7 +16,7 @@ gate bookkeeping (no edge to rewire, unlike a dense net's neuron merge):
     gamma_k <- gamma_k + c*
     gamma_j <- 0, row j retires
 
-``rho_jk = exp(-|mu_j - mu_k|^2 / 4*bandwidth^2)`` is the geometry factor of
+``rho_jk``, the kernel-family overlap between two rows, is the geometry factor of
 the product metric ``<f_j, f_k> = rho_jk * <sigma_j, sigma_k>_D`` (tex
 Sec.6.2). This court implements *only* the geometry factor -- the
 activation-correlation term ``<sigma_j, sigma_k>_D`` is real-batch evidence
@@ -49,25 +49,35 @@ import torch
 from torch import Tensor
 
 from torchcst._validation import require_int, require_real
+from torchcst.representation.kernels import (
+    OverlapScale,
+    pairwise_overlap,
+    require_overlap_scale,
+)
 from torchcst.storage import NeuronGateCredit, NeuronRetire, NeuronView
 
 from .bundle import ProposalBundle
 
 
-def _pairwise_rho(mu: Tensor, bandwidth: float) -> Tensor:
-    """``K x K`` geometry overlap ``exp(-|mu_i-mu_j|^2 / 4*bandwidth^2)``.
+def _pairwise_rho(mu: Tensor, scale: OverlapScale) -> Tensor:
+    """``K x K`` geometry overlap ``rho_jk`` from the kernel family.
 
-    Same closed form as the synapse-side novelty discount
+    Same overlap as the synapse-side novelty discount
     (``policy/neuron_growth.py::_novelty_discount``) and the tex note's
     Eq. for ``rho_jk``, but the full pairwise matrix rather than
     candidate-vs-reference: the live neuron population is the fixed chart
     width, small enough that a dense ``K x K`` distance matrix is cheap
     (unlike the synapse side's screened/chunked ``GramService``, which
     exists because ``K`` there can be in the tens of thousands).
+
+    ``scale`` resolves through :func:`~torchcst.representation.kernels.
+    pairwise_overlap`, so a site whose family is not Gaussian hands its
+    kernel and is priced correctly (or refused outright) instead of being
+    quoted Gaussian numbers.
     """
     coordinates = mu if mu.ndim == 2 else mu.unsqueeze(-1)
     distance2 = torch.cdist(coordinates, coordinates).square()
-    return torch.exp(-distance2 / (4.0 * bandwidth * bandwidth))
+    return pairwise_overlap(scale, distance2)
 
 
 @dataclass
@@ -86,7 +96,9 @@ class NeuronAbsorbCourt:
     the synapse side's absorb runs in its own stage before (not as part of)
     synapse retention.
 
-    ``bandwidth`` sets the geometry kernel scale (``rho_jk``'s
+    ``bandwidth`` sets the geometry kernel scale -- a bare float for the
+    Gaussian form, or the site's own :class:`~torchcst.representation.
+    ContinuousKernel` for the family-generic one (``rho_jk``'s
     ``sigma``); ``threshold`` is the minimum ``rho_jk`` for a pair to be
     considered a twin candidate at all (below it, two rows are simply
     different quadrature points and merging them would misrepresent the
@@ -104,13 +116,13 @@ class NeuronAbsorbCourt:
     retiring row in the same commit.
     """
 
-    bandwidth: float
+    bandwidth: OverlapScale
     rent: float
     threshold: float = 0.5
     requires: tuple[Any, ...] = field(default=(), init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self.bandwidth = require_real(self.bandwidth, "bandwidth", positive=True)
+        self.bandwidth = require_overlap_scale(self.bandwidth, "bandwidth")
         self.rent = require_real(self.rent, "rent", nonnegative=True)
         self.threshold = require_real(
             self.threshold, "threshold", nonnegative=True

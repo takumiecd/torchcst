@@ -120,7 +120,15 @@ from .audit import (
 )
 
 # optimizer helpers.
-from .optim import OptimizerStateFollower
+from .optim import (
+    ChartPullbackAdam,
+    ChartRepulsion,
+    CoordPreconditioner,
+    OptimizerStateFollower,
+    PairRepulsion,
+    PullbackAdam,
+    SmoothRent,
+)
 
 __all__ = [
     "Accounting",
@@ -177,9 +185,15 @@ __all__ = [
     "NeuronView",
     "Observation",
     "ObservationTiming",
+    "ChartPullbackAdam",
+    "ChartRepulsion",
+    "CoordPreconditioner",
     "OptimizerStateFollower",
     "PeriodicCadence",
     "ProfitCourt",
+    "PairRepulsion",
+    "PullbackAdam",
+    "SmoothRent",
     "RETIRED",
     "RentMargin",
     "RepresentationSpec",

@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import torch
 from torch import Tensor, nn
 
-from torchcst.representation import Box, ContinuousKernel
+from torchcst.representation import (
+    Amplitude,
+    AmplitudeGauge,
+    Box,
+    ContinuousKernel,
+    require_gauge,
+)
 from torchcst.storage import NeuronStore, SynapseStore, SynapseView
 
 from .backends.factored import apply_rows
@@ -45,6 +53,7 @@ class _ContinuousCSTMap(nn.Module):
         kernel_out: ContinuousKernel | None = None,
         *,
         track_mass: bool = True,
+        gauge: AmplitudeGauge | None = None,
     ) -> None:
         super().__init__()
         if not isinstance(track_mass, bool):
@@ -85,6 +94,12 @@ class _ContinuousCSTMap(nn.Module):
         self.synapses = synapses
         self.kernel_in = kernel
         self.kernel_out = kernel if kernel_out is None else kernel_out
+        # Which half of `w * ||k||` this site's stored number is. Under the
+        # default the parameter is the amplitude and the columns arrive as
+        # cast; under L2NormalizedColumns it is the atom's mass in W, the
+        # quantity rent already prices, and the coordinate's norm-escape back
+        # door is algebraically absent rather than merely small.
+        self.gauge = Amplitude() if gauge is None else require_gauge(gauge, "gauge")
         self.in_features = in_neurons.n_max
         self.out_features = out_neurons.n_max
         self.capture_site = synapses.site
@@ -194,10 +209,43 @@ class _ContinuousCSTMap(nn.Module):
     def capture_enabled(self) -> bool:
         return self._backward_context is not None
 
-    def _kernel_matrices(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
+    def _live_columns(self) -> dict[str, Tensor]:
+        """Kernel-declared per-atom columns, packed to live rows like ``s``.
+
+        Empty for every family that declares none, which is why the kernel
+        call below is byte-identical for the built-in families.
+        """
+        names = self.synapses.atom_column_names
+        if not names:
+            return {}
+        slots = self._cached_slots.to(device=self.synapses.w.device)
+        return {
+            name: getattr(self.synapses, name).index_select(0, slots)
+            for name in names
+        }
+
+    def _kernel_matrices(
+        self,
+        source: Tensor,
+        target: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> tuple[Tensor, Tensor]:
+        """Kernel columns for atom rows ``source``/``target``.
+
+        ``columns`` defaults to the *full* live column set, which is correct
+        only when ``source``/``target`` are the full live rows.  A caller that
+        passes a row subset -- the chunked evidence path below -- must slice
+        the columns the same way; a mismatch raises in the kernel rather than
+        silently pairing an atom with another atom's frequency.
+        """
+        if columns is None:
+            columns = self._live_columns()
         in_mu = self.in_neurons.mu.to(device=source.device, dtype=source.dtype)
         out_mu = self.out_neurons.mu.to(device=target.device, dtype=target.dtype)
-        return self.kernel_in(in_mu, source), self.kernel_out(out_mu, target)
+        return (
+            self.gauge.columns(self.kernel_in, in_mu, source, columns),
+            self.gauge.columns(self.kernel_out, out_mu, target, columns),
+        )
 
     def _current_mass_signature(self) -> tuple[int, ...]:
         return (
@@ -314,12 +362,18 @@ class _ContinuousCSTMap(nn.Module):
             return self.synapses.w.detach().new_zeros(0).to(x_flat)
         source = source.detach().to(device=x_flat.device, dtype=x_flat.dtype)
         target = target.detach().to(device=g_flat.device, dtype=g_flat.dtype)
+        live_columns = self._live_columns()
         values: list[Tensor] = []
         with torch.no_grad():
             for start in range(0, count, chunk_size):
                 stop = min(start + chunk_size, count)
                 k_in, k_out = self._kernel_matrices(
-                    source[start:stop], target[start:stop]
+                    source[start:stop],
+                    target[start:stop],
+                    {
+                        name: value[start:stop]
+                        for name, value in live_columns.items()
+                    },
                 )
                 values.append(
                     ((x_flat @ k_in) * (g_flat @ k_out)).sum(dim=0)

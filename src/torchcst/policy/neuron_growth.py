@@ -8,16 +8,23 @@ from typing import Any
 import torch
 
 from torchcst._validation import require_int, require_real
+from torchcst.representation.kernels import (
+    OverlapScale,
+    pairwise_overlap,
+    require_overlap_scale,
+)
 from torchcst.instruments.gate import GateTangentRequest
 from torchcst.storage import NeuronStore, NeuronUngate
 
 
 def _novelty_discount(
-    candidate: torch.Tensor, reference: torch.Tensor, bandwidth: float
+    candidate: torch.Tensor, reference: torch.Tensor, scale: OverlapScale
 ) -> torch.Tensor:
     """Per-candidate ``(1 - rho_max**2)`` against reference row coordinates.
 
-    ``rho_ck = exp(-|mu_c-mu_k|^2/4*bandwidth^2)`` is the geometry-only
+    ``rho_ck``, the kernel-family overlap (:func:`~torchcst.representation.
+    kernels.pairwise_overlap`, so ``scale`` may be a bare Gaussian bandwidth
+    or the site's own kernel), is the geometry-only
     coordinate overlap between dormant candidate ``c`` and live row ``k``
     (twin-control.md Sec.3's ladder, applied to the neuron measure per
     Sec.4). This is rung 1 only: it omits the activation-correlation factor
@@ -33,7 +40,7 @@ def _novelty_discount(
     if reference.ndim == 1:
         reference = reference.unsqueeze(-1)
     distance = torch.cdist(candidate, reference.to(candidate)).square()
-    rho = torch.exp(-distance / (4.0 * bandwidth * bandwidth))
+    rho = pairwise_overlap(scale, distance)
     rho_max = rho.max(dim=1).values
     return (1.0 - rho_max.square()).clamp(0.0, 1.0)
 
@@ -56,7 +63,8 @@ class GammaUngate:
     rather than by truncating it up front.  ``gate_scale`` reinstates the cap
     for experiments that want it.
 
-    ``novelty``, when set to a kernel bandwidth ``sigma``, opts into the
+    ``novelty``, when set to a kernel bandwidth ``sigma`` (or to the site's
+    own kernel, for a family-generic overlap), opts into the
     gain_perp-style novelty discount from twin-control.md Sec.3/Sec.4: the
     selection field (``|dL/dgamma|``) for each dormant candidate is
     multiplied by ``(1 - rho_max**2)``, where ``rho_max`` is its largest
@@ -73,7 +81,7 @@ class GammaUngate:
     curvature_floor: float = 1.0e-12
     ridge: float = 1.0e-4
     gate_scale: float | None = None
-    novelty: float | None = None
+    novelty: OverlapScale | None = None
     requires: tuple[GateTangentRequest, ...] = field(init=False)
     _instruments: dict[str, Any] = field(default_factory=dict, init=False)
 
@@ -87,7 +95,7 @@ class GammaUngate:
                 self.gate_scale, "gate_scale", positive=True
             )
         if self.novelty is not None:
-            self.novelty = require_real(self.novelty, "novelty", positive=True)
+            self.novelty = require_overlap_scale(self.novelty, "novelty")
         self.requires = (self.request,)
 
     def bind_instruments(self, site: str, instruments: dict[str, Any]) -> None:

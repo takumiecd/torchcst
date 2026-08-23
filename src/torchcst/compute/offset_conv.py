@@ -106,10 +106,11 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         stride: int | tuple[int, int] = 1,
         track_mass: bool = True,
         backend="auto",
+        gauge=None,
     ) -> None:
         super().__init__(
             in_neurons, out_neurons, synapses, kernel, kernel_out,
-            track_mass=track_mass,
+            track_mass=track_mass, gauge=gauge,
         )
         self.chart_d_in = synapses.d_in - self.input_offset_axes
         self.stride = _positive_pair(stride, "stride")
@@ -137,6 +138,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
             kernel_in=self.kernel_in,
             kernel_out=self.kernel_out,
             track_mass=track_mass,
+            gauge=self.gauge,
         )
         if backend == "auto":
             backend = Materialized()
@@ -255,13 +257,17 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
 
     # -- representation --------------------------------------------------------
 
-    def _kernel_matrices(self, source: Tensor, target: Tensor):
+    def _kernel_matrices(self, source: Tensor, target: Tensor, columns=None):
         """Kernel columns over the chart axes only; Δ axes act via stencils."""
+        if columns is None:
+            columns = self._live_columns()
         in_mu = self.in_neurons.mu.to(device=source.device, dtype=source.dtype)
         out_mu = self.out_neurons.mu.to(device=target.device, dtype=target.dtype)
         return (
-            self.kernel_in(in_mu, source[:, : self.chart_d_in]),
-            self.kernel_out(out_mu, target),
+            self.gauge.columns(
+                self.kernel_in, in_mu, source[:, : self.chart_d_in], columns
+            ),
+            self.gauge.columns(self.kernel_out, out_mu, target, columns),
         )
 
     def _stencil(self, source: Tensor) -> Tensor:

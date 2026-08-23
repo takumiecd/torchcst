@@ -8,7 +8,7 @@ maintenance, serialization.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping, Sequence
 
 import math
@@ -18,10 +18,10 @@ from torch import Tensor, nn
 
 from torchcst._validation import as_id_vector, cat_or_empty
 from torchcst.representation import (
-    CONTINUOUS_KERNELS,
     ParameterRole,
     RepresentationSpec,
 )
+from torchcst.representation.kernels import continuous_family_names
 
 from .mechanics import (
     AgeColumn,
@@ -82,17 +82,27 @@ class SynapseView:
     domain_out: object | None = None
     retired_in: Tensor | None = None
     retired_out: Tensor | None = None
+    extras: Mapping[str, Tensor] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class SynapseBirth:
-    """Synapse birth op carrying coordinates, weights, and candidate lineages."""
+    """Synapse birth op carrying coordinates, weights, and candidate lineages.
+
+    ``extras`` carries the per-atom columns the site's kernel family declares
+    (:class:`~torchcst.representation.AtomColumn`), keyed by column name and
+    shaped ``[count, width]``.  A column left out is born at the column's
+    declared ``init``, so a policy that knows nothing about a family's extra
+    parameters keeps proposing plain ``(s, t, w)`` births and simply gets
+    atoms at the neutral value.
+    """
 
     site: str
     s: Tensor
     t: Tensor
     w: Tensor
     lineage: Tensor
+    extras: Mapping[str, Tensor] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -207,6 +217,7 @@ class _SynapseBatch:
     slot_plan: SlotPlan
     absorbs: _AbsorbBatch
     refits: _RefitBatch
+    extras: Mapping[str, Tensor] = field(default_factory=dict)
 
 
 class SynapseStore(nn.Module):
@@ -345,6 +356,26 @@ class SynapseStore(nn.Module):
         self.register_buffer(
             "mass_scale", torch.ones(capacity, dtype=mass_dtype, device=device)
         )
+        # Kernel-declared per-atom columns.  An empty declaration -- every
+        # built-in family -- installs nothing, so the store below this line is
+        # exactly the (s, t, w) store it has always been.
+        self._atom_columns = tuple(self.spec.atom_columns())
+        self._atom_widths = {
+            column.name: column.resolve_width(d_in, d_out)
+            for column in self._atom_columns
+        }
+        for column in self._atom_columns:
+            self._install_coordinate(
+                column.name,
+                capacity,
+                self._atom_widths[column.name],
+                column.role,
+                device,
+                weight_dtype,
+            )
+            if column.init:
+                with torch.no_grad():
+                    getattr(self, column.name).fill_(column.init)
         self._version = 0
         self._next_lineage = 0
 
@@ -375,6 +406,11 @@ class SynapseStore(nn.Module):
     # ---- properties and views --------------------------------------------
 
     @property
+    def atom_column_names(self) -> tuple[str, ...]:
+        """Names of the kernel-declared per-atom columns this store installed."""
+        return tuple(self._atom_widths)
+
+    @property
     def version(self) -> int:
         """The last committed structural version."""
         return self._version
@@ -392,6 +428,15 @@ class SynapseStore(nn.Module):
     def live_ids(self) -> Tensor:
         """Live entity IDs in physical-slot order."""
         return self._slots.ids_of(self._slots.live_slots)
+
+    def live_slots(self) -> Tensor:
+        """Physical slot indices of live atoms (CPU, int64).
+
+        For slot-indexed auxiliary state (optimizer moments, preconditioner
+        momentum): dead slots hold stale rows, so any per-slot statistic --
+        a median, a norm -- must be restricted to these indices.
+        """
+        return self._slots.live_slots.clone()
 
     def ages_of(self, ids: Tensor) -> Tensor:
         """Structural ages of live entities, aligned with ``ids``."""
@@ -428,6 +473,10 @@ class SynapseStore(nn.Module):
             bounds_out=getattr(self.spec.domain_out, "bounds", None),
             domain_in=self.spec.domain_in,
             domain_out=self.spec.domain_out,
+            extras={
+                name: getattr(self, name).index_select(0, slots)
+                for name in self._atom_widths
+            },
         )
 
     # ---- prepare: validate and freeze ------------------------------------
@@ -789,7 +838,63 @@ class SynapseStore(nn.Module):
             slot_plan=slot_plan,
             absorbs=absorbs,
             refits=refits,
+            extras=self._freeze_extras(births),
         )
+
+    def _freeze_extras(self, births: list[SynapseBirth]) -> dict[str, Tensor]:
+        """Pack each declared column across the ticket's births.
+
+        A birth that omits a declared column contributes that column's
+        ``init``; a birth that names an undeclared one is a typo and raises
+        rather than being dropped silently.
+        """
+        if not self._atom_columns:
+            for op in births:
+                if op.extras:
+                    raise ValueError(
+                        f"SynapseBirth carries extras {sorted(op.extras)} but "
+                        f"the {self.spec.kernel_in!r} family declares none"
+                    )
+            return {}
+        declared = set(self._atom_widths)
+        for op in births:
+            unknown = set(op.extras or ()) - declared
+            if unknown:
+                raise ValueError(
+                    f"SynapseBirth extras {sorted(unknown)} are not declared by "
+                    f"the {self.spec.kernel_in!r} family"
+                )
+        packed: dict[str, Tensor] = {}
+        for column in self._atom_columns:
+            width = self._atom_widths[column.name]
+            reference = getattr(self, column.name)
+            pieces: list[Tensor] = []
+            for op in births:
+                count = int(op.w.shape[0])
+                value = (op.extras or {}).get(column.name)
+                if value is None:
+                    pieces.append(
+                        reference.detach().new_full((count, width), column.init)
+                    )
+                    continue
+                if not isinstance(value, Tensor):
+                    raise TypeError(
+                        f"SynapseBirth extras[{column.name!r}] must be a Tensor"
+                    )
+                if value.ndim != 2 or tuple(value.shape) != (count, width):
+                    raise ValueError(
+                        f"SynapseBirth extras[{column.name!r}] must have shape "
+                        f"[{count}, {width}]"
+                    )
+                pieces.append(value.detach().to(reference).clone())
+            packed[column.name] = torch.cat(pieces)
+        return packed
+
+    def _empty_extras(self) -> dict[str, Tensor]:
+        return {
+            name: getattr(self, name).detach().new_zeros((0, width))
+            for name, width in self._atom_widths.items()
+        }
 
     def _empty_batch(
         self, slot_plan: SlotPlan, absorbs: _AbsorbBatch, refits: _RefitBatch
@@ -802,6 +907,7 @@ class SynapseStore(nn.Module):
             slot_plan=slot_plan,
             absorbs=absorbs,
             refits=refits,
+            extras=self._empty_extras(),
         )
 
     def _empty_ticket(self) -> Ticket:
@@ -899,16 +1005,24 @@ class SynapseStore(nn.Module):
                 self.t.index_fill_(0, dead, 0)
                 self.w.index_fill_(0, dead, 0.0)
                 self.mass_scale.index_fill_(0, dead.to(self.mass_scale.device), 1.0)
+                for name in self._atom_widths:
+                    getattr(self, name).index_fill_(0, dead, 0)
             if born.numel():
                 self.s.index_copy_(0, born, batch.s)
                 self.t.index_copy_(0, born, batch.t)
                 self.w.index_copy_(0, born, batch.w)
                 self.mass_scale.index_fill_(0, born.to(self.mass_scale.device), 1.0)
+                for name in self._atom_widths:
+                    getattr(self, name).index_copy_(0, born, batch.extras[name])
 
     def _grow(self, new_capacity: int) -> None:
         old_capacity = self.capacity
         self._grow_coordinate(self.s, new_capacity, self.d_in, old_capacity)
         self._grow_coordinate(self.t, new_capacity, self.d_out, old_capacity)
+        for name, width in self._atom_widths.items():
+            self._grow_coordinate(
+                getattr(self, name), new_capacity, width, old_capacity
+            )
         with torch.no_grad():
             self._resize_in_place(self.w, (new_capacity,), old_capacity)
             scale = self.mass_scale.new_ones((new_capacity,))
@@ -968,7 +1082,7 @@ class SynapseStore(nn.Module):
         """
         if (
             self.spec.kernel_in != self.spec.kernel_out
-            or self.spec.kernel_in not in CONTINUOUS_KERNELS
+            or self.spec.kernel_in not in continuous_family_names()
         ):
             raise RuntimeError(
                 "mass_scale is fixed at one outside the continuous families"

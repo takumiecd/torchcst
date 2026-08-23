@@ -18,20 +18,122 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
+from ..._geometry import squared_distance_matrix, squared_norm_last
+
 
 def gaussian_columns(mu: Tensor, coords: Tensor, sigma: Tensor) -> Tensor:
     """``exp(-|mu_f - coord_k|^2 / 2 sigma^2)`` as ``[features, K]``."""
     return torch.exp(
-        -(mu[:, None, :] - coords[None]).square().sum(-1)
-        / (2.0 * sigma.square())
+        -squared_distance_matrix(mu, coords) / (2.0 * sigma.square())
     )
 
 
 def _gaussian_pieces(mu: Tensor, coords: Tensor, sigma: Tensor):
     """(values, mu - coord, squared distance) for analytic derivatives."""
     diff = mu[:, None, :] - coords[None]
-    d2 = diff.square().sum(-1)
+    d2 = squared_norm_last(diff)
     return torch.exp(-d2 / (2.0 * sigma.square())), diff, d2
+
+
+def normalized_gaussian_columns(mu: Tensor, coords: Tensor, sigma: Tensor) -> Tensor:
+    """Stable unit-L2 Gaussian columns as ``[features, K]``.
+
+    Subtracting the nearest squared distance only rescales a column.  The
+    following normalisation removes that scale exactly while keeping a value
+    of one in every non-empty column, so remote atoms cannot underflow before
+    they are normalised.
+    """
+    d2 = squared_distance_matrix(mu, coords)
+    values = torch.exp(
+        -(d2 - d2.amin(dim=0, keepdim=True)) / (2.0 * sigma.square())
+    )
+    return values / torch.linalg.vector_norm(values, dim=0, keepdim=True)
+
+
+def _normalized_gaussian_pieces(mu: Tensor, coords: Tensor, sigma: Tensor):
+    """(unit columns, mu - coord, centered squared distance).
+
+    Centering ``d2`` is a per-column scale choice.  Its derivative lies in the
+    radial column direction and is therefore deleted by the unit-sphere
+    tangent projection in :func:`_normalized_column_backward`.
+    """
+    diff = mu[:, None, :] - coords[None]
+    d2 = squared_norm_last(diff)
+    centered = d2 - d2.amin(dim=0, keepdim=True)
+    values = torch.exp(-centered / (2.0 * sigma.square()))
+    unit = values / torch.linalg.vector_norm(values, dim=0, keepdim=True)
+    return unit, diff, centered
+
+
+def _normalized_column_backward(
+    unit: Tensor,
+    grad_unit: Tensor,
+    diff: Tensor,
+    centered_d2: Tensor,
+    sigma: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """Atom, chart and bandwidth gradients of unit Gaussian columns.
+
+    For ``u = k / ||k||``, the differential is
+    ``du = (I - uu.T) dk / ||k||``.  Multiplying the projected gradient by
+    ``dk = k dlog(k)`` cancels ``||k||`` and leaves the stable score below;
+    the unnormalised, potentially underflowing Gaussian is never needed.
+
+    The same projection is what lets ``centered_d2``'s own dependence on the
+    chart be dropped: subtracting a per-column minimum rescales the column,
+    and a radial change is exactly what ``(I - uu.T)`` deletes -- for the
+    chart's points as much as for the atoms'.
+    """
+    tangent = grad_unit - unit * (unit * grad_unit).sum(dim=0, keepdim=True)
+    score = unit * tangent
+    weighted = score[:, :, None] * diff
+    # ``diff`` is ``mu - coord``, so the two endpoints of one distance differ
+    # only in which axis is summed and in sign: the atom gathers over the
+    # chart's points, a chart point gathers over the atoms.  The expensive
+    # part is already built, so carrying the chart's gradient costs one more
+    # reduction of a tensor that had to exist anyway.
+    grad_coord = weighted.sum(0) / sigma.square()
+    grad_mu = -weighted.sum(1) / sigma.square()
+    grad_sigma = (score * centered_d2).sum() / sigma.pow(3)
+    return grad_coord, grad_mu, grad_sigma
+
+
+_compiled_normalized_gaussian_pieces = None
+_compiled_normalized_column_backward = None
+_compiled_normalized_gaussian_columns = None
+
+
+def _l2_forward_columns(
+    compiled: bool, mu: Tensor, coords: Tensor, sigma: Tensor
+) -> Tensor:
+    """Build normalized columns eagerly or with a lazily fused CUDA graph."""
+    if not compiled or not coords.is_cuda:
+        return normalized_gaussian_columns(mu, coords, sigma)
+    global _compiled_normalized_gaussian_columns
+    if _compiled_normalized_gaussian_columns is None:
+        _compiled_normalized_gaussian_columns = torch.compile(
+            normalized_gaussian_columns, fullgraph=True
+        )
+    return _compiled_normalized_gaussian_columns(mu, coords, sigma)
+
+
+def _l2_backward_helpers(compiled: bool, source: Tensor):
+    """Return eager or lazily Inductor-fused L2 backward primitives."""
+    if not compiled or not source.is_cuda:
+        return _normalized_gaussian_pieces, _normalized_column_backward
+    global _compiled_normalized_gaussian_pieces
+    global _compiled_normalized_column_backward
+    if _compiled_normalized_gaussian_pieces is None:
+        _compiled_normalized_gaussian_pieces = torch.compile(
+            _normalized_gaussian_pieces, fullgraph=True
+        )
+        _compiled_normalized_column_backward = torch.compile(
+            _normalized_column_backward, fullgraph=True
+        )
+    return (
+        _compiled_normalized_gaussian_pieces,
+        _compiled_normalized_column_backward,
+    )
 
 
 def linear_weight(
@@ -50,6 +152,22 @@ def linear_weight(
     return scaled @ k_in.transpose(0, 1)
 
 
+def reject_learnable_chart(*charts: Tensor) -> None:
+    """Refuse a learnable ``mu`` the lean backward cannot differentiate.
+
+    The lean materializations hand back ``None`` for the chart coordinates,
+    which autograd reads as "no gradient" rather than as an error: a chart
+    made learnable here would train nothing and say nothing about it.  A
+    learnable chart belongs on the plain autograd build (``lean=False``)
+    until the closed forms carry ``mu`` too.
+    """
+    if any(chart is not None and chart.requires_grad for chart in charts):
+        raise NotImplementedError(
+            "a learnable neuron chart needs the autograd build: pass "
+            "Materialized(lean=False), whose backward differentiates mu"
+        )
+
+
 class LeanLinearMaterialize(torch.autograd.Function):
     """Atoms -> dense ``[out, in]`` weight with closed-form chunked backward.
 
@@ -63,6 +181,7 @@ class LeanLinearMaterialize(torch.autograd.Function):
     @staticmethod
     def forward(ctx, source, target, weights, mu_in, mu_out, sigma_in,
                 sigma_out, compute_dtype):
+        reject_learnable_chart(mu_in, mu_out)
         n_out, n_in = mu_out.shape[0], mu_in.shape[0]
         weight = source.new_zeros(n_out, n_in)
         with torch.no_grad():
@@ -108,6 +227,100 @@ class LeanLinearMaterialize(torch.autograd.Function):
         return (g_source, g_target, g_w, None, None, g_sig_in, g_sig_out, None)
 
 
+class LeanL2LinearMaterialize(torch.autograd.Function):
+    """Exact chunked materialisation for unit-L2 Gaussian columns.
+
+    Like :class:`LeanLinearMaterialize`, this builds the transient dense
+    weight but retains only atom parameters.  Backward recomputes one chunk of
+    normalised columns and applies the unit-sphere tangent projection, avoiding
+    the full autograd path's ``[features, K, d]`` broadcasts.
+    """
+
+    CHUNK = 4096
+    FULL_FORWARD_COLUMN_LIMIT = 32 * 1024 * 1024
+
+    @staticmethod
+    def forward(ctx, source, target, weights, mu_in, mu_out, sigma_in,
+                sigma_out, compute_dtype, compile_backward):
+        n_out, n_in = mu_out.shape[0], mu_in.shape[0]
+        weight = source.new_zeros(n_out, n_in)
+        with torch.no_grad():
+            column_elements = source.shape[0] * (n_in + n_out)
+            if column_elements <= LeanL2LinearMaterialize.FULL_FORWARD_COLUMN_LIMIT:
+                ki = _l2_forward_columns(
+                    compile_backward, mu_in, source, sigma_in
+                )
+                ko = _l2_forward_columns(
+                    compile_backward, mu_out, target, sigma_out
+                )
+                weight = linear_weight(ki, ko, weights, compute_dtype)
+            else:
+                for start in range(
+                    0, source.shape[0], LeanL2LinearMaterialize.CHUNK
+                ):
+                    sl = slice(start, start + LeanL2LinearMaterialize.CHUNK)
+                    ki = _l2_forward_columns(
+                        compile_backward, mu_in, source[sl], sigma_in
+                    )
+                    ko = _l2_forward_columns(
+                        compile_backward, mu_out, target[sl], sigma_out
+                    )
+                    weight += linear_weight(ki, ko, weights[sl], compute_dtype)
+        ctx.save_for_backward(source, target, weights, mu_in, mu_out,
+                              sigma_in, sigma_out)
+        ctx.compile_backward = bool(compile_backward)
+        return weight
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        source, target, weights, mu_in, mu_out, sigma_in, sigma_out = (
+            ctx.saved_tensors
+        )
+        g_source = torch.zeros_like(source)
+        g_target = torch.zeros_like(target)
+        g_w = torch.zeros_like(weights)
+        g_sig_in = torch.zeros_like(sigma_in)
+        g_sig_out = torch.zeros_like(sigma_out)
+        # Every chunk of atoms touches every chart point, so the chart
+        # gradients accumulate across the loop rather than being written per
+        # slice the way the atoms' are.
+        learn_charts = mu_in.requires_grad or mu_out.requires_grad
+        g_mu_in = torch.zeros_like(mu_in) if learn_charts else None
+        g_mu_out = torch.zeros_like(mu_out) if learn_charts else None
+        pieces, column_backward = _l2_backward_helpers(
+            ctx.compile_backward, source
+        )
+        for start in range(0, source.shape[0], LeanL2LinearMaterialize.CHUNK):
+            sl = slice(start, start + LeanL2LinearMaterialize.CHUNK)
+            w = weights[sl]
+            ki, diff_in, d2_in = pieces(
+                mu_in, source[sl], sigma_in
+            )
+            ko, diff_out, d2_out = pieces(
+                mu_out, target[sl], sigma_out
+            )
+            m_in = grad_out.transpose(0, 1) @ ko
+            m_out = grad_out @ ki
+            g_w[sl] = (m_in * ki).sum(0)
+            g_source[sl], chunk_mu_in, chunk_sig_in = column_backward(
+                ki, m_in * w[None], diff_in, d2_in, sigma_in
+            )
+            g_target[sl], chunk_mu_out, chunk_sig_out = column_backward(
+                ko, m_out * w[None], diff_out, d2_out, sigma_out
+            )
+            g_sig_in = g_sig_in + chunk_sig_in
+            g_sig_out = g_sig_out + chunk_sig_out
+            if learn_charts:
+                g_mu_in = g_mu_in + chunk_mu_in
+                g_mu_out = g_mu_out + chunk_mu_out
+        return (
+            g_source, g_target, g_w,
+            g_mu_in if mu_in.requires_grad else None,
+            g_mu_out if mu_out.requires_grad else None,
+            g_sig_in, g_sig_out, None, None,
+        )
+
+
 def bilinear_pieces(delta: Tensor, lo, hi, r: int):
     """Shared stencil decomposition: cells, fractional weights, box mask."""
     dy_raw, dx_raw = delta[:, 0], delta[:, 1]
@@ -145,6 +358,7 @@ class LeanConvMaterialize(torch.autograd.Function):
     @staticmethod
     def forward(ctx, source, target, weights, mu_in, mu_out, sigma_in,
                 sigma_out, chart_d, r_int, off_lo, off_hi, compute_dtype):
+        reject_learnable_chart(mu_in, mu_out)
         span = 2 * r_int + 1
         n_out, n_in = mu_out.shape[0], mu_in.shape[0]
         weight = source.new_zeros(n_out, n_in, span * span)

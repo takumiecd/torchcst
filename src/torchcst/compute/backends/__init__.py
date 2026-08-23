@@ -31,6 +31,8 @@ from dataclasses import dataclass
 
 import torch
 
+from torchcst.representation import Amplitude, L2NormalizedColumns
+
 
 @dataclass(frozen=True)
 class Factored:
@@ -51,10 +53,15 @@ class Materialized:
 
     lean: bool = False
     compute_dtype: torch.dtype | None = None
+    compile_l2: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.lean, bool):
             raise TypeError("lean must be a bool")
+        if not isinstance(self.compile_l2, bool):
+            raise TypeError("compile_l2 must be a bool")
+        if self.compile_l2 and not self.lean:
+            raise ValueError("compile_l2 requires lean=True")
         if self.compute_dtype is not None and (
             not isinstance(self.compute_dtype, torch.dtype)
             or not self.compute_dtype.is_floating_point
@@ -88,12 +95,16 @@ class NativeTruncated:
 Backend = Factored | Materialized | NativeTruncated
 
 
-def validate_backend(backend, *, kernel_in, kernel_out, track_mass):
+def validate_backend(backend, *, kernel_in, kernel_out, track_mass, gauge=None):
     """Check a module's backend choice against its site; return it.
 
     The closed-form backends (lean materialization, native truncated)
     hard-require Gaussian kernels (analytic derivatives) and
     ``track_mass=False`` (mass would rebuild the full kernel matrices).
+    Lean linear materialisation also supports unit-L2 Gaussian columns: their
+    norms and tangent-projected derivatives are computed one chunk at a time.
+    Native truncation still requires the amplitude gauge because an exact
+    normalising gauge needs the complete feature column.
     """
     if backend == "auto":
         return backend
@@ -111,6 +122,20 @@ def validate_backend(backend, *, kernel_in, kernel_out, track_mass):
             raise ValueError(f"{name} requires Gaussian kernels")
         if track_mass:
             raise ValueError(f"{name} requires track_mass=False")
+        allowed_gauge = isinstance(gauge, Amplitude) or (
+            isinstance(backend, Materialized)
+            and backend.lean
+            and isinstance(gauge, L2NormalizedColumns)
+        )
+        if gauge is not None and not allowed_gauge:
+            raise ValueError(
+                f"{name} requires the Amplitude gauge; exact normalisation "
+                "is only available in lean linear materialisation"
+            )
+        if isinstance(backend, Materialized) and backend.compile_l2 and not isinstance(
+            gauge, L2NormalizedColumns
+        ):
+            raise ValueError("compile_l2 requires the L2NormalizedColumns gauge")
     return backend
 
 

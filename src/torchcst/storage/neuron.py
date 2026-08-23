@@ -113,9 +113,15 @@ class _NeuronBatch:
 class NeuronStore(nn.Module):
     """A fixed-width chart whose entity IDs are stable chart indices.
 
-    ``mu`` is deliberately a buffer: learnable neuron coordinates are not
-    supported, and a parameter (or grad-requiring) ``mu`` is rejected here
-    instead of being silently registered.
+    ``mu`` is a buffer unless it arrives as a ``nn.Parameter`` (or otherwise
+    requires grad), which makes the chart's sample points learnable alongside
+    the atoms.  An index chart -- ``mu=None``, or an integer ``mu`` -- is
+    always a buffer: for an entry or rank-one family the coordinate *is* the
+    basis index, and torch will not let an integer tensor carry a gradient in
+    any case.
+
+    A learnable chart is only honoured by backends that differentiate through
+    it; the lean materializations refuse one rather than freeze it silently.
     """
 
     DEFAULT_UNGATE = 1.0e-3
@@ -128,6 +134,7 @@ class NeuronStore(nn.Module):
         sigma: float,
         *,
         dim: int | None = None,
+        spacing: float | None = None,
         axis_extent: float | None = None,
         generator: torch.Generator | None = None,
         device: torch.device | str | None = None,
@@ -143,12 +150,25 @@ class NeuronStore(nn.Module):
         :meth:`torchcst.storage.SynapseStore.between`, which derives its
         domains from the populations it connects.
 
+        ``spacing`` is the chart law's own dial (neuron spacing in σ units);
+        ``axis_extent`` is the pre-spacing-law dial kept for callers that
+        still speak extent — it is the per-axis extent in σ units, and is
+        translated to the spacing it implies (``axis_extent / n**(1/dim)``)
+        before proposing.  Passing both is a contradiction and raises.
+
         Populations with data-pinned geometry (pixels, taps) must not use
         this — pass the data's own coordinates to the constructor instead.
         """
         from torchcst.representation import propose_chart
 
-        extra = {} if axis_extent is None else {"axis_extent": axis_extent}
+        if spacing is not None and axis_extent is not None:
+            raise ValueError("pass spacing or axis_extent, not both")
+        extra = {} if spacing is None else {"spacing": spacing}
+        if axis_extent is not None:
+            from torchcst.representation.proposal import DEFAULT_DIM
+
+            chosen = DEFAULT_DIM if dim is None else dim
+            extra = {"spacing": axis_extent / n ** (1.0 / chosen)}
         proposal = propose_chart(n, sigma, dim=dim, **extra)
         rng = generator if generator is not None else torch.Generator()
         mu = proposal.box.sample(n, rng)
@@ -176,10 +196,9 @@ class NeuronStore(nn.Module):
         weight_dtype = dtype if dtype is not None else torch.get_default_dtype()
         if not weight_dtype.is_floating_point:
             raise TypeError("neuron gates require a floating dtype")
-        if isinstance(mu, nn.Parameter) or (
+        learnable = isinstance(mu, nn.Parameter) or (
             isinstance(mu, Tensor) and mu.requires_grad
-        ):
-            raise TypeError("learnable mu is not supported; mu must be a plain Tensor")
+        )
         if mu is None:
             coordinate = torch.arange(n_max, dtype=torch.int64, device=device)
         else:
@@ -188,7 +207,16 @@ class NeuronStore(nn.Module):
             if mu.ndim == 0 or mu.shape[0] != n_max:
                 raise ValueError("mu's leading dimension must equal n_max")
             coordinate = mu.detach().to(device=device).clone()
-        self.register_buffer("mu", coordinate)
+        if learnable:
+            # The sample points of a continuous chart are coordinates like
+            # any other, and the design has always said so (a fixed mu is the
+            # entry/rank-one case).  What kept them frozen was that the lean
+            # materialization backends return no gradient for mu at all, so a
+            # Parameter there would train nothing and say nothing; those
+            # backends now refuse a learnable chart instead.
+            self.mu = nn.Parameter(coordinate)
+        else:
+            self.register_buffer("mu", coordinate)
 
         live_mask = self._initial_live_mask(initial_live, n_max)
         state = torch.full(
