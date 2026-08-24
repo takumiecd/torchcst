@@ -15,6 +15,8 @@ traffic and watching conv1's error fall from 0.36 to 0.16.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import torch
 from torch import Tensor
 
@@ -49,7 +51,12 @@ def columns(kernel, mu: Tensor, centers: Tensor) -> tuple[Tensor, Tensor]:
     )
 
 
-def normalized_columns(kernel, mu: Tensor, centers: Tensor) -> tuple[Tensor, Tensor]:
+def normalized_columns(
+    kernel,
+    mu: Tensor,
+    centers: Tensor,
+    columns: Mapping[str, Tensor] | None = None,
+) -> tuple[Tensor, Tensor]:
     """Unit columns and pre-projection coordinate-derivative factors.
 
     The kernel supplies a profile and ``d profile / d squared_distance`` under
@@ -61,9 +68,7 @@ def normalized_columns(kernel, mu: Tensor, centers: Tensor) -> tuple[Tensor, Ten
     An honestly zero compact-support column returns a zero column and factor;
     it therefore contributes zero metric rather than ``NaN``.
     """
-    sigma = kernel.sigma.detach().to(centers)
-    squared_distance = torch.cdist(mu, centers).square()
-    value, profile_grad = kernel.scaled_profile_pair(squared_distance, sigma)
+    value, profile_grad = kernel.scaled_column_pair(mu, centers, columns)
     norm = torch.linalg.vector_norm(value, dim=0, keepdim=True)
     divisor = norm.clamp_min(torch.finfo(value.dtype).tiny)
     return value / divisor, 2.0 * profile_grad / divisor
@@ -155,6 +160,88 @@ def projected_directional_gram(
     gram = torch.einsum("nka,nkb->kab", stacked, stacked)
     gram.diagonal(dim1=-2, dim2=-1).clamp_min_(0)
     return gram
+
+
+def gauged_coordinate_jacobian_gram(
+    *,
+    unit_in: Tensor,
+    factor_in: Tensor,
+    unit_out: Tensor,
+    factor_out: Tensor,
+    mu_in: Tensor,
+    mu_out: Tensor,
+    source: Tensor,
+    target: Tensor,
+    mass: Tensor,
+) -> Tensor:
+    """Full cross-atom coordinate Gram in ``[s.flatten(), t.flatten()]`` order.
+
+    This is the deliberately expensive oracle for the coordinate pullback.
+    It keeps every source/source, source/target and target/target coupling
+    between live atoms, while using the separable CST atom
+    ``unit_out[:, i] outer unit_in[:, i]`` so no dense represented-map
+    Jacobian is materialised.
+
+    Amplitudes are held fixed.  Their own rows and their cross-atom coupling
+    belong to a future joint amplitude-coordinate oracle; separating that
+    question keeps this metric comparable with the existing coordinate
+    PullbackAdam while amplitudes retain their own optimiser clock.
+    """
+
+    def projected_axes(
+        unit: Tensor, factor: Tensor, mu: Tensor, centers: Tensor
+    ) -> Tensor:
+        axes = []
+        for axis in range(centers.shape[1]):
+            derivative = factor * (
+                centers[:, axis][None, :] - mu[:, axis][:, None]
+            )
+            radial = (unit * derivative).sum(0, keepdim=True)
+            axes.append(derivative - unit * radial)
+        return torch.stack(axes, dim=-1)  # [neurons, atoms, axes]
+
+    derivative_in = projected_axes(unit_in, factor_in, mu_in, source)
+    derivative_out = projected_axes(unit_out, factor_out, mu_out, target)
+    overlap_in = unit_in.transpose(0, 1) @ unit_in
+    overlap_out = unit_out.transpose(0, 1) @ unit_out
+    mass_outer = mass[:, None] * mass[None, :]
+
+    source_source = torch.einsum(
+        "nia,njb->iajb", derivative_in, derivative_in
+    )
+    source_source.mul_(overlap_out[:, None, :, None])
+    source_source.mul_(mass_outer[:, None, :, None])
+
+    target_target = torch.einsum(
+        "nia,njb->iajb", derivative_out, derivative_out
+    )
+    target_target.mul_(overlap_in[:, None, :, None])
+    target_target.mul_(mass_outer[:, None, :, None])
+
+    derivative_to_unit_in = torch.einsum(
+        "nia,nj->iaj", derivative_in, unit_in
+    )
+    unit_to_derivative_out = torch.einsum(
+        "ni,njb->ijb", unit_out, derivative_out
+    )
+    source_target = (
+        derivative_to_unit_in[:, :, :, None]
+        * unit_to_derivative_out[:, None, :, :]
+        * mass_outer[:, None, :, None]
+    )
+
+    source_size = source.numel()
+    target_size = target.numel()
+    source_source = source_source.reshape(source_size, source_size)
+    target_target = target_target.reshape(target_size, target_size)
+    source_target = source_target.reshape(source_size, target_size)
+    return torch.cat(
+        [
+            torch.cat([source_source, source_target], dim=1),
+            torch.cat([source_target.transpose(0, 1), target_target], dim=1),
+        ],
+        dim=0,
+    )
 
 
 def gauged_jacobian_gram(

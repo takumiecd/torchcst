@@ -15,7 +15,7 @@ from . import metric
 from .forces import PairRepulsion, SmoothRent
 
 MomentSpace = Literal["parameter", "tangent"]
-MetricForm = Literal["diag", "block"]
+MetricForm = Literal["diag", "block", "full"]
 
 
 def _gaussian_unit_factor(
@@ -104,13 +104,14 @@ def _metric_block(
     mass_sq: Tensor,
     *,
     compiled: bool,
+    columns: Mapping[str, Tensor] | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Evaluate one diagonal-metric block, optionally through ``compile``."""
     if (
         compiled
         and source.is_cuda
-        and isinstance(module.kernel_in, GaussianKernel)
-        and isinstance(module.kernel_out, GaussianKernel)
+        and type(module.kernel_in) is GaussianKernel
+        and type(module.kernel_out) is GaussianKernel
     ):
         global _compiled_gaussian_l2_metric_block
         if _compiled_gaussian_l2_metric_block is None:
@@ -128,10 +129,10 @@ def _metric_block(
         )
 
     unit_in, factor_in = metric.normalized_columns(
-        module.kernel_in, mu_in, source
+        module.kernel_in, mu_in, source, columns
     )
     unit_out, factor_out = metric.normalized_columns(
-        module.kernel_out, mu_out, target
+        module.kernel_out, mu_out, target, columns
     )
     return metric.gauged_jacobian_sq(
         unit_in=unit_in,
@@ -156,13 +157,14 @@ def _metric_gram_block(
     mass_sq: Tensor,
     *,
     compiled: bool,
+    columns: Mapping[str, Tensor] | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Evaluate one within-atom metric-gram block, optionally compiled."""
     if (
         compiled
         and source.is_cuda
-        and isinstance(module.kernel_in, GaussianKernel)
-        and isinstance(module.kernel_out, GaussianKernel)
+        and type(module.kernel_in) is GaussianKernel
+        and type(module.kernel_out) is GaussianKernel
     ):
         global _compiled_gaussian_l2_metric_gram
         if _compiled_gaussian_l2_metric_gram is None:
@@ -180,10 +182,10 @@ def _metric_gram_block(
         )
 
     unit_in, factor_in = metric.normalized_columns(
-        module.kernel_in, mu_in, source
+        module.kernel_in, mu_in, source, columns
     )
     unit_out, factor_out = metric.normalized_columns(
-        module.kernel_out, mu_out, target
+        module.kernel_out, mu_out, target, columns
     )
     return metric.gauged_jacobian_gram(
         unit_in=unit_in,
@@ -230,10 +232,21 @@ class PullbackAdam:
         metric; ``G**-1/2`` becomes a batched ``d x d`` symmetric inverse
         square root.
 
-    Neither form is a claim that the full ``J.T @ J`` is diagonal: cross-atom
-    coupling is always neglected.  Persistent state is coordinate-shaped;
-    neither a dense represented weight nor a Jacobian-shaped moment is
-    retained.
+    ``"full"``
+        The exact coordinate Gram across every live atom in the site.  This
+        includes source-source, source-target and target-target coupling but
+        holds amplitudes fixed, so their separate optimiser remains unchanged.
+        It is an intentionally expensive oracle implemented with the
+        separable kernel factors rather than a materialised dense-map
+        Jacobian.
+
+    ``"diag"`` and ``"block"`` neglect cross-atom coupling.  Persistent
+    state is coordinate-shaped in every form; ``"full"`` retains its dense
+    Gram only for the duration of one step.
+
+    ``betas`` belong to the coordinate moments.  When this optimizer also owns
+    amplitudes, ``amplitude_betas`` can keep their scalar Adam clock separate;
+    ``None`` preserves the historical behaviour of sharing ``betas``.
 
     The optional structural terms make this optimizer the site's single
     owner for the continuous lifecycle:
@@ -256,9 +269,25 @@ class PullbackAdam:
         atoms close on both sides repel, reserves spread over the chart,
         and column collisions are prevented instead of merged away.
 
+    ``decoupled_repulsion=PairRepulsion(...)``
+        Apply the same structural force after the adaptive coordinate step,
+        in the AdamW sense.  It never enters either coordinate moment, so a
+        small repulsion cannot be amplified by ``1 / sqrt(v)`` on reserve
+        atoms.  Its ``mu`` is therefore a direct coordinate-step scale.
+
     ``wall=True``
         After each step, coordinates are clamped into the store's declared
         coordinate domains, so wandering reserves stay on the chart.
+
+    ``moment_distance=(tau_m, tau_v)``
+        Forget coordinate moments by distance travelled, in joint
+        source-target kernel-sigma units.  A step of length ``d``
+        retains ``exp(-d / tau_m)`` of the first-moment history and
+        ``exp(-d / tau_v)`` of the second-moment history.  Per-row normalising
+        masses keep Adam's bias correction valid under this extra decay.  This
+        is useful for mobile reserves whose old tangent frame ceases to be
+        relevant after they cross the chart; ``None`` preserves ordinary
+        step-clock Adam exactly.
 
     The owning optimizer must exclude ``module.synapses.s`` and ``.t`` and
     call :meth:`zero_grad` alongside its own ``zero_grad``.  Amplitudes and
@@ -273,6 +302,7 @@ class PullbackAdam:
         metric: MetricForm = "diag",
         cap_sigma: float,
         betas: tuple[float, float] = (0.9, 0.99),
+        amplitude_betas: tuple[float, float] | None = None,
         eps: float = 1e-8,
         damping: float = 1e-2,
         target_step: float = 0.01,
@@ -280,11 +310,13 @@ class PullbackAdam:
         decay: float = 0.0,
         lr_w: float | None = None,
         repulsion: PairRepulsion | None = None,
+        decoupled_repulsion: PairRepulsion | None = None,
         wall: bool = False,
         seed: int = 0,
         subscribe: bool = True,
         chunk_elements: int = 1 << 24,
         compile_metric: bool = False,
+        moment_distance: tuple[float, float] | None = None,
     ) -> None:
         store = getattr(module, "synapses", None)
         kernel_in = getattr(module, "kernel_in", None)
@@ -307,15 +339,21 @@ class PullbackAdam:
             raise ValueError(
                 "moment_space must be 'parameter' or 'tangent'"
             )
-        if metric not in ("diag", "block"):
-            raise ValueError("metric must be 'diag' or 'block'")
-        if (
-            not isinstance(betas, tuple)
-            or len(betas) != 2
-            or not all(isinstance(beta, (int, float)) for beta in betas)
-            or not all(0.0 <= beta < 1.0 for beta in betas)
+        if metric not in ("diag", "block", "full"):
+            raise ValueError("metric must be 'diag', 'block', or 'full'")
+        for values, name in (
+            (betas, "betas"),
+            (amplitude_betas, "amplitude_betas"),
         ):
-            raise ValueError("betas must be a pair in [0, 1)")
+            if values is None and name == "amplitude_betas":
+                continue
+            if (
+                not isinstance(values, tuple)
+                or len(values) != 2
+                or not all(isinstance(beta, (int, float)) for beta in values)
+                or not all(0.0 <= beta < 1.0 for beta in values)
+            ):
+                raise ValueError(f"{name} must be a pair in [0, 1)")
         for value, name, allow_zero in (
             (cap_sigma, "cap_sigma", False),
             (target_step, "target_step", False),
@@ -330,6 +368,17 @@ class PullbackAdam:
         require_int(chunk_elements, "chunk_elements", minimum=1)
         if not isinstance(compile_metric, bool):
             raise TypeError("compile_metric must be a bool")
+        if moment_distance is not None and (
+            not isinstance(moment_distance, tuple)
+            or len(moment_distance) != 2
+            or not all(
+                isinstance(value, (int, float)) and value > 0
+                for value in moment_distance
+            )
+        ):
+            raise ValueError(
+                "moment_distance must be a pair of positive numbers or None"
+            )
         if rent is not None and not isinstance(rent, SmoothRent):
             raise TypeError("rent must be a SmoothRent")
         if not isinstance(decay, (int, float)) or decay < 0:
@@ -346,6 +395,14 @@ class PullbackAdam:
             raise ValueError("lr_w must be a positive number")
         if repulsion is not None and not isinstance(repulsion, PairRepulsion):
             raise TypeError("repulsion must be a PairRepulsion")
+        if decoupled_repulsion is not None and not isinstance(
+            decoupled_repulsion, PairRepulsion
+        ):
+            raise TypeError("decoupled_repulsion must be a PairRepulsion")
+        if repulsion is not None and decoupled_repulsion is not None:
+            raise ValueError(
+                "repulsion and decoupled_repulsion are mutually exclusive"
+            )
         if not isinstance(wall, bool):
             raise TypeError("wall must be a bool")
         require_int(seed, "seed", minimum=0)
@@ -359,11 +416,19 @@ class PullbackAdam:
         self.cap_sigma = float(cap_sigma)
         self.beta1 = float(betas[0])
         self.beta2 = float(betas[1])
+        amplitude_betas = betas if amplitude_betas is None else amplitude_betas
+        self.amplitude_beta1 = float(amplitude_betas[0])
+        self.amplitude_beta2 = float(amplitude_betas[1])
         self.eps = float(eps)
         self.damping = float(damping)
         self.target_step = float(target_step)
         self.chunk_elements = int(chunk_elements)
         self.compile_metric = compile_metric
+        self.moment_distance = (
+            None
+            if moment_distance is None
+            else (float(moment_distance[0]), float(moment_distance[1]))
+        )
         self.rent = rent
         self.decay = float(decay)
         #: Whether this optimizer updates ``synapses.w``.  A price is two
@@ -375,6 +440,7 @@ class PullbackAdam:
         self.owns_amplitudes = owns_amplitudes
         self.lr_w = None if lr_w is None else float(lr_w)
         self.repulsion = repulsion
+        self.decoupled_repulsion = decoupled_repulsion
         self.wall = wall
         self.seed = int(seed)
         self._generator: torch.Generator | None = None
@@ -387,6 +453,8 @@ class PullbackAdam:
         self.m_w: Tensor | None = None
         self.v_w: Tensor | None = None
         self.travel: Tensor | None = None
+        self.moment_mass1: Tensor | None = None
+        self.moment_mass2: Tensor | None = None
         self.step_count = 0
         self.eta: float | None = None
         if subscribe:
@@ -405,6 +473,50 @@ class PullbackAdam:
             device=self.store.s.device,
             dtype=self.store.s.dtype,
         )
+        if self.moment_distance is not None:
+            self.moment_mass1 = torch.zeros_like(self.travel)
+            self.moment_mass2 = torch.zeros_like(self.travel)
+
+    def _moment_corrections(
+        self, mask: Tensor
+    ) -> tuple[Tensor | float, Tensor | float]:
+        """Advance and return bias corrections for this step's live rows."""
+        if self.moment_distance is None:
+            return (
+                1.0 - self.beta1**self.step_count,
+                1.0 - self.beta2**self.step_count,
+            )
+        assert self.moment_mass1 is not None
+        assert self.moment_mass2 is not None
+        self.moment_mass1.mul_(self.beta1).add_(
+            mask, alpha=1.0 - self.beta1
+        )
+        self.moment_mass2.mul_(self.beta2).add_(
+            mask, alpha=1.0 - self.beta2
+        )
+        tiny = torch.finfo(mask.dtype).tiny
+        return (
+            self.moment_mass1.clamp_min(tiny)[:, None],
+            self.moment_mass2.clamp_min(tiny)[:, None],
+        )
+
+    def _forget_moments_by_distance(self, distance: Tensor) -> None:
+        """Decay history after transporting an atom by ``distance`` sigmas."""
+        if self.moment_distance is None:
+            return
+        assert self.m_s is not None and self.m_t is not None
+        assert self.v_s is not None and self.v_t is not None
+        assert self.moment_mass1 is not None
+        assert self.moment_mass2 is not None
+        tau_m, tau_v = self.moment_distance
+        retention1 = torch.exp(-distance / tau_m)
+        retention2 = torch.exp(-distance / tau_v)
+        self.m_s.mul_(retention1[:, None])
+        self.m_t.mul_(retention1[:, None])
+        self.v_s.mul_(retention2[:, None])
+        self.v_t.mul_(retention2[:, None])
+        self.moment_mass1.mul_(retention1)
+        self.moment_mass2.mul_(retention2)
 
     def _pair_generator(self) -> torch.Generator:
         device = self.store.s.device
@@ -419,6 +531,12 @@ class PullbackAdam:
     @staticmethod
     def _live_values(tensor: Tensor, live: Tensor) -> Tensor:
         return tensor.index_select(0, live).reshape(-1)
+
+    def _selected_columns(self, slots: Tensor) -> dict[str, Tensor]:
+        return {
+            name: getattr(self.store, name).index_select(0, slots)
+            for name in self.store.atom_column_names
+        }
 
     @staticmethod
     def _row_mask(parameter: Tensor, live: Tensor) -> Tensor:
@@ -456,6 +574,7 @@ class PullbackAdam:
                 target,
                 mass_sq,
                 compiled=self.compile_metric,
+                columns=self._selected_columns(slots),
             )
             diagonal_s.index_copy_(0, slots, block_s)
             diagonal_t.index_copy_(0, slots, block_t)
@@ -505,6 +624,7 @@ class PullbackAdam:
                 target,
                 mass_sq,
                 compiled=self.compile_metric,
+                columns=self._selected_columns(slots),
             )
             gram_s.index_copy_(0, slots, block_s)
             gram_t.index_copy_(0, slots, block_t)
@@ -530,27 +650,108 @@ class PullbackAdam:
 
         return damped(gram_s), damped(gram_t)
 
-    def _whiteners(self, live: Tensor):
-        """Per-side maps applying this step's effective ``G**-1/2``."""
+    @torch.no_grad()
+    def _metric_full(self, live: Tensor) -> Tensor:
+        """Return the full cross-atom coordinate Gram for live rows."""
+        store = self.store
+        count = live.numel()
+        size = count * (store.s.shape[1] + store.t.shape[1])
+        if count == 0:
+            return store.s.new_zeros(size, size)
+        source = store.s.index_select(0, live)
+        target = store.t.index_select(0, live)
+        columns = self._selected_columns(live)
+        unit_in, factor_in = metric.normalized_columns(
+            self.module.kernel_in,
+            self.module.in_neurons.mu.to(source),
+            source,
+            columns,
+        )
+        unit_out, factor_out = metric.normalized_columns(
+            self.module.kernel_out,
+            self.module.out_neurons.mu.to(target),
+            target,
+            columns,
+        )
+        return metric.gauged_coordinate_jacobian_gram(
+            unit_in=unit_in,
+            factor_in=factor_in,
+            unit_out=unit_out,
+            factor_out=factor_out,
+            mu_in=self.module.in_neurons.mu.to(source),
+            mu_out=self.module.out_neurons.mu.to(target),
+            source=source,
+            target=target,
+            mass=store.w.detach().index_select(0, live),
+        )
+
+    def _effective_full(self, gram: Tensor) -> Tensor:
+        tiny = torch.finfo(gram.dtype).tiny
+        reference = gram.diagonal().median().clamp_min(tiny)
+        eye = torch.eye(
+            gram.shape[0], device=gram.device, dtype=gram.dtype
+        )
+        return gram + (self.damping * reference) * eye
+
+    def _whitener(self, live: Tensor):
+        """Map coordinate pairs through this step's effective ``G**-1/2``."""
         if self.metric == "diag":
             diagonal_s, diagonal_t = self._metric_diag(live)
             effective_s, effective_t = self._effective_diag(
                 diagonal_s, diagonal_t, live
             )
-            return (
-                lambda values: values / effective_s.sqrt(),
-                lambda values: values / effective_t.sqrt(),
+
+            def diagonal(values_s: Tensor, values_t: Tensor):
+                return (
+                    values_s / effective_s.sqrt(),
+                    values_t / effective_t.sqrt(),
+                )
+
+            return diagonal
+        if self.metric == "block":
+            gram_s, gram_t = self._metric_gram(live)
+            effective_s, effective_t = self._effective_gram(
+                gram_s, gram_t, live
             )
-        gram_s, gram_t = self._metric_gram(live)
-        effective_s, effective_t = self._effective_gram(
-            gram_s, gram_t, live
-        )
-        inverse_s = _inverse_sqrt(effective_s)
-        inverse_t = _inverse_sqrt(effective_t)
-        return (
-            lambda values: torch.einsum("kab,kb->ka", inverse_s, values),
-            lambda values: torch.einsum("kab,kb->ka", inverse_t, values),
-        )
+            inverse_s = _inverse_sqrt(effective_s)
+            inverse_t = _inverse_sqrt(effective_t)
+
+            def block(values_s: Tensor, values_t: Tensor):
+                return (
+                    torch.einsum("kab,kb->ka", inverse_s, values_s),
+                    torch.einsum("kab,kb->ka", inverse_t, values_t),
+                )
+
+            return block
+
+        effective = self._effective_full(self._metric_full(live))
+        inverse = _inverse_sqrt(effective)
+        count = live.numel()
+        source_size = count * self.store.s.shape[1]
+
+        def full(values_s: Tensor, values_t: Tensor):
+            selected = torch.cat(
+                [
+                    values_s.index_select(0, live).reshape(-1),
+                    values_t.index_select(0, live).reshape(-1),
+                ]
+            )
+            transformed = inverse @ selected
+            output_s = torch.zeros_like(values_s)
+            output_t = torch.zeros_like(values_t)
+            output_s.index_copy_(
+                0, live, transformed[:source_size].reshape(
+                    count, self.store.s.shape[1]
+                )
+            )
+            output_t.index_copy_(
+                0, live, transformed[source_size:].reshape(
+                    count, self.store.t.shape[1]
+                )
+            )
+            return output_s, output_t
+
+        return full
 
     @torch.no_grad()
     def step(self, lr_scale: float = 1.0) -> None:
@@ -573,7 +774,7 @@ class PullbackAdam:
         assert self.v_t is not None
         assert self.travel is not None
 
-        whiten_s, whiten_t = self._whiteners(live)
+        whiten = self._whitener(live)
         mask_s = self._row_mask(store.s, live)
         mask_t = self._row_mask(store.t, live)
         incoming_s = store.s.grad * mask_s
@@ -590,8 +791,7 @@ class PullbackAdam:
             incoming_s = incoming_s + repulsion_s
             incoming_t = incoming_t + repulsion_t
         if self.moment_space == "tangent":
-            incoming_s = whiten_s(incoming_s)
-            incoming_t = whiten_t(incoming_t)
+            incoming_s, incoming_t = whiten(incoming_s, incoming_t)
 
         self.step_count += 1
         self.m_s.mul_(self.beta1).add_(incoming_s, alpha=1.0 - self.beta1)
@@ -602,16 +802,16 @@ class PullbackAdam:
         self.v_t.mul_(self.beta2).addcmul_(
             incoming_t, incoming_t, value=1.0 - self.beta2
         )
-        correction1 = 1.0 - self.beta1**self.step_count
-        correction2 = 1.0 - self.beta2**self.step_count
+        correction1, correction2 = self._moment_corrections(mask_s[:, 0])
         direction_s = (self.m_s / correction1) / (
             (self.v_s / correction2).sqrt() + self.eps
         )
         direction_t = (self.m_t / correction1) / (
             (self.v_t / correction2).sqrt() + self.eps
         )
-        raw_s = whiten_s(direction_s) * mask_s
-        raw_t = whiten_t(direction_t) * mask_t
+        raw_s, raw_t = whiten(direction_s, direction_t)
+        raw_s.mul_(mask_s)
+        raw_t.mul_(mask_t)
 
         raw_norm = (raw_s.square().sum(1) + raw_t.square().sum(1)).sqrt()
         sigma = self.kernel_in.sigma.detach().to(raw_norm)
@@ -628,9 +828,35 @@ class PullbackAdam:
         delta_t.mul_(scale[:, None])
         store.s.sub_(delta_s)
         store.t.sub_(delta_t)
-        self.travel.add_(
-            (delta_s.square().sum(1) + delta_t.square().sum(1)).sqrt() / sigma
-        )
+
+        if self.decoupled_repulsion is not None:
+            repulsion_s, repulsion_t = self.decoupled_repulsion.gradient(
+                store.s.detach(),
+                store.t.detach(),
+                live,
+                self.kernel_in.sigma.detach().to(store.s),
+                self.kernel_out.sigma.detach().to(store.t),
+                self._pair_generator(),
+            )
+            repulsion_s.mul_(float(lr_scale))
+            repulsion_t.mul_(float(lr_scale))
+            repulsion_norm = (
+                repulsion_s.square().sum(1)
+                + repulsion_t.square().sum(1)
+            ).sqrt()
+            repulsion_scale = (
+                cap / repulsion_norm.clamp_min(1e-30)
+            ).clamp(max=1.0)
+            repulsion_s.mul_(repulsion_scale[:, None])
+            repulsion_t.mul_(repulsion_scale[:, None])
+            store.s.sub_(repulsion_s)
+            store.t.sub_(repulsion_t)
+            delta_s.add_(repulsion_s)
+            delta_t.add_(repulsion_t)
+        distance = (
+            delta_s.square().sum(1) + delta_t.square().sum(1)
+        ).sqrt() / sigma
+        self.travel.add_(distance)
 
         if self.owns_amplitudes:
             assert self.m_w is not None and self.v_w is not None
@@ -641,14 +867,20 @@ class PullbackAdam:
                     store.w.detach(), self.step_count
                 )
             incoming_w = incoming_w * mask_w
-            self.m_w.mul_(self.beta1).add_(
-                incoming_w, alpha=1.0 - self.beta1
+            self.m_w.mul_(self.amplitude_beta1).add_(
+                incoming_w, alpha=1.0 - self.amplitude_beta1
             )
-            self.v_w.mul_(self.beta2).addcmul_(
-                incoming_w, incoming_w, value=1.0 - self.beta2
+            self.v_w.mul_(self.amplitude_beta2).addcmul_(
+                incoming_w, incoming_w, value=1.0 - self.amplitude_beta2
             )
-            direction_w = (self.m_w / correction1) / (
-                (self.v_w / correction2).sqrt() + self.eps
+            # Distance forgetting belongs to the moving coordinate frame.
+            # Amplitudes live in a fixed scalar frame and retain ordinary
+            # step-clock Adam, which also keeps this option orthogonal to the
+            # site's amplitude optimizer.
+            correction1_w = 1.0 - self.amplitude_beta1**self.step_count
+            correction2_w = 1.0 - self.amplitude_beta2**self.step_count
+            direction_w = (self.m_w / correction1_w) / (
+                (self.v_w / correction2_w).sqrt() + self.eps
             )
             rate = self.lr_w * float(lr_scale)
             store.w.sub_(direction_w * rate * mask_w)
@@ -657,6 +889,8 @@ class PullbackAdam:
                 # moments, so `sqrt(v)` cannot normalise it away.  Charged
                 # after the step and on live rows only.
                 store.w.sub_(store.w.detach() * (rate * self.decay) * mask_w)
+
+        self._forget_moments_by_distance(distance)
 
         if self.wall:
             box_in = store.spec.domain_in
@@ -696,7 +930,10 @@ class PullbackAdam:
 
     # ---- follower contract ------------------------------------------------
 
-    _ROW_NAMES = ("m_s", "m_t", "v_s", "v_t", "m_w", "v_w", "travel")
+    _ROW_NAMES = (
+        "m_s", "m_t", "v_s", "v_t", "m_w", "v_w", "travel",
+        "moment_mass1", "moment_mass2",
+    )
 
     def _rows(self):
         return (
@@ -774,6 +1011,7 @@ class PullbackAdam:
             "schema": "torchcst-pullback-adam-v1",
             "moment_space": self.moment_space,
             "metric": self.metric,
+            "moment_distance": self.moment_distance,
             "owns_w": self.owns_amplitudes,
             "capacity": self._capacity,
             "step_count": self.step_count,
@@ -785,6 +1023,8 @@ class PullbackAdam:
             "m_w": snapshot(self.m_w),
             "v_w": snapshot(self.v_w),
             "travel": snapshot(self.travel),
+            "moment_mass1": snapshot(self.moment_mass1),
+            "moment_mass2": snapshot(self.moment_mass2),
         }
 
     def load_state_dict(self, state: Mapping[str, object]) -> None:
@@ -797,6 +1037,13 @@ class PullbackAdam:
             raise ValueError("PullbackAdam moment_space does not match state")
         if state.get("metric", "diag") != self.metric:
             raise ValueError("PullbackAdam metric does not match state")
+        saved_distance = state.get("moment_distance")
+        if saved_distance is not None:
+            saved_distance = tuple(saved_distance)
+        if saved_distance != self.moment_distance:
+            raise ValueError(
+                "PullbackAdam moment_distance does not match state"
+            )
         if bool(state.get("owns_w", False)) != self.owns_amplitudes:
             raise ValueError(
                 "PullbackAdam rent ownership does not match state"
@@ -822,6 +1069,8 @@ class PullbackAdam:
             "m_w": self.store.w.shape,
             "v_w": self.store.w.shape,
             "travel": (capacity,),
+            "moment_mass1": (capacity,),
+            "moment_mass2": (capacity,),
         }
         targets = {
             "m_s": self.store.s,
@@ -831,6 +1080,8 @@ class PullbackAdam:
             "m_w": self.store.w,
             "v_w": self.store.w,
             "travel": self.store.s,
+            "moment_mass1": self.store.s,
+            "moment_mass2": self.store.s,
         }
         for name, shape in shapes.items():
             value = state.get(name)

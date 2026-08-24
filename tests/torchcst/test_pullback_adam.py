@@ -232,6 +232,188 @@ def test_parameter_and_tangent_moments_separate_when_metric_moves() -> None:
     assert not torch.allclose(parameter_store.t, tangent_store.t)
 
 
+def test_distance_decay_forgets_a_stale_direction_after_travel() -> None:
+    plain_module, plain_store = _site(atoms=1)
+    decay_module, decay_store = _site(atoms=1)
+    plain = PullbackAdam(
+        plain_module,
+        moment_space="tangent",
+        betas=(0.9, 0.99),
+        eps=0.0,
+        damping=0.0,
+        target_step=0.1,
+        cap_sigma=100.0,
+    )
+    decay = PullbackAdam(
+        decay_module,
+        moment_space="tangent",
+        betas=(0.9, 0.99),
+        eps=0.0,
+        damping=0.0,
+        target_step=0.1,
+        cap_sigma=100.0,
+        moment_distance=(0.01, 0.05),
+    )
+    fixed = (
+        torch.ones_like(plain_store.s),
+        torch.ones_like(plain_store.t),
+    )
+    plain._metric_diag = lambda live: tuple(value.clone() for value in fixed)
+    decay._metric_diag = lambda live: tuple(value.clone() for value in fixed)
+
+    for optimizer, store in ((plain, plain_store), (decay, decay_store)):
+        store.s.grad = torch.ones_like(store.s)
+        store.t.grad = torch.ones_like(store.t)
+        optimizer.step()
+    assert decay.travel[0] >= 0.1
+
+    before_plain = plain_store.s.detach().clone()
+    before_decay = decay_store.s.detach().clone()
+    for optimizer, store in ((plain, plain_store), (decay, decay_store)):
+        store.s.grad = torch.full_like(store.s, -0.5)
+        store.t.grad = torch.full_like(store.t, -0.5)
+        optimizer.step()
+
+    # Ordinary momentum still follows the first sample.  Distance-decayed
+    # momentum treats the gradient at the new location as current evidence.
+    assert plain_store.s < before_plain
+    assert decay_store.s > before_decay
+    assert plain.m_s[0, 0] > 0
+    assert decay.m_s[0, 0] < 0
+
+
+def test_distance_decay_keeps_bias_correction_normalized() -> None:
+    module, store = _site(atoms=1)
+    optimizer = PullbackAdam(
+        module,
+        moment_space="parameter",
+        betas=(0.8, 0.9),
+        eps=0.0,
+        damping=0.0,
+        target_step=0.1,
+        cap_sigma=100.0,
+        moment_distance=(0.2, 0.4),
+    )
+    fixed = (torch.ones_like(store.s), torch.ones_like(store.t))
+    optimizer._metric_diag = lambda live: tuple(
+        value.clone() for value in fixed
+    )
+    grad_s = torch.full_like(store.s, 0.25)
+    grad_t = torch.full_like(store.t, -0.75)
+    store.s.grad = grad_s.clone()
+    store.t.grad = grad_t.clone()
+    optimizer.step()
+
+    torch.testing.assert_close(
+        optimizer.m_s / optimizer.moment_mass1[:, None], grad_s
+    )
+    torch.testing.assert_close(
+        optimizer.m_t / optimizer.moment_mass1[:, None], grad_t
+    )
+    torch.testing.assert_close(
+        optimizer.v_s / optimizer.moment_mass2[:, None], grad_s.square()
+    )
+    torch.testing.assert_close(
+        optimizer.v_t / optimizer.moment_mass2[:, None], grad_t.square()
+    )
+
+    state = optimizer.state_dict()
+    twin_module, _ = _site(atoms=1)
+    restored = PullbackAdam(
+        twin_module,
+        moment_space="parameter",
+        betas=(0.8, 0.9),
+        eps=0.0,
+        damping=0.0,
+        target_step=0.1,
+        cap_sigma=100.0,
+        moment_distance=(0.2, 0.4),
+    )
+    restored.load_state_dict(state)
+    for name in (
+        "m_s", "m_t", "v_s", "v_t", "travel",
+        "moment_mass1", "moment_mass2",
+    ):
+        torch.testing.assert_close(
+            getattr(restored, name), getattr(optimizer, name)
+        )
+
+    incompatible_module, _ = _site(atoms=1)
+    incompatible = PullbackAdam(
+        incompatible_module,
+        moment_space="parameter",
+        cap_sigma=100.0,
+    )
+    with pytest.raises(ValueError, match="moment_distance"):
+        incompatible.load_state_dict(state)
+
+
+def test_distance_decay_does_not_change_the_amplitude_optimizer() -> None:
+    plain_module, plain_store = _site(atoms=1)
+    decay_module, decay_store = _site(atoms=1)
+    common = {
+        "moment_space": "tangent",
+        "betas": (0.9, 0.99),
+        "eps": 0.0,
+        "damping": 0.0,
+        "target_step": 0.1,
+        "cap_sigma": 100.0,
+        "decay": 0.1,
+        "lr_w": 0.01,
+    }
+    plain = PullbackAdam(plain_module, **common)
+    decay = PullbackAdam(
+        decay_module, moment_distance=(0.2, 0.4), **common
+    )
+    fixed = (
+        torch.ones_like(plain_store.s),
+        torch.ones_like(plain_store.t),
+    )
+    plain._metric_diag = lambda live: tuple(value.clone() for value in fixed)
+    decay._metric_diag = lambda live: tuple(value.clone() for value in fixed)
+
+    for optimizer, store in ((plain, plain_store), (decay, decay_store)):
+        store.s.grad = torch.ones_like(store.s)
+        store.t.grad = torch.ones_like(store.t)
+        store.w.grad = torch.full_like(store.w, 0.3)
+        optimizer.step()
+
+    torch.testing.assert_close(decay.m_w, plain.m_w)
+    torch.testing.assert_close(decay.v_w, plain.v_w)
+    torch.testing.assert_close(decay_store.w, plain_store.w)
+
+
+def test_amplitude_betas_are_independent_of_coordinate_betas() -> None:
+    module, store = _site(atoms=1)
+    optimizer = PullbackAdam(
+        module,
+        moment_space="tangent",
+        betas=(0.0, 0.5),
+        amplitude_betas=(0.9, 0.99),
+        eps=0.0,
+        damping=0.0,
+        target_step=0.1,
+        cap_sigma=100.0,
+        decay=0.1,
+        lr_w=0.01,
+    )
+    fixed = (torch.ones_like(store.s), torch.ones_like(store.t))
+    optimizer._metric_diag = lambda live: tuple(
+        value.clone() for value in fixed
+    )
+    store.s.grad = torch.full_like(store.s, 0.4)
+    store.t.grad = torch.full_like(store.t, -0.2)
+    store.w.grad = torch.full_like(store.w, 0.3)
+    optimizer.step()
+
+    torch.testing.assert_close(optimizer.m_s, torch.full_like(store.s, 0.4))
+    torch.testing.assert_close(optimizer.m_t, torch.full_like(store.t, -0.2))
+    torch.testing.assert_close(optimizer.m_w, torch.full_like(store.w, 0.03))
+    torch.testing.assert_close(
+        optimizer.v_w, torch.full_like(store.w, 9.0e-4)
+    )
+
+
 def test_diagonal_metric_predicts_a_one_atom_weight_displacement() -> None:
     module, store = _site(atoms=1)
     optimizer = PullbackAdam(
@@ -339,6 +521,66 @@ def test_fused_gaussian_gram_matches_the_generic_gram() -> None:
     )
     for got, want in zip(actual, expected, strict=True):
         torch.testing.assert_close(got, want)
+
+
+def test_full_metric_predicts_a_cross_atom_coordinate_displacement() -> None:
+    module, store = _scattered_site(atoms=3)
+    optimizer = PullbackAdam(
+        module, moment_space="parameter", cap_sigma=0.1, metric="full"
+    )
+    live = store.live_slots()
+    gram = optimizer._metric_full(live)
+    generator = torch.Generator().manual_seed(19)
+    delta_s = torch.randn(
+        store.s.shape, generator=generator, dtype=store.s.dtype
+    ) * 1.0e-6
+    delta_t = torch.randn(
+        store.t.shape, generator=generator, dtype=store.t.dtype
+    ) * 1.0e-6
+    delta = torch.cat([delta_s.flatten(), delta_t.flatten()])
+
+    before = module.dense_weight().detach()
+    with torch.no_grad():
+        store.s.add_(delta_s)
+        store.t.add_(delta_t)
+    after = module.dense_weight().detach()
+
+    actual = (after - before).square().sum()
+    predicted = delta @ gram @ delta
+    torch.testing.assert_close(actual, predicted, rtol=3e-5, atol=1e-18)
+
+    gram_s, gram_t = optimizer._metric_gram(live)
+    block_only = sum(
+        delta_s[index] @ gram_s[index] @ delta_s[index]
+        + delta_t[index] @ gram_t[index] @ delta_t[index]
+        for index in range(live.numel())
+    )
+    assert (block_only - actual).abs() > 10.0 * (predicted - actual).abs()
+
+
+def test_full_whitener_orthonormalises_the_damped_coordinate_metric() -> None:
+    module, store = _scattered_site(atoms=3)
+    optimizer = PullbackAdam(
+        module, moment_space="tangent", cap_sigma=0.1, metric="full"
+    )
+    live = store.live_slots()
+    effective = optimizer._effective_full(optimizer._metric_full(live))
+    generator = torch.Generator().manual_seed(23)
+    values_s = torch.randn(
+        store.s.shape, generator=generator, dtype=store.s.dtype
+    )
+    values_t = torch.randn(
+        store.t.shape, generator=generator, dtype=store.t.dtype
+    )
+    whitened_s, whitened_t = optimizer._whitener(live)(values_s, values_t)
+    values = torch.cat([values_s.flatten(), values_t.flatten()])
+    whitened = torch.cat([whitened_s.flatten(), whitened_t.flatten()])
+    torch.testing.assert_close(
+        whitened @ effective @ whitened,
+        values.square().sum(),
+        rtol=2e-8,
+        atol=2e-10,
+    )
 
 
 def test_block_metric_steps_deterministically_and_follows_lifecycle() -> None:
@@ -491,7 +733,7 @@ def test_rejects_ambiguous_or_unsupported_configurations() -> None:
         PullbackAdam(module, moment_space="current", cap_sigma=0.1)
     with pytest.raises(ValueError, match="metric"):
         PullbackAdam(
-            module, moment_space="parameter", cap_sigma=0.1, metric="full"
+            module, moment_space="parameter", cap_sigma=0.1, metric="dense"
         )
     with pytest.raises(TypeError, match="L2NormalizedColumns"):
         PullbackAdam(raw_module, moment_space="parameter", cap_sigma=0.1)
@@ -501,4 +743,18 @@ def test_rejects_ambiguous_or_unsupported_configurations() -> None:
             moment_space="parameter",
             cap_sigma=0.1,
             betas=(0.9, 1.0),
+        )
+    with pytest.raises(ValueError, match="moment_distance"):
+        PullbackAdam(
+            module,
+            moment_space="tangent",
+            cap_sigma=0.1,
+            moment_distance=(0.0, 1.0),
+        )
+    with pytest.raises(ValueError, match="amplitude_betas"):
+        PullbackAdam(
+            module,
+            moment_space="tangent",
+            cap_sigma=0.1,
+            amplitude_betas=(0.9, 1.0),
         )

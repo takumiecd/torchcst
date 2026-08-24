@@ -2,8 +2,9 @@
 
 `PullbackAdam` owns the learnable source and target coordinates of one
 continuous CST site whose columns use `L2NormalizedColumns`. It keeps all
-persistent moments in coordinate-shaped tensors and uses the block-Jacobi
-diagonal of the represented map's pullback metric.
+persistent moments in coordinate-shaped tensors. The practical `"diag"` and
+`"block"` forms use block-Jacobi approximations of the represented map's
+pullback metric; `"full"` is an expensive exact-coordinate oracle.
 
 Let
 
@@ -17,9 +18,10 @@ $$
 
 With the full metric and a full-column-rank Jacobian,
 $Q_t^\top Q_t=I$. The implementation uses
-$D_t=\operatorname{diag}(J_t^\top J_t)$, so it normalizes each Jacobian
-column while neglecting cross-atom and cross-coordinate coupling. Damping
-replaces it by an effective positive diagonal before inversion.
+$D_t=\operatorname{diag}(J_t^\top J_t)$ in its default `"diag"` form, so it
+normalizes each Jacobian column while neglecting cross-atom and
+cross-coordinate coupling. Damping replaces each selected metric form by an
+effective positive metric before inversion.
 
 ## Metric form
 
@@ -47,7 +49,16 @@ measurement found ~99% of the off-diagonal energy of $J_t^\top J_t$ inside
 these blocks — and `"block"` removes that part structurally instead of
 regularizing against it.
 
-Moments stay coordinate-shaped in both forms and the follower contract is
+`"full"` is the deliberately expensive coordinate oracle. It constructs the
+exact source/source, source/target and target/target Gram across every live
+atom in one site and applies one dense symmetric inverse square root. The
+separable CST factors are used directly, so no dense represented-map Jacobian
+is materialised. Amplitudes are held fixed in this first oracle; their Adam
+clock and lifecycle price remain independent. This mode is intended to test
+whether cross-atom coordinate coupling matters before introducing sparse,
+neighbour-block or matrix-free approximations.
+
+Moments stay coordinate-shaped in all forms and the follower contract is
 unchanged. `state_dict()` records the metric form and rejects restoration
 into the other one. The fixed-metric equivalence of the two moment spaces
 below is a property of `"diag"` only: Adam's elementwise nonlinearity does
@@ -104,6 +115,13 @@ Adam is basis-dependent: applying Adam after projection into tangent
 coefficients is generally different from applying dense Adam first and then
 projecting its update.
 
+When `PullbackAdam` owns amplitudes, `betas` still names the coordinate clock
+and `amplitude_betas=(beta1_w, beta2_w)` may select a separate scalar-amplitude
+clock.  Leaving it as `None` shares `betas`, preserving the original API.  The
+separation is important in lifecycle experiments: setting coordinate
+`beta1=0` asks a mobile reserve to follow the current tangent without also
+removing momentum from amplitude settlement.
+
 ## Step calibration, cap, and travel
 
 The learning rate is not a free parameter. On the first step the joint
@@ -125,6 +143,47 @@ same joint $s\oplus t$ norm, and the applied displacement accumulates into
 `travel` (a per-atom path length in sigma units — net displacement from init
 is a different quantity and is deliberately not tracked here; an atom can
 have large travel and zero net displacement).
+
+### Distance-clock moment forgetting
+
+Ordinary Adam forgets on the optimizer-step clock.  That is a poor clock for
+a mobile atom: a reserve pinned at the per-step cap can cross a kernel
+neighbourhood while its first and especially second moments still describe
+the old location and old tangent frame.  The opt-in
+
+```python
+PullbackAdam(
+    site,
+    moment_space="tangent",
+    cap_sigma=0.1,
+    moment_distance=(0.25, 1.0),
+)
+```
+
+adds a geometric clock.  If the joint source-target displacement applied on
+one step is $d_k$ in kernel-sigma units, the retained histories are
+
+$$
+m_k \leftarrow e^{-d_k/\tau_m}m_k,
+\qquad
+v_k \leftarrow e^{-d_k/\tau_v}v_k,
+$$
+
+where `moment_distance=(tau_m, tau_v)`.  The first number is normally shorter:
+direction should adapt within a neighbourhood, while the RMS estimate may
+average noise over a longer path.  The optimizer carries per-row normalising
+masses and decays them by the same factors, so this extra forgetting changes
+the relative weight of old and new evidence without corrupting Adam's bias
+correction.  Amplitude moments remain on ordinary step-clock Adam even when
+this optimizer owns them: the option is specifically a correction for the
+moving coordinate frame and does not silently change the amplitude optimizer.
+
+`None` is the default and is exactly the ordinary step-clock behaviour.  The
+option does not reduce the current step or the cap; it prevents a fast-moving
+atom from spending later capped steps following stale evidence.  A useful
+screening range is $\tau_m=0.1\ldots0.5\,\sigma$ and
+$\tau_v=0.5\ldots2\,\sigma$, measured against net arrival and score gain rather
+than path length alone.
 
 ## Structural forces
 

@@ -14,6 +14,7 @@ reach atoms whose loss gradient has vanished with their amplitude.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 
 import torch
 from torch import Tensor
@@ -51,23 +52,53 @@ class SmoothRent:
 
 
 class PairRepulsion:
-    """Gradient of ``mu * sum_{i<j} exp(-r_ij^2 / 2)`` in kernel-sigma units.
+    """Pairwise structural force in joint kernel-sigma units.
 
     ``r^2 = |ds|^2/sigma_in^2 + |dt|^2/sigma_out^2``: two atoms only repel
     when they are close on *both* sides, which is exactly when their columns
-    collide.  Amplitudes do not enter, so reserves at ``w ~ 0`` are spread
-    over the chart by the same force.  When the live population exceeds the
-    ``pairs`` budget, uniformly sampled ordered pairs give an unbiased
-    stochastic gradient through the supplied generator.
+    collide.  ``potential="gaussian"`` is the bounded historical energy
+    ``mu exp(-r^2/2)``.  ``potential="log_barrier"`` is
+    ``-mu log(1-exp(-r^2/2))``: the negative log determinant of the two
+    normalized Gaussian columns' Gram matrix.  It vanishes at range and
+    diverges as the columns become identical.
+
+    Amplitudes do not enter, so reserves at ``w ~ 0`` feel the same force.
+    When the live population exceeds the ``pairs`` budget, uniformly sampled
+    ordered pairs give an unbiased stochastic gradient through the supplied
+    generator.  Sampling does not itself guarantee that every close pair is
+    visited on every step; callers requiring a hard exclusion guarantee need
+    an exhaustive or neighbourhood-complete candidate set.
     """
 
-    def __init__(self, mu: float, *, pairs: int = 1 << 18) -> None:
+    def __init__(
+        self,
+        mu: float,
+        *,
+        pairs: int = 1 << 18,
+        potential: Literal["gaussian", "log_barrier"] = "gaussian",
+    ) -> None:
         if not isinstance(mu, (int, float)) or mu < 0:
             raise ValueError("mu must be a non-negative number")
         if not isinstance(pairs, int) or pairs < 1:
             raise ValueError("pairs must be a positive int")
+        if potential not in ("gaussian", "log_barrier"):
+            raise ValueError(
+                "potential must be 'gaussian' or 'log_barrier'"
+            )
         self.mu = float(mu)
         self.pairs = pairs
+        self.potential = potential
+
+    def _weight(self, r_sq: Tensor) -> Tensor:
+        overlap_sq = torch.exp(-0.5 * r_sq)
+        if self.potential == "gaussian":
+            return self.mu * overlap_sq
+        # 1-exp(-x) evaluated without cancellation.  The clamp is only a
+        # floating-point guard: mathematically the force diverges at x=0.
+        denominator = (-torch.expm1(-0.5 * r_sq)).clamp_min(
+            torch.finfo(r_sq.dtype).tiny
+        )
+        return self.mu * overlap_sq / denominator
 
     def gradient(
         self,
@@ -91,7 +122,7 @@ class PairRepulsion:
             ds = (s_live[:, None, :] - s_live[None, :, :]) / sigma_in
             dt = (t_live[:, None, :] - t_live[None, :, :]) / sigma_out
             r_sq = ds.square().sum(-1) + dt.square().sum(-1)
-            weight = self.mu * torch.exp(-0.5 * r_sq)
+            weight = self._weight(r_sq)
             weight.fill_diagonal_(0.0)
             grad_s = -(weight[..., None] * ds).sum(1) / sigma_in
             grad_t = -(weight[..., None] * dt).sum(1) / sigma_out
@@ -106,7 +137,7 @@ class PairRepulsion:
             ds = (s_live[row] - s_live[col]) / sigma_in
             dt = (t_live[row] - t_live[col]) / sigma_out
             r_sq = ds.square().sum(-1) + dt.square().sum(-1)
-            weight = self.mu * torch.exp(-0.5 * r_sq)
+            weight = self._weight(r_sq)
             scale = count * (count - 1) / float(row.numel())
             grad_s = torch.zeros_like(s_live)
             grad_t = torch.zeros_like(t_live)

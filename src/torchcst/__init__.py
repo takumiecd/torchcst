@@ -6,19 +6,33 @@ audit/lab sinks, and optimizer helpers.
 """
 
 # compute/: forward computation and module-boundary tensor delivery.
+from . import baselines
+
+# audit/: one-way aggregate record sinks.
+from .audit import (
+    Accounting,
+    ActiveParameterReport,
+    AuditRecord,
+    AuditSubscriber,
+    EconomyAudit,
+    LossRecord,
+    RentMargin,
+)
 from .compute import (
     BackwardContext,
     CaptureMode,
     ComputeLinear,
     CSTConv2d,
-    OffsetCSTConv2d,
     CSTLinear,
     Observation,
     ObservationTiming,
+    OffsetCSTConv2d,
     conv2d_isotropic_scales,
     conv2d_neuron_coordinates,
 )
-from . import baselines
+
+# engine: hooks, clocks, orchestration, atomic apply.
+from .engine import StructuralEngine
 
 # instruments/: backward-derived statistics and candidate fields.
 from .instruments import (
@@ -29,15 +43,26 @@ from .instruments import (
     ContinuousGradientRequest,
     ContinuousGradientScores,
     DeferredCaptureInstrument,
-    GradFieldEMA,
     GateTangent,
     GateTangentRequest,
     GateTangentSnapshot,
+    GradFieldEMA,
     InlineCaptureInstrument,
     InstrumentBuildContext,
     TangentSnapshot,
     TangentStatistics,
     TangentStatisticsRequest,
+)
+
+# optimizer helpers.
+from .optim import (
+    ChartPullbackAdam,
+    ChartRepulsion,
+    CoordPreconditioner,
+    OptimizerStateFollower,
+    PairRepulsion,
+    PullbackAdam,
+    SmoothRent,
 )
 
 # policy/: cadence, quota, rules, distributors, courts.
@@ -61,8 +86,18 @@ from .policy import (
     neuron_absorb,
 )
 
-# engine: hooks, clocks, orchestration, atomic apply.
-from .engine import StructuralEngine
+# representation/: coordinate domains, kernels, family specs.
+from .representation import (
+    Box,
+    ContinuousKernel,
+    CoordinateDomain,
+    GaussianKernel,
+    IntegerGrid,
+    MaturityGaussianKernel,
+    RepresentationSpec,
+    Sphere,
+    TriangularKernel,
+)
 
 # storage/: entity IDs, physical slots, two-phase apply.
 from .storage import (
@@ -96,41 +131,10 @@ from .storage import (
     prepare_all,
 )
 
-# representation/: coordinate domains, kernels, family specs.
-from .representation import (
-    Box,
-    ContinuousKernel,
-    CoordinateDomain,
-    GaussianKernel,
-    IntegerGrid,
-    RepresentationSpec,
-    Sphere,
-    TriangularKernel,
-)
-
-# audit/: one-way aggregate record sinks.
-from .audit import (
-    Accounting,
-    ActiveParameterReport,
-    AuditRecord,
-    AuditSubscriber,
-    EconomyAudit,
-    LossRecord,
-    RentMargin,
-)
-
-# optimizer helpers.
-from .optim import (
-    ChartPullbackAdam,
-    ChartRepulsion,
-    CoordPreconditioner,
-    OptimizerStateFollower,
-    PairRepulsion,
-    PullbackAdam,
-    SmoothRent,
-)
-
 __all__ = [
+    "DORMANT",
+    "LIVE",
+    "RETIRED",
     "Accounting",
     "ActiveParameterReport",
     "AgeColumn",
@@ -141,7 +145,6 @@ __all__ = [
     "Box",
     "BudgetDistributor",
     "CSTConv2d",
-    "OffsetCSTConv2d",
     "CSTLinear",
     "CallableQuota",
     "CandidateField",
@@ -149,31 +152,33 @@ __all__ = [
     "CaptureMode",
     "CertificateSnapshot",
     "CertificateSubspace",
+    "ChartPullbackAdam",
+    "ChartRepulsion",
     "ComputeLinear",
     "ConstantQuota",
     "ContinuousGradientRequest",
     "ContinuousGradientScores",
     "ContinuousKernel",
+    "CoordPreconditioner",
     "CoordinateDomain",
-    "DORMANT",
     "DeferredCaptureInstrument",
     "EconomyAudit",
     "EntityStore",
     "EvenBudgetDistributor",
     "Follower",
     "FollowerHub",
-    "GaussianKernel",
-    "GradFieldEMA",
     "GateTangent",
     "GateTangentRequest",
     "GateTangentSnapshot",
+    "GaussianKernel",
+    "GradFieldEMA",
     "IdAllocator",
     "InlineCaptureInstrument",
     "InstrumentBuildContext",
     "IntegerGrid",
-    "LIVE",
     "LineageColumn",
     "LossRecord",
+    "MaturityGaussianKernel",
     "MergeProposer",
     "NeuronGateCredit",
     "NeuronKick",
@@ -185,20 +190,17 @@ __all__ = [
     "NeuronView",
     "Observation",
     "ObservationTiming",
-    "ChartPullbackAdam",
-    "ChartRepulsion",
-    "CoordPreconditioner",
+    "OffsetCSTConv2d",
     "OptimizerStateFollower",
+    "PairRepulsion",
     "PeriodicCadence",
     "ProfitCourt",
-    "PairRepulsion",
     "PullbackAdam",
-    "SmoothRent",
-    "RETIRED",
     "RentMargin",
     "RepresentationSpec",
     "ScoredBirth",
     "SlotPool",
+    "SmoothRent",
     "Sphere",
     "StructuralEngine",
     "StructuralQuota",
@@ -209,21 +211,21 @@ __all__ = [
     "SynapseRefit",
     "SynapseStore",
     "SynapseView",
-    "Ticket",
-    "TopKSelector",
     "TangentSnapshot",
     "TangentStatistics",
     "TangentStatisticsRequest",
+    "Ticket",
+    "TopKSelector",
     "TrialSession",
     "TrialTransaction",
     "TriangularKernel",
     "baselines",
-    "commit_all",
     "cSFW",
     "cVP",
-    "gamma_ungate",
-    "neuron_absorb",
+    "commit_all",
     "conv2d_isotropic_scales",
     "conv2d_neuron_coordinates",
+    "gamma_ungate",
+    "neuron_absorb",
     "prepare_all",
 ]

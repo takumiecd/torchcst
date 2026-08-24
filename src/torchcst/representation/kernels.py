@@ -18,32 +18,33 @@ is the whole domain at every positive bandwidth.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-import math
 from math import isfinite
 from typing import ClassVar
 
 import torch
 from torch import Tensor, nn
 
-from .._geometry import squared_distance_matrix
-
 from torchcst._validation import require_real
 
+from .._geometry import squared_distance_matrix
 from .domains import ParameterRole
 
 #: Kernel names that :class:`torchcst.representation.RepresentationSpec`
 #: accepts as a continuous family.  Kept here so the spec and the kernel
 #: modules cannot disagree about which families exist.
-CONTINUOUS_KERNELS: frozenset[str] = frozenset({"gaussian", "triangular"})
+CONTINUOUS_KERNELS: frozenset[str] = frozenset(
+    {"gaussian", "maturity_gaussian", "triangular"}
+)
 
 #: Live family registry, keyed by :attr:`ContinuousKernel.family`.  Populated
 #: by ``__init_subclass__`` so a kernel defined outside this module is a
 #: first-class family: its name validates in a spec and its per-atom column
 #: declaration reaches the store without any edit here.  ``CONTINUOUS_KERNELS``
 #: stays the frozen built-in set for callers that import it.
-_KERNEL_FAMILIES: dict[str, type["ContinuousKernel"]] = {}
+_KERNEL_FAMILIES: dict[str, type[ContinuousKernel]] = {}
 
 
 def continuous_family_names() -> frozenset[str]:
@@ -51,7 +52,7 @@ def continuous_family_names() -> frozenset[str]:
     return frozenset(CONTINUOUS_KERNELS) | frozenset(_KERNEL_FAMILIES)
 
 
-def family_atom_columns(name: str) -> tuple["AtomColumn", ...]:
+def family_atom_columns(name: str) -> tuple[AtomColumn, ...]:
     """Per-atom columns the named family requires beyond ``(s, t, w)``."""
     kernel = _KERNEL_FAMILIES.get(name)
     return () if kernel is None else tuple(kernel.atom_columns)
@@ -224,6 +225,23 @@ class ContinuousKernel(nn.Module):
             self.profile_grad(squared_distance, sigma),
         )
 
+    def scaled_column_pair(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> tuple[Tensor, Tensor]:
+        """Stable columns and ``d value / d squared_distance`` together.
+
+        This is the column-aware form consumed by pullback metrics.  Radial
+        global-bandwidth families inherit the generic implementation;
+        per-atom-bandwidth families override it so the value and derivative
+        see the same row-aligned atom columns.
+        """
+        sigma, centers = self._prepare(query, centers, columns)
+        squared_distance = squared_distance_matrix(query, centers)
+        return self.scaled_profile_pair(squared_distance, sigma)
+
     def overlap(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
         """Normalised atom-atom overlap ``<kappa_j, kappa_k> / ||kappa||^2``.
 
@@ -382,6 +400,103 @@ class GaussianKernel(ContinuousKernel):
         squared_distance = squared_distance_matrix(query, centers)
         nearest = squared_distance.amin(dim=0, keepdim=True)
         return torch.exp(-(squared_distance - nearest) / (2.0 * sigma.square()))
+
+
+class MaturityGaussianKernel(ContinuousKernel):
+    """Gaussian whose inverse width is an independent per-atom maturity.
+
+    ``maturity`` is an unconstrained logit.  Its sigmoid interpolates squared
+    inverse width between ``min_scale**2`` and ``max_scale**2``.  A negative
+    birth logit therefore casts a broad exploratory column, while increasing
+    maturity continuously recovers the ordinary Gaussian when
+    ``max_scale=1``.
+    """
+
+    family: ClassVar[str] = "maturity_gaussian"
+    atom_columns: ClassVar[tuple[AtomColumn, ...]] = (
+        AtomColumn("maturity", width=1, init=-2.0),
+    )
+
+    def __init__(
+        self,
+        sigma: float | Tensor,
+        learnable: bool = True,
+        *,
+        min_scale: float = 0.25,
+        max_scale: float = 1.0,
+        validate_sigma: bool = True,
+    ) -> None:
+        for value, name in ((min_scale, "min_scale"), (max_scale, "max_scale")):
+            require_real(value, name)
+            if not math.isfinite(float(value)) or float(value) <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        if not float(min_scale) < float(max_scale):
+            raise ValueError("min_scale must be smaller than max_scale")
+        super().__init__(sigma, learnable, validate_sigma=validate_sigma)
+        self.min_scale = float(min_scale)
+        self.max_scale = float(max_scale)
+
+    def profile(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
+        raise NotImplementedError(
+            "MaturityGaussianKernel needs each atom's maturity column"
+        )
+
+    def _components(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        if not columns or "maturity" not in columns:
+            raise ValueError(
+                "MaturityGaussianKernel needs the 'maturity' atom column"
+            )
+        sigma, centers = self._prepare(query, centers, columns)
+        maturity = columns["maturity"].to(centers).reshape(1, -1)
+        fraction = torch.sigmoid(maturity)
+        scale_sq = self.min_scale**2 + (
+            self.max_scale**2 - self.min_scale**2
+        ) * fraction
+        squared_distance = squared_distance_matrix(query, centers)
+        return squared_distance, sigma, scale_sq
+
+    def forward(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> Tensor:
+        squared_distance, sigma, scale_sq = self._components(
+            query, centers, columns
+        )
+        return torch.exp(
+            -scale_sq * squared_distance / (2.0 * sigma.square())
+        )
+
+    def scaled_column_pair(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> tuple[Tensor, Tensor]:
+        squared_distance, sigma, scale_sq = self._components(
+            query, centers, columns
+        )
+        nearest = squared_distance.amin(dim=0, keepdim=True)
+        value = torch.exp(
+            -scale_sq * (squared_distance - nearest)
+            / (2.0 * sigma.square())
+        )
+        derivative = -scale_sq * value / (2.0 * sigma.square())
+        return value, derivative
+
+    def scaled_columns(
+        self,
+        query: Tensor,
+        centers: Tensor,
+        columns: Mapping[str, Tensor] | None = None,
+    ) -> Tensor:
+        return self.scaled_column_pair(query, centers, columns)[0]
 
 
 class TriangularKernel(ContinuousKernel):

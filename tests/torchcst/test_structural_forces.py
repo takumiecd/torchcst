@@ -123,6 +123,28 @@ def test_pair_repulsion_pushes_overlapping_atoms_apart() -> None:
     assert dead_s[2].abs().max() == 0  # rows outside `live` stay zero
 
 
+def test_log_barrier_force_diverges_toward_identical_columns() -> None:
+    sigma = torch.tensor(1.0, dtype=torch.float64)
+
+    def force_at(distance):
+        source = torch.tensor([[0.0], [distance]], dtype=torch.float64)
+        target = torch.zeros_like(source)
+        force = PairRepulsion(
+            1.0, pairs=1 << 20, potential="log_barrier"
+        )
+        gradient, _ = force.gradient(
+            source, target, torch.arange(2), sigma, sigma, None
+        )
+        return gradient[0, 0].abs()
+
+    near = force_at(1e-3)
+    far = force_at(0.1)
+    assert near > 50 * far
+    assert near > 500  # asymptotically 2 / r
+    with pytest.raises(ValueError, match="potential"):
+        PairRepulsion(1.0, potential="inverse-quartic")
+
+
 def test_pair_repulsion_sampling_is_deterministic_and_aligned() -> None:
     generator = torch.Generator().manual_seed(5)
     source = torch.rand(24, 1, generator=generator, dtype=torch.float64)
@@ -230,6 +252,26 @@ def test_repulsion_inside_the_optimizer_separates_overlapping_twins() -> None:
         + (store.t[0] - store.t[1]).square().sum()
     ).sqrt()
     assert joint.item() > SIGMA  # zero-loss twins were pushed apart
+
+
+def test_decoupled_repulsion_moves_without_entering_adam_moments() -> None:
+    module, store = _line_site([0.50, 0.52], [0.50, 0.50], [0.0, 0.0])
+    before = (store.s[0] - store.s[1]).abs().item()
+    optimizer = PullbackAdam(
+        module,
+        moment_space="tangent",
+        cap_sigma=0.5,
+        target_step=0.05,
+        decoupled_repulsion=PairRepulsion(0.01, pairs=1 << 16),
+        seed=11,
+    )
+    store.s.grad = torch.zeros_like(store.s)
+    store.t.grad = torch.zeros_like(store.t)
+    optimizer.step()
+    assert optimizer.m_s is not None and optimizer.v_s is not None
+    assert torch.count_nonzero(optimizer.m_s) == 0
+    assert torch.count_nonzero(optimizer.v_s) == 0
+    assert (store.s[0] - store.s[1]).abs().item() > before
 
 
 def test_structural_state_and_follower_contract() -> None:
