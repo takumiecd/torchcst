@@ -25,8 +25,8 @@ from torchcst.storage import SynapseStore, SynapseView
 from ._candidate_sampling import PoolSampler, _coarse_spacing
 from .base import (
     CandidateSnapshot,
+    FactorPort,
     InstrumentBuildContext,
-    KernelPort,
     WeightedMeasurement,
     weighted_sum,
 )
@@ -41,8 +41,8 @@ __all__ = [
 def _normalize_rows(x: Tensor, eps: float) -> Tensor:
     """Row-normalize ``x``, mapping any near-zero row to the zero vector.
 
-    A near-zero row means the candidate/live atom's kernel column vanishes
-    (e.g. a compact-support kernel evaluated far from every neuron); such a
+    A near-zero row means the candidate/live atom's factor column vanishes
+    (e.g. a compact-support factor evaluated far from every neuron); such a
     row has no well-defined direction, so it is left at zero rather than
     blown up by dividing by a tiny norm.
     """
@@ -61,7 +61,7 @@ def _solve_gram(gamma: Tensor, rhs: Tensor, eps: float) -> Tensor:
     returns a non-finite result, the minimum-norm least-squares solution via
     ``torch.linalg.pinv`` (SVD-based) is the guaranteed-finite fallback for a
     singular/rank-deficient ``gamma``.  ``torch.linalg.lstsq`` would be the
-    more direct fallback, but it has no MPS kernel (hard error, not just a
+    more direct fallback, but it has no MPS factor (hard error, not just a
     slow fallback) as of this torch version; ``pinv`` gives the identical
     solution for a symmetric PSD ``gamma`` and MPS transparently falls back
     to CPU for it.
@@ -87,7 +87,7 @@ class RefinementSchedule:
     whole chart (a continuum), which no finite pool can enumerate; a single
     uniform pool only *approximates* that argmax, and Stage 0 measured that
     approximation to be too coarse at any pool size a materialised
-    ``[M, in_features]`` kernel-column buffer can afford (M=4096 candidate
+    ``[M, in_features]`` factor-column buffer can afford (M=4096 candidate
     spacing ~1.3x sigma on the worst 3D input chart; halving that needs
     ~18x the candidates in 3D, i.e. ~180 MB/layer). Coarse-to-fine
     refinement is the fix that keeps the approximation faithful without
@@ -147,8 +147,8 @@ class ContinuousCandidateField:
     accumulate-until-consumed backward-capture pattern used by
     :class:`~torchcst.instruments.CertificateSubspace`, and scores each
     candidate ``z = (s, t)`` against the direction ``a_z = u(t) v(s)^T``
-    (Frobenius-unit-norm, ``u`` from ``kernel_out``/target and ``v`` from
-    ``kernel_in``/source -- the same orientation :meth:`dense_weight` uses):
+    (Frobenius-unit-norm, ``u`` from ``factor_out``/target and ``v`` from
+    ``factor_in``/source -- the same orientation :meth:`dense_weight` uses):
 
     * ``mode="raw"`` (cRigL): ``score(z) = <G, a_z>``.
     * ``mode="deflated"`` (cRES): the component of ``<G, a_z>`` orthogonal to
@@ -156,8 +156,8 @@ class ContinuousCandidateField:
       direction norm -- i.e. deflating the score by how much of ``a_z`` is
       already representable by the current live support.
 
-    All kernel evaluation goes through :class:`~torchcst.instruments.base.KernelPort`
-    rather than reaching into the compute module's kernel/neuron internals.
+    All factor evaluation goes through :class:`~torchcst.instruments.base.FactorPort`
+    rather than reaching into the compute module's factor/neuron internals.
 
     ⚠ **The scores this instrument reports are signed**, unlike
     :class:`~torchcst.instruments.GradientField` and
@@ -225,14 +225,14 @@ class ContinuousCandidateField:
             store.spec.domain_out, Box
         ):
             raise TypeError("ContinuousCandidateField requires Box domains")
-        if not callable(getattr(module, "kernel_columns", None)):
-            raise TypeError("compute module must provide kernel_columns()")
+        if not callable(getattr(module, "factor_columns", None)):
+            raise TypeError("compute module must provide factor_columns()")
         if refinement is not None and not isinstance(refinement, RefinementSchedule):
             raise TypeError("refinement must be a RefinementSchedule or None")
         self.name = name
         self.store = store
         self.module = module
-        self.port = KernelPort(module)
+        self.port = FactorPort(module)
         self.rng = rng
         self.pool_size = pool_size
         self.mode = mode

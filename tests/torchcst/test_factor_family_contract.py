@@ -1,10 +1,10 @@
-"""Kernel-family contract: which derived quantities are generic, which refuse.
+"""Factor-family contract: which derived quantities are generic, which refuse.
 
 Three quantities used to be computed from a hardcoded Gaussian closed form
 even at sites whose family is not Gaussian: the coordinate Jacobian of
 ``CoordPreconditioner`` and the twin-overlap ``rho`` of the neuron absorb /
-novelty courts.  They now go through :meth:`ContinuousKernel.profile_grad`
-and :meth:`ContinuousKernel.overlap`, so a family either implements the
+novelty courts.  They now go through :meth:`ContinuousFactor.profile_grad`
+and :meth:`ContinuousFactor.overlap`, so a family either implements the
 quantity and is priced correctly, or inherits the base raise and is refused.
 Silently quoting Gaussian numbers for a non-Gaussian site is the one outcome
 these tests forbid.
@@ -21,10 +21,10 @@ from torchcst import CoordPreconditioner
 from torchcst.compute import CSTLinear
 from torchcst.policy.neuron_absorb import _pairwise_rho
 from torchcst.representation import (
-    GaborKernel,
-    GaussianKernel,
+    GaborFactor,
+    GaussianFactor,
     RepresentationSpec,
-    TriangularKernel,
+    TriangularFactor,
     pairwise_overlap,
 )
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -32,48 +32,48 @@ from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 SIGMA = 0.25
 
 
-@pytest.mark.parametrize("kernel_cls", [GaussianKernel, TriangularKernel])
-def test_profile_grad_matches_autograd(kernel_cls):
+@pytest.mark.parametrize("factor_cls", [GaussianFactor, TriangularFactor])
+def test_profile_grad_matches_autograd(factor_cls):
     """Every family's declared derivative is its profile's actual derivative."""
-    kernel = kernel_cls(SIGMA).double()
-    sigma = kernel.sigma.detach()
+    factor = factor_cls(SIGMA).double()
+    sigma = factor.sigma.detach()
     # Stay off the tent's knee at r == sigma, where the profile is only
     # sub-differentiable and autograd picks one side by convention.
     squared = torch.tensor(
         [0.004, 0.02, 0.05, 0.09], dtype=torch.float64, requires_grad=True
     )
-    kernel.profile(squared, sigma).sum().backward()
+    factor.profile(squared, sigma).sum().backward()
     expected = squared.grad
-    got = kernel.profile_grad(squared.detach(), sigma)
+    got = factor.profile_grad(squared.detach(), sigma)
     assert torch.allclose(got, expected, rtol=1e-9, atol=1e-12)
 
 
 def test_gaussian_overlap_is_the_closed_form_and_float_path_agrees():
-    kernel = GaussianKernel(SIGMA).double()
+    factor = GaussianFactor(SIGMA).double()
     squared = torch.tensor([0.0, 0.01, 0.25], dtype=torch.float64)
     expected = torch.exp(-squared / (4.0 * SIGMA**2))
-    assert torch.allclose(kernel.overlap(squared, kernel.sigma.detach()), expected)
-    # A court may be configured with the kernel or with a bare bandwidth; for
+    assert torch.allclose(factor.overlap(squared, factor.sigma.detach()), expected)
+    # A court may be configured with the factor or with a bare bandwidth; for
     # a Gaussian site the two must be the same number, so the historical
     # float configuration keeps its meaning exactly.
-    assert torch.allclose(pairwise_overlap(kernel, squared), expected)
+    assert torch.allclose(pairwise_overlap(factor, squared), expected)
     assert torch.allclose(pairwise_overlap(SIGMA, squared), expected)
 
 
 def test_triangular_overlap_refuses_rather_than_quoting_gaussian():
-    kernel = TriangularKernel(SIGMA).double()
+    factor = TriangularFactor(SIGMA).double()
     squared = torch.tensor([0.0, 0.01], dtype=torch.float64)
     with pytest.raises(NotImplementedError, match="overlap"):
-        pairwise_overlap(kernel, squared)
+        pairwise_overlap(factor, squared)
 
 
 def test_neuron_absorb_rho_refuses_a_family_without_an_overlap():
     """The court that used to misprice triangular twins now fails loudly."""
     mu = torch.tensor([[0.0], [0.1], [0.4]], dtype=torch.float64)
-    gaussian = GaussianKernel(SIGMA).double()
+    gaussian = GaussianFactor(SIGMA).double()
     assert torch.allclose(_pairwise_rho(mu, gaussian), _pairwise_rho(mu, SIGMA))
     with pytest.raises(NotImplementedError, match="overlap"):
-        _pairwise_rho(mu, TriangularKernel(SIGMA).double())
+        _pairwise_rho(mu, TriangularFactor(SIGMA).double())
 
 
 def _triangular_site(atoms=3, d_in=2, d_out=1, n_in=6, n_out=4):
@@ -82,7 +82,7 @@ def _triangular_site(atoms=3, d_in=2, d_out=1, n_in=6, n_out=4):
         d_in,
         d_out,
         atoms,
-        spec=RepresentationSpec.continuous(d_in, d_out, kernel="triangular"),
+        spec=RepresentationSpec.continuous(d_in, d_out, factor="triangular"),
         dtype=torch.float64,
     )
     rng = torch.Generator().manual_seed(11)
@@ -111,7 +111,7 @@ def _triangular_site(atoms=3, d_in=2, d_out=1, n_in=6, n_out=4):
         initial_live=n_out,
         dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, TriangularKernel(SIGMA).double())
+    module = CSTLinear(inputs, outputs, store, TriangularFactor(SIGMA).double())
     return module, store
 
 
@@ -131,7 +131,7 @@ def test_preconditioner_uses_the_triangular_derivative_not_the_gaussian_one():
     mu_out = module.out_neurons.mu
     distance_in = (mu_in[:, None, :] - store.s.detach()[None, :, :]).norm(dim=-1)
     inside = (distance_in < SIGMA).to(torch.float64).sum(0)
-    k_out = module.kernel_out(mu_out, store.t.detach())
+    k_out = module.factor_out(mu_out, store.t.detach())
     expected = store.w.detach().square() * k_out.square().sum(0) * inside / SIGMA**2
 
     assert inside.sum() > 0, "fixture must place some neurons inside the support"
@@ -147,20 +147,20 @@ def _unit(k):
     return k / torch.linalg.vector_norm(k, dim=0, keepdim=True)
 
 
-@pytest.mark.parametrize("kernel_cls", [GaussianKernel, TriangularKernel])
-def test_scaled_columns_points_the_same_way_as_forward(kernel_cls):
+@pytest.mark.parametrize("factor_cls", [GaussianFactor, TriangularFactor])
+def test_scaled_columns_points_the_same_way_as_forward(factor_cls):
     """The freedom the contract grants is scale per column -- and only that."""
-    kernel = kernel_cls(SIGMA).double()
+    factor = factor_cls(SIGMA).double()
     mu = torch.linspace(-1.0, 1.0, 17, dtype=torch.float64).reshape(-1, 1)
     centers = torch.tensor([[-0.3], [0.0], [0.42]], dtype=torch.float64)
     torch.testing.assert_close(
-        _unit(kernel.scaled_columns(mu, centers)), _unit(kernel(mu, centers))
+        _unit(factor.scaled_columns(mu, centers)), _unit(factor(mu, centers))
     )
 
 
 def test_gabor_scaled_columns_points_the_same_way_as_forward():
     """Including the family whose peak is not at its envelope's peak."""
-    kernel = GaborKernel(SIGMA).double()
+    factor = GaborFactor(SIGMA).double()
     mu = torch.linspace(-1.0, 1.0, 17, dtype=torch.float64).reshape(-1, 1)
     centers = torch.tensor([[-0.3], [0.42]], dtype=torch.float64)
     columns = {
@@ -168,8 +168,8 @@ def test_gabor_scaled_columns_points_the_same_way_as_forward():
         "phi_s": torch.full((2, 1), math.pi / 4, dtype=torch.float64),
     }
     torch.testing.assert_close(
-        _unit(kernel.scaled_columns(mu, centers, columns)),
-        _unit(kernel(mu, centers, columns)),
+        _unit(factor.scaled_columns(mu, centers, columns)),
+        _unit(factor(mu, centers, columns)),
     )
 
 
@@ -181,13 +181,13 @@ def test_gaussian_keeps_a_far_column_that_forward_underflows_away():
     no value, no gradient, a ghost -- while ``scaled_columns`` returns the
     same direction with its peak at one.
     """
-    kernel = GaussianKernel(SIGMA)
+    factor = GaussianFactor(SIGMA)
     mu = torch.linspace(-1.0, 1.0, 17).reshape(-1, 1)
     centers = torch.tensor([[6.0]])
 
-    assert float(kernel(mu, centers).detach().abs().max()) == 0.0
+    assert float(factor(mu, centers).detach().abs().max()) == 0.0
 
-    scaled = kernel.scaled_columns(mu, centers).detach()
+    scaled = factor.scaled_columns(mu, centers).detach()
     assert bool(torch.isfinite(scaled).all())
     assert float(scaled.abs().max()) == pytest.approx(1.0)
     assert int((scaled > 0).sum()) > 1  # a shape survives, not just one spike
@@ -195,8 +195,8 @@ def test_gaussian_keeps_a_far_column_that_forward_underflows_away():
 
 def test_triangular_returns_an_honest_zero_column_outside_its_support():
     """A compact family's null column is geometry, not underflow -- and no NaN."""
-    kernel = TriangularKernel(SIGMA)
+    factor = TriangularFactor(SIGMA)
     mu = torch.linspace(-1.0, 1.0, 17).reshape(-1, 1)
-    scaled = kernel.scaled_columns(mu, torch.tensor([[4.0]])).detach()
+    scaled = factor.scaled_columns(mu, torch.tensor([[4.0]])).detach()
     assert bool((scaled == 0).all())
     assert bool(torch.isfinite(scaled).all())

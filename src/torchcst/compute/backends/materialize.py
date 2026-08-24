@@ -7,7 +7,7 @@ buffers or optimizer moments.  What persists is the atoms.
 Two build modes per map family:
 
 * the plain autograd product (:func:`linear_weight`, or the module's own
-  einsum for conv) -- fine until the retained ``[features, K, d]`` kernel
+  einsum for conv) -- fine until the retained ``[features, K, d]`` factor
   broadcasts hurt;
 * a ``Lean*`` autograd Function -- closed-form chunked backward saving
   only the atom parameters, peak O(chunk) at any K.  Gaussian only.
@@ -173,7 +173,7 @@ class LeanLinearMaterialize(torch.autograd.Function):
 
     Saves only the atom parameters and recomputes per-chunk in backward
     with analytic Gaussian derivatives; peak memory is O(chunk)
-    regardless of K.  Gaussian kernels only; the caller enforces it.
+    regardless of K.  Gaussian factors only; the caller enforces it.
     """
 
     CHUNK = 4096
@@ -345,12 +345,12 @@ def bilinear_pieces(delta: Tensor, lo, hi, r: int):
 
 
 class LeanConvMaterialize(torch.autograd.Function):
-    """Atoms -> dense conv kernel with closed-form, chunked backward.
+    """Atoms -> dense conv factor with closed-form, chunked backward.
 
     The conv analogue of :class:`LeanLinearMaterialize`: the source's
     trailing displacement axes expand to 4-cell bilinear stencils, and
-    the accumulated kernel is ``[out, in, span, span]``.  Peak memory is
-    O(chunk) regardless of K.  Gaussian kernels only.
+    the accumulated factor is ``[out, in, span, span]``.  Peak memory is
+    O(chunk) regardless of K.  Gaussian factors only.
     """
 
     CHUNK = 2048

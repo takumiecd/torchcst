@@ -20,7 +20,7 @@ from torchcst.init import (
     to_synapse_births,
     variance_amplitudes,
 )
-from torchcst.representation import GaussianKernel, GramService, RepresentationSpec
+from torchcst.representation import GaussianFactor, GramService, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseStore
 
 
@@ -386,15 +386,15 @@ def test_coverage_init_keeps_local_gram_well_conditioned_end_to_end() -> None:
         spec=RepresentationSpec.continuous(1, 1, bounds=(-1.0, 1.0)),
         dtype=torch.float64,
     )
-    layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(sigma))
+    layer = CSTLinear(inputs, outputs, synapses, GaussianFactor(sigma))
 
     s, t = coverage_lattice((-1.0, 1.0), (-1.0, 1.0), 1, 1, sigma, sigma, spacing=1.0)
     s = s.to(dtype=torch.float64)
     t = t.to(dtype=torch.float64)
-    # kernel_columns returns (k_in, k_out): k_in is the input-side (V)
+    # factor_columns returns (k_in, k_out): k_in is the input-side (V)
     # column [n_in, M], k_out is the output-side (U) column [n_out, M] --
     # GramService's own naming convention.
-    k_in, k_out = layer.kernel_columns(s, t)
+    k_in, k_out = layer.factor_columns(s, t)
     w = variance_amplitudes(
         U=k_out, V=k_in, target_second_moment=1.0, generator=torch.Generator().manual_seed(0)
     )
@@ -406,7 +406,7 @@ def test_coverage_init_keeps_local_gram_well_conditioned_end_to_end() -> None:
     assert bool(torch.isfinite(y).all())
 
     view = synapses.view()
-    k_in_live, k_out_live = layer.kernel_columns(view.s, view.t)
+    k_in_live, k_out_live = layer.factor_columns(view.s, view.t)
     gram = GramService(
         k_out_live, k_in_live, view.w, view.s, view.t, radius=1.2 * sigma, ridge=1e-6
     )

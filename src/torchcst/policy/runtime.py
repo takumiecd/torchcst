@@ -489,12 +489,12 @@ class SynapseChild:
         view = store.view()
         bounds_in = getattr(store.spec.domain_in, "bounds", None)
         bounds_out = getattr(store.spec.domain_out, "bounds", None)
-        if bounds_in is None and store.spec.kernel_in == "delta":
+        if bounds_in is None and store.spec.factor_in == "delta":
             bounds_in = tuple(
                 int(view.s[:, column].max()) + 1 if view.s.numel() else 1
                 for column in range(store.d_in)
             )
-        if bounds_out is None and store.spec.kernel_out == "delta":
+        if bounds_out is None and store.spec.factor_out == "delta":
             bounds_out = tuple(
                 int(view.t[:, column].max()) + 1 if view.t.numel() else 1
                 for column in range(store.d_out)

@@ -21,7 +21,7 @@ from torchcst.policy import (
     SynapseLifecycle,
 )
 from tests.torchcst._recipes import LC
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
 
@@ -166,7 +166,7 @@ def test_cst_capture_gradfield_matches_autograd_weight_gradient(
         initial_live=2,
         dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.3).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.3).double())
     method = SynapseLifecycle(
         birth_factory=lambda lam: _GradFieldRequest(),
         prune_factory=lambda: MagnitudeCourt(0.0),

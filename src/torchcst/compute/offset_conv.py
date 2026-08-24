@@ -12,18 +12,18 @@ and the represented map is
     y[o](p) = Σ_a w_a · K(mu_out[o], t_a) · Σ_c K(mu_in[c], s_a) · x[c](p + Δ_a)
 
 Two evaluation rules coexist on one coordinate vector.  The chart axes are
-matched by the ordinary continuous kernel.  The displacement axes are *not*
-given a chart or a kernel — the conv v1 lesson: a 3×3 tap lattice is ~5σ
-quasi-discrete and a kernel-side coordinate moves through data-free vacuum.
+matched by the ordinary continuous factor.  The displacement axes are *not*
+given a chart or a factor — the conv v1 lesson: a 3×3 tap lattice is ~5σ
+quasi-discrete and a factor-side coordinate moves through data-free vacuum.
 Instead ``Δ`` acts on the data side as a bilinear read position, which is a
-triangular kernel of exactly one pixel bandwidth evaluated on the *image's*
+triangular factor of exactly one pixel bandwidth evaluated on the *image's*
 pixel lattice, so a dense position gradient exists by construction.  The
 separable factorization of :class:`DepthwiseCSTConv2d` is not imposed; the
 FC-9 measurements have the unfactored form matching it at parity everywhere,
 scaling monotonically on the atom ladder, and beating it under churn.
 
 Forward is the measured fast path: the atoms are assembled into the
-equivalent dense kernel ``W[o, c, ky, kx]`` (each Δ expands to a 4-cell
+equivalent dense factor ``W[o, c, ky, kx]`` (each Δ expands to a 4-cell
 bilinear stencil; one scatter + one einsum, O(K·C_in·C_out)) and the heavy
 work is one ``F.conv2d`` at plain-conv cost, independent of the atom count.
 The dense tensor is a per-forward compute intermediate — the parameterization
@@ -55,10 +55,10 @@ from torch import Tensor
 from torch.nn import functional as F
 
 from torchcst.representation import (
-    ContinuousKernel,
-    GaussianKernel,
+    ContinuousFactor,
+    GaussianFactor,
     RepresentationSpec,
-    TriangularKernel,
+    TriangularFactor,
 )
 from torchcst.storage import NeuronStore, SynapseStore
 
@@ -71,7 +71,7 @@ from .depthwise_conv import _seed_uniform
 
 __all__ = ["OffsetCSTConv2d"]
 
-_KERNELS = {"gaussian": GaussianKernel, "triangular": TriangularKernel}
+_KERNELS = {"gaussian": GaussianFactor, "triangular": TriangularFactor}
 
 
 def _axis_bounds(domain, dim: int) -> tuple[tuple[float, ...], tuple[float, ...]]:
@@ -89,7 +89,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
     synapse store on the product domain (:meth:`displacement_store`), and
     this module applies the composed site.  :meth:`propose` is the one-call
     lawful construction.  The displacement axes are the trailing two axes of
-    the source coordinate, ordered ``(Δy, Δx)`` to match the dense kernel's
+    the source coordinate, ordered ``(Δy, Δx)`` to match the dense factor's
     ``(ky, kx)`` index order.
     """
 
@@ -100,16 +100,16 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         in_neurons: NeuronStore,
         out_neurons: NeuronStore,
         synapses: SynapseStore,
-        kernel: ContinuousKernel,
+        factor: ContinuousFactor,
         *,
-        kernel_out: ContinuousKernel | None = None,
+        factor_out: ContinuousFactor | None = None,
         stride: int | tuple[int, int] = 1,
         track_mass: bool = True,
         backend="auto",
         gauge=None,
     ) -> None:
         super().__init__(
-            in_neurons, out_neurons, synapses, kernel, kernel_out,
+            in_neurons, out_neurons, synapses, factor, factor_out,
             track_mass=track_mass, gauge=gauge,
         )
         self.chart_d_in = synapses.d_in - self.input_offset_axes
@@ -125,18 +125,18 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         self._off_hi = off_hi
         radius = max(max(-low for low in off_lo), max(high for high in off_hi))
         # Static support: Δ is clamped into its box in the forward, so the
-        # materialized kernel is always (2·ceil(r)+1)² and no forward pays a
+        # materialized factor is always (2·ceil(r)+1)² and no forward pays a
         # host sync to size it.
         self._r_int = max(1, int(math.ceil(radius)))
         self.in_channels = self.in_features
         self.out_channels = self.out_features
-        # A conv applies its measure through F.conv2d, so the kernel is
+        # A conv applies its measure through F.conv2d, so the factor is
         # materialized by construction: the only backend freedom here is
         # *how* the build runs (lean closed-form backward, compute_dtype).
         backend = validate_backend(
             backend,
-            kernel_in=self.kernel_in,
-            kernel_out=self.kernel_out,
+            factor_in=self.factor_in,
+            factor_out=self.factor_out,
             track_mass=track_mass,
             gauge=self.gauge,
         )
@@ -144,7 +144,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
             backend = Materialized()
         if not isinstance(backend, Materialized):
             raise ValueError(
-                "OffsetCSTConv2d materializes its kernel by construction; "
+                "OffsetCSTConv2d materializes its factor by construction; "
                 "only the Materialized backend applies"
             )
         self.backend = backend
@@ -159,7 +159,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         sigma: float,
         kernel_size: int | tuple[int, int],
         *,
-        kernel: str = "gaussian",
+        factor: str = "gaussian",
         capacity: int | None = None,
         max_capacity: int | None = None,
         device: torch.device | str | None = None,
@@ -169,14 +169,14 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
 
         The chart axes and the default capacity follow
         :meth:`SynapseStore.between` exactly (one atom per resolvable cell of
-        the larger endpoint chart — displacement axes carry no kernel, so
+        the larger endpoint chart — displacement axes carry no factor, so
         they add no cells).  The displacement box is ``[-k/2, k/2]`` per
         spatial axis in ``(Δy, Δx)`` order: the atom analogue of a k×k
         receptive field.
         """
         size = _positive_pair(kernel_size, "kernel_size")
         base = SynapseStore.between(
-            site, in_neurons, out_neurons, sigma, kernel=kernel
+            site, in_neurons, out_neurons, sigma, factor=factor
         )
         lo, hi = _axis_bounds(base.spec.domain_in, base.d_in)
         lo_out, hi_out = _axis_bounds(base.spec.domain_out, base.d_out)
@@ -192,7 +192,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
                 base.d_out,
                 bounds=(lo + tuple(-h for h in half), hi + half),
                 bounds_out=(lo_out, hi_out),
-                kernel=kernel,
+                factor=factor,
             ),
             device=device,
             dtype=dtype,
@@ -210,7 +210,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         capacity_scale: float = 2.0,
         seed_atoms: bool = True,
         seed_weight_scale: float = 0.05,
-        kernel: str = "gaussian",
+        factor: str = "gaussian",
         stride: int | tuple[int, int] = 1,
         generator: torch.Generator | None = None,
     ) -> "OffsetCSTConv2d":
@@ -224,9 +224,9 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         The stem rule also travels: do not chart a population that carries
         data geometry (e.g. the RGB input).
         """
-        if kernel not in _KERNELS:
+        if factor not in _KERNELS:
             raise ValueError(
-                f"kernel must be one of {sorted(_KERNELS)}, got {kernel!r}"
+                f"factor must be one of {sorted(_KERNELS)}, got {factor!r}"
             )
         if not capacity_scale > 0.0:
             raise ValueError(
@@ -238,7 +238,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
             f"{site}.out", out_channels, sigma, generator=rng
         )
         base = cls.displacement_store(
-            site, inputs, outputs, sigma, kernel_size, kernel=kernel
+            site, inputs, outputs, sigma, kernel_size, factor=factor
         )
         synapses = cls.displacement_store(
             site,
@@ -246,28 +246,28 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
             outputs,
             sigma,
             kernel_size,
-            kernel=kernel,
+            factor=factor,
             capacity=max(1, int(round(capacity_scale * base.capacity))),
         )
         if seed_atoms:
             _seed_uniform(synapses, synapses.capacity, seed_weight_scale, rng)
         return cls(
-            inputs, outputs, synapses, _KERNELS[kernel](sigma), stride=stride
+            inputs, outputs, synapses, _KERNELS[factor](sigma), stride=stride
         )
 
     # -- representation --------------------------------------------------------
 
-    def _kernel_matrices(self, source: Tensor, target: Tensor, columns=None):
-        """Kernel columns over the chart axes only; Δ axes act via stencils."""
+    def _factor_matrices(self, source: Tensor, target: Tensor, columns=None):
+        """Factor columns over the chart axes only; Δ axes act via stencils."""
         if columns is None:
             columns = self._live_columns()
         in_mu = self.in_neurons.mu.to(device=source.device, dtype=source.dtype)
         out_mu = self.out_neurons.mu.to(device=target.device, dtype=target.dtype)
         return (
             self.gauge.columns(
-                self.kernel_in, in_mu, source[:, : self.chart_d_in], columns
+                self.factor_in, in_mu, source[:, : self.chart_d_in], columns
             ),
-            self.gauge.columns(self.kernel_out, out_mu, target, columns),
+            self.gauge.columns(self.factor_out, out_mu, target, columns),
         )
 
     def _stencil(self, source: Tensor) -> Tensor:
@@ -305,7 +305,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         ).scatter(1, rows * span + cols, vals)
 
     def dense_weight(self) -> Tensor:
-        """Materialize the equivalent dense kernel ``[C_out, C_in, R, R]``.
+        """Materialize the equivalent dense factor ``[C_out, C_in, R, R]``.
 
         Gate-free like every synaptic map: gates belong to boundaries.  This
         is the exact filter the forward convolves with, and the only place
@@ -318,12 +318,12 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
                 source, target, weights,
                 self.in_neurons.mu.to(source),
                 self.out_neurons.mu.to(target),
-                self.kernel_in.sigma.to(source),
-                self.kernel_out.sigma.to(target),
+                self.factor_in.sigma.to(source),
+                self.factor_out.sigma.to(target),
                 self.chart_d_in, self._r_int, self._off_lo, self._off_hi,
                 self.backend.compute_dtype,
             )
-        k_in, k_out = self._kernel_matrices(source, target)
+        k_in, k_out = self._factor_matrices(source, target)
         stencil = self._stencil(source)
         self._refresh_mass_scale(
             k_in * torch.linalg.vector_norm(stencil, dim=1).detach(), k_out
@@ -366,7 +366,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
     # -- capture consumers -----------------------------------------------------
 
     def _captured_weight_grad(self, x: Tensor, g_out: Tensor) -> Tensor:
-        """``dL/dW`` of the materialized kernel from one captured pair."""
+        """``dL/dW`` of the materialized factor from one captured pair."""
         if x.ndim != 4 or x.shape[1] != self.in_channels:
             raise ValueError("captured x must be a (batch, C_in, H, W) tensor")
         if g_out.ndim != 4 or g_out.shape[1] != self.out_channels:
@@ -384,7 +384,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         self, grad_w: Tensor, source: Tensor, target: Tensor
     ) -> Tensor:
         """Signed ``⟨dL/dW, atom direction⟩`` for each (source, target) row."""
-        k_in, k_out = self._kernel_matrices(source, target)
+        k_in, k_out = self._factor_matrices(source, target)
         stencil = self._stencil(source)
         flat = grad_w.reshape(grad_w.shape[0], grad_w.shape[1], -1)
         partial = torch.einsum("ocs,cn->osn", flat, k_in)

@@ -9,7 +9,7 @@ from torchcst.policy.contract import Clock
 from torchcst.policy.families import RENT, cSET
 from torchcst.policy.runtime import EndpointChild, PricedProposal, SiteBinding, SynapseChild
 from torchcst.policy.registry import RetiredCandidateRegistry
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
 
@@ -30,7 +30,7 @@ def _continuous_store(capacity: int = 12) -> tuple[SynapseStore, NeuronStore, Ne
         "edge_out", 2, mu=torch.tensor([[0.0], [1.0]], dtype=torch.float64),
         initial_live=2, dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.1).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.1).double())
     s = torch.tensor([[0.50], [0.5001], [0.4999]], dtype=torch.float64)
     store.apply(
         [SynapseBirth(store.site, s, s.clone(), torch.tensor([1.0, -0.7, 0.4], dtype=torch.float64), torch.arange(3))]

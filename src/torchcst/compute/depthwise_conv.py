@@ -36,8 +36,8 @@ import torch
 from torch import Tensor, nn
 
 from torchcst.representation import (
-    GaussianKernel,
-    TriangularKernel,
+    GaussianFactor,
+    TriangularFactor,
 )
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
@@ -45,7 +45,7 @@ from .cst_linear import CSTLinear
 
 __all__ = ["DepthwiseCSTConv2d"]
 
-_KERNELS = {"gaussian": GaussianKernel, "triangular": TriangularKernel}
+_KERNELS = {"gaussian": GaussianFactor, "triangular": TriangularFactor}
 
 
 class DepthwiseCSTConv2d(nn.Module):
@@ -68,7 +68,7 @@ class DepthwiseCSTConv2d(nn.Module):
         in_neurons: NeuronStore,
         out_neurons: NeuronStore,
         synapses: SynapseStore,
-        kernel: GaussianKernel | TriangularKernel,
+        factor: GaussianFactor | TriangularFactor,
         kernel_size: int | tuple[int, int],
         *,
         stride: int = 1,
@@ -89,7 +89,7 @@ class DepthwiseCSTConv2d(nn.Module):
             padding=(size[0] // 2, size[1] // 2) if padding is None else padding,
             groups=channels,
         )
-        self.mix = CSTLinear(in_neurons, out_neurons, synapses, kernel)
+        self.mix = CSTLinear(in_neurons, out_neurons, synapses, factor)
 
     # -- delegation to the CST half ------------------------------------------
 
@@ -137,7 +137,7 @@ class DepthwiseCSTConv2d(nn.Module):
         capacity_scale: float = 2.0,
         seed_atoms: bool = True,
         seed_weight_scale: float = 0.05,
-        kernel: str = "gaussian",
+        factor: str = "gaussian",
         stride: int = 1,
         padding: int | None = None,
         generator: torch.Generator | None = None,
@@ -154,20 +154,20 @@ class DepthwiseCSTConv2d(nn.Module):
         Remember the stem rule (module docstring): do not call this for a
         population that carries data geometry, such as the RGB input.
         """
-        if kernel not in _KERNELS:
-            raise ValueError(f"kernel must be one of {sorted(_KERNELS)}, got {kernel!r}")
+        if factor not in _KERNELS:
+            raise ValueError(f"factor must be one of {sorted(_KERNELS)}, got {factor!r}")
         if not capacity_scale > 0.0:
             raise ValueError(f"capacity_scale must be positive, got {capacity_scale}")
         rng = generator if generator is not None else torch.Generator()
         inputs = NeuronStore.propose(f"{site}.in", in_channels, sigma, generator=rng)
         outputs = NeuronStore.propose(f"{site}.out", out_channels, sigma, generator=rng)
-        base = SynapseStore.between(site, inputs, outputs, sigma, kernel=kernel)
+        base = SynapseStore.between(site, inputs, outputs, sigma, factor=factor)
         synapses = SynapseStore.between(
             site,
             inputs,
             outputs,
             sigma,
-            kernel=kernel,
+            factor=factor,
             capacity=max(1, int(round(capacity_scale * base.capacity))),
         )
         if seed_atoms:
@@ -176,7 +176,7 @@ class DepthwiseCSTConv2d(nn.Module):
             inputs,
             outputs,
             synapses,
-            _KERNELS[kernel](sigma),
+            _KERNELS[factor](sigma),
             kernel_size,
             stride=stride,
             padding=padding,

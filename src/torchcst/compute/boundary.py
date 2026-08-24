@@ -14,7 +14,7 @@ applies ``normalize -> activation -> gate``, exactly once:
     y = gamma * activation(normalize(pre))
 
 ``gamma`` multiplies a factor that does not contain it, exactly like a synapse
-amplitude multiplies its kernel outer product, so the dormant field is exact
+amplitude multiplies its factor outer product, so the dormant field is exact
 and nonzero and the same scalar solve applies. Composition is then explicit:
 
     y = boundary(map(x))

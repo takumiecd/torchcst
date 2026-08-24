@@ -4,7 +4,7 @@ A continuous chart only makes its parts work -- coordinate learning, scored
 birth, growth -- when it is operated inside an empirical envelope.  The
 2026-08 conv arc measured that envelope's boundaries the hard way, and this
 module turns those lessons into an executable diagnostic: given a chart's
-neuron coordinates and the kernel bandwidth, :func:`survey_chart` reports
+neuron coordinates and the factor bandwidth, :func:`survey_chart` reports
 the per-axis and whole-chart quantities the lessons are written in, and
 flags the known failure regimes.
 
@@ -17,7 +17,7 @@ inherited from an experiment you are diagnosing.
 The five regimes it detects, with their measured provenance (all in the
 sibling ``cst`` repository's reports):
 
-* **Quasi-discrete axis** -- neuron spacing ≳ 5σ.  The kernel cannot bridge
+* **Quasi-discrete axis** -- neuron spacing ≳ 5σ.  The factor cannot bridge
   neighbouring neurons, so a coordinate moving between them travels through
   data-free vacuum: position gradients carry no unique signal and atoms
   diffuse, flee, or freeze rather than localize (TGM-C0 ``ρ_partial = 0``;
@@ -26,7 +26,7 @@ sibling ``cst`` repository's reports):
   learned by SGD.
 * **Indistinguishable population** -- more neurons than the chart can
   resolve (population exceeds ``∏ extent_d/σ`` cells).  Neurons closer than
-  ~σ share their kernel column and cannot be told apart; a 1-D channel axis
+  ~σ share their factor column and cannot be told apart; a 1-D channel axis
   holding 64 roles in a 10σ line is this failure (FC-7a's σ_c = 1.0 arms).
 * **Out-of-window spacing** -- the primary gate, and the one the others
   turn out to be symptoms of.  dim-economy DIM-K2 (sibling ``cst`` repo:
@@ -57,7 +57,7 @@ sibling ``cst`` repository's reports):
 
 Every threshold is a keyword argument whose default is the measured value;
 override them freely -- experiments that intentionally probe outside the
-envelope, or that recalibrate it for another kernel/domain, must remain
+envelope, or that recalibrate it for another factor/domain, must remain
 expressible.  The survey is deliberately *descriptive*: it returns numbers
 and notes, and raises only on malformed input.
 """
@@ -80,7 +80,7 @@ __all__ = [
 ]
 
 #: Default neuron spacing (in σ units) beyond which an axis is effectively
-#: discrete: the kernel factor across one gap is exp(-spacing²/2) ≤ 4e-6.
+#: discrete: the factor factor across one gap is exp(-spacing²/2) ≤ 4e-6.
 #: DIM-K2 corroborates the value from the other side: 4σ still trained at
 #: dim ≤ 2 and 5.6σ trained at no dimension at all, so the hard pathology
 #: boundary sits between them.
@@ -96,7 +96,7 @@ QUASI_DISCRETE_SPACING = 5.0
 #: (0.016 → 2.0) and per-axis extent over three (6σ → 4096σ) with no effect,
 #: while leaving the band collapsed every dimension.  The band **narrows** and
 #: its centre **rises** with dimension: in d dimensions a σ-ball holds
-#: ~(σ/spacing)^d neurons, so a spacing that keeps kernel columns distinct at
+#: ~(σ/spacing)^d neurons, so a spacing that keeps factor columns distinct at
 #: dim 1 makes them collinear at dim 6.
 SPACING_WINDOW: dict[int, tuple[float, float]] = {
     1: (0.7, 4.0),
@@ -235,7 +235,7 @@ def survey_chart(
     """Survey one chart against the measured operating envelope.
 
     ``coordinates`` is the ``(N, D)`` neuron-coordinate tensor of the chart
-    (the same tensor a chart hands to its kernel).  ``sigma`` is the kernel
+    (the same tensor a chart hands to its factor).  ``sigma`` is the factor
     bandwidth that will act on it.  ``atoms`` is the planned live-atom count
     for the store reading this chart; when given, coverage is reported.
 
@@ -296,15 +296,15 @@ def survey_chart(
     if population > cells:
         notes.append(
             f"population {population} exceeds ~{cells:.0f} resolvable cells — "
-            "neurons closer than σ share kernel columns and cannot be told "
+            "neurons closer than σ share factor columns and cannot be told "
             "apart (over-dense chart)"
         )
     if not in_window:
         side = "below" if lattice_spacing < window_low else "above"
         why = (
-            "neurons sit inside one another's kernel support and share columns"
+            "neurons sit inside one another's factor support and share columns"
             if side == "below" else
-            "kernel columns no longer overlap, so position gradients carry no "
+            "factor columns no longer overlap, so position gradients carry no "
             "unique signal"
         )
         notes.append(

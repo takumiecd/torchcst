@@ -14,7 +14,7 @@ import torch
 from torchcst import CoordPreconditioner
 from torchcst.compute import CSTLinear
 from torchcst.representation import (
-    GaussianKernel,
+    GaussianFactor,
     L2NormalizedColumns,
     RepresentationSpec,
 )
@@ -64,7 +64,7 @@ def _site(capacity=4, atoms=3, d_in=2, d_out=1, gauge=None):
         dtype=torch.float64,
     )
     module = CSTLinear(
-        inputs, outputs, store, GaussianKernel(SIGMA).double(), gauge=gauge
+        inputs, outputs, store, GaussianFactor(SIGMA).double(), gauge=gauge
     )
     return module, store
 
@@ -77,11 +77,11 @@ def _backward(module, seed):
 
 def _reference_jacobian_sq(module, store):
     """The lm1d J^2, via the explicit [N, K, d] cube the closed form avoids."""
-    sigma = float(module.kernel_in.sigma.detach())
+    sigma = float(module.factor_in.sigma.detach())
     mu_in = module.in_neurons.mu
     mu_out = module.out_neurons.mu
-    k_in = module.kernel_in(mu_in, store.s.detach())
-    k_out = module.kernel_out(mu_out, store.t.detach())
+    k_in = module.factor_in(mu_in, store.s.detach())
+    k_out = module.factor_out(mu_out, store.t.detach())
     d_in_cube = (mu_in[:, None, :] - store.s.detach()[None, :, :]).square().sum(-1)
     d_out_cube = (mu_out[:, None, :] - store.t.detach()[None, :, :]).square().sum(-1)
     r_in = (k_in.square() * d_in_cube).sum(0)
@@ -95,7 +95,7 @@ def _reference_jacobian_sq(module, store):
 def _reference_step(module, store, v_s, v_t, eta, live, *, beta, target_step,
                     cap_sigma, lr_scale=1.0):
     """One frozen-rule update, returning (delta_s, delta_t, v_s, v_t, eta)."""
-    sigma = float(module.kernel_in.sigma.detach())
+    sigma = float(module.factor_in.sigma.detach())
     v_s = beta * v_s + (1.0 - beta) * store.s.grad
     v_t = beta * v_t + (1.0 - beta) * store.t.grad
     j_s, j_t = _reference_jacobian_sq(module, store)
@@ -159,10 +159,10 @@ def test_preconditioner_uses_the_normalized_map_jacobian_under_the_l2_gauge():
 
         def represented(s, t, weight=weight):
             column_in = gauge.columns(
-                module.kernel_in, module.in_neurons.mu, s[None, :]
+                module.factor_in, module.in_neurons.mu, s[None, :]
             )[:, 0]
             column_out = gauge.columns(
-                module.kernel_out, module.out_neurons.mu, t[None, :]
+                module.factor_out, module.out_neurons.mu, t[None, :]
             )[:, 0]
             return weight * column_out[:, None] * column_in[None, :]
 
@@ -193,7 +193,7 @@ def test_eta_calibration_puts_the_live_median_step_at_target() -> None:
             (store.t.detach() - t_before)[live].norm(dim=1),
         ]
     )
-    sigma = float(module.kernel_in.sigma.detach())
+    sigma = float(module.factor_in.sigma.detach())
     assert float(steps.median()) == pytest.approx(0.01 * sigma, rel=1e-6)
 
 
@@ -206,7 +206,7 @@ def test_trust_cap_bounds_every_atom_step() -> None:
         t_before = store.t.detach().clone()
         pc.step(1.0)
         pc.zero_grad()
-        cap = 0.02 * float(module.kernel_in.sigma.detach())
+        cap = 0.02 * float(module.factor_in.sigma.detach())
         for before, param in ((s_before, store.s), (t_before, store.t)):
             norms = (param.detach() - before).norm(dim=1)
             assert bool((norms <= cap * (1.0 + 1e-12)).all())

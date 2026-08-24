@@ -24,7 +24,7 @@ def parameter_groups(
     (e.g. the entry family's ``IntegerGrid``) are not parameters and never
     appear in any group.
 
-    A kernel family's declared per-atom columns
+    A factor family's declared per-atom columns
     (:class:`~torchcst.representation.AtomColumn`) land in the default group
     deliberately, not by omission: a Gabor frequency is conjugate to position
     and a per-atom bandwidth is a scale, so neither carries the amplitude's

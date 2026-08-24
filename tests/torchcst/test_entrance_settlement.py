@@ -35,7 +35,7 @@ from torchcst.policy import (
     SynapseLifecycle,
 )
 from torchcst.policy.registry import RetiredCandidateRegistry
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
@@ -59,7 +59,7 @@ SITE = "edge"
 
 
 def _gaussian_columns(grid: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
-    """Reproduce ``GaussianKernel``'s profile: ``exp(-d^2 / (2 sigma^2))``."""
+    """Reproduce ``GaussianFactor``'s profile: ``exp(-d^2 / (2 sigma^2))``."""
     return torch.exp(-0.5 * ((grid[:, None] - positions.reshape(1, -1)) / SIGMA).square())
 
 
@@ -134,7 +134,7 @@ def _build_problem(rent: float, budget: int):
         f"{SITE}_out", N, mu=y_grid[:, None], initial_live=N, dtype=torch.float64
     )
     module = CSTLinear(
-        inputs, outputs, store, GaussianKernel(SIGMA, learnable=False).double(), track_mass=False
+        inputs, outputs, store, GaussianFactor(SIGMA, learnable=False).double(), track_mass=False
     )
     store.apply(
         (

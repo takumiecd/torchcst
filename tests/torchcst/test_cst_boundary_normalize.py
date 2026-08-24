@@ -29,7 +29,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from torchcst.compute import CSTBoundary, CSTLinear
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 D_IN, H_MAX, H_LIVE = 6, 10, 4
@@ -53,7 +53,7 @@ def _world(normalize: nn.Module | None):
     mu = lambda n: torch.linspace(0.0, 1.0, n, dtype=torch.float64)[:, None]  # noqa: E731
     inputs = NeuronStore("x", D_IN, mu=mu(D_IN), initial_live=D_IN, dtype=torch.float64)
     hidden = NeuronStore("h", H_MAX, mu=mu(H_MAX), initial_live=H_LIVE, dtype=torch.float64)
-    linear = CSTLinear(inputs, hidden, store, GaussianKernel(0.2).double())
+    linear = CSTLinear(inputs, hidden, store, GaussianFactor(0.2).double())
     boundary = CSTBoundary(linear, activation=F.gelu, normalize=normalize)
     generator = torch.Generator().manual_seed(4)
     x = torch.randn(32, D_IN, dtype=torch.float64, generator=generator)
@@ -81,7 +81,7 @@ def test_normalize_is_rejected_unless_it_is_a_real_module() -> None:
                     spec=RepresentationSpec.continuous(1, 1, bounds=(0.0, 1.0)),
                     dtype=torch.float64,
                 ),
-                GaussianKernel(0.2).double(),
+                GaussianFactor(0.2).double(),
             ),
             normalize=lambda t: t,
         )

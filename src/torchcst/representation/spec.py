@@ -9,8 +9,8 @@ import torch
 from torch import Tensor
 
 from .domains import Box, CoordinateDomain, IntegerGrid, Sphere
-from .kernels import (
-    CONTINUOUS_KERNELS,
+from .factors import (
+    CONTINUOUS_FACTORS,
     AtomColumn,
     continuous_family_names,
     family_atom_columns,
@@ -19,26 +19,26 @@ from .kernels import (
 
 @dataclass(frozen=True)
 class RepresentationSpec:
-    """Bundle a family's domains, kernels, sites, atom price, and retirement semantics."""
+    """Bundle a family's domains, factors, sites, atom price, and retirement semantics."""
 
     domain_in: CoordinateDomain = field(default_factory=IntegerGrid)
     domain_out: CoordinateDomain = field(default_factory=IntegerGrid)
-    kernel_in: str = "delta"
-    kernel_out: str = "delta"
+    factor_in: str = "delta"
+    factor_out: str = "delta"
     sites: str = "independent"
     atom_cost: int = 1
     retirement: str = "endpoint_cascade"
 
     def __post_init__(self) -> None:
-        entry = self.kernel_in == self.kernel_out == "delta"
-        rank_one = self.kernel_in == self.kernel_out == "dot"
+        entry = self.factor_in == self.factor_out == "delta"
+        rank_one = self.factor_in == self.factor_out == "dot"
         continuous = (
-            self.kernel_in == self.kernel_out
-            and self.kernel_in in continuous_family_names()
+            self.factor_in == self.factor_out
+            and self.factor_in in continuous_family_names()
         )
         if not entry and not rank_one and not continuous:
             raise ValueError(
-                "kernel pair must describe entry, rank-one, or continuous family"
+                "factor pair must describe entry, rank-one, or continuous family"
             )
         if entry:
             if self.atom_cost != 1:
@@ -63,7 +63,7 @@ class RepresentationSpec:
             )
             expected = self.domain_in.dim + self.domain_out.dim + 1 + extra
             if self.atom_cost != expected:
-                detail = " + kernel columns" if extra else ""
+                detail = " + factor columns" if extra else ""
                 raise ValueError(
                     f"{family} atom_cost must be d_in + d_out + 1{detail}"
                 )
@@ -92,8 +92,8 @@ class RepresentationSpec:
         return cls(
             domain_in=Sphere(d_in),
             domain_out=Sphere(d_out),
-            kernel_in="dot",
-            kernel_out="dot",
+            factor_in="dot",
+            factor_out="dot",
             atom_cost=d_in + d_out + 1,
             retirement="gate_only",
         )
@@ -106,18 +106,18 @@ class RepresentationSpec:
         *,
         bounds: tuple[Any, Any] = (0.0, 1.0),
         bounds_out: tuple[Any, Any] | None = None,
-        kernel: str = "gaussian",
+        factor: str = "gaussian",
     ) -> RepresentationSpec:
         """Create a Box×Box continuous-coordinate family.
 
-        ``kernel`` selects the profile: ``"gaussian"`` (global support) or
+        ``factor`` selects the profile: ``"gaussian"`` (global support) or
         ``"triangular"`` (compact support, and therefore the family that
-        reaches the entry family's delta kernel as sigma shrinks).  Continuous
+        reaches the entry family's delta factor as sigma shrinks).  Continuous
         functional mass depends on sampled neuron locations, sigma, and
         boundary effects, and the compact profile changes all three.
         Consequently the frozen entry/rank-one rent constants must not be
         inherited automatically, and neither may a Gaussian calibration be
-        reused for a compact kernel: each requires fresh calibration.
+        reused for a compact factor: each requires fresh calibration.
 
         ``bounds`` is ``(lo, hi)``; each side may be one scalar (a cube) or
         one value per axis, because an isotropic chart is generally not a
@@ -130,9 +130,9 @@ class RepresentationSpec:
                 continue
             if not isinstance(value, tuple) or len(value) != 2:
                 raise TypeError(f"{name} must be a (lo, hi) tuple")
-        if kernel not in continuous_family_names():
+        if factor not in continuous_family_names():
             raise ValueError(
-                f"kernel must be one of {sorted(continuous_family_names())}"
+                f"factor must be one of {sorted(continuous_family_names())}"
             )
         lo, hi = bounds
         lo_out, hi_out = bounds if bounds_out is None else bounds_out
@@ -141,13 +141,13 @@ class RepresentationSpec:
         # for both the price and the store's columns.
         extra = sum(
             column.resolve_width(d_in, d_out)
-            for column in family_atom_columns(kernel)
+            for column in family_atom_columns(factor)
         )
         return cls(
             domain_in=Box(lo, hi, d_in),
             domain_out=Box(lo_out, hi_out, d_out),
-            kernel_in=kernel,
-            kernel_out=kernel,
+            factor_in=factor,
+            factor_out=factor,
             atom_cost=d_in + d_out + 1 + extra,
             retirement="gate_only",
         )
@@ -185,11 +185,11 @@ class RepresentationSpec:
             raise ValueError("functional_mass expects rank-1 w and rank-2 s/t")
         if s.shape[0] != w.numel() or t.shape[0] != w.numel():
             raise ValueError("functional_mass tensors must share the atom count")
-        if self.kernel_in == self.kernel_out == "delta":
+        if self.factor_in == self.factor_out == "delta":
             return w.abs()
         if (
-            self.kernel_in == self.kernel_out
-            and self.kernel_in in continuous_family_names()
+            self.factor_in == self.factor_out
+            and self.factor_in in continuous_family_names()
         ):
             raise RuntimeError(
                 "continuous functional mass requires SynapseStore.mass_scale"
@@ -201,14 +201,14 @@ class RepresentationSpec:
         )
 
     def atom_columns(self) -> tuple[AtomColumn, ...]:
-        """Per-atom columns this family's kernel requires beyond ``(s, t, w)``.
+        """Per-atom columns this family's factor requires beyond ``(s, t, w)``.
 
         Empty for every built-in family, so a store built from an unchanged
         spec installs exactly the columns it always did.
         """
-        if self.kernel_in != self.kernel_out:
+        if self.factor_in != self.factor_out:
             return ()
-        return family_atom_columns(self.kernel_in)
+        return family_atom_columns(self.factor_in)
 
     def merge_atoms(
         self,
@@ -268,7 +268,7 @@ class RepresentationSpec:
     def _validate_merge_factors(
         self, s1: Tensor, t1: Tensor, s2: Tensor, t2: Tensor
     ) -> None:
-        if self.kernel_in != self.kernel_out or self.kernel_in != "dot":
+        if self.factor_in != self.factor_out or self.factor_in != "dot":
             raise ValueError("entry-family merge is undefined on the discrete lattice")
         for name, value in (("s1", s1), ("t1", t1), ("s2", s2), ("t2", t2)):
             if not isinstance(value, Tensor) or value.ndim != 1:

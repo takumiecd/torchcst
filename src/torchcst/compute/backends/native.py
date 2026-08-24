@@ -1,4 +1,4 @@
-"""The native truncated backend: no W, no ``[rows, K]``, local kernels.
+"""The native truncated backend: no W, no ``[rows, K]``, local factors.
 
 Each atom reads only the input neurons and writes only the output
 neurons inside its ``radius``-sigma ball, so the map costs
@@ -22,7 +22,7 @@ def neighbor_tables(
     """Padded ``[K, m]`` neuron indices and their validity mask.
 
     Built from detached coordinates: the support boundary is not
-    differentiated (retraction semantics) -- only kernel values on the
+    differentiated (retraction semantics) -- only factor values on the
     surviving pairs are.  The padded width follows the widest atom,
     which is a host sync; a CUDA-graph-ready variant pins the width and
     rebuilds on a cadence (Verlet-style) instead.
@@ -39,11 +39,11 @@ def neighbor_tables(
 
 
 class NativeTruncatedFunction(torch.autograd.Function):
-    """Row map through truncated kernels with closed-form chunked backward.
+    """Row map through truncated factors with closed-form chunked backward.
 
     Backward saves only the atom parameters and neighbor tables and
     recomputes per-chunk with analytic Gaussian derivatives; peak memory
-    is O(rows x chunk x m).  Gaussian kernels only; the caller enforces
+    is O(rows x chunk x m).  Gaussian factors only; the caller enforces
     it.
     """
 

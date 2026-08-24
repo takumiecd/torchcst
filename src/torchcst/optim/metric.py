@@ -36,39 +36,39 @@ def radial_moment(k: Tensor, mu: Tensor, x: Tensor) -> tuple[Tensor, Tensor]:
     return moment, mass
 
 
-def columns(kernel, mu: Tensor, centers: Tensor) -> tuple[Tensor, Tensor]:
+def columns(factor, mu: Tensor, centers: Tensor) -> tuple[Tensor, Tensor]:
     """``(kappa, d kappa / d c per unit displacement)`` for one side.
 
-    The second return is ``2 * profile_grad``, the factor satisfying
-    ``d kappa / d c = factor * (c - x)``; squaring it against the radial moment
+    The second return is ``2 * profile_grad``, the slope satisfying
+    ``d kappa / d c = slope * (c - x)``; squaring it against the radial moment
     is what makes the metric family-generic.
     """
-    sigma = kernel.sigma.detach().to(centers)
+    sigma = factor.sigma.detach().to(centers)
     squared_distance = torch.cdist(mu, centers).square()
     return (
-        kernel.profile(squared_distance, sigma),
-        2.0 * kernel.profile_grad(squared_distance, sigma),
+        factor.profile(squared_distance, sigma),
+        2.0 * factor.profile_grad(squared_distance, sigma),
     )
 
 
 def normalized_columns(
-    kernel,
+    factor,
     mu: Tensor,
     centers: Tensor,
     columns: Mapping[str, Tensor] | None = None,
 ) -> tuple[Tensor, Tensor]:
-    """Unit columns and pre-projection coordinate-derivative factors.
+    """Unit columns and pre-projection coordinate-derivative slopes.
 
-    The kernel supplies a profile and ``d profile / d squared_distance`` under
+    The factor supplies a profile and ``d profile / d squared_distance`` under
     one arbitrary positive scale per column.  Dividing both by the profile
     norm removes that scale.  :func:`projected_directional` then removes the
     radial derivative of whichever scale the family chose, leaving the exact
     derivative of the delivered L2-normalised column.
 
-    An honestly zero compact-support column returns a zero column and factor;
+    An honestly zero compact-support column returns a zero column and slope;
     it therefore contributes zero metric rather than ``NaN``.
     """
-    value, profile_grad = kernel.scaled_column_pair(mu, centers, columns)
+    value, profile_grad = factor.scaled_column_pair(mu, centers, columns)
     norm = torch.linalg.vector_norm(value, dim=0, keepdim=True)
     divisor = norm.clamp_min(torch.finfo(value.dtype).tiny)
     return value / divisor, 2.0 * profile_grad / divisor
@@ -86,25 +86,25 @@ def weighted(matrix: Tensor, traffic: Tensor | None) -> Tensor:
     return (rows @ matrix).square().sum(0) / rows.shape[0]
 
 
-def directional(factor: Tensor, mu: Tensor, centers: Tensor,
+def directional(slope: Tensor, mu: Tensor, centers: Tensor,
                 traffic: Tensor | None) -> Tensor:
     """``sum_i || Sigma^(1/2) d kappa / d c_i ||^2`` per atom.
 
     One chart axis at a time, so the ``[N, K, d]`` displacement cube is never
-    built; each axis costs one ``[N, K]`` temporary, the shape the kernel
+    built; each axis costs one ``[N, K]`` temporary, the shape the factor
     matrix already occupies.
     """
     total = torch.zeros(centers.shape[0], device=centers.device,
                         dtype=centers.dtype)
     for axis in range(centers.shape[1]):
-        derivative = factor * (centers[:, axis][None, :] - mu[:, axis][:, None])
+        derivative = slope * (centers[:, axis][None, :] - mu[:, axis][:, None])
         total = total + weighted(derivative, traffic)
     return total
 
 
 def projected_directional(
     unit: Tensor,
-    factor: Tensor,
+    slope: Tensor,
     mu: Tensor,
     centers: Tensor,
     traffic: Tensor | None,
@@ -113,14 +113,14 @@ def projected_directional(
 ) -> Tensor:
     """Squared derivatives of an L2-normalised column after tangent projection.
 
-    ``factor * (center - mu)`` is the scaled raw derivative divided by the
+    ``slope * (center - mu)`` is the scaled raw derivative divided by the
     scaled column norm.  Removing its component parallel to ``unit`` applies
     ``I - unit unit^T`` and makes the result independent of the arbitrary
-    positive scale permitted by the kernel contract.
+    positive scale permitted by the factor contract.
     """
     axes: list[Tensor] = []
     for axis in range(centers.shape[1]):
-        derivative = factor * (
+        derivative = slope * (
             centers[:, axis][None, :] - mu[:, axis][:, None]
         )
         radial = (unit * derivative).sum(0, keepdim=True)
@@ -132,7 +132,7 @@ def projected_directional(
 
 def projected_directional_gram(
     unit: Tensor,
-    factor: Tensor,
+    slope: Tensor,
     mu: Tensor,
     centers: Tensor,
     traffic: Tensor | None,
@@ -147,7 +147,7 @@ def projected_directional_gram(
     """
     tangents: list[Tensor] = []
     for axis in range(centers.shape[1]):
-        derivative = factor * (
+        derivative = slope * (
             centers[:, axis][None, :] - mu[:, axis][:, None]
         )
         radial = (unit * derivative).sum(0, keepdim=True)
@@ -165,9 +165,9 @@ def projected_directional_gram(
 def gauged_coordinate_jacobian_gram(
     *,
     unit_in: Tensor,
-    factor_in: Tensor,
+    slope_in: Tensor,
     unit_out: Tensor,
-    factor_out: Tensor,
+    slope_out: Tensor,
     mu_in: Tensor,
     mu_out: Tensor,
     source: Tensor,
@@ -189,19 +189,19 @@ def gauged_coordinate_jacobian_gram(
     """
 
     def projected_axes(
-        unit: Tensor, factor: Tensor, mu: Tensor, centers: Tensor
+        unit: Tensor, slope: Tensor, mu: Tensor, centers: Tensor
     ) -> Tensor:
         axes = []
         for axis in range(centers.shape[1]):
-            derivative = factor * (
+            derivative = slope * (
                 centers[:, axis][None, :] - mu[:, axis][:, None]
             )
             radial = (unit * derivative).sum(0, keepdim=True)
             axes.append(derivative - unit * radial)
         return torch.stack(axes, dim=-1)  # [neurons, atoms, axes]
 
-    derivative_in = projected_axes(unit_in, factor_in, mu_in, source)
-    derivative_out = projected_axes(unit_out, factor_out, mu_out, target)
+    derivative_in = projected_axes(unit_in, slope_in, mu_in, source)
+    derivative_out = projected_axes(unit_out, slope_out, mu_out, target)
     overlap_in = unit_in.transpose(0, 1) @ unit_in
     overlap_out = unit_out.transpose(0, 1) @ unit_out
     mass_outer = mass[:, None] * mass[None, :]
@@ -247,9 +247,9 @@ def gauged_coordinate_jacobian_gram(
 def gauged_jacobian_gram(
     *,
     unit_in: Tensor,
-    factor_in: Tensor,
+    slope_in: Tensor,
     unit_out: Tensor,
-    factor_out: Tensor,
+    slope_out: Tensor,
     mu_in: Tensor,
     mu_out: Tensor,
     source: Tensor,
@@ -267,10 +267,10 @@ def gauged_jacobian_gram(
     still neglected.
     """
     source_gram = projected_directional_gram(
-        unit_in, factor_in, mu_in, source, traffic_in
+        unit_in, slope_in, mu_in, source, traffic_in
     )
     target_gram = projected_directional_gram(
-        unit_out, factor_out, mu_out, target, traffic_out
+        unit_out, slope_out, mu_out, target, traffic_out
     )
     out_mass = weighted(unit_out, traffic_out)
     in_mass = weighted(unit_in, traffic_in)
@@ -283,9 +283,9 @@ def gauged_jacobian_gram(
 def gauged_jacobian_sq(
     *,
     unit_in: Tensor,
-    factor_in: Tensor,
+    slope_in: Tensor,
     unit_out: Tensor,
-    factor_out: Tensor,
+    slope_out: Tensor,
     mu_in: Tensor,
     mu_out: Tensor,
     source: Tensor,
@@ -303,10 +303,10 @@ def gauged_jacobian_sq(
     not a claim that the full ``J.T @ J`` is diagonal.
     """
     source_diag = projected_directional(
-        unit_in, factor_in, mu_in, source, traffic_in, per_axis=per_axis
+        unit_in, slope_in, mu_in, source, traffic_in, per_axis=per_axis
     )
     target_diag = projected_directional(
-        unit_out, factor_out, mu_out, target, traffic_out, per_axis=per_axis
+        unit_out, slope_out, mu_out, target, traffic_out, per_axis=per_axis
     )
     out_mass = weighted(unit_out, traffic_out)
     in_mass = weighted(unit_in, traffic_in)

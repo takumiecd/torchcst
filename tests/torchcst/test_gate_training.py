@@ -13,7 +13,7 @@ import torch
 import torch.nn.functional as F
 
 from torchcst.compute import CSTBoundary, CSTLinear
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 D_IN, H_MAX, H_LIVE, D_OUT = 6, 10, 3, 4
@@ -38,7 +38,7 @@ def _world():
     inputs = NeuronStore("x", D_IN, mu=mu(D_IN), initial_live=D_IN, dtype=torch.float64)
     hidden = NeuronStore("h", H_MAX, mu=mu(H_MAX), initial_live=H_LIVE,
                          dtype=torch.float64)
-    linear = CSTLinear(inputs, hidden, store, GaussianKernel(0.2).double())
+    linear = CSTLinear(inputs, hidden, store, GaussianFactor(0.2).double())
     boundary = CSTBoundary(linear, activation=F.gelu)
     forward = lambda inp: boundary(linear(inp))  # noqa: E731
     generator = torch.Generator().manual_seed(4)

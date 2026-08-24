@@ -36,7 +36,7 @@ from torchcst.policy import (
     SynapseLifecycle,
 )
 from torchcst.policy.families import RENT, cRES, cRigL, cSET
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import (
     NeuronStore,
     SynapseAbsorb,
@@ -75,7 +75,7 @@ def _edge_store(*, capacity: int = 12, sigma: float = 0.1):
         initial_live=2,
         dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(sigma).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(sigma).double())
     s = torch.tensor([[0.50], [0.5001], [0.4999]], dtype=torch.float64)
     t = torch.tensor([[0.50], [0.5001], [0.4999]], dtype=torch.float64)
     w = torch.tensor([1.0, -0.7, 0.4], dtype=torch.float64)
@@ -254,7 +254,7 @@ def _isolated_store(w_value: float, *, sigma: float = 0.1):
         initial_live=2,
         dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(sigma).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(sigma).double())
     s = torch.tensor([[0.5]], dtype=torch.float64)
     t = torch.tensor([[0.5]], dtype=torch.float64)
     w = torch.tensor([w_value], dtype=torch.float64)
@@ -266,13 +266,13 @@ def test_include_isolated_prunes_near_zero_cost_and_spares_effective_atom() -> N
     small_w, big_w = 1.0e-3, 1.0
 
     # Pick a rent that straddles the two full costs exactly, computed from
-    # the atom's own kernel columns rather than guessed -- cost scales as
-    # w**2, so any positive kernel norm gives a clean six-order-of-magnitude
+    # the atom's own factor columns rather than guessed -- cost scales as
+    # w**2, so any positive factor norm gives a clean six-order-of-magnitude
     # separation between the two cases.
     _, _, _, probe_module = _isolated_store(1.0)
     s = torch.tensor([[0.5]], dtype=torch.float64)
     t = torch.tensor([[0.5]], dtype=torch.float64)
-    k_in, k_out = probe_module.kernel_columns(s, t)
+    k_in, k_out = probe_module.factor_columns(s, t)
     psi_norm2 = float((k_out.t() @ k_out) * (k_in.t() @ k_in))
     assert psi_norm2 > 0.0
     cost_small = 0.5 * small_w**2 * psi_norm2

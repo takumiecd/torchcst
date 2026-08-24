@@ -14,7 +14,7 @@ class EntryLinear(_ControlLinear):
     """Sparse linear map backed by entry-family ``(source, target, weight)`` rows.
 
     A control family, not CST: one atom is one sparse matrix entry -- the
-    DST/SET/RigL baseline, and the sigma->0 limit of the triangular kernel
+    DST/SET/RigL baseline, and the sigma->0 limit of the triangular factor
     family.
 
     The module is a read-only compute edge: it neither creates operations nor
@@ -30,8 +30,8 @@ class EntryLinear(_ControlLinear):
         super().__init__(store, in_features, out_features)
         if store.d_in != 1 or store.d_out != 1:
             raise ValueError("EntryLinear requires scalar entry coordinates")
-        if store.spec.kernel_in != "delta" or store.spec.kernel_out != "delta":
-            raise ValueError("EntryLinear requires delta kernels")
+        if store.spec.factor_in != "delta" or store.spec.factor_out != "delta":
+            raise ValueError("EntryLinear requires delta factors")
 
     def _freeze_view(self, view: SynapseView) -> SynapseView:
         source = view.s[:, 0]

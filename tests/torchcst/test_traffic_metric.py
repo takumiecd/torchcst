@@ -18,7 +18,7 @@ import torch
 
 from torchcst import CoordPreconditioner
 from torchcst.compute import CSTLinear
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 SIGMA = 0.25
@@ -46,7 +46,7 @@ def _site(atoms=6, d=2, n_in=9, n_out=7):
         NeuronStore("out", n_out, mu=torch.rand(n_out, d, generator=charts,
                                                 dtype=torch.float64) - 0.5,
                     initial_live=n_out, dtype=torch.float64),
-        store, GaussianKernel(SIGMA, learnable=False).double(),
+        store, GaussianFactor(SIGMA, learnable=False).double(),
     )
     return module, store
 

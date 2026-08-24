@@ -8,7 +8,7 @@ from typing import Any
 import torch
 
 from torchcst._validation import require_int, require_real
-from torchcst.representation.kernels import (
+from torchcst.representation.factors import (
     OverlapScale,
     pairwise_overlap,
     require_overlap_scale,
@@ -22,9 +22,9 @@ def _novelty_discount(
 ) -> torch.Tensor:
     """Per-candidate ``(1 - rho_max**2)`` against reference row coordinates.
 
-    ``rho_ck``, the kernel-family overlap (:func:`~torchcst.representation.
-    kernels.pairwise_overlap`, so ``scale`` may be a bare Gaussian bandwidth
-    or the site's own kernel), is the geometry-only
+    ``rho_ck``, the factor-family overlap (:func:`~torchcst.representation.
+    factors.pairwise_overlap`, so ``scale`` may be a bare Gaussian bandwidth
+    or the site's own factor), is the geometry-only
     coordinate overlap between dormant candidate ``c`` and live row ``k``
     (twin-control.md Sec.3's ladder, applied to the neuron measure per
     Sec.4). This is rung 1 only: it omits the activation-correlation factor
@@ -63,8 +63,8 @@ class GammaUngate:
     rather than by truncating it up front.  ``gate_scale`` reinstates the cap
     for experiments that want it.
 
-    ``novelty``, when set to a kernel bandwidth ``sigma`` (or to the site's
-    own kernel, for a family-generic overlap), opts into the
+    ``novelty``, when set to a factor bandwidth ``sigma`` (or to the site's
+    own factor, for a family-generic overlap), opts into the
     gain_perp-style novelty discount from twin-control.md Sec.3/Sec.4: the
     selection field (``|dL/dgamma|``) for each dormant candidate is
     multiplied by ``(1 - rho_max**2)``, where ``rho_max`` is its largest

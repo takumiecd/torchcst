@@ -10,8 +10,8 @@ The tree is the sole authoring path for absorb (the earlier whole-policy
 :class:`AbsorbCourt` builds a
 :class:`~torchcst.representation.gram.GramService` from the live
 :class:`~torchcst.storage.synapse.SynapseView` and the
-:class:`~torchcst.instruments.base.KernelPort` bound at construction (via the
-public :class:`~torchcst.instruments.base.KernelPortRequest`), plans a
+:class:`~torchcst.instruments.base.FactorPort` bound at construction (via the
+public :class:`~torchcst.instruments.base.FactorPortRequest`), plans a
 sequential absorb chain (:meth:`GramService.plan_chain`) capped at ``rent``,
 maps the resulting live-view positions to entity IDs, and emits the ordered
 :class:`~torchcst.storage.synapse.SynapseAbsorb` ops as one atomic
@@ -36,7 +36,7 @@ from torchcst._validation import require_int, require_real
 # Submodule import: torchcst.instruments' package __init__ may itself be
 # mid-import (it reaches back into torchcst.policy), so policy modules must
 # import instrument symbols from their defining modules.
-from torchcst.instruments.base import KernelPort, KernelPortRequest
+from torchcst.instruments.base import FactorPort, FactorPortRequest
 from torchcst.representation.gram import AbsorbPlanStep, GramService
 from torchcst.storage import SynapseAbsorb, SynapseDeath, SynapseView
 
@@ -123,7 +123,7 @@ class AbsorbCourt:
 
     Design section 5, stage 3b item 2: at each root-issued call it builds
     a fresh :class:`~torchcst.representation.gram.GramService` from the live
-    view and the site's :class:`~torchcst.instruments.base.KernelPort`, runs
+    view and the site's :class:`~torchcst.instruments.base.FactorPort`, runs
     :meth:`~torchcst.representation.gram.GramService.plan_chain` capped at
     ``rent``, and emits the ordered absorb ops as one atomic
     :class:`~torchcst.policy.bundle.ProposalBundle`.
@@ -163,10 +163,10 @@ class AbsorbCourt:
     include_isolated: bool = True
     audit_delta_w: bool = True
     data: Callable[[], Tensor] | None = None
-    requires: tuple[KernelPortRequest, ...] = field(init=False, repr=False)
+    requires: tuple[FactorPortRequest, ...] = field(init=False, repr=False)
     audit_log: list[AbsorbAuditEntry] = field(default_factory=list, init=False)
-    _request: KernelPortRequest = field(init=False, repr=False)
-    _ports: dict[str, KernelPort] = field(default_factory=dict, init=False, repr=False)
+    _request: FactorPortRequest = field(init=False, repr=False)
+    _ports: dict[str, FactorPort] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.rent = require_real(self.rent, "rent", nonnegative=True)
@@ -183,11 +183,11 @@ class AbsorbCourt:
             raise TypeError("audit_delta_w must be a bool")
         if self.data is not None and not callable(self.data):
             raise TypeError("data must be a callable batch provider or None")
-        self._request = KernelPortRequest()
+        self._request = FactorPortRequest()
         self.requires = (self._request,)
 
     def bind_instruments(self, site: str, instruments: dict[str, Any]) -> None:
-        """Receive this site's KernelPort, built once at engine construction."""
+        """Receive this site's FactorPort, built once at engine construction."""
         self._ports[site] = instruments[self._request.name].port
 
     def propose(
@@ -227,7 +227,7 @@ class AbsorbCourt:
         port = self._ports.get(view.site)
         if port is None:
             raise RuntimeError(
-                f"AbsorbCourt has no KernelPort bound for site {view.site!r}; "
+                f"AbsorbCourt has no FactorPort bound for site {view.site!r}; "
                 "was the engine constructed with a matching compute module?"
             )
         k_in, k_out = port.columns(view.s, view.t)

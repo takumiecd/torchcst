@@ -269,14 +269,14 @@ class Box:
     ``lo``/``hi`` accept either one scalar (a cube, the original contract) or
     one value per axis.  The per-axis form exists because an *isotropic
     chart* -- one whose neuron lattice has the same spacing on every axis, so
-    that a single isotropic kernel bandwidth resolves every axis equally --
+    that a single isotropic factor bandwidth resolves every axis equally --
     is generally **not** a cube: an axis carrying ``C`` lattice points and an
     axis carrying ``k`` lattice points at equal spacing span
     ``(C-1)h`` and ``(k-1)h``.  Forcing such a chart into a cube is exactly
     the failure ``torchcst.compute.conv2d_neuron_coordinates``'s default
     produces (see its docstring): the short axes get stretched until one
     bandwidth can no longer reach across them, and every atom drawn from the
-    cube lands where its kernel column is numerically zero.  Sampling,
+    cube lands where its factor column is numerically zero.  Sampling,
     validation and retraction therefore have to know the real per-axis
     extent, or the geometry fix is defeated by the coordinate *law* the
     atoms are drawn from.

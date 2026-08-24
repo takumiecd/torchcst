@@ -9,11 +9,11 @@ import torch.nn.functional as F
 from torch import nn
 
 from torchcst.compute import CSTLinear, Factored
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
 
-def _parts() -> tuple[SynapseStore, GaussianKernel, CSTLinear]:
+def _parts() -> tuple[SynapseStore, GaussianFactor, CSTLinear]:
     store = SynapseStore(
         "continuous",
         2,
@@ -58,18 +58,18 @@ def _parts() -> tuple[SynapseStore, GaussianKernel, CSTLinear]:
         initial_live=3,
         dtype=torch.float64,
     )
-    kernel = GaussianKernel(0.55).double()
+    factor = GaussianFactor(0.55).double()
     # This file is the *factored* backend's contract; the materialized
     # backend and the auto crossover live in test_cst_linear_materialize.py.
-    return store, kernel, CSTLinear(
-        inputs, outputs, store, kernel, backend=Factored()
+    return store, factor, CSTLinear(
+        inputs, outputs, store, factor, backend=Factored()
     )
 
 
 def test_forward_and_w_s_t_sigma_gradients_match_dense_linear() -> None:
-    store, kernel, module = _parts()
+    store, factor, module = _parts()
     assert isinstance(store.s, nn.Parameter) and isinstance(store.t, nn.Parameter)
-    assert isinstance(kernel.sigma, nn.Parameter)
+    assert isinstance(factor.sigma, nn.Parameter)
     x = torch.randn(6, 4, dtype=torch.float64, requires_grad=True)
     upstream = torch.randn(6, 3, dtype=torch.float64)
 
@@ -82,10 +82,10 @@ def test_forward_and_w_s_t_sigma_gradients_match_dense_linear() -> None:
         "w": store.w.grad.clone(),
         "s": store.s.grad.clone(),
         "t": store.t.grad.clone(),
-        "sigma": kernel.sigma.grad.clone(),
+        "sigma": factor.sigma.grad.clone(),
         "x": x.grad.clone(),
     }
-    for parameter in (store.w, store.s, store.t, kernel.sigma):
+    for parameter in (store.w, store.s, store.t, factor.sigma):
         parameter.grad = None
     x.grad = None
     dense.backward(upstream)
@@ -94,32 +94,32 @@ def test_forward_and_w_s_t_sigma_gradients_match_dense_linear() -> None:
         ("w", store.w.grad),
         ("s", store.s.grad),
         ("t", store.t.grad),
-        ("sigma", kernel.sigma.grad),
+        ("sigma", factor.sigma.grad),
         ("x", x.grad),
     ):
         torch.testing.assert_close(actual, expected[name])
 
 
 def test_functional_mass_and_sigma_change_refresh_mass_scale() -> None:
-    store, kernel, module = _parts()
+    store, factor, module = _parts()
     x = torch.randn(2, 4, dtype=torch.float64)
 
     module(x)
     view = store.view()
-    k_in = kernel(module.in_neurons.mu, view.s)
-    k_out = kernel(module.out_neurons.mu, view.t)
+    k_in = factor(module.in_neurons.mu, view.s)
+    k_out = factor(module.out_neurons.mu, view.t)
     expected = view.w.abs() * k_in.norm(dim=0) * k_out.norm(dim=0)
     torch.testing.assert_close(view.mass, expected)
     before = store.mass_scale.clone()
 
     with torch.no_grad():
-        kernel.sigma.copy_(torch.tensor(0.25, dtype=torch.float64))
+        factor.sigma.copy_(torch.tensor(0.25, dtype=torch.float64))
     module(x)
     refreshed = store.view()
     expected = (
         refreshed.w.abs()
-        * kernel(module.in_neurons.mu, refreshed.s).norm(dim=0)
-        * kernel(module.out_neurons.mu, refreshed.t).norm(dim=0)
+        * factor(module.in_neurons.mu, refreshed.s).norm(dim=0)
+        * factor(module.out_neurons.mu, refreshed.t).norm(dim=0)
     )
     torch.testing.assert_close(refreshed.mass, expected)
     assert not torch.equal(store.mass_scale, before)

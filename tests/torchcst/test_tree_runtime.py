@@ -7,7 +7,7 @@ from torchcst.engine import StructuralEngine
 from torchcst.policy import EvenBudgetDistributor, PeriodicCadence, QuotaRegime, RENT, RentEconomy
 from torchcst import policy as policy_pkg
 from torchcst.policy.families import NeuronLifecycle, SynapseLifecycle, cSET
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronRetire, NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 from torchcst.audit import AuditRecord, AuditSubscriber
 
@@ -34,7 +34,7 @@ def _rent_engine(seed: int = 0, subscribers=()):
         "edge_out", 2, mu=torch.tensor([[0.0], [1.0]], dtype=torch.float64),
         initial_live=2, dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.1).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.1).double())
     s = torch.tensor([[0.50], [0.5001], [0.4999]], dtype=torch.float64)
     store.apply(
         [SynapseBirth(store.site, s, s.clone(), torch.tensor([1.0, -0.7, 0.4], dtype=torch.float64), torch.arange(3))]
@@ -267,7 +267,7 @@ def test_continuous_family_neuron_retirement_is_gate_only() -> None:
         "edge_out", 2, mu=torch.tensor([[0.0], [1.0]], dtype=torch.float64),
         initial_live=2, dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.5).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.5).double())
     s = torch.tensor([[0.2]], dtype=torch.float64)
     t = torch.tensor([[0.0]], dtype=torch.float64)  # incident on the retired neuron
     store.apply(

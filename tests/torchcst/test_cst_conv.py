@@ -20,11 +20,11 @@ from torchcst.policy import (
     QuotaRegime,
     SynapseLifecycle,
 )
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
-def _parts() -> tuple[SynapseStore, GaussianKernel, CSTConv2d]:
+def _parts() -> tuple[SynapseStore, GaussianFactor, CSTConv2d]:
     input_mu, output_mu = conv2d_neuron_coordinates(
         2, 3, (2, 3), channel_scale=0.8, spatial_scale=0.7, dtype=torch.float64
     )
@@ -70,12 +70,12 @@ def _parts() -> tuple[SynapseStore, GaussianKernel, CSTConv2d]:
         initial_live=output_mu.shape[0],
         dtype=torch.float64,
     )
-    kernel = GaussianKernel(0.35, learnable=True).double()
+    factor = GaussianFactor(0.35, learnable=True).double()
     conv = CSTConv2d(
         inputs,
         outputs,
         store,
-        kernel,
+        factor,
         2,
         (2, 3),
         stride=(2, 1),
@@ -85,16 +85,16 @@ def _parts() -> tuple[SynapseStore, GaussianKernel, CSTConv2d]:
     )
     with torch.no_grad():
         conv.bias.copy_(torch.tensor([0.1, -0.2, 0.05], dtype=torch.float64))
-    return store, kernel, conv
+    return store, factor, conv
 
 
 def test_conv_owns_continuous_map_without_linear_wrapper() -> None:
-    store, kernel, conv = _parts()
+    store, factor, conv = _parts()
 
     assert not hasattr(conv, "linear")
     assert conv.store is store
     assert conv.synapses is store
-    assert conv.kernel_in is kernel
+    assert conv.factor_in is factor
     assert conv.in_neurons.site == "conv-in"
     assert conv.out_neurons.site == "conv-out"
 
@@ -112,7 +112,7 @@ def test_coordinate_grid_matches_conv_flattening_and_box() -> None:
 
 
 def test_forward_and_gradients_match_materialized_conv2d() -> None:
-    store, kernel, conv = _parts()
+    store, factor, conv = _parts()
     x = torch.randn(2, 2, 7, 8, dtype=torch.float64, requires_grad=True)
     upstream = torch.randn(2, 3, 4, 8, dtype=torch.float64)
 
@@ -132,11 +132,11 @@ def test_forward_and_gradients_match_materialized_conv2d() -> None:
         "s": store.s.grad.clone(),
         "t": store.t.grad.clone(),
         "w": store.w.grad.clone(),
-        "sigma": kernel.sigma.grad.clone(),
+        "sigma": factor.sigma.grad.clone(),
         "bias": conv.bias.grad.clone(),
         "x": x.grad.clone(),
     }
-    for parameter in (store.s, store.t, store.w, kernel.sigma, conv.bias):
+    for parameter in (store.s, store.t, store.w, factor.sigma, conv.bias):
         parameter.grad = None
     x.grad = None
     expected.backward(upstream)
@@ -145,7 +145,7 @@ def test_forward_and_gradients_match_materialized_conv2d() -> None:
         ("s", store.s.grad),
         ("t", store.t.grad),
         ("w", store.w.grad),
-        ("sigma", kernel.sigma.grad),
+        ("sigma", factor.sigma.grad),
         ("bias", conv.bias.grad),
         ("x", x.grad),
     ):
@@ -153,7 +153,7 @@ def test_forward_and_gradients_match_materialized_conv2d() -> None:
 
 
 def test_fast_materialized_path_matches_unfold_path_and_gradients() -> None:
-    store, kernel, conv = _parts()
+    store, factor, conv = _parts()
     with torch.no_grad():
         conv.in_neurons.gate[0] = 0.4
         conv.out_neurons.gate[1] = 0.25
@@ -167,11 +167,11 @@ def test_fast_materialized_path_matches_unfold_path_and_gradients() -> None:
         "s": store.s.grad.clone(),
         "t": store.t.grad.clone(),
         "w": store.w.grad.clone(),
-        "sigma": kernel.sigma.grad.clone(),
+        "sigma": factor.sigma.grad.clone(),
         "bias": conv.bias.grad.clone(),
         "x": x.grad.clone(),
     }
-    for parameter in (store.s, store.t, store.w, kernel.sigma, conv.bias):
+    for parameter in (store.s, store.t, store.w, factor.sigma, conv.bias):
         parameter.grad = None
     x.grad = None
 
@@ -183,7 +183,7 @@ def test_fast_materialized_path_matches_unfold_path_and_gradients() -> None:
         ("s", store.s.grad),
         ("t", store.t.grad),
         ("w", store.w.grad),
-        ("sigma", kernel.sigma.grad),
+        ("sigma", factor.sigma.grad),
         ("bias", conv.bias.grad),
         ("x", x.grad),
     ):

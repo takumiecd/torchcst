@@ -14,7 +14,7 @@ class RankOneLinear(_ControlLinear):
     """Linear map ``sum_k c_k u_k v_k^T`` without materializing dense ``W``.
 
     A control family, not CST: a chart-free rank-one control (free ``u``,
-    ``v``; no kernel, no bandwidth) that sits outside the theory's
+    ``v``; no factor, no bandwidth) that sits outside the theory's
     representation class and upper-bounds what coordinates alone can buy.
     """
 
@@ -27,8 +27,8 @@ class RankOneLinear(_ControlLinear):
         super().__init__(store, in_features, out_features)
         if store.d_in != in_features or store.d_out != out_features:
             raise ValueError("rank-one coordinate widths must equal feature widths")
-        if store.spec.kernel_in != "dot" or store.spec.kernel_out != "dot":
-            raise ValueError("RankOneLinear requires dot kernels")
+        if store.spec.factor_in != "dot" or store.spec.factor_out != "dot":
+            raise ValueError("RankOneLinear requires dot factors")
 
     def _freeze_view(self, view: SynapseView) -> SynapseView:
         # Cache only detached structure; fresh differentiable gathers are

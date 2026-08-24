@@ -26,11 +26,11 @@ from torchcst.compute import CSTLinear
 from torchcst.compute.backends import NativeTruncated
 from torchcst.representation import (
     Amplitude,
-    GaborKernel,
-    GaussianKernel,
+    GaborFactor,
+    GaussianFactor,
     L2NormalizedColumns,
     RepresentationSpec,
-    TriangularKernel,
+    TriangularFactor,
     UnitFootprint,
     require_gauge,
 )
@@ -46,17 +46,17 @@ def _chart(spacing: float, count: int = 21) -> torch.Tensor:
     return torch.linspace(0.0, span, count, dtype=DTYPE).reshape(-1, 1)
 
 
-def _target(kernel, mu: torch.Tensor) -> torch.Tensor:
-    column = kernel(mu, mu[CENTRE : CENTRE + 1]).reshape(-1).detach()
+def _target(factor, mu: torch.Tensor) -> torch.Tensor:
+    column = factor(mu, mu[CENTRE : CENTRE + 1]).reshape(-1).detach()
     return column / column.norm()
 
 
-def _parity_split(gauge, kernel, mu, target, s0: float, magnitude: float = 1.0):
+def _parity_split(gauge, factor, mu, target, s0: float, magnitude: float = 1.0):
     """``(odd, even)`` halves of dL/ds under plus/minus amplitude injection."""
     gradients = []
     for sign in (+1.0, -1.0):
         s = torch.tensor([[s0]], dtype=DTYPE, requires_grad=True)
-        column = gauge.columns(kernel, mu, s).reshape(-1)
+        column = gauge.columns(factor, mu, s).reshape(-1)
         amplitude = torch.tensor(sign * magnitude, dtype=DTYPE)
         (0.5 * (amplitude * column - target).square().sum()).backward()
         gradients.append(float(s.grad))
@@ -68,28 +68,28 @@ def _parity_split(gauge, kernel, mu, target, s0: float, magnitude: float = 1.0):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("kernel_cls", [GaussianKernel, TriangularKernel])
-def test_amplitude_delivers_the_kernel_untouched(kernel_cls):
-    kernel = kernel_cls(0.25).double()
+@pytest.mark.parametrize("factor_cls", [GaussianFactor, TriangularFactor])
+def test_amplitude_delivers_the_factor_untouched(factor_cls):
+    factor = factor_cls(0.25).double()
     mu = torch.linspace(-1.0, 1.0, 17, dtype=DTYPE).reshape(-1, 1)
     centers = torch.tensor([[-0.3], [0.42]], dtype=DTYPE)
     torch.testing.assert_close(
-        Amplitude().columns(kernel, mu, centers), kernel(mu, centers)
+        Amplitude().columns(factor, mu, centers), factor(mu, centers)
     )
 
 
-@pytest.mark.parametrize("kernel_cls", [GaussianKernel, TriangularKernel])
-def test_l2_normalized_columns_deliver_unit_columns_pointing_the_same_way(kernel_cls):
-    kernel = kernel_cls(0.25).double()
+@pytest.mark.parametrize("factor_cls", [GaussianFactor, TriangularFactor])
+def test_l2_normalized_columns_deliver_unit_columns_pointing_the_same_way(factor_cls):
+    factor = factor_cls(0.25).double()
     mu = torch.linspace(-1.0, 1.0, 17, dtype=DTYPE).reshape(-1, 1)
     centers = torch.tensor([[-0.3], [0.0], [0.42]], dtype=DTYPE)
-    delivered = L2NormalizedColumns().columns(kernel, mu, centers)
+    delivered = L2NormalizedColumns().columns(factor, mu, centers)
 
     torch.testing.assert_close(
         torch.linalg.vector_norm(delivered, dim=0),
         torch.ones(3, dtype=DTYPE),
     )
-    raw = kernel(mu, centers)
+    raw = factor(mu, centers)
     torch.testing.assert_close(
         delivered, raw / torch.linalg.vector_norm(raw, dim=0, keepdim=True)
     )
@@ -97,14 +97,14 @@ def test_l2_normalized_columns_deliver_unit_columns_pointing_the_same_way(kernel
 
 def test_l2_normalized_columns_carry_the_gabor_columns_through():
     """The gauge takes the family's extra per-atom columns, not just its shape."""
-    kernel = GaborKernel(0.25).double()
+    factor = GaborFactor(0.25).double()
     mu = torch.linspace(-1.0, 1.0, 17, dtype=DTYPE).reshape(-1, 1)
     centers = torch.tensor([[-0.3], [0.42]], dtype=DTYPE)
     extras = {
         "omega_s": torch.tensor([[8.0], [0.0]], dtype=DTYPE),
         "phi_s": torch.full((2, 1), 0.25, dtype=DTYPE),
     }
-    delivered = L2NormalizedColumns().columns(kernel, mu, centers, extras)
+    delivered = L2NormalizedColumns().columns(factor, mu, centers, extras)
     torch.testing.assert_close(
         torch.linalg.vector_norm(delivered, dim=0), torch.ones(2, dtype=DTYPE)
     )
@@ -124,50 +124,50 @@ def test_l2_normalized_columns_delete_the_escape_term(spacing, offset):
     symmetry point where ``n'`` vanishes for free, so measuring only there
     would credit the gauge with a zero the chart was giving away.
     """
-    kernel = GaussianKernel(SIGMA).double()
+    factor = GaussianFactor(SIGMA).double()
     mu = _chart(spacing)
-    target = _target(kernel, mu)
+    target = _target(factor, mu)
     s0 = float(mu[CENTRE]) + offset * spacing * SIGMA
 
-    _, even = _parity_split(L2NormalizedColumns(), kernel, mu, target, s0)
+    _, even = _parity_split(L2NormalizedColumns(), factor, mu, target, s0)
     assert abs(even) < 1e-12
 
 
 @pytest.mark.parametrize("spacing", [1.6, 2.5, 5.0])
 def test_the_amplitude_gauge_leaves_that_door_open(spacing):
     """And it is not a small correction: the escape rivals the alignment term."""
-    kernel = GaussianKernel(SIGMA).double()
+    factor = GaussianFactor(SIGMA).double()
     mu = _chart(spacing)
-    target = _target(kernel, mu)
+    target = _target(factor, mu)
     s0 = float(mu[CENTRE]) + 0.30 * spacing * SIGMA
 
-    odd, even = _parity_split(Amplitude(), kernel, mu, target, s0)
+    odd, even = _parity_split(Amplitude(), factor, mu, target, s0)
     assert abs(even) > 0.2 * abs(odd)
 
 
 # ---------------------------------------------------------------------------
-# the range the kernel contract buys
+# the range the factor contract buys
 # ---------------------------------------------------------------------------
 
 
-def test_l2_normalized_columns_survive_where_the_raw_kernel_underflows():
+def test_l2_normalized_columns_survive_where_the_raw_factor_underflows():
     """A float32 atom twenty sigma out is a ghost under Amplitude, not under this."""
-    kernel = GaussianKernel(0.25)
+    factor = GaussianFactor(0.25)
     mu = torch.linspace(-1.0, 1.0, 17).reshape(-1, 1)
     centers = torch.tensor([[6.0]])
 
-    assert float(Amplitude().columns(kernel, mu, centers).detach().abs().max()) == 0.0
+    assert float(Amplitude().columns(factor, mu, centers).detach().abs().max()) == 0.0
 
-    delivered = L2NormalizedColumns().columns(kernel, mu, centers).detach()
+    delivered = L2NormalizedColumns().columns(factor, mu, centers).detach()
     assert bool(torch.isfinite(delivered).all())
     assert float(torch.linalg.vector_norm(delivered)) == pytest.approx(1.0)
 
 
 def test_a_compact_family_outside_every_support_stays_zero_rather_than_nan():
-    kernel = TriangularKernel(0.25)
+    factor = TriangularFactor(0.25)
     mu = torch.linspace(-1.0, 1.0, 17).reshape(-1, 1)
     delivered = L2NormalizedColumns().columns(
-        kernel, mu, torch.tensor([[4.0]])
+        factor, mu, torch.tensor([[4.0]])
     ).detach()
     assert bool((delivered == 0).all())
 
@@ -190,7 +190,7 @@ def _site(gauge=None, atoms=5, d_in=2, d_out=2, n_in=9, n_out=7, backend="auto",
         d_in,
         d_out,
         atoms,
-        spec=RepresentationSpec.continuous(d_in, d_out, kernel="gaussian"),
+        spec=RepresentationSpec.continuous(d_in, d_out, factor="gaussian"),
         dtype=DTYPE,
     )
     rng = torch.Generator().manual_seed(7)
@@ -217,7 +217,7 @@ def _site(gauge=None, atoms=5, d_in=2, d_out=2, n_in=9, n_out=7, backend="auto",
         initial_live=n_out, dtype=DTYPE,
     )
     module = CSTLinear(
-        inputs, outputs, store, GaussianKernel(0.3).double(),
+        inputs, outputs, store, GaussianFactor(0.3).double(),
         backend=backend, gauge=gauge, track_mass=track_mass,
     )
     return module, store
@@ -237,7 +237,7 @@ def test_the_gauge_is_a_reparameterisation_not_a_different_map():
     classical._view()
     with torch.no_grad():
         source, target, _ = classical._live_factors()
-        k_in, k_out = classical._kernel_matrices(source, target)
+        k_in, k_out = classical._factor_matrices(source, target)
         footprint = torch.linalg.vector_norm(
             k_in, dim=0
         ) * torch.linalg.vector_norm(k_out, dim=0)

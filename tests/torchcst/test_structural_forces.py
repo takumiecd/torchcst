@@ -8,7 +8,7 @@ import torch
 from torchcst import PairRepulsion, PullbackAdam, SmoothRent
 from torchcst.compute import CSTLinear
 from torchcst.representation import (
-    GaussianKernel,
+    GaussianFactor,
     L2NormalizedColumns,
     RepresentationSpec,
 )
@@ -59,7 +59,7 @@ def _line_site(source, target, weights, *, name="forces-test"):
         inputs,
         outputs,
         store,
-        GaussianKernel(SIGMA).double(),
+        GaussianFactor(SIGMA).double(),
         gauge=L2NormalizedColumns(),
     )
     return module, store

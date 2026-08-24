@@ -1,4 +1,4 @@
-"""ContinuousCandidateField cRigL/cRES scoring, KernelPort, and ScoredBirth wiring."""
+"""ContinuousCandidateField cRigL/cRES scoring, FactorPort, and ScoredBirth wiring."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from torchcst.policy import (
     SynapseLifecycle,
     TopKSelector,
 )
-from torchcst.representation import Box, GaussianKernel, RepresentationSpec
+from torchcst.representation import Box, GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
@@ -57,7 +57,7 @@ def _build_module(dtype: torch.dtype = torch.float64):
     outputs = NeuronStore(
         "outputs", 2, mu=torch.tensor([[0.2], [0.8]], dtype=dtype), initial_live=2, dtype=dtype
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.25).to(dtype))
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.25).to(dtype))
     return store, module
 
 
@@ -68,7 +68,7 @@ def _accumulate(field: ContinuousCandidateField, module, view, x: torch.Tensor, 
 
 def _brute_direction(module, source_row: torch.Tensor, target_row: torch.Tensor) -> torch.Tensor:
     """Densely materialize the Frobenius-unit direction ``a_z`` for one candidate."""
-    k_in, k_out = module.kernel_columns(source_row, target_row)
+    k_in, k_out = module.factor_columns(source_row, target_row)
     direction = torch.outer(k_out[:, 0], k_in[:, 0])
     return direction / direction.norm()
 
@@ -251,7 +251,7 @@ def test_singular_gram_from_duplicate_live_atoms_does_not_raise() -> None:
     outputs = NeuronStore(
         "outputs", 2, mu=torch.tensor([[0.2], [0.8]], dtype=dtype), initial_live=2, dtype=dtype
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.25).to(dtype))
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.25).to(dtype))
 
     rng = torch.Generator().manual_seed(7)
     field = ContinuousCandidateField(
@@ -644,7 +644,7 @@ def test_refinement_resolves_the_worst_layer_below_sigma() -> None:
     Empirically draws one refinement round's local pool (via the same
     `_sample_local_uniform` helper `ContinuousCandidateField._refine` calls)
     around one interior winner, using a schedule sized so the refined
-    kernel-column buffer stays the same order of magnitude as the coarse
+    factor-column buffer stays the same order of magnitude as the coarse
     pool's own buffer (`top_k * samples_per_winner` candidates, not
     `pool_size * refinement_factor` candidates) -- the memory point from the
     task: brute-forcing sigma/2 in 3D needs ~18x the candidates

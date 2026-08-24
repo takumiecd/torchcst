@@ -70,7 +70,7 @@ def is_continuous_site(module: object) -> bool:
     """Whether :class:`PullbackAdam` can bind to ``module``.
 
     Exactly :class:`PullbackAdam`'s own eligibility test, asked without
-    raising: a continuous CST map with a :class:`SynapseStore`, both kernels,
+    raising: a continuous CST map with a :class:`SynapseStore`, both factors,
     an :class:`~torchcst.representation.L2NormalizedColumns` gauge, and
     learnable coordinates.  Duck-typed on purpose, so ``optim`` keeps its
     one-way independence from ``compute``; a wrapper that merely *delegates*
@@ -80,9 +80,9 @@ def is_continuous_site(module: object) -> bool:
     store = getattr(module, "synapses", None)
     if not isinstance(store, SynapseStore):
         return False
-    if getattr(module, "kernel_in", None) is None:
+    if getattr(module, "factor_in", None) is None:
         return False
-    if getattr(module, "kernel_out", None) is None:
+    if getattr(module, "factor_out", None) is None:
         return False
     if not isinstance(getattr(module, "gauge", None), L2NormalizedColumns):
         return False
@@ -222,7 +222,7 @@ class CSTOptimizer:
       otherwise amplitudes are ordinary parameters of the base optimizer;
     - a learnable chart's ``mu`` belongs to a :class:`ChartPullbackAdam`
       passed in ``charts=``, and to the base optimizer when none is;
-    - everything else -- dense weights, kernel bandwidths, per-atom family
+    - everything else -- dense weights, factor bandwidths, per-atom family
       columns, norms -- belongs to the base optimizer.
 
     A parameter claimed twice raises, and a trainable parameter claimed by
@@ -258,7 +258,7 @@ class CSTOptimizer:
     optimizer, then sites in discovery order, then charts in the order given.
     Disjoint ownership does **not** make the order neutral -- a pullback
     metric is a function of the amplitudes, the chart coordinates, the
-    incident atom coordinates and the kernel bandwidth, so a base step that
+    incident atom coordinates and the factor bandwidth, so a base step that
     moves ``w``, ``mu`` or ``sigma`` changes the very ``G`` a later site or
     chart optimizer whitens with, within the same :meth:`step` call.  This
     order is therefore a compatibility contract: it reproduces what the

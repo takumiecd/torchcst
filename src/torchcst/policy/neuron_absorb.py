@@ -8,7 +8,7 @@ executable half.
 
 The neuron layer's (linearized) job is pure quadrature: ``C_mk = sum_j
 gamma_j * kappa(s_m, mu_j) * kappa(t_k, mu_j)`` -- a weighted point measure
-``rho = sum_j gamma_j * delta_mu_j`` integrated against two kernels. A row's
+``rho = sum_j gamma_j * delta_mu_j`` integrated against two factors. A row's
 gate ``gamma_j`` *is* its quadrature weight, so merging two rows is pure
 gate bookkeeping (no edge to rewire, unlike a dense net's neuron merge):
 
@@ -16,7 +16,7 @@ gate bookkeeping (no edge to rewire, unlike a dense net's neuron merge):
     gamma_k <- gamma_k + c*
     gamma_j <- 0, row j retires
 
-``rho_jk``, the kernel-family overlap between two rows, is the geometry factor of
+``rho_jk``, the factor-family overlap between two rows, is the geometry factor of
 the product metric ``<f_j, f_k> = rho_jk * <sigma_j, sigma_k>_D`` (tex
 Sec.6.2). This court implements *only* the geometry factor -- the
 activation-correlation term ``<sigma_j, sigma_k>_D`` is real-batch evidence
@@ -49,7 +49,7 @@ import torch
 from torch import Tensor
 
 from torchcst._validation import require_int, require_real
-from torchcst.representation.kernels import (
+from torchcst.representation.factors import (
     OverlapScale,
     pairwise_overlap,
     require_overlap_scale,
@@ -60,7 +60,7 @@ from .bundle import ProposalBundle
 
 
 def _pairwise_rho(mu: Tensor, scale: OverlapScale) -> Tensor:
-    """``K x K`` geometry overlap ``rho_jk`` from the kernel family.
+    """``K x K`` geometry overlap ``rho_jk`` from the factor family.
 
     Same overlap as the synapse-side novelty discount
     (``policy/neuron_growth.py::_novelty_discount``) and the tex note's
@@ -70,9 +70,9 @@ def _pairwise_rho(mu: Tensor, scale: OverlapScale) -> Tensor:
     (unlike the synapse side's screened/chunked ``GramService``, which
     exists because ``K`` there can be in the tens of thousands).
 
-    ``scale`` resolves through :func:`~torchcst.representation.kernels.
+    ``scale`` resolves through :func:`~torchcst.representation.factors.
     pairwise_overlap`, so a site whose family is not Gaussian hands its
-    kernel and is priced correctly (or refused outright) instead of being
+    factor and is priced correctly (or refused outright) instead of being
     quoted Gaussian numbers.
     """
     coordinates = mu if mu.ndim == 2 else mu.unsqueeze(-1)
@@ -96,9 +96,9 @@ class NeuronAbsorbCourt:
     the synapse side's absorb runs in its own stage before (not as part of)
     synapse retention.
 
-    ``bandwidth`` sets the geometry kernel scale -- a bare float for the
+    ``bandwidth`` sets the geometry factor scale -- a bare float for the
     Gaussian form, or the site's own :class:`~torchcst.representation.
-    ContinuousKernel` for the family-generic one (``rho_jk``'s
+    ContinuousFactor` for the family-generic one (``rho_jk``'s
     ``sigma``); ``threshold`` is the minimum ``rho_jk`` for a pair to be
     considered a twin candidate at all (below it, two rows are simply
     different quadrature points and merging them would misrepresent the

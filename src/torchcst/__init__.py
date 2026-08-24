@@ -89,17 +89,17 @@ from .policy import (
     neuron_absorb,
 )
 
-# representation/: coordinate domains, kernels, family specs.
+# representation/: coordinate domains, factors, family specs.
 from .representation import (
     Box,
-    ContinuousKernel,
+    ContinuousFactor,
     CoordinateDomain,
-    GaussianKernel,
+    GaussianFactor,
     IntegerGrid,
-    MaturityGaussianKernel,
+    MaturityGaussianFactor,
     RepresentationSpec,
     Sphere,
-    TriangularKernel,
+    TriangularFactor,
 )
 
 # storage/: entity IDs, physical slots, two-phase apply.
@@ -160,9 +160,9 @@ __all__ = [
     "ChartRepulsion",
     "ComputeLinear",
     "ConstantQuota",
+    "ContinuousFactor",
     "ContinuousGradientRequest",
     "ContinuousGradientScores",
-    "ContinuousKernel",
     "CoordPreconditioner",
     "CoordinateDomain",
     "DeferredCaptureInstrument",
@@ -174,7 +174,7 @@ __all__ = [
     "GateTangent",
     "GateTangentRequest",
     "GateTangentSnapshot",
-    "GaussianKernel",
+    "GaussianFactor",
     "GradFieldEMA",
     "IdAllocator",
     "InlineCaptureInstrument",
@@ -182,7 +182,7 @@ __all__ = [
     "IntegerGrid",
     "LineageColumn",
     "LossRecord",
-    "MaturityGaussianKernel",
+    "MaturityGaussianFactor",
     "MergeProposer",
     "NeuronGateCredit",
     "NeuronKick",
@@ -223,7 +223,7 @@ __all__ = [
     "TopKSelector",
     "TrialSession",
     "TrialTransaction",
-    "TriangularKernel",
+    "TriangularFactor",
     "baselines",
     "cSFW",
     "cVP",

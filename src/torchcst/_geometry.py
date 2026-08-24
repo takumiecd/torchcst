@@ -1,9 +1,9 @@
-"""Squared distances, spelled so the compiler emits a pointwise kernel.
+"""Squared distances, spelled so the compiler emits a pointwise factor.
 
 The obvious spelling of a squared distance -- broadcast the coordinate axis
-and ``.square().sum(-1)`` -- makes inductor emit a *reduction* kernel over an
+and ``.square().sum(-1)`` -- makes inductor emit a *reduction* factor over an
 axis of length three or four.  A three-term sum then pays the whole reduction
-machinery, and it dominates: on the lm1 sites one such kernel
+machinery, and it dominates: on the lm1 sites one such factor
 (``triton_red_fused_pow_sub_sum_unsqueeze_0``) was 113 ms of a 177 ms step,
 64% of the whole thing, and it is why that run's backward cost ten times its
 forward.
@@ -30,7 +30,7 @@ __all__ = ["squared_norm_last", "squared_distance_matrix"]
 
 
 def squared_norm_last(displacement: Tensor) -> Tensor:
-    """``|displacement|^2`` over the last axis, without a reduction kernel."""
+    """``|displacement|^2`` over the last axis, without a reduction factor."""
     total = displacement[..., 0].square()
     for axis in range(1, displacement.shape[-1]):
         total = total + displacement[..., axis].square()

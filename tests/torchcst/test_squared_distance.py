@@ -1,7 +1,7 @@
 """The squared-distance spelling is a code-generation choice, not a numeric one.
 
 ``_geometry`` unrolls the coordinate axis so the compiler emits a pointwise
-kernel instead of a reduction over an axis of length three or four.  These
+factor instead of a reduction over an axis of length three or four.  These
 tests pin what that costs numerically: nothing in float32, at most a couple
 of ULP in float64.  If a future torch regroups the float32 reduction too,
 this file fails rather than a training run drifting quietly.

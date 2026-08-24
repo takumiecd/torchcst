@@ -20,7 +20,7 @@ module implements:
 - the loss gradient needs no assembly: the chart is one shared parameter
   and autograd delivers ``mu.grad`` summed over incidences.
 
-The metric is evaluated through the kernel contract
+The metric is evaluated through the factor contract
 (:func:`torchcst.optim.metric.normalized_columns`), so any registered radial
 family works; nothing here is Gaussian-specific.
 """
@@ -102,7 +102,7 @@ class ChartPullbackAdam:
     ``sites`` are the incident continuous CST maps; each contributes one
     pullback term per side that reads this chart.  Everything downstream of
     the metric mirrors :class:`PullbackAdam`: tangent or parameter moments,
-    first-step ``target_step`` calibration against the chart's kernel sigma,
+    first-step ``target_step`` calibration against the chart's factor sigma,
     a per-neuron cap, accumulated travel, and an optional wall.  Charts have
     no lifecycle, so there is no follower contract here; dormant rows are
     masked out and never move.
@@ -152,7 +152,7 @@ class ChartPullbackAdam:
         if not isinstance(wall, bool):
             raise TypeError("wall must be a bool")
 
-        # (kernel, synapse store, side) per incidence; a self-map site that
+        # (factor, synapse store, side) per incidence; a self-map site that
         # reads the chart on both sides contributes two incidences.
         incidences = []
         boxes = []
@@ -163,11 +163,11 @@ class ChartPullbackAdam:
                 )
             hit = False
             if getattr(site, "in_neurons", None) is store:
-                incidences.append((site.kernel_in, site.synapses, "in"))
+                incidences.append((site.factor_in, site.synapses, "in"))
                 boxes.append(site.synapses.spec.domain_in)
                 hit = True
             if getattr(site, "out_neurons", None) is store:
-                incidences.append((site.kernel_out, site.synapses, "out"))
+                incidences.append((site.factor_out, site.synapses, "out"))
                 boxes.append(site.synapses.spec.domain_out)
                 hit = True
             if not hit:
@@ -175,10 +175,10 @@ class ChartPullbackAdam:
                     f"site {site!r} does not read chart {store.site!r}"
                 )
         reference_sigma = float(incidences[0][0].sigma.detach())
-        for kernel, _, _ in incidences[1:]:
-            if abs(float(kernel.sigma.detach()) - reference_sigma) > 1e-9:
+        for factor, _, _ in incidences[1:]:
+            if abs(float(factor.sigma.detach()) - reference_sigma) > 1e-9:
                 raise ValueError(
-                    "incident kernels disagree on sigma; one chart has one "
+                    "incident factors disagree on sigma; one chart has one "
                     "scale"
                 )
         for box in boxes[1:]:
@@ -227,10 +227,10 @@ class ChartPullbackAdam:
     def _metric_blocks(self, live: Tensor) -> Tensor:
         """``[n_live, d, d]`` sum of per-incidence pullback blocks.
 
-        Per incidence, with ``unit``/``factor`` from the kernel contract and
+        Per incidence, with ``unit``/``slope`` from the factor contract and
         the chart on the side whose atom coordinates are ``c``:
 
-        ``G_ab(mu_i) = sum_k w_k^2 factor_ik^2 (1 - unit_ik^2)
+        ``G_ab(mu_i) = sum_k w_k^2 slope_ik^2 (1 - unit_ik^2)
         (mu_ia - c_ka)(mu_ib - c_kb)`` — the projected derivative of the
         delivered L2-normalized column (single-entry perturbation, so the
         tangent projection is the exact ``1 - unit^2`` factor).
@@ -241,17 +241,17 @@ class ChartPullbackAdam:
             mu_rows.shape[0], d, d,
             device=mu_rows.device, dtype=mu_rows.dtype,
         )
-        for kernel, synapses, side in self.incidences:
+        for factor, synapses, side in self.incidences:
             slots = synapses.live_slots().to(mu_rows.device)
             coords = synapses.s if side == "in" else synapses.t
             centers = coords.detach().index_select(0, slots).to(mu_rows)
             mass_sq = (
                 synapses.w.detach().index_select(0, slots).to(mu_rows).square()
             )
-            unit, factor = metric_mod.normalized_columns(
-                kernel, mu_rows, centers
+            unit, slope = metric_mod.normalized_columns(
+                factor, mu_rows, centers
             )
-            weight = mass_sq[None, :] * factor.square() * (
+            weight = mass_sq[None, :] * slope.square() * (
                 1.0 - unit.square()
             )
             for a in range(d):

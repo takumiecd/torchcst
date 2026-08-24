@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 
-from torchcst.representation import ContinuousKernel, L2NormalizedColumns
+from torchcst.representation import ContinuousFactor, L2NormalizedColumns
 from torchcst.storage import NeuronStore, SynapseStore
 
 from .backends import (
@@ -26,7 +26,7 @@ from .capture import register_capture_hook
 from .cst_map import _ContinuousCSTMap
 
 
-# A no-grad call retains no kernel graph, so one full materialisation avoids
+# A no-grad call retains no factor graph, so one full materialisation avoids
 # chunk launch overhead when its two column matrices remain modest.  The cap is
 # in scalar elements (128 MiB at fp32), independent of the parameter dtype.
 _NO_GRAD_FULL_COLUMN_LIMIT = 32 * 1024 * 1024
@@ -36,7 +36,7 @@ class CSTLinear(_ContinuousCSTMap):
     """Apply a continuous CST measure to feature rows.
 
     Neuron coordinates are fixed floating buffers. Synapse source and target
-    coordinates, atom weights, and global kernel bandwidths remain learnable.
+    coordinates, atom weights, and global factor bandwidths remain learnable.
 
     A CST layer is a composition, not a primitive: neurons come first
     (:meth:`torchcst.storage.NeuronStore.propose` for hidden populations, or
@@ -48,7 +48,7 @@ class CSTLinear(_ContinuousCSTMap):
     :mod:`torchcst.compute.backends`): :class:`Factored` below the FLOP
     crossover, :class:`Materialized` above it (the default ``"auto"``
     switches per forward on the live atom count), or
-    :class:`NativeTruncated` for the no-W local-kernel form.  The module
+    :class:`NativeTruncated` for the no-W local-factor form.  The module
     owns state -- stores, views, capture, mass -- and dispatches tensors
     into the chosen backend's pure functions.
     """
@@ -58,21 +58,21 @@ class CSTLinear(_ContinuousCSTMap):
         in_neurons: NeuronStore,
         out_neurons: NeuronStore,
         synapses: SynapseStore,
-        kernel: ContinuousKernel,
-        kernel_out: ContinuousKernel | None = None,
+        factor: ContinuousFactor,
+        factor_out: ContinuousFactor | None = None,
         *,
         track_mass: bool = True,
         backend="auto",
         gauge=None,
     ) -> None:
         super().__init__(
-            in_neurons, out_neurons, synapses, kernel, kernel_out,
+            in_neurons, out_neurons, synapses, factor, factor_out,
             track_mass=track_mass, gauge=gauge,
         )
         self.backend = validate_backend(
             backend,
-            kernel_in=self.kernel_in,
-            kernel_out=self.kernel_out,
+            factor_in=self.factor_in,
+            factor_out=self.factor_out,
             track_mass=track_mass,
             gauge=self.gauge,
         )
@@ -94,8 +94,8 @@ class CSTLinear(_ContinuousCSTMap):
             self.synapses.w,
             self.in_neurons.mu,
             self.out_neurons.mu,
-            self.kernel_in.sigma,
-            self.kernel_out.sigma,
+            self.factor_in.sigma,
+            self.factor_out.sigma,
         )
         key = (
             self.synapses.version,
@@ -137,14 +137,14 @@ class CSTLinear(_ContinuousCSTMap):
             and not torch.is_grad_enabled()
             and full_column_elements <= _NO_GRAD_FULL_COLUMN_LIMIT
         ):
-            k_in, k_out = self._kernel_matrices(source, target)
+            k_in, k_out = self._factor_matrices(source, target)
             self._refresh_mass_scale(k_in, k_out)
             return linear_weight(k_in, k_out, weights, config.compute_dtype)
         if config.lean:
             mu_in = self.in_neurons.mu.to(source)
             mu_out = self.out_neurons.mu.to(target)
-            sigma_in, _ = self.kernel_in._prepare(mu_in, source, None)
-            sigma_out, _ = self.kernel_out._prepare(mu_out, target, None)
+            sigma_in, _ = self.factor_in._prepare(mu_in, source, None)
+            sigma_out, _ = self.factor_out._prepare(mu_out, target, None)
             materialize = (
                 LeanL2LinearMaterialize
                 if isinstance(self.gauge, L2NormalizedColumns)
@@ -157,7 +157,7 @@ class CSTLinear(_ContinuousCSTMap):
             if materialize is LeanL2LinearMaterialize:
                 return materialize.apply(*args, config.compile_l2)
             return materialize.apply(*args)
-        k_in, k_out = self._kernel_matrices(source, target)
+        k_in, k_out = self._factor_matrices(source, target)
         self._refresh_mass_scale(k_in, k_out)
         return linear_weight(k_in, k_out, weights, config.compute_dtype)
 
@@ -168,8 +168,8 @@ class CSTLinear(_ContinuousCSTMap):
         weights = weights.to(device=x.device)
         mu_in = self.in_neurons.mu.to(source)
         mu_out = self.out_neurons.mu.to(target)
-        sigma_in = self.kernel_in.sigma.to(source)
-        sigma_out = self.kernel_out.sigma.to(target)
+        sigma_in = self.factor_in.sigma.to(source)
+        sigma_out = self.factor_out.sigma.to(target)
         idx_in, pad_in = neighbor_tables(
             source, mu_in, sigma_in, config.radius
         )

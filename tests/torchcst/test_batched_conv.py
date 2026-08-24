@@ -8,19 +8,19 @@ import torch
 
 from torchcst.compute import CSTConv2d, batched_conv_dense_weights, conv2d_neuron_coordinates
 from torchcst.compute.capture import BackwardContext
-from torchcst.representation import GaussianKernel, RepresentationSpec, TriangularKernel
+from torchcst.representation import GaussianFactor, RepresentationSpec, TriangularFactor
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
 def _make_layer(
     *, seed: int, in_channels: int = 2, out_channels: int = 3, kernel_size=(2, 2),
-    k: int = 4, sigma: float = 0.4, track_mass: bool = False, kernel_cls=GaussianKernel,
+    k: int = 4, sigma: float = 0.4, track_mass: bool = False, factor_cls=GaussianFactor,
 ) -> CSTConv2d:
     generator = torch.Generator().manual_seed(seed)
     input_mu, output_mu = conv2d_neuron_coordinates(in_channels, out_channels, kernel_size, dtype=torch.float64)
-    kernel_name = "triangular" if kernel_cls is TriangularKernel else "gaussian"
+    factor_name = "triangular" if factor_cls is TriangularFactor else "gaussian"
     store = SynapseStore(
-        f"conv{seed}", 3, 1, k, spec=RepresentationSpec.continuous(3, 1, kernel=kernel_name), dtype=torch.float64,
+        f"conv{seed}", 3, 1, k, spec=RepresentationSpec.continuous(3, 1, factor=factor_name), dtype=torch.float64,
     )
     s0 = torch.rand(k, 3, generator=generator, dtype=torch.float64)
     t0 = torch.rand(k, 1, generator=generator, dtype=torch.float64)
@@ -32,9 +32,9 @@ def _make_layer(
     out_neurons = NeuronStore(
         f"conv{seed}-out", output_mu.shape[0], mu=output_mu, initial_live=output_mu.shape[0], dtype=torch.float64,
     )
-    kernel = kernel_cls(sigma, learnable=True).double()
+    factor = factor_cls(sigma, learnable=True).double()
     return CSTConv2d(
-        in_neurons, out_neurons, store, kernel, in_channels, kernel_size,
+        in_neurons, out_neurons, store, factor, in_channels, kernel_size,
         bias=False, implementation="materialized", track_mass=track_mass,
     )
 
@@ -59,11 +59,11 @@ def test_batched_matches_per_layer_gradients() -> None:
     """s/t/w and sigma gradients must be *close* to the per-layer
     computation's -- see the module docstring's determinism note in
     batched_conv.py: each of these broadcasts over a large axis to build
-    the distance/kernel tensors, so its own gradient is a reduction over
+    the distance/factor tensors, so its own gradient is a reduction over
     that axis, and a single fused reduction over the whole batched tensor
     is not guaranteed bit-identical to per-layer reductions (a real
     property of how PyTorch's broadcast-backward and GPU/CPU reduction
-    kernels work, not a bug here -- measured at ~1e-6 absolute for sigma on
+    factors work, not a bug here -- measured at ~1e-6 absolute for sigma on
     real CUDA/float32 bench shapes, smaller still for s/t, both far below
     this repo's own documented 0.5% reproducibility floor). assert_close's
     default tolerance is comfortably tighter than that bound, so this is
@@ -84,12 +84,12 @@ def test_batched_matches_per_layer_gradients() -> None:
         (layer.synapses.site, name): getattr(layer.synapses, name).grad.clone()
         for layer in layers for name in ("s", "t", "w")
     }
-    actual_sigma_grads = [layer.kernel_in.sigma.grad.clone() for layer in layers]
+    actual_sigma_grads = [layer.factor_in.sigma.grad.clone() for layer in layers]
     for layer in layers:
         layer.synapses.s.grad = None
         layer.synapses.t.grad = None
         layer.synapses.w.grad = None
-        layer.kernel_in.sigma.grad = None
+        layer.factor_in.sigma.grad = None
 
     expected = [layer.dense_weight() for layer in layers]
     for w, g in zip(expected, grad_seeds):
@@ -100,7 +100,7 @@ def test_batched_matches_per_layer_gradients() -> None:
                 getattr(layer.synapses, name).grad, actual_grads[(layer.synapses.site, name)],
             )
     for layer, actual_sigma_grad in zip(layers, actual_sigma_grads):
-        torch.testing.assert_close(layer.kernel_in.sigma.grad, actual_sigma_grad)
+        torch.testing.assert_close(layer.factor_in.sigma.grad, actual_sigma_grad)
 
 
 def test_empty_layers_returns_empty_list() -> None:
@@ -114,10 +114,10 @@ def test_rejects_mismatched_feature_shape() -> None:
         batched_conv_dense_weights([a, b])
 
 
-def test_rejects_mismatched_kernel_family() -> None:
-    a = _make_layer(seed=1, kernel_cls=GaussianKernel)
-    b = _make_layer(seed=2, kernel_cls=TriangularKernel)
-    with pytest.raises(ValueError, match="kernel_in/kernel_out family"):
+def test_rejects_mismatched_factor_family() -> None:
+    a = _make_layer(seed=1, factor_cls=GaussianFactor)
+    b = _make_layer(seed=2, factor_cls=TriangularFactor)
+    with pytest.raises(ValueError, match="factor_in/factor_out family"):
         batched_conv_dense_weights([a, b])
 
 

@@ -67,7 +67,7 @@ def test_propose_dials():
     empty = _block(seed_atoms=False)
     assert empty.synapses.k_live == 0
     with pytest.raises(ValueError):
-        _block(kernel="delta")
+        _block(factor="delta")
     with pytest.raises(ValueError):
         _block(capacity_scale=0.0)
 

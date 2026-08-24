@@ -52,7 +52,7 @@ class SmoothRent:
 
 
 class PairRepulsion:
-    """Pairwise structural force in joint kernel-sigma units.
+    """Pairwise structural force in joint factor-sigma units.
 
     ``r^2 = |ds|^2/sigma_in^2 + |dt|^2/sigma_out^2``: two atoms only repel
     when they are close on *both* sides, which is exactly when their columns

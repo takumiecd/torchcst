@@ -12,7 +12,7 @@ from torchcst.optim.pullback import (
     _gaussian_l2_metric_gram,
 )
 from torchcst.representation import (
-    GaussianKernel,
+    GaussianFactor,
     L2NormalizedColumns,
     RepresentationSpec,
 )
@@ -73,7 +73,7 @@ def _site(*, atoms=2, capacity=None, d_in=1, d_out=1, normalized=True):
         inputs,
         outputs,
         store,
-        GaussianKernel(0.35).double(),
+        GaussianFactor(0.35).double(),
         gauge=gauge,
     )
     return module, store
@@ -121,7 +121,7 @@ def _scattered_site(*, atoms=3, d_in=2, d_out=2, seed=7):
         inputs,
         outputs,
         store,
-        GaussianKernel(0.35).double(),
+        GaussianFactor(0.35).double(),
         gauge=L2NormalizedColumns(),
     )
     return module, store
@@ -449,8 +449,8 @@ def test_fused_gaussian_formula_matches_the_generic_metric() -> None:
         store.s,
         store.t,
         store.w.square(),
-        module.kernel_in.sigma,
-        module.kernel_out.sigma,
+        module.factor_in.sigma,
+        module.factor_out.sigma,
     )
     for got, want in zip(actual, expected, strict=True):
         torch.testing.assert_close(got, want)
@@ -516,8 +516,8 @@ def test_fused_gaussian_gram_matches_the_generic_gram() -> None:
         store.s,
         store.t,
         store.w.square(),
-        module.kernel_in.sigma,
-        module.kernel_out.sigma,
+        module.factor_in.sigma,
+        module.factor_out.sigma,
     )
     for got, want in zip(actual, expected, strict=True):
         torch.testing.assert_close(got, want)

@@ -9,7 +9,7 @@ import torch
 from torch import Tensor, nn
 
 from .._validation import require_int
-from ..representation import GaussianKernel, L2NormalizedColumns
+from ..representation import GaussianFactor, L2NormalizedColumns
 from ..storage import SynapseStore
 from . import metric
 from .forces import PairRepulsion, SmoothRent
@@ -18,10 +18,10 @@ MomentSpace = Literal["parameter", "tangent"]
 MetricForm = Literal["diag", "block", "full"]
 
 
-def _gaussian_unit_factor(
+def _gaussian_unit_slope(
     mu: Tensor, centers: Tensor, sigma: Tensor
 ) -> tuple[Tensor, Tensor]:
-    """Stable normalized Gaussian columns and their derivative factor."""
+    """Stable normalized Gaussian columns and their derivative slope."""
     diff = mu[:, None, :] - centers[None]
     squared_distance = diff.square().sum(-1)
     centered = squared_distance - squared_distance.amin(dim=0, keepdim=True)
@@ -40,13 +40,13 @@ def _gaussian_l2_metric_block(
     sigma_out: Tensor,
 ) -> tuple[Tensor, Tensor]:
     """Pure-tensor Gaussian fast path for ``diag(J.T @ J)``."""
-    unit_in, factor_in = _gaussian_unit_factor(mu_in, source, sigma_in)
-    unit_out, factor_out = _gaussian_unit_factor(mu_out, target, sigma_out)
+    unit_in, slope_in = _gaussian_unit_slope(mu_in, source, sigma_in)
+    unit_out, slope_out = _gaussian_unit_slope(mu_out, target, sigma_out)
     return metric.gauged_jacobian_sq(
         unit_in=unit_in,
-        factor_in=factor_in,
+        slope_in=slope_in,
         unit_out=unit_out,
-        factor_out=factor_out,
+        slope_out=slope_out,
         mu_in=mu_in,
         mu_out=mu_out,
         source=source,
@@ -66,13 +66,13 @@ def _gaussian_l2_metric_gram(
     sigma_out: Tensor,
 ) -> tuple[Tensor, Tensor]:
     """Pure-tensor Gaussian fast path for the within-atom metric blocks."""
-    unit_in, factor_in = _gaussian_unit_factor(mu_in, source, sigma_in)
-    unit_out, factor_out = _gaussian_unit_factor(mu_out, target, sigma_out)
+    unit_in, slope_in = _gaussian_unit_slope(mu_in, source, sigma_in)
+    unit_out, slope_out = _gaussian_unit_slope(mu_out, target, sigma_out)
     return metric.gauged_jacobian_gram(
         unit_in=unit_in,
-        factor_in=factor_in,
+        slope_in=slope_in,
         unit_out=unit_out,
-        factor_out=factor_out,
+        slope_out=slope_out,
         mu_in=mu_in,
         mu_out=mu_out,
         source=source,
@@ -110,8 +110,8 @@ def _metric_block(
     if (
         compiled
         and source.is_cuda
-        and type(module.kernel_in) is GaussianKernel
-        and type(module.kernel_out) is GaussianKernel
+        and type(module.factor_in) is GaussianFactor
+        and type(module.factor_out) is GaussianFactor
     ):
         global _compiled_gaussian_l2_metric_block
         if _compiled_gaussian_l2_metric_block is None:
@@ -124,21 +124,21 @@ def _metric_block(
             source,
             target,
             mass_sq,
-            module.kernel_in.sigma.detach().to(source),
-            module.kernel_out.sigma.detach().to(target),
+            module.factor_in.sigma.detach().to(source),
+            module.factor_out.sigma.detach().to(target),
         )
 
-    unit_in, factor_in = metric.normalized_columns(
-        module.kernel_in, mu_in, source, columns
+    unit_in, slope_in = metric.normalized_columns(
+        module.factor_in, mu_in, source, columns
     )
-    unit_out, factor_out = metric.normalized_columns(
-        module.kernel_out, mu_out, target, columns
+    unit_out, slope_out = metric.normalized_columns(
+        module.factor_out, mu_out, target, columns
     )
     return metric.gauged_jacobian_sq(
         unit_in=unit_in,
-        factor_in=factor_in,
+        slope_in=slope_in,
         unit_out=unit_out,
-        factor_out=factor_out,
+        slope_out=slope_out,
         mu_in=mu_in,
         mu_out=mu_out,
         source=source,
@@ -163,8 +163,8 @@ def _metric_gram_block(
     if (
         compiled
         and source.is_cuda
-        and type(module.kernel_in) is GaussianKernel
-        and type(module.kernel_out) is GaussianKernel
+        and type(module.factor_in) is GaussianFactor
+        and type(module.factor_out) is GaussianFactor
     ):
         global _compiled_gaussian_l2_metric_gram
         if _compiled_gaussian_l2_metric_gram is None:
@@ -177,21 +177,21 @@ def _metric_gram_block(
             source,
             target,
             mass_sq,
-            module.kernel_in.sigma.detach().to(source),
-            module.kernel_out.sigma.detach().to(target),
+            module.factor_in.sigma.detach().to(source),
+            module.factor_out.sigma.detach().to(target),
         )
 
-    unit_in, factor_in = metric.normalized_columns(
-        module.kernel_in, mu_in, source, columns
+    unit_in, slope_in = metric.normalized_columns(
+        module.factor_in, mu_in, source, columns
     )
-    unit_out, factor_out = metric.normalized_columns(
-        module.kernel_out, mu_out, target, columns
+    unit_out, slope_out = metric.normalized_columns(
+        module.factor_out, mu_out, target, columns
     )
     return metric.gauged_jacobian_gram(
         unit_in=unit_in,
-        factor_in=factor_in,
+        slope_in=slope_in,
         unit_out=unit_out,
-        factor_out=factor_out,
+        slope_out=slope_out,
         mu_in=mu_in,
         mu_out=mu_out,
         source=source,
@@ -237,7 +237,7 @@ class PullbackAdam:
         includes source-source, source-target and target-target coupling but
         holds amplitudes fixed, so their separate optimiser remains unchanged.
         It is an intentionally expensive oracle implemented with the
-        separable kernel factors rather than a materialised dense-map
+        separable factor factors rather than a materialised dense-map
         Jacobian.
 
     ``"diag"`` and ``"block"`` neglect cross-atom coupling.  Persistent
@@ -281,7 +281,7 @@ class PullbackAdam:
 
     ``moment_distance=(tau_m, tau_v)``
         Forget coordinate moments by distance travelled, in joint
-        source-target kernel-sigma units.  A step of length ``d``
+        source-target factor-sigma units.  A step of length ``d``
         retains ``exp(-d / tau_m)`` of the first-moment history and
         ``exp(-d / tau_v)`` of the second-moment history.  Per-row normalising
         masses keep Adam's bias correction valid under this extra decay.  This
@@ -319,15 +319,15 @@ class PullbackAdam:
         moment_distance: tuple[float, float] | None = None,
     ) -> None:
         store = getattr(module, "synapses", None)
-        kernel_in = getattr(module, "kernel_in", None)
-        kernel_out = getattr(module, "kernel_out", None)
+        factor_in = getattr(module, "factor_in", None)
+        factor_out = getattr(module, "factor_out", None)
         if (
             not isinstance(store, SynapseStore)
-            or kernel_in is None
-            or kernel_out is None
+            or factor_in is None
+            or factor_out is None
         ):
             raise TypeError(
-                "module must be a continuous CST map with .synapses and kernels"
+                "module must be a continuous CST map with .synapses and factors"
             )
         if not isinstance(getattr(module, "gauge", None), L2NormalizedColumns):
             raise TypeError("PullbackAdam requires L2NormalizedColumns")
@@ -409,8 +409,8 @@ class PullbackAdam:
 
         self.module = module
         self.store = store
-        self.kernel_in = kernel_in
-        self.kernel_out = kernel_out
+        self.factor_in = factor_in
+        self.factor_out = factor_out
         self.moment_space: MomentSpace = moment_space
         self.metric: MetricForm = metric
         self.cap_sigma = float(cap_sigma)
@@ -661,23 +661,23 @@ class PullbackAdam:
         source = store.s.index_select(0, live)
         target = store.t.index_select(0, live)
         columns = self._selected_columns(live)
-        unit_in, factor_in = metric.normalized_columns(
-            self.module.kernel_in,
+        unit_in, slope_in = metric.normalized_columns(
+            self.module.factor_in,
             self.module.in_neurons.mu.to(source),
             source,
             columns,
         )
-        unit_out, factor_out = metric.normalized_columns(
-            self.module.kernel_out,
+        unit_out, slope_out = metric.normalized_columns(
+            self.module.factor_out,
             self.module.out_neurons.mu.to(target),
             target,
             columns,
         )
         return metric.gauged_coordinate_jacobian_gram(
             unit_in=unit_in,
-            factor_in=factor_in,
+            slope_in=slope_in,
             unit_out=unit_out,
-            factor_out=factor_out,
+            slope_out=slope_out,
             mu_in=self.module.in_neurons.mu.to(source),
             mu_out=self.module.out_neurons.mu.to(target),
             source=source,
@@ -784,8 +784,8 @@ class PullbackAdam:
                 store.s.detach(),
                 store.t.detach(),
                 live,
-                self.kernel_in.sigma.detach().to(store.s),
-                self.kernel_out.sigma.detach().to(store.t),
+                self.factor_in.sigma.detach().to(store.s),
+                self.factor_out.sigma.detach().to(store.t),
                 self._pair_generator(),
             )
             incoming_s = incoming_s + repulsion_s
@@ -814,7 +814,7 @@ class PullbackAdam:
         raw_t.mul_(mask_t)
 
         raw_norm = (raw_s.square().sum(1) + raw_t.square().sum(1)).sqrt()
-        sigma = self.kernel_in.sigma.detach().to(raw_norm)
+        sigma = self.factor_in.sigma.detach().to(raw_norm)
         if self.eta is None:
             median = raw_norm.index_select(0, live).median().clamp_min(1e-30)
             self.eta = float(self.target_step * sigma / median)
@@ -834,8 +834,8 @@ class PullbackAdam:
                 store.s.detach(),
                 store.t.detach(),
                 live,
-                self.kernel_in.sigma.detach().to(store.s),
-                self.kernel_out.sigma.detach().to(store.t),
+                self.factor_in.sigma.detach().to(store.s),
+                self.factor_out.sigma.detach().to(store.t),
                 self._pair_generator(),
             )
             repulsion_s.mul_(float(lr_scale))

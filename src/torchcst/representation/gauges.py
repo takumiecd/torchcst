@@ -5,7 +5,7 @@ two columns it casts, not the split between them.  A gauge is that split, and
 picking one is picking which quantity the optimizer is allowed to move.
 
 Under :class:`Amplitude` -- the classical split, and the default -- the stored
-number is the amplitude and the columns arrive as the kernel casts them.  An
+number is the amplitude and the columns arrive as the factor casts them.  An
 atom's actual effect on ``W`` is then ``w * ||k_in|| * ||k_out||``, which the
 atom can shrink two ways: honestly, by shrinking ``w`` where rent and prune
 can see it, or quietly, by walking somewhere the columns are small.  The
@@ -41,21 +41,21 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from .kernels import ContinuousKernel
+from .factors import ContinuousFactor
 
 
 @dataclass(frozen=True)
 class Amplitude:
-    """Store the amplitude; deliver the kernel's columns untouched."""
+    """Store the amplitude; deliver the factor's columns untouched."""
 
     def columns(
         self,
-        kernel: ContinuousKernel,
+        factor: ContinuousFactor,
         query: Tensor,
         centers: Tensor,
         extras: Mapping[str, Tensor] | None = None,
     ) -> Tensor:
-        return kernel(query, centers, extras)
+        return factor(query, centers, extras)
 
 
 @dataclass(frozen=True)
@@ -68,8 +68,8 @@ class L2NormalizedColumns:
     ``mass``, the optimizer steps ``w``, and the exchange rate between them is
     a function of where the atom is standing.
 
-    Columns come from :meth:`ContinuousKernel.scaled_columns` rather than from
-    the kernel directly, because normalising cannot rescue a column that has
+    Columns come from :meth:`ContinuousFactor.scaled_columns` rather than from
+    the factor directly, because normalising cannot rescue a column that has
     already underflowed -- which, in the reduced-precision paths, happens at
     ordinary distances.  A family with compact support may still hand back an
     honestly zero column for an atom outside every neuron's support; that one
@@ -79,12 +79,12 @@ class L2NormalizedColumns:
 
     def columns(
         self,
-        kernel: ContinuousKernel,
+        factor: ContinuousFactor,
         query: Tensor,
         centers: Tensor,
         extras: Mapping[str, Tensor] | None = None,
     ) -> Tensor:
-        scaled = kernel.scaled_columns(query, centers, extras)
+        scaled = factor.scaled_columns(query, centers, extras)
         norm = torch.linalg.vector_norm(scaled, dim=0, keepdim=True)
         return scaled / norm.clamp_min(torch.finfo(scaled.dtype).tiny)
 

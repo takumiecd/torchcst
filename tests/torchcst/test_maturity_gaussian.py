@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import torch
 
-from torchcst import MaturityGaussianKernel, PullbackAdam
+from torchcst import MaturityGaussianFactor, PullbackAdam
 from torchcst.compute import CSTLinear
 from torchcst.representation import (
-    GaussianKernel,
+    GaussianFactor,
     L2NormalizedColumns,
     RepresentationSpec,
 )
@@ -17,7 +17,7 @@ from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 def _site(*, maturity: float = -2.0):
     dtype = torch.float64
     spec = RepresentationSpec.continuous(
-        1, 1, kernel="maturity_gaussian"
+        1, 1, factor="maturity_gaussian"
     )
     store = SynapseStore(
         "maturity",
@@ -59,7 +59,7 @@ def _site(*, maturity: float = -2.0):
         inputs,
         outputs,
         store,
-        MaturityGaussianKernel(0.12, learnable=False).double(),
+        MaturityGaussianFactor(0.12, learnable=False).double(),
         gauge=L2NormalizedColumns(),
     )
     return module, store
@@ -67,7 +67,7 @@ def _site(*, maturity: float = -2.0):
 
 def test_maturity_is_a_declared_atom_column_with_a_broad_birth() -> None:
     spec = RepresentationSpec.continuous(
-        2, 3, kernel="maturity_gaussian"
+        2, 3, factor="maturity_gaussian"
     )
     assert spec.atom_cost == 2 + 3 + 1 + 1
     store = SynapseStore("birth", 2, 3, 1, spec=spec)
@@ -88,8 +88,8 @@ def test_maturity_is_a_declared_atom_column_with_a_broad_birth() -> None:
 def test_maturity_interpolates_from_broad_to_the_ordinary_gaussian() -> None:
     query = torch.linspace(0.0, 1.0, 101, dtype=torch.float64).reshape(-1, 1)
     center = torch.tensor([[0.5]], dtype=torch.float64)
-    adaptive = MaturityGaussianKernel(0.1, learnable=False).double()
-    ordinary = GaussianKernel(0.1, learnable=False).double()
+    adaptive = MaturityGaussianFactor(0.1, learnable=False).double()
+    ordinary = GaussianFactor(0.1, learnable=False).double()
     broad = adaptive.scaled_columns(
         query, center, {"maturity": torch.tensor([[-30.0]])}
     )
@@ -128,14 +128,14 @@ def test_independent_maturity_preserves_amplitude_coordinate_orthogonality() -> 
     # Form the actual Jacobian columns explicitly for this tiny map.
     jac_w = torch.autograd.functional.jacobian(
         lambda weight: (
-            module._kernel_matrices(store.s, store.t)[1] * weight
-        ) @ module._kernel_matrices(store.s, store.t)[0].transpose(0, 1),
+            module._factor_matrices(store.s, store.t)[1] * weight
+        ) @ module._factor_matrices(store.s, store.t)[0].transpose(0, 1),
         store.w,
     ).reshape(-1)
     jac_s = torch.autograd.functional.jacobian(
         lambda source: (
-            module._kernel_matrices(source, store.t)[1] * store.w
-        ) @ module._kernel_matrices(source, store.t)[0].transpose(0, 1),
+            module._factor_matrices(source, store.t)[1] * store.w
+        ) @ module._factor_matrices(source, store.t)[0].transpose(0, 1),
         store.s,
     ).reshape(-1)
     assert tangent_w.numel() == 1

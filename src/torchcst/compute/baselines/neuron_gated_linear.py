@@ -18,7 +18,7 @@ class NeuronGatedLinear(nn.Module):
     stores. This wrapper is the opt-in topology boundary for experiments that
     need dormant/live/retired neuron gates or endpoint-aware response policies.
     `CSTLinear` does not use this wrapper because neuron coordinates are an
-    intrinsic part of its kernel representation.
+    intrinsic part of its factor representation.
     """
 
     def __init__(

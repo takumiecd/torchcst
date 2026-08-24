@@ -109,7 +109,7 @@ class ScoredBirth:
 
     ``gain = <G, psi>_F^2 / (2 * ||(I - P_live) psi||_D^2)``
 
-    where ``psi`` is the un-normalized candidate atom matrix from kernel
+    where ``psi`` is the un-normalized candidate atom matrix from factor
     columns, ``P_live`` the D-orthogonal projection onto the live atom span,
     and ``G`` the instrument's accumulated certificate in raw loss-gradient
     units (its ``raw_gradient()``). The cheap instrument score's
@@ -117,7 +117,7 @@ class ScoredBirth:
     loss-unit gain; this settlement is the fix, validated to 8e-11 against a
     dense D-profile computation (``cst/scripts/diag_birth_gain_calibration.py``).
     Rent gating therefore requires the instrument to expose ``.port`` (a
-    :class:`~torchcst.instruments.base.KernelPort`) and ``raw_gradient()`` --
+    :class:`~torchcst.instruments.base.FactorPort`) and ``raw_gradient()`` --
     :class:`~torchcst.instruments.ContinuousCandidateField` does; a
     ``TypeError`` is raised at settlement time otherwise.
 
@@ -236,7 +236,7 @@ class ScoredBirth:
         if port is None or not callable(raw_gradient):
             raise TypeError(
                 "ScoredBirth's rent gate requires an instrument exposing "
-                "'.port' (a KernelPort) and 'raw_gradient()' -- e.g. "
+                "'.port' (a FactorPort) and 'raw_gradient()' -- e.g. "
                 f"ContinuousCandidateField; got {type(instrument).__name__!r}"
             )
         gradient = raw_gradient()

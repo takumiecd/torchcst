@@ -16,7 +16,7 @@ from torchcst.compute.backends.materialize import (
     LeanLinearMaterialize,
 )
 from torchcst.representation import (
-    GaussianKernel,
+    GaussianFactor,
     L2NormalizedColumns,
     RepresentationSpec,
 )
@@ -28,9 +28,9 @@ N_IN, N_OUT, N_ATOMS = 4, 3, 10
 def _parts(
     *,
     dtype: torch.dtype = torch.float64,
-    kernel_name: str = "gaussian",
+    factor_name: str = "gaussian",
     **module_kw,
-) -> tuple[SynapseStore, GaussianKernel, CSTLinear]:
+) -> tuple[SynapseStore, GaussianFactor, CSTLinear]:
     gen = torch.Generator().manual_seed(0)
     store = SynapseStore(
         "continuous",
@@ -38,7 +38,7 @@ def _parts(
         2,
         N_ATOMS,
         spec=RepresentationSpec.continuous(
-            2, 2, bounds=(-1.0, 1.0), kernel=kernel_name
+            2, 2, bounds=(-1.0, 1.0), factor=factor_name
         ),
         dtype=dtype,
     )
@@ -67,8 +67,8 @@ def _parts(
         initial_live=N_OUT,
         dtype=dtype,
     )
-    kernel = GaussianKernel(0.55).to(dtype)
-    return store, kernel, CSTLinear(inputs, outputs, store, kernel, **module_kw)
+    factor = GaussianFactor(0.55).to(dtype)
+    return store, factor, CSTLinear(inputs, outputs, store, factor, **module_kw)
 
 
 def _grads_of(module, x, upstream):
@@ -81,15 +81,15 @@ def _grads_of(module, x, upstream):
         "w": store.w.grad.clone(),
         "s": store.s.grad.clone(),
         "t": store.t.grad.clone(),
-        "sigma": module.kernel_in.sigma.grad.clone(),
+        "sigma": module.factor_in.sigma.grad.clone(),
         "x": x.grad.clone(),
     }
 
 
 def test_materialized_forward_matches_factored_values_and_grads() -> None:
-    store, kernel, ref = _parts(backend=Factored())
+    store, factor, ref = _parts(backend=Factored())
     mat = CSTLinear(
-        ref.in_neurons, ref.out_neurons, store, kernel, backend=Materialized()
+        ref.in_neurons, ref.out_neurons, store, factor, backend=Materialized()
     )
     x = torch.randn(5, N_IN, dtype=torch.float64, requires_grad=True)
     upstream = torch.randn(5, N_OUT, dtype=torch.float64)
@@ -101,12 +101,12 @@ def test_materialized_forward_matches_factored_values_and_grads() -> None:
 
 
 def test_lean_materialize_matches_default_path_values_and_grads() -> None:
-    store, kernel, ref = _parts(backend=Materialized())
+    store, factor, ref = _parts(backend=Materialized())
     lean = CSTLinear(
         ref.in_neurons,
         ref.out_neurons,
         store,
-        kernel,
+        factor,
         track_mass=False,
         backend=Materialized(lean=True),
     )
@@ -123,14 +123,14 @@ def test_lean_materialize_matches_default_path_values_and_grads() -> None:
 def test_l2_lean_materialize_matches_default_path_values_and_grads(
     compile_l2,
 ) -> None:
-    store, kernel, ref = _parts(
+    store, factor, ref = _parts(
         gauge=L2NormalizedColumns(), track_mass=False, backend=Materialized()
     )
     lean = CSTLinear(
         ref.in_neurons,
         ref.out_neurons,
         store,
-        kernel,
+        factor,
         gauge=L2NormalizedColumns(),
         track_mass=False,
         backend=Materialized(lean=True, compile_l2=compile_l2),
@@ -218,7 +218,7 @@ def test_eval_weight_cache_notices_an_in_place_parameter_write(monkeypatch) -> N
 def test_lean_chunked_accumulation_is_exact(monkeypatch) -> None:
     # CHUNK smaller than K exercises the multi-chunk accumulation in both
     # directions of the Function.
-    store, kernel, lean = _parts(
+    store, factor, lean = _parts(
         track_mass=False, backend=Materialized(lean=True)
     )
     x = torch.randn(5, N_IN, dtype=torch.float64, requires_grad=True)
@@ -246,7 +246,7 @@ def test_l2_lean_chunked_accumulation_is_exact(monkeypatch) -> None:
 
 
 def test_lean_backward_passes_gradcheck() -> None:
-    store, kernel, lean = _parts(
+    store, factor, lean = _parts(
         track_mass=False, backend=Materialized(lean=True)
     )
     lean._view()
@@ -255,7 +255,7 @@ def test_lean_backward_passes_gradcheck() -> None:
     mu_out = lean.out_neurons.mu.clone()
     inputs = tuple(
         t.detach().clone().requires_grad_(True)
-        for t in (source, target, weights, kernel.sigma, kernel.sigma.clone())
+        for t in (source, target, weights, factor.sigma, factor.sigma.clone())
     )
     assert torch.autograd.gradcheck(
         lambda s, t, w, si, so: LeanLinearMaterialize.apply(
@@ -266,7 +266,7 @@ def test_lean_backward_passes_gradcheck() -> None:
 
 
 def test_l2_lean_backward_passes_gradcheck() -> None:
-    _, kernel, lean = _parts(
+    _, factor, lean = _parts(
         gauge=L2NormalizedColumns(),
         track_mass=False,
         backend=Materialized(lean=True),
@@ -277,7 +277,7 @@ def test_l2_lean_backward_passes_gradcheck() -> None:
     mu_out = lean.out_neurons.mu.clone()
     inputs = tuple(
         t.detach().clone().requires_grad_(True)
-        for t in (source, target, weights, kernel.sigma, kernel.sigma.clone())
+        for t in (source, target, weights, factor.sigma, factor.sigma.clone())
     )
     assert torch.autograd.gradcheck(
         lambda s, t, w, si, so: LeanL2LinearMaterialize.apply(
@@ -298,17 +298,17 @@ def test_auto_picks_the_flop_crossover() -> None:
 
 
 def test_materialized_path_still_refreshes_mass() -> None:
-    store, kernel, module = _parts(backend=Materialized())
+    store, factor, module = _parts(backend=Materialized())
     module(torch.randn(2, N_IN, dtype=torch.float64))
     view = store.view()
-    k_in = kernel(module.in_neurons.mu, view.s)
-    k_out = kernel(module.out_neurons.mu, view.t)
+    k_in = factor(module.in_neurons.mu, view.s)
+    k_out = factor(module.out_neurons.mu, view.t)
     expected = view.w.abs() * k_in.norm(dim=0) * k_out.norm(dim=0)
     torch.testing.assert_close(view.mass, expected)
 
 
 def test_materialized_path_queues_capture() -> None:
-    store, kernel, module = _parts(backend=Materialized())
+    store, factor, module = _parts(backend=Materialized())
     context = BackwardContext(0)
     module.set_backward_context(context)
     x = torch.randn(2, N_IN, dtype=torch.float64, requires_grad=True)
@@ -317,7 +317,7 @@ def test_materialized_path_queues_capture() -> None:
 
 
 def test_compute_dtype_materialization_close_to_full_precision() -> None:
-    store, kernel, module = _parts(
+    store, factor, module = _parts(
         dtype=torch.float32, backend=Materialized()
     )
     x = torch.randn(4, N_IN)
@@ -326,7 +326,7 @@ def test_compute_dtype_materialization_close_to_full_precision() -> None:
         module.in_neurons,
         module.out_neurons,
         store,
-        kernel,
+        factor,
         backend=Materialized(compute_dtype=torch.bfloat16),
     )
     reduced = reduced_module(x)
@@ -337,9 +337,9 @@ def test_compute_dtype_materialization_close_to_full_precision() -> None:
 
 
 def test_backend_validation() -> None:
-    store, kernel, module = _parts()
+    store, factor, module = _parts()
     build = lambda **kw: CSTLinear(  # noqa: E731
-        module.in_neurons, module.out_neurons, store, kernel, **kw
+        module.in_neurons, module.out_neurons, store, factor, **kw
     )
     with pytest.raises(TypeError, match="backend must be"):
         build(backend="sometimes")
@@ -355,8 +355,8 @@ def test_backend_validation() -> None:
         build(backend=Materialized(lean=True))  # track_mass defaults True
 
 
-def test_lean_requires_gaussian_kernels() -> None:
-    from torchcst.representation import TriangularKernel
+def test_lean_requires_gaussian_factors() -> None:
+    from torchcst.representation import TriangularFactor
 
     gen = torch.Generator().manual_seed(0)
     store = SynapseStore(
@@ -365,7 +365,7 @@ def test_lean_requires_gaussian_kernels() -> None:
         2,
         N_ATOMS,
         spec=RepresentationSpec.continuous(
-            2, 2, bounds=(-1.0, 1.0), kernel="triangular"
+            2, 2, bounds=(-1.0, 1.0), factor="triangular"
         ),
         dtype=torch.float64,
     )
@@ -388,7 +388,7 @@ def test_lean_requires_gaussian_kernels() -> None:
             inputs,
             outputs,
             store,
-            TriangularKernel(0.55).double(),
+            TriangularFactor(0.55).double(),
             track_mass=False,
             backend=Materialized(lean=True),
         )

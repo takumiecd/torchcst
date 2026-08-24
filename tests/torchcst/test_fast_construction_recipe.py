@@ -15,7 +15,7 @@ import torch
 from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy.recipes import FastConstruction
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import (
     NeuronStore,
     SynapseBirth,
@@ -58,7 +58,7 @@ def _parts(
     mu = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
     inputs = NeuronStore("fc_in", 3, mu=mu, initial_live=3, dtype=torch.float64)
     outputs = NeuronStore("fc_out", 3, mu=mu, initial_live=3, dtype=torch.float64)
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.3).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.3).double())
     root = FastConstruction(
         event_interval=1,
         growth_events=GROWTH_EVENTS,
@@ -113,7 +113,7 @@ def _run_event(
 
 def test_recipe_grows_inside_the_window_then_solves_amplitudes_forever() -> None:
     # The default seed's grow phase happens to place three source coordinates
-    # within a fraction of the kernel bandwidth of each other -- a twin Gram
+    # within a fraction of the factor bandwidth of each other -- a twin Gram
     # (twin-control.md Sec.1) that pre-``TangentRefit``-clamp solved into a
     # huge cancelling correction whose forward output (and hence realized
     # loss) barely moved, so the profit trial accepted it "for free". Now

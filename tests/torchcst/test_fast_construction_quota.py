@@ -7,7 +7,7 @@ import torch
 from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import EvenBudgetDistributor, PeriodicCadence, QuotaRegime, cSFW
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
 
@@ -45,7 +45,7 @@ def _parts(seed: int = 19) -> tuple[StructuralEngine, CSTLinear, SynapseStore]:
         initial_live=2,
         dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.35).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.35).double())
     root = QuotaRegime(
         budget=2,
         method=cSFW(backfit=None, pool_size=32, multistart=2),

@@ -11,7 +11,7 @@ from torchcst.representation import (
     Amplitude,
     AmplitudeGauge,
     Box,
-    ContinuousKernel,
+    ContinuousFactor,
     require_gauge,
 )
 from torchcst.storage import NeuronStore, SynapseStore, SynapseView
@@ -28,16 +28,16 @@ class _ContinuousCSTMap(nn.Module):
     no public forward contract: each concrete module defines its own input
     geometry.
 
-    The kernel objects and the store's spec must name the same family, so a
+    The factor objects and the store's spec must name the same family, so a
     store calibrated for one profile cannot be driven by another: mass and
     rent constants are family-specific.
 
     ``input_offset_axes`` declares how many trailing axes of the *source*
-    coordinate are not chart axes matched by the kernel but displacement
+    coordinate are not chart axes matched by the factor but displacement
     axes with their own evaluation rule (e.g. spatial offsets applied to
     the data side).  The input population's chart then spans only the
     leading ``d_in - input_offset_axes`` axes; a concrete map that sets
-    this must also override :meth:`_kernel_matrices` to slice the source
+    this must also override :meth:`_factor_matrices` to slice the source
     accordingly.
     """
 
@@ -49,8 +49,8 @@ class _ContinuousCSTMap(nn.Module):
         in_neurons: NeuronStore,
         out_neurons: NeuronStore,
         synapses: SynapseStore,
-        kernel: ContinuousKernel,
-        kernel_out: ContinuousKernel | None = None,
+        factor: ContinuousFactor,
+        factor_out: ContinuousFactor | None = None,
         *,
         track_mass: bool = True,
         gauge: AmplitudeGauge | None = None,
@@ -64,17 +64,17 @@ class _ContinuousCSTMap(nn.Module):
             raise TypeError("in_neurons and out_neurons must be NeuronStores")
         if not isinstance(synapses, SynapseStore):
             raise TypeError("synapses must be a SynapseStore")
-        if not isinstance(kernel, ContinuousKernel):
-            raise TypeError("kernel must be a ContinuousKernel")
-        if kernel_out is not None and not isinstance(kernel_out, ContinuousKernel):
-            raise TypeError("kernel_out must be a ContinuousKernel or None")
-        outgoing = kernel if kernel_out is None else kernel_out
+        if not isinstance(factor, ContinuousFactor):
+            raise TypeError("factor must be a ContinuousFactor")
+        if factor_out is not None and not isinstance(factor_out, ContinuousFactor):
+            raise TypeError("factor_out must be a ContinuousFactor or None")
+        outgoing = factor if factor_out is None else factor_out
         if (
-            synapses.spec.kernel_in != kernel.family
-            or synapses.spec.kernel_out != outgoing.family
+            synapses.spec.factor_in != factor.family
+            or synapses.spec.factor_out != outgoing.family
         ):
             raise ValueError(
-                "continuous CST maps require a spec naming the kernel families"
+                "continuous CST maps require a spec naming the factor families"
             )
         if not isinstance(synapses.spec.domain_in, Box) or not isinstance(
             synapses.spec.domain_out, Box
@@ -92,8 +92,8 @@ class _ContinuousCSTMap(nn.Module):
         self.in_neurons = in_neurons
         self.out_neurons = out_neurons
         self.synapses = synapses
-        self.kernel_in = kernel
-        self.kernel_out = kernel if kernel_out is None else kernel_out
+        self.factor_in = factor
+        self.factor_out = factor if factor_out is None else factor_out
         # Which half of `w * ||k||` this site's stored number is. Under the
         # default the parameter is the amplitude and the columns arrive as
         # cast; under L2NormalizedColumns it is the atom's mass in W, the
@@ -210,9 +210,9 @@ class _ContinuousCSTMap(nn.Module):
         return self._backward_context is not None
 
     def _live_columns(self) -> dict[str, Tensor]:
-        """Kernel-declared per-atom columns, packed to live rows like ``s``.
+        """Factor-declared per-atom columns, packed to live rows like ``s``.
 
-        Empty for every family that declares none, which is why the kernel
+        Empty for every family that declares none, which is why the factor
         call below is byte-identical for the built-in families.
         """
         names = self.synapses.atom_column_names
@@ -224,18 +224,18 @@ class _ContinuousCSTMap(nn.Module):
             for name in names
         }
 
-    def _kernel_matrices(
+    def _factor_matrices(
         self,
         source: Tensor,
         target: Tensor,
         columns: Mapping[str, Tensor] | None = None,
     ) -> tuple[Tensor, Tensor]:
-        """Kernel columns for atom rows ``source``/``target``.
+        """Factor columns for atom rows ``source``/``target``.
 
         ``columns`` defaults to the *full* live column set, which is correct
         only when ``source``/``target`` are the full live rows.  A caller that
         passes a row subset -- the chunked evidence path below -- must slice
-        the columns the same way; a mismatch raises in the kernel rather than
+        the columns the same way; a mismatch raises in the factor rather than
         silently pairing an atom with another atom's frequency.
         """
         if columns is None:
@@ -243,8 +243,8 @@ class _ContinuousCSTMap(nn.Module):
         in_mu = self.in_neurons.mu.to(device=source.device, dtype=source.dtype)
         out_mu = self.out_neurons.mu.to(device=target.device, dtype=target.dtype)
         return (
-            self.gauge.columns(self.kernel_in, in_mu, source, columns),
-            self.gauge.columns(self.kernel_out, out_mu, target, columns),
+            self.gauge.columns(self.factor_in, in_mu, source, columns),
+            self.gauge.columns(self.factor_out, out_mu, target, columns),
         )
 
     def _current_mass_signature(self) -> tuple[int, ...]:
@@ -258,15 +258,15 @@ class _ContinuousCSTMap(nn.Module):
             self.out_neurons.version,
             self.in_neurons.gate._version,
             self.out_neurons.gate._version,
-            self.kernel_in.sigma._version,
-            self.kernel_out.sigma._version,
+            self.factor_in.sigma._version,
+            self.factor_out.sigma._version,
         )
 
     def _refresh_mass_scale(self, k_in: Tensor, k_out: Tensor) -> None:
         if not self._track_mass:
             return
-        kernels = tuple(dict.fromkeys((self.kernel_in, self.kernel_out)))
-        sigmas = tuple(kernel.sigma.detach().clone() for kernel in kernels)
+        factors = tuple(dict.fromkeys((self.factor_in, self.factor_out)))
+        sigmas = tuple(factor.sigma.detach().clone() for factor in factors)
         signature = self._current_mass_signature()
         unchanged = (
             self._mass_signature == signature
@@ -301,7 +301,7 @@ class _ContinuousCSTMap(nn.Module):
         source = source.to(device=x.device)
         target = target.to(device=x.device)
         weights = weights.to(device=x.device)
-        k_in, k_out = self._kernel_matrices(source, target)
+        k_in, k_out = self._factor_matrices(source, target)
         self._refresh_mass_scale(k_in, k_out)
 
         output = apply_rows(x, k_in, k_out, weights)
@@ -328,7 +328,7 @@ class _ContinuousCSTMap(nn.Module):
         source = source.detach().to(device=x_flat.device, dtype=x_flat.dtype)
         target = target.detach().to(device=g_flat.device, dtype=g_flat.dtype)
         with torch.no_grad():
-            k_in, k_out = self._kernel_matrices(source, target)
+            k_in, k_out = self._factor_matrices(source, target)
             return ((x_flat @ k_in) * (g_flat @ k_out)).sum(dim=0)
 
     def candidate_weight_grads(
@@ -367,7 +367,7 @@ class _ContinuousCSTMap(nn.Module):
         with torch.no_grad():
             for start in range(0, count, chunk_size):
                 stop = min(start + chunk_size, count)
-                k_in, k_out = self._kernel_matrices(
+                k_in, k_out = self._factor_matrices(
                     source[start:stop],
                     target[start:stop],
                     {
@@ -396,7 +396,7 @@ class _ContinuousCSTMap(nn.Module):
         target = target.detach().to(x_flat)
         weights = weights.detach().to(x_flat)
         with torch.no_grad():
-            k_in, k_out = self._kernel_matrices(source, target)
+            k_in, k_out = self._factor_matrices(source, target)
             return apply_rows(x_flat, k_in, k_out, weights)
 
     def input_row_energy(self) -> Tensor:
@@ -405,7 +405,7 @@ class _ContinuousCSTMap(nn.Module):
         How strongly each input row is answered downstream.  A neuron gate at
         this map's *input* boundary scales a feature that this map then carries
         into output space, so its solve curvature is the activation energy
-        times this response.  Computed from the Gram of the outgoing kernel, so
+        times this response.  Computed from the Gram of the outgoing factor, so
         the ``[in_features, out_features]`` matrix is never materialized.
 
         This map never applies its own outgoing gate, so the energy never
@@ -416,21 +416,21 @@ class _ContinuousCSTMap(nn.Module):
         self._view()
         source, target, weights = self._live_factors()
         with torch.no_grad():
-            k_in, k_out = self._kernel_matrices(
+            k_in, k_out = self._factor_matrices(
                 source.detach(), target.detach()
             )
             weighted_in = k_in * weights.detach().to(k_in)
             gram_out = k_out.transpose(0, 1) @ k_out
             return (weighted_in @ gram_out).mul(weighted_in).sum(dim=1)
 
-    def kernel_columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
-        """Evaluate read-only kernel columns for arbitrary source/target rows.
+    def factor_columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
+        """Evaluate read-only factor columns for arbitrary source/target rows.
 
         Returns ``(k_in, k_out)`` with shapes ``[in_features, N]`` and
         ``[out_features, N]``.  No gradient is tracked and no store state is
         read or mutated; this is the capability instruments use to evaluate
-        candidate/live kernel directions (``KernelPort``) instead of reaching
-        into kernel/neuron internals directly.
+        candidate/live factor directions (``FactorPort``) instead of reaching
+        into factor/neuron internals directly.
         """
         if source.ndim != 2 or source.shape[1] != self.synapses.d_in:
             raise ValueError("source coordinates have the wrong shape")
@@ -439,12 +439,12 @@ class _ContinuousCSTMap(nn.Module):
         if source.shape[0] != target.shape[0]:
             raise ValueError("source and target coordinate counts must match")
         with torch.no_grad():
-            return self._kernel_matrices(source.detach(), target.detach())
+            return self._factor_matrices(source.detach(), target.detach())
 
     def dense_weight(self) -> Tensor:
         """Materialize ``K_out diag(w) K_in.T`` for diagnostics or fast paths."""
         self._view()
         source, target, weights = self._live_factors()
-        k_in, k_out = self._kernel_matrices(source, target)
+        k_in, k_out = self._factor_matrices(source, target)
         self._refresh_mass_scale(k_in, k_out)
         return (k_out * weights) @ k_in.transpose(0, 1)

@@ -2,9 +2,9 @@
 
 Implements Stage 2 of ``docs/absorb-and-gram-design.md``. :class:`GramService`
 is a read-only representation-layer service over one snapshot of live rank-one
-atoms ``psi_k = outer(U[:, k], V[:, k])`` (``U`` is the output-side kernel
+atoms ``psi_k = outer(U[:, k], V[:, k])`` (``U`` is the output-side factor
 column, ``V`` the input-side one -- the same convention as
-:meth:`torchcst.instruments.base.KernelPort.columns`). It assembles the
+:meth:`torchcst.instruments.base.FactorPort.columns`). It assembles the
 D-weighted (data second-moment) and Frobenius Gram separably --
 ``Gamma_ij = (U^T U)_ij * (V^T Sigma_x V)_ij`` (Hadamard) -- screens
 neighborhoods by a radius on raw coordinates ``z = (s, t)``, and solves the
@@ -78,7 +78,7 @@ class GramService:
 
     Constructed from the factor matrices for the atoms live *right now*:
     ``U [n_out, K]``, ``V [n_in, K]`` (a caller obtains these via
-    ``KernelPort.columns`` on the atom coordinates), amplitudes ``w [K]``,
+    ``FactorPort.columns`` on the atom coordinates), amplitudes ``w [K]``,
     and raw coordinates ``s [K, d_in]`` / ``t [K, d_out]``. ``radius``
     screens neighborhoods on the concatenated position ``z = (s, t)`` via a
     chunked ``cdist`` (chunked over the live population so no ``[K, K]``

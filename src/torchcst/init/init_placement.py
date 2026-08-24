@@ -15,14 +15,14 @@ This module imports only ``torch``, private torchcst helpers, and
 :class:`torchcst.storage.synapse.SynapseBirth` (for the wrapping helper). It
 does not import ``torchcst.engine``, ``torchcst.policy``,
 ``torchcst.instruments``, ``torchcst.compute``, or
-``torchcst.representation.gram`` -- callers obtain kernel columns
-themselves (e.g. via ``KernelPort.columns`` or a compute module's
-``kernel_columns``) and pass them in.
+``torchcst.representation.gram`` -- callers obtain factor columns
+themselves (e.g. via ``FactorPort.columns`` or a compute module's
+``factor_columns``) and pass them in.
 
 Gram convention (matches :class:`torchcst.representation.gram.GramService`
 exactly; both build their D metric through the same private helper): for
-atoms with output-side kernel columns ``U`` (``[n_out, N]``) and input-side
-kernel columns ``V`` (``[n_in, N]``), the D-weighted Gram is assembled
+atoms with output-side factor columns ``U`` (``[n_out, N]``) and input-side
+factor columns ``V`` (``[n_in, N]``), the D-weighted Gram is assembled
 separably
 
     Gamma_D[i, j] = (U[:, i] . U[:, j]) * (V[:, i]^T Sigma_x V[:, j])

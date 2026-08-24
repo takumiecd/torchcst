@@ -73,48 +73,48 @@ class InstrumentBuildContext:
 
 
 @dataclass(frozen=True)
-class KernelPort:
-    """Read-only kernel-column evaluation handed to continuous-domain instruments.
+class FactorPort:
+    """Read-only factor-column evaluation handed to continuous-domain instruments.
 
-    Wraps one compute module's public ``kernel_columns`` entry point so that
-    instruments evaluate ``u``/``v`` kernel directions for arbitrary
+    Wraps one compute module's public ``factor_columns`` entry point so that
+    instruments evaluate ``u``/``v`` factor directions for arbitrary
     source/target coordinates without reaching into a module's private
-    kernel/neuron internals (``module.kernel_in``, ``module.in_neurons.mu``,
+    factor/neuron internals (``module.factor_in``, ``module.in_neurons.mu``,
     ...).
     """
 
     module: Any
 
     def columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
-        """Return ``(k_in, k_out)`` kernel columns for source/target rows.
+        """Return ``(k_in, k_out)`` factor columns for source/target rows.
 
         ``k_in`` has shape ``[in_features, N]`` and ``k_out`` has shape
         ``[out_features, N]``; both are detached, gradient-free reads.
         """
-        columns = getattr(self.module, "kernel_columns", None)
+        columns = getattr(self.module, "factor_columns", None)
         if not callable(columns):
-            raise TypeError("KernelPort module must provide kernel_columns()")
+            raise TypeError("FactorPort module must provide factor_columns()")
         return columns(source, target)
 
 
 @dataclass(frozen=True)
-class KernelPortRequest:
-    """Observation request whose only purpose is delivering a KernelPort.
+class FactorPortRequest:
+    """Observation request whose only purpose is delivering a FactorPort.
 
     Some policy components need read-only access to a compute module's
-    ``kernel_columns()`` at *plan* time (e.g. to assemble a
+    ``factor_columns()`` at *plan* time (e.g. to assemble a
     :class:`~torchcst.representation.gram.GramService` from live positions)
     without ever wanting a captured backward observation. The engine's
     ``requires``/``bind_instruments`` channel (``docs/policy-authoring.md``)
     is the sole sanctioned way to reach a compute module from outside
     ``engine.py`` -- a component cannot reach into ``self.modules[site]``
     directly -- so this request exists purely to ride that channel and hand
-    back a :class:`KernelPort`.
+    back a :class:`FactorPort`.
 
     Because instrument identity is scoped per site already
     (``StructuralEngine._make_instruments`` builds one instrument per
     ``(name, site)`` pair), one fixed request name is safe to share across
-    every site and every component that only wants a ``KernelPort``: they
+    every site and every component that only wants a ``FactorPort``: they
     all get the same do-nothing instrument shape, bound to their own site's
     module.
 
@@ -123,27 +123,27 @@ class KernelPortRequest:
     *other* declared instrument needs real backward statistics -- capture is
     a per-site, not per-instrument, switch. ``measure_after_backward`` must
     therefore never assume it is unreachable; it returns a cheap placeholder
-    measurement that :meth:`KernelPortInstrument.finalize_update` discards,
+    measurement that :meth:`FactorPortInstrument.finalize_update` discards,
     rather than raising.
     """
 
-    name: str = "kernel_port"
+    name: str = "factor_port"
     timing: str = "after_backward"
 
-    def build(self, context: InstrumentBuildContext) -> "KernelPortInstrument":
-        return KernelPortInstrument(context.module)
+    def build(self, context: InstrumentBuildContext) -> "FactorPortInstrument":
+        return FactorPortInstrument(context.module)
 
 
-class KernelPortInstrument:
-    """Capture-instrument shell whose only state is a read-only KernelPort."""
+class FactorPortInstrument:
+    """Capture-instrument shell whose only state is a read-only FactorPort."""
 
     def __init__(self, module: Any) -> None:
-        if not callable(getattr(module, "kernel_columns", None)):
+        if not callable(getattr(module, "factor_columns", None)):
             raise TypeError(
-                "KernelPortRequest requires a compute module with kernel_columns()"
+                "FactorPortRequest requires a compute module with factor_columns()"
             )
-        self.name = "kernel_port"
-        self.port = KernelPort(module)
+        self.name = "factor_port"
+        self.port = FactorPort(module)
 
     def prepare(self, view: SynapseView, module: Any) -> None:
         del view, module
@@ -155,7 +155,7 @@ class KernelPortInstrument:
         instrument's sake (see the class docstring) -- it must not raise.
         """
         del module
-        return {"kernel_port_probe": x.new_zeros(())}
+        return {"factor_port_probe": x.new_zeros(())}
 
     def reduce_backward(self, module: Any, x: Tensor, g_out: Tensor) -> Measurement:
         """Return the same placeholder when a global inline override is used."""

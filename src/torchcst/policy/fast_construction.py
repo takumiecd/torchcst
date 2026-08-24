@@ -15,10 +15,10 @@ import torch
 from torch import Tensor
 
 from torchcst._validation import require_int, require_real
-from torchcst.instruments.base import KernelPortRequest
+from torchcst.instruments.base import FactorPortRequest
 from torchcst.instruments.tangent import TangentSnapshot, TangentStatisticsRequest
 from torchcst.representation import Box
-from torchcst.representation.kernels import (
+from torchcst.representation.factors import (
     OverlapScale,
     pairwise_overlap,
     require_overlap_scale,
@@ -123,9 +123,9 @@ def _novelty_discount(
 
     ``rho_ck = overlap(|s_c-s_k|^2) * overlap(|t_c-t_k|^2)`` (one ``scale``
     for both charts, as before -- a bare bandwidth selects the Gaussian form,
-    the site's kernel the family-generic one)
+    the site's factor the family-generic one)
     is the coordinate-only overlap between candidate ``c`` and reference atom
-    ``k`` (twin-control.md Sec.3): the two-sided kernel overlap that
+    ``k`` (twin-control.md Sec.3): the two-sided factor overlap that
     would make ``c`` and ``k`` near-duplicates if both were live. This is
     rung 1 of the ladder described there -- geometry only. It omits both the
     captured-covariance correction to the numerator/denominator (rung 2,
@@ -154,19 +154,19 @@ class _EvidenceState:
 
     @property
     def requires(self) -> tuple[Any, ...]:
-        return (self.request, KernelPortRequest())
+        return (self.request, FactorPortRequest())
 
     def bind(self, site: str, instruments: dict[str, Any]) -> None:
         try:
             tangent = instruments[self.request.name]
-            kernel = instruments["kernel_port"]
+            factor = instruments["factor_port"]
         except KeyError as exc:
-            raise ValueError("fast construction requires tangent and kernel ports") from exc
+            raise ValueError("fast construction requires tangent and factor ports") from exc
         if not callable(getattr(tangent, "snapshot", None)):
             raise TypeError("tangent instrument must provide snapshot()")
-        port = getattr(kernel, "port", None)
+        port = getattr(factor, "port", None)
         if port is None or not callable(getattr(port, "columns", None)):
-            raise TypeError("kernel-port instrument must provide port.columns()")
+            raise TypeError("factor-port instrument must provide port.columns()")
         self.instruments[site] = tangent
         self.ports[site] = port
 
@@ -370,8 +370,8 @@ class TangentRefit:
 class TangentBirth:
     """Sequential tangent birth with within-event rank-one deflation.
 
-    ``novelty``, when set to a kernel bandwidth ``sigma`` (or to the site's
-    own kernel, for a family-generic overlap), applies the
+    ``novelty``, when set to a factor bandwidth ``sigma`` (or to the site's
+    own factor, for a family-generic overlap), applies the
     gain_perp novelty discount described in twin-control.md Sec.3: each
     candidate's gain is multiplied by ``(1 - rho_max**2)`` where ``rho_max``
     is its largest coordinate overlap (see :func:`_novelty_discount`) against

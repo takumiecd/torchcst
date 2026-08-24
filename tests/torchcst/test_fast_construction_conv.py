@@ -3,7 +3,7 @@
 ``CSTConv2d.forward`` routes its gated ``F.unfold`` patches through the very
 same ``_ContinuousCSTMap._forward_rows`` capture hook that ``CSTLinear`` uses
 (``src/torchcst/compute/cst_map.py``), and exposes the same ``in_features``/
-``out_features``/``kernel_columns`` surface that ``TangentStatistics`` and
+``out_features``/``factor_columns`` surface that ``TangentStatistics`` and
 ``TangentBirth``/``TangentRefit`` already read generically. Concretely:
 
 * linear's ``x`` (``[batch, in_features]``)      <-> conv's gated unfolded
@@ -36,7 +36,7 @@ from torchcst.compute import CSTConv2d, conv2d_neuron_coordinates
 from torchcst.engine import StructuralEngine
 from torchcst.instruments import TangentStatisticsRequest
 from torchcst.policy import EvenBudgetDistributor, PeriodicCadence, QuotaRegime, cSFW
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
@@ -74,9 +74,9 @@ def _conv_parts(
         initial_live=output_mu.shape[0],
         dtype=torch.float64,
     )
-    kernel = GaussianKernel(sigma, learnable=True).double()
+    factor = GaussianFactor(sigma, learnable=True).double()
     conv = CSTConv2d(
-        inputs, outputs, store, kernel, in_channels, kernel_size, bias=False
+        inputs, outputs, store, factor, in_channels, kernel_size, bias=False
     )
     return store, inputs, outputs, conv
 
@@ -336,7 +336,7 @@ def test_conv_birth_curvature_scale_is_correct_direction_sensitive() -> None:
     source, target, weight_true = birth.s[0], birth.t[0], float(birth.w[0])
     assert abs(weight_true) > 1.0e-6
 
-    k_in, k_out = conv.kernel_columns(source[None, :], target[None, :])
+    k_in, k_out = conv.factor_columns(source[None, :], target[None, :])
 
     def _loss_at(weight: float) -> float:
         delta = weight * torch.outer(k_out[:, 0], k_in[:, 0])
@@ -347,7 +347,7 @@ def test_conv_birth_curvature_scale_is_correct_direction_sensitive() -> None:
 
     # Sanity: the birth's own solved weight lands at (or very near) this
     # line's true minimum -- reproducing TangentBirth's internal g/a formula
-    # independently through kernel_columns and the finalized snapshot.
+    # independently through factor_columns and the finalized snapshot.
     rhs = torch.einsum("ok,oi,ik->k", k_out, snapshot.cross.to(k_out), k_in)
     input_curvature = (k_in * (snapshot.covariance.to(k_in) @ k_in)).sum(dim=0)
     output_curvature = k_out.square().sum(dim=0)

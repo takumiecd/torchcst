@@ -1,18 +1,28 @@
-"""Continuous kernels for the general CST composition path.
+"""Continuous factors for the general CST composition path.
+
+Vocabulary: an atom has one *kernel* on the joint coordinate domain -- the
+product of the input and output charts -- and ``W_ji = sum_k w_k
+kappa(z_ji - p_k)`` with ``z_ji = (mu_i, mu_j)`` and ``p_k = (s_k, t_k)``.
+The implementation never evaluates that joint kernel directly: every family
+here is separable, and a *factor* is one side's share of the split,
+``kappa(z - p) = factor_in(mu_i - s) * factor_out(mu_j - t)``.  Separability
+is what the factored backends' ``O(K (n_in + n_out))`` matvec relies on, so a
+non-separable joint kernel is a future backend decision, not a new factor
+family in this module.
 
 Delta and dot products are intentionally absent here: they are the implicit
-specialized kernels implemented by :class:`torchcst.compute.EntryLinear` and
+specialized factors implemented by :class:`torchcst.compute.EntryLinear` and
 :class:`torchcst.compute.RankOneLinear`, respectively.  Keeping those paths
-specialized avoids materializing general kernel matrices for discrete entry
+specialized avoids materializing general factor matrices for discrete entry
 and factorized rank-one families.
 
-The kernels defined here are *global-bandwidth isotropic* profiles of the
+The factors defined here are *global-bandwidth isotropic* profiles of the
 squared endpoint distance.  They differ only in that profile, so
-:class:`ContinuousKernel` owns the bandwidth, the validation, and the distance
-computation and each concrete family supplies one function.  The delta kernel
+:class:`ContinuousFactor` owns the bandwidth, the validation, and the distance
+computation and each concrete family supplies one function.  The delta factor
 of the entry family is the ``sigma -> 0`` limit of a compact profile, so
-:class:`TriangularKernel` is the only member of this module that reaches the
-entry family continuously; :class:`GaussianKernel` cannot, because its support
+:class:`TriangularFactor` is the only member of this module that reaches the
+entry family continuously; :class:`GaussianFactor` cannot, because its support
 is the whole domain at every positive bandwidth.
 """
 
@@ -32,35 +42,35 @@ from torchcst._validation import require_real
 from .._geometry import squared_distance_matrix
 from .domains import ParameterRole
 
-#: Kernel names that :class:`torchcst.representation.RepresentationSpec`
-#: accepts as a continuous family.  Kept here so the spec and the kernel
+#: Factor names that :class:`torchcst.representation.RepresentationSpec`
+#: accepts as a continuous family.  Kept here so the spec and the factor
 #: modules cannot disagree about which families exist.
-CONTINUOUS_KERNELS: frozenset[str] = frozenset(
+CONTINUOUS_FACTORS: frozenset[str] = frozenset(
     {"gaussian", "maturity_gaussian", "triangular"}
 )
 
-#: Live family registry, keyed by :attr:`ContinuousKernel.family`.  Populated
-#: by ``__init_subclass__`` so a kernel defined outside this module is a
+#: Live family registry, keyed by :attr:`ContinuousFactor.family`.  Populated
+#: by ``__init_subclass__`` so a factor defined outside this module is a
 #: first-class family: its name validates in a spec and its per-atom column
-#: declaration reaches the store without any edit here.  ``CONTINUOUS_KERNELS``
+#: declaration reaches the store without any edit here.  ``CONTINUOUS_FACTORS``
 #: stays the frozen built-in set for callers that import it.
-_KERNEL_FAMILIES: dict[str, type[ContinuousKernel]] = {}
+_FACTOR_FAMILIES: dict[str, type[ContinuousFactor]] = {}
 
 
 def continuous_family_names() -> frozenset[str]:
     """Every continuous family name a spec will accept right now."""
-    return frozenset(CONTINUOUS_KERNELS) | frozenset(_KERNEL_FAMILIES)
+    return frozenset(CONTINUOUS_FACTORS) | frozenset(_FACTOR_FAMILIES)
 
 
 def family_atom_columns(name: str) -> tuple[AtomColumn, ...]:
     """Per-atom columns the named family requires beyond ``(s, t, w)``."""
-    kernel = _KERNEL_FAMILIES.get(name)
-    return () if kernel is None else tuple(kernel.atom_columns)
+    factor = _FACTOR_FAMILIES.get(name)
+    return () if factor is None else tuple(factor.atom_columns)
 
 
 @dataclass(frozen=True)
 class AtomColumn:
-    """One per-atom column a kernel family requires beyond ``(s, t, w)``.
+    """One per-atom column a factor family requires beyond ``(s, t, w)``.
 
     A family that parameterises each atom with more than a position and an
     amplitude -- a per-atom bandwidth, a Gabor frequency and phase -- declares
@@ -73,7 +83,7 @@ class AtomColumn:
     ``(d_in, d_out)``, so a frequency vector conjugate to both charts is
     declared once and sized per site.  ``init`` is the value a birth that does
     *not* mention the column is given, which is what lets an existing policy
-    keep proposing plain ``(s, t, w)`` births at a site whose kernel has extra
+    keep proposing plain ``(s, t, w)`` births at a site whose factor has extra
     columns: the atom is simply born at the family's neutral value.
     """
 
@@ -103,8 +113,8 @@ class AtomColumn:
         return width
 
 
-class ContinuousKernel(nn.Module):
-    """Global-bandwidth isotropic kernel over a squared endpoint distance.
+class ContinuousFactor(nn.Module):
+    """Global-bandwidth isotropic factor over a squared endpoint distance.
 
     The scalar ``sigma`` is an ``nn.Parameter`` when ``learnable=True`` and a
     buffer otherwise.  Per-atom bandwidths are outside step 9; a future v0.3
@@ -128,7 +138,7 @@ class ContinuousKernel(nn.Module):
     declares and implement :meth:`profile`.
     """
 
-    #: Spec-level family name; concrete kernels must override it.
+    #: Spec-level family name; concrete factors must override it.
     family: ClassVar[str] = ""
 
     #: Per-atom columns this family needs beyond ``(s, t, w)``.  Empty for
@@ -141,7 +151,7 @@ class ContinuousKernel(nn.Module):
         super().__init_subclass__(**kwargs)
         family = getattr(cls, "family", "")
         if family:
-            _KERNEL_FAMILIES[family] = cls
+            _FACTOR_FAMILIES[family] = cls
 
     def __init__(
         self,
@@ -152,7 +162,7 @@ class ContinuousKernel(nn.Module):
     ) -> None:
         super().__init__()
         if not self.family:
-            raise TypeError("ContinuousKernel subclasses must define a family name")
+            raise TypeError("ContinuousFactor subclasses must define a family name")
         if not isinstance(learnable, bool):
             raise TypeError("learnable must be a bool")
         if not isinstance(validate_sigma, bool):
@@ -182,7 +192,7 @@ class ContinuousKernel(nn.Module):
         return isinstance(self.sigma, nn.Parameter)
 
     def profile(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
-        """Map squared endpoint distances to kernel values."""
+        """Map squared endpoint distances to factor values."""
         raise NotImplementedError
 
     def profile_grad(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
@@ -202,7 +212,7 @@ class ContinuousKernel(nn.Module):
         raise NotImplementedError(
             f"{type(self).__name__} does not implement profile_grad(); a "
             "consumer that needs coordinate derivatives cannot use this "
-            "kernel family"
+            "factor family"
         )
 
     def scaled_profile_pair(
@@ -247,20 +257,20 @@ class ContinuousKernel(nn.Module):
 
         The geometry factor ``rho_jk`` that twin-control courts price with:
         ``1`` for coincident atoms, decaying to ``0`` as they separate.  It is
-        the *continuous* inner product of two kernel bumps, not a sampled
+        the *continuous* inner product of two factor bumps, not a sampled
         Gram -- courts that can afford the sampled version build a
         :class:`~torchcst.representation.gram.GramService` from delivered
-        kernel columns instead, and are kernel-agnostic already.
+        factor columns instead, and are factor-agnostic already.
 
         Only families with a closed-form self-correlation implement it.  The
         radial tent's is not elementary in general dimension, so
-        :class:`TriangularKernel` deliberately inherits the raise: a court
+        :class:`TriangularFactor` deliberately inherits the raise: a court
         asked to price triangular twins must fail loudly rather than quote
         Gaussian numbers for a non-Gaussian site.
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not implement overlap(); a court "
-            "that prices geometric twin overlap cannot use this kernel family"
+            "that prices geometric twin overlap cannot use this factor family"
         )
 
     def scaled_columns(
@@ -299,7 +309,7 @@ class ContinuousKernel(nn.Module):
         centers: Tensor,
         columns: Mapping[str, Tensor] | None = None,
     ) -> Tensor:
-        """Kernel matrix between ``query`` rows and atom ``centers``.
+        """Factor matrix between ``query`` rows and atom ``centers``.
 
         ``columns`` delivers the family's declared per-atom values
         (:attr:`atom_columns`), row-aligned with ``centers``: an atom's
@@ -319,10 +329,10 @@ class ContinuousKernel(nn.Module):
         centers: Tensor,
         columns: Mapping[str, Tensor] | None,
     ) -> tuple[Tensor, Tensor]:
-        """Validate a kernel call; return ``sigma`` and device-matched centers.
+        """Validate a factor call; return ``sigma`` and device-matched centers.
 
         Split out of :meth:`forward` so a family that does not go through
-        :meth:`profile` -- :class:`GaborKernel` -- still gets one shared
+        :meth:`profile` -- :class:`GaborFactor` -- still gets one shared
         validation path instead of a second, drifting copy.
         """
         if columns:
@@ -355,8 +365,8 @@ class ContinuousKernel(nn.Module):
         return sigma, centers.to(device=query.device, dtype=query.dtype)
 
 
-class GaussianKernel(ContinuousKernel):
-    """Global-bandwidth isotropic Gaussian kernel.
+class GaussianFactor(ContinuousFactor):
+    """Global-bandwidth isotropic Gaussian factor.
 
     ``kappa(query, centers) = exp(-||query-center||^2 / (2 sigma^2))``.  Its
     support is the whole domain for every positive ``sigma``: the tail never
@@ -402,7 +412,7 @@ class GaussianKernel(ContinuousKernel):
         return torch.exp(-(squared_distance - nearest) / (2.0 * sigma.square()))
 
 
-class MaturityGaussianKernel(ContinuousKernel):
+class MaturityGaussianFactor(ContinuousFactor):
     """Gaussian whose inverse width is an independent per-atom maturity.
 
     ``maturity`` is an unconstrained logit.  Its sigmoid interpolates squared
@@ -438,7 +448,7 @@ class MaturityGaussianKernel(ContinuousKernel):
 
     def profile(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
         raise NotImplementedError(
-            "MaturityGaussianKernel needs each atom's maturity column"
+            "MaturityGaussianFactor needs each atom's maturity column"
         )
 
     def _components(
@@ -449,7 +459,7 @@ class MaturityGaussianKernel(ContinuousKernel):
     ) -> tuple[Tensor, Tensor, Tensor]:
         if not columns or "maturity" not in columns:
             raise ValueError(
-                "MaturityGaussianKernel needs the 'maturity' atom column"
+                "MaturityGaussianFactor needs the 'maturity' atom column"
             )
         sigma, centers = self._prepare(query, centers, columns)
         maturity = columns["maturity"].to(centers).reshape(1, -1)
@@ -499,13 +509,13 @@ class MaturityGaussianKernel(ContinuousKernel):
         return self.scaled_column_pair(query, centers, columns)[0]
 
 
-class TriangularKernel(ContinuousKernel):
-    """Global-bandwidth isotropic triangular kernel with compact support.
+class TriangularFactor(ContinuousFactor):
+    """Global-bandwidth isotropic triangular factor with compact support.
 
     ``kappa(query, centers) = relu(1 - ||query-center|| / sigma)``: exactly
     zero outside the radius-``sigma`` ball, so the represented matrix is
     structurally sparse and ``sigma -> 0`` approaches the entry family's delta
-    kernel.  The profile is radial rather than a per-axis product, mirroring
+    factor.  The profile is radial rather than a per-axis product, mirroring
     the Gaussian's isotropy; unlike the Gaussian it does *not* factor over
     coordinate axes.
 
@@ -541,13 +551,13 @@ class TriangularKernel(ContinuousKernel):
     # self-correlation is not elementary in general dimension.
 
 
-class GaborKernel(ContinuousKernel):
+class GaborFactor(ContinuousFactor):
     """Gaussian envelope times a per-atom plane wave: an oscillating atom.
 
     ``kappa(x, c) = exp(-||x-c||^2 / 2 sigma^2) * cos(omega . (x - c) + phi)``
     with ``omega`` and ``phi`` carried per atom.  At ``omega == 0`` the column
     is ``cos(phi)`` times the Gaussian -- the same shape, and exactly
-    :class:`GaussianKernel` when the phase is zero too -- so a Gabor site
+    :class:`GaussianFactor` when the phase is zero too -- so a Gabor site
     starts as an ordinary CST site and can only gain from there.  It does not
     *start* at zero phase, though; see :attr:`atom_columns` for the critical
     point that forces a quarter turn.
@@ -570,7 +580,7 @@ class GaborKernel(ContinuousKernel):
 
     Two inherited raises are deliberate.  There is no radial ``profile``: the
     value depends on the *direction* of ``x - c`` (and on the phase), which a
-    squared distance has already discarded, so consumers that reduce a kernel
+    squared distance has already discarded, so consumers that reduce a factor
     to its radial profile -- ``CoordPreconditioner``, the closed-form
     backends -- refuse this family rather than silently using the envelope.
     And ``overlap`` stays unimplemented because two Gabor atoms at the same
@@ -581,7 +591,7 @@ class GaborKernel(ContinuousKernel):
 
     family: ClassVar[str] = "gabor"
     #: ``phi`` is born at a quarter turn, not at zero, and E-omega is why.
-    #: At ``(omega, phi) == (0, 0)`` the derivative of the kernel column with
+    #: At ``(omega, phi) == (0, 0)`` the derivative of the factor column with
     #: respect to *both* new parameters vanishes identically -- ``sin(0)`` at
     #: every displacement -- so that point is not a stationary point of some
     #: loss but a critical point of the parameterisation itself: no target and
@@ -620,7 +630,7 @@ class GaborKernel(ContinuousKernel):
 
     def profile(self, squared_distance: Tensor, sigma: Tensor) -> Tensor:
         raise NotImplementedError(
-            "GaborKernel has no radial profile: its value depends on the "
+            "GaborFactor has no radial profile: its value depends on the "
             "direction of the displacement and on the atom's phase, both of "
             "which a squared distance has discarded"
         )
@@ -639,14 +649,14 @@ class GaborKernel(ContinuousKernel):
         frequency_name, phase_name = self.column_names
         if not columns or frequency_name not in columns or phase_name not in columns:
             raise ValueError(
-                f"GaborKernel(side={self.side!r}) needs the {frequency_name!r} "
+                f"GaborFactor(side={self.side!r}) needs the {frequency_name!r} "
                 f"and {phase_name!r} columns; the site's store must declare "
-                "them (spec kernel 'gabor') and the caller must deliver them"
+                "them (spec factor 'gabor') and the caller must deliver them"
             )
         sigma, centers = self._prepare(query, centers, columns)
         # The [N, K, d] displacement cube is unavoidable here -- the phase is
         # a signed inner product, not a function of the distance -- so this
-        # family costs d times the isotropic families' kernel memory.
+        # family costs d times the isotropic families' factor memory.
         displacement = query[:, None, :] - centers[None, :, :]
         squared_distance = displacement.square().sum(-1)
         frequency = columns[frequency_name].to(displacement)
@@ -686,15 +696,15 @@ def peak_scaled(values: Tensor) -> Tensor:
 
 
 #: What a twin-control court may price geometric overlap with: the site's own
-#: kernel (family-generic) or a bare Gaussian bandwidth (explicitly Gaussian).
-OverlapScale = ContinuousKernel | float
+#: factor (family-generic) or a bare Gaussian bandwidth (explicitly Gaussian).
+OverlapScale = ContinuousFactor | float
 
 
 def pairwise_overlap(scale: OverlapScale, squared_distance: Tensor) -> Tensor:
     """Geometry overlap ``rho`` for squared coordinate distances.
 
-    ``scale`` is either the site's :class:`ContinuousKernel` -- the
-    family-generic form, which delegates to :meth:`ContinuousKernel.overlap`
+    ``scale`` is either the site's :class:`ContinuousFactor` -- the
+    family-generic form, which delegates to :meth:`ContinuousFactor.overlap`
     and therefore *raises* rather than misprice a family with no closed-form
     self-correlation -- or a bare positive bandwidth, which selects the
     Gaussian ``exp(-d^2 / 4 sigma^2)`` explicitly.
@@ -703,16 +713,16 @@ def pairwise_overlap(scale: OverlapScale, squared_distance: Tensor) -> Tensor:
     rather than bound to a compute module (``propose`` sees only a view), and
     because it is the form every registered experiment used.  It is now an
     explicit request for Gaussian geometry, not an implicit assumption: a
-    non-Gaussian site should hand the court its kernel instead.
+    non-Gaussian site should hand the court its factor instead.
     """
-    if isinstance(scale, ContinuousKernel):
+    if isinstance(scale, ContinuousFactor):
         sigma = scale.sigma.detach().to(squared_distance)
         return scale.overlap(squared_distance, sigma)
     return torch.exp(-squared_distance / (4.0 * float(scale) ** 2))
 
 
 def require_overlap_scale(value: object, name: str) -> OverlapScale:
-    """Validate a court's overlap scale: a kernel, or a positive real."""
-    if isinstance(value, ContinuousKernel):
+    """Validate a court's overlap scale: a factor, or a positive real."""
+    if isinstance(value, ContinuousFactor):
         return value
     return require_real(value, name, positive=True)

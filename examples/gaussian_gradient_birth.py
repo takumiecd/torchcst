@@ -15,7 +15,7 @@ from torchcst.policy import (
     ScoredBirth,
     SynapseLifecycle,
 )
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
@@ -50,7 +50,7 @@ def build_example(*, capture_mode: str = "inline_reduced"):
             )
         ]
     )
-    layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.2))
+    layer = CSTLinear(inputs, outputs, synapses, GaussianFactor(0.2))
     timing = {
         "inline_reduced": "backward_inline",
         "deferred": "after_backward",

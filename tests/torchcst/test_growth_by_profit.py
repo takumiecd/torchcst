@@ -21,7 +21,7 @@ from torchcst.policy.families import SynapseLifecycle
 from torchcst.policy.profit import ProfitCourt
 from torchcst.policy.proposers import Bounds, UniformBirth
 from torchcst.policy.tree import QuotaRegime
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
@@ -110,8 +110,8 @@ def _engine(price: float, *, capacity: int = 8, seed: int = 3):
         initial_live=2,
         dtype=torch.float64,
     )
-    kernel = GaussianKernel(0.5).double()
-    module = CSTLinear(inputs, outputs, store, kernel)
+    factor = GaussianFactor(0.5).double()
+    module = CSTLinear(inputs, outputs, store, factor)
     policy = _growth_by_profit(
         event_interval=1,
         atoms_per_event=1,

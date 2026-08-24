@@ -1,7 +1,7 @@
-"""Kernel-declared per-atom columns: the store mechanism and its neutrality.
+"""Factor-declared per-atom columns: the store mechanism and its neutrality.
 
 A family whose atom carries more than ``(s, t, w)`` -- a per-atom bandwidth, a
-Gabor frequency -- declares :class:`AtomColumn` entries on its kernel class.
+Gabor frequency -- declares :class:`AtomColumn` entries on its factor class.
 ``SynapseStore`` then installs each one as a slot column that follows birth,
 death, slot reuse and capacity growth exactly like ``s`` does, and every view
 and birth op carries it.
@@ -19,7 +19,7 @@ import torch
 
 from torchcst.representation import (
     AtomColumn,
-    GaussianKernel,
+    GaussianFactor,
     RepresentationSpec,
 )
 from torchcst.compute import CSTLinear
@@ -32,7 +32,7 @@ from torchcst.storage import (
 )
 
 
-class _TwoColumnKernel(GaussianKernel):
+class _TwoColumnFactor(GaussianFactor):
     """A test family carrying a per-axis frequency and a scalar phase."""
 
     family = "test_two_column"
@@ -42,19 +42,19 @@ class _TwoColumnKernel(GaussianKernel):
     )
 
 
-def _spec(d_in=2, d_out=1, kernel="test_two_column"):
-    spec = RepresentationSpec.continuous(d_in, d_out, kernel=kernel)
+def _spec(d_in=2, d_out=1, factor="test_two_column"):
+    spec = RepresentationSpec.continuous(d_in, d_out, factor=factor)
     return spec
 
 
-def _store(capacity=4, d_in=2, d_out=1, kernel="test_two_column", max_capacity=None):
+def _store(capacity=4, d_in=2, d_out=1, factor="test_two_column", max_capacity=None):
     return SynapseStore(
         "cols",
         d_in,
         d_out,
         capacity,
         max_capacity=max_capacity,
-        spec=_spec(d_in, d_out, kernel),
+        spec=_spec(d_in, d_out, factor),
         dtype=torch.float64,
     )
 
@@ -135,7 +135,7 @@ def test_undeclared_or_misshaped_columns_are_refused():
 
 def test_a_family_declaring_nothing_is_untouched():
     """The backward-compatibility half: a Gaussian store gains nothing."""
-    store = _store(kernel="gaussian")
+    store = _store(factor="gaussian")
     assert not hasattr(store, "omega")
     assert store.view().extras == {}
     assert RepresentationSpec.continuous(2, 1).atom_cost == 4
@@ -160,7 +160,7 @@ def test_declared_columns_reach_the_optimizer_in_the_default_group():
     assert any(param is store.phi for param in default)
 
 
-class _ScaledKernel(GaussianKernel):
+class _ScaledFactor(GaussianFactor):
     """Toy family whose atoms each carry a private multiplier."""
 
     family = "test_scaled"
@@ -179,7 +179,7 @@ def _scaled_site(atom_count, *, scales):
         1,
         1,
         atom_count,
-        spec=RepresentationSpec.continuous(1, 1, kernel="test_scaled"),
+        spec=RepresentationSpec.continuous(1, 1, factor="test_scaled"),
         dtype=torch.float64,
     )
     positions = torch.tensor([[0.25], [0.75]], dtype=torch.float64)[:atom_count]
@@ -200,10 +200,10 @@ def _scaled_site(atom_count, *, scales):
     outputs = NeuronStore(
         "out", 5, mu=neurons.clone(), initial_live=5, dtype=torch.float64
     )
-    return CSTLinear(inputs, outputs, store, _ScaledKernel(0.25).double()), store
+    return CSTLinear(inputs, outputs, store, _ScaledFactor(0.25).double()), store
 
 
-def test_columns_reach_the_kernel_row_aligned_and_carry_gradient():
+def test_columns_reach_the_factor_row_aligned_and_carry_gradient():
     """Muting the second atom's column must reproduce a one-atom site.
 
     This is the row-alignment assertion: if the delivered column were paired

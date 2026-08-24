@@ -9,7 +9,7 @@ from torch import nn
 from torchcst import ChartPullbackAdam, ChartRepulsion
 from torchcst.compute import CSTLinear, Materialized
 from torchcst.representation import (
-    GaussianKernel,
+    GaussianFactor,
     L2NormalizedColumns,
     RepresentationSpec,
 )
@@ -65,13 +65,13 @@ def _pair(*, atoms=1, d=2, seed=11, live_hid=None, sigma=SIGMA):
     hid = _chart("chart-hid", 7, d, generator, live=live_hid)
     up = CSTLinear(
         res, hid, _synapses("chart-up", atoms, d, generator),
-        GaussianKernel(sigma).double(),
+        GaussianFactor(sigma).double(),
         gauge=L2NormalizedColumns(),
         backend=Materialized(lean=False),
     )
     down = CSTLinear(
         hid, res, _synapses("chart-down", atoms, d, generator),
-        GaussianKernel(sigma).double(),
+        GaussianFactor(sigma).double(),
         gauge=L2NormalizedColumns(),
         backend=Materialized(lean=False),
     )
@@ -131,7 +131,7 @@ def test_metric_matches_autograd_when_atoms_are_separated():
     up = CSTLinear(
         res, hid,
         _synapses("sep-up", 2, 2, generator, source=corners, target=corners),
-        GaussianKernel(0.05).double(),
+        GaussianFactor(0.05).double(),
         gauge=L2NormalizedColumns(),
         backend=Materialized(lean=False),
     )
@@ -284,7 +284,7 @@ def test_rejects_frozen_charts_wrong_gauge_and_strangers():
         ChartPullbackAdam(hid, [other_up])
     bare = CSTLinear(
         res, hid, _synapses("bare", 2, 2, generator),
-        GaussianKernel(SIGMA).double(),
+        GaussianFactor(SIGMA).double(),
         backend=Materialized(lean=False),
     )
     with pytest.raises(TypeError):

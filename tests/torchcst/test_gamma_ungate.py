@@ -15,7 +15,7 @@ from torchcst.policy import (
     SynapseLifecycle,
     gamma_ungate,
 )
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, NeuronUngate, SynapseBirth, SynapseStore
 
 
@@ -73,7 +73,7 @@ def _run(
         initial_live=initial_live,
         dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.4).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.4).double())
     boundary = CSTBoundary(module)
     method = SynapseLifecycle(
         birth_factory=lambda lam: _NoBirth(), priceable=False, label="no-birth"
@@ -142,7 +142,7 @@ def test_gamma_ungate_is_equivalent_in_deferred_and_inline_timing() -> None:
 
 # ``novelty`` mechanism (twin-control.md Sec.3/Sec.4, ladder rung 1): one
 # live row at mu=0.65 (matching the store's one atom, so it has the
-# strongest kernel coupling), a "near" dormant row at mu=0.63 close enough
+# strongest factor coupling), a "near" dormant row at mu=0.63 close enough
 # to be a coordinate twin of the live row, and a "far" dormant row at
 # mu=0.1. The near row's raw field is larger (it sits where the synapse
 # atom couples most strongly), so it wins without a discount; the near row

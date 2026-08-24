@@ -2,7 +2,7 @@
 
 A compute module owns state (stores, views, capture, mass); a backend is
 the pure-function world it dispatches into.  Backend code receives plain
-tensors -- coordinates, amplitudes, kernel columns, rows -- and returns
+tensors -- coordinates, amplitudes, factor columns, rows -- and returns
 tensors.  It never imports stores, modules, or the engine, so the
 dependency arrow has one direction: ``modules -> backends -> torch``.
 
@@ -15,7 +15,7 @@ Four ways to deliver ``W = K_out diag(w) K_in^T`` applied to rows:
   cuBLAS GEMM / cuDNN conv.  Ceiling = dense speed; ``lean=True`` swaps
   the build's autograd for a closed-form chunked backward so peak memory
   stays O(chunk) at any K.
-* :class:`NativeTruncated` -- no W and no ``[rows, K]``: kernels
+* :class:`NativeTruncated` -- no W and no ``[rows, K]``: factors
   truncated at ``radius`` sigma, rows routed through per-atom neighbor
   tables.  ``rows x K x (m_in + m_out)`` FLOPs -- under a dense GEMM in
   the lawful 20-30 sigma domain, which neither other backend can be.
@@ -44,8 +44,8 @@ class Materialized:
     """Build the dense weight per forward and lean on cuBLAS/cuDNN.
 
     ``lean`` replaces the build's default autograd (which retains
-    ``[features, K, d]`` kernel broadcasts) with a closed-form chunked
-    backward saving only atom parameters -- Gaussian kernels and
+    ``[features, K, d]`` factor broadcasts) with a closed-form chunked
+    backward saving only atom parameters -- Gaussian factors and
     ``track_mass=False`` required.  ``compute_dtype`` runs the build's
     contraction in reduced precision (tensor cores accumulate fp32);
     parameters, the GEMM/conv, and gradients keep the parameter dtype.
@@ -71,13 +71,13 @@ class Materialized:
 
 @dataclass(frozen=True)
 class NativeTruncated:
-    """Truncate kernels at ``radius`` sigma; apply via neighbor tables.
+    """Truncate factors at ``radius`` sigma; apply via neighbor tables.
 
     The support boundary follows retraction semantics -- zero position
     gradient outside, exactly like the displacement-box clamp on
     ``OffsetCSTConv2d`` -- and the dropped tail is ``exp(-radius^2/2)``
-    per matrix entry relative to the atom's peak.  Gaussian kernels and
-    ``track_mass=False`` required (closed-form backward; mass's kernel
+    per matrix entry relative to the atom's peak.  Gaussian factors and
+    ``track_mass=False`` required (closed-form backward; mass's factor
     matrices would resurrect the memory this backend removes).
     """
 
@@ -95,12 +95,12 @@ class NativeTruncated:
 Backend = Factored | Materialized | NativeTruncated
 
 
-def validate_backend(backend, *, kernel_in, kernel_out, track_mass, gauge=None):
+def validate_backend(backend, *, factor_in, factor_out, track_mass, gauge=None):
     """Check a module's backend choice against its site; return it.
 
     The closed-form backends (lean materialization, native truncated)
-    hard-require Gaussian kernels (analytic derivatives) and
-    ``track_mass=False`` (mass would rebuild the full kernel matrices).
+    hard-require Gaussian factors (analytic derivatives) and
+    ``track_mass=False`` (mass would rebuild the full factor matrices).
     Lean linear materialisation also supports unit-L2 Gaussian columns: their
     norms and tangent-projected derivatives are computed one chunk at a time.
     Native truncation still requires the amplitude gauge because an exact
@@ -118,8 +118,8 @@ def validate_backend(backend, *, kernel_in, kernel_out, track_mass, gauge=None):
     )
     if closed_form:
         name = type(backend).__name__
-        if kernel_in.family != "gaussian" or kernel_out.family != "gaussian":
-            raise ValueError(f"{name} requires Gaussian kernels")
+        if factor_in.family != "gaussian" or factor_out.family != "gaussian":
+            raise ValueError(f"{name} requires Gaussian factors")
         if track_mass:
             raise ValueError(f"{name} requires track_mass=False")
         allowed_gauge = isinstance(gauge, Amplitude) or (

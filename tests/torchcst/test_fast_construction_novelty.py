@@ -15,7 +15,7 @@ import torch
 from torchcst.compute import CSTLinear
 from torchcst.engine import StructuralEngine
 from torchcst.policy import EvenBudgetDistributor, PeriodicCadence, QuotaRegime, cSFW
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
@@ -48,7 +48,7 @@ def _twin_parts(
     mu = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
     inputs = NeuronStore("fc_in", 3, mu=mu, initial_live=3, dtype=torch.float64)
     outputs = NeuronStore("fc_out", 3, mu=mu, initial_live=3, dtype=torch.float64)
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.1).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.1).double())
     root = QuotaRegime(
         budget=1,
         method=cSFW(
@@ -133,7 +133,7 @@ def _far_parts(
     mu = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
     inputs = NeuronStore("fc_in", 3, mu=mu, initial_live=3, dtype=torch.float64)
     outputs = NeuronStore("fc_out", 3, mu=mu, initial_live=3, dtype=torch.float64)
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.3).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.3).double())
     root = QuotaRegime(
         budget=1,
         method=cSFW(

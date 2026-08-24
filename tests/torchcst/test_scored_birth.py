@@ -23,7 +23,7 @@ from torchcst.policy import (
     ScoredBirth,
     SynapseLifecycle,
 )
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
@@ -161,7 +161,7 @@ def _parts(capture_mode: str, *, event_interval: int = 1, birth_budget: int = 1)
         initial_live=2,
         dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.25).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.25).double())
     request = ContinuousGradientRequest(pool_size=7, decay=0.0, chunk_size=2)
     proposer = ScoredBirth(request)
     method = SynapseLifecycle(

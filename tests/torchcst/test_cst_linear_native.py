@@ -7,7 +7,7 @@ import torch
 
 from torchcst.compute import CSTLinear, Factored, NativeTruncated
 from torchcst.compute.backends.native import NativeTruncatedFunction
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 N_IN, N_OUT, N_ATOMS = 6, 5, 11
@@ -50,17 +50,17 @@ def _parts(**module_kw):
         initial_live=N_OUT,
         dtype=dtype,
     )
-    kernel = GaussianKernel(0.35).double()
-    return store, kernel, CSTLinear(inputs, outputs, store, kernel, **module_kw)
+    factor = GaussianFactor(0.35).double()
+    return store, factor, CSTLinear(inputs, outputs, store, factor, **module_kw)
 
 
 def _oracle_forward(module, x, radius):
     """Brute-force truncated map built independently of the native path."""
     store = module.synapses
     view = store.view()
-    sigma = module.kernel_in.sigma
-    k_in = module.kernel_in(module.in_neurons.mu, store.s)
-    k_out = module.kernel_out(module.out_neurons.mu, store.t)
+    sigma = module.factor_in.sigma
+    k_in = module.factor_in(module.in_neurons.mu, store.s)
+    k_out = module.factor_out(module.out_neurons.mu, store.t)
     d2_in = (store.s[None] - module.in_neurons.mu[:, None]).square().sum(-1)
     d2_out = (store.t[None] - module.out_neurons.mu[:, None]).square().sum(-1)
     k_in = k_in * (d2_in <= (radius * sigma).square()).detach()
@@ -79,13 +79,13 @@ def _grads_of(forward, module, x, upstream):
         "w": store.w.grad.clone(),
         "s": store.s.grad.clone(),
         "t": store.t.grad.clone(),
-        "sigma": module.kernel_in.sigma.grad.clone(),
+        "sigma": module.factor_in.sigma.grad.clone(),
         "x": x.grad.clone(),
     }
 
 
 def test_native_matches_bruteforce_truncation_values_and_grads() -> None:
-    store, kernel, module = _parts(
+    store, factor, module = _parts(
         track_mass=False, backend=NativeTruncated(radius=RADIUS)
     )
     x = torch.randn(7, N_IN, dtype=torch.float64, requires_grad=True)
@@ -102,7 +102,7 @@ def test_native_matches_bruteforce_truncation_values_and_grads() -> None:
 
 
 def test_native_chunked_accumulation_is_exact(monkeypatch) -> None:
-    store, kernel, module = _parts(track_mass=False, backend=NativeTruncated(radius=RADIUS))
+    store, factor, module = _parts(track_mass=False, backend=NativeTruncated(radius=RADIUS))
     x = torch.randn(4, N_IN, dtype=torch.float64, requires_grad=True)
     upstream = torch.randn(4, N_OUT, dtype=torch.float64)
     whole = _grads_of(module, module, x, upstream)
@@ -113,9 +113,9 @@ def test_native_chunked_accumulation_is_exact(monkeypatch) -> None:
 
 
 def test_wide_radius_recovers_the_full_map() -> None:
-    store, kernel, ref = _parts(backend=Factored())
+    store, factor, ref = _parts(backend=Factored())
     native = CSTLinear(
-        ref.in_neurons, ref.out_neurons, store, kernel,
+        ref.in_neurons, ref.out_neurons, store, factor,
         track_mass=False, backend=NativeTruncated(radius=100.0),
     )
     x = torch.randn(5, N_IN, dtype=torch.float64)
@@ -123,9 +123,9 @@ def test_wide_radius_recovers_the_full_map() -> None:
 
 
 def test_tight_radius_is_a_bounded_approximation() -> None:
-    store, kernel, ref = _parts(backend=Factored())
+    store, factor, ref = _parts(backend=Factored())
     native = CSTLinear(
-        ref.in_neurons, ref.out_neurons, store, kernel,
+        ref.in_neurons, ref.out_neurons, store, factor,
         track_mass=False, backend=NativeTruncated(radius=3.0),
     )
     x = torch.randn(5, N_IN, dtype=torch.float64)
@@ -135,7 +135,7 @@ def test_tight_radius_is_a_bounded_approximation() -> None:
 
 
 def test_out_of_support_atom_contributes_nothing_and_gets_no_pull() -> None:
-    store, kernel, module = _parts(track_mass=False, backend=NativeTruncated(radius=RADIUS))
+    store, factor, module = _parts(track_mass=False, backend=NativeTruncated(radius=RADIUS))
     with torch.no_grad():
         store.s[0] = torch.tensor([50.0, 50.0], dtype=torch.float64)
         store.t[0] = torch.tensor([50.0, 50.0], dtype=torch.float64)
@@ -149,7 +149,7 @@ def test_out_of_support_atom_contributes_nothing_and_gets_no_pull() -> None:
 
 
 def test_batched_rows_reshape_round_trip() -> None:
-    store, kernel, module = _parts(track_mass=False, backend=NativeTruncated(radius=RADIUS))
+    store, factor, module = _parts(track_mass=False, backend=NativeTruncated(radius=RADIUS))
     x = torch.randn(2, 3, N_IN, dtype=torch.float64)
     out = module(x)
     assert out.shape == (2, 3, N_OUT)
@@ -159,13 +159,13 @@ def test_batched_rows_reshape_round_trip() -> None:
 
 
 def test_native_validation() -> None:
-    store, kernel, module = _parts()
+    store, factor, module = _parts()
     with pytest.raises(ValueError, match="positive"):
         NativeTruncated(radius=0.0)
     with pytest.raises(TypeError, match="number"):
         NativeTruncated(radius=True)
     with pytest.raises(ValueError, match="track_mass=False"):
         CSTLinear(
-            module.in_neurons, module.out_neurons, store, kernel,
+            module.in_neurons, module.out_neurons, store, factor,
             backend=NativeTruncated(radius=2.0),
         )

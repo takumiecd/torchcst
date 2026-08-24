@@ -5,7 +5,7 @@ gate, and weight as a buffer or parameter, so the whole library is *designed*
 to run on an accelerator -- but nothing here ever asserted that it does.  These
 tests pin the contract at three depths:
 
-* ``forward``  -- the compute path (gather, kernel, mass) agrees across devices;
+* ``forward``  -- the compute path (gather, factor, mass) agrees across devices;
 * ``backward`` -- the gradients the structural instruments score agree too;
 * one full engine update -- observation, scoring, and the applied structural
   operations agree, which is the part that reads gradients back out of a capture
@@ -48,7 +48,7 @@ from torchcst.policy import (
     SynapseLifecycle,
     cSFW,
 )
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import (
     NeuronStore,
     SynapseAbsorb,
@@ -99,7 +99,7 @@ def build(device: str):
             )
         ]
     )
-    layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.2))
+    layer = CSTLinear(inputs, outputs, synapses, GaussianFactor(0.2))
     scorer = ContinuousGradientRequest(
         pool_size=32, decay=0.0, chunk_size=8, timing="backward_inline"
     )
@@ -221,7 +221,7 @@ def _csfw_backfit_parts(device: str):
             )
         ]
     )
-    layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.2))
+    layer = CSTLinear(inputs, outputs, synapses, GaussianFactor(0.2))
     policy = QuotaRegime(
         budget=1,
         method=cSFW(
@@ -282,7 +282,7 @@ def _absorb_parts(device: str):
     outputs = NeuronStore(
         "edge_out", 2, mu=torch.tensor([[0.0], [1.0]]), initial_live=2, device=device,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.1))
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.1))
     store.apply(
         [
             SynapseBirth(
@@ -345,9 +345,9 @@ def _path_parts(device: str):
         mu=torch.rand(5, 2, generator=generator, dtype=dtype) * 2 - 1,
         initial_live=5, device=device, dtype=dtype,
     )
-    kernel = GaussianKernel(0.35)
-    common = (inputs, outputs, store, kernel)
-    return store, kernel, {
+    factor = GaussianFactor(0.35)
+    common = (inputs, outputs, store, factor)
+    return store, factor, {
         "factored": CSTLinear(*common, backend=Factored()),
         "materialized": CSTLinear(*common, backend=Materialized()),
         "lean": CSTLinear(
@@ -368,12 +368,12 @@ def test_execution_paths_agree_on_cuda() -> None:
     upstream_cpu = torch.randn(7, 5, generator=generator)
     results: dict[str, dict[str, dict[str, torch.Tensor]]] = {}
     for device in ("cpu", "cuda"):
-        store, kernel, modules = _path_parts(device)
+        store, factor, modules = _path_parts(device)
         x = x_cpu.to(device)
         upstream = upstream_cpu.to(device)
         per_path = {}
         for name, module in modules.items():
-            for parameter in (store.w, store.s, store.t, kernel.sigma):
+            for parameter in (store.w, store.s, store.t, factor.sigma):
                 parameter.grad = None
             output = module(x)
             output.backward(upstream)

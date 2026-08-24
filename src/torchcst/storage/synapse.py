@@ -21,7 +21,7 @@ from torchcst.representation import (
     ParameterRole,
     RepresentationSpec,
 )
-from torchcst.representation.kernels import continuous_family_names
+from torchcst.representation.factors import continuous_family_names
 
 from .mechanics import (
     AgeColumn,
@@ -89,7 +89,7 @@ class SynapseView:
 class SynapseBirth:
     """Synapse birth op carrying coordinates, weights, and candidate lineages.
 
-    ``extras`` carries the per-atom columns the site's kernel family declares
+    ``extras`` carries the per-atom columns the site's factor family declares
     (:class:`~torchcst.representation.AtomColumn`), keyed by column name and
     shaped ``[count, width]``.  A column left out is born at the column's
     declared ``init``, so a policy that knows nothing about a family's extra
@@ -234,7 +234,7 @@ class SynapseStore(nn.Module):
         sigma: float,
         *,
         capacity: int | None = None,
-        kernel: str = "gaussian",
+        factor: str = "gaussian",
         max_capacity: int | None = None,
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
@@ -249,9 +249,9 @@ class SynapseStore(nn.Module):
 
         ``capacity`` defaults to one atom per resolvable cell of the larger
         endpoint chart (``∏ max(1, extent_d/σ)``) -- the measured coverage
-        floor with growth headroom, not a ceiling.  ``sigma`` is the kernel
+        floor with growth headroom, not a ceiling.  ``sigma`` is the factor
         bandwidth the compute module will use on these charts; it sets both
-        the cell estimate and nothing else (the kernel object itself lives
+        the cell estimate and nothing else (the factor object itself lives
         on the compute module).
         """
         if not sigma > 0.0:
@@ -291,7 +291,7 @@ class SynapseStore(nn.Module):
                 len(lo_out),
                 bounds=(lo_in, hi_in),
                 bounds_out=(lo_out, hi_out),
-                kernel=kernel,
+                factor=factor,
             ),
             device=device,
             dtype=dtype,
@@ -356,7 +356,7 @@ class SynapseStore(nn.Module):
         self.register_buffer(
             "mass_scale", torch.ones(capacity, dtype=mass_dtype, device=device)
         )
-        # Kernel-declared per-atom columns.  An empty declaration -- every
+        # Factor-declared per-atom columns.  An empty declaration -- every
         # built-in family -- installs nothing, so the store below this line is
         # exactly the (s, t, w) store it has always been.
         self._atom_columns = tuple(self.spec.atom_columns())
@@ -407,7 +407,7 @@ class SynapseStore(nn.Module):
 
     @property
     def atom_column_names(self) -> tuple[str, ...]:
-        """Names of the kernel-declared per-atom columns this store installed."""
+        """Names of the factor-declared per-atom columns this store installed."""
         return tuple(self._atom_widths)
 
     @property
@@ -615,7 +615,7 @@ class SynapseStore(nn.Module):
         self.spec.domain_out.validate_birth(op.t)
 
     def _validate_merge(self, op: SynapseMerge) -> Tensor:
-        if self.spec.kernel_in == self.spec.kernel_out == "delta":
+        if self.spec.factor_in == self.spec.factor_out == "delta":
             raise NotImplementedError(
                 "entry-family merge is undefined on the discrete lattice"
             )
@@ -853,7 +853,7 @@ class SynapseStore(nn.Module):
                 if op.extras:
                     raise ValueError(
                         f"SynapseBirth carries extras {sorted(op.extras)} but "
-                        f"the {self.spec.kernel_in!r} family declares none"
+                        f"the {self.spec.factor_in!r} family declares none"
                     )
             return {}
         declared = set(self._atom_widths)
@@ -862,7 +862,7 @@ class SynapseStore(nn.Module):
             if unknown:
                 raise ValueError(
                     f"SynapseBirth extras {sorted(unknown)} are not declared by "
-                    f"the {self.spec.kernel_in!r} family"
+                    f"the {self.spec.factor_in!r} family"
                 )
         packed: dict[str, Tensor] = {}
         for column in self._atom_columns:
@@ -1073,7 +1073,7 @@ class SynapseStore(nn.Module):
     # ---- gauge and optimizer maintenance ---------------------------------
 
     def set_mass_scale(self, scale: Tensor, *, version: int | None = None) -> None:
-        """Update detached packed continuous kernel norms without mutation.
+        """Update detached packed continuous factor norms without mutation.
 
         The column is owned by every store for one uniform view contract, but
         only a continuous family may change it.  Entry and rank-one stores
@@ -1081,8 +1081,8 @@ class SynapseStore(nn.Module):
         their delta/orthonormal gauges.
         """
         if (
-            self.spec.kernel_in != self.spec.kernel_out
-            or self.spec.kernel_in not in continuous_family_names()
+            self.spec.factor_in != self.spec.factor_out
+            or self.spec.factor_in not in continuous_family_names()
         ):
             raise RuntimeError(
                 "mass_scale is fixed at one outside the continuous families"

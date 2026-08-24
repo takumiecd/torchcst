@@ -31,7 +31,7 @@ from torchcst.policy import (
     cVP,
     gamma_ungate,
 )
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, NeuronUngate, SynapseBirth, SynapseStore
 
 D_IN, H_MAX, H_LIVE, D_OUT = 8, 16, 4, 4
@@ -78,9 +78,9 @@ def _world(*, blocked: bool, damping: tuple[float, ...] = LADDER):
     inputs = _chart("x", D_IN, D_IN)
     hidden = _chart("h", H_MAX, H_LIVE)
     outputs = _chart("y", D_OUT, D_OUT)
-    kernel = GaussianKernel(0.1).double()
-    one = CSTLinear(inputs, hidden, first, kernel)
-    two = CSTLinear(hidden, outputs, second, kernel)
+    factor = GaussianFactor(0.1).double()
+    one = CSTLinear(inputs, hidden, first, factor)
+    two = CSTLinear(hidden, outputs, second, factor)
     producer = CSTBoundary(one, activation=F.gelu)
     terminal = CSTBoundary(two)
     if blocked:
@@ -177,7 +177,7 @@ def test_an_unbounded_solve_can_still_land_without_a_ladder() -> None:
     # weakly answered row can ask for hundreds of times the live scale, and
     # whether that is safe is left entirely to the root's realized-loss
     # trial rather than any upfront cap. This fixture's synapse grid --
-    # twelve atoms spaced closer than the kernel bandwidth -- used to make
+    # twelve atoms spaced closer than the factor bandwidth -- used to make
     # layer1/layer2's periodic tangent backfit solve a near-singular Gram
     # into a huge cancelling amplitude pair (twin-control.md Sec.1); that
     # corrupted state was what made the *undamped* (``damping=()``) gate

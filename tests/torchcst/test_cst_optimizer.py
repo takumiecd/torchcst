@@ -13,7 +13,7 @@ from torchcst import CSTOptimizer, PullbackConfig, continuous_sites
 from torchcst.compute import CSTLinear, Materialized
 from torchcst.optim import ChartPullbackAdam, PullbackAdam, SmoothRent
 from torchcst.representation import (
-    GaussianKernel,
+    GaussianFactor,
     L2NormalizedColumns,
     RepresentationSpec,
 )
@@ -62,7 +62,7 @@ def _map(in_chart, out_chart, synapses):
         in_chart,
         out_chart,
         synapses,
-        GaussianKernel(SIGMA).double(),
+        GaussianFactor(SIGMA).double(),
         gauge=L2NormalizedColumns(),
         backend=Materialized(lean=False),
     )
@@ -456,8 +456,8 @@ def test_a_site_whose_store_is_not_registered_under_the_model_is_rejected():
             super().__init__()
             self.in_neurons = site.in_neurons
             self.out_neurons = site.out_neurons
-            self.kernel_in = site.kernel_in
-            self.kernel_out = site.kernel_out
+            self.factor_in = site.factor_in
+            self.factor_out = site.factor_out
             self.gauge = site.gauge
             self.__dict__["synapses"] = site.synapses
 

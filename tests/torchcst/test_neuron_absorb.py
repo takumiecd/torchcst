@@ -5,7 +5,7 @@ Design is frozen in ``cst/docs/research/twin-control.md`` Sec.4 and
 and ``storage/neuron.py``'s ``NeuronGateCredit`` are their executable half.
 Covers: a court-level twin merge proposal and its committed effect, geometry
 rejection of orthogonal rows, near-invariance of the downstream gate-weighted
-kernel readout across a twin merge, the Cauchy-Schwarz bound ``|c*| <=
+factor readout across a twin merge, the Cauchy-Schwarz bound ``|c*| <=
 |gamma_dying|``, atomic-failure leaving no partial write (mirrors
 ``test_absorb_op.py``'s convention for ``SynapseAbsorb``), and one
 engine-level wiring proof that ``QuotaRegime(interface=neuron_absorb(...))``
@@ -31,7 +31,7 @@ from torchcst.policy import (
     SynapseLifecycle,
     neuron_absorb,
 )
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import (
     NeuronGateCredit,
     NeuronRetire,
@@ -126,11 +126,11 @@ def test_expensive_merge_above_rent_is_rejected() -> None:
 
 # ---------------------------------------------------------------------------
 # Downstream readout near-invariance (twin-control.md Sec.4's quadrature
-# picture: gate_vector()-weighted kernel readout at arbitrary query points).
+# picture: gate_vector()-weighted factor readout at arbitrary query points).
 # ---------------------------------------------------------------------------
 
 
-def test_merge_of_twins_leaves_gate_weighted_kernel_readout_nearly_unchanged() -> None:
+def test_merge_of_twins_leaves_gate_weighted_factor_readout_nearly_unchanged() -> None:
     mu = torch.tensor([[0.0], [0.001], [5.0]], dtype=torch.float64)
     gate = torch.tensor([0.6, 1.4, 2.0], dtype=torch.float64)
     store = _store(mu, gate)
@@ -139,8 +139,8 @@ def test_merge_of_twins_leaves_gate_weighted_kernel_readout_nearly_unchanged() -
     def readout(query: torch.Tensor) -> torch.Tensor:
         gv = store.gate_vector()
         distance2 = (query - store.mu).pow(2).sum(dim=-1)
-        kernel = torch.exp(-distance2 / (2.0 * reader_bandwidth**2))
-        return (gv * kernel).sum()
+        factor = torch.exp(-distance2 / (2.0 * reader_bandwidth**2))
+        return (gv * factor).sum()
 
     queries = torch.tensor([[0.0], [0.5], [2.0], [5.0]], dtype=torch.float64)
     before = torch.stack([readout(q) for q in queries])
@@ -273,7 +273,7 @@ def test_engine_wiring_runs_neuron_absorb_through_the_interface_seat() -> None:
             )
         ]
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.4).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.4).double())
     store.apply(
         [
             SynapseBirth(

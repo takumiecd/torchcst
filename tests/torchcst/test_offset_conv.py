@@ -1,7 +1,7 @@
 """Contract tests for OffsetCSTConv2d — the FC-9 unfactored conv form.
 
 Each test pins one property the FC-9 validation relied on: the represented
-map (channel kernels × data-side bilinear displacement, checked against an
+map (channel factors × data-side bilinear displacement, checked against an
 independent per-atom gather reference), the lawful product domain and
 capacity rule, static support under displacement drift, gradient flow to
 every coordinate including Δ, structural mutation semantics, the signed
@@ -57,8 +57,8 @@ def _gather_reference(block: OffsetCSTConv2d, x: torch.Tensor) -> torch.Tensor:
         dy, dx = float(view.s[a, chart_d]), float(view.s[a, chart_d + 1])
         t = view.t[a].to(x)
         w = float(view.w[a])
-        k_in = block.kernel_in(mu_in, s_chart[None, :])[:, 0]
-        k_out = block.kernel_out(mu_out, t[None, :])[:, 0]
+        k_in = block.factor_in(mu_in, s_chart[None, :])[:, 0]
+        k_out = block.factor_out(mu_out, t[None, :])[:, 0]
         u = torch.einsum("bchw,c->bhw", xp, k_in)
         iy, ix = math.floor(dy), math.floor(dx)
         ay, ax = dy - iy, dx - ix
@@ -113,7 +113,7 @@ def test_propose_dials_and_validation():
     assert lean.synapses.capacity < fat.synapses.capacity
     assert _block(seed_atoms=False).synapses.k_live == 0
     with pytest.raises(ValueError):
-        _block(kernel="delta")
+        _block(factor="delta")
     with pytest.raises(ValueError):
         _block(capacity_scale=0.0)
 
@@ -129,7 +129,7 @@ def test_gradients_reach_chart_displacement_amplitude_and_bandwidth():
     assert store.s.grad[:, :chart_d].abs().sum() > 0
     assert store.s.grad[:, chart_d:].abs().sum() > 0  # Δ gets data-side grads
     assert store.t.grad is not None and store.t.grad.abs().sum() > 0
-    assert block.kernel_in.sigma.grad is not None
+    assert block.factor_in.sigma.grad is not None
 
 
 def test_support_is_static_under_displacement_drift():
@@ -267,7 +267,7 @@ def test_compute_dtype_materialization_close_to_full_precision():
     full = block(x)
     reduced_block = OffsetCSTConv2d(
         block.in_neurons, block.out_neurons, block.synapses,
-        block.kernel_in,
+        block.factor_in,
         backend=Materialized(compute_dtype=torch.bfloat16),
     )
     reduced = reduced_block(x)
@@ -285,7 +285,7 @@ def _grads_of(block, x, proj):
     s = block.synapses
     return {
         "s": s.s.grad.clone(), "t": s.t.grad.clone(), "w": s.w.grad.clone(),
-        "sigma": block.kernel_in.sigma.grad.clone(),
+        "sigma": block.factor_in.sigma.grad.clone(),
     }
 
 
@@ -293,7 +293,7 @@ def test_lean_materialize_matches_default_path_values_and_grads():
     gen = torch.Generator().manual_seed(0)
     ref = OffsetCSTConv2d.propose("mix", 8, 6, 3, SIGMA, generator=gen).double()
     lean = OffsetCSTConv2d(
-        ref.in_neurons, ref.out_neurons, ref.synapses, ref.kernel_in,
+        ref.in_neurons, ref.out_neurons, ref.synapses, ref.factor_in,
         track_mass=False, backend=Materialized(lean=True),
     ).double()
     # drift one atom onto the clamp boundary so the masked-gradient branch
@@ -315,11 +315,11 @@ def test_lean_materialize_validation():
     with pytest.raises(ValueError, match="track_mass=False"):
         OffsetCSTConv2d(
             block.in_neurons, block.out_neurons, block.synapses,
-            block.kernel_in,
+            block.factor_in,
             backend=Materialized(lean=True),  # track_mass defaults True
         )
     with pytest.raises(ValueError, match="only the Materialized backend"):
         OffsetCSTConv2d(
             block.in_neurons, block.out_neurons, block.synapses,
-            block.kernel_in, track_mass=False, backend=Factored(),
+            block.factor_in, track_mass=False, backend=Factored(),
         )

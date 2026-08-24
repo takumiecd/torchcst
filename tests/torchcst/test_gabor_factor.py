@@ -22,8 +22,8 @@ from torchcst import CoordPreconditioner
 from torchcst.compute import CSTLinear
 from torchcst.policy.neuron_absorb import _pairwise_rho
 from torchcst.representation import (
-    GaborKernel,
-    GaussianKernel,
+    GaborFactor,
+    GaussianFactor,
     RepresentationSpec,
 )
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -35,14 +35,14 @@ def _grid(n=41):
     return torch.linspace(0.0, 1.0, n, dtype=torch.float64).reshape(-1, 1)
 
 
-def _site(kernel_name, *, positions, weights, extras=None):  # noqa: D401
+def _site(factor_name, *, positions, weights, extras=None):  # noqa: D401
     count = weights.numel()
     store = SynapseStore(
         "gab",
         1,
         1,
         count,
-        spec=RepresentationSpec.continuous(1, 1, kernel=kernel_name),
+        spec=RepresentationSpec.continuous(1, 1, factor=factor_name),
         dtype=torch.float64,
     )
     store.apply(
@@ -60,14 +60,14 @@ def _site(kernel_name, *, positions, weights, extras=None):  # noqa: D401
     mu = _grid(9)
     inputs = NeuronStore("in", 9, mu=mu, initial_live=9, dtype=torch.float64)
     outputs = NeuronStore("out", 9, mu=mu.clone(), initial_live=9, dtype=torch.float64)
-    if kernel_name == "gabor":
-        kernels = (
-            GaborKernel(SIGMA, side="in").double(),
-            GaborKernel(SIGMA, side="out").double(),
+    if factor_name == "gabor":
+        factors = (
+            GaborFactor(SIGMA, side="in").double(),
+            GaborFactor(SIGMA, side="out").double(),
         )
     else:
-        kernels = (GaussianKernel(SIGMA).double(), None)
-    return CSTLinear(inputs, outputs, store, *kernels), store
+        factors = (GaussianFactor(SIGMA).double(), None)
+    return CSTLinear(inputs, outputs, store, *factors), store
 
 
 def test_zero_frequency_and_zero_phase_is_exactly_the_gaussian_family():
@@ -100,12 +100,12 @@ def test_zero_phase_is_a_critical_point_that_the_birth_default_avoids():
     parameterisation, not a hard spot in some loss.  The birth default sits a
     quarter turn away, where the derivative is alive.
     """
-    kernel = GaborKernel(SIGMA, learnable=False, side="in").double()
+    factor = GaborFactor(SIGMA, learnable=False, side="in").double()
     x = _grid(129)
     # Everything in sigma units: a feature oscillating 2.5 radians per sigma,
     # and an atom sitting a fifth of a sigma off its centre.
     centre = torch.tensor([[0.5 + 0.2 * SIGMA]], dtype=torch.float64)
-    gabor_target = kernel(
+    gabor_target = factor(
         x,
         torch.tensor([[0.5]], dtype=torch.float64),
         {
@@ -118,7 +118,7 @@ def test_zero_phase_is_a_critical_point_that_the_birth_default_avoids():
     def frequency_gradient(phase: float) -> float:
         omega = torch.zeros(1, 1, dtype=torch.float64, requires_grad=True)
         phi = torch.full((1, 1), phase, dtype=torch.float64, requires_grad=True)
-        column = kernel(x, centre, {"omega_s": omega, "phi_s": phi})
+        column = factor(x, centre, {"omega_s": omega, "phi_s": phi})
         amplitude = torch.linalg.lstsq(
             column.detach(), gabor_target.reshape(-1, 1)
         ).solution
@@ -127,20 +127,20 @@ def test_zero_phase_is_a_critical_point_that_the_birth_default_avoids():
 
     assert frequency_gradient(0.0) == 0.0, "zero phase is the critical point"
     default_phase = dict(
-        (column.name, column.init) for column in GaborKernel.atom_columns
+        (column.name, column.init) for column in GaborFactor.atom_columns
     )["phi_s"]
     assert frequency_gradient(default_phase) > 1e-3, "the birth default is alive"
 
 
 def test_a_nonzero_frequency_makes_the_atom_change_sign():
     """No Gaussian atom can do this: the column is no longer a positive bump."""
-    kernel = GaborKernel(SIGMA, side="in").double()
+    factor = GaborFactor(SIGMA, side="in").double()
     centers = torch.tensor([[0.5]], dtype=torch.float64)
     columns = {
         "omega_s": torch.tensor([[20.0]], dtype=torch.float64),
         "phi_s": torch.zeros(1, 1, dtype=torch.float64),
     }
-    column = kernel(_grid(), centers, columns)
+    column = factor(_grid(), centers, columns)
     assert column.min() < 0 < column.max()
 
 
@@ -154,8 +154,8 @@ def test_the_twin_pair_amplitude_diverges_where_one_gabor_atom_stays_unit():
     """
     x = _grid(201)
     centre = torch.tensor([[0.5]], dtype=torch.float64)
-    gaussian = GaussianKernel(SIGMA, learnable=False).double()
-    gabor = GaborKernel(SIGMA, learnable=False, side="in").double()
+    gaussian = GaussianFactor(SIGMA, learnable=False).double()
+    gabor = GaborFactor(SIGMA, learnable=False, side="in").double()
 
     target = gabor(
         x,
@@ -192,7 +192,7 @@ def test_the_family_refuses_consumers_that_assume_a_radial_profile():
         CoordPreconditioner(module, cap_sigma=0.5, subscribe=False)._jacobian_sq()
     # different frequencies at one position are distinct atoms, not twins
     with pytest.raises(NotImplementedError, match="overlap"):
-        _pairwise_rho(positions, GaborKernel(SIGMA).double())
+        _pairwise_rho(positions, GaborFactor(SIGMA).double())
 
 
 def test_frequency_and_phase_learn():

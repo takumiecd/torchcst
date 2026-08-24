@@ -22,7 +22,7 @@ from torchcst.policy import (
     StructuralQuota,
     cSET,
 )
-from torchcst.representation import GaussianKernel, survey_chart
+from torchcst.representation import GaussianFactor, survey_chart
 from torchcst.storage import NeuronStore, SynapseStore
 
 SIGMA = 0.1
@@ -32,7 +32,7 @@ def _site(generator: torch.Generator) -> CSTLinear:
     inputs = NeuronStore.propose("layer.in", 64, SIGMA, generator=generator)
     outputs = NeuronStore.propose("layer.out", 32, SIGMA, generator=generator)
     synapses = SynapseStore.between("layer", inputs, outputs, SIGMA)
-    return CSTLinear(inputs, outputs, synapses, GaussianKernel(SIGMA))
+    return CSTLinear(inputs, outputs, synapses, GaussianFactor(SIGMA))
 
 
 def test_neurons_first_composition_is_lawful():

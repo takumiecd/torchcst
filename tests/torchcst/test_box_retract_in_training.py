@@ -24,8 +24,8 @@ def _store(box_in: Box, box_out: Box) -> SynapseStore:
     spec = RepresentationSpec(
         domain_in=box_in,
         domain_out=box_out,
-        kernel_in="gaussian",
-        kernel_out="gaussian",
+        factor_in="gaussian",
+        factor_out="gaussian",
         atom_cost=box_in.dim + box_out.dim + 1,
         retirement="gate_only",
     )

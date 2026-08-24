@@ -16,7 +16,7 @@ from torchcst.policy import (
     QuotaRegime,
     SynapseLifecycle,
 )
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
 
 
@@ -117,7 +117,7 @@ def _parts():
         "edge_out", 1, mu=torch.zeros(1, 1, dtype=torch.float64), initial_live=1,
         dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(0.5).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(0.5).double())
     inline = _TimingRequest("inline", ObservationTiming.BACKWARD_INLINE)
     deferred = _TimingRequest("deferred", ObservationTiming.AFTER_BACKWARD)
     method = SynapseLifecycle(

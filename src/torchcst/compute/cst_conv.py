@@ -9,7 +9,7 @@ from torch.nn.modules.utils import _pair
 from typing import Literal
 
 from torchcst._validation import require_int
-from torchcst.representation import ContinuousKernel
+from torchcst.representation import ContinuousFactor
 from torchcst.storage import NeuronStore, SynapseStore
 
 from .cst_map import _ContinuousCSTMap
@@ -43,7 +43,7 @@ def conv2d_isotropic_scales(
     ``scale / (n - 1)``.  With the default scales the channel axis therefore
     has spacing ``1/(C-1)`` while a 3-tap axis has spacing ``0.5``
     *regardless of C* -- an anisotropy of up to ``(C-1)/2`` within one chart.
-    An isotropic kernel has a single bandwidth to spend on all of them, and
+    An isotropic factor has a single bandwidth to spend on all of them, and
     the natural bandwidth prior (a small multiple of the chart's
     nearest-neighbour spacing) tracks whichever axis is finest, so the coarse
     axes are left undersampled: an atom then contributes nothing unless it
@@ -90,7 +90,7 @@ def conv2d_neuron_coordinates(
     ``RepresentationSpec.continuous(3, 1)``.
 
     ⚠ The default scales produce an **anisotropic** input chart -- a
-    representation defect when paired with an isotropic kernel; see
+    representation defect when paired with an isotropic factor; see
     :func:`conv2d_isotropic_scales` for the full account and the scales that
     remove it. The default is left alone only because changing it would
     silently re-place every chart in every existing experiment.
@@ -131,7 +131,7 @@ class CSTConv2d(_ContinuousCSTMap):
     """Apply one continuous CST measure as a shared convolutional filter.
 
     The module directly owns its endpoint neuron charts, synapse measure, and
-    Gaussian kernels. Its input chart has
+    Gaussian factors. Its input chart has
     ``in_channels * kernel_height * kernel_width`` neurons and its output chart
     has one neuron per output channel. Spatial output positions share the same
     represented map, giving the translation-equivariant contract of
@@ -154,11 +154,11 @@ class CSTConv2d(_ContinuousCSTMap):
         in_neurons: NeuronStore,
         out_neurons: NeuronStore,
         synapses: SynapseStore,
-        kernel: ContinuousKernel,
+        factor: ContinuousFactor,
         in_channels: int,
         kernel_size: int | tuple[int, int],
         *,
-        kernel_out: ContinuousKernel | None = None,
+        factor_out: ContinuousFactor | None = None,
         stride: int | tuple[int, int] = 1,
         padding: int | tuple[int, int] = 0,
         dilation: int | tuple[int, int] = 1,
@@ -168,7 +168,7 @@ class CSTConv2d(_ContinuousCSTMap):
         gauge=None,
     ) -> None:
         super().__init__(
-            in_neurons, out_neurons, synapses, kernel, kernel_out,
+            in_neurons, out_neurons, synapses, factor, factor_out,
             track_mass=track_mass, gauge=gauge,
         )
         require_int(in_channels, "in_channels", minimum=1)
@@ -194,7 +194,7 @@ class CSTConv2d(_ContinuousCSTMap):
     def dense_weight(self) -> Tensor:
         """Materialize the effective represented filter.
 
-        This includes neuron gates, so the returned kernel is exactly the one
+        This includes neuron gates, so the returned factor is exactly the one
         used by the materialized convolution path.
         """
         weight = super().dense_weight()
@@ -266,7 +266,7 @@ class CSTConv2d(_ContinuousCSTMap):
 
     def _output_shape(self, height: int, width: int) -> tuple[int, int]:
         result = []
-        for size, kernel, stride, padding, dilation in zip(
+        for size, factor, stride, padding, dilation in zip(
             (height, width),
             self.kernel_size,
             self.stride,
@@ -274,7 +274,7 @@ class CSTConv2d(_ContinuousCSTMap):
             self.dilation,
         ):
             result.append(
-                (size + 2 * padding - dilation * (kernel - 1) - 1) // stride + 1
+                (size + 2 * padding - dilation * (factor - 1) - 1) // stride + 1
             )
         if any(value <= 0 for value in result):
             raise ValueError("convolution geometry produces an empty spatial output")

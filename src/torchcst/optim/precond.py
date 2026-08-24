@@ -16,12 +16,12 @@ from . import metric
 class CoordPreconditioner:
     """LM-damped diagonal Gauss-Newton momentum for one site's ``s``/``t`` blocks.
 
-    Coordinate gradients through a Gaussian kernel are exponentially
+    Coordinate gradients through a Gaussian factor are exponentially
     nonuniform: an atom far from every neuron has a vanishing Jacobian, so a
     single learning rate either freezes the far tail or destabilizes the near
     atoms.  This preconditioner measures each atom's step by how much it moves
     the represented ``W`` -- the per-atom squared Jacobian norm ``J^2``, in
-    closed form from kernel column sums.  Under
+    closed form from factor column sums.  Under
     :class:`~torchcst.representation.L2NormalizedColumns` it differentiates
     the actually delivered normalised columns, including their tangent
     projection; under :class:`~torchcst.representation.Amplitude` it retains
@@ -64,15 +64,15 @@ class CoordPreconditioner:
         chunk_elements: int = 1 << 24,
     ) -> None:
         store = getattr(module, "synapses", None)
-        kernel_in = getattr(module, "kernel_in", None)
-        kernel_out = getattr(module, "kernel_out", None)
+        factor_in = getattr(module, "factor_in", None)
+        factor_out = getattr(module, "factor_out", None)
         if (
             not isinstance(store, SynapseStore)
-            or kernel_in is None
-            or kernel_out is None
+            or factor_in is None
+            or factor_out is None
         ):
             raise TypeError(
-                "module must be a continuous CST map with .synapses and kernels"
+                "module must be a continuous CST map with .synapses and factors"
             )
         if not isinstance(store.s, nn.Parameter) or not isinstance(
             store.t, nn.Parameter
@@ -90,8 +90,8 @@ class CoordPreconditioner:
         require_int(chunk_elements, "chunk_elements", minimum=1)
         self.module = module
         self.store = store
-        self.kernel_in = kernel_in
-        self.kernel_out = kernel_out
+        self.factor_in = factor_in
+        self.factor_out = factor_out
         self.cap_sigma = float(cap_sigma)
         self.beta = float(beta)
         self.target_step = float(target_step)
@@ -170,17 +170,17 @@ class CoordPreconditioner:
         store = self.store
         w_sq = store.w.detach()[block].square()
         if isinstance(self.module.gauge, L2NormalizedColumns):
-            unit_in, factor_in = metric.normalized_columns(
-                self.kernel_in, mu_in, store.s[block]
+            unit_in, slope_in = metric.normalized_columns(
+                self.factor_in, mu_in, store.s[block]
             )
-            unit_out, factor_out = metric.normalized_columns(
-                self.kernel_out, mu_out, store.t[block]
+            unit_out, slope_out = metric.normalized_columns(
+                self.factor_out, mu_out, store.t[block]
             )
             return metric.gauged_jacobian_sq(
                 unit_in=unit_in,
-                factor_in=factor_in,
+                slope_in=slope_in,
                 unit_out=unit_out,
-                factor_out=factor_out,
+                slope_out=slope_out,
                 mu_in=mu_in,
                 mu_out=mu_out,
                 source=store.s[block],
@@ -189,8 +189,8 @@ class CoordPreconditioner:
                 traffic_in=self._x if self.traffic_rows else None,
                 traffic_out=self._g if self.traffic_rows else None,
             )
-        k_in, g_in = metric.columns(self.kernel_in, mu_in, store.s[block])
-        k_out, g_out = metric.columns(self.kernel_out, mu_out, store.t[block])
+        k_in, g_in = metric.columns(self.factor_in, mu_in, store.s[block])
+        k_out, g_out = metric.columns(self.factor_out, mu_out, store.t[block])
         return metric.jacobian_sq(
             k_in=k_in, g_in=g_in, k_out=k_out, g_out=g_out,
             mu_in=mu_in, mu_out=mu_out,
@@ -224,7 +224,7 @@ class CoordPreconditioner:
             return
         if self.v_s is None:
             self._materialize()
-        sigma = float(self.kernel_in.sigma.detach())
+        sigma = float(self.factor_in.sigma.detach())
         self.v_s.mul_(self.beta).add_(store.s.grad, alpha=1.0 - self.beta)
         self.v_t.mul_(self.beta).add_(store.t.grad, alpha=1.0 - self.beta)
         j_s, j_t = self._jacobian_sq()

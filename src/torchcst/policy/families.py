@@ -421,7 +421,7 @@ def cSFW(
     backfit cadence; position backfit performs one family-private damped
     Newton iteration while ordinary SGD continues between events.
 
-    ``novelty``, when given a kernel bandwidth ``sigma``, opts into the
+    ``novelty``, when given a factor bandwidth ``sigma``, opts into the
     gain_perp novelty discount (twin-control.md Sec.3, ladder rung 1 --
     coordinates only) on ``TangentBirth``'s candidate scoring: it discounts
     (never boosts) each candidate's gain by its worst-case coordinate
@@ -572,7 +572,7 @@ def gamma_ungate(
 ) -> NeuronLifecycle:
     """Independent dormant-neuron birth using a solved output gate gamma.
 
-    ``novelty``, when given a kernel bandwidth ``sigma``, opts ``GammaUngate``
+    ``novelty``, when given a factor bandwidth ``sigma``, opts ``GammaUngate``
     into the geometry-only novelty discount from twin-control.md Sec.3/Sec.4:
     a dormant row's selection field is discounted by its coordinate overlap
     with the nearest live row, so waking a near-twin of a live row is priced
@@ -599,7 +599,7 @@ def neuron_absorb(
 ) -> NeuronLifecycle:
     """Row-measure twin merge for the interface seat (NeuronAbsorb).
 
-    ``bandwidth`` is the geometry kernel scale in :func:`~torchcst.policy.
+    ``bandwidth`` is the geometry factor scale in :func:`~torchcst.policy.
     neuron_absorb.NeuronAbsorbCourt`'s ``rho_jk = exp(-|mu_j-mu_k|^2 /
     4*bandwidth^2)`` (twin-control.md Sec.4); ``threshold`` is the minimum
     ``rho_jk`` for a pair to even be considered a twin candidate;  ``rent``

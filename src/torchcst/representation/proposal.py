@@ -32,7 +32,7 @@ Two defaults changed with that measurement and are worth stating plainly:
 A proposed-and-sampled chart needs no survey; the round-trip
 (propose → sample → survey finds nothing to flag) is pinned by a contract
 test.  Every default is an argument: override ``spacing``, ``dim`` or
-``coverage_floor`` to recalibrate for another kernel, domain shape, or
+``coverage_floor`` to recalibrate for another factor, domain shape, or
 training timescale.
 """
 

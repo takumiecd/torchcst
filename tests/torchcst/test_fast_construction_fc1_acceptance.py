@@ -21,7 +21,7 @@ from torchcst.policy import (
     cSFW,
     cVP,
 )
-from torchcst.representation import GaussianKernel, RepresentationSpec
+from torchcst.representation import GaussianFactor, RepresentationSpec
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseRefit, SynapseStore
 
 _SIBLING = Path(__file__).resolve().parents[3] / "cst"
@@ -134,7 +134,7 @@ def _network(
         initial_live=cfg.h_hidden,
         dtype=torch.float64,
     )
-    module = CSTLinear(inputs, outputs, store, GaussianKernel(cfg.sigma).double())
+    module = CSTLinear(inputs, outputs, store, GaussianFactor(cfg.sigma).double())
     root = QuotaRegime(
         budget=budget,
         method=method,

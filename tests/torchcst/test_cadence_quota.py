@@ -260,7 +260,7 @@ def _growing_world(*, quota=None):
     """One CST map + terminal boundary whose output chart has dormant rows."""
     from torchcst.compute import CSTBoundary, CSTLinear
     from torchcst.policy import cSFW, gamma_ungate
-    from torchcst.representation import GaussianKernel
+    from torchcst.representation import GaussianFactor
 
     store = SynapseStore(
         "layer",
@@ -286,7 +286,7 @@ def _growing_world(*, quota=None):
     mu_out = torch.linspace(0.0, 1.0, 6, dtype=torch.float64)[:, None]
     inputs = NeuronStore("in", 4, mu=mu_in, initial_live=4, dtype=torch.float64)
     outputs = NeuronStore("out", 6, mu=mu_out, initial_live=2, dtype=torch.float64)
-    linear = CSTLinear(inputs, outputs, store, GaussianKernel(0.2).double())
+    linear = CSTLinear(inputs, outputs, store, GaussianFactor(0.2).double())
     boundary = CSTBoundary(linear)
     root = QuotaRegime(
         budget=1,
