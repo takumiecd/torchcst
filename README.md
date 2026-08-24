@@ -69,7 +69,7 @@ The rule casts *chart* placement, not coordinates as such. The FC-9 arc's
 product domain `input-channel chart × displacement box`, its spatial
 displacement Δ acting on the **data side** as a bilinear read position
 (dense position gradients by construction — no tap-lattice vacuum) while
-only the channel axes carry kernels. Measured at parity it matches
+only the channel axes carry factors. Measured at parity it matches
 `DepthwiseCSTConv2d` at every width, scales monotonically on the atom
 ladder where the separable form's budget law stalls, and its forward
 materializes the equivalent dense kernel per call so the conv itself runs
@@ -129,9 +129,9 @@ w_a\,
 ```
 
 The functions $\kappa_{\mathrm{in}}$ and $\kappa_{\mathrm{out}}$ are the
-kernels: they specify how strongly an atom at one continuous coordinate
+factors: they specify how strongly an atom at one continuous coordinate
 couples to a neuron at another coordinate. Evaluating them over every neuron
-and live atom produces the rectangular kernel feature matrices
+and live atom produces the rectangular factor feature matrices
 
 ```math
 (\Phi_{\mathrm{in}})_{ia}
@@ -201,7 +201,7 @@ Gaussian atoms have global support, so the represented $W$ is generally
 dense even though it is parameterized by only $M$ atoms. Triangular atoms
 have compact support and can produce exact zeros. Thus “sparse” primarily
 describes the finite atomic representation and its structural lifecycle; it
-does not imply that every supported kernel produces a sparse materialized
+does not imply that every supported factor produces a sparse materialized
 matrix.
 
 Ordinary PyTorch autograd optimizes the live amplitudes $w_a$, continuous
@@ -221,7 +221,7 @@ or the engine), and every compute module takes a `backend=` argument:
 |---|---|---|
 | `Factored()` | never built | `((X Φ_in) ⊙ w) Φ_out^T`: `K(d_in+d_out)` FLOPs/row and a `[rows, K]` autograd intermediate — right only below the crossover `K < d_in d_out/(d_in+d_out)` |
 | `Materialized(lean=…, compute_dtype=…)` | built per forward | one cuBLAS GEMM / cuDNN conv; ceiling = dense speed, activation memory = dense. `lean=True` replaces the build's autograd with a closed-form chunked backward: peak O(chunk) at any K. The short-term workhorse |
-| `NativeTruncated(radius=…)` | never built | kernels truncated at `radius·σ`, rows routed through per-atom neighbor tables: `K(m_in+m_out)` FLOPs/row — **below the dense GEMM itself** in the lawful wide-domain regime, which neither other backend can reach. The long-term mainline; the PyTorch implementation is the semantics oracle a fused CUDA/Triton kernel must match |
+| `NativeTruncated(radius=…)` | never built | factors truncated at `radius·σ`, rows routed through per-atom neighbor tables: `K(m_in+m_out)` FLOPs/row — **below the dense GEMM itself** in the lawful wide-domain regime, which neither other backend can reach. The long-term mainline; the PyTorch implementation is the semantics oracle a fused CUDA/Triton kernel must match |
 
 `backend="auto"` (the default) switches Factored/Materialized per forward on
 the live atom count. `OffsetCSTConv2d` accepts only `Materialized`: its
@@ -278,8 +278,8 @@ map's output and applies normalize/activation, then the producing store's
 gate, exactly once:
 
 ```python
-m1 = CSTLinear(inputs, hidden, syn1, kernel)
-m2 = CSTLinear(hidden, outputs, syn2, kernel)
+m1 = CSTLinear(inputs, hidden, syn1, factor)
+m2 = CSTLinear(hidden, outputs, syn2, factor)
 b1 = CSTBoundary(m1, activation=F.gelu)
 b2 = CSTBoundary(m2, activation=F.gelu)
 logits = b2(m2(b1(m1(x))))
@@ -332,7 +332,7 @@ stack.
 ### Choosing the coordinate domain
 
 `bounds` is the coordinate range every atom and neuron chart lives on, and the
-kernel resolves two points only if they are more than about one `sigma` apart.
+factor resolves two points only if they are more than about one `sigma` apart.
 So what a layer can represent is set by the *ratio* of the domain's extent to
 `sigma`, not by how many atoms or chart rows you allocate:
 
@@ -404,7 +404,7 @@ from torchcst.policy import (
     StructuralQuota,
     cSET,
 )
-from torchcst.representation import GaussianKernel
+from torchcst.representation import GaussianFactor
 from torchcst.storage import NeuronStore, SynapseStore
 
 # A CST layer is a composition, not a primitive.  Neurons come first: for a
@@ -423,7 +423,7 @@ outputs = NeuronStore.propose("layer.out", 32, sigma=0.1, generator=gen)
 synapses = SynapseStore.between("layer", inputs, outputs, sigma=0.1)
 
 # The layer merely applies the composed site.
-layer = CSTLinear(inputs, outputs, synapses, GaussianKernel(0.1))
+layer = CSTLinear(inputs, outputs, synapses, GaussianFactor(0.1))
 
 # The policy tree is the current authoring surface: a named method under a
 # root that owns cadence, quota, and distribution.  Note the distributor:
@@ -620,7 +620,7 @@ is symmetric, with no separate catalog spelling to disambiguate.
 ## Implemented surface
 
 - continuous Gaussian or compact-support triangular `CSTLinear` with learnable
-  atom coordinates, amplitudes, and kernel bandwidth
+  atom coordinates, amplitudes, and factor bandwidth
 - independent `CSTConv2d`, which owns a continuous CST filter shared across
   image locations and supports stride, zero padding, and dilation
 - discrete-entry and rank-one/LoRA-like control families using the same engine
@@ -658,7 +658,7 @@ src/torchcst/
 ├── instruments/     # gradient fields and certificate subspaces
 ├── lab/             # deterministic experiment/replay helpers
 ├── policy/          # cadence, quotas, actions, distributors, courts, catalog
-├── representation/  # coordinate domains, kernels, family specification
+├── representation/  # coordinate domains, factors, family specification
 ├── storage/         # slot mechanics and mutable entity stores
 ├── engine.py        # StructuralEngine lifecycle and event orchestration
 └── optim/           # parameter groups, state followers, and coordinate optimizers

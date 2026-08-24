@@ -34,14 +34,17 @@ still future work.
 ## Architecture
 
 The library represents a linear map as learnable synapse atoms in continuous
-coordinate domains composed through kernel matrices, instead of a dense weight
-matrix:
+coordinate domains, instead of a dense weight matrix. Each atom carries one
+**kernel** on the joint coordinate domain; the implementation requires that
+kernel to be separable and evaluates it as two per-side **factors** (the word
+"kernel" alone always means the joint object, never one side):
 
 ```text
-W = K_out(mu_out, t) diag(w) K_in(mu_in, s)^T
+W_ji = sum_k w_k kappa(z_ji - p_k),  z_ji = (mu_i, mu_j),  p_k = (s_k, t_k)
+     = [F_out(mu_out, t) diag(w) F_in(mu_in, s)^T]_ji     (factor matrices)
 ```
 
-Coordinates `s`/`t`, amplitudes `w`, and kernel bandwidth are ordinary autograd
+Coordinates `s`/`t`, amplitudes `w`, and factor bandwidth are ordinary autograd
 parameters. A separate clock-driven policy decides when atoms and neurons are
 born, retired, merged, or ungated.
 

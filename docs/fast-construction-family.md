@@ -93,7 +93,7 @@ gamma_ungate(curvature_floor=1e-12)   # NeuronLifecycle。独立 γ 誕生（bun
 
 - 表は `SynapseRefit(site, ids, w, s=None, t=None)`。`w` は必須、`s`/`t` は
   省略時に既存座標を保存する任意列。**`σ'` 列は実装しない** — 現行 representation
-  の σ は原子行ではなく compute 側 kernel が持つ共有 parameter で、storage op から
+  の σ は原子行ではなく compute 側 factor が持つ共有 parameter で、storage op から
   書くと一直線依存と「唯一の storage 変更」に反する。原子別 bandwidth を
   representation/storage 契約として導入するまで保留（brief §6）。
 - follower 規則は起草者案どおり確定: **w は moment リセット・座標は保持**

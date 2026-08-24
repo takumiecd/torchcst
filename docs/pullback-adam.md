@@ -132,7 +132,7 @@ $$
 $$
 
 is measured over live atoms and the scalar $\eta$ is frozen so that the
-median displacement is `target_step` in kernel-sigma units:
+median displacement is `target_step` in factor-sigma units:
 
 $$
 \eta=\frac{\texttt{target\_step}\cdot\sigma}{\operatorname{median}_k\rho_k}.
@@ -147,7 +147,7 @@ have large travel and zero net displacement).
 ### Distance-clock moment forgetting
 
 Ordinary Adam forgets on the optimizer-step clock.  That is a poor clock for
-a mobile atom: a reserve pinned at the per-step cap can cross a kernel
+a mobile atom: a reserve pinned at the per-step cap can cross a factor
 neighbourhood while its first and especially second moments still describe
 the old location and old tangent frame.  The opt-in
 
@@ -161,7 +161,7 @@ PullbackAdam(
 ```
 
 adds a geometric clock.  If the joint source-target displacement applied on
-one step is $d_k$ in kernel-sigma units, the retained histories are
+one step is $d_k$ in factor-sigma units, the retained histories are
 
 $$
 m_k \leftarrow e^{-d_k/\tau_m}m_k,
@@ -325,7 +325,7 @@ f_{ik}^2\,\big(1-p_{ik}^2\big)\,
 $$
 
 where $(p, f)$ are exactly the ``(unit, factor)`` pair of
-`metric.normalized_columns` for the chart-side kernel and $c$ is the
+`metric.normalized_columns` for the chart-side factor and $c$ is the
 atom coordinate on that side — the same closed-form family the atom
 metric already computes, evaluated per incidence and summed per the
 product-metric section. Per atom the direction of
@@ -351,18 +351,18 @@ $$
 
 and the wall clamps $\mu$ into the chart box.
 
-### Kernel genericity
+### Factor genericity
 
-The chart metric must be written against the kernel contract, not the
-Gaussian: `metric.normalized_columns(kernel, mu, centers)` already
+The chart metric must be written against the factor contract, not the
+Gaussian: `metric.normalized_columns(factor, mu, centers)` already
 delivers `(unit, factor)` for any registered radial family through
 `profile` / `profile_grad`, and the assembly above only uses the radial
 identity $\partial\kappa/\partial c=\texttt{factor}\cdot(c-x)$. The fused
 `_gaussian_*` functions are a compiled fast path, gated on
-`isinstance(..., GaussianKernel)`, and stay optional. Known limit of the
+`isinstance(..., GaussianFactor)`, and stay optional. Known limit of the
 contract (chart and atom metrics alike): the squared distance is computed
-outside the kernel with a scalar $\sigma$, so an axis-wise-$\sigma$
-family needs the kernel to own the distance — a separate contract
+outside the factor with a scalar $\sigma$, so an axis-wise-$\sigma$
+family needs the factor to own the distance — a separate contract
 extension, not part of this design.
 
 ### Ownership and the rejected alternative

@@ -88,7 +88,7 @@ should use `cadence=`, `quota=`, and `distributor=`.
 ### Annealing structural change
 
 Sigma annealing and structural annealing are independent. Keep the
-kernel's sigma fixed on the compute module and return a time-varying
+factor's sigma fixed on the compute module and return a time-varying
 `StructuralQuota`:
 
 ```python
@@ -187,24 +187,24 @@ Current standard birth choices include:
 - discrete-entry and rank-one controls, which are comparison families rather
   than the center of CST research.
 
-Bandwidth belongs to the kernel object. Birth policy selects coordinates,
+Bandwidth belongs to the factor object. Birth policy selects coordinates,
 lineage, and initial amplitude; it does not silently anneal sigma.
 
-### Continuous kernel families
+### Continuous factor families
 
-`RepresentationSpec.continuous(..., kernel=...)` selects the profile, and the
-compute module refuses a kernel whose `family` disagrees with the store's spec
+`RepresentationSpec.continuous(..., factor=...)` selects the profile, and the
+compute module refuses a factor whose `family` disagrees with the store's spec
 because mass and rent constants are family-specific.
 
-- `GaussianKernel` (`"gaussian"`): support is the whole domain at every
+- `GaussianFactor` (`"gaussian"`): support is the whole domain at every
   positive sigma, so a position gradient reaches every neuron and the
   represented matrix is never structurally sparse.
-- `TriangularKernel` (`"triangular"`): `relu(1 - r/sigma)`, exactly zero
+- `TriangularFactor` (`"triangular"`): `relu(1 - r/sigma)`, exactly zero
   outside the radius-sigma ball. The represented matrix is structurally
   sparse, and shrinking sigma below the neuron spacing reproduces the entry
   family's delta behaviour exactly -- it is the only continuous family that
   reaches the entry family continuously. The cost is that atoms outside every
-  neuron's support receive no position gradient, so a compact kernel relies on
+  neuron's support receive no position gradient, so a compact factor relies on
   structural birth/death for transport where the Gaussian relies on its tail.
 
 ## Storage behavior

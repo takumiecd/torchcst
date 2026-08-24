@@ -88,7 +88,7 @@ layer surfaces as an error instead of a silently unapplied override.
 | a site's `s`, `t` | that site's `PullbackAdam` |
 | a site's `w` | the same `PullbackAdam` **only** when its config sets `rent=`/`decay=` (with `lr_w=`); otherwise the base optimizer |
 | a learnable chart's `mu` | the `ChartPullbackAdam` passed in `charts=`, else the base optimizer |
-| dense weights, norms, kernel bandwidths, per-atom family columns | the base optimizer |
+| dense weights, norms, factor bandwidths, per-atom family columns | the base optimizer |
 | `requires_grad=False` | nobody, reported as `frozen` |
 
 Amplitude ownership is read off the built optimizer's `owns_amplitudes`, so the
@@ -169,7 +169,7 @@ charts in the order given.
 
 Disjoint ownership does **not** make that order numerically neutral. A pullback
 metric is a function of the amplitudes `w`, the chart points `mu`, the incident
-atom coordinates and the kernel bandwidth `sigma` — and the base optimizer
+atom coordinates and the factor bandwidth `sigma` — and the base optimizer
 steps `w`, `sigma` and any chart it owns *before* the site optimizers whiten
 with `G`. Each site's step likewise moves coordinates a later chart optimizer's
 metric sums over. Running the same three groups in another order gives

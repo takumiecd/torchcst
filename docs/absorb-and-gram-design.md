@@ -122,7 +122,7 @@ New file: `src/torchcst/representation/gram.py`, export in
 (no policy/, no engine).
 
 Inputs at construction: the factor matrices for live atoms
-`U [n_out, K]`, `V [n_in, K]` (obtained by the caller via `KernelPort.columns`
+`U [n_out, K]`, `V [n_in, K]` (obtained by the caller via `FactorPort.columns`
 on the atom coordinates), amplitudes `w [K]`, positions `z = (s, t)`, options
 `radius`, `ridge`, and optional `data` batch `X [n, n_in]` for the D metric
 (`Sigma_x = X^T X / n`); identity metric when absent.
@@ -178,8 +178,8 @@ Tests (`tests/torchcst/test_gram_service.py`):
 
 **Stage 3a (first): whole `StructuralPolicy`.** Per the framework's own
 extension guidance (authoring path 2), an `AbsorbPolicy` object implementing
-`capture(clock)`, `bind_instruments(...)` (to receive `KernelPort`), and
-`plan(context)`: build a `GramService` from the live view + kernel columns at
+`capture(clock)`, `bind_instruments(...)` (to receive `FactorPort`), and
+`plan(context)`: build a `GramService` from the live view + factor columns at
 event time, run `plan_chain(budget=..., cost_cap=rent)`, map view positions to
 entity ids, emit the ordered `SynapseAbsorb` ops as one plan. Acceptance is
 `cost <= rent` only; audit payload records per-step `cost`, `res2_D`,
@@ -198,8 +198,8 @@ Deliverables:
    `ActionSpec.synapse_absorb(rule)` (rule provides `propose()`, like merge).
 2. `AbsorbCourt(rent, radius, ridge, budget=None, include_isolated=True,
    audit_delta_w=True)` — the composed-part reincarnation of AbsorbPolicy's
-   plan logic: build GramService from the live view + kernel columns at plan
-   time (kernel access via the same observation-request/bind channel the 3a
+   plan logic: build GramService from the live view + factor columns at plan
+   time (factor access via the same observation-request/bind channel the 3a
    policy used, promoted to a public reusable request), run `plan_chain`
    with `cost_cap=rent`, emit the ordered `SynapseAbsorb` ops as one
    `ProposalBundle` (ordered atomicity, the 3a lesson). When

@@ -42,7 +42,7 @@ $$
 a_{\mathrm{raw}}(w)^2=\frac{w^2}{w_\star^2}.
 $$
 
-The square makes the kernel smooth and independent of the sign of $w$; using
+The square makes the factor smooth and independent of the sign of $w$; using
 $|w|$ directly would introduce an unnecessary cusp at zero.
 
 For a finite neuron population, let $u_w(s)$ be the normalised column. Since
@@ -246,7 +246,7 @@ reached 1.8405. Restricting broad sensing to the smallest few percent with
 $c=0.05$ preserved the initial rank, improved the 250-step loss from 2.3599
 to 2.3219, and finished essentially tied but slightly worse at 1.7860.
 
-This falsifies the indiscriminate broad-kernel version, while leaving a
+This falsifies the indiscriminate broad-factor version, while leaving a
 narrower claim: broad reserve atoms can improve early discovery, but the
 current free maturity dynamics do not convert that early advantage into a
 better final solution.
