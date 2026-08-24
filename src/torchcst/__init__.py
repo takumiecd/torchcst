@@ -59,10 +59,13 @@ from .optim import (
     ChartPullbackAdam,
     ChartRepulsion,
     CoordPreconditioner,
+    CSTOptimizer,
     OptimizerStateFollower,
     PairRepulsion,
     PullbackAdam,
+    PullbackConfig,
     SmoothRent,
+    continuous_sites,
 )
 
 # policy/: cadence, quota, rules, distributors, courts.
@@ -146,6 +149,7 @@ __all__ = [
     "BudgetDistributor",
     "CSTConv2d",
     "CSTLinear",
+    "CSTOptimizer",
     "CallableQuota",
     "CandidateField",
     "CandidateSnapshot",
@@ -196,6 +200,7 @@ __all__ = [
     "PeriodicCadence",
     "ProfitCourt",
     "PullbackAdam",
+    "PullbackConfig",
     "RentMargin",
     "RepresentationSpec",
     "ScoredBirth",
@@ -223,6 +228,7 @@ __all__ = [
     "cSFW",
     "cVP",
     "commit_all",
+    "continuous_sites",
     "conv2d_isotropic_scales",
     "conv2d_neuron_coordinates",
     "gamma_ungate",

@@ -383,6 +383,12 @@ and doubles the chart parameters for the privilege.
 
 ## Optimizer ownership
 
+This section is the *single-site* contract, and remains exact. For a model with
+several sites — six transformer layers × FFN up/down — do not repeat the manual
+exclusion below per layer: `CSTOptimizer` discovers every site, builds one
+`PullbackAdam` each, and rejects any parameter with two owners or none. See
+[`cst-optimizer.md`](cst-optimizer.md).
+
 The ordinary optimizer must exclude `synapses.s` and `synapses.t` so that each
 coordinate has exactly one owner:
 

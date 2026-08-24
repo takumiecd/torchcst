@@ -630,6 +630,9 @@ is symmetric, with no separate catalog spelling to disambiguate.
 - optimizer-state growth, reset, and coordinate-domain projection
 - `PullbackAdam` with explicit parameter-space or tangent-space moments for
   L2-normalized continuous CST coordinates
+- `CSTOptimizer` + `PullbackConfig`: model-level discovery of every continuous
+  site, one owner per trainable parameter, and per-site coordinate overrides
+  (see [`docs/cst-optimizer.md`](docs/cst-optimizer.md))
 - the `cSET`/`cRigL`/`cRES`/`RENT` policy-tree method vocabulary and the
   `FastConstruction` recipe (cSFW-grow into solve-driven operation)
 - public observation-instrument factories and high-level scored-birth policy
