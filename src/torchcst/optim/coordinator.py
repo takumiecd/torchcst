@@ -51,6 +51,7 @@ from typing import Any
 
 import torch
 from torch import nn
+from torch.nn.utils import parametrize
 
 from ..representation import L2NormalizedColumns
 from ..storage import SynapseStore
@@ -381,6 +382,13 @@ class CSTOptimizer:
             claim(store.s, label, f"{store.site!r} coordinates s")
             claim(store.t, label, f"{store.site!r} coordinates t")
             if optimizer.owns_amplitudes:
+                if parametrize.is_parametrized(store, "w"):
+                    raise ValueError(
+                        f"{store.site!r}: a whitened amplitude basis is "
+                        "installed, so amplitudes live in the c basis and "
+                        "belong to the base optimizer; a PullbackConfig "
+                        "claiming amplitudes (rent=/decay=) cannot own them"
+                    )
                 claim(store.w, label, f"{store.site!r} amplitudes w")
         for chart in charts:
             site = chart.store.site

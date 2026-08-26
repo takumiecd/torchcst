@@ -60,12 +60,17 @@ from .optim import (
     ChartRepulsion,
     CoordPreconditioner,
     CSTOptimizer,
+    CSTPullbackAdam,
     OptimizerStateFollower,
     PairRepulsion,
     PullbackAdam,
     PullbackConfig,
     SmoothRent,
+    WhitenedAmplitudeBasis,
+    amplitude_leaf,
     continuous_sites,
+    install_whitened_basis,
+    refresh_whitened_basis,
 )
 
 # policy/: cadence, quota, rules, distributors, courts.
@@ -150,6 +155,7 @@ __all__ = [
     "CSTConv2d",
     "CSTLinear",
     "CSTOptimizer",
+    "CSTPullbackAdam",
     "CallableQuota",
     "CandidateField",
     "CandidateSnapshot",
@@ -224,6 +230,8 @@ __all__ = [
     "TrialSession",
     "TrialTransaction",
     "TriangularFactor",
+    "WhitenedAmplitudeBasis",
+    "amplitude_leaf",
     "baselines",
     "cSFW",
     "cVP",
@@ -232,6 +240,8 @@ __all__ = [
     "conv2d_isotropic_scales",
     "conv2d_neuron_coordinates",
     "gamma_ungate",
+    "install_whitened_basis",
     "neuron_absorb",
     "prepare_all",
+    "refresh_whitened_basis",
 ]
