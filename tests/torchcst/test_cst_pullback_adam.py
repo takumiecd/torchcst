@@ -112,6 +112,23 @@ def test_normalized_gauge_uses_exact_amplitude_orthogonality():
     torch.testing.assert_close(gram[:, 0, 0], torch.ones_like(gram[:, 0, 0]))
 
 
+def test_normalized_gaussian_split_whitener_matches_full_block():
+    module, _store = _site(normalized=True, learnable_sigma=False)
+    optimizer = CSTPullbackAdam(
+        nn.Sequential(module), metric="block", subscribe=False
+    )
+    site = optimizer._atom_sites[0]
+    slots = site.store.live_slots().to(site.store.w.device)
+    gram = optimizer._atom_gram(site, slots)
+    value = torch.randn(
+        slots.numel(), site.width, dtype=gram.dtype,
+        generator=torch.Generator().manual_seed(41),
+    )
+    expected = optimizer._whitener(gram)(value)
+    actual = optimizer._atom_whitener(site, gram)(value)
+    torch.testing.assert_close(actual, expected, rtol=1e-8, atol=1e-10)
+
+
 def test_raw_gauge_keeps_amplitude_coordinate_correlation():
     module, _store = _site(normalized=False, learnable_sigma=False)
     optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
@@ -144,6 +161,37 @@ def test_same_atom_gram_matches_a_dense_autograd_oracle(normalized):
         return values[0] * outgoing[:, None] * incoming[None, :]
 
     jacobian = torch.autograd.functional.jacobian(atom, theta).reshape(-1, 3)
+    expected = jacobian.T @ jacobian
+    torch.testing.assert_close(actual, expected, rtol=1e-8, atol=1e-10)
+
+
+def test_normalized_maturity_gram_matches_a_dense_autograd_oracle():
+    module, store = _site(
+        atoms=1,
+        normalized=True,
+        learnable_sigma=False,
+        family="maturity_gaussian",
+    )
+    optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
+    site = optimizer._atom_sites[0]
+    actual = optimizer._atom_gram(site, torch.tensor([0]))[0]
+    theta = torch.stack(
+        (store.w[0], store.s[0, 0], store.t[0, 0], store.maturity[0, 0])
+    ).detach()
+
+    def atom(values):
+        source = values[1].reshape(1, 1)
+        target = values[2].reshape(1, 1)
+        extras = {"maturity": values[3].reshape(1, 1)}
+        incoming = module.gauge.columns(
+            module.factor_in, module.in_neurons.mu, source, extras
+        )[:, 0]
+        outgoing = module.gauge.columns(
+            module.factor_out, module.out_neurons.mu, target, extras
+        )[:, 0]
+        return values[0] * outgoing[:, None] * incoming[None, :]
+
+    jacobian = torch.autograd.functional.jacobian(atom, theta).reshape(-1, 4)
     expected = jacobian.T @ jacobian
     torch.testing.assert_close(actual, expected, rtol=1e-8, atol=1e-10)
 
@@ -218,6 +266,37 @@ def test_sigma_metric_uses_scalar_forward_mode(monkeypatch):
     assert metric.ndim == 0
     assert bool(torch.isfinite(metric))
     assert float(metric) > 0
+
+
+def test_normalized_gaussian_sigma_metric_matches_same_atom_oracle():
+    module, store = _site(atoms=2, learnable_sigma=True, normalized=True)
+    optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
+    actual = optimizer._sigma_metric(optimizer._sigmas[0])
+    slots = store.live_slots()
+    sigma = module.factor_in.sigma.detach().clone().requires_grad_(True)
+    expected = sigma.new_zeros(())
+
+    for slot in slots.tolist():
+        source = store.s.detach()[slot : slot + 1]
+        target = store.t.detach()[slot : slot + 1]
+        weight = store.w.detach()[slot]
+
+        def atom(
+            value, local_source=source, local_target=target, local_weight=weight
+        ):
+            def unit(query, center):
+                distance = torch.cdist(query, center).square()
+                raw = torch.exp(-distance / (2.0 * value.square()))
+                return raw[:, 0] / torch.linalg.vector_norm(raw[:, 0])
+
+            incoming = unit(module.in_neurons.mu, local_source)
+            outgoing = unit(module.out_neurons.mu, local_target)
+            return local_weight * outgoing[:, None] * incoming[None, :]
+
+        derivative = torch.autograd.functional.jacobian(atom, sigma)
+        expected = expected + derivative.square().sum()
+
+    torch.testing.assert_close(actual, expected, rtol=1e-8, atol=1e-10)
 
 
 def test_factor_declared_columns_join_the_same_atom_block():

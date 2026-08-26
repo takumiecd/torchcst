@@ -99,10 +99,11 @@ def validate_backend(backend, *, factor_in, factor_out, track_mass, gauge=None):
     """Check a module's backend choice against its site; return it.
 
     The closed-form backends (lean materialization, native truncated)
-    hard-require Gaussian factors (analytic derivatives) and
+    hard-require analytic Gaussian factors and
     ``track_mass=False`` (mass would rebuild the full factor matrices).
-    Lean linear materialisation also supports unit-L2 Gaussian columns: their
-    norms and tangent-projected derivatives are computed one chunk at a time.
+    Lean linear materialisation also supports unit-L2 Gaussian columns,
+    including the per-atom maturity Gaussian: norms and tangent-projected
+    derivatives are computed one chunk at a time.
     Native truncation still requires the amplitude gauge because an exact
     normalising gauge needs the complete feature column.
     """
@@ -118,7 +119,17 @@ def validate_backend(backend, *, factor_in, factor_out, track_mass, gauge=None):
     )
     if closed_form:
         name = type(backend).__name__
-        if factor_in.family != "gaussian" or factor_out.family != "gaussian":
+        lean_maturity_l2 = (
+            isinstance(backend, Materialized)
+            and backend.lean
+            and isinstance(gauge, L2NormalizedColumns)
+            and factor_in.family == "maturity_gaussian"
+            and factor_out.family == "maturity_gaussian"
+        )
+        if (
+            factor_in.family != "gaussian"
+            or factor_out.family != "gaussian"
+        ) and not lean_maturity_l2:
             raise ValueError(f"{name} requires Gaussian factors")
         if track_mass:
             raise ValueError(f"{name} requires track_mass=False")

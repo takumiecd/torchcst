@@ -10,7 +10,8 @@ Two build modes per map family:
   einsum for conv) -- fine until the retained ``[features, K, d]`` factor
   broadcasts hurt;
 * a ``Lean*`` autograd Function -- closed-form chunked backward saving
-  only the atom parameters, peak O(chunk) at any K.  Gaussian only.
+  only the atom parameters, peak O(chunk) at any K.  Gaussian, with an
+  L2-normalized linear path for per-atom maturity Gaussians as well.
 """
 
 from __future__ import annotations
@@ -133,6 +134,115 @@ def _l2_backward_helpers(compiled: bool, source: Tensor):
     return (
         _compiled_normalized_gaussian_pieces,
         _compiled_normalized_column_backward,
+    )
+
+
+def normalized_maturity_gaussian_columns(
+    mu: Tensor,
+    coords: Tensor,
+    sigma: Tensor,
+    maturity: Tensor,
+    min_scale: float,
+    max_scale: float,
+) -> Tensor:
+    """Stable unit columns for a per-atom inverse-width maturity."""
+    d2 = squared_distance_matrix(mu, coords)
+    centered = d2 - d2.amin(dim=0, keepdim=True)
+    fraction = torch.sigmoid(maturity.reshape(1, -1))
+    scale_sq = min_scale**2 + (
+        max_scale**2 - min_scale**2
+    ) * fraction
+    values = torch.exp(-scale_sq * centered / (2.0 * sigma.square()))
+    return values / torch.linalg.vector_norm(values, dim=0, keepdim=True)
+
+
+def _normalized_maturity_gaussian_pieces(
+    mu: Tensor,
+    coords: Tensor,
+    sigma: Tensor,
+    maturity: Tensor,
+    min_scale: float,
+    max_scale: float,
+):
+    diff = mu[:, None, :] - coords[None]
+    d2 = squared_norm_last(diff)
+    centered = d2 - d2.amin(dim=0, keepdim=True)
+    fraction = torch.sigmoid(maturity.reshape(1, -1))
+    scale_range = max_scale**2 - min_scale**2
+    scale_sq = min_scale**2 + scale_range * fraction
+    values = torch.exp(-scale_sq * centered / (2.0 * sigma.square()))
+    unit = values / torch.linalg.vector_norm(values, dim=0, keepdim=True)
+    scale_slope = scale_range * fraction * (1.0 - fraction)
+    return unit, diff, centered, scale_sq, scale_slope
+
+
+def _normalized_maturity_column_backward(
+    unit: Tensor,
+    grad_unit: Tensor,
+    diff: Tensor,
+    centered_d2: Tensor,
+    scale_sq: Tensor,
+    scale_slope: Tensor,
+    sigma: Tensor,
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    tangent = grad_unit - unit * (unit * grad_unit).sum(dim=0, keepdim=True)
+    score = unit * tangent
+    weighted = score[:, :, None] * diff * scale_sq[:, :, None]
+    grad_coord = weighted.sum(0) / sigma.square()
+    grad_mu = -weighted.sum(1) / sigma.square()
+    grad_sigma = (score * centered_d2 * scale_sq).sum() / sigma.pow(3)
+    grad_maturity = (
+        -score * centered_d2 * scale_slope / (2.0 * sigma.square())
+    ).sum(0)
+    return grad_coord, grad_mu, grad_sigma, grad_maturity
+
+
+_compiled_normalized_maturity_columns = None
+_compiled_normalized_maturity_pieces = None
+_compiled_normalized_maturity_backward = None
+
+
+def _maturity_l2_forward_columns(
+    compiled: bool,
+    mu: Tensor,
+    coords: Tensor,
+    sigma: Tensor,
+    maturity: Tensor,
+    min_scale: float,
+    max_scale: float,
+) -> Tensor:
+    if not compiled or not coords.is_cuda:
+        return normalized_maturity_gaussian_columns(
+            mu, coords, sigma, maturity, min_scale, max_scale
+        )
+    global _compiled_normalized_maturity_columns
+    if _compiled_normalized_maturity_columns is None:
+        _compiled_normalized_maturity_columns = torch.compile(
+            normalized_maturity_gaussian_columns, fullgraph=True
+        )
+    return _compiled_normalized_maturity_columns(
+        mu, coords, sigma, maturity, min_scale, max_scale
+    )
+
+
+def _maturity_l2_backward_helpers(compiled: bool, source: Tensor):
+    if not compiled or not source.is_cuda:
+        return (
+            _normalized_maturity_gaussian_pieces,
+            _normalized_maturity_column_backward,
+        )
+    global _compiled_normalized_maturity_pieces
+    global _compiled_normalized_maturity_backward
+    if _compiled_normalized_maturity_pieces is None:
+        _compiled_normalized_maturity_pieces = torch.compile(
+            _normalized_maturity_gaussian_pieces, fullgraph=True
+        )
+        _compiled_normalized_maturity_backward = torch.compile(
+            _normalized_maturity_column_backward, fullgraph=True
+        )
+    return (
+        _compiled_normalized_maturity_pieces,
+        _compiled_normalized_maturity_backward,
     )
 
 
@@ -318,6 +428,167 @@ class LeanL2LinearMaterialize(torch.autograd.Function):
             g_mu_in if mu_in.requires_grad else None,
             g_mu_out if mu_out.requires_grad else None,
             g_sig_in, g_sig_out, None, None,
+        )
+
+
+class LeanMaturityL2LinearMaterialize(torch.autograd.Function):
+    """Lean L2 materialisation with one shared maturity per atom."""
+
+    CHUNK = LeanL2LinearMaterialize.CHUNK
+
+    @staticmethod
+    def forward(
+        ctx,
+        source,
+        target,
+        weights,
+        maturity,
+        mu_in,
+        mu_out,
+        sigma_in,
+        sigma_out,
+        min_scale_in,
+        max_scale_in,
+        min_scale_out,
+        max_scale_out,
+        compute_dtype,
+        compile_backward,
+    ):
+        n_out, n_in = mu_out.shape[0], mu_in.shape[0]
+        with torch.no_grad():
+            ki = _maturity_l2_forward_columns(
+                compile_backward,
+                mu_in,
+                source,
+                sigma_in,
+                maturity,
+                min_scale_in,
+                max_scale_in,
+            )
+            ko = _maturity_l2_forward_columns(
+                compile_backward,
+                mu_out,
+                target,
+                sigma_out,
+                maturity,
+                min_scale_out,
+                max_scale_out,
+            )
+            weight = linear_weight(ki, ko, weights, compute_dtype)
+        ctx.save_for_backward(
+            source,
+            target,
+            weights,
+            maturity,
+            mu_in,
+            mu_out,
+            sigma_in,
+            sigma_out,
+        )
+        ctx.scales = (
+            min_scale_in,
+            max_scale_in,
+            min_scale_out,
+            max_scale_out,
+        )
+        ctx.compile_backward = bool(compile_backward)
+        return weight.reshape(n_out, n_in)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        (
+            source,
+            target,
+            weights,
+            maturity,
+            mu_in,
+            mu_out,
+            sigma_in,
+            sigma_out,
+        ) = ctx.saved_tensors
+        min_in, max_in, min_out, max_out = ctx.scales
+        g_source = torch.zeros_like(source)
+        g_target = torch.zeros_like(target)
+        g_w = torch.zeros_like(weights)
+        g_maturity = torch.zeros_like(maturity)
+        g_sig_in = torch.zeros_like(sigma_in)
+        g_sig_out = torch.zeros_like(sigma_out)
+        learn_charts = mu_in.requires_grad or mu_out.requires_grad
+        g_mu_in = torch.zeros_like(mu_in) if learn_charts else None
+        g_mu_out = torch.zeros_like(mu_out) if learn_charts else None
+        pieces, column_backward = _maturity_l2_backward_helpers(
+            ctx.compile_backward, source
+        )
+        for start in range(
+            0, source.shape[0], LeanMaturityL2LinearMaterialize.CHUNK
+        ):
+            sl = slice(start, start + LeanMaturityL2LinearMaterialize.CHUNK)
+            w = weights[sl]
+            local_maturity = maturity[sl]
+            incoming = pieces(
+                mu_in,
+                source[sl],
+                sigma_in,
+                local_maturity,
+                min_in,
+                max_in,
+            )
+            outgoing = pieces(
+                mu_out,
+                target[sl],
+                sigma_out,
+                local_maturity,
+                min_out,
+                max_out,
+            )
+            ki, diff_in, d2_in, scale_in, slope_in = incoming
+            ko, diff_out, d2_out, scale_out, slope_out = outgoing
+            m_in = grad_out.transpose(0, 1) @ ko
+            m_out = grad_out @ ki
+            g_w[sl] = (m_in * ki).sum(0)
+            in_grads = column_backward(
+                ki,
+                m_in * w[None],
+                diff_in,
+                d2_in,
+                scale_in,
+                slope_in,
+                sigma_in,
+            )
+            out_grads = column_backward(
+                ko,
+                m_out * w[None],
+                diff_out,
+                d2_out,
+                scale_out,
+                slope_out,
+                sigma_out,
+            )
+            g_source[sl], chunk_mu_in, chunk_sig_in, chunk_m_in = in_grads
+            g_target[sl], chunk_mu_out, chunk_sig_out, chunk_m_out = out_grads
+            g_maturity[sl] = (chunk_m_in + chunk_m_out).reshape_as(
+                local_maturity
+            )
+            g_sig_in = g_sig_in + chunk_sig_in
+            g_sig_out = g_sig_out + chunk_sig_out
+            if learn_charts:
+                g_mu_in = g_mu_in + chunk_mu_in
+                g_mu_out = g_mu_out + chunk_mu_out
+        return (
+            g_source,
+            g_target,
+            g_w,
+            g_maturity,
+            g_mu_in if mu_in.requires_grad else None,
+            g_mu_out if mu_out.requires_grad else None,
+            g_sig_in,
+            g_sig_out,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         )
 
 

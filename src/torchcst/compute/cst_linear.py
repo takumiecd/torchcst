@@ -6,7 +6,11 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 
-from torchcst.representation import ContinuousFactor, L2NormalizedColumns
+from torchcst.representation import (
+    ContinuousFactor,
+    L2NormalizedColumns,
+    MaturityGaussianFactor,
+)
 from torchcst.storage import NeuronStore, SynapseStore
 
 from .backends import (
@@ -19,12 +23,12 @@ from .backends import (
 from .backends.materialize import (
     LeanL2LinearMaterialize,
     LeanLinearMaterialize,
+    LeanMaturityL2LinearMaterialize,
     linear_weight,
 )
 from .backends.native import NativeTruncatedFunction, neighbor_tables
 from .capture import register_capture_hook
 from .cst_map import _ContinuousCSTMap
-
 
 # A no-grad call retains no factor graph, so one full materialisation avoids
 # chunk launch overhead when its two column matrices remain modest.  The cap is
@@ -96,6 +100,7 @@ class CSTLinear(_ContinuousCSTMap):
             self.out_neurons.mu,
             self.factor_in.sigma,
             self.factor_out.sigma,
+            *self._live_columns().values(),
         )
         key = (
             self.synapses.version,
@@ -145,8 +150,14 @@ class CSTLinear(_ContinuousCSTMap):
             mu_out = self.out_neurons.mu.to(target)
             sigma_in, _ = self.factor_in._prepare(mu_in, source, None)
             sigma_out, _ = self.factor_out._prepare(mu_out, target, None)
+            maturity_family = (
+                type(self.factor_in) is MaturityGaussianFactor
+                and type(self.factor_out) is MaturityGaussianFactor
+            )
             materialize = (
-                LeanL2LinearMaterialize
+                LeanMaturityL2LinearMaterialize
+                if maturity_family
+                else LeanL2LinearMaterialize
                 if isinstance(self.gauge, L2NormalizedColumns)
                 else LeanLinearMaterialize
             )
@@ -154,6 +165,24 @@ class CSTLinear(_ContinuousCSTMap):
                 source, target, weights, mu_in, mu_out, sigma_in, sigma_out,
                 config.compute_dtype,
             )
+            if materialize is LeanMaturityL2LinearMaterialize:
+                maturity = self._live_columns()["maturity"]
+                return materialize.apply(
+                    source,
+                    target,
+                    weights,
+                    maturity,
+                    mu_in,
+                    mu_out,
+                    sigma_in,
+                    sigma_out,
+                    self.factor_in.min_scale,
+                    self.factor_in.max_scale,
+                    self.factor_out.min_scale,
+                    self.factor_out.max_scale,
+                    config.compute_dtype,
+                    config.compile_l2,
+                )
             if materialize is LeanL2LinearMaterialize:
                 return materialize.apply(*args, config.compile_l2)
             return materialize.apply(*args)

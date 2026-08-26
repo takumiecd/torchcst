@@ -87,6 +87,30 @@ root. It is relative to the local diagonal scale and prevents nearly invisible
 directions from producing unbounded coordinate steps. `eps` remains the
 separate Adam moment-denominator safeguard.
 
+## CUDA metric compilation
+
+`compile_metric=True` enables the pure-tensor Gaussian +
+`L2NormalizedColumns` fast path on CUDA:
+
+```python
+CSTPullbackAdam(
+    model,
+    metric="block",
+    lr=1e-3,
+    compile_metric=True,
+)
+```
+
+That path fuses normalized-column construction, coordinate Grams, and the
+learnable-bandwidth tangent calculation. It also uses the gauge-declared
+block structure directly: one amplitude scalar plus independent input- and
+output-coordinate blocks, rather than padding them into one larger eigensolve.
+Other factors and gauges keep the general eager implementation.
+
+`metric_chunk_elements` bounds the temporary tensor budget used by each
+metric chunk (default `1 << 24`). Increasing it reduces chunk launches at the
+cost of peak memory; it does not change the metric.
+
 ## Structural lifecycle
 
 Atom and chart moments are physical-slot indexed followers. Capacity growth

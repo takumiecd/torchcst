@@ -18,6 +18,7 @@ from torchcst.compute.backends.materialize import (
 from torchcst.representation import (
     GaussianFactor,
     L2NormalizedColumns,
+    MaturityGaussianFactor,
     RepresentationSpec,
 )
 from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
@@ -50,6 +51,13 @@ def _parts(
                 torch.rand(N_ATOMS, 2, generator=gen, dtype=dtype) * 2 - 1,
                 torch.randn(N_ATOMS, generator=gen, dtype=dtype),
                 torch.arange(N_ATOMS, dtype=torch.int64),
+                extras=(
+                    {"maturity": torch.randn(
+                        N_ATOMS, 1, generator=gen, dtype=dtype
+                    )}
+                    if factor_name == "maturity_gaussian"
+                    else None
+                ),
             )
         ]
     )
@@ -67,7 +75,11 @@ def _parts(
         initial_live=N_OUT,
         dtype=dtype,
     )
-    factor = GaussianFactor(0.55).to(dtype)
+    factor = (
+        MaturityGaussianFactor(0.55)
+        if factor_name == "maturity_gaussian"
+        else GaussianFactor(0.55)
+    ).to(dtype)
     return store, factor, CSTLinear(inputs, outputs, store, factor, **module_kw)
 
 
@@ -83,6 +95,11 @@ def _grads_of(module, x, upstream):
         "t": store.t.grad.clone(),
         "sigma": module.factor_in.sigma.grad.clone(),
         "x": x.grad.clone(),
+        **(
+            {"maturity": store.maturity.grad.clone()}
+            if hasattr(store, "maturity")
+            else {}
+        ),
     }
 
 
@@ -125,6 +142,34 @@ def test_l2_lean_materialize_matches_default_path_values_and_grads(
 ) -> None:
     store, factor, ref = _parts(
         gauge=L2NormalizedColumns(), track_mass=False, backend=Materialized()
+    )
+    lean = CSTLinear(
+        ref.in_neurons,
+        ref.out_neurons,
+        store,
+        factor,
+        gauge=L2NormalizedColumns(),
+        track_mass=False,
+        backend=Materialized(lean=True, compile_l2=compile_l2),
+    )
+    torch.testing.assert_close(ref.dense_weight(), lean.dense_weight())
+    x = torch.randn(5, N_IN, dtype=torch.float64, requires_grad=True)
+    upstream = torch.randn(5, N_OUT, dtype=torch.float64)
+    g_ref = _grads_of(ref, x, upstream)
+    g_lean = _grads_of(lean, x, upstream)
+    for key in g_ref:
+        torch.testing.assert_close(g_lean[key], g_ref[key])
+
+
+@pytest.mark.parametrize("compile_l2", [False, True])
+def test_maturity_l2_lean_matches_default_path_values_and_grads(
+    compile_l2,
+) -> None:
+    store, factor, ref = _parts(
+        factor_name="maturity_gaussian",
+        gauge=L2NormalizedColumns(),
+        track_mass=False,
+        backend=Materialized(),
     )
     lean = CSTLinear(
         ref.in_neurons,
@@ -218,7 +263,7 @@ def test_eval_weight_cache_notices_an_in_place_parameter_write(monkeypatch) -> N
 def test_lean_chunked_accumulation_is_exact(monkeypatch) -> None:
     # CHUNK smaller than K exercises the multi-chunk accumulation in both
     # directions of the Function.
-    store, factor, lean = _parts(
+    _store, _factor, lean = _parts(
         track_mass=False, backend=Materialized(lean=True)
     )
     x = torch.randn(5, N_IN, dtype=torch.float64, requires_grad=True)
@@ -246,7 +291,7 @@ def test_l2_lean_chunked_accumulation_is_exact(monkeypatch) -> None:
 
 
 def test_lean_backward_passes_gradcheck() -> None:
-    store, factor, lean = _parts(
+    _store, factor, lean = _parts(
         track_mass=False, backend=Materialized(lean=True)
     )
     lean._view()
@@ -308,7 +353,7 @@ def test_materialized_path_still_refreshes_mass() -> None:
 
 
 def test_materialized_path_queues_capture() -> None:
-    store, factor, module = _parts(backend=Materialized())
+    _store, _factor, module = _parts(backend=Materialized())
     context = BackwardContext(0)
     module.set_backward_context(context)
     x = torch.randn(2, N_IN, dtype=torch.float64, requires_grad=True)
@@ -338,7 +383,7 @@ def test_compute_dtype_materialization_close_to_full_precision() -> None:
 
 def test_backend_validation() -> None:
     store, factor, module = _parts()
-    build = lambda **kw: CSTLinear(  # noqa: E731
+    build = lambda **kw: CSTLinear(
         module.in_neurons, module.out_neurons, store, factor, **kw
     )
     with pytest.raises(TypeError, match="backend must be"):
