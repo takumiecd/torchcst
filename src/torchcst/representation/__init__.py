@@ -16,6 +16,7 @@ from .gauges import (
     Amplitude,
     AmplitudeGauge,
     L2NormalizedColumns,
+    PullbackStructure,
     UnitFootprint,
     require_gauge,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "MaturityGaussianFactor",
     "OverlapScale",
     "ParameterRole",
+    "PullbackStructure",
     "RepresentationSpec",
     "Role",
     "Sphere",

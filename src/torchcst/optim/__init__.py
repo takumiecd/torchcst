@@ -1,11 +1,10 @@
-"""Optimizer-side machinery: state following, the coordinate metric, grouping.
+"""Optimizer-side machinery for CST pullback training.
 
-Split the way the rest of the package is: ``metric`` is the pure-function world
-(tensors in, tensors out, no store and no module), ``precond`` and ``pullback``
-own the state and the update rules, ``follower`` keeps slot-indexed optimizer
-state aligned with a mutating store, ``groups`` decides which knobs may share a
-rate, and ``coordinator`` is the one place that decides which optimizer owns
-which parameter across a whole multi-site model.
+``CSTPullbackAdam`` is the model-level API: it owns every CST representation
+parameter and exposes the complement for a separate dense optimizer. The
+single-site optimizers, coordinator, grouping helper, and structural forces
+remain lower-level research mechanisms. ``metric`` is the pure tensor world;
+``follower`` keeps slot-indexed state aligned with mutable stores.
 """
 
 from .chart import ChartPullbackAdam, ChartRepulsion
@@ -21,12 +20,6 @@ from .forces import PairRepulsion, SmoothRent
 from .groups import parameter_groups
 from .precond import CoordPreconditioner
 from .pullback import PullbackAdam
-from .wbasis import (
-    WhitenedAmplitudeBasis,
-    amplitude_leaf,
-    install_whitened_basis,
-    refresh_whitened_basis,
-)
 
 __all__ = [
     "CSTOptimizer",
@@ -39,11 +32,7 @@ __all__ = [
     "PullbackAdam",
     "PullbackConfig",
     "SmoothRent",
-    "WhitenedAmplitudeBasis",
-    "amplitude_leaf",
     "continuous_sites",
-    "install_whitened_basis",
     "is_continuous_site",
     "parameter_groups",
-    "refresh_whitened_basis",
 ]

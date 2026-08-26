@@ -1,205 +1,276 @@
-"""CSTPullbackAdam: one class, one template, every CST parameter."""
+"""CSTPullbackAdam's public ownership, geometry, and lifecycle contract."""
 
 from __future__ import annotations
+
+from copy import deepcopy
 
 import pytest
 import torch
 from torch import nn
 
-from torchcst import (
-    CSTPullbackAdam,
-    PullbackAdam,
-    amplitude_leaf,
-    install_whitened_basis,
-)
+from torchcst import CSTPullbackAdam
 from torchcst.compute import CSTLinear
 from torchcst.representation import (
     GaussianFactor,
     L2NormalizedColumns,
+    MaturityGaussianFactor,
     RepresentationSpec,
 )
-from torchcst.storage import (
-    NeuronStore,
-    SynapseBirth,
-    SynapseDeath,
-    SynapseStore,
-)
+from torchcst.storage import NeuronStore, SynapseBirth, SynapseDeath, SynapseStore
 
 
-def _birth(store, source, target, weights):
+def _birth(store, source, target, weights, *, start=0, extras=None):
     count = len(weights)
     return SynapseBirth(
         store.site,
         torch.as_tensor(source, dtype=torch.float64),
         torch.as_tensor(target, dtype=torch.float64),
         torch.as_tensor(weights, dtype=torch.float64),
-        torch.arange(count, dtype=torch.int64),
+        torch.arange(start, start + count, dtype=torch.int64),
+        {} if extras is None else extras,
     )
 
 
-def _site(*, atoms=5, seed=43, name="single-test", normalized=True,
-          learnable_mu=False):
-    store = SynapseStore(
-        name,
-        1,
-        1,
-        atoms,
-        spec=RepresentationSpec.continuous(1, 1),
-        dtype=torch.float64,
-    )
-    generator = torch.Generator().manual_seed(seed)
+def _site(
+    *, atoms=4, capacity=None, name="pullback", normalized=True,
+    learnable_mu=False, learnable_sigma=True, family="gaussian",
+):
+    capacity = atoms if capacity is None else capacity
+    spec = RepresentationSpec.continuous(1, 1, factor=family)
+    store = SynapseStore(name, 1, 1, capacity, spec=spec, dtype=torch.float64)
+    generator = torch.Generator().manual_seed(17)
+    extras = None
+    if family == "maturity_gaussian":
+        extras = {"maturity": torch.full((atoms, 1), -1.5, dtype=torch.float64)}
     store.apply([_birth(
         store,
         torch.rand(atoms, 1, generator=generator, dtype=torch.float64),
         torch.rand(atoms, 1, generator=generator, dtype=torch.float64),
-        0.5 + torch.rand(atoms, generator=generator, dtype=torch.float64),
+        0.4 + torch.rand(atoms, generator=generator, dtype=torch.float64),
+        extras=extras,
     )])
-    mu_in = torch.linspace(-0.5, 1.5, 7, dtype=torch.float64).reshape(-1, 1)
+    mu_in = torch.linspace(-0.4, 1.4, 7, dtype=torch.float64).reshape(-1, 1)
+    mu_out = torch.linspace(-0.3, 1.3, 6, dtype=torch.float64).reshape(-1, 1)
     inputs = NeuronStore(
-        f"{name}-input",
-        7,
+        f"{name}-in", 7,
         mu=nn.Parameter(mu_in) if learnable_mu else mu_in,
-        initial_live=7,
-        dtype=torch.float64,
+        initial_live=7, dtype=torch.float64,
     )
     outputs = NeuronStore(
-        f"{name}-output",
-        6,
-        mu=torch.linspace(-0.4, 1.4, 6, dtype=torch.float64).reshape(-1, 1),
-        initial_live=6,
-        dtype=torch.float64,
+        f"{name}-out", 6, mu=mu_out, initial_live=6, dtype=torch.float64,
     )
+    factor = (
+        GaussianFactor(0.35, learnable=learnable_sigma)
+        if family == "gaussian"
+        else MaturityGaussianFactor(0.35, learnable=learnable_sigma)
+    ).double()
     module = CSTLinear(
-        inputs,
-        outputs,
-        store,
-        GaussianFactor(0.35).double(),
+        inputs, outputs, store, factor,
         gauge=L2NormalizedColumns() if normalized else None,
     )
     return module, store
 
 
-def test_coordinate_steps_match_pullback_adam_exactly():
-    """The uniformity claim, verified: the single class's coordinate block
-    reproduces PullbackAdam (diag metric, tangent moments) bit for bit."""
-    dials = {"target_step": 0.01, "betas": (0.9, 0.999), "eps": 1e-8,
-             "damping": 1e-2}
-    module_a, store_a = _site(name="twin-a")
-    module_b, store_b = _site(name="twin-b")
-    twin = PullbackAdam(
-        module_a,
-        moment_space="tangent",
-        metric="diag",
-        cap_sigma=0.1,
-        target_step=dials["target_step"],
-        betas=dials["betas"],
-        eps=dials["eps"],
-        damping=dials["damping"],
+def _backward(module):
+    x = torch.randn(
+        3, module.in_features, dtype=torch.float64,
+        generator=torch.Generator().manual_seed(29),
     )
-    single = CSTPullbackAdam(
-        nn.Sequential(module_b), cap=0.1, lr_w=0.0, sigma_block=False,
-        **dials,
-    )
-    x = torch.randn(4, 7, dtype=torch.float64,
-                    generator=torch.Generator().manual_seed(47))
-    for _ in range(3):
-        for module in (module_a, module_b):
-            module.zero_grad(set_to_none=True)
-            module(x).square().sum().backward()
-        twin.step()
-        single.step()
-        torch.testing.assert_close(store_b.s.detach(), store_a.s.detach())
-        torch.testing.assert_close(store_b.t.detach(), store_a.t.detach())
-        torch.testing.assert_close(store_b.w.detach(), store_a.w.detach())
+    module(x).square().sum().backward()
 
 
-def test_amplitude_block_matches_the_parametrized_route():
-    lr, wd = 1e-2, 0.1
-    module_a, store_a = _site(name="amp-a")
-    module_b, _store_b = _site(name="amp-b")
-    install_whitened_basis(module_a, ridge=1e-2)
-    adamw = torch.optim.AdamW(
-        [amplitude_leaf(store_a)], lr=lr, weight_decay=wd
-    )
-    single = CSTPullbackAdam(
-        nn.Sequential(module_b), lr_w=lr, weight_decay_w=wd, w_ridge=1e-2,
-    )
-    x = torch.randn(4, 7, dtype=torch.float64,
-                    generator=torch.Generator().manual_seed(11))
-    for _ in range(4):
-        adamw.zero_grad(set_to_none=True)
-        module_a(x).square().sum().backward()
-        adamw.step()
-
-        single.zero_grad()
-        module_b(x).square().sum().backward()
-        single._step_amplitudes(single._sites[0], 1.0)
-
-        torch.testing.assert_close(
-            module_b.dense_weight().detach(),
-            module_a.dense_weight().detach(),
-            rtol=1e-8,
-            atol=1e-10,
-        )
-
-
-def test_full_step_moves_every_cst_block_and_nothing_dense():
-    module, store = _site(learnable_mu=True)
-    dense = nn.Linear(6, 2).double()
-    model = nn.Sequential(module, nn.Flatten(), dense)
+def test_owns_every_cst_parameter_and_returns_the_dense_complement():
+    site, store = _site(learnable_mu=True)
+    dense = nn.Linear(site.out_features, 2).double()
+    model = nn.Sequential(site, dense)
     optimizer = CSTPullbackAdam(model)
+    owned = {id(parameter) for parameter in optimizer.owned_parameters()}
+    for parameter in (
+        store.w, store.s, store.t, site.in_neurons.mu, site.factor_in.sigma,
+    ):
+        assert id(parameter) in owned
+    remainder = {id(parameter) for parameter in optimizer.non_cst_parameters()}
+    assert id(dense.weight) in remainder and id(dense.bias) in remainder
+    assert remainder == {
+        id(parameter) for parameter in model.parameters()
+        if parameter.requires_grad and id(parameter) not in owned
+    }
+    ordinary = torch.optim.AdamW(optimizer.non_cst_parameters(), lr=1e-3)
+    optimizer.validate_dense_optimizer(ordinary)
+    with pytest.raises(ValueError, match="also owns CST"):
+        optimizer.validate_dense_optimizer(torch.optim.AdamW(model.parameters()))
+
+
+def test_normalized_gauge_uses_exact_amplitude_orthogonality():
+    module, _store = _site(normalized=True, learnable_sigma=False)
+    optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
+    site = optimizer._atom_sites[0]
+    slots = site.store.live_slots().to(site.store.w.device)
+    gram = optimizer._atom_gram(site, slots)
+    torch.testing.assert_close(gram[:, 0, 1:], torch.zeros_like(gram[:, 0, 1:]))
+    torch.testing.assert_close(gram[:, 1:, 0], torch.zeros_like(gram[:, 1:, 0]))
+    torch.testing.assert_close(gram[:, 0, 0], torch.ones_like(gram[:, 0, 0]))
+
+
+def test_raw_gauge_keeps_amplitude_coordinate_correlation():
+    module, _store = _site(normalized=False, learnable_sigma=False)
+    optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
+    site = optimizer._atom_sites[0]
+    gram = optimizer._atom_gram(site, site.store.live_slots().to(site.store.w.device))
+    assert bool((gram[:, 0, 1:].abs() > 1e-10).any())
+    torch.testing.assert_close(gram, gram.transpose(-1, -2))
+    assert bool((torch.linalg.eigvalsh(gram) >= -1e-10).all())
+
+
+@pytest.mark.parametrize("normalized", [False, True])
+def test_same_atom_gram_matches_a_dense_autograd_oracle(normalized):
+    module, store = _site(
+        atoms=1, normalized=normalized, learnable_sigma=False,
+    )
+    optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
+    site = optimizer._atom_sites[0]
+    actual = optimizer._atom_gram(site, torch.tensor([0]))[0]
+    theta = torch.stack((store.w[0], store.s[0, 0], store.t[0, 0])).detach()
+
+    def atom(values):
+        source = values[1].reshape(1, 1)
+        target = values[2].reshape(1, 1)
+        incoming = module.gauge.columns(
+            module.factor_in, module.in_neurons.mu, source,
+        )[:, 0]
+        outgoing = module.gauge.columns(
+            module.factor_out, module.out_neurons.mu, target,
+        )[:, 0]
+        return values[0] * outgoing[:, None] * incoming[None, :]
+
+    jacobian = torch.autograd.functional.jacobian(atom, theta).reshape(-1, 3)
+    expected = jacobian.T @ jacobian
+    torch.testing.assert_close(actual, expected, rtol=1e-8, atol=1e-10)
+
+
+@pytest.mark.parametrize("metric", ["diag", "block"])
+@pytest.mark.parametrize("normalized", [False, True])
+def test_direct_lr_steps_all_core_blocks(metric, normalized):
+    module, store = _site(normalized=normalized, learnable_mu=True)
+    optimizer = CSTPullbackAdam(
+        nn.Sequential(module), metric=metric, lr=2e-3, max_step_sigma=None,
+    )
     before = {
+        "w": store.w.detach().clone(),
         "s": store.s.detach().clone(),
         "t": store.t.detach().clone(),
-        "w": store.w.detach().clone(),
         "mu": module.in_neurons.mu.detach().clone(),
         "sigma": module.factor_in.sigma.detach().clone(),
-        "dense": dense.weight.detach().clone(),
     }
-    x = torch.randn(4, 7, dtype=torch.float64,
-                    generator=torch.Generator().manual_seed(53))
-    optimizer.zero_grad()
-    model(x).square().sum().backward()
+    optimizer.zero_grad(set_to_none=True)
+    _backward(module)
     optimizer.step()
-    assert not torch.equal(store.s.detach(), before["s"])
-    assert not torch.equal(store.t.detach(), before["t"])
-    assert not torch.equal(store.w.detach(), before["w"])
-    assert not torch.equal(module.in_neurons.mu.detach(), before["mu"])
-    assert not torch.equal(module.factor_in.sigma.detach(), before["sigma"])
-    assert torch.equal(dense.weight.detach(), before["dense"])
+    current = {
+        "w": store.w, "s": store.s, "t": store.t,
+        "mu": module.in_neurons.mu, "sigma": module.factor_in.sigma,
+    }
+    for name, value in before.items():
+        assert not torch.equal(current[name].detach(), value), name
 
 
-def test_requires_the_l2_gauge():
-    module, _store = _site(normalized=False)
-    with pytest.raises(TypeError, match="L2-normalised"):
-        CSTPullbackAdam(nn.Sequential(module))
-
-
-def test_structural_event_raises_at_step():
-    module, store = _site()
-    optimizer = CSTPullbackAdam(nn.Sequential(module))
-    store.apply([SynapseDeath(store.site, store.live_ids()[:1])])
-    x = torch.randn(2, 7, dtype=torch.float64,
-                    generator=torch.Generator().manual_seed(59))
+def test_lr_and_target_map_step_are_exclusive():
+    module, _store = _site(learnable_sigma=False)
+    with pytest.raises(ValueError, match="exactly one"):
+        CSTPullbackAdam(nn.Sequential(module), lr=1e-3, target_map_step=0.01)
+    with pytest.raises(ValueError, match="exactly one"):
+        CSTPullbackAdam(nn.Sequential(module), lr=None, target_map_step=None)
+    optimizer = CSTPullbackAdam(
+        nn.Sequential(module), lr=None, target_map_step=0.01,
+        max_step_sigma=None,
+    )
     optimizer.zero_grad()
-    module(x).square().sum().backward()
-    with pytest.raises(RuntimeError, match="version"):
-        optimizer.step()
+    _backward(module)
+    optimizer.step()
+    assert optimizer.param_groups[0]["calibrated_scale"] is not None
 
 
-def test_state_dict_roundtrip():
+def test_sigma_cap_is_independent_and_can_be_disabled():
+    module, store = _site(learnable_sigma=False)
+    optimizer = CSTPullbackAdam(nn.Sequential(module), lr=1.0, max_step_sigma=0.02)
+    before_s, before_t = store.s.detach().clone(), store.t.detach().clone()
+    optimizer.zero_grad()
+    _backward(module)
+    optimizer.step()
+    movement = (
+        (store.s.detach() - before_s).square().sum(1)
+        + (store.t.detach() - before_t).square().sum(1)
+    ).sqrt()
+    assert float(movement.max()) <= 0.02 * 0.35 * (1 + 1e-8)
+
+
+def test_sigma_metric_uses_scalar_forward_mode(monkeypatch):
+    module, _store = _site(learnable_sigma=True)
+    optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
+
+    def reject_reverse_jacobian(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("scalar sigma must not build a reverse-mode Jacobian")
+
+    monkeypatch.setattr(
+        torch.autograd.functional, "jacobian", reject_reverse_jacobian
+    )
+    metric = optimizer._sigma_metric(optimizer._sigmas[0])
+    assert metric.ndim == 0
+    assert bool(torch.isfinite(metric))
+    assert float(metric) > 0
+
+
+def test_factor_declared_columns_join_the_same_atom_block():
+    module, store = _site(
+        family="maturity_gaussian", learnable_sigma=False, normalized=True,
+    )
+    optimizer = CSTPullbackAdam(nn.Sequential(module))
+    site = optimizer._atom_sites[0]
+    assert [field.name for field in site.fields] == ["w", "s", "t", "maturity"]
+    before = store.maturity.detach().clone()
+    optimizer.zero_grad()
+    _backward(module)
+    optimizer.step()
+    assert not torch.equal(store.maturity.detach(), before)
+
+
+def test_structural_death_and_birth_reset_reused_slot_state():
+    module, store = _site(capacity=5, atoms=4, learnable_sigma=False)
+    optimizer = CSTPullbackAdam(nn.Sequential(module))
+    optimizer.zero_grad()
+    _backward(module)
+    optimizer.step()
+    state = optimizer._atom_sites[0].state
+    victim = store.live_ids()[:1]
+    victim_slot = store._slots.slots_of(victim)
+    assert bool((state["m"].index_select(0, victim_slot) != 0).any())
+    store.apply([SynapseDeath(store.site, victim)])
+    assert torch.equal(
+        state["m"].index_select(0, victim_slot),
+        torch.zeros_like(state["m"].index_select(0, victim_slot)),
+    )
+    store.apply([_birth(store, [[0.2]], [[0.8]], [0.5], start=99)])
+    assert torch.equal(
+        state["m"].index_select(0, victim_slot),
+        torch.zeros_like(state["m"].index_select(0, victim_slot)),
+    )
+
+
+def test_optimizer_state_dict_roundtrip_includes_custom_moments():
     module, _store = _site(learnable_mu=True)
     optimizer = CSTPullbackAdam(nn.Sequential(module))
-    x = torch.randn(2, 7, dtype=torch.float64,
-                    generator=torch.Generator().manual_seed(61))
     optimizer.zero_grad()
-    module(x).square().sum().backward()
+    _backward(module)
     optimizer.step()
-    saved = optimizer.state_dict()
-    kept = optimizer._sites[0]["coord"]["m"][0].clone()
-    optimizer._sites[0]["coord"]["m"][0].zero_()
-    optimizer._charts[0]["m"][0].zero_()
+    saved = deepcopy(optimizer.state_dict())
+    kept = optimizer._atom_sites[0].state["m"].clone()
+    optimizer._atom_sites[0].state["m"].zero_()
     optimizer.load_state_dict(saved)
-    torch.testing.assert_close(optimizer._sites[0]["coord"]["m"][0], kept)
-    assert optimizer._sites[0]["coord"]["step"] == 1
-    assert optimizer._charts[0]["step"] == 1
+    torch.testing.assert_close(optimizer._atom_sites[0].state["m"], kept)
+
+
+def test_is_a_standard_torch_optimizer():
+    module, _store = _site(learnable_sigma=False)
+    optimizer = CSTPullbackAdam(nn.Sequential(module))
+    assert isinstance(optimizer, torch.optim.Optimizer)
+    assert optimizer.param_groups

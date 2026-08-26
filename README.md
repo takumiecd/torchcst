@@ -628,10 +628,9 @@ is symmetric, with no separate catalog spelling to disambiguate.
 - `SynapseStore` and `NeuronStore` with versioned prepare/commit mutation
 - slot reuse, capacity growth, age/lineage columns, and follower notifications
 - optimizer-state growth, reset, and coordinate-domain projection
-- `PullbackAdam` with explicit parameter-space or tangent-space moments for
-  L2-normalized continuous CST coordinates
-- `CSTOptimizer` + `PullbackConfig`: model-level discovery of every continuous
-  site, one owner per trainable parameter, and per-site coordinate overrides
+- `CSTPullbackAdam`: model-level ownership of every CST representation
+  parameter, diagonal or complete same-atom pullback blocks, and a verified
+  complement for a separate dense optimizer
   (see [`docs/cst-optimizer.md`](docs/cst-optimizer.md))
 - the `cSET`/`cRigL`/`cRES`/`RENT` policy-tree method vocabulary and the
   `FastConstruction` recipe (cSFW-grow into solve-driven operation)

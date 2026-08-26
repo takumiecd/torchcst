@@ -45,8 +45,23 @@ from .factors import ContinuousFactor
 
 
 @dataclass(frozen=True)
+class PullbackStructure:
+    """Exact zeros a gauge guarantees in a same-atom pullback metric.
+
+    Optimizers may omit a coupling only when the gauge declares the
+    corresponding identity here.  The conservative default declares no
+    zeros, so third-party gauges automatically receive the full local block.
+    """
+
+    amplitude_tangent_orthogonal: bool = False
+    cross_side_tangents_orthogonal: bool = False
+
+
+@dataclass(frozen=True)
 class Amplitude:
     """Store the amplitude; deliver the factor's columns untouched."""
+
+    pullback_structure = PullbackStructure()
 
     def columns(
         self,
@@ -76,6 +91,11 @@ class L2NormalizedColumns:
     is clamped, leaving the atom contributing nothing, exactly as it does
     under :class:`Amplitude`.
     """
+
+    pullback_structure = PullbackStructure(
+        amplitude_tangent_orthogonal=True,
+        cross_side_tangents_orthogonal=True,
+    )
 
     def columns(
         self,
