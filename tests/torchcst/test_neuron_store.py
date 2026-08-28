@@ -135,8 +135,9 @@ def test_prepare_all_and_commit_all_accept_mixed_store_tickets() -> None:
 def test_a_continuous_chart_may_be_learnable() -> None:
     """A float chart handed in as a Parameter keeps its sample points learnable.
 
-    The chart's points are coordinates like the atoms' own, and freezing them
-    caps the map at whatever effective rank the fixed lattice can express.
+    The chart's points are coordinates like the atoms' own. Freezing them
+    fixes the dictionary geometry and can reduce its effective dimension; it
+    does not, by itself, impose that effective dimension as a hard rank cap.
     """
     mu = torch.nn.Parameter(torch.tensor([[0.0, 0.0], [1.0, 0.5]]))
     store = NeuronStore("hidden", 2, mu=mu)

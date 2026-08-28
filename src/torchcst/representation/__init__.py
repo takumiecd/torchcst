@@ -23,6 +23,12 @@ from .gauges import (
 from .gram import AbsorbAssessment, AbsorbPlanStep, GramService
 from .proposal import ChartProposal, propose_chart
 from .spec import RepresentationSpec
+from .spectrum import (
+    FactorizedSpectrumSurvey,
+    SpectrumSurvey,
+    survey_factorized_map,
+    survey_spectrum,
+)
 from .survey import AxisSurvey, ChartSurvey, survey_chart
 
 __all__ = [
@@ -38,6 +44,7 @@ __all__ = [
     "ChartSurvey",
     "ContinuousFactor",
     "CoordinateDomain",
+    "FactorizedSpectrumSurvey",
     "GaborFactor",
     "GaussianFactor",
     "GramService",
@@ -49,6 +56,7 @@ __all__ = [
     "PullbackStructure",
     "RepresentationSpec",
     "Role",
+    "SpectrumSurvey",
     "Sphere",
     "TriangularFactor",
     "UnitFootprint",
@@ -56,4 +64,6 @@ __all__ = [
     "propose_chart",
     "require_gauge",
     "survey_chart",
+    "survey_factorized_map",
+    "survey_spectrum",
 ]
