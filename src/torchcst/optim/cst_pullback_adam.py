@@ -9,6 +9,7 @@ inside that local Gram; absent such a declaration the complete block is used.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -26,6 +27,7 @@ from . import metric as metric_mod
 from .forces import SampledKernelCoherence
 
 MetricForm = Literal["diag", "block"]
+PullbackForm = Literal["inverse", "bounded"]
 
 __all__ = ["CSTPullbackAdam"]
 
@@ -273,10 +275,12 @@ class CSTPullbackAdam(torch.optim.Optimizer):
     calibrates the first median linearised map displacement. A non-``None``
     ``max_step_sigma`` additionally caps coordinate-like movement.
 
-    ``metric_shift=None`` keeps the legacy damped inverse square root
-    ``G_eff**(-1/2)``. A positive ``metric_shift=mu`` instead uses the bounded
-    tangent map ``(I + G_eff / mu)**(-1/2)``. This changes what enters Adam's
-    moments, unlike post-update clipping, and is disabled by default.
+    ``pullback="inverse"`` keeps the legacy damped inverse square root
+    ``G_eff**(-1/2)``. ``pullback="bounded"`` instead uses the bounded tangent
+    map ``(I + G_eff / pullback_scale)**(-1/2)``. This changes what enters
+    Adam's moments, unlike post-update clipping. The model-level optimizer's
+    moments always live in this pullback-tangent frame; it deliberately does
+    not expose the lower-level ``moment_space`` research switch.
 
     ``coherence=SampledKernelCoherence(...)`` optionally adds the gradient of
     the normalized atom-kernel frame potential before pullback whitening and
@@ -300,7 +304,8 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         betas: tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-8,
         damping: float = 1e-2,
-        metric_shift: float | None = None,
+        pullback: PullbackForm = "inverse",
+        pullback_scale: float = 4.0,
         metric_chunk_elements: int = 1 << 24,
         compile_metric: bool = False,
         coherence: SampledKernelCoherence | None = None,
@@ -308,6 +313,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         coherence_lr: float | None = None,
         coherence_seed: int = 0,
         subscribe: bool = True,
+        metric_shift: float | None = None,
     ) -> None:
         if not isinstance(model, nn.Module):
             raise TypeError("model must be an nn.Module")
@@ -341,12 +347,34 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         ):
             if not isinstance(value, (int, float)) or value < 0:
                 raise ValueError(f"{name} must be non-negative")
-        if metric_shift is not None and (
-            not isinstance(metric_shift, (int, float))
-            or isinstance(metric_shift, bool)
-            or metric_shift <= 0
+        if metric_shift is not None:
+            if pullback != "inverse" or pullback_scale != 4.0:
+                raise ValueError(
+                    "metric_shift cannot be combined with pullback or "
+                    "pullback_scale"
+                )
+            if (
+                not isinstance(metric_shift, (int, float))
+                or isinstance(metric_shift, bool)
+                or metric_shift <= 0
+            ):
+                raise ValueError("metric_shift must be positive or None")
+            warnings.warn(
+                "metric_shift is deprecated; use pullback='bounded', "
+                "pullback_scale=<value> (or pullback='inverse') instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            pullback = "bounded"
+            pullback_scale = metric_shift
+        if pullback not in ("inverse", "bounded"):
+            raise ValueError("pullback must be 'inverse' or 'bounded'")
+        if (
+            not isinstance(pullback_scale, (int, float))
+            or isinstance(pullback_scale, bool)
+            or pullback_scale <= 0
         ):
-            raise ValueError("metric_shift must be positive or None")
+            raise ValueError("pullback_scale must be positive")
         if not isinstance(subscribe, bool):
             raise TypeError("subscribe must be a bool")
         if (
@@ -393,7 +421,13 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         self.betas = (float(betas[0]), float(betas[1]))
         self.eps = float(eps)
         self.damping = float(damping)
-        self.metric_shift = None if metric_shift is None else float(metric_shift)
+        self.pullback = pullback
+        self.pullback_scale = float(pullback_scale)
+        # Read-only compatibility value for experiment loggers written before
+        # the public pullback/pullback_scale vocabulary was introduced.
+        self.metric_shift = (
+            self.pullback_scale if self.pullback == "bounded" else None
+        )
         self.metric_chunk_elements = int(metric_chunk_elements)
         self.compile_metric = compile_metric
         self.coherence = coherence
@@ -936,17 +970,17 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         floor = self.damping * reference
         if self.metric == "diag":
             effective = diagonal + floor
-            if self.metric_shift is None:
+            if self.pullback == "inverse":
                 scale = effective.clamp_min(torch.finfo(gram.dtype).tiny).sqrt()
             else:
-                scale = (1.0 + effective / self.metric_shift).sqrt()
+                scale = (1.0 + effective / self.pullback_scale).sqrt()
             return lambda value: value / scale
         eye = torch.eye(gram.shape[-1], device=gram.device, dtype=gram.dtype)
-        if self.metric_shift is None:
+        if self.pullback == "inverse":
             inverse = _inverse_sqrt(gram + floor * eye)
         else:
-            inverse = self.metric_shift**0.5 * _inverse_sqrt(
-                gram + (floor + self.metric_shift) * eye
+            inverse = self.pullback_scale**0.5 * _inverse_sqrt(
+                gram + (floor + self.pullback_scale) * eye
             )
         return lambda value: torch.einsum("kij,kj->ki", inverse, value)
 
@@ -972,17 +1006,17 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         def inverse(field: _RowField) -> Tensor:
             block = gram[:, field.start : field.stop, field.start : field.stop]
             eye = torch.eye(field.width, device=gram.device, dtype=gram.dtype)
-            if self.metric_shift is None:
+            if self.pullback == "inverse":
                 return _inverse_sqrt(block + floor * eye)
-            return self.metric_shift**0.5 * _inverse_sqrt(
-                block + (floor + self.metric_shift) * eye
+            return self.pullback_scale**0.5 * _inverse_sqrt(
+                block + (floor + self.pullback_scale) * eye
             )
 
         amplitude_metric = gram[:, 0, 0] + floor
-        if self.metric_shift is None:
+        if self.pullback == "inverse":
             amplitude = amplitude_metric.clamp_min(torch.finfo(gram.dtype).tiny).sqrt()
         else:
-            amplitude = (1.0 + amplitude_metric / self.metric_shift).sqrt()
+            amplitude = (1.0 + amplitude_metric / self.pullback_scale).sqrt()
         inverse_s = inverse(s_field)
         inverse_t = inverse(t_field)
 
@@ -1477,8 +1511,8 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             effective = gram + self.damping * reference
             gearing = (
                 effective.sqrt()
-                if self.metric_shift is None
-                else (1.0 + effective / self.metric_shift).sqrt()
+                if self.pullback == "inverse"
+                else (1.0 + effective / self.pullback_scale).sqrt()
             )
             direction = _adam(
                 sigma.state, parameter.grad / gearing, self.betas, self.eps
@@ -1605,5 +1639,6 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         return (
             f"CSTPullbackAdam(sites={len(self._atom_sites)}, "
             f"charts={len(self._charts)}, sigmas={len(self._sigmas)}, "
-            f"metric={self.metric!r}, metric_shift={self.metric_shift!r}, {mode})"
+            f"metric={self.metric!r}, pullback={self.pullback!r}, "
+            f"pullback_scale={self.pullback_scale!r}, {mode})"
         )

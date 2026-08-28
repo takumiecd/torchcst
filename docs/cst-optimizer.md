@@ -10,6 +10,8 @@ from torchcst import CSTPullbackAdam
 cst_optimizer = CSTPullbackAdam(
     model,
     metric="block",
+    pullback="bounded",
+    pullback_scale=4.0,
     lr=1e-3,
     damping=1e-2,
     max_step_sigma=0.1,
@@ -47,6 +49,21 @@ declared identities; an unnormalised gauge receives the full local coupling.
 Learnable charts use per-neuron blocks. A bandwidth shared by several atoms or
 sites has one shared block whose metric sums same-atom self contributions;
 cross-atom terms remain excluded by the same approximation rule.
+
+## Tangent moments
+
+`CSTPullbackAdam` has one intentional moment-space semantics. Given the chosen
+pullback map \(P(G_t)\), it computes
+
+```text
+r_t = P(G_t) @ g_t
+(m_t, v_t) = AdamMoments(r_t)
+delta_theta_t = -P(G_t) @ AdamDirection(m_t, v_t)
+```
+
+Thus Adam's moving averages live in the local pullback-tangent frame. The
+model-level optimizer does not expose a `moment_space` switch: `parameter`
+moments belong only to the lower-level `PullbackAdam` research API.
 
 ## Step scale and safety
 
@@ -87,7 +104,7 @@ root. It is relative to the local diagonal scale and prevents nearly invisible
 directions from producing unbounded coordinate steps. `eps` remains the
 separate Adam moment-denominator safeguard.
 
-### Bounded shifted pullback metric
+## Pullback map
 
 The legacy preconditioner is
 
@@ -101,31 +118,36 @@ Adam's moment estimates. A final `max_step_sigma` clip limits the emitted
 parameter delta, but cannot undo non-finite or disproportionately large values
 that have already entered those moments.
 
-Set a positive `metric_shift=mu` to opt into the bounded alternative
+Select the bounded alternative explicitly with `pullback="bounded"`:
 
 ```text
-P_mu(G) = (I + G_eff / mu)**(-1/2).
+P_lambda(G) = (I + G_eff / lambda)**(-1/2).
 ```
 
 For a positive-semidefinite metric its operator norm is at most one. Small
 metric eigenvalues therefore retain mobility without the `1 / sqrt(lambda)`
 singularity, while large eigenvalues are still attenuated approximately as
-`sqrt(mu / lambda)`. The same map is used before Adam's moments and after its
-normalized direction:
+an inverse square root. `pullback_scale` is the \(\lambda\) in this
+expression. The same map is used before Adam's moments and after its normalized
+direction:
 
 ```python
 CSTPullbackAdam(
     model,
     metric="block",
-    metric_shift=1.0,
+    pullback="bounded",
+    pullback_scale=4.0,
     lr=1e-3,
 )
 ```
 
-`None` is the default and exactly preserves the legacy preconditioner. The
-shift applies consistently to atom, chart, and learnable-bandwidth pullback
-blocks. It is an experimental metric choice, not a replacement for
+`pullback="inverse"` remains the compatibility default and exactly preserves
+the legacy preconditioner. The bounded map applies consistently to atom,
+chart, and learnable-bandwidth blocks. It is not a replacement for
 `max_step_sigma`; the latter remains an independent final trust-region cap.
+
+The old `metric_shift=value` spelling is deprecated but remains accepted as a
+compatibility alias for `pullback="bounded", pullback_scale=value`.
 
 ## CUDA metric compilation
 

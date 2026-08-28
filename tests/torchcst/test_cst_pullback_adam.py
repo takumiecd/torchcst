@@ -153,13 +153,18 @@ def test_coordinate_cap_reads_per_atom_maturity_bandwidth():
     )
 
 
-@pytest.mark.parametrize("metric_shift", [None, 1.0])
-def test_normalized_gaussian_split_whitener_matches_full_block(metric_shift):
+@pytest.mark.parametrize(
+    ("pullback", "pullback_scale"), [("inverse", 4.0), ("bounded", 1.0)]
+)
+def test_normalized_gaussian_split_whitener_matches_full_block(
+    pullback, pullback_scale
+):
     module, _store = _site(normalized=True, learnable_sigma=False)
     optimizer = CSTPullbackAdam(
         nn.Sequential(module),
         metric="block",
-        metric_shift=metric_shift,
+        pullback=pullback,
+        pullback_scale=pullback_scale,
         subscribe=False,
     )
     site = optimizer._atom_sites[0]
@@ -183,7 +188,8 @@ def test_shifted_metric_whitener_is_exact_and_bounded(metric):
         nn.Sequential(module),
         metric=metric,
         damping=0.0,
-        metric_shift=2.0,
+        pullback="bounded",
+        pullback_scale=2.0,
         subscribe=False,
     )
     gram = torch.tensor([[[1e-8, 0.0], [0.0, 8.0]]], dtype=torch.float64)
@@ -205,12 +211,64 @@ def test_shifted_metric_whitener_is_exact_and_bounded(metric):
     assert float(torch.linalg.matrix_norm(actual, ord=2)) <= 1.0
 
 
+def test_public_pullback_defaults_preserve_inverse_compatibility():
+    module, _store = _site(learnable_sigma=False)
+    optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
+    assert optimizer.pullback == "inverse"
+    assert optimizer.pullback_scale == 4.0
+    assert optimizer.metric_shift is None
+    assert "moment_space" not in optimizer.__dict__
+
+
+@pytest.mark.parametrize("pullback", ["shifted", "tangent", None])
+def test_pullback_must_name_a_supported_map(pullback):
+    module, _store = _site(learnable_sigma=False)
+    with pytest.raises(ValueError, match="pullback"):
+        CSTPullbackAdam(
+            nn.Sequential(module), pullback=pullback, subscribe=False
+        )
+
+
+@pytest.mark.parametrize("pullback_scale", [0.0, -1.0, True, None])
+def test_pullback_scale_must_be_positive(pullback_scale):
+    module, _store = _site(learnable_sigma=False)
+    with pytest.raises(ValueError, match="pullback_scale"):
+        CSTPullbackAdam(
+            nn.Sequential(module),
+            pullback="bounded",
+            pullback_scale=pullback_scale,
+            subscribe=False,
+        )
+
+
+def test_metric_shift_is_a_deprecated_compatibility_alias():
+    module, _store = _site(learnable_sigma=False)
+    with pytest.warns(DeprecationWarning, match="metric_shift is deprecated"):
+        optimizer = CSTPullbackAdam(
+            nn.Sequential(module), metric_shift=2.0, subscribe=False
+        )
+    assert optimizer.pullback == "bounded"
+    assert optimizer.pullback_scale == 2.0
+    assert optimizer.metric_shift == 2.0
+
+
 @pytest.mark.parametrize("metric_shift", [0.0, -1.0, True])
-def test_metric_shift_must_be_positive_or_none(metric_shift):
+def test_deprecated_metric_shift_still_validates_legacy_input(metric_shift):
     module, _store = _site(learnable_sigma=False)
     with pytest.raises(ValueError, match="metric_shift"):
         CSTPullbackAdam(
             nn.Sequential(module), metric_shift=metric_shift, subscribe=False
+        )
+
+
+def test_metric_shift_cannot_be_mixed_with_new_pullback_api():
+    module, _store = _site(learnable_sigma=False)
+    with pytest.raises(ValueError, match="cannot be combined"):
+        CSTPullbackAdam(
+            nn.Sequential(module),
+            pullback="bounded",
+            metric_shift=2.0,
+            subscribe=False,
         )
 
 
