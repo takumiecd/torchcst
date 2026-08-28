@@ -23,6 +23,7 @@ from ..representation import (
 )
 from ..storage import NeuronStore, SynapseStore
 from . import metric as metric_mod
+from .forces import SampledKernelCoherence
 
 MetricForm = Literal["diag", "block"]
 
@@ -280,6 +281,16 @@ class CSTPullbackAdam(torch.optim.Optimizer):
     ``lr`` and ``target_map_step`` are mutually exclusive. The latter lazily
     calibrates the first median linearised map displacement. A non-``None``
     ``max_step_sigma`` additionally caps coordinate-like movement.
+
+    ``coherence=SampledKernelCoherence(...)`` optionally adds the gradient of
+    the normalized atom-kernel frame potential before pullback whitening and
+    Adam's moments. ``decoupled_coherence=...`` with ``coherence_lr`` instead
+    applies an independent coordinate-gradient step after Adam, analogous to
+    AdamW's separation of task adaptation and regularization (but retaining
+    the interaction gradient rather than pretending it is weight decay).
+    Both are off by default and mutually exclusive. The force selects exact
+    all-pairs or sampled evaluation; :attr:`last_coherence` exposes the most
+    recent unweighted mean squared cosine for checkpoint logging.
     """
 
     def __init__(
@@ -295,6 +306,10 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         damping: float = 1e-2,
         metric_chunk_elements: int = 1 << 24,
         compile_metric: bool = False,
+        coherence: SampledKernelCoherence | None = None,
+        decoupled_coherence: SampledKernelCoherence | None = None,
+        coherence_lr: float | None = None,
+        coherence_seed: int = 0,
         subscribe: bool = True,
     ) -> None:
         if not isinstance(model, nn.Module):
@@ -339,6 +354,36 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             raise ValueError("metric_chunk_elements must be a positive integer")
         if not isinstance(compile_metric, bool):
             raise TypeError("compile_metric must be a bool")
+        if coherence is not None and not isinstance(
+            coherence, SampledKernelCoherence
+        ):
+            raise TypeError("coherence must be a SampledKernelCoherence or None")
+        if decoupled_coherence is not None and not isinstance(
+            decoupled_coherence, SampledKernelCoherence
+        ):
+            raise TypeError(
+                "decoupled_coherence must be a SampledKernelCoherence or None"
+            )
+        if coherence is not None and decoupled_coherence is not None:
+            raise ValueError(
+                "coherence and decoupled_coherence are mutually exclusive"
+            )
+        if (decoupled_coherence is None) != (coherence_lr is None):
+            raise ValueError(
+                "coherence_lr is required exactly with decoupled_coherence"
+            )
+        if coherence_lr is not None and (
+            not isinstance(coherence_lr, (int, float))
+            or isinstance(coherence_lr, bool)
+            or coherence_lr <= 0
+        ):
+            raise ValueError("coherence_lr must be positive or None")
+        if (
+            not isinstance(coherence_seed, int)
+            or isinstance(coherence_seed, bool)
+            or coherence_seed < 0
+        ):
+            raise ValueError("coherence_seed must be a non-negative integer")
 
         self.model = model
         self.metric = metric
@@ -353,6 +398,17 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         self.damping = float(damping)
         self.metric_chunk_elements = int(metric_chunk_elements)
         self.compile_metric = compile_metric
+        self.coherence = coherence
+        self.decoupled_coherence = decoupled_coherence
+        self.coherence_lr = (
+            None if coherence_lr is None else float(coherence_lr)
+        )
+        self.coherence_seed = coherence_seed
+        # Keep the diagnostic on-device.  Converting it to a Python float in
+        # every step would introduce a CUDA synchronization in large LM runs;
+        # the public property synchronizes only when a logger actually reads
+        # it (normally at an evaluation boundary).
+        self._last_coherence: Tensor | None = None
         self._calibrated_scale: float | None = None
 
         names = {id(parameter): name for name, parameter in model.named_parameters()}
@@ -960,6 +1016,50 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 part = part[:, 0]
             field.parameter.index_add_(0, slots, part)
 
+    def _coherence_gradient(
+        self,
+        site: _AtomSite,
+        slots: Tensor,
+        site_index: int,
+        force: SampledKernelCoherence | None = None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Exact/sampled factor-column coherence for one live site."""
+        force = self.coherence if force is None else force
+        assert force is not None
+        module, store = site.module, site.store
+        seed = (
+            self.coherence_seed
+            + 1_000_003 * site.state["step"]
+            + 97_409 * site_index
+        ) % (2**63 - 1)
+        generator = torch.Generator(device=store.s.device).manual_seed(seed)
+
+        def columns(
+            source: Tensor, target: Tensor, selected_slots: Tensor
+        ) -> tuple[Tensor, Tensor]:
+            extras = {
+                name: getattr(store, name)
+                .detach()
+                .index_select(0, selected_slots)
+                for name in store.atom_column_names
+            }
+            return module._factor_matrices(source, target, extras)
+
+        return force.gradient(
+            store.s,
+            store.t,
+            slots,
+            columns,
+            generator,
+        )
+
+    @property
+    def last_coherence(self) -> float | None:
+        """Latest unweighted mean squared atom cosine, if evaluated."""
+        if self._last_coherence is None:
+            return None
+        return float(self._last_coherence)
+
     # -- shared metrics --------------------------------------------------
 
     def _chart_metric(self, chart: _Chart) -> Tensor:
@@ -1285,13 +1385,32 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         need_map_norms = (
             self.target_map_step is not None and self._calibrated_scale is None
         )
-        for site in self._atom_sites:
+        coherence_values: list[Tensor] = []
+        for site_index, site in enumerate(self._atom_sites):
             slots = site.store.live_slots().to(site.store.w.device)
             if slots.numel() == 0:
                 continue
             if not any(field.parameter.grad is not None for field in site.fields):
                 continue
             gradient = self._pack_gradients(site, slots)
+            if self.coherence is not None:
+                field_s = self._field(site, "s")
+                field_t = self._field(site, "t")
+                if field_s is None or field_t is None:
+                    raise TypeError(
+                        f"{site.store.site!r}: kernel coherence requires "
+                        "trainable source and target coordinates"
+                    )
+                coherence_s, coherence_t, value = self._coherence_gradient(
+                    site, slots, site_index
+                )
+                gradient[:, field_s.start : field_s.stop].add_(
+                    coherence_s.index_select(0, slots)
+                )
+                gradient[:, field_t.start : field_t.stop].add_(
+                    coherence_t.index_select(0, slots)
+                )
+                coherence_values.append(value)
             gram = self._atom_gram(site, slots, sigma_metric_cache)
             whiten = self._atom_whitener(site, gram)
             state = site.state
@@ -1314,6 +1433,12 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             pending.append((site, slots, raw))
             if need_map_norms:
                 map_norms.append(self._quadratic_norm(raw, gram))
+
+        self._last_coherence = (
+            torch.stack(coherence_values).mean().detach()
+            if coherence_values
+            else None
+        )
 
         for chart in self._charts:
             parameter = chart.store.mu
@@ -1377,6 +1502,47 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                     row_scale = (cap / norm.clamp_min(1e-30)).clamp(max=1.0)
                     delta = delta * row_scale[:, None]
             self._apply_atom_delta(site, slots, delta)
+
+        if self.decoupled_coherence is not None:
+            assert self.coherence_lr is not None
+            decoupled_values: list[Tensor] = []
+            for site_index, site in enumerate(self._atom_sites):
+                slots = site.store.live_slots().to(site.store.w.device)
+                if slots.numel() < 2:
+                    continue
+                field_s = self._field(site, "s")
+                field_t = self._field(site, "t")
+                if field_s is None or field_t is None:
+                    raise TypeError(
+                        f"{site.store.site!r}: kernel coherence requires "
+                        "trainable source and target coordinates"
+                    )
+                grad_s, grad_t, value = self._coherence_gradient(
+                    site,
+                    slots,
+                    site_index,
+                    self.decoupled_coherence,
+                )
+                delta_s = -self.coherence_lr * grad_s.index_select(0, slots)
+                delta_t = -self.coherence_lr * grad_t.index_select(0, slots)
+                if self.max_step_sigma is not None:
+                    norm = torch.cat((delta_s, delta_t), dim=1).norm(dim=1)
+                    sigma = torch.minimum(
+                        site.module.factor_in.sigma.detach().to(norm),
+                        site.module.factor_out.sigma.detach().to(norm),
+                    )
+                    cap = self.max_step_sigma * sigma
+                    row_scale = (cap / norm.clamp_min(1e-30)).clamp(max=1.0)
+                    delta_s.mul_(row_scale[:, None])
+                    delta_t.mul_(row_scale[:, None])
+                site.store.s.index_add_(0, slots, delta_s)
+                site.store.t.index_add_(0, slots, delta_t)
+                decoupled_values.append(value)
+            self._last_coherence = (
+                torch.stack(decoupled_values).mean().detach()
+                if decoupled_values
+                else None
+            )
 
         for chart, raw in pending_charts:
             parameter = chart.store.mu

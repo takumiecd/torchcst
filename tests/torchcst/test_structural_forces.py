@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 import torch
 
-from torchcst import PairRepulsion, PullbackAdam, SmoothRent
+from torchcst import (
+    PairRepulsion,
+    PullbackAdam,
+    SampledKernelCoherence,
+    SmoothRent,
+)
 from torchcst.compute import CSTLinear
 from torchcst.representation import (
     GaussianFactor,
@@ -173,6 +178,95 @@ def test_pair_repulsion_sampling_is_deterministic_and_aligned() -> None:
         mean_s.flatten(), exact_s.flatten(), dim=0
     )
     assert cosine > 0.95  # unbiased estimator points the same way
+
+
+def _coherence_columns(module, store):
+    def evaluate(source, target, slots):
+        del slots
+        return module._factor_matrices(source, target, {})
+
+    return evaluate
+
+
+def test_exact_kernel_coherence_matches_full_gram_autograd() -> None:
+    module, store = _line_site(
+        [0.15, 0.30, 0.72, 0.90],
+        [0.20, 0.35, 0.65, 0.88],
+        [1.0, 1.0, 1.0, 1.0],
+        name="kernel-coherence-exact",
+    )
+    live = store.live_slots().to(store.s.device)
+    force = SampledKernelCoherence(0.7, pairs=None)
+    actual_s, actual_t, actual_value = force.gradient(
+        store.s,
+        store.t,
+        live,
+        _coherence_columns(module, store),
+        None,
+    )
+
+    source = store.s.detach().clone().requires_grad_(True)
+    target = store.t.detach().clone().requires_grad_(True)
+    k_in, k_out = module._factor_matrices(source, target, {})
+    atom_gram = (k_in.T @ k_in) * (k_out.T @ k_out)
+    row, col = torch.triu_indices(store.k_live, store.k_live, offset=1)
+    expected_value = atom_gram[row, col].square().mean()
+    expected_s, expected_t = torch.autograd.grad(
+        0.7 * expected_value, (source, target)
+    )
+
+    torch.testing.assert_close(actual_value, expected_value)
+    torch.testing.assert_close(actual_s, expected_s)
+    torch.testing.assert_close(actual_t, expected_t)
+
+
+def test_sampled_kernel_coherence_is_deterministic_and_tracks_exact_gradient() -> None:
+    generator = torch.Generator().manual_seed(51)
+    positions_s = torch.rand(18, generator=generator, dtype=torch.float64)
+    positions_t = torch.rand(18, generator=generator, dtype=torch.float64)
+    module, store = _line_site(
+        positions_s,
+        positions_t,
+        torch.ones(18, dtype=torch.float64),
+        name="kernel-coherence-sampled",
+    )
+    live = store.live_slots().to(store.s.device)
+    columns = _coherence_columns(module, store)
+    exact_s, exact_t, _ = SampledKernelCoherence(1.0).gradient(
+        store.s, store.t, live, columns, None
+    )
+    sampled = SampledKernelCoherence(1.0, pairs=48)
+
+    def draw(seed):
+        return sampled.gradient(
+            store.s,
+            store.t,
+            live,
+            columns,
+            torch.Generator().manual_seed(seed),
+        )
+
+    once = draw(7)
+    again = draw(7)
+    torch.testing.assert_close(once[0], again[0], rtol=0, atol=0)
+    torch.testing.assert_close(once[1], again[1], rtol=0, atol=0)
+    mean_s = torch.stack([draw(seed)[0] for seed in range(100)]).mean(0)
+    mean_t = torch.stack([draw(seed)[1] for seed in range(100)]).mean(0)
+    sampled_flat = torch.cat((mean_s.flatten(), mean_t.flatten()))
+    exact_flat = torch.cat((exact_s.flatten(), exact_t.flatten()))
+    cosine = torch.nn.functional.cosine_similarity(
+        sampled_flat, exact_flat, dim=0
+    )
+    assert cosine > 0.98
+
+
+def test_kernel_coherence_validates_its_exact_or_sampled_configuration() -> None:
+    assert SampledKernelCoherence(1.0).pairs is None
+    assert SampledKernelCoherence(1.0, pairs=32).pairs == 32
+    with pytest.raises(ValueError, match="mu"):
+        SampledKernelCoherence(-1.0)
+    with pytest.raises(ValueError, match="pairs"):
+        SampledKernelCoherence(1.0, pairs=0)
 
 
 def test_rent_grows_profitable_and_starves_stranded_atoms() -> None:

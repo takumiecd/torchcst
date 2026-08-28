@@ -19,6 +19,8 @@ from typing import Literal
 import torch
 from torch import Tensor
 
+ColumnEvaluator = Callable[[Tensor, Tensor, Tensor], tuple[Tensor, Tensor]]
+
 
 class SmoothRent:
     """``lam(step) * w / sqrt(w^2 + eps^2)`` -- a smooth L1 rent on amplitude.
@@ -147,3 +149,134 @@ class PairRepulsion:
         g_s.index_copy_(0, live, grad_s)
         g_t.index_copy_(0, live, grad_t)
         return g_s, g_t
+
+
+class SampledKernelCoherence:
+    """Penalise alignment of delivered atom kernels, exactly or by sampling.
+
+    For normalized input/output factor columns ``v_k`` and ``u_k``, the
+    represented atom direction is ``psi_k = u_k kron v_k`` and
+
+    ``cos(psi_k, psi_l) = <u_k,u_l> <v_k,v_l>``.
+
+    This force differentiates the mean squared off-diagonal cosine,
+
+    ``mu * mean_{k<l} cos(psi_k, psi_l)^2``.
+
+    It is distinct from :class:`PairRepulsion`: that force sees only raw
+    coordinate distance, whereas this one evaluates the factor columns on
+    the actual finite neuron charts, including boundary and irregular-chart
+    effects.  ``pairs=None`` evaluates every unordered pair exactly.  A
+    positive integer draws that many uniformly distributed distinct ordered
+    pairs; symmetry makes their mean an unbiased estimator of the same
+    objective without a ``K x K`` Gram.
+
+    ``columns`` is a differentiable callback receiving selected source rows,
+    target rows, and their full-capacity slot indices.  Keeping column
+    evaluation outside this stateless force lets it support every continuous
+    factor family without knowing stores or compute modules.
+    """
+
+    def __init__(self, mu: float, *, pairs: int | None = None) -> None:
+        if (
+            not isinstance(mu, (int, float))
+            or isinstance(mu, bool)
+            or mu < 0
+        ):
+            raise ValueError("mu must be a non-negative number")
+        if pairs is not None and (
+            not isinstance(pairs, int)
+            or isinstance(pairs, bool)
+            or pairs < 1
+        ):
+            raise ValueError("pairs must be a positive int or None")
+        self.mu = float(mu)
+        self.pairs = pairs
+
+    def _pair_positions(
+        self,
+        count: int,
+        *,
+        device: torch.device,
+        generator: torch.Generator | None,
+    ) -> tuple[Tensor, Tensor]:
+        if self.pairs is None:
+            pair = torch.triu_indices(count, count, offset=1, device=device)
+            return pair[0], pair[1]
+        row = torch.randint(
+            0, count, (self.pairs,), device=device, generator=generator
+        )
+        offset = torch.randint(
+            0, count - 1, (self.pairs,), device=device, generator=generator
+        )
+        # A bijection from [0, count-1) onto every column except `row`.
+        col = offset + (offset >= row)
+        return row, col
+
+    def gradient(
+        self,
+        source: Tensor,
+        target: Tensor,
+        live: Tensor,
+        columns: ColumnEvaluator,
+        generator: torch.Generator | None,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Return full-layout ``(grad_s, grad_t, mean_cosine_squared)``."""
+        if not callable(columns):
+            raise TypeError("columns must be callable")
+        g_s = torch.zeros_like(source)
+        g_t = torch.zeros_like(target)
+        count = live.numel()
+        if self.mu == 0.0 or count < 2:
+            return g_s, g_t, source.new_zeros(())
+
+        row, col = self._pair_positions(
+            count, device=source.device, generator=generator
+        )
+        positions = torch.cat((row, col))
+        unique, inverse = torch.unique(
+            positions, sorted=True, return_inverse=True
+        )
+        pair_count = row.numel()
+        row_local = inverse[:pair_count]
+        col_local = inverse[pair_count:]
+        slots = live.index_select(0, unique)
+        selected_s = source.detach().index_select(0, slots).requires_grad_(True)
+        selected_t = target.detach().index_select(0, slots).requires_grad_(True)
+
+        with torch.enable_grad():
+            k_in, k_out = columns(selected_s, selected_t, slots)
+            if (
+                k_in.ndim != 2
+                or k_out.ndim != 2
+                or k_in.shape[1] != slots.numel()
+                or k_out.shape[1] != slots.numel()
+            ):
+                raise ValueError(
+                    "columns must return two rank-2 matrices with one column "
+                    "per selected slot"
+                )
+            tiny = torch.finfo(k_in.dtype).tiny
+            unit_in = k_in / torch.linalg.vector_norm(
+                k_in, dim=0, keepdim=True
+            ).clamp_min(tiny)
+            unit_out = k_out / torch.linalg.vector_norm(
+                k_out, dim=0, keepdim=True
+            ).clamp_min(tiny)
+            cosine_in = (
+                unit_in.index_select(1, row_local)
+                * unit_in.index_select(1, col_local)
+            ).sum(0)
+            cosine_out = (
+                unit_out.index_select(1, row_local)
+                * unit_out.index_select(1, col_local)
+            ).sum(0)
+            mean_cosine_squared = (cosine_in * cosine_out).square().mean()
+            penalty = self.mu * mean_cosine_squared
+            grad_s, grad_t = torch.autograd.grad(
+                penalty, (selected_s, selected_t)
+            )
+
+        g_s.index_copy_(0, slots, grad_s.detach())
+        g_t.index_copy_(0, slots, grad_t.detach())
+        return g_s, g_t, mean_cosine_squared.detach()

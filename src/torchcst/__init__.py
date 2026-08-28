@@ -65,6 +65,7 @@ from .optim import (
     PairRepulsion,
     PullbackAdam,
     PullbackConfig,
+    SampledKernelCoherence,
     SmoothRent,
     continuous_sites,
 )
@@ -205,6 +206,7 @@ __all__ = [
     "PullbackConfig",
     "RentMargin",
     "RepresentationSpec",
+    "SampledKernelCoherence",
     "ScoredBirth",
     "SlotPool",
     "SmoothRent",

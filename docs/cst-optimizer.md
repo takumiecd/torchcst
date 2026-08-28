@@ -111,6 +111,53 @@ Other factors and gauges keep the general eager implementation.
 metric chunk (default `1 << 24`). Increasing it reduces chunk launches at the
 cost of peak memory; it does not change the metric.
 
+## Kernel-coherence regularization
+
+`SampledKernelCoherence` discourages different atoms from delivering the same
+normalized map direction. For atom factors `u_k` and `v_k`, it penalizes
+
+```text
+mean_{k < l} ((u_k.T @ u_l) * (v_k.T @ v_l))**2.
+```
+
+This is not the position-only `PairRepulsion`: coherence is evaluated on the
+actual finite neuron charts, so boundaries and irregular chart sampling are
+included. It is disabled unless explicitly supplied:
+
+```python
+from torchcst import CSTPullbackAdam, SampledKernelCoherence
+
+# Exact all-pairs diagnostic or small experiment.
+exact = CSTPullbackAdam(
+    model,
+    coherence=SampledKernelCoherence(1e-3, pairs=None),
+)
+
+# Unbiased fixed-cost approximation for a large atom population.
+sampled = CSTPullbackAdam(
+    model,
+    coherence=SampledKernelCoherence(1e-3, pairs=4096),
+    coherence_seed=17,
+)
+
+# Independent post-Adam interaction step; it does not enter Adam's moments.
+decoupled = CSTPullbackAdam(
+    model,
+    decoupled_coherence=SampledKernelCoherence(1.0, pairs=4096),
+    coherence_lr=1e-3,
+    coherence_seed=17,
+)
+```
+
+The gradient enters before pullback whitening and Adam's moments.
+The decoupled form instead applies ``-coherence_lr * grad`` after Adam's
+ordinary task step and leaves both moments unchanged. These two forms are
+mutually exclusive. `optimizer.last_coherence` reports the latest unweighted
+mean squared cosine.
+Exact mode stores vectors proportional to the number of pairs and is therefore
+intended only for small populations; sampled mode never constructs a `K x K`
+Gram.
+
 ## Structural lifecycle
 
 Atom and chart moments are physical-slot indexed followers. Capacity growth

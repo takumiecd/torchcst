@@ -16,7 +16,7 @@ from .coordinator import (
 )
 from .cst_pullback_adam import CSTPullbackAdam
 from .follower import OptimizerStateFollower
-from .forces import PairRepulsion, SmoothRent
+from .forces import PairRepulsion, SampledKernelCoherence, SmoothRent
 from .groups import parameter_groups
 from .precond import CoordPreconditioner
 from .pullback import PullbackAdam
@@ -31,6 +31,7 @@ __all__ = [
     "PairRepulsion",
     "PullbackAdam",
     "PullbackConfig",
+    "SampledKernelCoherence",
     "SmoothRent",
     "continuous_sites",
     "is_continuous_site",

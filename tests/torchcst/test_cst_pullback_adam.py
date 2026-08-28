@@ -8,7 +8,7 @@ import pytest
 import torch
 from torch import nn
 
-from torchcst import CSTPullbackAdam
+from torchcst import CSTPullbackAdam, SampledKernelCoherence
 from torchcst.compute import CSTLinear
 from torchcst.representation import (
     GaussianFactor,
@@ -235,6 +235,90 @@ def test_lr_and_target_map_step_are_exclusive():
     _backward(module)
     optimizer.step()
     assert optimizer.param_groups[0]["calibrated_scale"] is not None
+
+
+def test_kernel_coherence_is_opt_in_and_reduces_exact_alignment() -> None:
+    module, store = _site(atoms=5, learnable_sigma=False)
+    optimizer = CSTPullbackAdam(
+        nn.Sequential(module),
+        lr=1e-2,
+        betas=(0.0, 0.0),
+        max_step_sigma=0.1,
+        coherence=SampledKernelCoherence(0.1, pairs=None),
+        coherence_seed=13,
+        subscribe=False,
+    )
+
+    def exact_value():
+        slots = store.live_slots().to(store.s.device)
+        _, _, value = optimizer._coherence_gradient(
+            optimizer._atom_sites[0], slots, 0
+        )
+        return float(value)
+
+    before = exact_value()
+    for _ in range(30):
+        optimizer.zero_grad(set_to_none=True)
+        store.w.grad = torch.zeros_like(store.w)
+        store.s.grad = torch.zeros_like(store.s)
+        store.t.grad = torch.zeros_like(store.t)
+        optimizer.step()
+    after = exact_value()
+
+    assert optimizer.last_coherence is not None
+    assert after < 0.8 * before
+
+    plain_module, _ = _site(
+        atoms=5, name="plain-no-coherence", learnable_sigma=False
+    )
+    plain = CSTPullbackAdam(nn.Sequential(plain_module), subscribe=False)
+    assert plain.coherence is None and plain.last_coherence is None
+
+
+def test_decoupled_kernel_coherence_moves_outside_adam_moments() -> None:
+    module, store = _site(atoms=5, learnable_sigma=False)
+    optimizer = CSTPullbackAdam(
+        nn.Sequential(module),
+        lr=1e-2,
+        betas=(0.0, 0.0),
+        max_step_sigma=0.1,
+        decoupled_coherence=SampledKernelCoherence(1.0, pairs=None),
+        coherence_lr=0.05,
+        subscribe=False,
+    )
+    before_s = store.s.detach().clone()
+    before_t = store.t.detach().clone()
+    optimizer.zero_grad(set_to_none=True)
+    store.w.grad = torch.zeros_like(store.w)
+    store.s.grad = torch.zeros_like(store.s)
+    store.t.grad = torch.zeros_like(store.t)
+    optimizer.step()
+
+    state = optimizer._atom_sites[0].state
+    assert torch.count_nonzero(state["m"]) == 0
+    assert torch.count_nonzero(state["v"]) == 0
+    assert not torch.equal(store.s, before_s)
+    assert not torch.equal(store.t, before_t)
+    assert optimizer.last_coherence is not None
+
+
+def test_coupled_and_decoupled_kernel_coherence_are_exclusive() -> None:
+    module, _ = _site(atoms=3, learnable_sigma=False)
+    force = SampledKernelCoherence(1.0)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        CSTPullbackAdam(
+            nn.Sequential(module),
+            coherence=force,
+            decoupled_coherence=force,
+            coherence_lr=0.1,
+            subscribe=False,
+        )
+    with pytest.raises(ValueError, match="required exactly"):
+        CSTPullbackAdam(
+            nn.Sequential(module),
+            decoupled_coherence=force,
+            subscribe=False,
+        )
 
 
 def test_sigma_cap_is_independent_and_can_be_disabled():
