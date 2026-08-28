@@ -725,7 +725,8 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             isinstance(module.gauge, L2NormalizedColumns)
             and type(module.factor_in) is MaturityGaussianFactor
             and type(module.factor_out) is MaturityGaussianFactor
-            and [field.name for field in site.fields] == ["w", "s", "t", "maturity"]
+            and [field.name for field in site.fields]
+            in (["w", "s", "t"], ["w", "s", "t", "maturity"])
         ):
             width = max(
                 mu_in.shape[0] * source.shape[1],
@@ -740,7 +741,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             t_field = self._field(site, "t")
             maturity_field = self._field(site, "maturity")
             assert s_field is not None and t_field is not None
-            assert maturity_field is not None and maturity_field.width == 1
+            assert maturity_field is None or maturity_field.width == 1
             maturity = store.maturity.detach().index_select(0, slots)
             for start in range(0, slots.numel(), block_size):
                 stop = min(start + block_size, slots.numel())
@@ -776,14 +777,17 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 gram[:, t_field.start : t_field.stop, t_field.start : t_field.stop] = (
                     weight_sq[:, None, None] * target_gram
                 )
-                m_index = maturity_field.start
-                source_coupling = weight_sq[:, None] * source_cross
-                target_coupling = weight_sq[:, None] * target_cross
-                gram[:, s_field.start : s_field.stop, m_index] = source_coupling
-                gram[:, m_index, s_field.start : s_field.stop] = source_coupling
-                gram[:, t_field.start : t_field.stop, m_index] = target_coupling
-                gram[:, m_index, t_field.start : t_field.stop] = target_coupling
-                gram[:, m_index, m_index] = weight_sq * (source_m_sq + target_m_sq)
+                if maturity_field is not None:
+                    m_index = maturity_field.start
+                    source_coupling = weight_sq[:, None] * source_cross
+                    target_coupling = weight_sq[:, None] * target_cross
+                    gram[:, s_field.start : s_field.stop, m_index] = source_coupling
+                    gram[:, m_index, s_field.start : s_field.stop] = source_coupling
+                    gram[:, t_field.start : t_field.stop, m_index] = target_coupling
+                    gram[:, m_index, t_field.start : t_field.stop] = target_coupling
+                    gram[:, m_index, m_index] = weight_sq * (
+                        source_m_sq + target_m_sq
+                    )
                 blocks.append(gram)
                 source_sigma_total += (weight_sq * source_sigma_sq).sum()
                 target_sigma_total += (weight_sq * target_sigma_sq).sum()

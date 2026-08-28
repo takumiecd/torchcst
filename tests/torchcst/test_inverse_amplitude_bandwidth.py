@@ -7,7 +7,7 @@ import math
 import pytest
 import torch
 
-from torchcst import InverseAmplitudeBandwidth
+from torchcst import CSTPullbackAdam, InverseAmplitudeBandwidth
 from torchcst.compute import CSTLinear
 from torchcst.representation import (
     L2NormalizedColumns,
@@ -112,6 +112,18 @@ def test_inverse_bandwidth_rejects_incompatible_factor_range():
     model.factor_in.max_scale = 1.0
     with pytest.raises(ValueError, match="maturity scale range"):
         InverseAmplitudeBandwidth(model)
+
+
+def test_frozen_controller_bandwidth_has_a_valid_pullback_metric():
+    model, store = _model()
+    InverseAmplitudeBandwidth(model)
+    optimizer = CSTPullbackAdam(model, subscribe=False)
+    site = optimizer._atom_sites[0]
+    slots = store.live_slots()
+
+    gram = optimizer._atom_gram(site, slots)
+    assert gram.shape == (3, 3, 3)
+    assert torch.isfinite(gram).all()
 
 
 def test_neutral_maturity_is_finite_and_exactly_represents_unit_scale():
