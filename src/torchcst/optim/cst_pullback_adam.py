@@ -91,9 +91,7 @@ def _maturity_gaussian_l2_side_terms(
     unit = value / torch.linalg.vector_norm(value, dim=0, keepdim=True)
 
     derivative = (
-        -unit[:, :, None]
-        * (scale_sq / sigma.square())[:, :, None]
-        * displacement
+        -unit[:, :, None] * (scale_sq / sigma.square())[:, :, None] * displacement
     )
     radial = (unit[:, :, None] * derivative).sum(0, keepdim=True)
     tangent = derivative - unit[:, :, None] * radial
@@ -106,13 +104,9 @@ def _maturity_gaussian_l2_side_terms(
     sigma_sq = sigma_tangent.square().sum(0).clamp_min(0)
 
     scale_slope = scale_range * fraction * (1.0 - fraction)
-    maturity_tangent = (
-        -unit * scale_slope * shape / (2.0 * sigma.square())
-    )
+    maturity_tangent = -unit * scale_slope * shape / (2.0 * sigma.square())
     maturity_sq = maturity_tangent.square().sum(0).clamp_min(0)
-    coordinate_maturity = torch.einsum(
-        "nka,nk->ka", tangent, maturity_tangent
-    )
+    coordinate_maturity = torch.einsum("nka,nk->ka", tangent, maturity_tangent)
     return gram, sigma_sq, maturity_sq, coordinate_maturity
 
 
@@ -151,9 +145,10 @@ def _continuous_sites(model: nn.Module) -> tuple[tuple[str, nn.Module], ...]:
         store = getattr(module, "synapses", None)
         if not isinstance(store, SynapseStore):
             continue
-        if getattr(module, "factor_in", None) is None or getattr(
-            module, "factor_out", None
-        ) is None:
+        if (
+            getattr(module, "factor_in", None) is None
+            or getattr(module, "factor_out", None) is None
+        ):
             continue
         previous = claimed.get(id(store))
         if previous is not None:
@@ -170,9 +165,7 @@ def _inverse_sqrt(blocks: Tensor) -> Tensor:
     eigenvalues, eigenvectors = torch.linalg.eigh(blocks)
     tiny = torch.finfo(blocks.dtype).tiny
     inverted = eigenvalues.clamp_min(tiny).rsqrt()
-    return (eigenvectors * inverted[..., None, :]) @ eigenvectors.transpose(
-        -1, -2
-    )
+    return (eigenvectors * inverted[..., None, :]) @ eigenvectors.transpose(-1, -2)
 
 
 def _adam(
@@ -191,9 +184,7 @@ def _adam(
     else:
         correction1 = 1.0 - beta1 ** state["step"]
         correction2 = 1.0 - beta2 ** state["step"]
-    return (state["m"] / correction1) / (
-        (state["v"] / correction2).sqrt() + eps
-    )
+    return (state["m"] / correction1) / ((state["v"] / correction2).sqrt() + eps)
 
 
 @dataclass(frozen=True)
@@ -282,6 +273,11 @@ class CSTPullbackAdam(torch.optim.Optimizer):
     calibrates the first median linearised map displacement. A non-``None``
     ``max_step_sigma`` additionally caps coordinate-like movement.
 
+    ``metric_shift=None`` keeps the legacy damped inverse square root
+    ``G_eff**(-1/2)``. A positive ``metric_shift=mu`` instead uses the bounded
+    tangent map ``(I + G_eff / mu)**(-1/2)``. This changes what enters Adam's
+    moments, unlike post-update clipping, and is disabled by default.
+
     ``coherence=SampledKernelCoherence(...)`` optionally adds the gradient of
     the normalized atom-kernel frame potential before pullback whitening and
     Adam's moments. ``decoupled_coherence=...`` with ``coherence_lr`` instead
@@ -304,6 +300,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         betas: tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-8,
         damping: float = 1e-2,
+        metric_shift: float | None = None,
         metric_chunk_elements: int = 1 << 24,
         compile_metric: bool = False,
         coherence: SampledKernelCoherence | None = None,
@@ -344,6 +341,12 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         ):
             if not isinstance(value, (int, float)) or value < 0:
                 raise ValueError(f"{name} must be non-negative")
+        if metric_shift is not None and (
+            not isinstance(metric_shift, (int, float))
+            or isinstance(metric_shift, bool)
+            or metric_shift <= 0
+        ):
+            raise ValueError("metric_shift must be positive or None")
         if not isinstance(subscribe, bool):
             raise TypeError("subscribe must be a bool")
         if (
@@ -354,9 +357,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             raise ValueError("metric_chunk_elements must be a positive integer")
         if not isinstance(compile_metric, bool):
             raise TypeError("compile_metric must be a bool")
-        if coherence is not None and not isinstance(
-            coherence, SampledKernelCoherence
-        ):
+        if coherence is not None and not isinstance(coherence, SampledKernelCoherence):
             raise TypeError("coherence must be a SampledKernelCoherence or None")
         if decoupled_coherence is not None and not isinstance(
             decoupled_coherence, SampledKernelCoherence
@@ -365,9 +366,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 "decoupled_coherence must be a SampledKernelCoherence or None"
             )
         if coherence is not None and decoupled_coherence is not None:
-            raise ValueError(
-                "coherence and decoupled_coherence are mutually exclusive"
-            )
+            raise ValueError("coherence and decoupled_coherence are mutually exclusive")
         if (decoupled_coherence is None) != (coherence_lr is None):
             raise ValueError(
                 "coherence_lr is required exactly with decoupled_coherence"
@@ -390,19 +389,16 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         self.target_map_step = (
             None if target_map_step is None else float(target_map_step)
         )
-        self.max_step_sigma = (
-            None if max_step_sigma is None else float(max_step_sigma)
-        )
+        self.max_step_sigma = None if max_step_sigma is None else float(max_step_sigma)
         self.betas = (float(betas[0]), float(betas[1]))
         self.eps = float(eps)
         self.damping = float(damping)
+        self.metric_shift = None if metric_shift is None else float(metric_shift)
         self.metric_chunk_elements = int(metric_chunk_elements)
         self.compile_metric = compile_metric
         self.coherence = coherence
         self.decoupled_coherence = decoupled_coherence
-        self.coherence_lr = (
-            None if coherence_lr is None else float(coherence_lr)
-        )
+        self.coherence_lr = None if coherence_lr is None else float(coherence_lr)
         self.coherence_seed = coherence_seed
         # Keep the diagnostic on-device.  Converting it to a Python float in
         # every step would introduce a CUDA synchronization in large LM runs;
@@ -447,7 +443,10 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             offset = 0
             for field_name in ("w", "s", "t", *store.atom_column_names):
                 parameter = getattr(store, field_name)
-                if not isinstance(parameter, nn.Parameter) or not parameter.requires_grad:
+                if (
+                    not isinstance(parameter, nn.Parameter)
+                    or not parameter.requires_grad
+                ):
                     continue
                 width = 1 if parameter.ndim == 1 else parameter.shape[1]
                 fields.append(
@@ -472,7 +471,9 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                     store.capacity, 1, device=store.w.device, dtype=store.w.dtype
                 ),
             }
-            atom_site = _AtomSite(site_name, module, store, tuple(fields), offset, state)
+            atom_site = _AtomSite(
+                site_name, module, store, tuple(fields), offset, state
+            )
             atom_sites.append(atom_site)
             if subscribe:
                 atom_site.follower = _RowsFollower(state)
@@ -675,9 +676,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 stop = min(start + block_size, slots.numel())
                 block_source = source[start:stop]
                 block_target = target[start:stop]
-                weight_sq = (
-                    store.w.detach().index_select(0, slots[start:stop]).square()
-                )
+                weight_sq = store.w.detach().index_select(0, slots[start:stop]).square()
                 source_gram, source_sigma_sq = _fast_gaussian_l2_side_terms(
                     mu_in,
                     block_source,
@@ -690,16 +689,14 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                     module.factor_out.sigma.detach().to(block_target),
                     compiled=self.compile_metric,
                 )
-                gram = store.w.new_zeros(
-                    (stop - start, site.width, site.width)
-                )
+                gram = store.w.new_zeros((stop - start, site.width, site.width))
                 gram[:, 0, 0] = 1.0
-                gram[
-                    :, s_field.start : s_field.stop, s_field.start : s_field.stop
-                ] = weight_sq[:, None, None] * source_gram
-                gram[
-                    :, t_field.start : t_field.stop, t_field.start : t_field.stop
-                ] = weight_sq[:, None, None] * target_gram
+                gram[:, s_field.start : s_field.stop, s_field.start : s_field.stop] = (
+                    weight_sq[:, None, None] * source_gram
+                )
+                gram[:, t_field.start : t_field.stop, t_field.start : t_field.stop] = (
+                    weight_sq[:, None, None] * target_gram
+                )
                 blocks.append(gram)
                 source_sigma_total += (weight_sq * source_sigma_sq).sum()
                 target_sigma_total += (weight_sq * target_sigma_sq).sum()
@@ -709,22 +706,26 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                     (module.factor_out, target_sigma_total),
                 ):
                     parameter = factor.sigma
-                    if not isinstance(parameter, nn.Parameter) or parameter.grad is None:
+                    if (
+                        not isinstance(parameter, nn.Parameter)
+                        or parameter.grad is None
+                    ):
                         continue
                     previous, count = sigma_metrics.get(
                         id(parameter), (parameter.new_zeros(()), 0)
                     )
                     sigma_metrics[id(parameter)] = (previous + contribution, count + 1)
-            return torch.cat(blocks) if blocks else store.w.new_zeros(
-                (0, site.width, site.width)
+            return (
+                torch.cat(blocks)
+                if blocks
+                else store.w.new_zeros((0, site.width, site.width))
             )
 
         if (
             isinstance(module.gauge, L2NormalizedColumns)
             and type(module.factor_in) is MaturityGaussianFactor
             and type(module.factor_out) is MaturityGaussianFactor
-            and [field.name for field in site.fields]
-            == ["w", "s", "t", "maturity"]
+            and [field.name for field in site.fields] == ["w", "s", "t", "maturity"]
         ):
             width = max(
                 mu_in.shape[0] * source.shape[1],
@@ -746,9 +747,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 block_source = source[start:stop]
                 block_target = target[start:stop]
                 block_maturity = maturity[start:stop]
-                weight_sq = (
-                    store.w.detach().index_select(0, slots[start:stop]).square()
-                )
+                weight_sq = store.w.detach().index_select(0, slots[start:stop]).square()
                 source_terms = _fast_maturity_gaussian_l2_side_terms(
                     mu_in,
                     block_source,
@@ -767,22 +766,16 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                     module.factor_out.max_scale,
                     compiled=self.compile_metric,
                 )
-                source_gram, source_sigma_sq, source_m_sq, source_cross = (
-                    source_terms
-                )
-                target_gram, target_sigma_sq, target_m_sq, target_cross = (
-                    target_terms
-                )
-                gram = store.w.new_zeros(
-                    (stop - start, site.width, site.width)
-                )
+                source_gram, source_sigma_sq, source_m_sq, source_cross = source_terms
+                target_gram, target_sigma_sq, target_m_sq, target_cross = target_terms
+                gram = store.w.new_zeros((stop - start, site.width, site.width))
                 gram[:, 0, 0] = 1.0
-                gram[
-                    :, s_field.start : s_field.stop, s_field.start : s_field.stop
-                ] = weight_sq[:, None, None] * source_gram
-                gram[
-                    :, t_field.start : t_field.stop, t_field.start : t_field.stop
-                ] = weight_sq[:, None, None] * target_gram
+                gram[:, s_field.start : s_field.stop, s_field.start : s_field.stop] = (
+                    weight_sq[:, None, None] * source_gram
+                )
+                gram[:, t_field.start : t_field.stop, t_field.start : t_field.stop] = (
+                    weight_sq[:, None, None] * target_gram
+                )
                 m_index = maturity_field.start
                 source_coupling = weight_sq[:, None] * source_cross
                 target_coupling = weight_sq[:, None] * target_cross
@@ -790,9 +783,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 gram[:, m_index, s_field.start : s_field.stop] = source_coupling
                 gram[:, t_field.start : t_field.stop, m_index] = target_coupling
                 gram[:, m_index, t_field.start : t_field.stop] = target_coupling
-                gram[:, m_index, m_index] = weight_sq * (
-                    source_m_sq + target_m_sq
-                )
+                gram[:, m_index, m_index] = weight_sq * (source_m_sq + target_m_sq)
                 blocks.append(gram)
                 source_sigma_total += (weight_sq * source_sigma_sq).sum()
                 target_sigma_total += (weight_sq * target_sigma_sq).sum()
@@ -802,7 +793,10 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                     (module.factor_out, target_sigma_total),
                 ):
                     parameter = factor.sigma
-                    if not isinstance(parameter, nn.Parameter) or parameter.grad is None:
+                    if (
+                        not isinstance(parameter, nn.Parameter)
+                        or parameter.grad is None
+                    ):
                         continue
                     previous, count = sigma_metrics.get(
                         id(parameter), (parameter.new_zeros(()), 0)
@@ -811,8 +805,10 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                         previous + contribution,
                         count + 1,
                     )
-            return torch.cat(blocks) if blocks else store.w.new_zeros(
-                (0, site.width, site.width)
+            return (
+                torch.cat(blocks)
+                if blocks
+                else store.w.new_zeros((0, site.width, site.width))
             )
 
         def side(factor, mu: Tensor, centers: Tensor):
@@ -822,9 +818,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 value, slope = metric_mod.columns(factor, mu, centers)
             derivatives = []
             for axis in range(centers.shape[1]):
-                derivative = slope * (
-                    centers[:, axis][None, :] - mu[:, axis][:, None]
-                )
+                derivative = slope * (centers[:, axis][None, :] - mu[:, axis][:, None])
                 if isinstance(module.gauge, L2NormalizedColumns):
                     radial = (value * derivative).sum(0, keepdim=True)
                     derivative = derivative - value * radial
@@ -857,8 +851,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         gram[:, 1:, 0] = coupling
         gram[:, 1:, 1:] = weight.square()[:, None, None] * (
             b_sq[:, None, None] * torch.einsum("nkp,nkq->kpq", jac_in, jac_in)
-            + a_sq[:, None, None]
-            * torch.einsum("nkp,nkq->kpq", jac_out, jac_out)
+            + a_sq[:, None, None] * torch.einsum("nkp,nkq->kpq", jac_out, jac_out)
             + a_radial[:, :, None] * b_radial[:, None, :]
             + b_radial[:, :, None] * a_radial[:, None, :]
         )
@@ -887,9 +880,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 cursor += field.width
             q = torch.cat(q_parts).requires_grad_(True)
 
-            def side_column(
-                values: Tensor, side: str, local_slices=slices
-            ) -> Tensor:
+            def side_column(values: Tensor, side: str, local_slices=slices) -> Tensor:
                 center_name = "s" if side == "in" else "t"
                 center = values[local_slices[center_name]].reshape(1, -1)
                 extras = {
@@ -910,9 +901,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 jac_b = torch.autograd.functional.jacobian(
                     lambda values: side_column(values, "out"), q, vectorize=True
                 )
-            a, b, jac_a, jac_b = (
-                value.detach() for value in (a, b, jac_a, jac_b)
-            )
+            a, b, jac_a, jac_b = (value.detach() for value in (a, b, jac_a, jac_b))
             weight = store.w.detach()[slot]
             a_sq, b_sq = a.square().sum(), b.square().sum()
             a_radial = jac_a.transpose(0, 1) @ a
@@ -939,17 +928,22 @@ class CSTPullbackAdam(torch.optim.Optimizer):
     def _whitener(self, gram: Tensor):
         diagonal = gram.diagonal(dim1=-2, dim2=-1)
         positive = diagonal[diagonal > 0]
-        reference = (
-            positive.median() if positive.numel() else diagonal.new_tensor(1.0)
-        )
+        reference = positive.median() if positive.numel() else diagonal.new_tensor(1.0)
         floor = self.damping * reference
         if self.metric == "diag":
-            scale = (
-                diagonal + floor
-            ).clamp_min(torch.finfo(gram.dtype).tiny).sqrt()
+            effective = diagonal + floor
+            if self.metric_shift is None:
+                scale = effective.clamp_min(torch.finfo(gram.dtype).tiny).sqrt()
+            else:
+                scale = (1.0 + effective / self.metric_shift).sqrt()
             return lambda value: value / scale
         eye = torch.eye(gram.shape[-1], device=gram.device, dtype=gram.dtype)
-        inverse = _inverse_sqrt(gram + floor * eye)
+        if self.metric_shift is None:
+            inverse = _inverse_sqrt(gram + floor * eye)
+        else:
+            inverse = self.metric_shift**0.5 * _inverse_sqrt(
+                gram + (floor + self.metric_shift) * eye
+            )
         return lambda value: torch.einsum("kij,kj->ki", inverse, value)
 
     def _atom_whitener(self, site: _AtomSite, gram: Tensor):
@@ -966,25 +960,25 @@ class CSTPullbackAdam(torch.optim.Optimizer):
 
         diagonal = gram.diagonal(dim1=-2, dim2=-1)
         positive = diagonal[diagonal > 0]
-        reference = (
-            positive.median() if positive.numel() else diagonal.new_tensor(1.0)
-        )
+        reference = positive.median() if positive.numel() else diagonal.new_tensor(1.0)
         floor = self.damping * reference
         s_field, t_field = self._field(site, "s"), self._field(site, "t")
         assert s_field is not None and t_field is not None
 
         def inverse(field: _RowField) -> Tensor:
-            block = gram[
-                :, field.start : field.stop, field.start : field.stop
-            ]
-            eye = torch.eye(
-                field.width, device=gram.device, dtype=gram.dtype
+            block = gram[:, field.start : field.stop, field.start : field.stop]
+            eye = torch.eye(field.width, device=gram.device, dtype=gram.dtype)
+            if self.metric_shift is None:
+                return _inverse_sqrt(block + floor * eye)
+            return self.metric_shift**0.5 * _inverse_sqrt(
+                block + (floor + self.metric_shift) * eye
             )
-            return _inverse_sqrt(block + floor * eye)
 
-        amplitude = (gram[:, 0, 0] + floor).clamp_min(
-            torch.finfo(gram.dtype).tiny
-        ).sqrt()
+        amplitude_metric = gram[:, 0, 0] + floor
+        if self.metric_shift is None:
+            amplitude = amplitude_metric.clamp_min(torch.finfo(gram.dtype).tiny).sqrt()
+        else:
+            amplitude = (1.0 + amplitude_metric / self.metric_shift).sqrt()
         inverse_s = inverse(s_field)
         inverse_t = inverse(t_field)
 
@@ -1028,9 +1022,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         assert force is not None
         module, store = site.module, site.store
         seed = (
-            self.coherence_seed
-            + 1_000_003 * site.state["step"]
-            + 97_409 * site_index
+            self.coherence_seed + 1_000_003 * site.state["step"] + 97_409 * site_index
         ) % (2**63 - 1)
         generator = torch.Generator(device=store.s.device).manual_seed(seed)
 
@@ -1038,9 +1030,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             source: Tensor, target: Tensor, selected_slots: Tensor
         ) -> tuple[Tensor, Tensor]:
             extras = {
-                name: getattr(store, name)
-                .detach()
-                .index_select(0, selected_slots)
+                name: getattr(store, name).detach().index_select(0, selected_slots)
                 for name in store.atom_column_names
             }
             return module._factor_matrices(source, target, extras)
@@ -1078,27 +1068,28 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 synapses = module.synapses
                 slots = synapses.live_slots().to(mu.device)
                 centers = (
-                    synapses.s if side == "in" else synapses.t
-                ).detach().index_select(0, slots).to(mu)
-                extras = {
-                    name: getattr(synapses, name)
+                    (synapses.s if side == "in" else synapses.t)
                     .detach()
                     .index_select(0, slots)
                     .to(mu)
+                )
+                extras = {
+                    name: getattr(synapses, name).detach().index_select(0, slots).to(mu)
                     for name in synapses.atom_column_names
                 }
-                weights_sq = (
-                    synapses.w.detach().index_select(0, slots).to(mu).square()
-                )
-                other_factor = (
-                    module.factor_out if side == "in" else module.factor_in
-                )
+                weights_sq = synapses.w.detach().index_select(0, slots).to(mu).square()
+                other_factor = module.factor_out if side == "in" else module.factor_in
                 other_mu = (
-                    module.out_neurons.mu if side == "in" else module.in_neurons.mu
-                ).detach().to(mu)
+                    (module.out_neurons.mu if side == "in" else module.in_neurons.mu)
+                    .detach()
+                    .to(mu)
+                )
                 other_centers = (
-                    synapses.t if side == "in" else synapses.s
-                ).detach().index_select(0, slots).to(mu)
+                    (synapses.t if side == "in" else synapses.s)
+                    .detach()
+                    .index_select(0, slots)
+                    .to(mu)
+                )
                 other = module.gauge.columns(
                     other_factor, other_mu, other_centers, extras
                 )
@@ -1110,7 +1101,12 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                         )
                     except NotImplementedError:
                         self._generic_normalized_chart_metric(
-                            blocks, module, factor, mu, centers, extras,
+                            blocks,
+                            module,
+                            factor,
+                            mu,
+                            centers,
+                            extras,
                             weights_sq * other_sq,
                         )
                         continue
@@ -1221,10 +1217,11 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             query = mu.detach().requires_grad_(True)
             with torch.enable_grad():
                 jacobian = torch.autograd.functional.jacobian(
-                    lambda value, atom_center=center,
-                    local_extras=atom_extras: module.gauge.columns(
-                        factor, value, atom_center, local_extras
-                    )[:, 0],
+                    lambda value, atom_center=center, local_extras=atom_extras: (
+                        module.gauge.columns(factor, value, atom_center, local_extras)[
+                            :, 0
+                        ]
+                    ),
                     query,
                     vectorize=True,
                 )
@@ -1264,10 +1261,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                             block.parameter.detach().to(source),
                             compiled=self.compile_metric,
                         )
-                        total += (
-                            weights_sq[start:stop]
-                            * sigma_sq
-                        ).sum()
+                        total += (weights_sq[start:stop] * sigma_sq).sum()
                     if "out" in sides:
                         _, sigma_sq = _fast_gaussian_l2_side_terms(
                             mu_out,
@@ -1275,10 +1269,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                             block.parameter.detach().to(target),
                             compiled=self.compile_metric,
                         )
-                        total += (
-                            weights_sq[start:stop]
-                            * sigma_sq
-                        ).sum()
+                        total += (weights_sq[start:stop] * sigma_sq).sum()
             return total.clamp_min(0)
 
         total = block.parameter.new_zeros(())
@@ -1337,9 +1328,8 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 # (quadratic in neurons x atoms on CUDA).
                 da = (
                     torch.func.jacfwd(
-                        lambda value, factor=module.factor_in,
-                        query=mu_in, centers=source: delivered(
-                            factor, query, centers, value
+                        lambda value, factor=module.factor_in, query=mu_in, centers=source: (
+                            delivered(factor, query, centers, value)
                         )
                     )(sigma)
                     if "in" in sides
@@ -1347,9 +1337,8 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 )
                 db = (
                     torch.func.jacfwd(
-                        lambda value, factor=module.factor_out,
-                        query=mu_out, centers=target: delivered(
-                            factor, query, centers, value
+                        lambda value, factor=module.factor_out, query=mu_out, centers=target: (
+                            delivered(factor, query, centers, value)
                         )
                     )(sigma)
                     if "out" in sides
@@ -1435,9 +1424,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 map_norms.append(self._quadratic_norm(raw, gram))
 
         self._last_coherence = (
-            torch.stack(coherence_values).mean().detach()
-            if coherence_values
-            else None
+            torch.stack(coherence_values).mean().detach() if coherence_values else None
         )
 
         for chart in self._charts:
@@ -1463,7 +1450,12 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 else self._sigma_metric(sigma)
             )
             reference = gram.detach().clamp_min(torch.finfo(gram.dtype).tiny)
-            gearing = (gram + self.damping * reference).sqrt()
+            effective = gram + self.damping * reference
+            gearing = (
+                effective.sqrt()
+                if self.metric_shift is None
+                else (1.0 + effective / self.metric_shift).sqrt()
+            )
             direction = _adam(
                 sigma.state, parameter.grad / gearing, self.betas, self.eps
             )
@@ -1595,5 +1587,5 @@ class CSTPullbackAdam(torch.optim.Optimizer):
         return (
             f"CSTPullbackAdam(sites={len(self._atom_sites)}, "
             f"charts={len(self._charts)}, sigmas={len(self._sigmas)}, "
-            f"metric={self.metric!r}, {mode})"
+            f"metric={self.metric!r}, metric_shift={self.metric_shift!r}, {mode})"
         )

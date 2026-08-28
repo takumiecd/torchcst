@@ -32,8 +32,14 @@ def _birth(store, source, target, weights, *, start=0, extras=None):
 
 
 def _site(
-    *, atoms=4, capacity=None, name="pullback", normalized=True,
-    learnable_mu=False, learnable_sigma=True, family="gaussian",
+    *,
+    atoms=4,
+    capacity=None,
+    name="pullback",
+    normalized=True,
+    learnable_mu=False,
+    learnable_sigma=True,
+    family="gaussian",
 ):
     capacity = atoms if capacity is None else capacity
     spec = RepresentationSpec.continuous(1, 1, factor=family)
@@ -42,22 +48,32 @@ def _site(
     extras = None
     if family == "maturity_gaussian":
         extras = {"maturity": torch.full((atoms, 1), -1.5, dtype=torch.float64)}
-    store.apply([_birth(
-        store,
-        torch.rand(atoms, 1, generator=generator, dtype=torch.float64),
-        torch.rand(atoms, 1, generator=generator, dtype=torch.float64),
-        0.4 + torch.rand(atoms, generator=generator, dtype=torch.float64),
-        extras=extras,
-    )])
+    store.apply(
+        [
+            _birth(
+                store,
+                torch.rand(atoms, 1, generator=generator, dtype=torch.float64),
+                torch.rand(atoms, 1, generator=generator, dtype=torch.float64),
+                0.4 + torch.rand(atoms, generator=generator, dtype=torch.float64),
+                extras=extras,
+            )
+        ]
+    )
     mu_in = torch.linspace(-0.4, 1.4, 7, dtype=torch.float64).reshape(-1, 1)
     mu_out = torch.linspace(-0.3, 1.3, 6, dtype=torch.float64).reshape(-1, 1)
     inputs = NeuronStore(
-        f"{name}-in", 7,
+        f"{name}-in",
+        7,
         mu=nn.Parameter(mu_in) if learnable_mu else mu_in,
-        initial_live=7, dtype=torch.float64,
+        initial_live=7,
+        dtype=torch.float64,
     )
     outputs = NeuronStore(
-        f"{name}-out", 6, mu=mu_out, initial_live=6, dtype=torch.float64,
+        f"{name}-out",
+        6,
+        mu=mu_out,
+        initial_live=6,
+        dtype=torch.float64,
     )
     factor = (
         GaussianFactor(0.35, learnable=learnable_sigma)
@@ -65,7 +81,10 @@ def _site(
         else MaturityGaussianFactor(0.35, learnable=learnable_sigma)
     ).double()
     module = CSTLinear(
-        inputs, outputs, store, factor,
+        inputs,
+        outputs,
+        store,
+        factor,
         gauge=L2NormalizedColumns() if normalized else None,
     )
     return module, store
@@ -73,7 +92,9 @@ def _site(
 
 def _backward(module):
     x = torch.randn(
-        3, module.in_features, dtype=torch.float64,
+        3,
+        module.in_features,
+        dtype=torch.float64,
         generator=torch.Generator().manual_seed(29),
     )
     module(x).square().sum().backward()
@@ -86,13 +107,18 @@ def test_owns_every_cst_parameter_and_returns_the_dense_complement():
     optimizer = CSTPullbackAdam(model)
     owned = {id(parameter) for parameter in optimizer.owned_parameters()}
     for parameter in (
-        store.w, store.s, store.t, site.in_neurons.mu, site.factor_in.sigma,
+        store.w,
+        store.s,
+        store.t,
+        site.in_neurons.mu,
+        site.factor_in.sigma,
     ):
         assert id(parameter) in owned
     remainder = {id(parameter) for parameter in optimizer.non_cst_parameters()}
     assert id(dense.weight) in remainder and id(dense.bias) in remainder
     assert remainder == {
-        id(parameter) for parameter in model.parameters()
+        id(parameter)
+        for parameter in model.parameters()
         if parameter.requires_grad and id(parameter) not in owned
     }
     ordinary = torch.optim.AdamW(optimizer.non_cst_parameters(), lr=1e-3)
@@ -112,21 +138,65 @@ def test_normalized_gauge_uses_exact_amplitude_orthogonality():
     torch.testing.assert_close(gram[:, 0, 0], torch.ones_like(gram[:, 0, 0]))
 
 
-def test_normalized_gaussian_split_whitener_matches_full_block():
+@pytest.mark.parametrize("metric_shift", [None, 1.0])
+def test_normalized_gaussian_split_whitener_matches_full_block(metric_shift):
     module, _store = _site(normalized=True, learnable_sigma=False)
     optimizer = CSTPullbackAdam(
-        nn.Sequential(module), metric="block", subscribe=False
+        nn.Sequential(module),
+        metric="block",
+        metric_shift=metric_shift,
+        subscribe=False,
     )
     site = optimizer._atom_sites[0]
     slots = site.store.live_slots().to(site.store.w.device)
     gram = optimizer._atom_gram(site, slots)
     value = torch.randn(
-        slots.numel(), site.width, dtype=gram.dtype,
+        slots.numel(),
+        site.width,
+        dtype=gram.dtype,
         generator=torch.Generator().manual_seed(41),
     )
     expected = optimizer._whitener(gram)(value)
     actual = optimizer._atom_whitener(site, gram)(value)
     torch.testing.assert_close(actual, expected, rtol=1e-8, atol=1e-10)
+
+
+@pytest.mark.parametrize("metric", ["diag", "block"])
+def test_shifted_metric_whitener_is_exact_and_bounded(metric):
+    module, _store = _site(normalized=True, learnable_sigma=False)
+    optimizer = CSTPullbackAdam(
+        nn.Sequential(module),
+        metric=metric,
+        damping=0.0,
+        metric_shift=2.0,
+        subscribe=False,
+    )
+    gram = torch.tensor([[[1e-8, 0.0], [0.0, 8.0]]], dtype=torch.float64)
+    identity = torch.eye(2, dtype=torch.float64)
+    whiten = optimizer._whitener(gram)
+    actual = torch.stack(
+        [whiten(identity[index : index + 1])[0] for index in range(2)], dim=1
+    )
+    expected = torch.diag(
+        torch.tensor(
+            [
+                (1.0 + 1e-8 / 2.0) ** -0.5,
+                (1.0 + 8.0 / 2.0) ** -0.5,
+            ],
+            dtype=torch.float64,
+        )
+    )
+    torch.testing.assert_close(actual, expected)
+    assert float(torch.linalg.matrix_norm(actual, ord=2)) <= 1.0
+
+
+@pytest.mark.parametrize("metric_shift", [0.0, -1.0, True])
+def test_metric_shift_must_be_positive_or_none(metric_shift):
+    module, _store = _site(learnable_sigma=False)
+    with pytest.raises(ValueError, match="metric_shift"):
+        CSTPullbackAdam(
+            nn.Sequential(module), metric_shift=metric_shift, subscribe=False
+        )
 
 
 def test_raw_gauge_keeps_amplitude_coordinate_correlation():
@@ -142,7 +212,9 @@ def test_raw_gauge_keeps_amplitude_coordinate_correlation():
 @pytest.mark.parametrize("normalized", [False, True])
 def test_same_atom_gram_matches_a_dense_autograd_oracle(normalized):
     module, store = _site(
-        atoms=1, normalized=normalized, learnable_sigma=False,
+        atoms=1,
+        normalized=normalized,
+        learnable_sigma=False,
     )
     optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
     site = optimizer._atom_sites[0]
@@ -153,10 +225,14 @@ def test_same_atom_gram_matches_a_dense_autograd_oracle(normalized):
         source = values[1].reshape(1, 1)
         target = values[2].reshape(1, 1)
         incoming = module.gauge.columns(
-            module.factor_in, module.in_neurons.mu, source,
+            module.factor_in,
+            module.in_neurons.mu,
+            source,
         )[:, 0]
         outgoing = module.gauge.columns(
-            module.factor_out, module.out_neurons.mu, target,
+            module.factor_out,
+            module.out_neurons.mu,
+            target,
         )[:, 0]
         return values[0] * outgoing[:, None] * incoming[None, :]
 
@@ -201,7 +277,10 @@ def test_normalized_maturity_gram_matches_a_dense_autograd_oracle():
 def test_direct_lr_steps_all_core_blocks(metric, normalized):
     module, store = _site(normalized=normalized, learnable_mu=True)
     optimizer = CSTPullbackAdam(
-        nn.Sequential(module), metric=metric, lr=2e-3, max_step_sigma=None,
+        nn.Sequential(module),
+        metric=metric,
+        lr=2e-3,
+        max_step_sigma=None,
     )
     before = {
         "w": store.w.detach().clone(),
@@ -214,8 +293,11 @@ def test_direct_lr_steps_all_core_blocks(metric, normalized):
     _backward(module)
     optimizer.step()
     current = {
-        "w": store.w, "s": store.s, "t": store.t,
-        "mu": module.in_neurons.mu, "sigma": module.factor_in.sigma,
+        "w": store.w,
+        "s": store.s,
+        "t": store.t,
+        "mu": module.in_neurons.mu,
+        "sigma": module.factor_in.sigma,
     }
     for name, value in before.items():
         assert not torch.equal(current[name].detach(), value), name
@@ -228,7 +310,9 @@ def test_lr_and_target_map_step_are_exclusive():
     with pytest.raises(ValueError, match="exactly one"):
         CSTPullbackAdam(nn.Sequential(module), lr=None, target_map_step=None)
     optimizer = CSTPullbackAdam(
-        nn.Sequential(module), lr=None, target_map_step=0.01,
+        nn.Sequential(module),
+        lr=None,
+        target_map_step=0.01,
         max_step_sigma=None,
     )
     optimizer.zero_grad()
@@ -251,9 +335,7 @@ def test_kernel_coherence_is_opt_in_and_reduces_exact_alignment() -> None:
 
     def exact_value():
         slots = store.live_slots().to(store.s.device)
-        _, _, value = optimizer._coherence_gradient(
-            optimizer._atom_sites[0], slots, 0
-        )
+        _, _, value = optimizer._coherence_gradient(optimizer._atom_sites[0], slots, 0)
         return float(value)
 
     before = exact_value()
@@ -268,9 +350,7 @@ def test_kernel_coherence_is_opt_in_and_reduces_exact_alignment() -> None:
     assert optimizer.last_coherence is not None
     assert after < 0.8 * before
 
-    plain_module, _ = _site(
-        atoms=5, name="plain-no-coherence", learnable_sigma=False
-    )
+    plain_module, _ = _site(atoms=5, name="plain-no-coherence", learnable_sigma=False)
     plain = CSTPullbackAdam(nn.Sequential(plain_module), subscribe=False)
     assert plain.coherence is None and plain.last_coherence is None
 
@@ -343,9 +423,7 @@ def test_sigma_metric_uses_scalar_forward_mode(monkeypatch):
         del args, kwargs
         raise AssertionError("scalar sigma must not build a reverse-mode Jacobian")
 
-    monkeypatch.setattr(
-        torch.autograd.functional, "jacobian", reject_reverse_jacobian
-    )
+    monkeypatch.setattr(torch.autograd.functional, "jacobian", reject_reverse_jacobian)
     metric = optimizer._sigma_metric(optimizer._sigmas[0])
     assert metric.ndim == 0
     assert bool(torch.isfinite(metric))
@@ -365,9 +443,7 @@ def test_normalized_gaussian_sigma_metric_matches_same_atom_oracle():
         target = store.t.detach()[slot : slot + 1]
         weight = store.w.detach()[slot]
 
-        def atom(
-            value, local_source=source, local_target=target, local_weight=weight
-        ):
+        def atom(value, local_source=source, local_target=target, local_weight=weight):
             def unit(query, center):
                 distance = torch.cdist(query, center).square()
                 raw = torch.exp(-distance / (2.0 * value.square()))
@@ -385,7 +461,9 @@ def test_normalized_gaussian_sigma_metric_matches_same_atom_oracle():
 
 def test_factor_declared_columns_join_the_same_atom_block():
     module, store = _site(
-        family="maturity_gaussian", learnable_sigma=False, normalized=True,
+        family="maturity_gaussian",
+        learnable_sigma=False,
+        normalized=True,
     )
     optimizer = CSTPullbackAdam(nn.Sequential(module))
     site = optimizer._atom_sites[0]

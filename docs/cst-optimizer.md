@@ -87,6 +87,46 @@ root. It is relative to the local diagonal scale and prevents nearly invisible
 directions from producing unbounded coordinate steps. `eps` remains the
 separate Adam moment-denominator safeguard.
 
+### Bounded shifted pullback metric
+
+The legacy preconditioner is
+
+```text
+P(G) = G_eff**(-1/2),
+G_eff = G + damping * reference * I.
+```
+
+It can strongly amplify a nearly invisible tangent before that value enters
+Adam's moment estimates. A final `max_step_sigma` clip limits the emitted
+parameter delta, but cannot undo non-finite or disproportionately large values
+that have already entered those moments.
+
+Set a positive `metric_shift=mu` to opt into the bounded alternative
+
+```text
+P_mu(G) = (I + G_eff / mu)**(-1/2).
+```
+
+For a positive-semidefinite metric its operator norm is at most one. Small
+metric eigenvalues therefore retain mobility without the `1 / sqrt(lambda)`
+singularity, while large eigenvalues are still attenuated approximately as
+`sqrt(mu / lambda)`. The same map is used before Adam's moments and after its
+normalized direction:
+
+```python
+CSTPullbackAdam(
+    model,
+    metric="block",
+    metric_shift=1.0,
+    lr=1e-3,
+)
+```
+
+`None` is the default and exactly preserves the legacy preconditioner. The
+shift applies consistently to atom, chart, and learnable-bandwidth pullback
+blocks. It is an experimental metric choice, not a replacement for
+`max_step_sigma`; the latter remains an independent final trust-region cap.
+
 ## CUDA metric compilation
 
 `compile_metric=True` enables the pure-tensor Gaussian +
