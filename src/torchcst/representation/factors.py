@@ -451,6 +451,23 @@ class MaturityGaussianFactor(ContinuousFactor):
             "MaturityGaussianFactor needs each atom's maturity column"
         )
 
+    def inverse_width_scale_sq(self, maturity: Tensor) -> Tensor:
+        """Squared inverse-width multiplier represented by ``maturity``.
+
+        This small public reading keeps deterministic bandwidth controllers
+        and trust-region diagnostics on exactly the same parameterisation as
+        the factor's forward path.  The returned shape matches ``maturity``.
+        """
+        fraction = torch.sigmoid(maturity)
+        return self.min_scale**2 + (
+            self.max_scale**2 - self.min_scale**2
+        ) * fraction
+
+    def effective_sigma(self, maturity: Tensor) -> Tensor:
+        """Per-atom physical bandwidth induced by ``maturity``."""
+        sigma = self.sigma.to(device=maturity.device, dtype=maturity.dtype)
+        return sigma / self.inverse_width_scale_sq(maturity).sqrt()
+
     def _components(
         self,
         query: Tensor,
@@ -463,10 +480,7 @@ class MaturityGaussianFactor(ContinuousFactor):
             )
         sigma, centers = self._prepare(query, centers, columns)
         maturity = columns["maturity"].to(centers).reshape(1, -1)
-        fraction = torch.sigmoid(maturity)
-        scale_sq = self.min_scale**2 + (
-            self.max_scale**2 - self.min_scale**2
-        ) * fraction
+        scale_sq = self.inverse_width_scale_sq(maturity)
         squared_distance = squared_distance_matrix(query, centers)
         return squared_distance, sigma, scale_sq
 

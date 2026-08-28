@@ -7,6 +7,7 @@ remain lower-level research mechanisms. ``metric`` is the pure tensor world;
 ``follower`` keeps slot-indexed state aligned with mutable stores.
 """
 
+from .bandwidth import InverseAmplitudeBandwidth
 from .chart import ChartPullbackAdam, ChartRepulsion
 from .coordinator import (
     CSTOptimizer,
@@ -27,6 +28,7 @@ __all__ = [
     "ChartPullbackAdam",
     "ChartRepulsion",
     "CoordPreconditioner",
+    "InverseAmplitudeBandwidth",
     "OptimizerStateFollower",
     "PairRepulsion",
     "PullbackAdam",

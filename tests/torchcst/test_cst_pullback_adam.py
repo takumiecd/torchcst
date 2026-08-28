@@ -138,6 +138,21 @@ def test_normalized_gauge_uses_exact_amplitude_orthogonality():
     torch.testing.assert_close(gram[:, 0, 0], torch.ones_like(gram[:, 0, 0]))
 
 
+def test_coordinate_cap_reads_per_atom_maturity_bandwidth():
+    module, store = _site(family="maturity_gaussian", learnable_sigma=False)
+    optimizer = CSTPullbackAdam(nn.Sequential(module), subscribe=False)
+    site = optimizer._atom_sites[0]
+    slots = store.live_slots()
+    store.maturity.data[slots] = torch.tensor(
+        [[-4.0], [-1.0], [1.0], [4.0]], dtype=torch.float64
+    )
+
+    expected = module.factor_in.effective_sigma(store.maturity[slots].reshape(-1))
+    torch.testing.assert_close(
+        optimizer._atom_effective_sigma(site, slots), expected
+    )
+
+
 @pytest.mark.parametrize("metric_shift", [None, 1.0])
 def test_normalized_gaussian_split_whitener_matches_full_block(metric_shift):
     module, _store = _site(normalized=True, learnable_sigma=False)

@@ -1050,6 +1050,26 @@ class CSTPullbackAdam(torch.optim.Optimizer):
             return None
         return float(self._last_coherence)
 
+    @staticmethod
+    def _atom_effective_sigma(site: _AtomSite, slots: Tensor) -> Tensor:
+        """Smallest physical bandwidth across an atom's two factor sides."""
+
+        values = []
+        maturity = getattr(site.store, "maturity", None)
+        for factor in (site.module.factor_in, site.module.factor_out):
+            if isinstance(factor, MaturityGaussianFactor):
+                if maturity is None:
+                    raise TypeError(
+                        f"{site.store.site!r}: maturity factor has no atom column"
+                    )
+                selected = maturity.detach().index_select(0, slots).reshape(-1)
+                values.append(factor.effective_sigma(selected))
+            else:
+                values.append(
+                    factor.sigma.detach().to(site.store.w).expand(slots.numel())
+                )
+        return torch.minimum(values[0], values[1])
+
     # -- shared metrics --------------------------------------------------
 
     def _chart_metric(self, chart: _Chart) -> Tensor:
@@ -1486,10 +1506,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                         coordinate_parts.append(delta[:, field.start : field.stop])
                 if coordinate_parts:
                     norm = torch.cat(coordinate_parts, dim=1).norm(dim=1)
-                    sigma = torch.minimum(
-                        site.module.factor_in.sigma.detach().to(norm),
-                        site.module.factor_out.sigma.detach().to(norm),
-                    )
+                    sigma = self._atom_effective_sigma(site, slots).to(norm)
                     cap = self.max_step_sigma * sigma
                     row_scale = (cap / norm.clamp_min(1e-30)).clamp(max=1.0)
                     delta = delta * row_scale[:, None]
@@ -1519,10 +1536,7 @@ class CSTPullbackAdam(torch.optim.Optimizer):
                 delta_t = -self.coherence_lr * grad_t.index_select(0, slots)
                 if self.max_step_sigma is not None:
                     norm = torch.cat((delta_s, delta_t), dim=1).norm(dim=1)
-                    sigma = torch.minimum(
-                        site.module.factor_in.sigma.detach().to(norm),
-                        site.module.factor_out.sigma.detach().to(norm),
-                    )
+                    sigma = self._atom_effective_sigma(site, slots).to(norm)
                     cap = self.max_step_sigma * sigma
                     row_scale = (cap / norm.clamp_min(1e-30)).clamp(max=1.0)
                     delta_s.mul_(row_scale[:, None])
