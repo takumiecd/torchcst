@@ -383,9 +383,10 @@ def test_compute_dtype_materialization_close_to_full_precision() -> None:
 
 def test_backend_validation() -> None:
     store, factor, module = _parts()
-    build = lambda **kw: CSTLinear(
-        module.in_neurons, module.out_neurons, store, factor, **kw
-    )
+
+    def build(**kw):
+        return CSTLinear(module.in_neurons, module.out_neurons, store, factor, **kw)
+
     with pytest.raises(TypeError, match="backend must be"):
         build(backend="sometimes")
     with pytest.raises(TypeError, match="compute_dtype"):
