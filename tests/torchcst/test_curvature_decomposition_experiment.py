@@ -1,0 +1,115 @@
+"""Checks for the isolated CST curvature experiment."""
+
+from __future__ import annotations
+
+import torch
+
+from experiments.cst_curvature.decomposition import (
+    TrialConfig,
+    charts,
+    gaussian_cst_weight,
+    initial_theta,
+    run_trial,
+)
+from torchcst.compute import CSTLinear, Materialized
+from torchcst.representation import GaussianFactor, RepresentationSpec
+from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
+
+
+def test_functional_weight_is_the_cst_linear_weight():
+    config = TrialConfig(atoms=2, amplitude=0.2)
+    theta = initial_theta(config)
+    mu_in, mu_out = charts(config)
+    factor = GaussianFactor(config.sigma, learnable=False).double()
+
+    synapses = SynapseStore(
+        "curvature",
+        1,
+        1,
+        config.atoms,
+        spec=RepresentationSpec.continuous(1, 1),
+        dtype=torch.float64,
+    )
+    synapses.apply(
+        [
+            SynapseBirth(
+                synapses.site,
+                theta[:, 1:2],
+                theta[:, 2:3],
+                theta[:, 0],
+                torch.arange(config.atoms, dtype=torch.int64),
+            )
+        ]
+    )
+    layer = CSTLinear(
+        NeuronStore(
+            "curvature-in",
+            config.n_in,
+            mu=mu_in,
+            initial_live=config.n_in,
+            dtype=torch.float64,
+        ),
+        NeuronStore(
+            "curvature-out",
+            config.n_out,
+            mu=mu_out,
+            initial_live=config.n_out,
+            dtype=torch.float64,
+        ),
+        synapses,
+        factor,
+        track_mass=False,
+        backend=Materialized(lean=False),
+    )
+
+    torch.testing.assert_close(
+        gaussian_cst_weight(theta, mu_in, mu_out, factor),
+        layer.dense_weight(),
+    )
+
+
+def test_mse_weight_space_remainder_closes_the_actual_change():
+    result = run_trial(TrialConfig(atoms=2, amplitude=1e-4, learning_rate=0.03))
+
+    torch.testing.assert_close(
+        torch.tensor(result.p_actual),
+        torch.tensor(result.p_weight_exact + result.loss_quadratic_exact),
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+
+def test_contracted_map_hessian_has_no_cross_atom_entries():
+    result = run_trial(TrialConfig(atoms=2, amplitude=0.4, learning_rate=0.02))
+
+    assert result.cross_atom_map_hessian_max < 1e-14
+
+
+def test_same_atom_field_blocks_close_the_cst_quadratic():
+    result = run_trial(TrialConfig(atoms=2, amplitude=0.2, learning_rate=0.02))
+
+    parts = (
+        result.cst_quadratic_amplitude_amplitude
+        + result.cst_quadratic_amplitude_position
+        + result.cst_quadratic_position_position
+    )
+    torch.testing.assert_close(
+        torch.tensor(result.cst_quadratic),
+        torch.tensor(parts),
+        rtol=1e-10,
+        atol=1e-12,
+    )
+
+
+def test_zero_amplitude_has_no_position_step_or_directional_map_curvature():
+    result = run_trial(TrialConfig(atoms=1, amplitude=0.0, learning_rate=0.02))
+
+    assert result.position_step_norm == 0.0
+    assert result.cst_quadratic_amplitude_position == 0.0
+    assert result.cst_quadratic_position_position == 0.0
+
+
+def test_small_step_full_second_order_beats_first_order():
+    result = run_trial(TrialConfig(atoms=2, amplitude=0.1, learning_rate=1e-4))
+
+    assert result.relative_error("p2_full") < result.relative_error("p1")
