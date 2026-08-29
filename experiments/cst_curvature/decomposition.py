@@ -14,8 +14,10 @@ change predictions have an unambiguous interpretation:
 ``p_actual``
     The actual finite loss change.
 
-The experiment never changes the optimizer implementation.  It studies one
-plain SGD direction at a time and keeps the research code outside ``src``.
+The experiment never changes the optimizer implementation.  It compares
+ordinary SGD, controlled dimensionless directions, random directions, and
+directions sampled from the current inverse/bounded pullback optimizers while
+keeping all research code outside ``src``.
 """
 
 from __future__ import annotations
@@ -23,22 +25,56 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, fields
 from itertools import product
-from typing import Iterable
+from typing import Iterable, Literal
 
 import torch
 from torch import Tensor
 from torch.nn import functional as F
 
-from torchcst.representation import GaussianFactor
+from torchcst import CSTPullbackAdam
+from torchcst.compute import CSTLinear, Materialized
+from torchcst.representation import GaussianFactor, RepresentationSpec
+from torchcst.storage import NeuronStore, SynapseBirth, SynapseStore
+
+Direction = Literal[
+    "sgd",
+    "sgd_unit",
+    "amplitude",
+    "position",
+    "mixed",
+    "mixed_flip",
+    "random",
+    "pullback_inverse",
+    "pullback_bounded",
+]
+_DIRECTIONS: tuple[Direction, ...] = (
+    "sgd",
+    "sgd_unit",
+    "amplitude",
+    "position",
+    "mixed",
+    "mixed_flip",
+    "random",
+    "pullback_inverse",
+    "pullback_bounded",
+)
 
 
 @dataclass(frozen=True)
 class TrialConfig:
-    """One deterministic one-layer CST curvature trial."""
+    """One deterministic one-layer CST curvature trial.
+
+    ``learning_rate`` is the actual SGD learning rate for ``direction="sgd"``.
+    For every controlled or ``*_unit`` direction it is instead the radius in
+    dimensionless ``(w / amplitude_scale, s / sigma, t / sigma)`` space.
+    """
 
     atoms: int = 1
     amplitude: float = 1e-3
     learning_rate: float = 1e-2
+    direction: Direction = "sgd"
+    amplitude_scale: float = 1.0
+    direction_seed: int = 0
     separation: float = 0.16
     sigma: float = 0.28
     n_in: int = 5
@@ -51,6 +87,12 @@ class TrialConfig:
             raise ValueError("atoms must be positive")
         if self.learning_rate <= 0:
             raise ValueError("learning_rate must be positive")
+        if self.direction not in _DIRECTIONS:
+            raise ValueError(f"direction must be one of {_DIRECTIONS}")
+        if self.amplitude_scale <= 0:
+            raise ValueError("amplitude_scale must be positive")
+        if self.direction_seed < 0:
+            raise ValueError("direction_seed must be non-negative")
         if self.separation < 0:
             raise ValueError("separation must be non-negative")
         if self.sigma <= 0:
@@ -68,12 +110,15 @@ class TrialResult:
     atoms: int
     amplitude: float
     learning_rate: float
+    direction: Direction
+    direction_seed: int
     initial_loss: float
     updated_loss: float
     gradient_norm: float
     step_norm: float
     amplitude_step_norm: float
     position_step_norm: float
+    dimensionless_step_norm: float
     p1: float
     p2_cst: float
     p2_full: float
@@ -161,6 +206,136 @@ def _data(config: TrialConfig) -> tuple[Tensor, Tensor]:
     return inputs, targets
 
 
+def _build_layer(config: TrialConfig, theta: Tensor) -> tuple[CSTLinear, SynapseStore]:
+    """Build the public CSTLinear matching the functional experiment map."""
+    mu_in, mu_out = charts(config)
+    synapses = SynapseStore(
+        "curvature",
+        1,
+        1,
+        config.atoms,
+        spec=RepresentationSpec.continuous(1, 1),
+        dtype=torch.float64,
+    )
+    synapses.apply(
+        [
+            SynapseBirth(
+                synapses.site,
+                theta[:, 1:2],
+                theta[:, 2:3],
+                theta[:, 0],
+                torch.arange(config.atoms, dtype=torch.int64),
+            )
+        ]
+    )
+    layer = CSTLinear(
+        NeuronStore(
+            "curvature-in",
+            config.n_in,
+            mu=mu_in,
+            initial_live=config.n_in,
+            dtype=torch.float64,
+        ),
+        NeuronStore(
+            "curvature-out",
+            config.n_out,
+            mu=mu_out,
+            initial_live=config.n_out,
+            dtype=torch.float64,
+        ),
+        synapses,
+        GaussianFactor(config.sigma, learnable=False).double(),
+        track_mass=False,
+        backend=Materialized(lean=False),
+    )
+    return layer, synapses
+
+
+def _controlled_step(config: TrialConfig, theta: Tensor) -> Tensor:
+    """A fixed-radius direction in ``(w/a_ref, s/sigma, t/sigma)``."""
+    direction = torch.zeros_like(theta)
+    if config.direction == "amplitude":
+        direction[:, 0] = 1.0
+    elif config.direction == "position":
+        direction[:, 1:] = 1.0
+    elif config.direction in {"mixed", "mixed_flip"}:
+        direction[:] = 1.0
+        if config.direction == "mixed_flip":
+            direction[:, 1:] = -1.0
+    elif config.direction == "random":
+        generator = torch.Generator().manual_seed(config.direction_seed)
+        direction = torch.randn(
+            theta.shape,
+            generator=generator,
+            dtype=theta.dtype,
+            device=theta.device,
+        )
+    else:
+        raise ValueError(f"{config.direction!r} is not a controlled direction")
+    direction = direction / torch.linalg.vector_norm(direction)
+    scales = theta.new_tensor([config.amplitude_scale, config.sigma, config.sigma])
+    return config.learning_rate * direction * scales
+
+
+def _normalize_dimensionless(
+    config: TrialConfig, theta: Tensor, direction: Tensor
+) -> Tensor:
+    """Preserve a direction while giving it the configured q-space radius."""
+    scales = theta.new_tensor([config.amplitude_scale, config.sigma, config.sigma])
+    norm = torch.linalg.vector_norm(direction / scales)
+    if not bool(torch.isfinite(norm)) or float(norm) == 0.0:
+        raise ValueError(f"{config.direction} produced no finite direction")
+    return config.learning_rate * direction / norm
+
+
+def _pullback_step(
+    config: TrialConfig,
+    theta: Tensor,
+    inputs: Tensor,
+    targets: Tensor,
+) -> Tensor:
+    """Return one actual first-step CSTPullbackAdam parameter displacement."""
+    layer, synapses = _build_layer(config, theta)
+    form = config.direction.removeprefix("pullback_")
+    optimizer = CSTPullbackAdam(
+        layer,
+        metric="block",
+        lr=1.0,
+        pullback=form,
+        max_step_sigma=None,
+        subscribe=False,
+    )
+    optimizer.zero_grad()
+    F.mse_loss(layer(inputs), targets).backward()
+    optimizer.step()
+    slots = synapses.live_slots().to(synapses.w.device)
+    updated = torch.stack(
+        (
+            synapses.w.detach().index_select(0, slots),
+            synapses.s.detach().index_select(0, slots)[:, 0],
+            synapses.t.detach().index_select(0, slots)[:, 0],
+        ),
+        dim=1,
+    )
+    return _normalize_dimensionless(config, theta, updated - theta)
+
+
+def _trial_step(
+    config: TrialConfig,
+    theta: Tensor,
+    gradient: Tensor,
+    inputs: Tensor,
+    targets: Tensor,
+) -> Tensor:
+    if config.direction == "sgd":
+        return -config.learning_rate * gradient
+    if config.direction == "sgd_unit":
+        return _normalize_dimensionless(config, theta, -gradient)
+    if config.direction.startswith("pullback_"):
+        return _pullback_step(config, theta, inputs, targets)
+    return _controlled_step(config, theta)
+
+
 def _contracted_map_hessian(
     weight_fn,
     theta: Tensor,
@@ -222,7 +397,7 @@ def run_trial(config: TrialConfig) -> TrialResult:
     theta_for_grad = theta.detach().requires_grad_(True)
     initial_loss = loss_fn(theta_for_grad)
     gradient = torch.autograd.grad(initial_loss, theta_for_grad)[0].detach()
-    step = -config.learning_rate * gradient
+    step = _trial_step(config, theta, gradient, inputs, targets)
 
     weight = weight_fn(theta).detach()
     weight_for_grad = weight.detach().requires_grad_(True)
@@ -281,16 +456,25 @@ def run_trial(config: TrialConfig) -> TrialResult:
     def number(value: Tensor) -> float:
         return float(value.detach())
 
+    dimensionless_scales = theta.new_tensor(
+        [config.amplitude_scale, config.sigma, config.sigma]
+    )
+
     return TrialResult(
         atoms=config.atoms,
         amplitude=config.amplitude,
         learning_rate=config.learning_rate,
+        direction=config.direction,
+        direction_seed=config.direction_seed,
         initial_loss=number(initial_loss),
         updated_loss=number(updated_loss),
         gradient_norm=number(torch.linalg.vector_norm(gradient)),
         step_norm=number(torch.linalg.vector_norm(step)),
         amplitude_step_norm=number(torch.linalg.vector_norm(step[:, 0])),
         position_step_norm=number(torch.linalg.vector_norm(step[:, 1:])),
+        dimensionless_step_norm=number(
+            torch.linalg.vector_norm(step / dimensionless_scales)
+        ),
         p1=number(p1),
         p2_cst=number(p2_cst),
         p2_full=number(p2_full),
@@ -312,35 +496,48 @@ def run_sweep(
     atoms: Iterable[int] = (1, 2),
     amplitudes: Iterable[float] = (0.0, 1e-6, 1e-3, 1e-1, 1.0),
     learning_rates: Iterable[float] = (1e-3, 1e-2, 1e-1),
+    directions: Iterable[Direction] = ("sgd",),
+    random_directions: int = 1,
     **common,
 ) -> list[TrialResult]:
     """Run the Cartesian product of the principal experiment controls."""
-    return [
-        run_trial(
-            TrialConfig(
-                atoms=atom_count,
-                amplitude=amplitude,
-                learning_rate=learning_rate,
-                **common,
+    if random_directions <= 0:
+        raise ValueError("random_directions must be positive")
+    results = []
+    for atom_count, amplitude, learning_rate, direction in product(
+        atoms, amplitudes, learning_rates, directions
+    ):
+        seeds = range(random_directions) if direction == "random" else (0,)
+        results.extend(
+            run_trial(
+                TrialConfig(
+                    atoms=atom_count,
+                    amplitude=amplitude,
+                    learning_rate=learning_rate,
+                    direction=direction,
+                    direction_seed=direction_seed,
+                    **common,
+                )
             )
+            for direction_seed in seeds
         )
-        for atom_count, amplitude, learning_rate in product(
-            atoms, amplitudes, learning_rates
-        )
-    ]
+    return results
 
 
 def _format_table(results: Iterable[TrialResult]) -> str:
     header = (
-        "atoms amp lr actual p1 p2_cst W_exact "
+        "direction seed atoms amp lr qstep actual p1 p2_cst W_exact "
         "err_p1 err_p2 err_W Hwp2 Hpp2 HW2(Jd) cross_map_H"
     )
     rows = [header]
     for result in results:
         rows.append(
+            f"{result.direction:>18s} "
+            f"{result.direction_seed:>4d} "
             f"{result.atoms:>5d} "
             f"{result.amplitude:>8.1e} "
             f"{result.learning_rate:>8.1e} "
+            f"{result.dimensionless_step_norm:>8.1e} "
             f"{result.p_actual:>11.3e} "
             f"{result.p1:>11.3e} "
             f"{result.p2_cst:>11.3e} "
@@ -371,6 +568,14 @@ def _parser() -> argparse.ArgumentParser:
         nargs="+",
         default=[1e-3, 1e-2, 1e-1],
     )
+    parser.add_argument(
+        "--directions",
+        choices=_DIRECTIONS,
+        nargs="+",
+        default=list(_DIRECTIONS),
+    )
+    parser.add_argument("--random-directions", type=int, default=16)
+    parser.add_argument("--amplitude-scale", type=float, default=1.0)
     parser.add_argument("--separation", type=float, default=0.16)
     parser.add_argument("--sigma", type=float, default=0.28)
     parser.add_argument("--seed", type=int, default=17)
@@ -383,12 +588,21 @@ def main() -> None:
         field.name: getattr(args, field.name)
         for field in fields(TrialConfig)
         if hasattr(args, field.name)
-        and field.name not in {"atoms", "amplitude", "learning_rate"}
+        and field.name
+        not in {
+            "atoms",
+            "amplitude",
+            "learning_rate",
+            "direction",
+            "direction_seed",
+        }
     }
     results = run_sweep(
         atoms=args.atoms,
         amplitudes=args.amplitudes,
         learning_rates=args.learning_rates,
+        directions=args.directions,
+        random_directions=args.random_directions,
         **common,
     )
     print(_format_table(results))

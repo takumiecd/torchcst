@@ -113,3 +113,72 @@ def test_small_step_full_second_order_beats_first_order():
     result = run_trial(TrialConfig(atoms=2, amplitude=0.1, learning_rate=1e-4))
 
     assert result.relative_error("p2_full") < result.relative_error("p1")
+
+
+def test_controlled_and_unit_directions_share_the_requested_radius():
+    for direction in (
+        "sgd_unit",
+        "amplitude",
+        "position",
+        "mixed",
+        "mixed_flip",
+        "random",
+        "pullback_inverse",
+        "pullback_bounded",
+    ):
+        result = run_trial(
+            TrialConfig(
+                atoms=2,
+                amplitude=0.1,
+                learning_rate=0.013,
+                direction=direction,
+            )
+        )
+        torch.testing.assert_close(
+            torch.tensor(result.dimensionless_step_norm),
+            torch.tensor(0.013),
+        )
+
+
+def test_mixed_sign_pair_flips_only_the_amplitude_position_quadratic():
+    common = dict(atoms=2, amplitude=0.1, learning_rate=0.01)
+    positive = run_trial(TrialConfig(direction="mixed", **common))
+    negative = run_trial(TrialConfig(direction="mixed_flip", **common))
+
+    torch.testing.assert_close(
+        torch.tensor(positive.cst_quadratic_amplitude_position),
+        -torch.tensor(negative.cst_quadratic_amplitude_position),
+    )
+    torch.testing.assert_close(
+        torch.tensor(positive.cst_quadratic_position_position),
+        torch.tensor(negative.cst_quadratic_position_position),
+    )
+
+
+def test_random_directions_are_seeded_and_distinct():
+    common = dict(
+        atoms=2,
+        amplitude=0.1,
+        learning_rate=0.01,
+        direction="random",
+    )
+    first = run_trial(TrialConfig(direction_seed=5, **common))
+    repeated = run_trial(TrialConfig(direction_seed=5, **common))
+    different = run_trial(TrialConfig(direction_seed=6, **common))
+
+    assert first == repeated
+    assert first.p1 != different.p1
+
+
+def test_inverse_pullback_near_zero_exposes_cst_map_curvature():
+    result = run_trial(
+        TrialConfig(
+            atoms=1,
+            amplitude=1e-3,
+            learning_rate=0.01,
+            direction="pullback_inverse",
+        )
+    )
+
+    assert abs(result.cst_quadratic) > 100 * result.loss_quadratic_jacobian
+    assert result.relative_error("p2_cst") < result.relative_error("p1") / 100
