@@ -56,6 +56,7 @@ from torch.nn import functional as F
 
 from torchcst.representation import (
     ContinuousFactor,
+    FactorState,
     GaussianFactor,
     RepresentationSpec,
     TriangularFactor,
@@ -65,8 +66,8 @@ from torchcst.storage import NeuronStore, SynapseStore
 from .backends import Materialized, validate_backend
 from .backends.materialize import LeanConvMaterialize
 from .capture import register_capture_hook
-from .cst_map import _ContinuousCSTMap
 from .cst_conv import _positive_pair
+from .cst_map import _ContinuousCSTMap
 from .depthwise_conv import _seed_uniform
 
 __all__ = ["OffsetCSTConv2d"]
@@ -213,7 +214,7 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
         factor: str = "gaussian",
         stride: int | tuple[int, int] = 1,
         generator: torch.Generator | None = None,
-    ) -> "OffsetCSTConv2d":
+    ) -> OffsetCSTConv2d:
         """Build the map on lawful charts, atoms seeded uniform-in-box.
 
         Conventions travel from :meth:`DepthwiseCSTConv2d.propose`: both
@@ -257,17 +258,25 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
 
     # -- representation --------------------------------------------------------
 
-    def _factor_matrices(self, source: Tensor, target: Tensor, columns=None):
+    def _factor_matrices(
+        self,
+        source: Tensor,
+        target: Tensor,
+        columns=None,
+        amplitudes: Tensor | None = None,
+    ):
         """Factor columns over the chart axes only; Δ axes act via stencils."""
         if columns is None:
             columns = self._live_columns()
         in_mu = self.in_neurons.mu.to(device=source.device, dtype=source.dtype)
         out_mu = self.out_neurons.mu.to(device=target.device, dtype=target.dtype)
+        state_in = FactorState(
+            source[:, : self.chart_d_in], amplitudes, columns
+        )
+        state_out = FactorState(target, amplitudes, columns)
         return (
-            self.gauge.columns(
-                self.factor_in, in_mu, source[:, : self.chart_d_in], columns
-            ),
-            self.gauge.columns(self.factor_out, out_mu, target, columns),
+            self.gauge.columns(self.factor_in, in_mu, state_in),
+            self.gauge.columns(self.factor_out, out_mu, state_out),
         )
 
     def _stencil(self, source: Tensor) -> Tensor:
@@ -323,7 +332,9 @@ class OffsetCSTConv2d(_ContinuousCSTMap):
                 self.chart_d_in, self._r_int, self._off_lo, self._off_hi,
                 self.backend.compute_dtype,
             )
-        k_in, k_out = self._factor_matrices(source, target)
+        k_in, k_out = self._factor_matrices(
+            source, target, amplitudes=weights
+        )
         stencil = self._stencil(source)
         self._refresh_mass_scale(
             k_in * torch.linalg.vector_norm(stencil, dim=1).detach(), k_out

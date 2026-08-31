@@ -41,7 +41,12 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from .factors import ContinuousFactor
+from .factors import (
+    ContinuousFactor,
+    FactorJet2,
+    FactorState,
+    differentiate_columns,
+)
 
 
 @dataclass(frozen=True)
@@ -67,10 +72,22 @@ class Amplitude:
         self,
         factor: ContinuousFactor,
         query: Tensor,
-        centers: Tensor,
+        state: FactorState | Tensor,
         extras: Mapping[str, Tensor] | None = None,
     ) -> Tensor:
-        return factor(query, centers, extras)
+        if isinstance(state, FactorState):
+            return factor.columns(query, state)
+        return factor(query, state, extras)
+
+    def jet2(
+        self,
+        factor: ContinuousFactor,
+        query: Tensor,
+        state: FactorState,
+    ) -> FactorJet2:
+        return differentiate_columns(
+            lambda local: self.columns(factor, query, local), state
+        )
 
 
 @dataclass(frozen=True)
@@ -101,12 +118,26 @@ class L2NormalizedColumns:
         self,
         factor: ContinuousFactor,
         query: Tensor,
-        centers: Tensor,
+        state: FactorState | Tensor,
         extras: Mapping[str, Tensor] | None = None,
     ) -> Tensor:
-        scaled = factor.scaled_columns(query, centers, extras)
+        scaled = (
+            factor.stable_columns(query, state)
+            if isinstance(state, FactorState)
+            else factor.scaled_columns(query, state, extras)
+        )
         norm = torch.linalg.vector_norm(scaled, dim=0, keepdim=True)
         return scaled / norm.clamp_min(torch.finfo(scaled.dtype).tiny)
+
+    def jet2(
+        self,
+        factor: ContinuousFactor,
+        query: Tensor,
+        state: FactorState,
+    ) -> FactorJet2:
+        return differentiate_columns(
+            lambda local: self.columns(factor, query, local), state
+        )
 
 
 #: Compatibility for sibling experiment runners pending their lane migration.

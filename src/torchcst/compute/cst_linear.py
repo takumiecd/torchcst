@@ -142,7 +142,9 @@ class CSTLinear(_ContinuousCSTMap):
             and not torch.is_grad_enabled()
             and full_column_elements <= _NO_GRAD_FULL_COLUMN_LIMIT
         ):
-            k_in, k_out = self._factor_matrices(source, target)
+            k_in, k_out = self._factor_matrices(
+                source, target, amplitudes=weights
+            )
             self._refresh_mass_scale(k_in, k_out)
             return linear_weight(k_in, k_out, weights, config.compute_dtype)
         if config.lean:
@@ -186,7 +188,7 @@ class CSTLinear(_ContinuousCSTMap):
             if materialize is LeanL2LinearMaterialize:
                 return materialize.apply(*args, config.compile_l2)
             return materialize.apply(*args)
-        k_in, k_out = self._factor_matrices(source, target)
+        k_in, k_out = self._factor_matrices(source, target, amplitudes=weights)
         self._refresh_mass_scale(k_in, k_out)
         return linear_weight(k_in, k_out, weights, config.compute_dtype)
 

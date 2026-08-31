@@ -18,21 +18,21 @@ than ``O(n_out n_in)``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor
 
 from torchcst.compute import (
     BackwardContext,
-    CSTLinear,
     CaptureBatch,
+    CSTLinear,
     Factored,
     flatten_capture_pair,
 )
-
+from torchcst.representation import FactorState
 
 AtomScore = Callable[[Tensor], Tensor]
 
@@ -122,13 +122,16 @@ def contracted_cst_linear_p2_model(
     mu_out = module.out_neurons.mu.detach().to(x_flat)
 
     def atom_score(atom: Tensor) -> Tensor:
+        amplitude = atom[:1]
         local_source = atom[1 : 1 + d_in][None, :]
         local_target = atom[1 + d_in :][None, :]
-        k_in = module.gauge.columns(module.factor_in, mu_in, local_source, {})[:, 0]
-        k_out = module.gauge.columns(module.factor_out, mu_out, local_target, {})[:, 0]
+        state_in = FactorState(local_source, amplitude)
+        state_out = FactorState(local_target, amplitude)
+        k_in = module.gauge.columns(module.factor_in, mu_in, state_in)[:, 0]
+        k_out = module.gauge.columns(module.factor_out, mu_out, state_out)[:, 0]
         activation = x_flat @ k_in
         output_projection = grad_flat @ k_out
-        return atom[0] * (activation * output_projection).sum()
+        return amplitude[0] * (activation * output_projection).sum()
 
     return contracted_p2_model(atom_score, theta)
 

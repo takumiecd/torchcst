@@ -12,6 +12,7 @@ from torchcst.representation import (
     AmplitudeGauge,
     Box,
     ContinuousFactor,
+    FactorState,
     require_gauge,
 )
 from torchcst.storage import NeuronStore, SynapseStore, SynapseView
@@ -229,6 +230,7 @@ class _ContinuousCSTMap(nn.Module):
         source: Tensor,
         target: Tensor,
         columns: Mapping[str, Tensor] | None = None,
+        amplitudes: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         """Factor columns for atom rows ``source``/``target``.
 
@@ -240,15 +242,29 @@ class _ContinuousCSTMap(nn.Module):
         """
         if columns is None:
             columns = self._live_columns()
+        needs_amplitude = self.factor_in.amplitude_dependent or (
+            self.factor_out.amplitude_dependent
+        )
+        if needs_amplitude:
+            if amplitudes is None:
+                raise ValueError(
+                    "amplitude-dependent factors require row-aligned amplitudes"
+                )
+            if amplitudes.ndim != 1 or amplitudes.shape[0] != source.shape[0]:
+                raise ValueError(
+                    "amplitudes must be rank 1 with one value per center"
+                )
         in_mu = self.in_neurons.mu.to(device=source.device, dtype=source.dtype)
         out_mu = self.out_neurons.mu.to(device=target.device, dtype=target.dtype)
+        state_in = FactorState(source, amplitudes, columns)
+        state_out = FactorState(target, amplitudes, columns)
         return (
-            self.gauge.columns(self.factor_in, in_mu, source, columns),
-            self.gauge.columns(self.factor_out, out_mu, target, columns),
+            self.gauge.columns(self.factor_in, in_mu, state_in),
+            self.gauge.columns(self.factor_out, out_mu, state_out),
         )
 
     def _current_mass_signature(self) -> tuple[int, ...]:
-        return (
+        signature = (
             self.synapses.version,
             self.synapses.s._version,
             self.synapses.t._version,
@@ -261,6 +277,9 @@ class _ContinuousCSTMap(nn.Module):
             self.factor_in.sigma._version,
             self.factor_out.sigma._version,
         )
+        if self.factor_in.amplitude_dependent or self.factor_out.amplitude_dependent:
+            return (*signature, self.synapses.w._version)
+        return signature
 
     def _refresh_mass_scale(self, k_in: Tensor, k_out: Tensor) -> None:
         if not self._track_mass:
@@ -301,7 +320,7 @@ class _ContinuousCSTMap(nn.Module):
         source = source.to(device=x.device)
         target = target.to(device=x.device)
         weights = weights.to(device=x.device)
-        k_in, k_out = self._factor_matrices(source, target)
+        k_in, k_out = self._factor_matrices(source, target, amplitudes=weights)
         self._refresh_mass_scale(k_in, k_out)
 
         output = apply_rows(x, k_in, k_out, weights)
@@ -324,11 +343,19 @@ class _ContinuousCSTMap(nn.Module):
             x, g_out, self.in_features, self.out_features
         )
         self._view()
-        source, target, _ = self._live_factors()
+        source, target, weights = self._live_factors()
         source = source.detach().to(device=x_flat.device, dtype=x_flat.dtype)
         target = target.detach().to(device=g_flat.device, dtype=g_flat.dtype)
+        weights = weights.detach().to(device=x_flat.device, dtype=x_flat.dtype)
+        if self.factor_in.amplitude_dependent or self.factor_out.amplitude_dependent:
+            raise NotImplementedError(
+                "atom_grads does not include amplitude-factor chain terms; "
+                "use dense-free P2 capture for weight-gated factors"
+            )
         with torch.no_grad():
-            k_in, k_out = self._factor_matrices(source, target)
+            k_in, k_out = self._factor_matrices(
+                source, target, amplitudes=weights
+            )
             return ((x_flat @ k_in) * (g_flat @ k_out)).sum(dim=0)
 
     def candidate_weight_grads(
@@ -374,6 +401,7 @@ class _ContinuousCSTMap(nn.Module):
                         name: value[start:stop]
                         for name, value in live_columns.items()
                     },
+                    amplitudes=source.new_zeros(stop - start),
                 )
                 values.append(
                     ((x_flat @ k_in) * (g_flat @ k_out)).sum(dim=0)
@@ -396,7 +424,9 @@ class _ContinuousCSTMap(nn.Module):
         target = target.detach().to(x_flat)
         weights = weights.detach().to(x_flat)
         with torch.no_grad():
-            k_in, k_out = self._factor_matrices(source, target)
+            k_in, k_out = self._factor_matrices(
+                source, target, amplitudes=weights
+            )
             return apply_rows(x_flat, k_in, k_out, weights)
 
     def input_row_energy(self) -> Tensor:
@@ -417,13 +447,18 @@ class _ContinuousCSTMap(nn.Module):
         source, target, weights = self._live_factors()
         with torch.no_grad():
             k_in, k_out = self._factor_matrices(
-                source.detach(), target.detach()
+                source.detach(), target.detach(), amplitudes=weights.detach()
             )
             weighted_in = k_in * weights.detach().to(k_in)
             gram_out = k_out.transpose(0, 1) @ k_out
             return (weighted_in @ gram_out).mul(weighted_in).sum(dim=1)
 
-    def factor_columns(self, source: Tensor, target: Tensor) -> tuple[Tensor, Tensor]:
+    def factor_columns(
+        self,
+        source: Tensor,
+        target: Tensor,
+        amplitudes: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor]:
         """Evaluate read-only factor columns for arbitrary source/target rows.
 
         Returns ``(k_in, k_out)`` with shapes ``[in_features, N]`` and
@@ -439,12 +474,16 @@ class _ContinuousCSTMap(nn.Module):
         if source.shape[0] != target.shape[0]:
             raise ValueError("source and target coordinate counts must match")
         with torch.no_grad():
-            return self._factor_matrices(source.detach(), target.detach())
+            return self._factor_matrices(
+                source.detach(),
+                target.detach(),
+                amplitudes=None if amplitudes is None else amplitudes.detach(),
+            )
 
     def dense_weight(self) -> Tensor:
         """Materialize ``K_out diag(w) K_in.T`` for diagnostics or fast paths."""
         self._view()
         source, target, weights = self._live_factors()
-        k_in, k_out = self._factor_matrices(source, target)
+        k_in, k_out = self._factor_matrices(source, target, amplitudes=weights)
         self._refresh_mass_scale(k_in, k_out)
         return (k_out * weights) @ k_in.transpose(0, 1)
