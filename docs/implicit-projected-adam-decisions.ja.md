@@ -456,6 +456,33 @@ reconciliationを削除する。
 (5) documentation and examples の検証可能なcommit境界に分ける。各境界ではtestsを
 通し、数値oracleとの一致を維持する。
 
+### 8.3 Chartはfixed-cardinality、座標は既定でfreezeする
+
+chartの点数、feature対応、tensor shapeは学習中固定する。chart座標そのものは
+`trainable=True`という将来拡張をAPIに残すが、defaultと推奨値はともに
+`trainable=False`とする。
+
+現在の設計では、amplitudeに依存してbandwidthを連続調整することで、chart移動に
+期待していたsupport適応の多くを担える。外部入力chartを動かすとdata上のgroundingも
+弱くなるため、少なくとも最初のimplicit optimizerでchartを学習する積極的な理由は
+ない。
+
+一方、hidden chartのlatent geometryを学習する将来研究まで禁止する必要はない。
+chartを変数に含めても二次モデル
+
+$$
+\Delta W(d)=Jd+\frac12H[d,d]
+$$
+
+自体は成立する。ただし $d=(d_{\mathrm{atom}},d_\mu)$ となり、$H$には
+atom/chartおよびchart/chartのblockが加わる。shared hidden chartなら前後のlayerも
+結合される。将来対応する場合はblock JVP/VJP/HVPとして評価し、巨大なfull Hessianは
+materializeしない。
+
+したがって、representation APIはtrainable chartの目を残すが、最初の
+`ImplicitProjectedAdam`はfrozen chartのみを正式対応とし、trainable chartを
+明示的に拒否する。
+
 ## 9. 主張の境界
 
 現時点で主張してよいことは次である。

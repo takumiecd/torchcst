@@ -15,7 +15,8 @@ The initial scope is deliberately narrow:
 
 - fixed atom count and tensor shapes for the lifetime of a module;
 - continuous source coordinates, target coordinates, and amplitudes;
-- fixed input and output charts;
+- fixed-cardinality input and output charts whose coordinates are frozen by
+  default;
 - an implicit projected Adam optimizer;
 - a full second-order CST displacement and unapproximated quartic objective;
 - exact-loss trust-region acceptance;
@@ -40,8 +41,8 @@ from torchcst import (
     ImplicitProjectedAdam,
 )
 
-input_chart = Chart.grid((28, 28))
-output_chart = Chart.linspace(10)
+input_chart = Chart.grid((28, 28), trainable=False)
+output_chart = Chart.linspace(10, trainable=False)
 
 model = CSTLinear(
     input_chart,
@@ -77,7 +78,7 @@ for images, labels in loader:
 
 This API makes four ownership decisions explicit:
 
-1. a `Chart` owns fixed observation coordinates;
+1. a `Chart` owns fixed-cardinality observation coordinates;
 2. a `CSTLinear` owns one fixed-shape atom table;
 3. an `ImplicitProjectedAdam` owns compressed moment and accepted-frame state;
 4. a closure owns loss evaluation, backward, and candidate reevaluation.
@@ -86,26 +87,49 @@ There is no engine or structural policy between the module and optimizer.
 
 ## `Chart`
 
-A chart is an immutable set of observation points. It has no live/dormant
-state, gate, lineage, allocator, or structural version.
+A chart is a fixed-cardinality set of observation points. It has no
+live/dormant state, gate, lineage, allocator, or structural version. Its
+coordinates are frozen by default and should normally remain frozen.
 
 ```python
-pixels = Chart.grid((28, 28))
-classes = Chart.linspace(10)
-custom = Chart.points(torch.tensor([[0.0, 0.0], [1.0, 0.0]]))
+pixels = Chart.grid((28, 28), trainable=False)
+classes = Chart.linspace(10, trainable=False)
+custom = Chart.points(
+    torch.tensor([[0.0, 0.0], [1.0, 0.0]]),
+    trainable=False,
+)
 ```
 
 Target constructors:
 
 ```python
-Chart.points(coordinates)
-Chart.linspace(size, *, low=-1.0, high=1.0)
-Chart.grid(shape, *, low=-1.0, high=1.0)
+Chart.points(coordinates, *, trainable=False)
+Chart.linspace(size, *, low=-1.0, high=1.0, trainable=False)
+Chart.grid(shape, *, low=-1.0, high=1.0, trainable=False)
 ```
 
-The coordinate tensor has shape `[features, dimensions]` and is stored as a
-buffer. Constructing a new chart changes the model definition; a chart does
-not resize during training.
+The coordinate tensor has shape `[features, dimensions]`. With
+`trainable=False` it is a buffer; with `trainable=True` it is a parameter.
+Neither mode permits resizing during training.
+
+Trainable charts are retained as an experimental extension point, not as the
+recommended path. Moving an external input chart weakens its grounding in the
+data, and an amplitude-dependent bandwidth already provides much of the
+continuous support adaptation that previously motivated chart motion. Hidden
+charts may eventually benefit from learned geometry, but that question is
+separate from the initial optimizer result.
+
+The first `ImplicitProjectedAdam` milestone formally supports only frozen
+charts. A trainable chart enlarges the local variable to
+
+$$
+d=(d_{\mathrm{atom}},d_\mu)
+$$
+
+and introduces atom/chart and chart/chart curvature blocks. A future
+implementation must evaluate those blocks through JVPs, VJPs, and HVPs; it must
+not materialize the full Hessian. Reserving `trainable=True` in the chart API
+keeps that route open without imposing its cost on the recommended mode.
 
 ## `CSTLinear`
 
@@ -346,12 +370,15 @@ During the lifetime of a module and optimizer:
 atom count       constant
 parameter shapes constant
 atom ordering    constant
-chart points     constant
+chart count      constant
+chart coordinates frozen by default
 structural ops   forbidden
 ```
 
 Continuous retraction, gauge normalization, trust-region scaling, and line
-search are allowed. They do not create or remove model entities.
+search are allowed. They do not create or remove model entities. Experimental
+trainable charts may change coordinate values, but never chart cardinality or
+tensor shape.
 
 If future work needs a different atom count, it constructs a new model. A
 separate offline conversion tool may eventually transfer values, but it is not
@@ -410,6 +437,7 @@ The initial rewrite does not provide:
 - compatibility with old checkpoints or policy definitions;
 - convolutional CST modules;
 - mixed dense/CST optimizer coordination;
+- trainable-chart support in the first implicit optimizer milestone;
 - distributed training;
 - a promise of global quartic optimality.
 
