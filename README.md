@@ -34,11 +34,13 @@ import torch
 import torch.nn.functional as F
 
 from torchcst import (
+    AdamWConfig,
     Chart,
     CSTLinear,
+    CSTOptimizer,
     FullQuartic,
     Gaussian,
-    ImplicitProjectedAdam,
+    ImplicitAdamConfig,
 )
 
 input_chart = Chart.grid((28, 28), trainable=False)
@@ -54,14 +56,17 @@ model = CSTLinear(
     backend="auto",
 )
 
-optimizer = ImplicitProjectedAdam(
-    [model],
-    lr=0.05,
-    betas=(0.9, 0.99),
-    eps=1e-8,
-    second_moment="separable",
-    trust_radius=0.25,
-    quartic=FullQuartic(starts=4, max_iter=80),
+optimizer = CSTOptimizer(
+    model,
+    cst=ImplicitAdamConfig(
+        lr=0.05,
+        betas=(0.9, 0.99),
+        eps=1e-8,
+        second_moment="separable",
+        trust_radius=0.25,
+        quartic=FullQuartic(starts=4, max_iter=80),
+    ),
+    dense=None,
 )
 
 for images, labels in loader:
@@ -76,12 +81,13 @@ for images, labels in loader:
     loss = optimizer.step(closure)
 ```
 
-This API makes four ownership decisions explicit:
+This API makes five ownership decisions explicit:
 
 1. a `Chart` owns fixed-cardinality observation coordinates;
 2. a `CSTLinear` owns one fixed-shape atom table;
-3. an `ImplicitProjectedAdam` owns compressed moment and accepted-frame state;
-4. a closure owns loss evaluation, backward, and candidate reevaluation.
+3. a `CSTOptimizer` partitions and exclusively owns every trainable parameter;
+4. its implicit CST engine owns compressed moment and accepted-frame state;
+5. a closure owns loss evaluation, backward, and candidate reevaluation.
 
 There is no engine or structural policy between the module and optimizer.
 
@@ -119,7 +125,7 @@ continuous support adaptation that previously motivated chart motion. Hidden
 charts may eventually benefit from learned geometry, but that question is
 separate from the initial optimizer result.
 
-The first `ImplicitProjectedAdam` milestone formally supports only frozen
+The first implicit CST engine milestone formally supports only frozen
 charts. A trainable chart enlarges the local variable to
 
 $$
@@ -265,28 +271,71 @@ entity IDs, policies, or optimizer state.
 oracles. A dense represented matrix is never persistent model or optimizer
 state.
 
-## `ImplicitProjectedAdam`
+## `CSTOptimizer`
 
-Unlike a generic PyTorch optimizer, `ImplicitProjectedAdam` accepts CST sites,
-not an arbitrary iterable of tensors. It needs each site's displacement,
-pushforward, pullback, and second-order contraction operators.
+`CSTOptimizer` is the public model-level optimizer. It accepts the complete
+model rather than an arbitrary iterable of tensors, discovers every CST site,
+and partitions every remaining trainable parameter into its dense block.
 
 ```python
-ImplicitProjectedAdam(
-    sites,
+CSTOptimizer(
+    model,
     *,
-    lr,
-    betas=(0.9, 0.999),
-    eps=1e-8,
-    second_moment="separable",
-    trust_radius,
-    quartic,
+    cst=ImplicitAdamConfig(...),
+    dense=AdamWConfig(...) | None,
+    strict=True,
 )
 ```
 
-The first implementation rejects unmanaged trainable parameters. Dense model
-parameters should use a separate optimizer only after a joint-step protocol is
-specified and tested.
+Users do not construct a separate dense optimizer. Internally, the coordinator
+uses a strict CST-only implicit engine and a functional dense AdamW engine.
+The latter is a proposal/state implementation owned by `CSTOptimizer`, not an
+independently stepping `torch.optim.AdamW` instance.
+
+For mixed models:
+
+```python
+optimizer = CSTOptimizer(
+    model,
+    cst=ImplicitAdamConfig(
+        lr=0.05,
+        second_moment="separable",
+        trust_radius=0.25,
+        quartic=FullQuartic(starts=4, max_iter=80),
+    ),
+    dense=AdamWConfig(lr=3e-4, weight_decay=0.01),
+)
+```
+
+If the model contains dense trainable parameters while `dense=None`,
+construction fails. A dense configuration with an empty dense partition is
+allowed so model variants can share one experiment configuration.
+
+### Parameter ownership
+
+Each CST site explicitly declares the parameters it owns. Let their union be
+$P_{\mathrm{cst}}$ and let all remaining trainable model parameters be
+$P_{\mathrm{dense}}$. Construction verifies
+
+$$
+P_{\mathrm{cst}}\cap P_{\mathrm{dense}}=\varnothing
+$$
+
+and
+
+$$
+P_{\mathrm{cst}}\cup P_{\mathrm{dense}}
+=\{p\mid p.\mathrm{requires\_grad}\}.
+$$
+
+The default `strict=True` also rejects duplicate ownership and trainable
+parameters shared by multiple CST sites. Parameter names, shapes, and owners
+are included in the optimizer state manifest and validated while loading a
+checkpoint.
+
+The internal implicit engine accepts CST sites only. It never accepts a raw
+parameter iterable, so a dense tensor cannot accidentally enter the CST
+solver through the supported API.
 
 ### Closure contract
 
@@ -297,9 +346,20 @@ specified and tested.
 3. call `backward()`;
 4. return the scalar loss.
 
-The optimizer is responsible for restoring the base point after rejected
-candidates. Persistent moments and accepted-frame metadata change only after a
-step is accepted.
+The optimizer forms the CST quartic proposal and dense AdamW proposal from the
+same base-point backward pass. It applies both provisionally, evaluates the
+actual loss, and accepts or rejects them as one transaction:
+
+$$
+(\theta_{\mathrm{cst}},\theta_{\mathrm{dense}})
+\longmapsto
+(\theta_{\mathrm{cst}}+\lambda d_{\mathrm{cst}},
+ \theta_{\mathrm{dense}}+\lambda d_{\mathrm{dense}}).
+$$
+
+The optimizer is responsible for restoring both blocks after a rejected
+candidate. Parameters, dense AdamW moments, compact CST moments, and
+accepted-frame metadata must not advance inconsistently.
 
 ### Local objective
 
@@ -333,7 +393,7 @@ term in this quartic. `FullQuartic` configures the numerical inner solve; its
 name means that the objective is not block-truncated, not that a global
 algebraic root is guaranteed.
 
-### Persistent state
+### CST persistent state
 
 The selected first implementation stores, per site,
 
@@ -347,6 +407,10 @@ $$
 - $r_t,c_t$ are row/column second-moment EMAs;
 - $\theta_t,d_t^\star$ reconstruct the old visible frame;
 - no dense $W$, $m$, or $v$ EMA persists between steps.
+
+Here "no dense moments" refers to the potentially huge represented CST weight
+$W$. Ordinary dense parameters retain their ordinary per-parameter AdamW
+moments inside `CSTOptimizer`.
 
 The separable second moment reconstructs
 
@@ -415,8 +479,9 @@ The experiment supports the selected starting point. It does not yet prove:
 2. **Fixed representation** — `Chart`, `Gaussian`, and fixed-shape `CSTLinear`.
 3. **Derivative operators** — displacement, JVP/VJP, and second-order
    contractions checked against dense autograd.
-4. **Correctness optimizer** — compact $\alpha$, separable $v$, full quartic,
-   and exact-loss acceptance.
+4. **Correctness optimizer** — model-wide ownership, functional dense AdamW,
+   compact $\alpha$, separable $v$, full quartic, and joint exact-loss
+   acceptance.
 5. **Dense-free backend** — fuse the required contractions without persistent
    or transient represented-weight tables in the production path.
 6. **Solver work** — reduce quartic cost while measuring solution and training
@@ -436,7 +501,6 @@ The initial rewrite does not provide:
 - neuron gates or dormant/live state;
 - compatibility with old checkpoints or policy definitions;
 - convolutional CST modules;
-- mixed dense/CST optimizer coordination;
 - trainable-chart support in the first implicit optimizer milestone;
 - distributed training;
 - a promise of global quartic optimality.

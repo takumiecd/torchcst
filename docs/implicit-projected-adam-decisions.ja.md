@@ -398,7 +398,7 @@ same-atom block、low-rank correction、operator matvec、反復 solve などを
    quartic surrogateを解く。
 5. exact minibatch loss、trust region、line searchで候補をaccept/rejectする。
 6. accepted $d_t^\star$ でのみ $\alpha_t$ を再圧縮し、旧点 metadata とともに保存する。
-7. structural mutation時にはslot remap、basis rank、gauge、state reset policyを明示する。
+7. checkpoint load時にfixed topology、parameter shape、state ownershipを検証する。
 
 論理的な永続stateの当面の実装候補は
 
@@ -410,6 +410,8 @@ $$
 
 である。これは成功実験の backend であり、将来 $r_t,c_t$ を product-visible $v$
 stateに置き換えられるよう、second-state backendをoperator APIの背後に隔離する。
+ここでdense stateを持たないという主張はrepresented CST weight $W$ に対するもので
+あり、通常のdense parameter自身が持つAdamW momentsは対象外である。
 
 ### 8.1 最初の実装は continuous-only とする
 
@@ -479,9 +481,45 @@ atom/chartおよびchart/chartのblockが加わる。shared hidden chartなら�
 結合される。将来対応する場合はblock JVP/VJP/HVPとして評価し、巨大なfull Hessianは
 materializeしない。
 
-したがって、representation APIはtrainable chartの目を残すが、最初の
-`ImplicitProjectedAdam`はfrozen chartのみを正式対応とし、trainable chartを
-明示的に拒否する。
+したがって、representation APIはtrainable chartの目を残すが、最初のlow-level
+implicit CST engineはfrozen chartのみを正式対応とし、trainable chartを明示的に
+拒否する。
+
+### 8.4 Public optimizerはmodel全体を所有する
+
+正式な公開APIはCST siteだけを受け取るlow-level solverではなく、model全体を
+受け取る `CSTOptimizer` とする。各CST siteが所有parameterを明示し、その和集合を
+$P_{\mathrm{cst}}$、残りのtrainable parameterを $P_{\mathrm{dense}}$ とする。
+construction時に
+
+$$
+P_{\mathrm{cst}}\cap P_{\mathrm{dense}}=\varnothing,
+\qquad
+P_{\mathrm{cst}}\cup P_{\mathrm{dense}}
+=\{p\mid p.\mathrm{requires\_grad}\}
+$$
+
+を検証する。重複ownership、未所有parameter、複数CST site間のshared trainable
+parameterは最初の実装では拒否する。
+
+内部はstrict CST-onlyのimplicit engineとfunctional dense AdamW proposalに分ける。
+独立した `torch.optim.AdamW` を後からstepする構成にはしない。同じbase-point
+backwardから $d_{\mathrm{cst}}$ と $d_{\mathrm{dense}}$ を作り、
+
+$$
+(\theta_{\mathrm{cst}},\theta_{\mathrm{dense}})
+\mapsto
+(\theta_{\mathrm{cst}}+\lambda d_{\mathrm{cst}},
+ \theta_{\mathrm{dense}}+\lambda d_{\mathrm{dense}})
+$$
+
+を一つのactual-loss acceptance transactionとしてcommitまたはrollbackする。
+parameter、dense AdamW moments、compact CST moments、accepted-frame metadataの一部
+だけが進む状態を禁止する。
+
+`dense=None`なのにdense trainable parametersが存在すればconstruction errorとする。
+optimizer state dictにはparameter name、shape、ownerをmanifestとして保存し、load時に
+同じpartitionを再検証する。
 
 ## 9. 主張の境界
 
