@@ -37,6 +37,30 @@ current API documentation.
   FC-0/1/2 experiments (§2) and the implementation decisions recorded while
   building it (§6). Read it before changing a family default.
 
+## Selected optimizer research direction
+
+- [`implicit-projected-adam-decisions.ja.md`](implicit-projected-adam-decisions.ja.md)
+  — current decision record for the implicit projected Adam direction. It
+  separates confirmed A100 evidence from open questions, retains accepted-frame
+  $\alpha$, rejects force-level $\gamma$ as the foundational second state,
+  derives diagonal product-space transport, and fixes the first production
+  backend to compact $\alpha$ plus separable diagonal $v$.
+
+## Historical and alternative research derivations
+
+- [`implicit-projected-moment-transport.md`](implicit-projected-moment-transport.md)
+  ([日本語](implicit-projected-moment-transport.ja.md)) — the derivation that
+  introduced accepted-frame $\alpha$, force-level $\gamma$, and the
+  denominator-free stationarity polynomial. The $\alpha$ and quartic portions
+  remain active inputs; the $\gamma$ second-state interpretation is superseded
+  by the decision record above.
+- [`second-order-pullback-moment-spaces.md`](second-order-pullback-moment-spaces.md)
+  — unimplemented derivation of four second-order Pullback Adam candidates:
+  parameter moments, frozen tangent moments, moving-frame-flow tangent
+  moments, and pullback-geodesic tangent moments. Each candidate reconstructs
+  represented-weight moments from five local raw-moment EMAs and solves its
+  own fourth-degree objective.
+
 ## Historical decision records
 
 - [`reviews/winning_recipe_v3_review_gpt56sol.md`](reviews/winning_recipe_v3_review_gpt56sol.md)
