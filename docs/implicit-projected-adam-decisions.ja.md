@@ -411,6 +411,33 @@ $$
 である。これは成功実験の backend であり、将来 $r_t,c_t$ を product-visible $v$
 stateに置き換えられるよう、second-state backendをoperator APIの背後に隔離する。
 
+### 8.1 最初の実装は continuous-only とする
+
+最初のproduction実装では、optimizer step中の離散構造操作を扱わない。
+
+$$
+\boxed{
+\text{fixed atom count}
++\text{fixed slot identity}
++\text{fixed parameter dimension}
++\text{continuous updates only}
+}
+$$
+
+具体的には、学習中の birth、death、merge、absorb、slot remapをoptimizerの責務から
+外す。連続的なparameter update、retraction、gauge normalization、trust region、
+line searchは残す。
+
+この制限により、first-stateおよびsecond-state transportで旧atomと現atomの離散的な
+対応を解く必要がなくなる。旧点 $\theta_{t-1}$ とaccepted step
+$d_{t-1}^\star$ から旧frameを再構成できることを、最初の実装契約とする。
+
+これはmergeやabsorbがすべての問題で不要だという主張ではない。tested MNIST条件と
+現在選択したoptimizerの成立には離散操作が不要だった、というscope判断である。
+将来、固定budget下の容量再配置に構造変更が必要になった場合も、optimizer内部へ
+混ぜず、独立したstructural controllerとしてepoch境界などで実行する。その境界では
+optimizer stateを明示的にresetするか、別途検証済みのstate変換を要求する。
+
 ## 9. 主張の境界
 
 現時点で主張してよいことは次である。
