@@ -438,6 +438,24 @@ $d_{t-1}^\star$ から旧frameを再構成できることを、最初の実装�
 混ぜず、独立したstructural controllerとしてepoch境界などで実行する。その境界では
 optimizer stateを明示的にresetするか、別途検証済みのstate変換を要求する。
 
+### 8.2 後方互換性を要求しない破壊的置換
+
+このrepositoryの現行experimental APIを利用して継続的な外部実験を行っている
+利用者はいないため、このbranchでは旧dynamic architectureとの後方互換性を
+要求しない。旧branchとgit historyを復旧手段とし、deprecation layer、checkpoint
+migration、旧optimizerとの二重実行経路は作らない。
+
+新しいfixed-shape CST moduleを正の実行経路として作り、forward、derivative
+contractions、optimizer ownership、checkpoint schema、public exports、testsをその
+契約へ置き換える。新経路が成立した段階で、そこから到達不能になるpolicy engine、
+mutation planning、birth/death/merge/absorb、slot remap、structural optimizer-state
+reconciliationを削除する。
+
+破壊的置換は一つの巨大commitにはしない。少なくとも、(1) continuous contract、
+(2) fixed-shape representation、(3) implicit optimizer、(4) legacy removal、
+(5) documentation and examples の検証可能なcommit境界に分ける。各境界ではtestsを
+通し、数値oracleとの一致を維持する。
+
 ## 9. 主張の境界
 
 現時点で主張してよいことは次である。
