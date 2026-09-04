@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from torchcst._derivatives import AtomDerivatives
+from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.geometry import Chart
 from torchcst.kernels import AtomInit, Kernel
@@ -119,6 +119,11 @@ class CSTLinear(nn.Module):
         if self.input_chart.trainable or self.output_chart.trainable:
             raise ValueError("the first derivative engine supports frozen charts only")
         return AtomDerivatives(self.atoms, self._materialize_atoms)
+
+    def cst_frame_geometry(self) -> AutogradFrameGeometry:
+        """Build the optimizer-independent representation-frame geometry."""
+
+        return AutogradFrameGeometry(self.cst_derivatives())
 
     def cst_parameters(self) -> tuple[nn.Parameter]:
         """Return the fixed-shape parameters owned by this CST site."""

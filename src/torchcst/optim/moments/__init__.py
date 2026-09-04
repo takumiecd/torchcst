@@ -1,41 +1,28 @@
-"""Model-level CST optimization.
+"""Replaceable compact moment components."""
 
-The public optimizer is introduced after the derivative operator contract is
-validated against dense autograd oracles.
-"""
-
-from .atom_grad import (
-    AtomGradientObservation,
-    AtomGradRequest,
-    ImplicitLinearAtomGrad,
-)
-from .moments import (
-    AcceptedFrameFirstMoment,
-    AcceptedFrameFirstMomentState,
+from .base import (
     ExpandedFirstMoment,
-    ExpandedMoments,
     ExpandedSecondMoment,
     FirstMomentComponent,
     MomentContext,
-    MomentSystem,
-    MomentSystemState,
     SecondMomentComponent,
+    VisibleMetric,
+)
+from .first import AcceptedFrameFirstMoment, AcceptedFrameFirstMomentState
+from .second import (
     SeparableDiagonalMetric,
     SeparableDiagonalSecondMoment,
     SeparableSecondMomentState,
-    VisibleMetric,
 )
+from .system import ExpandedMoments, MomentSystem, MomentSystemState
 
 __all__ = [
     "AcceptedFrameFirstMoment",
     "AcceptedFrameFirstMomentState",
-    "AtomGradRequest",
-    "AtomGradientObservation",
     "ExpandedFirstMoment",
     "ExpandedMoments",
     "ExpandedSecondMoment",
     "FirstMomentComponent",
-    "ImplicitLinearAtomGrad",
     "MomentContext",
     "MomentSystem",
     "MomentSystemState",

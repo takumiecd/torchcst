@@ -9,6 +9,7 @@ from torch import nn
 from torchcst.atoms import Atoms
 
 from .atoms import AtomDerivatives
+from .frame import FrameGeometry
 
 
 @runtime_checkable
@@ -20,3 +21,5 @@ class CSTSite(Protocol):
     def cst_parameters(self) -> tuple[nn.Parameter, ...]: ...
 
     def cst_derivatives(self) -> AtomDerivatives: ...
+
+    def cst_frame_geometry(self) -> FrameGeometry: ...

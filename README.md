@@ -385,6 +385,48 @@ only chunks of $g_W=g_y^\top x$. Repeated calls are summed before squaring, so
 their cross terms are exact. Persistent EMA updates remain an optimizer
 responsibility and are not performed by autograd.
 
+## Replaceable moment components
+
+The implicit optimizer assembles its moment behavior from separate first- and
+second-moment components. A component owns four decisions:
+
+```text
+observation request -> initial state -> step-local expansion -> accepted compression
+```
+
+The installed components union their `AtomGradRequest` values before backward.
+Consequently, replacing a moment also changes which autograd observations are
+computed: the accepted-frame first moment requests `J.T g` and `g contracted H`,
+while the separable second moment requests only row and column square
+statistics.
+
+`MomentSystem.expand(...)` combines the previous persistent state and the
+current immutable observation into raw pending state and bias-corrected solver
+views. Expansion never mutates persistent state. On rejection the entire
+proposal is discarded; on acceptance `MomentSystem.compress(...)` creates both
+new component states before returning one new aggregate state.
+
+The selected first implementation composes:
+
+```python
+MomentSystem(
+    first=AcceptedFrameFirstMoment(beta=beta1),
+    second=SeparableDiagonalSecondMoment(beta=beta2, eps=eps),
+)
+```
+
+The first component transports the old visible representative through its old
+accepted frame and recompresses the raw EMA only at the actual accepted
+displacement. The second component provisionally updates raw row/column EMAs
+and exposes a bias-corrected diagonal metric; its accepted compression simply
+commits those compact statistics.
+
+Moment components use an optimizer-independent `FrameGeometry` contract for
+cross-frame pullbacks and Gram solves. The initial `AutogradFrameGeometry` is a
+correctness implementation. Future Linear, Conv, or kernel-specific
+implementations may fuse those contractions without changing moment or solver
+interfaces.
+
 ## `CSTOptimizer`
 
 `CSTOptimizer` is the public model-level optimizer. It accepts the complete
