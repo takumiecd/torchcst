@@ -8,6 +8,7 @@ rewrite:
 - `implicit-projected-moment-transport.md` — moment-transport derivation;
 - `implicit-projected-moment-transport.ja.md` — Japanese version;
 - `second-order-pullback-moment-spaces.md` — second-order moment-space analysis.
+- `experiments/mnist-current-api.md` — current public-API MNIST reproduction.
 
 Historical structural-policy and mutation designs remain available in Git
 history but are not part of the current architecture.

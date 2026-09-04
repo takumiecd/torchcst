@@ -18,7 +18,7 @@ dev = ["pytest", "ruff"]
 packages = ["src/torchcst"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 
 [tool.ruff]
