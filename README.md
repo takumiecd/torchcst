@@ -1,20 +1,20 @@
 # torchcst — fixed-shape continuous operators for PyTorch
 
 > [!WARNING]
-> **Ground-up research rewrite.** The fixed representation is implemented, while
-> optimizer imports shown below remain unavailable until their milestone lands.
-> There is intentionally no compatibility promise for earlier
+> **Ground-up research rewrite.** This branch defines the target contract and
+> implements it in separately tested milestones. Imports may be unavailable
+> until their milestone lands. There is intentionally no compatibility promise for earlier
 > `SynapseStore`, structural-policy, or Pullback Adam APIs.
 
-`torchcst` represents a linear operator with a fixed number of atoms whose
-coordinates and amplitudes move continuously. Training never changes which
-atoms exist. There is no birth, death, merge, absorb, slot reuse, or structural
-optimizer-state remapping.
+`torchcst` represents an operator as a weighted sum of a fixed number of atoms.
+Each atom owns an amplitude and an opaque kernel coordinate that move
+continuously. Training never changes which atoms exist. There is no birth,
+death, merge, absorb, slot reuse, or structural optimizer-state remapping.
 
 The initial scope is deliberately narrow:
 
 - fixed atom count and tensor shapes for the lifetime of a module;
-- continuous source coordinates, target coordinates, and amplitudes;
+- continuous atom-local coordinates and amplitudes;
 - fixed-cardinality input and output charts whose coordinates are frozen by
   default;
 - an implicit projected Adam optimizer;
@@ -41,6 +41,7 @@ from torchcst import (
     FullQuartic,
     Gaussian,
     ImplicitAdamConfig,
+    Separable,
 )
 
 input_chart = Chart.grid((28, 28), trainable=False)
@@ -50,8 +51,10 @@ model = CSTLinear(
     input_chart,
     output_chart,
     atoms=64,
-    input_kernel=Gaussian(sigma=0.25),
-    output_kernel=Gaussian(sigma=0.10),
+    kernel=Separable(
+        input_profile=Gaussian(sigma=0.25),
+        output_profile=Gaussian(sigma=0.10),
+    ),
     atom_init="balanced",
     backend="auto",
 )
@@ -81,13 +84,15 @@ for images, labels in loader:
     loss = optimizer.step(closure)
 ```
 
-This API makes five ownership decisions explicit:
+This API makes seven ownership decisions explicit:
 
 1. a `Chart` owns fixed-cardinality observation coordinates;
-2. a `CSTLinear` owns one fixed-shape atom table;
-3. a `CSTOptimizer` partitions and exclusively owns every trainable parameter;
-4. its implicit CST engine owns compressed moment and accepted-frame state;
-5. a closure owns loss evaluation, backward, and candidate reevaluation.
+2. `Atoms` owns one fixed-shape amplitude vector and one opaque coordinate table;
+3. a `Kernel` interprets atom coordinates but owns no trainable state;
+4. a `CSTLinear` composes charts, atoms, and one kernel;
+5. a `CSTOptimizer` partitions and exclusively owns every trainable parameter;
+6. its implicit CST engine owns compressed moment and accepted-frame state;
+7. a closure owns loss evaluation, backward, and candidate reevaluation.
 
 There is no engine or structural policy between the module and optimizer.
 
@@ -120,8 +125,8 @@ Neither mode permits resizing during training.
 
 Trainable charts are retained as an experimental extension point, not as the
 recommended path. Moving an external input chart weakens its grounding in the
-data, and an amplitude-dependent bandwidth already provides much of the
-continuous support adaptation that previously motivated chart motion. Hidden
+data, and atom-local kernel coordinates can provide much of the continuous
+support adaptation that previously motivated chart motion. Hidden
 charts may eventually benefit from learned geometry, but that question is
 separate from the initial optimizer result.
 
@@ -137,6 +142,24 @@ implementation must evaluate those blocks through JVPs, VJPs, and HVPs; it must
 not materialize the full Hessian. Reserving `trainable=True` in the chart API
 keeps that route open without imposing its cost on the recommended mode.
 
+## `Atoms`
+
+For `K` atoms and an opaque kernel-coordinate width `P`, `Atoms` owns exactly
+
+```text
+weight  [K]
+p       [K, P]
+```
+
+`Atoms` knows the shapes and the correspondence between `weight[a]` and `p[a]`.
+It does not know whether entries of `p` represent a source, target, bandwidth,
+orientation, scale, or another kernel-specific quantity. Only the selected
+`Kernel` interprets `p`.
+
+Both tensors are parameters with fixed shapes and atom ordering. If an atom
+property is trainable, it belongs in that atom's row of `p`; a kernel object does
+not own shared trainable parameters.
+
 ## `CSTLinear`
 
 The target constructor is
@@ -147,8 +170,7 @@ CSTLinear(
     output_chart,
     *,
     atoms,
-    input_kernel,
-    output_kernel=None,
+    kernel,
     atom_init="balanced",
     backend="auto",
     device=None,
@@ -156,24 +178,16 @@ CSTLinear(
 )
 ```
 
-For `K = atoms`, the module directly owns the fixed-shape parameters
-
-```text
-source     [K, input_chart.dim]
-target     [K, output_chart.dim]
-amplitude  [K]
-```
-
-Kernel bandwidths may also be continuous parameters when their kernel declares
-them trainable. Tensor shapes and atom ordering never change after
-construction.
+For `K = atoms`, the module asks `kernel` for its opaque coordinate width and
+initial coordinates, then constructs one fixed-shape `Atoms` child. Tensor
+shapes and atom ordering never change after construction.
 
 The primary inspection surface is intentionally small:
 
 ```python
-model.source
-model.target
-model.amplitude
+model.atoms.weight
+model.atoms.p
+model.kernel
 model.dense_weight()       # diagnostic materialization only
 model.extra_repr()
 ```
@@ -184,44 +198,67 @@ in the first implementation.
 
 ### Represented operator
 
-Let the fixed chart points be
-$\mu_i^{\mathrm{in}}$ and $\mu_j^{\mathrm{out}}$. Atom $a$ has source
-$s_a$, target $t_a$, and amplitude $w_a$. Define
+Let the fixed charts be collected as $\mathcal C$, and let atom $a$ have opaque
+kernel coordinate $p_a$ and amplitude $w_a$. The canonical represented operator
+is
+
+$$
+\boxed{
+W=\sum_{a=1}^{K}w_a\mathcal K(p_a;\mathcal C)
+}.
+$$
+
+`CSTLinear` does not inspect $p_a$. It asks its single `Kernel` to evaluate
+$\mathcal K(p_a;\mathcal C)$ and performs the weighted sum.
+
+A separable kernel may additionally expose factors
 
 $$
 (\Phi_{\mathrm{in}})_{ia}
 =\kappa_{\mathrm{in}}(\mu_i^{\mathrm{in}},s_a),
 \qquad
 (\Phi_{\mathrm{out}})_{ja}
-=\kappa_{\mathrm{out}}(\mu_j^{\mathrm{out}},t_a).
+=\kappa_{\mathrm{out}}(\mu_j^{\mathrm{out}},t_a)
 $$
 
-The represented matrix is
+so the same canonical sum can be evaluated as
 
 $$
-\boxed{
-W
-=\Phi_{\mathrm{out}}
-\operatorname{Diag}(w)
-\Phi_{\mathrm{in}}^\top
-}.
-$$
-
-The factorized forward is
-
-$$
+W=\Phi_{\mathrm{out}}\operatorname{Diag}(w)\Phi_{\mathrm{in}}^\top,
+\qquad
 Y=((X\Phi_{\mathrm{in}})\odot w)\Phi_{\mathrm{out}}^\top.
 $$
+
+This factorization is an optional execution capability, not the semantic
+definition of a CST operator.
 
 No neuron gate is present. Capacity is selected by `atoms` at construction,
 not by a discrete operation during training.
 
 ## Kernels
 
-The first implementation supports a Gaussian on each side:
+A `Kernel` is the stateless interpretation of one atom coordinate. Its contract
+provides:
 
 ```python
-Gaussian(sigma, *, trainable=False)
+kernel.parameter_dim(input_chart, output_chart)
+kernel.initialize(input_chart, output_chart, atoms, mode=...)
+kernel.materialize_atoms(input_chart, output_chart, p)
+kernel.factors(input_chart, output_chart, p)  # optional capability
+```
+
+`materialize_atoms` returns one represented operator per atom. Production
+backends may use a more structured kernel capability instead of materializing
+those operators.
+
+The first implementation composes scalar Gaussian profiles through one
+separable operator kernel:
+
+```python
+Separable(
+    input_profile=Gaussian(sigma=0.25),
+    output_profile=Gaussian(sigma=0.10),
+)
 ```
 
 with
@@ -231,9 +268,9 @@ $$
 =\exp\left(-\frac{\lVert u-v\rVert_2^2}{2\sigma^2}\right).
 $$
 
-Input and output kernels are separate because their chart dimensions and
-bandwidths need not match. `output_kernel=None` reuses `input_kernel` only when
-that reuse is dimensionally valid.
+For this kernel, $p_a=(s_a,t_a)$ and the separable kernel alone knows that split.
+The Gaussian bandwidths are fixed kernel configuration. A future trainable
+bandwidth belongs in each atom's opaque $p_a$, preserving atom-locality.
 
 Additional kernels must provide values and the derivative contractions needed
 by the second-order displacement API. Merely implementing a forward value is
@@ -246,9 +283,9 @@ training-time mutation.
 
 The initial modes are:
 
-- `"balanced"`: distribute target coordinates across the output chart and
-  sample source coordinates over the input chart;
-- `"uniform"`: sample both sides over their chart bounds;
+- `"balanced"`: ask the kernel to balance its output-facing coordinates and
+  sample its remaining coordinates;
+- `"uniform"`: ask the kernel to sample all of its coordinates;
 - explicit tensors through a later `CSTLinear.from_atoms(...)` constructor.
 
 Initialization fixes `K` and the parameter shapes. Changing capacity means
@@ -260,8 +297,8 @@ Execution backend and model semantics are independent:
 
 | backend | behavior | role |
 | --- | --- | --- |
-| `"factored"` | evaluates the two kernel matrices and factorized expression | low atom count |
-| `"materialized"` | builds the represented matrix and calls a dense GEMM | high atom count and oracle checks |
+| `"factored"` | uses an optional factorization supplied by the single kernel | low atom count |
+| `"materialized"` | evaluates $\sum_a w_a\mathcal K(p_a)$ and calls a dense GEMM | oracle checks and kernels without a factorization |
 | `"auto"` | selects between the two without changing the represented map | default |
 
 Backends receive ordinary fixed-shape tensors. They know nothing about stores,
@@ -477,8 +514,8 @@ The experiment supports the selected starting point. It does not yet prove:
 
 1. **API contract** — this README and focused interface tests.
 2. **Legacy reset and fixed representation** — remove the dynamic architecture,
-   then implement `Chart`, `Gaussian`, and fixed-shape `CSTLinear` on the new
-   package boundaries.
+   then implement `Chart`, opaque `Atoms`, the single-`Kernel` contract, and
+   fixed-shape `CSTLinear` on the new package boundaries.
 3. **Derivative operators** — displacement, JVP/VJP, and second-order
    contractions checked against dense autograd.
 4. **Correctness optimizer** — model-wide ownership, functional dense AdamW,

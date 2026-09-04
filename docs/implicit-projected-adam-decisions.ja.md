@@ -521,6 +521,42 @@ parameter、dense AdamW moments、compact CST moments、accepted-frame metadata�
 optimizer state dictにはparameter name、shape、ownerをmanifestとして保存し、load時に
 同じpartitionを再検証する。
 
+### 8.5 CSTの正準表現はweighted atom sumとする
+
+固定chartを $\mathcal C$、atom数を $K$ とし、CST operatorを
+
+$$
+\boxed{
+W=\sum_{a=1}^{K}w_a\mathcal K(p_a;\mathcal C)
+}
+$$
+
+として定義する。mutable stateはchartとatomに分かれ、atom containerが
+$w\in\mathbb R^K$ とopaqueな $p\in\mathbb R^{K\times P}$ を所有する。kernelは
+$p$ の各成分の意味を解釈するが、shared trainable parameterを所有しない。
+trainableなbandwidth、scale、orientationなどは各atomの $p_a$ に含める。
+
+separable kernelで得られる
+
+$$
+W=\Phi_{\mathrm{out}}\operatorname{Diag}(w)\Phi_{\mathrm{in}}^\top
+$$
+
+は正準定義ではなく、weighted sumと厳密に等しいoptional execution capabilityとする。
+この区別により、non-separable kernelと将来のconvolution operatorを同じatom契約で
+扱える。
+
+各atomの全local parameterを $z_a=(w_a,p_a)$ とすれば、固定chart下では
+
+$$
+\frac{\partial^2W}{\partial z_a\partial z_b}=0\quad(a\ne b)
+$$
+
+である。したがってcontracted representation Hessianの非零部分は
+$[K,P+1,P+1]$ として保持し、denseな $[K(P+1),K(P+1)]$ はcorrectness oracleに
+限定する。ただしquartic objectiveでvisible displacement同士を積算した際に生じる
+cross-atom項は省略しない。
+
 ## 9. 主張の境界
 
 現時点で主張してよいことは次である。
