@@ -85,6 +85,28 @@ def test_matrix_free_derivatives_match_full_dense_oracle() -> None:
     )
 
 
+def test_materialized_local_derivatives_match_full_dense_oracle_blocks() -> None:
+    site = make_site()
+    actual = site.cst_derivatives()
+    oracle = DenseDerivativeOracle(site.atoms, site._materialize_atoms)
+    point = actual.current_point()
+
+    jacobian, hessian = actual.materialized_local_derivatives(
+        parameter_point=point
+    )
+    full_jacobian = oracle.jacobian(parameter_point=point)
+    full_hessian = oracle.hessian(parameter_point=point)
+    expected_hessian = torch.stack(
+        [
+            full_hessian[:, :, atom, :, atom, :]
+            for atom in range(site.atom_count)
+        ]
+    )
+
+    torch.testing.assert_close(jacobian, full_jacobian.permute(2, 0, 1, 3))
+    torch.testing.assert_close(hessian, expected_hessian)
+
+
 def test_distinct_atom_hessian_blocks_are_exactly_zero() -> None:
     site = make_site()
     oracle = DenseDerivativeOracle(site.atoms, site._materialize_atoms)

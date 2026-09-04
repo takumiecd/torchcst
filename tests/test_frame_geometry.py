@@ -68,6 +68,39 @@ def test_gram_system_matches_visible_frame_inner_products() -> None:
     torch.testing.assert_close(gram.matrix, gram.matrix.T)
 
 
+def test_cached_local_derivatives_match_matrix_free_frame_operations() -> None:
+    site, cached = make_geometry()
+    matrix_free = site.cst_frame_geometry()
+    matrix_free._MAX_DERIVATIVE_CACHE_ELEMENTS = 0
+    point = cached.current_point()
+    direction = 0.03 * torch.randn_like(point)
+    frame_displacement = 0.02 * torch.randn_like(point)
+    cotangent = torch.randn(
+        site.out_features,
+        site.in_features,
+        dtype=point.dtype,
+    )
+
+    torch.testing.assert_close(
+        cached.displacement(direction, point=point),
+        matrix_free.displacement(direction, point=point),
+    )
+    torch.testing.assert_close(
+        cached.pullback(cotangent, point=point, displacement=frame_displacement),
+        matrix_free.pullback(
+            cotangent,
+            point=point,
+            displacement=frame_displacement,
+        ),
+    )
+    cached_frame = cached.frame(point, frame_displacement)
+    matrix_free_frame = matrix_free.frame(point, frame_displacement)
+    torch.testing.assert_close(
+        cached.gram(cached_frame).matrix,
+        matrix_free.gram(matrix_free_frame).matrix,
+    )
+
+
 def test_compression_solves_the_accepted_frame_normal_equation() -> None:
     site, geometry = make_geometry()
     derivatives = site.cst_derivatives()

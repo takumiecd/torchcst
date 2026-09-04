@@ -7,7 +7,7 @@ from collections.abc import Callable
 import torch
 from torch import Tensor, nn
 from torch.func import hessian as functional_hessian
-from torch.func import jvp, vjp, vmap
+from torch.func import jacfwd, jvp, vjp, vmap
 
 from torchcst.atoms import Atoms
 
@@ -92,6 +92,24 @@ class AtomDerivatives:
             direction,
             parameter_point=parameter_point,
         )
+
+    def materialized_local_derivatives(
+        self, *, parameter_point: Tensor | None = None
+    ) -> tuple[Tensor, Tensor]:
+        """Materialize atom-local Jacobian and Hessian blocks at one point."""
+
+        parameter_point = self._point_or_current(parameter_point)
+
+        def represented_atom(atom_point: Tensor) -> Tensor:
+            operators = self._materialize_atoms(atom_point.unsqueeze(0))
+            if operators.shape[0] != 1:
+                raise ValueError("materialize_atoms must preserve the atom dimension")
+            return operators[0]
+
+        atom_jacobian = jacfwd(represented_atom)
+        jacobian = vmap(atom_jacobian)(parameter_point)
+        hessian = vmap(jacfwd(atom_jacobian))(parameter_point)
+        return jacobian.detach(), hessian.detach()
 
     def pushforward(
         self,

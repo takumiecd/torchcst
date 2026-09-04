@@ -192,10 +192,17 @@ class FrameGeometry(ABC):
 class AutogradFrameGeometry(FrameGeometry):
     """Correctness implementation built from generic derivative contractions."""
 
+    _MAX_DERIVATIVE_CACHE_ELEMENTS = 16_000_000
+
     def __init__(self, derivatives: AtomDerivatives) -> None:
         if not isinstance(derivatives, AtomDerivatives):
             raise TypeError("derivatives must be an AtomDerivatives instance")
         self.derivatives = derivatives
+        self._visible_shape = tuple(derivatives.represented().shape)
+        self._cache_point: Tensor | None = None
+        self._cache_jacobian: Tensor | None = None
+        self._cache_hessian: Tensor | None = None
+        self._cache_disabled = False
 
     @property
     def point_shape(self) -> tuple[int, int]:
@@ -203,7 +210,7 @@ class AutogradFrameGeometry(FrameGeometry):
 
     @property
     def visible_shape(self) -> tuple[int, ...]:
-        return tuple(self.derivatives.represented().shape)
+        return self._visible_shape
 
     def current_point(self) -> Tensor:
         return self.derivatives.current_point()
@@ -248,6 +255,14 @@ class AutogradFrameGeometry(FrameGeometry):
     def displacement(self, direction: Tensor, *, point: Tensor) -> Tensor:
         self._validate_local(point, name="displacement point")
         self._validate_local(direction, name="direction")
+        cached = self._local_derivatives(point)
+        if cached is not None:
+            jacobian, hessian = self._flattened_derivatives(cached)
+            linear = torch.einsum("kmp,kp->m", jacobian, direction)
+            quadratic = torch.einsum(
+                "kmpq,kp,kq->m", hessian, direction, direction
+            )
+            return (linear + 0.5 * quadratic).reshape(self.visible_shape)
         return self.derivatives.displacement(direction, parameter_point=point)
 
     def pullback(
@@ -260,6 +275,15 @@ class AutogradFrameGeometry(FrameGeometry):
         self._validate_local(point, name="pullback point")
         if displacement is not None:
             self._validate_local(displacement, name="pullback displacement")
+        self._validate_visible(cotangent, name="cotangent")
+        cached = self._local_derivatives(point)
+        if cached is not None:
+            jacobian, hessian = self._flattened_derivatives(cached)
+            if displacement is not None:
+                jacobian = jacobian + torch.einsum(
+                    "kmpq,kq->kmp", hessian, displacement
+                )
+            return torch.einsum("kmp,m->kp", jacobian, cotangent.reshape(-1))
         return self.derivatives.pullback(
             cotangent,
             at=displacement,
@@ -280,6 +304,24 @@ class AutogradFrameGeometry(FrameGeometry):
             device=frame.point.device,
             dtype=frame.point.dtype,
         ).reshape(local_size, *self.point_shape)
+
+        cached = self._local_derivatives(frame.point)
+        if cached is not None:
+            jacobian, hessian = self._flattened_derivatives(cached)
+            frame_jacobian = jacobian + torch.einsum(
+                "kmpq,kq->kmp", hessian, frame.displacement
+            )
+            visible_columns = frame_jacobian.permute(1, 0, 2).reshape(
+                -1, local_size
+            )
+            matrix = visible_columns.transpose(0, 1) @ visible_columns
+            return GramSystem(
+                matrix,
+                self.point_shape,
+                damping=damping,
+                rtol=rtol,
+            )
+
         def pushforward(direction: Tensor) -> Tensor:
             return self.derivatives.pushforward(
                 direction,
@@ -322,3 +364,49 @@ class AutogradFrameGeometry(FrameGeometry):
         parameter = self.derivatives.atoms.p
         if value.device != parameter.device or value.dtype != parameter.dtype:
             raise ValueError(f"{name} must match atom device and dtype")
+
+    def _validate_visible(self, value: Tensor, *, name: str) -> None:
+        if value.shape != self.visible_shape:
+            raise ValueError(f"{name} must have shape {list(self.visible_shape)}")
+        parameter = self.derivatives.atoms.p
+        if value.device != parameter.device or value.dtype != parameter.dtype:
+            raise ValueError(f"{name} must match atom device and dtype")
+
+    def _local_derivatives(
+        self, point: Tensor
+    ) -> tuple[Tensor, Tensor] | None:
+        if self._cache_disabled:
+            return None
+        if self._cache_point is point:
+            assert self._cache_jacobian is not None
+            assert self._cache_hessian is not None
+            return self._cache_jacobian, self._cache_hessian
+        if self._cache_point is not None and torch.equal(self._cache_point, point):
+            assert self._cache_jacobian is not None
+            assert self._cache_hessian is not None
+            return self._cache_jacobian, self._cache_hessian
+
+        atoms, parameters = self.point_shape
+        visible_size = self.derivatives.represented(point).numel()
+        cache_elements = atoms * visible_size * (parameters + parameters**2)
+        if cache_elements > self._MAX_DERIVATIVE_CACHE_ELEMENTS:
+            self._cache_disabled = True
+            return None
+
+        jacobian, hessian = self.derivatives.materialized_local_derivatives(
+            parameter_point=point
+        )
+        self._cache_point = point
+        self._cache_jacobian = jacobian
+        self._cache_hessian = hessian
+        return jacobian, hessian
+
+    def _flattened_derivatives(
+        self, cached: tuple[Tensor, Tensor]
+    ) -> tuple[Tensor, Tensor]:
+        jacobian, hessian = cached
+        atoms, parameters = self.point_shape
+        return (
+            jacobian.reshape(atoms, -1, parameters),
+            hessian.reshape(atoms, -1, parameters, parameters),
+        )
