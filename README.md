@@ -331,6 +331,22 @@ shape `[K, P + 1, K, P + 1]` and verifies that distinct-atom blocks are zero.
 This representation sparsity does not remove cross-atom terms created later by
 the full quartic objective.
 
+## Represented gradients
+
+Implicit optimization needs the cotangent of the represented operator itself,
+not only the ordinary gradients already pulled back to `weight` and `p`. For a
+linear site with $y=xW^\top$, each backward call contributes
+
+$$
+g_W=\sum_{\text{leading indices}} g_y^\top x.
+$$
+
+`CSTLinear` captures this value independently of whether its forward backend is
+factorized or materialized. Capture is explicitly enabled only around the base
+loss evaluation, accumulates repeated module calls and microbatches, and can be
+disabled during candidate reevaluation. The captured tensor is transient: it is
+cleared through the site lifecycle and is never part of `state_dict()`.
+
 ## `CSTOptimizer`
 
 `CSTOptimizer` is the public model-level optimizer. It accepts the complete

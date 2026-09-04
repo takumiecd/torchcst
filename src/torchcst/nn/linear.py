@@ -9,6 +9,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from torchcst._derivatives import AtomDerivatives, RepresentedGradientAccumulator
 from torchcst.atoms import Atoms
 from torchcst.geometry import Chart
 from torchcst.kernels import AtomInit, Kernel
@@ -82,6 +83,9 @@ class CSTLinear(nn.Module):
         weight = torch.empty(atoms, device=target_device, dtype=target_dtype)
         weight.normal_(mean=0.0, std=1.0 / math.sqrt(atoms))
         self.atoms = Atoms(weight, p)
+        self._represented_gradient = RepresentedGradientAccumulator(
+            (self.out_features, self.in_features)
+        )
 
     @property
     def in_features(self) -> int:
@@ -113,14 +117,55 @@ class CSTLinear(nn.Module):
             )
         return represented
 
-    def cst_derivatives(self) -> "AtomDerivatives":
+    def cst_derivatives(self) -> AtomDerivatives:
         """Build the internal atom-structured derivative operator."""
 
         if self.input_chart.trainable or self.output_chart.trainable:
             raise ValueError("the first derivative engine supports frozen charts only")
-        from torchcst._derivatives import AtomDerivatives
-
         return AtomDerivatives(self.atoms, self._materialize_atoms)
+
+    def cst_parameters(self) -> tuple[nn.Parameter, nn.Parameter]:
+        """Return the fixed-shape parameters owned by this CST site."""
+
+        return self.atoms.weight, self.atoms.p
+
+    def enable_represented_gradient_capture(self, *, clear: bool = True) -> None:
+        """Observe represented cotangents produced by subsequent backward calls."""
+
+        self._represented_gradient.enable(clear=clear)
+
+    def disable_represented_gradient_capture(self) -> None:
+        """Stop observing represented cotangents without clearing the last value."""
+
+        self._represented_gradient.disable()
+
+    def clear_represented_gradient(self) -> None:
+        """Discard the transient represented cotangent."""
+
+        self._represented_gradient.clear()
+
+    def represented_gradient(self) -> Tensor:
+        """Return a detached snapshot of the accumulated ``dL/dW``."""
+
+        return self._represented_gradient.value()
+
+    def _observe_represented_gradient(self, inputs: Tensor, outputs: Tensor) -> Tensor:
+        if not self._represented_gradient.enabled or not outputs.requires_grad:
+            return outputs
+
+        saved_inputs = inputs.detach().clone()
+        capture_generation = self._represented_gradient.generation
+
+        def collect(output_gradient: Tensor) -> None:
+            flat_inputs = saved_inputs.reshape(-1, self.in_features)
+            flat_gradient = output_gradient.detach().reshape(-1, self.out_features)
+            self._represented_gradient.add(
+                flat_gradient.transpose(0, 1) @ flat_inputs,
+                generation=capture_generation,
+            )
+
+        outputs.register_hook(collect)
+        return outputs
 
     def dense_weight(self) -> Tensor:
         """Materialize the canonical weighted atom sum."""
@@ -144,13 +189,15 @@ class CSTLinear(nn.Module):
             )
 
         if self._resolved_backend() == "materialized":
-            return F.linear(inputs, self.dense_weight())
+            outputs = F.linear(inputs, self.dense_weight())
+            return self._observe_represented_gradient(inputs, outputs)
 
         phi_input, phi_output = self.kernel.factors(
             self.input_chart, self.output_chart, self.atoms.p
         )
         atom_values = (inputs @ phi_input) * self.atoms.weight
-        return atom_values @ phi_output.transpose(-2, -1)
+        outputs = atom_values @ phi_output.transpose(-2, -1)
+        return self._observe_represented_gradient(inputs, outputs)
 
     def extra_repr(self) -> str:
         return (
