@@ -2,13 +2,15 @@ import pytest
 import torch
 from torch import Tensor
 
-from torchcst import Chart, CSTLinear, Gaussian, Kernel, Separable
+from torchcst import Amplitude, Chart, CSTLinear, Gaussian, Kernel, Separable
 
 
-def make_kernel() -> Separable:
-    return Separable(
-        input_profile=Gaussian(0.4),
-        output_profile=Gaussian(0.7),
+def make_kernel() -> Amplitude:
+    return Amplitude(
+        Separable(
+            input_profile=Gaussian(0.4),
+            output_profile=Gaussian(0.7),
+        )
     )
 
 

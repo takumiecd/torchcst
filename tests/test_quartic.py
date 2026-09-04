@@ -2,7 +2,15 @@ import pytest
 import torch
 from torch import Tensor
 
-from torchcst import Chart, CSTLinear, FullQuartic, Gaussian, Kernel, Separable
+from torchcst import (
+    Amplitude,
+    Chart,
+    CSTLinear,
+    FullQuartic,
+    Gaussian,
+    Kernel,
+    Separable,
+)
 from torchcst.optim import (
     AcceptedFrameFirstMoment,
     AtomGradientObservation,
@@ -20,9 +28,11 @@ def make_nonlinear_site() -> CSTLinear:
         Chart.linspace(4),
         Chart.linspace(3),
         atoms=2,
-        kernel=Separable(
-            input_profile=Gaussian(0.8),
-            output_profile=Gaussian(0.6),
+        kernel=Amplitude(
+            Separable(
+                input_profile=Gaussian(0.8),
+                output_profile=Gaussian(0.6),
+            )
         ),
         dtype=torch.float64,
     )

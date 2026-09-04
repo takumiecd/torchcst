@@ -8,6 +8,7 @@ from torch import Tensor, nn
 
 from torchcst import (
     AdamWConfig,
+    Amplitude,
     Chart,
     CSTLinear,
     CSTOptimizer,
@@ -88,9 +89,11 @@ def make_site() -> CSTLinear:
         Chart.linspace(2),
         Chart.linspace(1),
         atoms=1,
-        kernel=Separable(
-            input_profile=Gaussian(0.8),
-            output_profile=Gaussian(0.7),
+        kernel=Amplitude(
+            Separable(
+                input_profile=Gaussian(0.8),
+                output_profile=Gaussian(0.7),
+            )
         ),
         backend="materialized",
         dtype=torch.float64,

@@ -36,6 +36,8 @@ import torch.nn.functional as F
 
 from torchcst import (
     AdamWConfig,
+    Amplitude,
+    AmplitudeBandwidthSeparable,
     Chart,
     CSTLinear,
     CSTOptimizer,
@@ -52,9 +54,11 @@ model = CSTLinear(
     input_chart,
     output_chart,
     atoms=64,
-    kernel=Separable(
-        input_profile=Gaussian(sigma=0.25),
-        output_profile=Gaussian(sigma=0.10),
+    kernel=Amplitude(
+        Separable(
+            input_profile=Gaussian(sigma=0.25),
+            output_profile=Gaussian(sigma=0.10),
+        )
     ),
     atom_init="balanced",
     backend="auto",
@@ -258,13 +262,23 @@ kernel.factors(input_chart, output_chart, p)  # optional capability
 atom; `CSTLinear` adds no separate amplitude. Production backends may use a
 more structured kernel capability instead of materializing those operators.
 
-The first implementation composes scalar Gaussian profiles through one
-separable operator kernel:
+The base separable kernel composes scalar profiles without adding an amplitude:
 
 ```python
 Separable(
     input_profile=Gaussian(sigma=0.25),
     output_profile=Gaussian(sigma=0.10),
+)
+```
+
+An independent signed amplitude is an explicit kernel composition:
+
+```python
+Amplitude(
+    Separable(
+        input_profile=Gaussian(sigma=0.25),
+        output_profile=Gaussian(sigma=0.10),
+    )
 )
 ```
 
@@ -275,11 +289,37 @@ $$
 =\exp\left(-\frac{\lVert u-v\rVert_2^2}{2\sigma^2}\right).
 $$
 
-For this kernel, $p_a=(w_a,s_a,t_a)$ and the separable kernel alone knows that
-split. Its present implementation uses $w_a$ as a linear amplitude, while a
-future kernel may also let it affect bandwidth or shape. The Gaussian
-bandwidths are fixed kernel configuration. A future trainable bandwidth belongs
-in each atom's opaque $p_a$, preserving atom-locality.
+For `Separable`, $p_a=(s_a,t_a)$. The `Amplitude` wrapper changes this to
+$p_a=(w_a,s_a,t_a)$ and evaluates $w_a\mathcal K(s_a,t_a)$. The wrapped kernel
+still owns the meaning of $(s_a,t_a)$; `Atoms` sees only one opaque row.
+
+The amplitude-dependent output-bandwidth variant is:
+
+```python
+AmplitudeBandwidthSeparable(
+    input_profile=Gaussian(sigma=0.25),
+    output_profile=Gaussian(sigma=0.10),  # narrow/committed width
+    sigma_explore=float("inf"),           # weak-atom width
+    tau=0.005,
+    temperature=0.25,
+)
+```
+
+It keeps the same opaque layout $(w_a,s_a,t_a)$, but smoothly interpolates
+output precision between `sigma_explore` and `output_profile.sigma` using the
+even gate
+
+$$
+g(w)=\operatorname{sigmoid}\left(
+\frac{\log(w^2+\epsilon_g^2)-2\log\tau}{T}
+\right).
+$$
+
+Thus weak atoms are broad explorers and sufficiently strong atoms approach the
+narrow Gaussian. Fixed positive `gate_eps` makes the map twice differentiable
+at zero amplitude, which is required by the CST Hessian contractions. These
+bandwidth controls are fixed kernel configuration; a future learned threshold
+or bandwidth must live in each opaque atom row.
 
 Kernel values must remain differentiable with respect to `p`; the internal
 derivative layer supplies the second-order displacement contractions. A later

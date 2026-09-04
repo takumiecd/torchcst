@@ -1,6 +1,6 @@
 import torch
 
-from torchcst import Chart, CSTLinear, Gaussian, Separable
+from torchcst import Amplitude, Chart, CSTLinear, Gaussian, Separable
 from torchcst._derivatives import AutogradFrameGeometry
 
 
@@ -10,9 +10,11 @@ def make_geometry() -> tuple[CSTLinear, AutogradFrameGeometry]:
         Chart.linspace(4),
         Chart.linspace(3),
         atoms=2,
-        kernel=Separable(
-            input_profile=Gaussian(0.8),
-            output_profile=Gaussian(0.6),
+        kernel=Amplitude(
+            Separable(
+                input_profile=Gaussian(0.8),
+                output_profile=Gaussian(0.6),
+            )
         ),
         dtype=torch.float64,
     )
@@ -109,4 +111,3 @@ def test_frame_snapshots_do_not_alias_caller_tensors() -> None:
 
     torch.testing.assert_close(frame.point, expected_point)
     torch.testing.assert_close(frame.displacement, expected_displacement)
-

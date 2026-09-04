@@ -1,6 +1,6 @@
 import torch
 
-from torchcst import Chart, CSTLinear, Gaussian, Separable
+from torchcst import Amplitude, Chart, CSTLinear, Gaussian, Separable
 from torchcst.optim import (
     AcceptedFrameFirstMoment,
     AcceptedFrameFirstMomentState,
@@ -20,9 +20,11 @@ def make_site() -> CSTLinear:
         Chart.linspace(4),
         Chart.linspace(3),
         atoms=2,
-        kernel=Separable(
-            input_profile=Gaussian(0.8),
-            output_profile=Gaussian(0.6),
+        kernel=Amplitude(
+            Separable(
+                input_profile=Gaussian(0.8),
+                output_profile=Gaussian(0.6),
+            )
         ),
         dtype=torch.float64,
     )

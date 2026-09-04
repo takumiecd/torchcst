@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from torchcst import Atoms, Chart, CSTLinear, Gaussian, Separable
+from torchcst import Amplitude, Atoms, Chart, CSTLinear, Gaussian, Separable
 from torchcst.atoms import AtomGrad
 from torchcst.nn import LinearAtomGrad
 from torchcst.optim import ImplicitLinearAtomGrad
@@ -13,9 +13,11 @@ def make_site(*, backend: str = "factored") -> CSTLinear:
         Chart.linspace(4),
         Chart.linspace(3),
         atoms=2,
-        kernel=Separable(
-            input_profile=Gaussian(0.8),
-            output_profile=Gaussian(0.6),
+        kernel=Amplitude(
+            Separable(
+                input_profile=Gaussian(0.8),
+                output_profile=Gaussian(0.6),
+            )
         ),
         backend=backend,
         dtype=torch.float64,
