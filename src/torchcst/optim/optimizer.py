@@ -17,7 +17,6 @@ from .config import AdamWConfig, ImplicitAdamConfig
 from .dense import DenseAdamWProposal, FunctionalAdamW
 from .moments import (
     AcceptedFrameFirstMoment,
-    AcceptedFrameFirstMomentState,
     ExpandedMoments,
     MomentContext,
     MomentSystem,
@@ -265,12 +264,6 @@ class CSTOptimizer(Optimizer):
             solve = self.cst_config.quartic.solve(
                 problem,
                 trust_radius=self.cst_config.trust_radius,
-                initial=(
-                    site.state.first.frame.displacement
-                    if site.state.step > 0
-                    and isinstance(site.state.first, AcceptedFrameFirstMomentState)
-                    else None
-                ),
             )
             self._validate_solve(solve, context)
             proposals.append(_CSTProposal(site, context, expanded, solve))

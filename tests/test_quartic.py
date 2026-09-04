@@ -196,23 +196,6 @@ def test_full_quartic_respects_the_trust_region_boundary() -> None:
     assert result.projected_gradient_norm < 3e-6
 
 
-def test_full_quartic_returns_a_converged_warm_start_without_fallbacks() -> None:
-    problem, expected = make_convex_quadratic_problem()
-    solver = FullQuartic(
-        starts=4,
-        max_iter=60,
-        tolerance_grad=1e-8,
-        tolerance_change=1e-12,
-    )
-    initial = torch.tensor([[expected]], dtype=torch.float64)
-
-    result = solver.solve(problem, trust_radius=0.5, initial=initial)
-
-    assert result.start_index == 0
-    assert result.converged
-    torch.testing.assert_close(result.displacement, initial, rtol=1e-6, atol=1e-8)
-
-
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [

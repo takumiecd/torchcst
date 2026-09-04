@@ -5,8 +5,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from torch import Tensor
-
 from ..problem import QuarticProblem
 
 if TYPE_CHECKING:
@@ -22,5 +20,4 @@ class QuarticSolver(ABC):
         problem: QuarticProblem,
         *,
         trust_radius: float,
-        initial: Tensor | None = None,
     ) -> QuarticSolveResult: ...

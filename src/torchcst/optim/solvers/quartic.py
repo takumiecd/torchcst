@@ -36,7 +36,6 @@ class FullQuartic(QuarticSolver):
         tolerance_grad: float = 1e-7,
         tolerance_change: float = 1e-9,
         history_size: int = 20,
-        warm_start: bool = True,
     ) -> None:
         for name, value in (
             ("starts", starts),
@@ -49,40 +48,26 @@ class FullQuartic(QuarticSolver):
                 raise ValueError(f"{name} must be positive")
         if tolerance_grad <= 0 or tolerance_change <= 0:
             raise ValueError("solver tolerances must be positive")
-        if not isinstance(warm_start, bool):
-            raise TypeError("warm_start must be a boolean")
         self.starts = starts
         self.max_iter = max_iter
         self.tolerance_grad = float(tolerance_grad)
         self.tolerance_change = float(tolerance_change)
         self.history_size = history_size
-        self.warm_start = warm_start
 
     def solve(
         self,
         problem: QuarticProblem,
         *,
         trust_radius: float,
-        initial: Tensor | None = None,
     ) -> QuarticSolveResult:
         if not isinstance(problem, QuarticProblem):
             raise TypeError("problem must be a QuarticProblem")
         if trust_radius <= 0:
             raise ValueError("trust_radius must be positive")
-        if not self.warm_start:
-            initial = None
-        if initial is not None:
-            if initial.shape != problem.point_shape:
-                raise ValueError("initial displacement has the wrong shape")
-            point = problem.context.current_point
-            if initial.device != point.device or initial.dtype != point.dtype:
-                raise ValueError("initial displacement must match the problem")
-            if not torch.isfinite(initial).all():
-                raise FloatingPointError("initial displacement must be finite")
         radius = float(trust_radius)
         candidates = []
         for start_index, start in enumerate(
-            self._initial_points(problem, radius, initial=initial)
+            self._initial_points(problem, radius)
         ):
             candidate = self._solve_one(
                 problem,
@@ -92,8 +77,6 @@ class FullQuartic(QuarticSolver):
             )
             if candidate is not None:
                 candidates.append(candidate)
-                if initial is not None and start_index == 0 and candidate.converged:
-                    return candidate
         if not candidates:
             raise RuntimeError("quartic solver did not produce a finite candidate")
         return min(candidates, key=lambda result: float(result.objective))
@@ -168,27 +151,18 @@ class FullQuartic(QuarticSolver):
         self,
         problem: QuarticProblem,
         radius: float,
-        *,
-        initial: Tensor | None,
     ) -> tuple[Tensor, ...]:
         zero = torch.zeros_like(problem.context.current_point)
-        points = []
-        if initial is not None:
-            points.append(self._project_ball(initial.detach().clone(), radius))
-            if self.starts > 1:
-                points.append(zero)
-        else:
-            points.append(zero)
+        points = [zero]
         if self.starts == 1:
             return tuple(points)
 
-        if len(points) < self.starts:
-            gradient = problem.gradient(zero).detach()
-            gradient_norm = torch.linalg.vector_norm(gradient)
-            if gradient_norm > 0:
-                points.append(-0.25 * radius * gradient / gradient_norm)
-            else:
-                points.append(zero.clone())
+        gradient = problem.gradient(zero).detach()
+        gradient_norm = torch.linalg.vector_norm(gradient)
+        if gradient_norm > 0:
+            points.append(-0.25 * radius * gradient / gradient_norm)
+        else:
+            points.append(zero.clone())
 
         flat_indices = torch.arange(
             zero.numel(),
