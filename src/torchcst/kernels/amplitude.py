@@ -39,7 +39,7 @@ class Amplitude(Kernel):
             mode=mode,
         )
         amplitude = inner.new_empty(atoms, 1)
-        amplitude.normal_(mean=0.0, std=1.0 / math.sqrt(atoms))
+        amplitude.normal_(mean=0.0, std=0.1 / math.sqrt(atoms))
         return torch.cat((amplitude, inner), dim=-1)
 
     def materialize_atoms(

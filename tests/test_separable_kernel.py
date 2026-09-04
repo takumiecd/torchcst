@@ -68,6 +68,31 @@ def test_amplitude_wrapper_adds_one_signed_coordinate_to_any_kernel() -> None:
         represented,
         torch.einsum("oa,ia->aoi", phi_output, phi_input),
     )
+
+
+def test_amplitude_kernels_use_the_successful_small_weight_initialization() -> None:
+    input_chart = Chart.linspace(8)
+    output_chart = Chart.linspace(5)
+    atoms = 4096
+    kernels = (
+        Amplitude(
+            Separable(
+                input_profile=Gaussian(0.8),
+                output_profile=Gaussian(0.7),
+            )
+        ),
+        AmplitudeBandwidthSeparable(
+            input_profile=Gaussian(0.8),
+            output_profile=Gaussian(0.7),
+        ),
+    )
+
+    for seed, kernel in enumerate(kernels):
+        torch.manual_seed(seed)
+        p = kernel.initialize(input_chart, output_chart, atoms, mode="uniform")
+        expected = 0.1 / atoms**0.5
+        assert abs(float(p[:, 0].mean())) < 0.05 * expected
+        assert abs(float(p[:, 0].std()) - expected) < 0.05 * expected
     assert tuple(kernel.parameters()) == ()
 
 

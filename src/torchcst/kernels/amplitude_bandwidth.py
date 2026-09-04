@@ -77,7 +77,7 @@ class AmplitudeBandwidthSeparable(Kernel):
         input_p = self.input_profile.initialize(input_chart, atoms, mode="uniform")
         output_p = self.output_profile.initialize(output_chart, atoms, mode=mode)
         amplitude = input_p.new_empty(atoms, 1)
-        amplitude.normal_(mean=0.0, std=1.0 / math.sqrt(atoms))
+        amplitude.normal_(mean=0.0, std=0.1 / math.sqrt(atoms))
         return torch.cat((amplitude, input_p, output_p), dim=-1)
 
     def materialize_atoms(

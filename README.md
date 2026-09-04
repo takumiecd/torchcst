@@ -328,6 +328,9 @@ or bandwidth must live in each opaque atom row.
 Both fixed- and variable-width Gaussian columns are L2-normalized. Therefore
 an `Amplitude`-bearing separable atom has Frobenius norm exactly `abs(w)`, so
 bandwidth changes do not silently rescale the meaning of its amplitude.
+Amplitude-bearing kernels initialize
+$w_a\sim\mathcal N(0,(0.1/\sqrt K)^2)$, matching the successful fixed-$K$
+MNIST protocol.
 
 Kernel values must remain differentiable with respect to `p`; the internal
 derivative layer supplies the second-order displacement contractions. A later
