@@ -17,7 +17,7 @@ import struct
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import torch
 import torch.nn.functional as F
@@ -31,6 +31,7 @@ from torchcst import (
     FullQuartic,
     Gaussian,
     ImplicitAdamConfig,
+    ProjectedLBFGS,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,8 +55,10 @@ class ExperimentConfig:
     beta2: float = 0.99
     epsilon: float = 1e-8
     trust_radius: float = 0.25
+    solver: Literal["full", "projected"] = "full"
     solver_starts: int = 4
     solver_max_iter: int = 80
+    solver_max_evaluations: int = 24
     seed: int = 17
 
 
@@ -133,6 +136,18 @@ def build_model(config: ExperimentConfig, device: torch.device) -> CSTLinear:
 
 
 def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
+    if config.solver == "full":
+        quartic = FullQuartic(
+            starts=config.solver_starts,
+            max_iter=config.solver_max_iter,
+        )
+    elif config.solver == "projected":
+        quartic = ProjectedLBFGS(
+            max_iter=config.solver_max_iter,
+            max_evaluations=config.solver_max_evaluations,
+        )
+    else:
+        raise ValueError("solver must be 'full' or 'projected'")
     return CSTOptimizer(
         model,
         cst=ImplicitAdamConfig(
@@ -140,10 +155,7 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
             betas=(config.beta1, config.beta2),
             eps=config.epsilon,
             trust_radius=config.trust_radius,
-            quartic=FullQuartic(
-                starts=config.solver_starts,
-                max_iter=config.solver_max_iter,
-            ),
+            quartic=quartic,
         ),
         dense=None,
     )
@@ -266,8 +278,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-size", type=int, default=8192)
     parser.add_argument("--test-size", type=int, default=2000)
     parser.add_argument("--trust-radius", type=float, default=0.25)
+    parser.add_argument("--solver", choices=("full", "projected"), default="full")
     parser.add_argument("--solver-starts", type=int, default=4)
     parser.add_argument("--solver-max-iter", type=int, default=80)
+    parser.add_argument("--solver-max-evaluations", type=int, default=24)
     return parser.parse_args()
 
 
@@ -280,8 +294,10 @@ def main() -> None:
         train_size=args.train_size,
         test_size=args.test_size,
         trust_radius=args.trust_radius,
+        solver=args.solver,
         solver_starts=args.solver_starts,
         solver_max_iter=args.solver_max_iter,
+        solver_max_evaluations=args.solver_max_evaluations,
         seed=args.seed,
     )
     device = torch.device(args.device)

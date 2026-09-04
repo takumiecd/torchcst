@@ -9,6 +9,7 @@ from torchcst import (
     FullQuartic,
     Gaussian,
     Kernel,
+    ProjectedLBFGS,
     Separable,
 )
 from torchcst.optim import (
@@ -94,6 +95,16 @@ def test_quartic_gradient_matches_autograd_of_its_value() -> None:
     actual = problem.gradient(displacement.detach())
 
     torch.testing.assert_close(actual, expected, rtol=1e-7, atol=1e-9)
+
+
+def test_quartic_shared_value_and_gradient_match_separate_evaluations() -> None:
+    problem = make_problem()
+    displacement = 0.02 * torch.randn_like(problem.context.current_point)
+
+    value, gradient = problem.value_and_gradient(displacement)
+
+    torch.testing.assert_close(value, problem.value(displacement))
+    torch.testing.assert_close(gradient, problem.gradient(displacement))
 
 
 class LinearAmplitudeKernel(Kernel):
@@ -194,6 +205,72 @@ def test_full_quartic_respects_the_trust_region_boundary() -> None:
     )
     assert result.on_boundary
     assert result.projected_gradient_norm < 3e-6
+
+
+def test_projected_lbfgs_solves_a_known_interior_problem() -> None:
+    problem, expected = make_convex_quadratic_problem()
+    solver = ProjectedLBFGS(
+        max_iter=20,
+        max_evaluations=24,
+        tolerance_grad=1e-9,
+        relative_tolerance_grad=0.0,
+        tolerance_change=1e-12,
+    )
+
+    result = solver.solve(problem, trust_radius=0.5)
+
+    torch.testing.assert_close(
+        result.displacement,
+        torch.tensor([[expected]], dtype=torch.float64),
+        rtol=1e-5,
+        atol=1e-7,
+    )
+    assert result.objective <= problem.value(torch.zeros_like(result.displacement))
+    assert result.evaluations <= 24
+    assert result.projected_gradient_norm < 1e-6
+
+
+def test_projected_lbfgs_respects_the_boundary_and_evaluation_budget() -> None:
+    problem, _ = make_convex_quadratic_problem()
+    solver = ProjectedLBFGS(max_iter=20, max_evaluations=12)
+
+    result = solver.solve(problem, trust_radius=0.03)
+
+    torch.testing.assert_close(
+        result.displacement,
+        torch.tensor([[0.03]], dtype=torch.float64),
+        rtol=1e-6,
+        atol=1e-8,
+    )
+    assert result.on_boundary
+    assert result.evaluations <= 12
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"max_iter": 0}, "max_iter must be positive"),
+        ({"max_evaluations": 0}, "max_evaluations must be positive"),
+        ({"history_size": 0}, "history_size must be positive"),
+        ({"line_search_steps": 0}, "line_search_steps must be positive"),
+        ({"tolerance_grad": 0.0}, "solver tolerances must be positive"),
+        ({"relative_tolerance_grad": -1.0}, "must be nonnegative"),
+        ({"backtrack_factor": 1.0}, "0 < value < 1"),
+        ({"armijo": 0.0}, "0 < value < 1"),
+    ],
+)
+def test_projected_lbfgs_validates_its_configuration(
+    kwargs: dict[str, object], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        ProjectedLBFGS(**kwargs)
+
+
+def test_projected_lbfgs_requires_a_positive_trust_radius() -> None:
+    problem, _ = make_convex_quadratic_problem()
+
+    with pytest.raises(ValueError, match="trust_radius must be positive"):
+        ProjectedLBFGS().solve(problem, trust_radius=0.0)
 
 
 @pytest.mark.parametrize(

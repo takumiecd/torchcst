@@ -91,6 +91,37 @@ class QuarticProblem:
         )
         return first + second / self.learning_rate
 
+    def value_and_gradient(self, displacement: Tensor) -> tuple[Tensor, Tensor]:
+        """Evaluate the exact objective and gradient with shared contractions."""
+
+        self._validate_local(displacement)
+        represented = self.context.geometry.displacement(
+            displacement,
+            point=self.context.current_point,
+        )
+        metric_force = self.moments.second.metric.apply(represented)
+        first_value = (self._first_constant * displacement).sum()
+        first_value = first_value + 0.5 * torch.einsum(
+            "kp,kpq,kq->",
+            displacement,
+            self._first_linear,
+            displacement,
+        )
+        value = first_value + (represented * metric_force).sum() / (
+            2.0 * self.learning_rate
+        )
+        first_gradient = self._first_constant + torch.einsum(
+            "kpq,kq->kp",
+            self._first_linear,
+            displacement,
+        )
+        second_gradient = self.context.geometry.pullback(
+            metric_force,
+            point=self.context.current_point,
+            displacement=displacement,
+        )
+        return value, first_gradient + second_gradient / self.learning_rate
+
     def _validate_local(self, value: Tensor) -> None:
         if value.shape != self.point_shape:
             raise ValueError(

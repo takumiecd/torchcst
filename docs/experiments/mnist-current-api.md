@@ -283,3 +283,33 @@ older 79.50% acceptance run. The remaining 1.35pt deficit, and the higher final
 loss relative to the older run's 0.8011, remain consistent with the removal of
 exact-loss acceptance or another direct-step trajectory effect. This ablation
 does not support attributing the full quality regression to derivative caching.
+
+### Strict-budget projected-LBFGS pilot
+
+An experimental `ProjectedLBFGS` replaced autograd-through-value and
+multi-start solving with shared analytic value/gradient evaluation, projected
+Armijo steps, and a total evaluation budget. Twelve small randomized quartic
+problems showed a mean relative objective gap of 0.0021% and a maximum gap of
+0.0251% against `FullQuartic`, with a 33.8x aggregate CPU speedup. That
+small-problem result did not transfer directly to the 256-dimensional MNIST
+site.
+
+| solver | evaluation budget | 4-step time | step-4 accuracy |
+| --- | ---: | ---: | ---: |
+| `FullQuartic` cold | roughly 320--340 total | 11.765s | **35.45%** |
+| `ProjectedLBFGS` | 24 | **1.006s** | 16.85% |
+| `ProjectedLBFGS` | 100 | 1.710s | 30.00% |
+
+At the 24-evaluation budget, all four solves exhausted the budget with
+projected-gradient norms between 0.19 and 0.24 and returned interior points.
+The step-1 local objective was -0.0647, compared with -0.5491 from
+`FullQuartic`, which returned a boundary point. Increasing the budget to 100
+improved step-1 objective to -0.3354 and recovered much of the early accuracy,
+but all four solves still exhausted their budget and remained interior.
+
+The analytic shared-evaluation path and strict accounting are useful, but this
+pilot does not justify making `ProjectedLBFGS` the production default. It is
+kept as an explicit experimental solver while `FullQuartic` remains the
+default. The next solver revision needs a stronger path to the trust boundary
+and should be judged on recorded MNIST quartics, not only low-dimensional
+convex tests.

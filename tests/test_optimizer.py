@@ -12,6 +12,7 @@ from torchcst import (
     Chart,
     CSTLinear,
     CSTOptimizer,
+    FullQuartic,
     Gaussian,
     ImplicitAdamConfig,
     Separable,
@@ -23,6 +24,10 @@ from torchcst.optim import (
     QuarticSolver,
     QuarticSolveResult,
 )
+
+
+def test_implicit_adam_keeps_full_quartic_as_its_default() -> None:
+    assert isinstance(ImplicitAdamConfig().quartic, FullQuartic)
 
 
 class FixedDirectionSolver(QuarticSolver):

@@ -11,7 +11,13 @@ from .kernels import (
     Separable,
 )
 from .nn import CSTLinear
-from .optim import AdamWConfig, CSTOptimizer, FullQuartic, ImplicitAdamConfig
+from .optim import (
+    AdamWConfig,
+    CSTOptimizer,
+    FullQuartic,
+    ImplicitAdamConfig,
+    ProjectedLBFGS,
+)
 
 __all__ = [
     "AdamWConfig",
@@ -26,5 +32,6 @@ __all__ = [
     "ImplicitAdamConfig",
     "Kernel",
     "Profile",
+    "ProjectedLBFGS",
     "Separable",
 ]

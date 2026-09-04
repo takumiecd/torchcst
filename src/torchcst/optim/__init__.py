@@ -33,7 +33,7 @@ from .moments import (
 )
 from .optimizer import CSTOptimizer, CSTStepResult
 from .problem import QuarticProblem
-from .solvers import FullQuartic, QuarticSolver, QuarticSolveResult
+from .solvers import FullQuartic, ProjectedLBFGS, QuarticSolver, QuarticSolveResult
 
 __all__ = [
     "AcceptedFrameFirstMoment",
@@ -56,6 +56,7 @@ __all__ = [
     "MomentContext",
     "MomentSystem",
     "MomentSystemState",
+    "ProjectedLBFGS",
     "QuarticProblem",
     "QuarticSolveResult",
     "QuarticSolver",
