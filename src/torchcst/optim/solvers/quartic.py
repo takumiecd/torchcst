@@ -84,12 +84,12 @@ class FullQuartic(QuarticSolver):
     def _solve_one(
         self,
         problem: QuarticProblem,
-        initial: Tensor,
+        start: Tensor,
         *,
         radius: float,
         start_index: int,
     ) -> QuarticSolveResult | None:
-        unconstrained = nn.Parameter(self._to_unconstrained(initial, radius))
+        unconstrained = nn.Parameter(self._to_unconstrained(start, radius))
         optimizer = torch.optim.LBFGS(
             (unconstrained,),
             lr=1.0,
