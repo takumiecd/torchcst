@@ -58,9 +58,7 @@ def test_derivative_pullback_of_capture_matches_parameter_gradients() -> None:
     site.enable_represented_gradient_capture()
     site(inputs).square().mean().backward()
 
-    expected = torch.cat(
-        (site.atoms.weight.grad.unsqueeze(-1), site.atoms.p.grad), dim=-1
-    )
+    expected = site.atoms.p.grad
     actual = site.cst_derivatives().pullback(site.represented_gradient())
     torch.testing.assert_close(actual, expected)
 
@@ -120,4 +118,4 @@ def test_cst_linear_satisfies_the_site_protocol() -> None:
     site = make_site()
 
     assert isinstance(site, CSTSite)
-    assert site.cst_parameters() == (site.atoms.weight, site.atoms.p)
+    assert site.cst_parameters() == (site.atoms.p,)

@@ -6,15 +6,16 @@
 > until their milestone lands. There is intentionally no compatibility promise for earlier
 > `SynapseStore`, structural-policy, or Pullback Adam APIs.
 
-`torchcst` represents an operator as a weighted sum of a fixed number of atoms.
-Each atom owns an amplitude and an opaque kernel coordinate that move
-continuously. Training never changes which atoms exist. There is no birth,
-death, merge, absorb, slot reuse, or structural optimizer-state remapping.
+`torchcst` represents an operator as a sum of a fixed number of kernel-defined
+atoms. Each atom owns one opaque parameter row that moves continuously, and
+only its kernel interprets that row. Training never changes which atoms exist.
+There is no birth, death, merge, absorb, slot reuse, or structural
+optimizer-state remapping.
 
 The initial scope is deliberately narrow:
 
 - fixed atom count and tensor shapes for the lifetime of a module;
-- continuous atom-local coordinates and amplitudes;
+- continuous opaque atom-local parameters;
 - fixed-cardinality input and output charts whose coordinates are frozen by
   default;
 - an implicit projected Adam optimizer;
@@ -87,8 +88,8 @@ for images, labels in loader:
 This API makes seven ownership decisions explicit:
 
 1. a `Chart` owns fixed-cardinality observation coordinates;
-2. `Atoms` owns one fixed-shape amplitude vector and one opaque coordinate table;
-3. a `Kernel` interprets atom coordinates but owns no trainable state;
+2. `Atoms` owns one fixed-shape opaque parameter table;
+3. a `Kernel` interprets complete atom rows but owns no trainable state;
 4. a `CSTLinear` composes charts, atoms, and one kernel;
 5. a `CSTOptimizer` partitions and exclusively owns every trainable parameter;
 6. its implicit CST engine owns compressed moment and accepted-frame state;
@@ -147,18 +148,17 @@ keeps that route open without imposing its cost on the recommended mode.
 For `K` atoms and an opaque kernel-coordinate width `P`, `Atoms` owns exactly
 
 ```text
-weight  [K]
-p       [K, P]
+p  [K, P]
 ```
 
-`Atoms` knows the shapes and the correspondence between `weight[a]` and `p[a]`.
-It does not know whether entries of `p` represent a source, target, bandwidth,
+`Atoms` knows only the fixed shape and atom-row correspondence. It does not know
+whether entries of `p` represent an amplitude, source, target, bandwidth,
 orientation, scale, or another kernel-specific quantity. Only the selected
-`Kernel` interprets `p`.
+`Kernel` interprets `p` and turns each row into one complete operator atom.
 
-Both tensors are parameters with fixed shapes and atom ordering. If an atom
-property is trainable, it belongs in that atom's row of `p`; a kernel object does
-not own shared trainable parameters.
+The table is one parameter with fixed shape and atom ordering. Every trainable
+atom property belongs in that atom's row of `p`; a kernel object does not own
+shared trainable parameters.
 
 ## `CSTLinear`
 
@@ -185,7 +185,6 @@ shapes and atom ordering never change after construction.
 The primary inspection surface is intentionally small:
 
 ```python
-model.atoms.weight
 model.atoms.p
 model.kernel
 model.dense_weight()       # diagnostic materialization only
@@ -198,35 +197,36 @@ in the first implementation.
 
 ### Represented operator
 
-Let the fixed charts be collected as $\mathcal C$, and let atom $a$ have opaque
-kernel coordinate $p_a$ and amplitude $w_a$. The canonical represented operator
-is
+Let the fixed charts be collected as $\mathcal C$, and let atom $a$ have one
+opaque parameter row $p_a$. The canonical represented operator is
 
 $$
 \boxed{
-W=\sum_{a=1}^{K}w_a\mathcal K(p_a;\mathcal C)
+W=\sum_{a=1}^{K}\mathcal K(p_a;\mathcal C)
 }.
 $$
 
 `CSTLinear` does not inspect $p_a$. It asks its single `Kernel` to evaluate
-$\mathcal K(p_a;\mathcal C)$ and performs the weighted sum.
+$\mathcal K(p_a;\mathcal C)$ as the complete contribution of atom $a$, then
+sums those contributions. In particular, an amplitude is an ordinary opaque
+coordinate interpreted inside the kernel rather than a distinguished factor
+owned by `Atoms` or `CSTLinear`.
 
-A separable kernel may additionally expose factors
+A separable kernel may additionally expose factors satisfying
 
 $$
-(\Phi_{\mathrm{in}})_{ia}
-=\kappa_{\mathrm{in}}(\mu_i^{\mathrm{in}},s_a),
+\mathcal K(p_a;\mathcal C)
+=f_{\mathrm{out}}(p_a)f_{\mathrm{in}}(p_a)^\top
+$$
+
+with every coordinate effect, including amplitude, already embedded in those
+factors. If their columns are collected into $\Phi_{\mathrm{in}}(p)$ and
+$\Phi_{\mathrm{out}}(p)$, the same canonical sum can be evaluated as
+
+$$
+W=\Phi_{\mathrm{out}}\Phi_{\mathrm{in}}^\top,
 \qquad
-(\Phi_{\mathrm{out}})_{ja}
-=\kappa_{\mathrm{out}}(\mu_j^{\mathrm{out}},t_a)
-$$
-
-so the same canonical sum can be evaluated as
-
-$$
-W=\Phi_{\mathrm{out}}\operatorname{Diag}(w)\Phi_{\mathrm{in}}^\top,
-\qquad
-Y=((X\Phi_{\mathrm{in}})\odot w)\Phi_{\mathrm{out}}^\top.
+Y=(X\Phi_{\mathrm{in}})\Phi_{\mathrm{out}}^\top.
 $$
 
 This factorization is an optional execution capability, not the semantic
@@ -237,8 +237,8 @@ not by a discrete operation during training.
 
 ## Kernels
 
-A `Kernel` is the stateless interpretation of one atom coordinate. Its contract
-provides:
+A `Kernel` is the stateless interpretation of one complete atom row. Its
+contract provides:
 
 ```python
 kernel.parameter_dim(input_chart, output_chart)
@@ -247,9 +247,9 @@ kernel.materialize_atoms(input_chart, output_chart, p)
 kernel.factors(input_chart, output_chart, p)  # optional capability
 ```
 
-`materialize_atoms` returns one represented operator per atom. Production
-backends may use a more structured kernel capability instead of materializing
-those operators.
+`materialize_atoms` returns the complete represented contribution of every
+atom; `CSTLinear` adds no separate amplitude. Production backends may use a
+more structured kernel capability instead of materializing those operators.
 
 The first implementation composes scalar Gaussian profiles through one
 separable operator kernel:
@@ -268,13 +268,16 @@ $$
 =\exp\left(-\frac{\lVert u-v\rVert_2^2}{2\sigma^2}\right).
 $$
 
-For this kernel, $p_a=(s_a,t_a)$ and the separable kernel alone knows that split.
-The Gaussian bandwidths are fixed kernel configuration. A future trainable
-bandwidth belongs in each atom's opaque $p_a$, preserving atom-locality.
+For this kernel, $p_a=(w_a,s_a,t_a)$ and the separable kernel alone knows that
+split. Its present implementation uses $w_a$ as a linear amplitude, while a
+future kernel may also let it affect bandwidth or shape. The Gaussian
+bandwidths are fixed kernel configuration. A future trainable bandwidth belongs
+in each atom's opaque $p_a$, preserving atom-locality.
 
-Additional kernels must provide values and the derivative contractions needed
-by the second-order displacement API. Merely implementing a forward value is
-not sufficient for implicit optimization.
+Kernel values must remain differentiable with respect to `p`; the internal
+derivative layer supplies the second-order displacement contractions. A later
+optimized kernel capability may provide those contractions directly without
+changing this canonical atom contract.
 
 ## Initialization
 
@@ -298,7 +301,7 @@ Execution backend and model semantics are independent:
 | backend | behavior | role |
 | --- | --- | --- |
 | `"factored"` | uses an optional factorization supplied by the single kernel | low atom count |
-| `"materialized"` | evaluates $\sum_a w_a\mathcal K(p_a)$ and calls a dense GEMM | oracle checks and kernels without a factorization |
+| `"materialized"` | evaluates $\sum_a \mathcal K(p_a)$ and calls a dense GEMM | oracle checks and kernels without a factorization |
 | `"auto"` | selects between the two without changing the represented map | default |
 
 Backends receive ordinary fixed-shape tensors. They know nothing about stores,
@@ -310,31 +313,26 @@ state.
 
 ## Atom-structured derivatives
 
-For opaque coordinate width `P`, define each atom-local parameter as
-
-$$
-z_a=(w_a,p_a)\in\mathbb R^{P+1}.
-$$
-
-The internal derivative API consumes parameter points and directions with shape
-`[K, P + 1]`. It evaluates displacement, JVP, VJP, and Hessian contractions
+For opaque atom-row width `P`, the internal derivative API consumes parameter
+points and directions with shape `[K, P]`. It evaluates displacement, JVP, VJP,
+and Hessian contractions
 without interpreting columns of $p$. With frozen charts, the contracted
 representation Hessian stores only its nonzero atom blocks:
 
 ```text
-pullback             [K, P + 1]
-contracted Hessian   [K, P + 1, P + 1]
+pullback             [K, P]
+contracted Hessian   [K, P, P]
 ```
 
 The dense correctness oracle may construct the mathematical full Hessian with
-shape `[K, P + 1, K, P + 1]` and verifies that distinct-atom blocks are zero.
+shape `[K, P, K, P]` and verifies that distinct-atom blocks are zero.
 This representation sparsity does not remove cross-atom terms created later by
 the full quartic objective.
 
 ## Represented gradients
 
 Implicit optimization needs the cotangent of the represented operator itself,
-not only the ordinary gradients already pulled back to `weight` and `p`. For a
+not only the ordinary gradient already pulled back to `p`. For a
 linear site with $y=xW^\top$, each backward call contributes
 
 $$

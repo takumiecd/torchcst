@@ -1,4 +1,4 @@
-"""Atom-structured local derivatives of a weighted kernel sum."""
+"""Atom-structured local derivatives of a kernel sum."""
 
 from __future__ import annotations
 
@@ -15,11 +15,7 @@ MaterializeAtoms = Callable[[Tensor], Tensor]
 
 
 class AtomDerivatives:
-    """Differentiate ``sum(weight[a] * kernel(p[a]))`` in ``[K, Q]`` coordinates.
-
-    ``Q = P + 1`` and the local coordinate order is ``(weight, p...)``. The
-    kernel remains the sole interpreter of the opaque ``p`` columns.
-    """
+    """Differentiate ``sum(kernel(p[a]))`` in opaque ``[K, P]`` coordinates."""
 
     def __init__(self, atoms: Atoms, materialize_atoms: MaterializeAtoms) -> None:
         if not isinstance(atoms, Atoms):
@@ -30,34 +26,31 @@ class AtomDerivatives:
         self._materialize_atoms = materialize_atoms
 
     @property
-    def parameters(self) -> tuple[nn.Parameter, nn.Parameter]:
-        """The two tensors owned by this atom site."""
+    def parameters(self) -> tuple[nn.Parameter]:
+        """The opaque tensor owned by this atom site."""
 
-        return self.atoms.weight, self.atoms.p
+        return (self.atoms.p,)
 
     @property
     def point_shape(self) -> tuple[int, int]:
-        return self.atoms.count, self.atoms.local_parameter_dim
+        return self.atoms.count, self.atoms.parameter_dim
 
     def current_point(self) -> Tensor:
-        """Return a detached ``[K, Q]`` snapshot of the current atom state."""
+        """Return a detached ``[K, P]`` snapshot of the current atom state."""
 
-        return self.atoms.local_parameters().detach().clone()
+        return self.atoms.p.detach().clone()
 
     def represented_atoms(self, parameter_point: Tensor | None = None) -> Tensor:
-        """Return weighted contributions with shape ``[K, *visible_shape]``."""
+        """Return complete contributions with shape ``[K, *visible_shape]``."""
 
         parameter_point = self._point_or_current(parameter_point)
-        weight = parameter_point[:, 0]
-        p = parameter_point[:, 1:]
-        operators = self._materialize_atoms(p)
+        operators = self._materialize_atoms(parameter_point)
         if operators.ndim < 2 or operators.shape[0] != self.atoms.count:
             raise ValueError("materialize_atoms must preserve the atom dimension")
-        scale_shape = (self.atoms.count,) + (1,) * (operators.ndim - 1)
-        return weight.reshape(scale_shape) * operators
+        return operators
 
     def represented(self, parameter_point: Tensor | None = None) -> Tensor:
-        """Return the canonical weighted atom sum."""
+        """Return the canonical kernel sum."""
 
         return self.represented_atoms(parameter_point).sum(dim=0)
 
@@ -144,11 +137,10 @@ class AtomDerivatives:
         self._validate_cotangent(cotangent, parameter_point)
 
         def contracted_atom(atom_point: Tensor) -> Tensor:
-            weight = atom_point[0]
-            operators = self._materialize_atoms(atom_point[1:].unsqueeze(0))
+            operators = self._materialize_atoms(atom_point.unsqueeze(0))
             if operators.shape[0] != 1:
                 raise ValueError("materialize_atoms must preserve the atom dimension")
-            return (weight * operators[0] * cotangent).sum()
+            return (operators[0] * cotangent).sum()
 
         return vmap(functional_hessian(contracted_atom))(parameter_point)
 

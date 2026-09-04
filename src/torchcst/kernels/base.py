@@ -29,7 +29,7 @@ class Profile(nn.Module, ABC):
 
 
 class Kernel(nn.Module, ABC):
-    """Interpret opaque atom coordinates as operators between two charts."""
+    """Interpret each opaque atom row as a complete operator contribution."""
 
     @abstractmethod
     def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:
@@ -50,7 +50,12 @@ class Kernel(nn.Module, ABC):
     def materialize_atoms(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> Tensor:
-        """Return one matrix per atom with shape ``[K, out_features, in_features]``."""
+        """Evaluate ``Kernel(p[a])`` as one matrix per atom.
+
+        The result has shape ``[K, out_features, in_features]``. Every
+        amplitude, location, bandwidth, and other trainable atom property is
+        encoded in ``p`` and interpreted here.
+        """
 
     @property
     def supports_factorization(self) -> bool:
@@ -61,7 +66,7 @@ class Kernel(nn.Module, ABC):
     def factors(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> tuple[Tensor, Tensor]:
-        """Return input/output factors for an exactly separable atom family."""
+        """Return factors whose outer products equal ``Kernel(p[a])`` exactly."""
 
         raise NotImplementedError("this kernel does not provide a factorized backend")
 

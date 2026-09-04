@@ -46,26 +46,26 @@ class NonFactorizedKernel(Kernel):
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> Tensor:
         shape = (p.shape[0], output_chart.features, input_chart.features)
-        return p[:, :1, None].expand(shape)
+        return p[:, :1, None].square().expand(shape)
 
 
 def test_module_owns_one_opaque_fixed_shape_atom_table() -> None:
     model = make_model()
 
     assert model.atom_count == 3
-    assert model.atoms.weight.shape == (3,)
-    assert model.atoms.p.shape == (3, 3)
+    assert model.atoms.p.shape == (3, 4)
     assert model.in_features == 5
     assert model.out_features == 4
+    assert not hasattr(model.atoms, "weight")
     assert not hasattr(model, "source")
     assert not hasattr(model, "target")
     assert not hasattr(model, "amplitude")
 
 
-def test_dense_weight_is_the_canonical_weighted_atom_sum() -> None:
+def test_dense_weight_is_the_canonical_kernel_sum() -> None:
     model = make_model()
 
-    expected = torch.einsum("a,aoi->oi", model.atoms.weight, model.materialized_atoms())
+    expected = model.materialized_atoms().sum(dim=0)
 
     torch.testing.assert_close(model.dense_weight(), expected)
 
@@ -83,17 +83,16 @@ def test_factored_and_materialized_backends_are_equivalent() -> None:
     torch.testing.assert_close(materialized(inputs), expected)
 
 
-def test_forward_gradients_reach_both_atom_parameters() -> None:
+def test_forward_gradients_reach_the_opaque_atom_parameters() -> None:
     model = make_model()
 
     model(torch.randn(8, model.in_features)).square().mean().backward()
 
-    assert model.atoms.weight.grad is not None
     assert model.atoms.p.grad is not None
     assert tuple(model.kernel.parameters()) == ()
 
 
-def test_nonfactorized_kernel_uses_the_same_weighted_sum_semantics() -> None:
+def test_nonfactorized_kernel_uses_the_same_kernel_sum_semantics() -> None:
     model = CSTLinear(
         Chart.linspace(3),
         Chart.linspace(2),
@@ -103,6 +102,10 @@ def test_nonfactorized_kernel_uses_the_same_weighted_sum_semantics() -> None:
     )
     inputs = torch.randn(4, 3)
 
+    torch.testing.assert_close(
+        model.dense_weight(),
+        torch.full((2, 3), 2.5),
+    )
     torch.testing.assert_close(
         model(inputs), torch.nn.functional.linear(inputs, model.dense_weight())
     )

@@ -25,12 +25,12 @@ def test_current_point_is_atom_structured_and_opaque() -> None:
 
     assert derivatives.current_point().shape == (
         site.atom_count,
-        site.atoms.parameter_dim + 1,
+        site.atoms.parameter_dim,
     )
-    assert torch.equal(derivatives.current_point(), site.atoms.local_parameters())
+    assert torch.equal(derivatives.current_point(), site.atoms.p)
 
 
-def test_represented_operator_is_the_sum_of_weighted_atoms() -> None:
+def test_represented_operator_is_the_sum_of_complete_kernel_atoms() -> None:
     site = make_site()
     derivatives = site.cst_derivatives()
     parameter_point = derivatives.current_point()
@@ -142,9 +142,7 @@ def test_zero_displacement_pullback_matches_parameter_autograd() -> None:
     )
 
     (site.dense_weight() * cotangent).sum().backward()
-    expected = torch.cat(
-        (site.atoms.weight.grad.unsqueeze(-1), site.atoms.p.grad), dim=-1
-    )
+    expected = site.atoms.p.grad
 
     torch.testing.assert_close(derivatives.pullback(cotangent), expected)
 

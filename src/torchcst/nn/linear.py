@@ -1,8 +1,7 @@
-"""A fixed-shape weighted atom sum representing a linear operator."""
+"""A fixed-shape sum of kernel-defined operator atoms."""
 
 from __future__ import annotations
 
-import math
 from typing import Literal
 
 import torch
@@ -18,7 +17,7 @@ Backend = Literal["auto", "factored", "materialized"]
 
 
 class CSTLinear(nn.Module):
-    r"""Represent a linear map as ``sum(weight[a] * kernel(p[a]))``."""
+    r"""Represent a linear map as ``sum(kernel(p[a]))``."""
 
     def __init__(
         self,
@@ -80,9 +79,7 @@ class CSTLinear(nn.Module):
             )
         if p.device != input_chart.coordinates.device or p.dtype != target_dtype:
             raise ValueError("kernel.initialize must match the module device and dtype")
-        weight = torch.empty(atoms, device=target_device, dtype=target_dtype)
-        weight.normal_(mean=0.0, std=1.0 / math.sqrt(atoms))
-        self.atoms = Atoms(weight, p)
+        self.atoms = Atoms(p)
         self._represented_gradient = RepresentedGradientAccumulator(
             (self.out_features, self.in_features)
         )
@@ -100,7 +97,7 @@ class CSTLinear(nn.Module):
         return self.atoms.count
 
     def materialized_atoms(self) -> Tensor:
-        """Return one diagnostic matrix for each atom, without its amplitude."""
+        """Return the complete operator contribution of each atom."""
 
         return self._materialize_atoms(self.atoms.p)
 
@@ -124,10 +121,10 @@ class CSTLinear(nn.Module):
             raise ValueError("the first derivative engine supports frozen charts only")
         return AtomDerivatives(self.atoms, self._materialize_atoms)
 
-    def cst_parameters(self) -> tuple[nn.Parameter, nn.Parameter]:
+    def cst_parameters(self) -> tuple[nn.Parameter]:
         """Return the fixed-shape parameters owned by this CST site."""
 
-        return self.atoms.weight, self.atoms.p
+        return (self.atoms.p,)
 
     def enable_represented_gradient_capture(self, *, clear: bool = True) -> None:
         """Observe represented cotangents produced by subsequent backward calls."""
@@ -168,9 +165,9 @@ class CSTLinear(nn.Module):
         return outputs
 
     def dense_weight(self) -> Tensor:
-        """Materialize the canonical weighted atom sum."""
+        """Materialize the canonical sum of complete kernel atoms."""
 
-        return torch.einsum("a,aoi->oi", self.atoms.weight, self.materialized_atoms())
+        return self.materialized_atoms().sum(dim=0)
 
     def _resolved_backend(self) -> Literal["factored", "materialized"]:
         if self.backend != "auto":
@@ -195,7 +192,7 @@ class CSTLinear(nn.Module):
         phi_input, phi_output = self.kernel.factors(
             self.input_chart, self.output_chart, self.atoms.p
         )
-        atom_values = (inputs @ phi_input) * self.atoms.weight
+        atom_values = inputs @ phi_input
         outputs = atom_values @ phi_output.transpose(-2, -1)
         return self._observe_represented_gradient(inputs, outputs)
 
