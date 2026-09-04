@@ -191,3 +191,59 @@ run `experiments/run_mnist_radius_sweep_a100.sh`. It defaults to seed 17,
 concurrently on CUDA; their wall-clock times therefore are not comparable.
 
 Raw output is intentionally written below the ignored `output/` directory.
+
+## Standard-step derivative-cache performance run
+
+After the acceptance experiments above, the optimizer contract was changed to
+standard `Optimizer.step()` semantics: it now applies the quartic proposal
+directly and no longer evaluates the minibatch loss again to accept, shrink, or
+reject that proposal. The implementation also materializes and caches the
+atom-local Jacobian and Hessian once per step, and passes the previous accepted
+frame displacement to the quartic solver as its first start. Results in this
+section therefore measure the newer execution path and are not an
+acceptance-policy ablation.
+
+The seed-17, radius-0.25 A100 run produced:
+
+| step | test accuracy | test loss |
+| ---: | ---: | ---: |
+| 0 | 8.15% | 2.3158 |
+| 1 | 16.90% | 2.2102 |
+| 4 | 34.40% | 1.9170 |
+| 8 | 47.40% | 1.5347 |
+| 16 | 60.20% | 1.2698 |
+| 32 | 69.95% | 1.1081 |
+| 64 | **78.30%** | **0.8211** |
+| 128 | 76.85% | 0.9605 |
+
+The run took 372.611 seconds, or 2.911 seconds per requested training step
+including checkpoint evaluation. The earlier acceptance version took
+2,847.183 seconds for the same seed and step count, so the newer path was
+7.64x faster, while final accuracy was 2.65pt lower. Accuracy peaked at the
+recorded step-64 checkpoint and then declined by 1.45pt. Because proposal
+acceptance was removed at the same time, that quality difference cannot be
+attributed to derivative caching or warm starts alone.
+
+A four-step timing check separated the two performance changes. The direct-step
+implementation before derivative caching took 71.035 seconds and reached
+35.80%; the cached/warm-start implementation took 11.262 seconds and reached
+34.40%, a 6.31x short-run speedup. The cache is therefore responsible for most
+of the measured runtime reduction rather than the removed acceptance pass.
+
+The selected quartic candidates used a mean 76.09 LBFGS iterations and 81.26
+objective evaluations; 102 of 128 selected candidates used the maximum 80
+iterations. Selected start indices were 0, 1, 2, and 3 on 50, 35, 38, and 5
+steps respectively. None met the projected-gradient convergence threshold, and
+65/128 were on the trust boundary. Consequently the previous-displacement
+start never triggered the solver's converged-warm-start early return: all four
+starts were still attempted on every step.
+
+An isolated three-step A100 phase profile found a steady-state total of
+3.02--3.07 seconds per step. Quartic solving consumed 2.87--2.90 seconds
+(about 95%); backward took about 0.05 seconds, moment expansion including frame
+transport about 0.10 seconds, local Jacobian/Hessian materialization about 0.03
+seconds inside the solve, and moment compression about 0.01 seconds. Each solve
+made 328--345 quartic objective calls across its starts. The remaining primary
+bottleneck is therefore the generic multi-start LBFGS policy repeatedly
+contracting the cached second-order representation, not construction of the
+derivative cache itself.
