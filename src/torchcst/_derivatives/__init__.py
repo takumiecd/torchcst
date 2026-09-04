@@ -1,5 +1,12 @@
-"""Internal derivative contractions shared by CST module families.
+"""Internal derivative contractions shared by CST module families."""
 
-The displacement, JVP, VJP, and second-order protocols will be introduced with
-the derivative milestone. This package is intentionally not a public API.
-"""
+from .dense import DenseDerivativeOracle
+from .layout import ParameterLayout, ParameterSpec
+from .linear import LinearDerivatives
+
+__all__ = [
+    "DenseDerivativeOracle",
+    "LinearDerivatives",
+    "ParameterLayout",
+    "ParameterSpec",
+]
