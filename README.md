@@ -1,9 +1,9 @@
 # torchcst — fixed-shape continuous operators for PyTorch
 
 > [!WARNING]
-> **Ground-up research rewrite.** This branch defines the target API before
-> implementing it. Imports shown below may be unavailable until their milestone
-> lands. There is intentionally no compatibility promise for earlier
+> **Ground-up research rewrite.** The fixed representation is implemented, while
+> optimizer imports shown below remain unavailable until their milestone lands.
+> There is intentionally no compatibility promise for earlier
 > `SynapseStore`, structural-policy, or Pullback Adam APIs.
 
 `torchcst` represents a linear operator with a fixed number of atoms whose
@@ -476,7 +476,9 @@ The experiment supports the selected starting point. It does not yet prove:
 ## Rewrite milestones
 
 1. **API contract** — this README and focused interface tests.
-2. **Fixed representation** — `Chart`, `Gaussian`, and fixed-shape `CSTLinear`.
+2. **Legacy reset and fixed representation** — remove the dynamic architecture,
+   then implement `Chart`, `Gaussian`, and fixed-shape `CSTLinear` on the new
+   package boundaries.
 3. **Derivative operators** — displacement, JVP/VJP, and second-order
    contractions checked against dense autograd.
 4. **Correctness optimizer** — model-wide ownership, functional dense AdamW,
@@ -486,8 +488,6 @@ The experiment supports the selected starting point. It does not yet prove:
    or transient represented-weight tables in the production path.
 6. **Solver work** — reduce quartic cost while measuring solution and training
    degradation against the correctness optimizer.
-7. **Legacy removal** — delete unreachable structural policy, mutation,
-   storage, and compatibility code.
 
 Each milestone must land as a separately testable commit. Numerical shortcuts
 are evaluated only after the full objective is working.
@@ -517,9 +517,9 @@ python -m pip install -e '.[dev]'
 pytest -q
 ```
 
-Until milestone 2 lands, the target README example is expected to fail at
-import. Once an API milestone is marked complete, its README example becomes a
-required test and must not drift from the implementation.
+Until the optimizer milestone lands, the complete target example is expected to
+fail at its optimizer imports. Each API segment becomes a required test when its
+milestone lands and must not drift from the implementation.
 
 ## License
 

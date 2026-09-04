@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "torchcst"
 version = "0.0.1"
-description = "Continuous Sparse Training in PyTorch — atomic measures, kernels, and policy-driven structural evolution"
+description = "Fixed-shape continuous operators and implicit optimization for PyTorch"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "takumiecd" }]
