@@ -10,6 +10,7 @@ experiment repository.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
 import struct
@@ -59,9 +60,15 @@ class ExperimentConfig:
 
 
 def read_idx(path: Path) -> Tensor:
-    """Read one uncompressed MNIST IDX tensor without NumPy or torchvision."""
+    """Read an MNIST IDX tensor without NumPy or torchvision."""
 
-    blob = path.read_bytes()
+    compressed = path.with_name(path.name + ".gz")
+    if path.exists():
+        blob = path.read_bytes()
+    elif compressed.exists():
+        blob = gzip.decompress(compressed.read_bytes())
+    else:
+        raise FileNotFoundError(path)
     if len(blob) < 8:
         raise ValueError(f"invalid IDX file: {path}")
     magic, count = struct.unpack(">II", blob[:8])

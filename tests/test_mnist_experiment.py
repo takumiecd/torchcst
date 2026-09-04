@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import struct
 from pathlib import Path
 
@@ -20,3 +21,13 @@ def test_read_idx_loads_uint8_tensor_without_optional_dependencies(
     assert actual.dtype == torch.uint8
     assert actual.shape == (2, 2, 3)
     torch.testing.assert_close(actual.reshape(-1), torch.arange(12, dtype=torch.uint8))
+
+
+def test_read_idx_falls_back_to_gzip_file(tmp_path: Path) -> None:
+    path = tmp_path / "labels-idx1-ubyte"
+    blob = struct.pack(">II", 0x00000801, 4) + bytes((3, 1, 4, 1))
+    path.with_name(path.name + ".gz").write_bytes(gzip.compress(blob))
+
+    actual = read_idx(path)
+
+    torch.testing.assert_close(actual, torch.tensor([3, 1, 4, 1], dtype=torch.uint8))
