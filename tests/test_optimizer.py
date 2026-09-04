@@ -28,10 +28,16 @@ from torchcst.optim import (
 class FixedDirectionSolver(QuarticSolver):
     def __init__(self, direction: Tensor) -> None:
         self.direction = direction
+        self.initials: list[Tensor | None] = []
 
     def solve(
-        self, problem: QuarticProblem, *, trust_radius: float
+        self,
+        problem: QuarticProblem,
+        *,
+        trust_radius: float,
+        initial: Tensor | None = None,
     ) -> QuarticSolveResult:
+        self.initials.append(None if initial is None else initial.detach().clone())
         direction = self.direction.to(problem.context.current_point)
         norm = torch.linalg.vector_norm(direction)
         if norm > trust_radius:
@@ -163,6 +169,33 @@ def test_step_compresses_at_the_full_solver_displacement() -> None:
 
     torch.testing.assert_close(model.cst.atoms.p, atom_before + direction)
     torch.testing.assert_close(state.first.frame.displacement, direction)
+
+
+def test_optimizer_supplies_the_previous_displacement_as_warm_start() -> None:
+    model = make_site()
+    direction = torch.tensor([[0.02, -0.01, 0.01]], dtype=torch.float64)
+    solver = FixedDirectionSolver(direction)
+    optimizer = CSTOptimizer(
+        model,
+        cst=ImplicitAdamConfig(
+            lr=0.05,
+            betas=(0.0, 0.0),
+            trust_radius=0.2,
+            quartic=solver,
+        ),
+        dense=None,
+    )
+    inputs, targets = batch()
+
+    for _ in range(2):
+        optimizer.zero_grad(set_to_none=True)
+        loss = (model(inputs) - targets).square().mean()
+        loss.backward()
+        optimizer.step()
+
+    assert solver.initials[0] is None
+    assert solver.initials[1] is not None
+    torch.testing.assert_close(solver.initials[1], direction)
 
 
 def test_step_requires_zero_grad_to_open_the_observation_scope() -> None:

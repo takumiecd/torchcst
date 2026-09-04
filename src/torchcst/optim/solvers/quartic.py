@@ -59,22 +59,35 @@ class FullQuartic(QuarticSolver):
         problem: QuarticProblem,
         *,
         trust_radius: float,
+        initial: Tensor | None = None,
     ) -> QuarticSolveResult:
         if not isinstance(problem, QuarticProblem):
             raise TypeError("problem must be a QuarticProblem")
         if trust_radius <= 0:
             raise ValueError("trust_radius must be positive")
+        if initial is not None:
+            if initial.shape != problem.point_shape:
+                raise ValueError("initial displacement has the wrong shape")
+            point = problem.context.current_point
+            if initial.device != point.device or initial.dtype != point.dtype:
+                raise ValueError("initial displacement must match the problem")
+            if not torch.isfinite(initial).all():
+                raise FloatingPointError("initial displacement must be finite")
         radius = float(trust_radius)
         candidates = []
-        for start_index, initial in enumerate(self._initial_points(problem, radius)):
+        for start_index, start in enumerate(
+            self._initial_points(problem, radius, initial=initial)
+        ):
             candidate = self._solve_one(
                 problem,
-                initial,
+                start,
                 radius=radius,
                 start_index=start_index,
             )
             if candidate is not None:
                 candidates.append(candidate)
+                if initial is not None and start_index == 0 and candidate.converged:
+                    return candidate
         if not candidates:
             raise RuntimeError("quartic solver did not produce a finite candidate")
         return min(candidates, key=lambda result: float(result.objective))
@@ -146,26 +159,37 @@ class FullQuartic(QuarticSolver):
         )
 
     def _initial_points(
-        self, problem: QuarticProblem, radius: float
+        self,
+        problem: QuarticProblem,
+        radius: float,
+        *,
+        initial: Tensor | None,
     ) -> tuple[Tensor, ...]:
         zero = torch.zeros_like(problem.context.current_point)
-        points = [zero]
+        points = []
+        if initial is not None:
+            points.append(self._project_ball(initial.detach().clone(), radius))
+            if self.starts > 1:
+                points.append(zero)
+        else:
+            points.append(zero)
         if self.starts == 1:
             return tuple(points)
 
-        gradient = problem.gradient(zero).detach()
-        gradient_norm = torch.linalg.vector_norm(gradient)
-        if gradient_norm > 0:
-            points.append(-0.25 * radius * gradient / gradient_norm)
-        else:
-            points.append(zero.clone())
+        if len(points) < self.starts:
+            gradient = problem.gradient(zero).detach()
+            gradient_norm = torch.linalg.vector_norm(gradient)
+            if gradient_norm > 0:
+                points.append(-0.25 * radius * gradient / gradient_norm)
+            else:
+                points.append(zero.clone())
 
         flat_indices = torch.arange(
             zero.numel(),
             device=zero.device,
             dtype=zero.dtype,
         )
-        for index in range(2, self.starts):
+        for index in range(len(points), self.starts):
             direction = torch.sin(
                 (index + 1.0) * (flat_indices + 1.0) * 1.618033988749895
             ).reshape_as(zero)

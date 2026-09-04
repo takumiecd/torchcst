@@ -600,7 +600,15 @@ exact cubic gradient; it does not read or mutate persistent optimizer state.
 `FullQuartic` performs deterministic multi-start LBFGS through a smooth
 trust-ball parameterization and returns the best finite candidate together
 with objective, iteration, and projected-stationarity diagnostics. The
-optimizer applies that candidate without a second model-loss evaluation.
+optimizer supplies the previous applied displacement as the first start. A
+converged warm start skips the remaining starts; otherwise the zero, negative
+gradient, and deterministic starts remain as fallbacks. The optimizer applies
+the selected candidate without a second model-loss evaluation.
+
+Within one optimizer step, `AutogradFrameGeometry` may materialize and cache the
+atom-local Jacobian and Hessian blocks. Quartic displacement, pullback, and
+accepted-frame Gram calculations share that cache. Shapes above the internal
+cache budget retain the matrix-free derivative path.
 
 ### CST persistent state
 
