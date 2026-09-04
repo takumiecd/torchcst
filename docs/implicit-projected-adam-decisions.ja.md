@@ -509,13 +509,14 @@ backwardから $d_{\mathrm{cst}}$ と $d_{\mathrm{dense}}$ を作り、
 $$
 (\theta_{\mathrm{cst}},\theta_{\mathrm{dense}})
 \mapsto
-(\theta_{\mathrm{cst}}+\lambda d_{\mathrm{cst}},
- \theta_{\mathrm{dense}}+\lambda d_{\mathrm{dense}})
+(\theta_{\mathrm{cst}}+d_{\mathrm{cst}},
+ \theta_{\mathrm{dense}}+d_{\mathrm{dense}})
 $$
 
-を一つのactual-loss acceptance transactionとしてcommitまたはrollbackする。
-parameter、dense AdamW moments、compact CST moments、accepted-frame metadataの一部
-だけが進む状態を禁止する。
+を一つのstepでcommitする。公開契約は通常のPyTorch順序、すなわち
+`zero_grad()`、forward、`backward()`、`step()`とする。optimizerはlossを再評価せず、
+proposalのscale変更やactual-lossによるrejectを行わない。parameter、dense AdamW
+moments、compact CST moments、accepted-frame metadataは同じstepで進める。
 
 `dense=None`なのにdense trainable parametersが存在すればconstruction errorとする。
 optimizer state dictにはparameter name、shape、ownerをmanifestとして保存し、load時に

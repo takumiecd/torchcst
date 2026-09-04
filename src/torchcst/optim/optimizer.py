@@ -1,4 +1,4 @@
-"""Model-level coordinator for transactional CST and dense optimization."""
+"""Model-level coordinator for CST and dense optimization."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from torch.optim import Optimizer
 
 from torchcst.nn import CSTLinear
 
-from .acceptance import AcceptancePolicy, AcceptanceResult, ExactLossAcceptance
 from .atom_grad import ImplicitLinearAtomGrad
 from .config import AdamWConfig, ImplicitAdamConfig
 from .dense import DenseAdamWProposal, FunctionalAdamW
@@ -30,13 +29,8 @@ from .solvers import QuarticSolveResult
 
 @dataclass(frozen=True)
 class CSTStepResult:
-    """Diagnostics from the most recent joint optimizer transaction."""
+    """Diagnostics from the most recent optimizer step."""
 
-    accepted: bool
-    scale: float
-    base_loss: Tensor
-    loss: Tensor
-    acceptance_trials: int
     site_results: tuple[QuarticSolveResult, ...]
 
 
@@ -58,7 +52,7 @@ class _CSTProposal:
 
 
 class CSTOptimizer(Optimizer):
-    """Own and update every trainable parameter in a model as one transaction."""
+    """Own and update every trainable parameter in one coordinated step."""
 
     _STATE_VERSION = 1
 
@@ -68,7 +62,6 @@ class CSTOptimizer(Optimizer):
         *,
         cst: ImplicitAdamConfig,
         dense: AdamWConfig | None = None,
-        acceptance: AcceptancePolicy | None = None,
         strict: bool = True,
     ) -> None:
         if not isinstance(model, nn.Module):
@@ -79,16 +72,9 @@ class CSTOptimizer(Optimizer):
             raise TypeError("dense must be an AdamWConfig or None")
         if not isinstance(strict, bool):
             raise TypeError("strict must be a bool")
-        selected_acceptance = (
-            ExactLossAcceptance() if acceptance is None else acceptance
-        )
-        if not isinstance(selected_acceptance, AcceptancePolicy):
-            raise TypeError("acceptance must be an AcceptancePolicy")
-
         self.model = model
         self.cst_config = cst
         self.dense_config = dense
-        self.acceptance = selected_acceptance
         self.strict = strict
         self._stepping = False
         self.last_step: CSTStepResult | None = None
@@ -181,94 +167,61 @@ class CSTOptimizer(Optimizer):
         self._sites = tuple(sites)
         self._manifest = self._make_manifest(cst_owner_by_id)
 
-    def step(self, closure: Any = None) -> Tensor:
-        """Build, test, and atomically commit one model-wide proposal."""
+    def zero_grad(self, set_to_none: bool = True) -> None:
+        """Clear gradients and begin the next CST observation scope."""
 
-        if closure is None or not callable(closure):
-            raise TypeError("CSTOptimizer.step requires a callable closure")
+        if self._stepping:
+            raise RuntimeError("CSTOptimizer.zero_grad cannot run during step")
+        self._abort_capture()
+        super().zero_grad(set_to_none=set_to_none)
+        self._begin_capture()
+
+    def step(self) -> None:
+        """Consume one backward pass and commit its model-wide update."""
+
         if self._stepping:
             raise RuntimeError("CSTOptimizer.step cannot be called recursively")
         self._stepping = True
         try:
-            return self._step(closure)
+            self._step()
         finally:
             self._stepping = False
 
-    def _step(self, closure: Any) -> Tensor:
-        self._begin_capture()
+    def _step(self) -> None:
         try:
-            with torch.enable_grad():
-                base_loss = closure()
             self._complete_capture()
-            base_loss = self._scalar_loss(base_loss, name="base loss")
-            if not torch.isfinite(base_loss):
-                raise FloatingPointError("base loss must be finite")
         except BaseException:
             self._abort_capture()
             raise
 
-        cst_proposals = self._build_cst_proposals()
-        dense_proposals = self._build_dense_proposals()
-        base_values = {
-            parameter: parameter.detach().clone()
-            for parameter in self._trainable_parameters
-        }
-
-        def evaluate(scale: float) -> Tensor:
-            if not 0.0 < scale <= 1.0:
-                raise ValueError("acceptance candidate scale must satisfy 0 < scale <= 1")
-            self._set_candidate(
-                base_values,
-                cst_proposals,
-                dense_proposals,
-                scale=scale,
-            )
-            with torch.enable_grad():
-                return closure()
-
         try:
-            acceptance = self.acceptance.select(base_loss, evaluate)
-            self._validate_acceptance(acceptance)
-            if acceptance.accepted:
-                next_cst_states = tuple(
-                    proposal.site.moments.compress(
-                        proposal.expanded,
-                        acceptance.scale * proposal.solve.displacement,
-                        proposal.context,
-                    )
-                    for proposal in cst_proposals
+            cst_proposals = self._build_cst_proposals()
+            dense_proposals = self._build_dense_proposals()
+            next_cst_states = tuple(
+                proposal.site.moments.compress(
+                    proposal.expanded,
+                    proposal.solve.displacement,
+                    proposal.context,
                 )
-                self._set_candidate(
-                    base_values,
-                    cst_proposals,
-                    dense_proposals,
-                    scale=acceptance.scale,
-                )
-                for proposal, state in zip(cst_proposals, next_cst_states):
-                    proposal.site.state = state
-                for parameter, proposal in dense_proposals.items():
-                    self._dense_states[parameter] = proposal.pending_state
-            else:
-                for proposal in cst_proposals:
-                    proposal.site.moments.reject(
-                        proposal.expanded, proposal.site.state
-                    )
-                self._restore(base_values)
-                self.zero_grad(set_to_none=True)
+                for proposal in cst_proposals
+            )
         except BaseException:
-            self._restore(base_values)
-            self.zero_grad(set_to_none=True)
+            self._abort_capture()
             raise
 
+        with torch.no_grad():
+            for proposal in cst_proposals:
+                proposal.site.module.atoms.p.add_(proposal.solve.displacement)
+            for parameter, proposal in dense_proposals.items():
+                parameter.add_(proposal.displacement)
+        for proposal, state in zip(cst_proposals, next_cst_states):
+            proposal.site.state = state
+        for parameter, proposal in dense_proposals.items():
+            self._dense_states[parameter] = proposal.pending_state
+
         self.last_step = CSTStepResult(
-            accepted=acceptance.accepted,
-            scale=acceptance.scale,
-            base_loss=base_loss.clone(),
-            loss=self._scalar_loss(acceptance.loss, name="accepted loss"),
-            acceptance_trials=acceptance.trials,
             site_results=tuple(proposal.solve for proposal in cst_proposals),
         )
-        return self.last_step.loss.clone()
 
     def _begin_capture(self) -> None:
         begun = []
@@ -345,55 +298,6 @@ class CSTOptimizer(Optimizer):
             )
             for parameter in self._dense_parameters
         }
-
-    @staticmethod
-    def _restore(base_values: dict[nn.Parameter, Tensor]) -> None:
-        with torch.no_grad():
-            for parameter, value in base_values.items():
-                parameter.copy_(value)
-
-    @staticmethod
-    def _scalar_loss(value: Tensor, *, name: str) -> Tensor:
-        if not isinstance(value, Tensor):
-            raise TypeError(f"{name} must be a torch.Tensor")
-        if value.numel() != 1:
-            raise ValueError(f"{name} must be scalar")
-        return value.detach().reshape(()).clone()
-
-    @classmethod
-    def _validate_acceptance(cls, result: AcceptanceResult) -> None:
-        if not isinstance(result, AcceptanceResult):
-            raise TypeError("acceptance policy must return an AcceptanceResult")
-        if not isinstance(result.accepted, bool):
-            raise TypeError("acceptance decision must be a bool")
-        if isinstance(result.trials, bool) or not isinstance(result.trials, int):
-            raise TypeError("acceptance trials must be an integer")
-        if result.trials < 1:
-            raise ValueError("acceptance trials must be positive")
-        loss = cls._scalar_loss(result.loss, name="accepted loss")
-        if not torch.isfinite(loss):
-            raise FloatingPointError("accepted loss must be finite")
-        if result.accepted:
-            if not 0.0 < result.scale <= 1.0:
-                raise ValueError("accepted scale must satisfy 0 < scale <= 1")
-        elif result.scale != 0.0:
-            raise ValueError("rejected acceptance result must have scale zero")
-
-    def _set_candidate(
-        self,
-        base_values: dict[nn.Parameter, Tensor],
-        cst_proposals: tuple[_CSTProposal, ...],
-        dense_proposals: dict[nn.Parameter, DenseAdamWProposal],
-        *,
-        scale: float,
-    ) -> None:
-        self._restore(base_values)
-        with torch.no_grad():
-            for proposal in cst_proposals:
-                parameter = proposal.site.module.atoms.p
-                parameter.add_(proposal.solve.displacement, alpha=scale)
-            for parameter, proposal in dense_proposals.items():
-                parameter.add_(proposal.displacement, alpha=scale)
 
     def _make_manifest(self, cst_owner_by_id: dict[int, str]) -> tuple[dict[str, Any], ...]:
         manifest = []

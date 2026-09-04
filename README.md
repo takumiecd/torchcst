@@ -20,7 +20,7 @@ The initial scope is deliberately narrow:
   default;
 - an implicit projected Adam optimizer;
 - a full second-order CST displacement and unapproximated quartic objective;
-- exact-loss trust-region acceptance;
+- direct commit of the trust-bounded quartic proposal;
 - no persistent dense represented-weight moments.
 
 The selected mathematical and experimental decisions are recorded in
@@ -79,17 +79,13 @@ optimizer = CSTOptimizer(
 
 for images, labels in loader:
     images = images.flatten(1)
-
-    def closure():
-        optimizer.zero_grad(set_to_none=True)
-        loss = F.cross_entropy(model(images), labels)
-        loss.backward()
-        return loss
-
-    loss = optimizer.step(closure)
+    optimizer.zero_grad(set_to_none=True)
+    loss = F.cross_entropy(model(images), labels)
+    loss.backward()
+    optimizer.step()
 ```
 
-This API makes eight ownership decisions explicit:
+This API makes seven ownership decisions explicit:
 
 1. a `Chart` owns fixed-cardinality observation coordinates;
 2. `Atoms` owns one fixed-shape opaque parameter table;
@@ -98,7 +94,6 @@ This API makes eight ownership decisions explicit:
 5. a `CSTOptimizer` partitions and exclusively owns every trainable parameter;
 6. the CST engine attaches its concrete transient `AtomGrad` to each atom table;
 7. its implicit CST engine owns compressed moment and accepted-frame state;
-8. a closure owns loss evaluation, backward, and candidate reevaluation.
 
 There is no engine or structural policy between the module and optimizer.
 
@@ -442,7 +437,7 @@ The implicit optimizer assembles its moment behavior from separate first- and
 second-moment components. A component owns four decisions:
 
 ```text
-observation request -> initial state -> step-local expansion -> accepted compression
+observation request -> initial state -> step-local expansion -> committed compression
 ```
 
 The installed components union their `AtomGradRequest` values before backward.
@@ -453,9 +448,9 @@ statistics.
 
 `MomentSystem.expand(...)` combines the previous persistent state and the
 current immutable observation into raw pending state and bias-corrected solver
-views. Expansion never mutates persistent state. On rejection the entire
-proposal is discarded; on acceptance `MomentSystem.compress(...)` creates both
-new component states before returning one new aggregate state.
+views. Expansion never mutates persistent state. After the solver returns,
+`MomentSystem.compress(...)` creates both new component states before returning
+one new aggregate state.
 
 The selected first implementation composes:
 
@@ -544,36 +539,28 @@ The internal implicit engine accepts CST sites only. It never accepts a raw
 parameter iterable, so a dense tensor cannot accidentally enter the CST
 solver through the supported API.
 
-### Closure contract
+### Step contract
 
-`step(closure)` may evaluate the closure multiple times. The closure must:
+`CSTOptimizer` follows the ordinary PyTorch training order:
 
-1. clear gradients;
-2. evaluate the current minibatch loss;
-3. call `backward()`;
-4. return the scalar loss.
+1. `optimizer.zero_grad(set_to_none=True)` clears parameter gradients and begins
+   the CST observation scope;
+2. the caller evaluates the minibatch loss and calls `backward()`;
+3. `optimizer.step()` consumes those gradients and observations exactly once.
 
 The optimizer forms the CST quartic proposal and dense AdamW proposal from the
-same base-point backward pass. It applies both provisionally, evaluates the
-actual loss, and accepts or rejects them as one transaction:
+same backward pass and commits both together:
 
 $$
 (\theta_{\mathrm{cst}},\theta_{\mathrm{dense}})
 \longmapsto
-(\theta_{\mathrm{cst}}+\lambda d_{\mathrm{cst}},
- \theta_{\mathrm{dense}}+\lambda d_{\mathrm{dense}}).
+(\theta_{\mathrm{cst}}+d_{\mathrm{cst}},
+ \theta_{\mathrm{dense}}+d_{\mathrm{dense}}).
 $$
 
-The optimizer is responsible for restoring both blocks after a rejected
-candidate. Parameters, dense AdamW moments, compact CST moments, and
-accepted-frame metadata must not advance inconsistently.
-
-The default `ExactLossAcceptance` tries the joint proposal at scales
-`1, 1/2, 1/4, ...` and accepts the first finite candidate whose exact closure
-loss does not exceed the base loss. A rejected candidate restores every
-parameter, discards all pending moment updates, and leaves both optimizer
-clocks unchanged. The acceptance policy chooses only a scale; it never owns or
-mutates model state.
+Calling `step()` without first opening an observation scope with `zero_grad()`
+is an error. The optimizer does not reevaluate the model loss, rescale the
+proposal, or reject a completed update.
 
 ### Local objective
 
@@ -612,9 +599,8 @@ immutable `ExpandedMoments` proposal. It exposes the scalar objective and its
 exact cubic gradient; it does not read or mutate persistent optimizer state.
 `FullQuartic` performs deterministic multi-start LBFGS through a smooth
 trust-ball parameterization and returns the best finite candidate together
-with objective, iteration, and projected-stationarity diagnostics. Exact-loss
-acceptance is a separate transaction and may still reject or scale that
-candidate.
+with objective, iteration, and projected-stationarity diagnostics. The
+optimizer applies that candidate without a second model-loss evaluation.
 
 ### CST persistent state
 
@@ -705,8 +691,7 @@ The experiment supports the selected starting point. It does not yet prove:
 3. **Derivative operators** — displacement, JVP/VJP, and second-order
    contractions checked against dense autograd.
 4. **Correctness optimizer** — model-wide ownership, functional dense AdamW,
-   compact $\alpha$, separable $v$, full quartic, and joint exact-loss
-   acceptance.
+   compact $\alpha$, separable $v$, full quartic, and coordinated state commit.
 5. **Dense-free backend** — fuse the required contractions without persistent
    or transient represented-weight tables in the production path.
 6. **Solver work** — reduce quartic cost while measuring solution and training

@@ -1,4 +1,4 @@
-"""Functional dense AdamW proposals for joint acceptance transactions."""
+"""Functional dense AdamW proposals for coordinated optimizer steps."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ class FunctionalAdamW:
                 pending_state=state,
             )
         if gradient.is_sparse:
-            raise RuntimeError("transactional AdamW does not support sparse gradients")
+            raise RuntimeError("functional AdamW does not support sparse gradients")
         if gradient.shape != parameter.shape:
             raise ValueError("dense gradient shape does not match its parameter")
 

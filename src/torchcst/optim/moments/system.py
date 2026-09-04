@@ -37,7 +37,7 @@ class ExpandedMoments:
 
 
 class MomentSystem:
-    """Combine replaceable first and second moments as one transaction."""
+    """Combine replaceable first and second moments as one state transition."""
 
     def __init__(
         self,
@@ -123,16 +123,3 @@ class MomentSystem:
             first=first,
             second=second,
         )
-
-    def reject(
-        self,
-        expanded: ExpandedMoments,
-        state: MomentSystemState,
-    ) -> MomentSystemState:
-        """Discard one proposal without advancing any persistent state."""
-
-        if expanded.owner_token is not self._owner_token:
-            raise ValueError("expanded moments belong to another MomentSystem")
-        if expanded.previous_step != state.step:
-            raise ValueError("expanded moments do not match persistent state")
-        return state

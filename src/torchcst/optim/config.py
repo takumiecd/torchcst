@@ -59,7 +59,7 @@ class ImplicitAdamConfig:
 
 @dataclass(frozen=True)
 class AdamWConfig:
-    """Configuration of the transactional functional dense AdamW block."""
+    """Configuration of the functional dense AdamW block."""
 
     lr: float = 1e-3
     betas: tuple[float, float] = (0.9, 0.999)

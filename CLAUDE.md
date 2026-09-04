@@ -24,7 +24,7 @@ old Pullback Adam implementation.
 | `kernels/` | stateless interpretation, initialization, and evaluation of opaque atom coordinates |
 | `nn/` | user-facing CST modules such as `CSTLinear` and future convolution modules |
 | `_derivatives/` | internal displacement, JVP, VJP, HVP, and contraction machinery shared across module families |
-| `optim/` | model-level parameter ownership, compact moments, quartic solve, and exact-loss acceptance |
+| `optim/` | model-level parameter ownership, compact moments, quartic solve, and joint state commit |
 
 Public objects are re-exported from `torchcst`; internal placement must not leak
 into the README API. Keep module ownership separate from derivative evaluation,

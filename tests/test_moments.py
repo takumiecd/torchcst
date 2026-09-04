@@ -218,10 +218,8 @@ def test_expansion_is_provisional_and_does_not_mutate_persistent_state() -> None
     second_row = state.second.row.clone()
     second_column = state.second.column.clone()
 
-    expanded = system.expand(state, observation, context)
-    rejected_state = system.reject(expanded, state)
+    system.expand(state, observation, context)
 
-    assert rejected_state is state
     assert state.step == 0
     torch.testing.assert_close(state.first.alpha, first_alpha)
     torch.testing.assert_close(state.second.row, second_row)

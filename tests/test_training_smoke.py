@@ -73,18 +73,15 @@ def test_full_optimizer_reduces_loss_for_new_amplitude_kernels(
 
     losses = [objective().detach()]
     for _ in range(2):
-
-        def closure() -> torch.Tensor:
-            optimizer.zero_grad(set_to_none=True)
-            loss = objective()
-            loss.backward()
-            return loss
-
-        losses.append(optimizer.step(closure))
+        optimizer.zero_grad(set_to_none=True)
+        loss = objective()
+        loss.backward()
+        optimizer.step()
+        losses.append(objective().detach())
 
     assert all(torch.isfinite(loss) for loss in losses)
     assert losses[1] < losses[0]
     assert losses[2] < losses[1]
-    assert optimizer.last_step is not None and optimizer.last_step.accepted
+    assert optimizer.last_step is not None
     assert optimizer.state_dict()["cst"]["<root>"].step == 2
     assert torch.isfinite(model.atoms.p).all()

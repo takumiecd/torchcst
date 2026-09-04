@@ -194,25 +194,17 @@ def run_seed(
         inputs = train_inputs.index_select(0, indices)
         labels = train_labels.index_select(0, indices)
 
-        def closure(
-            batch_inputs: Tensor = inputs,
-            batch_labels: Tensor = labels,
-        ) -> Tensor:
-            optimizer.zero_grad(set_to_none=True)
-            loss = F.cross_entropy(model(batch_inputs), batch_labels)
-            loss.backward()
-            return loss
-
-        loss = optimizer.step(closure)
+        optimizer.zero_grad(set_to_none=True)
+        loss = F.cross_entropy(model(inputs), labels)
+        loss.backward()
+        optimizer.step()
         result = optimizer.last_step
         if result is None:
             raise RuntimeError("optimizer did not publish step diagnostics")
         solve = result.site_results[0]
         row = {
             "step": step_index + 1,
-            "loss": float(loss),
-            "accepted": result.accepted,
-            "line_scale": result.scale,
+            "loss": float(loss.detach()),
             "solver_objective": float(solve.objective),
             "solver_evaluations": solve.evaluations,
             "solver_iterations": solve.iterations,
@@ -228,8 +220,7 @@ def run_seed(
             print(
                 f"seed={config.seed} step={step_index + 1:03d} "
                 f"train_loss={row['loss']:.5f} "
-                f"test_accuracy={100.0 * checkpoint['accuracy']:.2f}% "
-                f"accepted={result.accepted} scale={result.scale:g}",
+                f"test_accuracy={100.0 * checkpoint['accuracy']:.2f}%",
                 flush=True,
             )
 
@@ -238,7 +229,6 @@ def run_seed(
         "config": asdict(config),
         "initial": checkpoints[0],
         "final": checkpoints[-1],
-        "accepted_steps": sum(row["accepted"] for row in trace),
         "elapsed_seconds": time.perf_counter() - started,
         "checkpoints": checkpoints,
         "trace": trace,
