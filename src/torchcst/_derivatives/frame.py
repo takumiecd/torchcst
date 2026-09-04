@@ -280,15 +280,15 @@ class AutogradFrameGeometry(FrameGeometry):
             device=frame.point.device,
             dtype=frame.point.dtype,
         ).reshape(local_size, *self.point_shape)
-        columns = []
-        for direction in basis:
-            visible = self.derivatives.pushforward(
+        def pushforward(direction: Tensor) -> Tensor:
+            return self.derivatives.pushforward(
                 direction,
                 at=frame.displacement,
                 parameter_point=frame.point,
             )
-            columns.append(visible.reshape(-1))
-        visible_columns = torch.stack(columns, dim=1)
+
+        visible_basis = torch.vmap(pushforward, chunk_size=64)(basis)
+        visible_columns = visible_basis.flatten(start_dim=1).transpose(0, 1)
         matrix = visible_columns.transpose(0, 1) @ visible_columns
         return GramSystem(
             matrix,

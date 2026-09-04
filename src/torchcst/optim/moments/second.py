@@ -36,6 +36,10 @@ class SeparableDiagonalMetric:
         self._row = row.detach().clone()
         self._column = column.detach().clone()
         self.eps = float(eps)
+        normalizer = self._row.mean()
+        safe_normalizer = normalizer.clamp_min(torch.finfo(self._row.dtype).tiny)
+        variance = self._row[:, None] * self._column[None, :] / safe_normalizer
+        self._diagonal = variance.clamp_min(0).sqrt() + self.eps
 
     @property
     def visible_shape(self) -> tuple[int, int]:
@@ -52,14 +56,11 @@ class SeparableDiagonalMetric:
     def diagonal(self) -> Tensor:
         """Materialize ``sqrt(v_tilde) + eps`` for diagnostics and oracles."""
 
-        normalizer = self._row.mean()
-        safe_normalizer = normalizer.clamp_min(torch.finfo(self._row.dtype).tiny)
-        variance = self._row[:, None] * self._column[None, :] / safe_normalizer
-        return variance.clamp_min(0).sqrt() + self.eps
+        return self._diagonal.clone()
 
     def apply(self, value: Tensor) -> Tensor:
         self._validate_visible(value)
-        return self.diagonal() * value
+        return self._diagonal * value
 
     def inner(self, left: Tensor, right: Tensor) -> Tensor:
         self._validate_visible(left)
