@@ -208,6 +208,11 @@ def run_seed(
             "solver_objective": float(solve.objective),
             "solver_evaluations": solve.evaluations,
             "solver_iterations": solve.iterations,
+            "solver_start_index": solve.start_index,
+            "solver_converged": solve.converged,
+            "solver_projected_gradient_norm": float(
+                solve.projected_gradient_norm
+            ),
             "on_trust_boundary": solve.on_boundary,
         }
         trace.append(row)
