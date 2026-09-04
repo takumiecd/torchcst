@@ -517,6 +517,13 @@ The optimizer is responsible for restoring both blocks after a rejected
 candidate. Parameters, dense AdamW moments, compact CST moments, and
 accepted-frame metadata must not advance inconsistently.
 
+The default `ExactLossAcceptance` tries the joint proposal at scales
+`1, 1/2, 1/4, ...` and accepts the first finite candidate whose exact closure
+loss does not exceed the base loss. A rejected candidate restores every
+parameter, discards all pending moment updates, and leaves both optimizer
+clocks unchanged. The acceptance policy chooses only a scale; it never owns or
+mutates model state.
+
 ### Local objective
 
 For a parameter candidate $d$, the represented displacement is
@@ -555,8 +562,8 @@ exact cubic gradient; it does not read or mutate persistent optimizer state.
 `FullQuartic` performs deterministic multi-start LBFGS through a smooth
 trust-ball parameterization and returns the best finite candidate together
 with objective, iteration, and projected-stationarity diagnostics. Exact-loss
-acceptance remains a later, separate transaction and may still reject or scale
-that candidate.
+acceptance is a separate transaction and may still reject or scale that
+candidate.
 
 ### CST persistent state
 
@@ -682,9 +689,8 @@ python -m pip install -e '.[dev]'
 pytest -q
 ```
 
-Until the optimizer milestone lands, the complete target example is expected to
-fail at its optimizer imports. Each API segment becomes a required test when its
-milestone lands and must not drift from the implementation.
+The complete target example is covered by the public optimizer integration
+tests. Each API segment must remain synchronized with the implementation.
 
 ## License
 
