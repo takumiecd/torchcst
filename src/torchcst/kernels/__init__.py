@@ -1,6 +1,7 @@
-"""Kernel families used by CST modules."""
+"""Stateless interpretations of opaque atom coordinates."""
 
-from .base import Kernel
+from .base import AtomInit, Kernel, Profile
 from .gaussian import Gaussian
+from .separable import Separable
 
-__all__ = ["Gaussian", "Kernel"]
+__all__ = ["AtomInit", "Gaussian", "Kernel", "Profile", "Separable"]

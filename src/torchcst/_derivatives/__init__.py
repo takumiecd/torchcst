@@ -1,12 +1,6 @@
-"""Internal derivative contractions shared by CST module families."""
+"""Internal atom-structured derivative contractions.
 
-from .dense import DenseDerivativeOracle
-from .layout import ParameterLayout, ParameterSpec
-from .linear import LinearDerivatives
-
-__all__ = [
-    "DenseDerivativeOracle",
-    "LinearDerivatives",
-    "ParameterLayout",
-    "ParameterSpec",
-]
+The previous flat-parameter derivative prototype was removed when the canonical
+representation became an opaque ``Atoms`` table. The replacement starts from
+the ``[K, P + 1]`` local atom structure in the next milestone.
+"""

@@ -1,19 +1,19 @@
-"""Isotropic Gaussian kernel."""
+"""Fixed isotropic Gaussian scalar profile."""
 
 from __future__ import annotations
 
-import math
-
 import torch
-from torch import Tensor, nn
+from torch import Tensor
 
-from .base import Kernel
+from torchcst.geometry import Chart
+
+from .base import AtomInit, Profile
 
 
-class Gaussian(Kernel):
-    r"""The isotropic kernel ``exp(-||u-v||² / (2 sigma²))``."""
+class Gaussian(Profile):
+    r"""The fixed profile ``exp(-||u-v||² / (2 sigma²))``."""
 
-    def __init__(self, sigma: float | Tensor, *, trainable: bool = False) -> None:
+    def __init__(self, sigma: float | Tensor) -> None:
         super().__init__()
         value = torch.as_tensor(sigma)
         if value.numel() != 1:
@@ -23,39 +23,48 @@ class Gaussian(Kernel):
         value = value.detach().clone().reshape(())
         if not torch.isfinite(value) or value <= 0:
             raise ValueError("sigma must be finite and positive")
+        self.register_buffer("sigma", value)
 
-        if trainable:
-            self._log_sigma = nn.Parameter(value.log())
-            self.register_buffer("_fixed_sigma", None)
-        else:
-            self.register_parameter("_log_sigma", None)
-            self.register_buffer("_fixed_sigma", value)
+    def parameter_dim(self, chart: Chart) -> int:
+        return chart.dim
 
-    @property
-    def sigma(self) -> Tensor:
-        """The positive bandwidth tensor."""
+    def initialize(self, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
+        if isinstance(atoms, bool) or not isinstance(atoms, int):
+            raise TypeError("atoms must be an integer")
+        if atoms < 1:
+            raise ValueError("atoms must be positive")
+        if mode == "balanced":
+            indices = (
+                torch.linspace(
+                    0,
+                    chart.features - 1,
+                    atoms,
+                    device=chart.coordinates.device,
+                )
+                .round()
+                .to(dtype=torch.long)
+            )
+            return chart.coordinates.index_select(0, indices)
+        if mode != "uniform":
+            raise ValueError("mode must be 'balanced' or 'uniform'")
 
-        if self._log_sigma is not None:
-            return self._log_sigma.exp()
-        return self._fixed_sigma
+        low = chart.coordinates.amin(dim=0)
+        high = chart.coordinates.amax(dim=0)
+        unit = torch.rand(
+            atoms,
+            chart.dim,
+            device=chart.coordinates.device,
+            dtype=chart.coordinates.dtype,
+        )
+        return low + unit * (high - low)
 
-    @property
-    def trainable(self) -> bool:
-        return self._log_sigma is not None
-
-    def forward(self, left: Tensor, right: Tensor) -> Tensor:
-        if left.ndim < 2 or right.ndim < 2:
-            raise ValueError("kernel inputs must have shape [..., points, dimensions]")
-        if left.shape[-1] != right.shape[-1]:
-            raise ValueError("kernel inputs must have the same coordinate dimension")
-        if not self.supports_dimension(left.shape[-1]):
-            raise ValueError("unsupported coordinate dimension")
-
+    def evaluate(self, chart: Chart, p: Tensor) -> Tensor:
+        if p.ndim != 2 or p.shape[1] != self.parameter_dim(chart):
+            raise ValueError(f"p must have shape [atoms, {self.parameter_dim(chart)}]")
         squared_distance = (
-            left.unsqueeze(-2) - right.unsqueeze(-3)
-        ).square().sum(dim=-1)
+            (chart.coordinates.unsqueeze(-2) - p.unsqueeze(-3)).square().sum(dim=-1)
+        )
         return torch.exp(-squared_distance / (2 * self.sigma.square()))
 
     def extra_repr(self) -> str:
-        sigma = math.exp(self._log_sigma.item()) if self.trainable else self.sigma.item()
-        return f"sigma={sigma:g}, trainable={self.trainable}"
+        return f"sigma={self.sigma.item():g}"

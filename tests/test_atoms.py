@@ -19,9 +19,7 @@ def test_atoms_owns_copies_without_interpreting_p() -> None:
     assert isinstance(atoms.weight, nn.Parameter)
     assert isinstance(atoms.p, nn.Parameter)
     assert torch.equal(atoms.weight, torch.tensor([1.0, -2.0]))
-    assert torch.equal(
-        atoms.p, torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-    )
+    assert torch.equal(atoms.p, torch.tensor([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]))
 
 
 def test_local_parameters_preserves_atom_correspondence() -> None:

@@ -1,4 +1,4 @@
-"""A fixed-shape CST linear module."""
+"""A fixed-shape weighted atom sum representing a linear operator."""
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from torchcst.atoms import Atoms
 from torchcst.geometry import Chart
-from torchcst.kernels import Kernel
+from torchcst.kernels import AtomInit, Kernel
 
 Backend = Literal["auto", "factored", "materialized"]
-AtomInit = Literal["balanced", "uniform"]
 
 
 class CSTLinear(nn.Module):
-    """Represent a linear map with a fixed number of continuous atoms."""
+    r"""Represent a linear map as ``sum(weight[a] * kernel(p[a]))``."""
 
     def __init__(
         self,
@@ -25,8 +25,7 @@ class CSTLinear(nn.Module):
         output_chart: Chart,
         *,
         atoms: int,
-        input_kernel: Kernel,
-        output_kernel: Kernel | None = None,
+        kernel: Kernel,
         atom_init: AtomInit = "balanced",
         backend: Backend = "auto",
         device: torch.device | str | None = None,
@@ -39,30 +38,22 @@ class CSTLinear(nn.Module):
             raise TypeError("atoms must be an integer")
         if atoms < 1:
             raise ValueError("atoms must be positive")
-        if not isinstance(input_kernel, Kernel):
-            raise TypeError("input_kernel must implement the Kernel contract")
-        if output_kernel is not None and not isinstance(output_kernel, Kernel):
-            raise TypeError("output_kernel must implement the Kernel contract")
+        if not isinstance(kernel, Kernel):
+            raise TypeError("kernel must implement the Kernel contract")
+        if tuple(kernel.parameters()):
+            raise ValueError("a Kernel cannot own trainable state; put it in atom p")
         if atom_init not in ("balanced", "uniform"):
             raise ValueError("atom_init must be 'balanced' or 'uniform'")
         if backend not in ("auto", "factored", "materialized"):
             raise ValueError("backend must be 'auto', 'factored', or 'materialized'")
-
-        selected_output_kernel = output_kernel or input_kernel
-        if not input_kernel.supports_dimension(input_chart.dim):
-            raise ValueError("input_kernel does not support the input chart dimension")
-        if not selected_output_kernel.supports_dimension(output_chart.dim):
-            if output_kernel is None:
-                raise ValueError(
-                    "input_kernel cannot be reused for the output chart dimension"
-                )
-            raise ValueError("output_kernel does not support the output chart dimension")
+        if backend == "factored" and not kernel.supports_factorization:
+            raise ValueError(
+                "the selected kernel does not support factorized execution"
+            )
 
         self.input_chart = input_chart
         self.output_chart = output_chart
-        self.input_kernel = input_kernel
-        self.output_kernel = selected_output_kernel
-        self.atoms = atoms
+        self.kernel = kernel
         self.atom_init = atom_init
         self.backend = backend
 
@@ -72,11 +63,25 @@ class CSTLinear(nn.Module):
             raise TypeError("CSTLinear requires a floating-point dtype")
         self.to(device=target_device, dtype=target_dtype)
 
-        factory_kwargs = {"device": target_device, "dtype": target_dtype}
-        self.source = nn.Parameter(torch.empty(atoms, input_chart.dim, **factory_kwargs))
-        self.target = nn.Parameter(torch.empty(atoms, output_chart.dim, **factory_kwargs))
-        self.amplitude = nn.Parameter(torch.empty(atoms, **factory_kwargs))
-        self.reset_parameters()
+        parameter_dim = kernel.parameter_dim(input_chart, output_chart)
+        if parameter_dim < 1:
+            raise ValueError("kernel.parameter_dim must be positive")
+        p = kernel.initialize(
+            input_chart,
+            output_chart,
+            atoms,
+            mode=atom_init,
+        )
+        expected_shape = (atoms, parameter_dim)
+        if p.shape != expected_shape:
+            raise ValueError(
+                f"kernel.initialize must return shape {list(expected_shape)}"
+            )
+        if p.device != input_chart.coordinates.device or p.dtype != target_dtype:
+            raise ValueError("kernel.initialize must match the module device and dtype")
+        weight = torch.empty(atoms, device=target_device, dtype=target_dtype)
+        weight.normal_(mean=0.0, std=1.0 / math.sqrt(atoms))
+        self.atoms = Atoms(weight, p)
 
     @property
     def in_features(self) -> int:
@@ -86,49 +91,34 @@ class CSTLinear(nn.Module):
     def out_features(self) -> int:
         return self.output_chart.features
 
-    def reset_parameters(self) -> None:
-        """Initialize the fixed atom table without changing its cardinality."""
+    @property
+    def atom_count(self) -> int:
+        return self.atoms.count
 
-        with torch.no_grad():
-            self.source.copy_(self._sample_bounds(self.input_chart.coordinates))
-            if self.atom_init == "balanced":
-                indices = torch.linspace(
-                    0,
-                    self.out_features - 1,
-                    self.atoms,
-                    device=self.target.device,
-                ).round().to(dtype=torch.long)
-                self.target.copy_(self.output_chart.coordinates.index_select(0, indices))
-            else:
-                self.target.copy_(self._sample_bounds(self.output_chart.coordinates))
-            self.amplitude.normal_(mean=0.0, std=1.0 / math.sqrt(self.atoms))
+    def materialized_atoms(self) -> Tensor:
+        """Return one diagnostic matrix for each atom, without its amplitude."""
 
-    def _sample_bounds(self, coordinates: Tensor) -> Tensor:
-        low = coordinates.amin(dim=0)
-        high = coordinates.amax(dim=0)
-        unit = torch.rand(
-            self.atoms,
-            coordinates.shape[1],
-            device=coordinates.device,
-            dtype=coordinates.dtype,
+        represented = self.kernel.materialize_atoms(
+            self.input_chart, self.output_chart, self.atoms.p
         )
-        return low + unit * (high - low)
-
-    def _kernel_factors(self) -> tuple[Tensor, Tensor]:
-        phi_input = self.input_kernel(self.input_chart.coordinates, self.source)
-        phi_output = self.output_kernel(self.output_chart.coordinates, self.target)
-        return phi_input, phi_output
+        expected_shape = (self.atom_count, self.out_features, self.in_features)
+        if represented.shape != expected_shape:
+            raise ValueError(
+                f"kernel.materialize_atoms must return shape {list(expected_shape)}"
+            )
+        return represented
 
     def dense_weight(self) -> Tensor:
-        """Materialize the represented ``[out_features, in_features]`` matrix."""
+        """Materialize the canonical weighted atom sum."""
 
-        phi_input, phi_output = self._kernel_factors()
-        return (phi_output * self.amplitude) @ phi_input.transpose(-2, -1)
+        return torch.einsum("a,aoi->oi", self.atoms.weight, self.materialized_atoms())
 
     def _resolved_backend(self) -> Literal["factored", "materialized"]:
         if self.backend != "auto":
             return self.backend
-        factor_size = self.atoms * (self.in_features + self.out_features)
+        if not self.kernel.supports_factorization:
+            return "materialized"
+        factor_size = self.atom_count * (self.in_features + self.out_features)
         dense_size = self.in_features * self.out_features
         return "factored" if factor_size <= dense_size else "materialized"
 
@@ -142,13 +132,15 @@ class CSTLinear(nn.Module):
         if self._resolved_backend() == "materialized":
             return F.linear(inputs, self.dense_weight())
 
-        phi_input, phi_output = self._kernel_factors()
-        atom_values = (inputs @ phi_input) * self.amplitude
+        phi_input, phi_output = self.kernel.factors(
+            self.input_chart, self.output_chart, self.atoms.p
+        )
+        atom_values = (inputs @ phi_input) * self.atoms.weight
         return atom_values @ phi_output.transpose(-2, -1)
 
     def extra_repr(self) -> str:
         return (
             f"in_features={self.in_features}, out_features={self.out_features}, "
-            f"atoms={self.atoms}, atom_init={self.atom_init!r}, "
-            f"backend={self.backend!r}"
+            f"atoms={self.atom_count}, parameter_dim={self.atoms.parameter_dim}, "
+            f"atom_init={self.atom_init!r}, backend={self.backend!r}"
         )

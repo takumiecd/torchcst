@@ -1,29 +1,31 @@
 import pytest
 import torch
 
-from torchcst import Gaussian
+from torchcst import Chart, Gaussian
 
 
-def test_gaussian_evaluates_all_point_pairs() -> None:
-    kernel = Gaussian(2.0)
-    left = torch.tensor([[0.0], [2.0]])
-    right = torch.tensor([[0.0], [1.0], [2.0]])
+def test_gaussian_evaluates_chart_against_opaque_profile_coordinates() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [2.0]]))
+    p = torch.tensor([[0.0], [1.0], [2.0]])
+    profile = Gaussian(2.0)
 
-    actual = kernel(left, right)
-    expected = torch.exp(-((left - right.T).square()) / 8.0)
+    actual = profile.evaluate(chart, p)
+    expected = torch.exp(-((chart.coordinates - p.T).square()) / 8.0)
 
     torch.testing.assert_close(actual, expected)
+    assert tuple(profile.parameters()) == ()
 
 
-def test_trainable_bandwidth_is_positive_and_differentiable() -> None:
-    kernel = Gaussian(0.5, trainable=True)
-    value = kernel(torch.tensor([[0.0]]), torch.tensor([[1.0]])).sum()
+def test_gaussian_initialization_is_profile_owned() -> None:
+    chart = Chart.linspace(3)
+    profile = Gaussian(0.5)
 
-    value.backward()
+    balanced = profile.initialize(chart, 2, mode="balanced")
+    uniform = profile.initialize(chart, 20, mode="uniform")
 
-    assert kernel.sigma.item() > 0
-    assert len(tuple(kernel.parameters())) == 1
-    assert next(iter(kernel.parameters())).grad is not None
+    assert torch.equal(balanced, torch.tensor([[-1.0], [1.0]]))
+    assert bool((uniform >= -1.0).all())
+    assert bool((uniform <= 1.0).all())
 
 
 @pytest.mark.parametrize("sigma", [0.0, -1.0, float("inf")])

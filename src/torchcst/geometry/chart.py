@@ -71,9 +71,9 @@ class Chart(nn.Module):
             cls._validate_size(size, name=f"shape[{index}]")
 
         axes = [torch.linspace(low, high, size) for size in shape]
-        coordinates = torch.stack(
-            torch.meshgrid(*axes, indexing="ij"), dim=-1
-        ).reshape(-1, len(shape))
+        coordinates = torch.stack(torch.meshgrid(*axes, indexing="ij"), dim=-1).reshape(
+            -1, len(shape)
+        )
         return cls(coordinates, trainable=trainable)
 
     @staticmethod
@@ -102,7 +102,4 @@ class Chart(nn.Module):
         return isinstance(self.coordinates, nn.Parameter)
 
     def extra_repr(self) -> str:
-        return (
-            f"features={self.features}, dim={self.dim}, "
-            f"trainable={self.trainable}"
-        )
+        return f"features={self.features}, dim={self.dim}, trainable={self.trainable}"
