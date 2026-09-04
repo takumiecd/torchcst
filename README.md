@@ -308,6 +308,29 @@ entity IDs, policies, or optimizer state.
 oracles. A dense represented matrix is never persistent model or optimizer
 state.
 
+## Atom-structured derivatives
+
+For opaque coordinate width `P`, define each atom-local parameter as
+
+$$
+z_a=(w_a,p_a)\in\mathbb R^{P+1}.
+$$
+
+The internal derivative API consumes parameter points and directions with shape
+`[K, P + 1]`. It evaluates displacement, JVP, VJP, and Hessian contractions
+without interpreting columns of $p$. With frozen charts, the contracted
+representation Hessian stores only its nonzero atom blocks:
+
+```text
+pullback             [K, P + 1]
+contracted Hessian   [K, P + 1, P + 1]
+```
+
+The dense correctness oracle may construct the mathematical full Hessian with
+shape `[K, P + 1, K, P + 1]` and verifies that distinct-atom blocks are zero.
+This representation sparsity does not remove cross-atom terms created later by
+the full quartic objective.
+
 ## `CSTOptimizer`
 
 `CSTOptimizer` is the public model-level optimizer. It accepts the complete

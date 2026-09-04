@@ -98,15 +98,29 @@ class CSTLinear(nn.Module):
     def materialized_atoms(self) -> Tensor:
         """Return one diagnostic matrix for each atom, without its amplitude."""
 
+        return self._materialize_atoms(self.atoms.p)
+
+    def _materialize_atoms(self, p: Tensor) -> Tensor:
         represented = self.kernel.materialize_atoms(
-            self.input_chart, self.output_chart, self.atoms.p
+            self.input_chart, self.output_chart, p
         )
-        expected_shape = (self.atom_count, self.out_features, self.in_features)
+        if p.ndim != 2 or p.shape[1] != self.atoms.parameter_dim:
+            raise ValueError(f"p must have shape [atoms, {self.atoms.parameter_dim}]")
+        expected_shape = (p.shape[0], self.out_features, self.in_features)
         if represented.shape != expected_shape:
             raise ValueError(
                 f"kernel.materialize_atoms must return shape {list(expected_shape)}"
             )
         return represented
+
+    def cst_derivatives(self) -> "AtomDerivatives":
+        """Build the internal atom-structured derivative operator."""
+
+        if self.input_chart.trainable or self.output_chart.trainable:
+            raise ValueError("the first derivative engine supports frozen charts only")
+        from torchcst._derivatives import AtomDerivatives
+
+        return AtomDerivatives(self.atoms, self._materialize_atoms)
 
     def dense_weight(self) -> Tensor:
         """Materialize the canonical weighted atom sum."""
