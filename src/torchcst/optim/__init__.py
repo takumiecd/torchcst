@@ -4,6 +4,11 @@ The public optimizer is introduced after the derivative operator contract is
 validated against dense autograd oracles.
 """
 
+from .acceptance import (
+    AcceptancePolicy,
+    AcceptanceResult,
+    ExactLossAcceptance,
+)
 from .atom_grad import (
     AtomGradientObservation,
     AtomGradRequest,
@@ -29,10 +34,13 @@ from .problem import QuarticProblem
 from .solvers import FullQuartic, QuarticSolver, QuarticSolveResult
 
 __all__ = [
+    "AcceptancePolicy",
+    "AcceptanceResult",
     "AcceptedFrameFirstMoment",
     "AcceptedFrameFirstMomentState",
     "AtomGradRequest",
     "AtomGradientObservation",
+    "ExactLossAcceptance",
     "ExpandedFirstMoment",
     "ExpandedMoments",
     "ExpandedSecondMoment",
