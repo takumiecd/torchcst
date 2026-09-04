@@ -247,3 +247,39 @@ made 328--345 quartic objective calls across its starts. The remaining primary
 bottleneck is therefore the generic multi-start LBFGS policy repeatedly
 contracting the cached second-order representation, not construction of the
 derivative cache itself.
+
+### Cold-start ablation
+
+To isolate the quality effect of the previous-displacement start, the cached
+direct-step implementation was rerun with the original four cold starts: zero,
+the negative-gradient direction, and two deterministic directions. Model
+initialization, minibatch order, radius, and all other settings were unchanged.
+
+| step | cached warm start | cached cold start | cold minus warm |
+| ---: | ---: | ---: | ---: |
+| 1 | 16.90% | 16.90% | 0.00pt |
+| 4 | 34.40% | **35.45%** | +1.05pt |
+| 8 | **47.40%** | 47.30% | -0.10pt |
+| 16 | **60.20%** | 57.40% | -2.80pt |
+| 32 | **69.95%** | 68.60% | -1.35pt |
+| 64 | **78.30%** | 77.70% | -0.60pt |
+| 128 | 76.85% | **78.15%** | +1.30pt |
+
+Cold start took 377.084 seconds (2.946 seconds per requested step), only 1.2%
+slower than the 372.611-second warm-start run. Its final loss was 0.9145,
+compared with 0.9605 for warm start. Unlike the warm-start trajectory, which
+fell 1.45pt from step 64 to step 128, cold start gained 0.45pt over the same
+interval.
+
+The selected cold candidates averaged 75.50 LBFGS iterations and 79.92
+objective evaluations. None of the 128 candidates met the projected-gradient
+convergence threshold, and 68 reached the trust boundary. The zero,
+negative-gradient, and deterministic starts won 64, 57, and 7 steps
+respectively. Warm start therefore provided no meaningful speed benefit and
+reduced final accuracy by 1.30pt in this controlled run.
+
+Removing warm start recovers roughly half of the 2.65pt deficit relative to the
+older 79.50% acceptance run. The remaining 1.35pt deficit, and the higher final
+loss relative to the older run's 0.8011, remain consistent with the removal of
+exact-loss acceptance or another direct-step trajectory effect. This ablation
+does not support attributing the full quality regression to derivative caching.
