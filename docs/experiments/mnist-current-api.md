@@ -113,6 +113,46 @@ implementation also used a pullback metric, adaptive radius, warm starts,
 Cauchy candidates, and a wider exact-loss search. Additional seeds are needed
 before changing the public default.
 
+### Three-seed full-length confirmation
+
+Seeds 29 and 43 were subsequently run at radius 0.5 for the complete 128
+steps. This changed the conclusion from the favorable seed-17 result: the
+larger fixed radius improves the three-seed mean only slightly and is not
+uniformly better.
+
+| seed | radius 0.25 | radius 0.5 | change | historical | 0.5 vs historical |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 17 | 79.50% | **80.60%** | +1.10pt | 81.00% | -0.40pt |
+| 29 | 77.05% | **78.50%** | +1.45pt | 80.85% | -2.35pt |
+| 43 | **78.25%** | 77.05% | -1.20pt | 81.50% | -4.45pt |
+| **mean** | 78.27% | **78.72%** | +0.45pt | 81.12% | -2.40pt |
+
+The population standard deviation increased from 1.00pt at radius 0.25 to
+1.46pt at radius 0.5. Final radius-0.5 losses were 0.8083, 0.8139, and 0.8920
+for seeds 17, 29, and 43; their mean of 0.8381 was worse than the radius-0.25
+mean loss of 0.8274.
+
+| seed | accepted | boundary | full scale | reduced nonzero | rejected |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 17 | 127/128 | 20 | 111 | 16 | 1 |
+| 29 | 126/128 | 22 | 109 | 17 | 2 |
+| 43 | 127/128 | 19 | 119 | 8 | 1 |
+
+For seed 17 the reduced nonzero scales were fourteen half, one sixteenth, and
+one 1/128 step. For seed 29 they were thirteen half, two quarter, one eighth,
+and one sixteenth step. For seed 43 they were four half, three quarter, and one
+eighth step. The radius-0.25 runs reached the boundary 65, 61, and 56 times;
+radius 0.5 reduces those counts to 20, 22, and 19 without increasing rejection
+materially.
+
+The controlled sweep still establishes that radius 0.25 constrains early
+learning too strongly. The full runs show that this is not the sole cause of
+the final accuracy deficit: a fixed radius 0.5 only recovers 0.45pt on average
+and makes seed sensitivity worse. The public default should therefore not be
+changed from this ablation alone. A metric-aware or adaptive trust region, or a
+stronger inner-solver policy, is a more plausible next target than selecting a
+single larger Euclidean radius.
+
 ## MPS cross-check
 
 On Apple MPS with seed 17:
