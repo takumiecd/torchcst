@@ -85,15 +85,16 @@ for images, labels in loader:
     loss = optimizer.step(closure)
 ```
 
-This API makes seven ownership decisions explicit:
+This API makes eight ownership decisions explicit:
 
 1. a `Chart` owns fixed-cardinality observation coordinates;
 2. `Atoms` owns one fixed-shape opaque parameter table;
 3. a `Kernel` interprets complete atom rows but owns no trainable state;
 4. a `CSTLinear` composes charts, atoms, and one kernel;
 5. a `CSTOptimizer` partitions and exclusively owns every trainable parameter;
-6. its implicit CST engine owns compressed moment and accepted-frame state;
-7. a closure owns loss evaluation, backward, and candidate reevaluation.
+6. the CST engine attaches its concrete transient `AtomGrad` to each atom table;
+7. its implicit CST engine owns compressed moment and accepted-frame state;
+8. a closure owns loss evaluation, backward, and candidate reevaluation.
 
 There is no engine or structural policy between the module and optimizer.
 
@@ -159,6 +160,12 @@ orientation, scale, or another kernel-specific quantity. Only the selected
 The table is one parameter with fixed shape and atom ordering. Every trainable
 atom property belongs in that atom's row of `p`; a kernel object does not own
 shared trainable parameters.
+
+`Atoms.grad` is a transient optimizer extension point, analogous in purpose to
+`Parameter.grad` but not restricted to one tensor. The optimizer attaches a
+concrete `AtomGrad` program before the base-point backward pass. `Atoms` neither
+defines nor interprets its contents, and the object is not serialized in the
+model `state_dict()`.
 
 ## `CSTLinear`
 
@@ -329,21 +336,54 @@ shape `[K, P, K, P]` and verifies that distinct-atom blocks are zero.
 This representation sparsity does not remove cross-atom terms created later by
 the full quartic objective.
 
-## Represented gradients
+## Atom gradients and autograd
 
-Implicit optimization needs the cotangent of the represented operator itself,
-not only the ordinary gradient already pulled back to `p`. For a
-linear site with $y=xW^\top$, each backward call contributes
+The optimizer decides which represented derivative information it needs by
+attaching a concrete `AtomGrad` to `model.atoms`. Its explicit lifecycle is
 
-$$
-g_W=\sum_{\text{leading indices}} g_y^\top x.
-$$
+```text
+attach -> begin -> forward/backward (possibly repeated) -> complete -> read
+```
 
-`CSTLinear` captures this value independently of whether its forward backend is
-factorized or materialized. Capture is explicitly enabled only around the base
-loss evaluation, accumulates repeated module calls and microbatches, and can be
-disabled during candidate reevaluation. The captured tensor is transient: it is
-cleared through the site lifecycle and is never part of `state_dict()`.
+The object is mutable during backward: the selected Linear or future Conv
+integration sets and accumulates its fields directly. PyTorch's backward return
+values remain the ordinary gradients for the corresponding forward inputs;
+optimizer-specific values travel through the attached `AtomGrad` object.
+
+Operation contracts are separate. `LinearAtomGrad` describes what a
+`CSTLinear` backward may invoke, while a future `ConvAtomGrad` can retain the
+spatial structure needed by convolution without forcing both through one
+matrix-specific interface. Concrete implementations belong to the optimizer
+layer.
+
+Each concrete program selects one execution route:
+
+| mode | behavior |
+| --- | --- |
+| `"auto"` | use custom autograd when implemented, otherwise use hooks |
+| `"custom"` | require custom autograd and fail if it is unavailable |
+| `"hooks"` | force the reference hook route |
+
+The routes never run simultaneously. The custom backward computes and returns
+the ordinary input and atom-parameter gradients while setting optimizer fields
+inside the same backward processing. Hooks provide a correctness and debugging
+route with the same resulting contract.
+
+The first implicit Linear program produces the raw observations
+
+```text
+J.T g              [K, P]
+g contracted H     [K, P, P]
+r                  [out_features]
+c                  [in_features]
+```
+
+where $r$ and $c$ are row and column means of the squared, aggregate represented
+gradient. It does not create the full represented $g_W$ tensor. For a Linear
+call it retains the implicit factors $(x,g_y)$; at `complete()` it reconstructs
+only chunks of $g_W=g_y^\top x$. Repeated calls are summed before squaring, so
+their cross terms are exact. Persistent EMA updates remain an optimizer
+responsibility and are not performed by autograd.
 
 ## `CSTOptimizer`
 

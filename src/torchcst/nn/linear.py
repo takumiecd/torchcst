@@ -8,10 +8,12 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from torchcst._derivatives import AtomDerivatives, RepresentedGradientAccumulator
+from torchcst._derivatives import AtomDerivatives
 from torchcst.atoms import Atoms
 from torchcst.geometry import Chart
 from torchcst.kernels import AtomInit, Kernel
+
+from .atom_grad import LinearAtomGrad
 
 Backend = Literal["auto", "factored", "materialized"]
 
@@ -80,9 +82,6 @@ class CSTLinear(nn.Module):
         if p.device != input_chart.coordinates.device or p.dtype != target_dtype:
             raise ValueError("kernel.initialize must match the module device and dtype")
         self.atoms = Atoms(p)
-        self._represented_gradient = RepresentedGradientAccumulator(
-            (self.out_features, self.in_features)
-        )
 
     @property
     def in_features(self) -> int:
@@ -126,44 +125,6 @@ class CSTLinear(nn.Module):
 
         return (self.atoms.p,)
 
-    def enable_represented_gradient_capture(self, *, clear: bool = True) -> None:
-        """Observe represented cotangents produced by subsequent backward calls."""
-
-        self._represented_gradient.enable(clear=clear)
-
-    def disable_represented_gradient_capture(self) -> None:
-        """Stop observing represented cotangents without clearing the last value."""
-
-        self._represented_gradient.disable()
-
-    def clear_represented_gradient(self) -> None:
-        """Discard the transient represented cotangent."""
-
-        self._represented_gradient.clear()
-
-    def represented_gradient(self) -> Tensor:
-        """Return a detached snapshot of the accumulated ``dL/dW``."""
-
-        return self._represented_gradient.value()
-
-    def _observe_represented_gradient(self, inputs: Tensor, outputs: Tensor) -> Tensor:
-        if not self._represented_gradient.enabled or not outputs.requires_grad:
-            return outputs
-
-        saved_inputs = inputs.detach().clone()
-        capture_generation = self._represented_gradient.generation
-
-        def collect(output_gradient: Tensor) -> None:
-            flat_inputs = saved_inputs.reshape(-1, self.in_features)
-            flat_gradient = output_gradient.detach().reshape(-1, self.out_features)
-            self._represented_gradient.add(
-                flat_gradient.transpose(0, 1) @ flat_inputs,
-                generation=capture_generation,
-            )
-
-        outputs.register_hook(collect)
-        return outputs
-
     def dense_weight(self) -> Tensor:
         """Materialize the canonical sum of complete kernel atoms."""
 
@@ -178,6 +139,22 @@ class CSTLinear(nn.Module):
         dense_size = self.in_features * self.out_features
         return "factored" if factor_size <= dense_size else "materialized"
 
+    def _forward_from_p(
+        self,
+        inputs: Tensor,
+        p: Tensor,
+        *,
+        backend: Literal["factored", "materialized"],
+    ) -> Tensor:
+        if backend == "materialized":
+            return F.linear(inputs, self._materialize_atoms(p).sum(dim=0))
+
+        phi_input, phi_output = self.kernel.factors(
+            self.input_chart, self.output_chart, p
+        )
+        atom_values = inputs @ phi_input
+        return atom_values @ phi_output.transpose(-2, -1)
+
     def forward(self, inputs: Tensor) -> Tensor:
         if inputs.ndim < 1 or inputs.shape[-1] != self.in_features:
             raise ValueError(
@@ -185,16 +162,18 @@ class CSTLinear(nn.Module):
                 f"got {tuple(inputs.shape)}"
             )
 
-        if self._resolved_backend() == "materialized":
-            outputs = F.linear(inputs, self.dense_weight())
-            return self._observe_represented_gradient(inputs, outputs)
-
-        phi_input, phi_output = self.kernel.factors(
-            self.input_chart, self.output_chart, self.atoms.p
-        )
-        atom_values = inputs @ phi_input
-        outputs = atom_values @ phi_output.transpose(-2, -1)
-        return self._observe_represented_gradient(inputs, outputs)
+        atom_grad = self.atoms.grad
+        if atom_grad is not None and atom_grad.active:
+            if not isinstance(atom_grad, LinearAtomGrad):
+                raise TypeError("CSTLinear requires an active LinearAtomGrad")
+            outputs = atom_grad.apply(self, inputs)
+        else:
+            outputs = self._forward_from_p(
+                inputs,
+                self.atoms.p,
+                backend=self._resolved_backend(),
+            )
+        return outputs
 
     def extra_repr(self) -> str:
         return (

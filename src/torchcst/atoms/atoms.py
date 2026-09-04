@@ -5,6 +5,8 @@ from __future__ import annotations
 import torch
 from torch import Tensor, nn
 
+from .grad import AtomGrad
+
 
 class Atoms(nn.Module):
     """Own one opaque, fixed-shape parameter row per atom.
@@ -29,6 +31,7 @@ class Atoms(nn.Module):
             raise ValueError("p must be finite")
 
         self.p = nn.Parameter(p.detach().clone())
+        self.__dict__["_grad"] = None
 
     @property
     def count(self) -> int:
@@ -41,6 +44,26 @@ class Atoms(nn.Module):
         """The opaque kernel-coordinate width ``P``."""
 
         return self.p.shape[1]
+
+    @property
+    def grad(self) -> AtomGrad | None:
+        """The optimizer-provided, transient atom-gradient program."""
+
+        return self.__dict__["_grad"]
+
+    def set_grad(self, grad: AtomGrad | None) -> None:
+        """Attach an optimizer gradient program without registering model state."""
+
+        if grad is not None and not isinstance(grad, AtomGrad):
+            raise TypeError("grad must be an AtomGrad or None")
+        current = self.grad
+        if current is grad:
+            return
+        if current is not None:
+            current._detach(self)
+        if grad is not None:
+            grad._attach(self)
+        self.__dict__["_grad"] = grad
 
     def extra_repr(self) -> str:
         return f"count={self.count}, parameter_dim={self.parameter_dim}"

@@ -30,10 +30,10 @@ Public objects are re-exported from `torchcst`; internal placement must not leak
 into the README API. Keep module ownership separate from derivative evaluation,
 and keep optimizer logic independent of the concrete Linear or Conv family.
 
-The canonical operator is `sum(weight[a] * kernel(p[a], charts))`. A factored
-matrix expression is an optional kernel capability and must not become the model
-definition. Trainable kernel properties belong in each atom's opaque `p` row;
-kernel objects own only fixed configuration or buffers.
+The canonical operator is `sum(kernel(p[a], charts))`. A factored matrix
+expression is an optional kernel capability and must not become the model
+definition. Amplitude and every other trainable kernel property belong in each
+atom's opaque `p` row; kernel objects own only fixed configuration or buffers.
 
 ## Development order
 
