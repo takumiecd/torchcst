@@ -80,9 +80,38 @@ training. Doubling it to 0.5 improved step-32 accuracy by 8.45pt and surpassed
 the historical seed-17 step-32 value of 71.10%. Larger radii were not uniformly
 better because exact-loss line search increasingly limited the proposed step.
 The short sweep therefore supports "the current Euclidean radius was too small"
-as the main explanation for the early learning deficit. It does not yet show
-that radius 0.5 closes the final 128-step accuracy gap; that requires a full
-length confirmation run.
+as the main explanation for the early learning deficit.
+
+### Full-length seed-17 confirmation
+
+The selected radius 0.5 was then run for the complete 128 steps with the same
+seed, initialization, and minibatch order.
+
+| step | radius 0.25 | radius 0.5 | historical compact diagonal |
+| ---: | ---: | ---: | ---: |
+| 0 | 8.15% | 8.15% | 9.50% |
+| 1 | 16.90% | **32.65%** | 26.40% |
+| 4 | 35.80% | **44.10%** | 39.15% |
+| 8 | 47.15% | **55.95%** | 51.10% |
+| 16 | 59.00% | **67.40%** | 63.95% |
+| 32 | 66.45% | **74.90%** | 71.10% |
+| 64 | **79.35%** | 78.50% | 78.40% |
+| 128 | 79.50% | **80.60%** | 81.00% |
+
+Radius 0.5 accepted 127/128 proposals, reached the trust boundary 20 times,
+and used full line-search scale 111 times. It used half scale 14 times, scales
+0.0625 and 0.0078125 once each, and rejected one proposal. Radius 0.25 accepted
+124/128, reached the boundary 65 times, and used full scale 105 times. Runtime
+for the radius-0.5 run was 3,064 seconds. Its final test loss was 0.8083,
+compared with 0.8011 for radius 0.25 and 0.7209 for the historical run.
+
+The doubled radius improves final seed-17 accuracy by 1.10pt and leaves only a
+0.40pt gap to the historical implementation. It therefore explains most of
+the original seed-17 accuracy deficit as well as the early-training deficit.
+The remaining gap cannot be assigned to radius from this run: the historical
+implementation also used a pullback metric, adaptive radius, warm starts,
+Cauchy candidates, and a wider exact-loss search. Additional seeds are needed
+before changing the public default.
 
 ## MPS cross-check
 
