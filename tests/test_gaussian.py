@@ -11,8 +11,13 @@ def test_gaussian_evaluates_chart_against_opaque_profile_coordinates() -> None:
 
     actual = profile.evaluate(chart, p)
     expected = torch.exp(-((chart.coordinates - p.T).square()) / 8.0)
+    expected = expected / torch.linalg.vector_norm(expected, dim=0, keepdim=True)
 
     torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(
+        torch.linalg.vector_norm(actual, dim=0),
+        torch.ones(p.shape[0]),
+    )
     assert tuple(profile.parameters()) == ()
 
 

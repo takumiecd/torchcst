@@ -101,13 +101,12 @@ class AmplitudeBandwidthSeparable(Kernel):
     ) -> tuple[Tensor, Tensor]:
         amplitude, input_p, output_p = self._split(input_chart, output_chart, p)
         phi_input = self.input_profile.evaluate(input_chart, input_p)
-        squared_distance = (
-            (output_chart.coordinates.unsqueeze(-2) - output_p.unsqueeze(-3))
-            .square()
-            .sum(dim=-1)
-        )
         precision = self.output_precision(input_chart, output_chart, p)
-        phi_output = torch.exp(-0.5 * squared_distance * precision.unsqueeze(0))
+        phi_output = self.output_profile.evaluate_with_precision(
+            output_chart,
+            output_p,
+            precision,
+        )
         phi_output = phi_output * amplitude.T
         return phi_input, phi_output
 

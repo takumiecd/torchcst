@@ -11,7 +11,7 @@ from .base import AtomInit, Profile
 
 
 class Gaussian(Profile):
-    r"""The fixed profile ``exp(-||u-v||² / (2 sigma²))``."""
+    r"""An L2-normalized fixed-width Gaussian profile."""
 
     def __init__(self, sigma: float | Tensor) -> None:
         super().__init__()
@@ -59,12 +59,29 @@ class Gaussian(Profile):
         return low + unit * (high - low)
 
     def evaluate(self, chart: Chart, p: Tensor) -> Tensor:
+        precision = self.sigma.reciprocal().square()
+        return self.evaluate_with_precision(chart, p, precision)
+
+    def evaluate_with_precision(
+        self,
+        chart: Chart,
+        p: Tensor,
+        precision: Tensor,
+    ) -> Tensor:
+        """Evaluate normalized columns with scalar or per-atom precision."""
+
         if p.ndim != 2 or p.shape[1] != self.parameter_dim(chart):
             raise ValueError(f"p must have shape [atoms, {self.parameter_dim(chart)}]")
+        if precision.ndim not in (0, 1):
+            raise ValueError("precision must be scalar or have shape [atoms]")
+        if precision.ndim == 1 and precision.shape != (p.shape[0],):
+            raise ValueError("precision must be scalar or have shape [atoms]")
+        precision = precision.to(device=p.device, dtype=p.dtype)
         squared_distance = (
             (chart.coordinates.unsqueeze(-2) - p.unsqueeze(-3)).square().sum(dim=-1)
         )
-        return torch.exp(-squared_distance / (2 * self.sigma.square()))
+        log_squared_values = -squared_distance * precision
+        return torch.exp(0.5 * torch.log_softmax(log_squared_values, dim=0))
 
     def extra_repr(self) -> str:
         return f"sigma={self.sigma.item():g}"

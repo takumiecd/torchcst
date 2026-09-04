@@ -37,6 +37,10 @@ def test_separable_kernel_is_the_amplitude_free_profile_product() -> None:
         represented,
         torch.einsum("oa,ia->aoi", phi_output, phi_input),
     )
+    torch.testing.assert_close(
+        torch.linalg.vector_norm(represented.flatten(1), dim=1),
+        torch.ones(p.shape[0]),
+    )
 
 
 def test_amplitude_wrapper_adds_one_signed_coordinate_to_any_kernel() -> None:
@@ -56,6 +60,10 @@ def test_amplitude_wrapper_adds_one_signed_coordinate_to_any_kernel() -> None:
     assert kernel.parameter_dim(input_chart, output_chart) == 4
     assert p.shape == (2, 4)
     torch.testing.assert_close(represented, expected)
+    torch.testing.assert_close(
+        torch.linalg.vector_norm(represented.flatten(1), dim=1),
+        p[:, 0].abs(),
+    )
     torch.testing.assert_close(
         represented,
         torch.einsum("oa,ia->aoi", phi_output, phi_input),
@@ -117,7 +125,7 @@ def test_infinite_explorer_width_approaches_a_uniform_output_profile() -> None:
     assert precision[0] < 1e-16
     torch.testing.assert_close(
         phi_output / p[0, 0],
-        torch.ones_like(phi_output),
+        torch.full_like(phi_output, output_chart.features**-0.5),
         atol=1e-12,
         rtol=0,
     )
@@ -142,6 +150,10 @@ def test_amplitude_bandwidth_factorization_and_second_derivatives_are_finite() -
     torch.testing.assert_close(
         represented,
         torch.einsum("oa,ia->aoi", phi_output, phi_input),
+    )
+    torch.testing.assert_close(
+        torch.linalg.vector_norm(represented.flatten(1), dim=1),
+        p[:, 0].abs(),
     )
     assert torch.isfinite(hessian).all()
     assert torch.linalg.vector_norm(hessian[0, 1:]) > 0

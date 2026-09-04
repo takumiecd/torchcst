@@ -282,11 +282,15 @@ Amplitude(
 )
 ```
 
-with
+The Gaussian profile uses the L2-normalized gauge
 
 $$
 \kappa_\sigma(u,v)
-=\exp\left(-\frac{\lVert u-v\rVert_2^2}{2\sigma^2}\right).
+=\frac{
+\exp\left(-\frac{\lVert u-v\rVert_2^2}{2\sigma^2}\right)
+}{
+\left\lVert\exp\left(-\frac{\lVert \cdot-v\rVert_2^2}{2\sigma^2}\right)\right\rVert_2
+}.
 $$
 
 For `Separable`, $p_a=(s_a,t_a)$. The `Amplitude` wrapper changes this to
@@ -320,6 +324,10 @@ narrow Gaussian. Fixed positive `gate_eps` makes the map twice differentiable
 at zero amplitude, which is required by the CST Hessian contractions. These
 bandwidth controls are fixed kernel configuration; a future learned threshold
 or bandwidth must live in each opaque atom row.
+
+Both fixed- and variable-width Gaussian columns are L2-normalized. Therefore
+an `Amplitude`-bearing separable atom has Frobenius norm exactly `abs(w)`, so
+bandwidth changes do not silently rescale the meaning of its amplitude.
 
 Kernel values must remain differentiable with respect to `p`; the internal
 derivative layer supplies the second-order displacement contractions. A later
