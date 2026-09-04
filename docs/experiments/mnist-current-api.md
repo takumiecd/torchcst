@@ -86,4 +86,9 @@ python experiments/mnist_current_api.py \
 
 The sequential A100 launcher is `experiments/run_mnist_a100.sh`.
 
+For a controlled short comparison of Euclidean parameter-space trust radii,
+run `experiments/run_mnist_radius_sweep_a100.sh`. It defaults to seed 17,
+32 steps, and radii 0.25, 0.5, 1.0, and 2.0. The four processes run
+concurrently on CUDA; their wall-clock times therefore are not comparable.
+
 Raw output is intentionally written below the ignored `output/` directory.
