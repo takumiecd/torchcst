@@ -36,6 +36,7 @@ class FullQuartic(QuarticSolver):
         tolerance_grad: float = 1e-7,
         tolerance_change: float = 1e-9,
         history_size: int = 20,
+        warm_start: bool = True,
     ) -> None:
         for name, value in (
             ("starts", starts),
@@ -48,11 +49,14 @@ class FullQuartic(QuarticSolver):
                 raise ValueError(f"{name} must be positive")
         if tolerance_grad <= 0 or tolerance_change <= 0:
             raise ValueError("solver tolerances must be positive")
+        if not isinstance(warm_start, bool):
+            raise TypeError("warm_start must be a boolean")
         self.starts = starts
         self.max_iter = max_iter
         self.tolerance_grad = float(tolerance_grad)
         self.tolerance_change = float(tolerance_change)
         self.history_size = history_size
+        self.warm_start = warm_start
 
     def solve(
         self,
@@ -65,6 +69,8 @@ class FullQuartic(QuarticSolver):
             raise TypeError("problem must be a QuarticProblem")
         if trust_radius <= 0:
             raise ValueError("trust_radius must be positive")
+        if not self.warm_start:
+            initial = None
         if initial is not None:
             if initial.shape != problem.point_shape:
                 raise ValueError("initial displacement has the wrong shape")

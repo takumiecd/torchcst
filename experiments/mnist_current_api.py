@@ -56,6 +56,7 @@ class ExperimentConfig:
     trust_radius: float = 0.25
     solver_starts: int = 4
     solver_max_iter: int = 80
+    solver_warm_start: bool = True
     seed: int = 17
 
 
@@ -143,6 +144,7 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
             quartic=FullQuartic(
                 starts=config.solver_starts,
                 max_iter=config.solver_max_iter,
+                warm_start=config.solver_warm_start,
             ),
         ),
         dense=None,
@@ -268,6 +270,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trust-radius", type=float, default=0.25)
     parser.add_argument("--solver-starts", type=int, default=4)
     parser.add_argument("--solver-max-iter", type=int, default=80)
+    parser.add_argument(
+        "--solver-warm-start",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
     return parser.parse_args()
 
 
@@ -282,6 +289,7 @@ def main() -> None:
         trust_radius=args.trust_radius,
         solver_starts=args.solver_starts,
         solver_max_iter=args.solver_max_iter,
+        solver_warm_start=args.solver_warm_start,
         seed=args.seed,
     )
     device = torch.device(args.device)
@@ -296,6 +304,7 @@ def main() -> None:
             "trust_region": "euclidean_parameter_space",
             "normalized_gaussian": True,
             "amplitude_init_std": "0.1/sqrt(K)",
+            "solver_warm_start": config.solver_warm_start,
         },
         "environment": {
             "torch": torch.__version__,
