@@ -54,6 +54,36 @@ was slower than the MPS seed-17 run below. The workload consists of many small
 higher-order autograd and LBFGS evaluations, so Python and synchronization
 overhead dominate; this is not a meaningful hardware benchmark.
 
+## Euclidean trust-radius diagnosis
+
+A controlled A100 sweep fixed seed 17, initialization, minibatch order, and all
+optimizer settings except the Euclidean parameter-space radius. Each condition
+ran for 32 steps.
+
+| radius | step 1 | step 4 | step 8 | step 16 | step 32 | final loss |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.25 | 16.90% | 35.80% | 47.15% | 59.00% | 66.45% | 1.2205 |
+| 0.5 | **32.65%** | **44.10%** | **55.95%** | 67.40% | **74.90%** | **0.9840** |
+| 1.0 | 25.10% | 39.25% | 55.45% | **71.00%** | 72.75% | 1.0818 |
+| 2.0 | 15.65% | 36.00% | 54.25% | 62.65% | 74.70% | 1.0728 |
+
+All 32 proposals were accepted in every condition. Radius 0.25 reached the
+trust boundary on all 32 steps and accepted full line-search scale every time.
+Radius 0.5 reached the boundary on 20 steps and used full scale 28 times and
+half scale four times. Radius 1.0 reached the boundary 11 times, with line
+scales 1, 0.5, 0.25, and 0.125 used 22, 7, 1, and 2 times. Radius 2.0 never
+reached the solver boundary, but exact-loss acceptance reduced the scale on ten
+steps: nine half-scale and one quarter-scale.
+
+This isolates radius 0.25 as a binding and suboptimal constraint during early
+training. Doubling it to 0.5 improved step-32 accuracy by 8.45pt and surpassed
+the historical seed-17 step-32 value of 71.10%. Larger radii were not uniformly
+better because exact-loss line search increasingly limited the proposed step.
+The short sweep therefore supports "the current Euclidean radius was too small"
+as the main explanation for the early learning deficit. It does not yet show
+that radius 0.5 closes the final 128-step accuracy gap; that requires a full
+length confirmation run.
+
 ## MPS cross-check
 
 On Apple MPS with seed 17:
