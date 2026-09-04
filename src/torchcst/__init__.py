@@ -4,11 +4,13 @@ from .atoms import Atoms
 from .geometry import Chart
 from .kernels import Gaussian, Kernel, Profile, Separable
 from .nn import CSTLinear
+from .optim import FullQuartic
 
 __all__ = [
     "Atoms",
     "CSTLinear",
     "Chart",
+    "FullQuartic",
     "Gaussian",
     "Kernel",
     "Profile",

@@ -152,6 +152,20 @@ class FrameGeometry(ABC):
     ) -> AffinePullback: ...
 
     @abstractmethod
+    def displacement(self, direction: Tensor, *, point: Tensor) -> Tensor:
+        """Evaluate the second-order represented displacement."""
+
+    @abstractmethod
+    def pullback(
+        self,
+        cotangent: Tensor,
+        *,
+        point: Tensor,
+        displacement: Tensor | None = None,
+    ) -> Tensor:
+        """Evaluate a represented cotangent in one local frame."""
+
+    @abstractmethod
     def gram(
         self,
         frame: RepresentationFrame,
@@ -230,6 +244,27 @@ class AutogradFrameGeometry(FrameGeometry):
             parameter_point=current_point,
         )
         return AffinePullback(constant.detach(), linear.detach())
+
+    def displacement(self, direction: Tensor, *, point: Tensor) -> Tensor:
+        self._validate_local(point, name="displacement point")
+        self._validate_local(direction, name="direction")
+        return self.derivatives.displacement(direction, parameter_point=point)
+
+    def pullback(
+        self,
+        cotangent: Tensor,
+        *,
+        point: Tensor,
+        displacement: Tensor | None = None,
+    ) -> Tensor:
+        self._validate_local(point, name="pullback point")
+        if displacement is not None:
+            self._validate_local(displacement, name="pullback displacement")
+        return self.derivatives.pullback(
+            cotangent,
+            at=displacement,
+            parameter_point=point,
+        )
 
     def gram(
         self,

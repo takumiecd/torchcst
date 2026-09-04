@@ -25,6 +25,8 @@ from .moments import (
     SeparableSecondMomentState,
     VisibleMetric,
 )
+from .problem import QuarticProblem
+from .solvers import FullQuartic, QuarticSolver, QuarticSolveResult
 
 __all__ = [
     "AcceptedFrameFirstMoment",
@@ -35,10 +37,14 @@ __all__ = [
     "ExpandedMoments",
     "ExpandedSecondMoment",
     "FirstMomentComponent",
+    "FullQuartic",
     "ImplicitLinearAtomGrad",
     "MomentContext",
     "MomentSystem",
     "MomentSystemState",
+    "QuarticProblem",
+    "QuarticSolveResult",
+    "QuarticSolver",
     "SecondMomentComponent",
     "SeparableDiagonalMetric",
     "SeparableDiagonalSecondMoment",

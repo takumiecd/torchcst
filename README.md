@@ -549,6 +549,15 @@ term in this quartic. `FullQuartic` configures the numerical inner solve; its
 name means that the objective is not block-truncated, not that a global
 algebraic root is guaranteed.
 
+Internally, `QuarticProblem` receives only the current `MomentContext` and an
+immutable `ExpandedMoments` proposal. It exposes the scalar objective and its
+exact cubic gradient; it does not read or mutate persistent optimizer state.
+`FullQuartic` performs deterministic multi-start LBFGS through a smooth
+trust-ball parameterization and returns the best finite candidate together
+with objective, iteration, and projected-stationarity diagnostics. Exact-loss
+acceptance remains a later, separate transaction and may still reject or scale
+that candidate.
+
 ### CST persistent state
 
 The selected first implementation stores, per site,
