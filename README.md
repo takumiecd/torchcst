@@ -473,6 +473,38 @@ correctness implementation. Future Linear, Conv, or kernel-specific
 implementations may fuse those contractions without changing moment or solver
 interfaces.
 
+### Exact structured quartic evaluation
+
+`ImplicitAdamConfig(quartic_evaluation="auto")` selects an exact quadratic-feature
+Gram evaluation when the kernel supplies an exact factorization and the visible
+metric is separable. `"visible"` forces the reference evaluation; `"gram"` forces
+the structured path and raises an error for unsupported geometry, metric, or
+precision. The evaluation backends work with all quartic solvers. Newton and
+subspace model construction use the exact geometric derivatives independently
+of the selected value/gradient backend.
+
+The structured path writes the second-order displacement as `R(d) = T z(d)`,
+where `z` contains each atom's linear and upper-triangular quadratic monomials.
+It constructs `G = T.T D T` from input/output factor derivatives, without
+materializing visible Jacobian or Hessian tensors. The solver then evaluates
+`z.T G z` and its analytic gradient. All cross-atom terms, second derivatives
+(including amplitude-dependent bandwidth), and the metric's additive epsilon
+are retained. This is an algebraic rewrite, not a truncation or low-rank
+approximation; floating-point summation order can still change solver trajectories.
+
+Automatic selection currently requires CPU float32/float64, at most 1,024 monomial
+features, at least four visible entries per feature, and at most 16 million
+factor derivative elements. These are conservative size heuristics, not a
+hardware-specific speed guarantee. A100 measurements improved individual
+evaluations but did not improve complete `FullQuartic` solves, so CUDA currently
+keeps the visible backend under `"auto"`. Explicit `"gram"` supports CUDA and
+bypasses the automatic device and size restrictions.
+Each problem builds a new step-local Gram matrix; it is never reused after a
+parameter or moment update. The solver and its stopping tolerances are unchanged.
+
+The setup-inclusive CPU benchmark and its limitations are described in
+[the structured quartic report](docs/experiments/quartic-gram.md).
+
 ## `CSTOptimizer`
 
 `CSTOptimizer` is the public model-level optimizer. It accepts the complete
@@ -596,14 +628,73 @@ algebraic root is guaranteed.
 
 Internally, `QuarticProblem` receives only the current `MomentContext` and an
 immutable `ExpandedMoments` proposal. It exposes the scalar objective and its
-exact cubic gradient; it does not read or mutate persistent optimizer state.
-`FullQuartic` is the production default and deterministic correctness oracle.
+exact cubic gradient, dense Hessian, and restricted quartic models; it does not
+read or mutate persistent optimizer state.
+`FullQuartic` is the production default and deterministic comparison solver.
 It evaluates cold zero, negative-gradient, and deterministic starts through a
 smooth trust-ball parameterization. `ProjectedLBFGS` is an experimental,
 strict-budget alternative that uses the exact analytic quartic gradient,
 safeguarded zero and boundary-gradient candidates, and projected Armijo steps.
 The optimizer applies the selected candidate without a second model-loss
 evaluation.
+
+Two additional experimental solvers use the structure of the full quartic:
+
+```python
+from torchcst import BallNewton, SubspaceQuartic
+
+# Direct ball-constrained Newton models, including negative curvature.
+cst = ImplicitAdamConfig(
+    quartic=BallNewton(starts=4, max_iter=30, max_evaluations=150),
+)
+
+# Adaptively solve exact quartics in small orthonormal subspaces.
+cst = ImplicitAdamConfig(
+    quartic=SubspaceQuartic(max_dimension=8, max_models=8),
+)
+```
+
+`BallNewton` forms the exact Hessian as a weighted frame Gram plus atom-local
+blocks and solves regularized quadratic models on the original displacement
+ball, without a saturating change of coordinates. Eigenvectors remain on the
+problem device; by default the scalar secular equation uses small host double arrays.
+Candidates are checked against the original quartic along feasible chords.
+`starts` defaults to one; multiple starts reuse the same deterministic initial
+points as `FullQuartic`. Iteration/evaluation budgets apply **per start**;
+returned counts aggregate all starts (plus the initial-gradient evaluation).
+First-order convergence alone is not a global-optimality certificate.
+
+For CUDA, an experimental compiled path keeps the secular search on the GPU:
+
+```python
+quartic = BallNewton(
+    starts=1, max_iter=30, max_evaluations=150,
+    execution="compiled", secular_solver="device",
+)
+```
+
+This compiles the exact value/gradient, Hessian, spectral search, and decision
+arithmetic with `torch.compile(fullgraph=True, mode="reduce-overhead")`.
+It requires materialized local quadratic derivatives and a separable diagonal
+metric. The spectral scalar arithmetic remains float64 on the problem device;
+no lower-precision approximation is enabled. Adaptive Python decisions and
+`torch.linalg.eigh` still synchronize with the CPU. First-use compilation adds
+latency; floating-point fusion can change the optimization trajectory.
+See [the compiled Newton measurements](docs/experiments/compiled-newton.md).
+
+`SubspaceQuartic` starts from gradient and atom-block-preconditioned directions,
+constructs the exact restricted polynomial on the problem device, and solves
+its small coefficients in CPU float64. It checks the original full-space
+objective/residual, expands the basis, and restarts while retaining the best
+candidate when the dimension cap is reached. Its `iterations` count reduced
+models; `evaluations` include both reduced-polynomial and full-objective calls.
+Both new solvers currently require float32/float64 and retain the best finite
+objective reached, with zero among the candidates. Large dense Hessians can be
+expensive; these implementations target the current few-hundred-variable sites.
+
+See [the A100 solver comparison](docs/experiments/quartic-solvers.md) for setup
+costs, stationarity residuals, and limitations. The production default remains
+`FullQuartic` pending broader learning-quality validation.
 
 Within one optimizer step, `AutogradFrameGeometry` may materialize and cache the
 atom-local Jacobian and Hessian blocks. Quartic displacement, pullback, and

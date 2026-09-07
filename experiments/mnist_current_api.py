@@ -25,6 +25,7 @@ from torch import Tensor
 
 from torchcst import (
     AmplitudeBandwidthSeparable,
+    BallNewton,
     Chart,
     CSTLinear,
     CSTOptimizer,
@@ -55,7 +56,10 @@ class ExperimentConfig:
     beta2: float = 0.99
     epsilon: float = 1e-8
     trust_radius: float = 0.25
-    solver: Literal["full", "projected"] = "full"
+    solver: Literal["full", "projected", "newton"] = "full"
+    quartic_evaluation: Literal["auto", "visible", "gram"] = "auto"
+    solver_execution: Literal["eager", "compiled"] = "eager"
+    solver_secular: Literal["host", "device"] = "host"
     solver_starts: int = 4
     solver_max_iter: int = 80
     solver_max_evaluations: int = 24
@@ -141,13 +145,21 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
             starts=config.solver_starts,
             max_iter=config.solver_max_iter,
         )
+    elif config.solver == "newton":
+        quartic = BallNewton(
+            execution=config.solver_execution,
+            secular_solver=config.solver_secular,
+            starts=config.solver_starts,
+            max_iter=config.solver_max_iter,
+            max_evaluations=config.solver_max_evaluations,
+        )
     elif config.solver == "projected":
         quartic = ProjectedLBFGS(
             max_iter=config.solver_max_iter,
             max_evaluations=config.solver_max_evaluations,
         )
     else:
-        raise ValueError("solver must be 'full' or 'projected'")
+        raise ValueError("solver must be 'full', 'projected', or 'newton'")
     return CSTOptimizer(
         model,
         cst=ImplicitAdamConfig(
@@ -156,6 +168,7 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
             eps=config.epsilon,
             trust_radius=config.trust_radius,
             quartic=quartic,
+            quartic_evaluation=config.quartic_evaluation,
         ),
         dense=None,
     )
@@ -206,25 +219,28 @@ def run_seed(
         inputs = train_inputs.index_select(0, indices)
         labels = train_labels.index_select(0, indices)
 
+        _synchronize(device)
+        step_started = time.perf_counter()
         optimizer.zero_grad(set_to_none=True)
         loss = F.cross_entropy(model(inputs), labels)
         loss.backward()
         optimizer.step()
+        _synchronize(device)
+        step_seconds = time.perf_counter() - step_started
         result = optimizer.last_step
         if result is None:
             raise RuntimeError("optimizer did not publish step diagnostics")
         solve = result.site_results[0]
         row = {
             "step": step_index + 1,
+            "step_seconds": step_seconds,
             "loss": float(loss.detach()),
             "solver_objective": float(solve.objective),
             "solver_evaluations": solve.evaluations,
             "solver_iterations": solve.iterations,
             "solver_start_index": solve.start_index,
             "solver_converged": solve.converged,
-            "solver_projected_gradient_norm": float(
-                solve.projected_gradient_norm
-            ),
+            "solver_projected_gradient_norm": float(solve.projected_gradient_norm),
             "on_trust_boundary": solve.on_boundary,
         }
         trace.append(row)
@@ -232,6 +248,7 @@ def run_seed(
             checkpoint = {
                 "step": step_index + 1,
                 **evaluate(model, test_inputs, test_labels),
+                "training_seconds": sum(item["step_seconds"] for item in trace),
             }
             checkpoints.append(checkpoint)
             print(
@@ -278,7 +295,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-size", type=int, default=8192)
     parser.add_argument("--test-size", type=int, default=2000)
     parser.add_argument("--trust-radius", type=float, default=0.25)
-    parser.add_argument("--solver", choices=("full", "projected"), default="full")
+    parser.add_argument(
+        "--solver", choices=("full", "projected", "newton"), default="full"
+    )
+    parser.add_argument(
+        "--quartic-evaluation", choices=("auto", "visible", "gram"), default="auto"
+    )
+    parser.add_argument(
+        "--solver-execution", choices=("eager", "compiled"), default="eager"
+    )
+    parser.add_argument("--solver-secular", choices=("host", "device"), default="host")
     parser.add_argument("--solver-starts", type=int, default=4)
     parser.add_argument("--solver-max-iter", type=int, default=80)
     parser.add_argument("--solver-max-evaluations", type=int, default=24)
@@ -295,6 +321,9 @@ def main() -> None:
         test_size=args.test_size,
         trust_radius=args.trust_radius,
         solver=args.solver,
+        solver_execution=args.solver_execution,
+        solver_secular=args.solver_secular,
+        quartic_evaluation=args.quartic_evaluation,
         solver_starts=args.solver_starts,
         solver_max_iter=args.solver_max_iter,
         solver_max_evaluations=args.solver_max_evaluations,
@@ -321,7 +350,9 @@ def main() -> None:
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=2) + "\n")
-    print(json.dumps({key: payload[key] for key in ("protocol", "environment")}, indent=2))
+    print(
+        json.dumps({key: payload[key] for key in ("protocol", "environment")}, indent=2)
+    )
     print(json.dumps(payload["result"]["final"], indent=2))
     print(f"WROTE {args.out}")
 
