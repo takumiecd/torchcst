@@ -283,6 +283,18 @@ class AutogradFrameGeometry(FrameGeometry):
         self._validate_local(current_point, name="current point")
         self._validate_frame(source_frame)
         self._validate_local(source_coefficients, name="source coefficients")
+        if deferred() and current_point.device.type == "cuda":
+            from ._captured import call
+
+            constant, linear = call(
+                "frame_transport",
+                self.derivatives._materialize_atoms,
+                current_point,
+                source_frame.point,
+                source_frame.displacement,
+                source_coefficients,
+            )
+            return AffinePullback(constant, linear)
         visible_tangent = self.derivatives.pushforward(
             source_coefficients,
             at=source_frame.displacement,
@@ -437,9 +449,16 @@ class AutogradFrameGeometry(FrameGeometry):
             self._cache_disabled = True
             return None
 
-        jacobian, hessian = self.derivatives.materialized_local_derivatives(
-            parameter_point=point
-        )
+        if deferred() and point.device.type == "cuda":
+            from ._captured import call
+
+            jacobian, hessian = call(
+                "local_derivatives", self.derivatives._materialize_atoms, point
+            )
+        else:
+            jacobian, hessian = self.derivatives.materialized_local_derivatives(
+                parameter_point=point
+            )
         self._cache_point = point
         self._cache_jacobian = jacobian
         self._cache_hessian = hessian
