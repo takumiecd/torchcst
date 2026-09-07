@@ -162,6 +162,7 @@ class CSTOptimizer(Optimizer):
                 if cst.factored_geometry
                 else site.cst_frame_geometry()
             )
+            geometry.device_solver = cst.gram_solver
             context = MomentContext(geometry, geometry.current_point())
             atom_grad = ImplicitLinearAtomGrad(
                 mode=cst.atom_grad_mode,
@@ -312,6 +313,7 @@ class CSTOptimizer(Optimizer):
                 if self.cst_config.factored_geometry
                 else site.module.cst_frame_geometry()
             )
+            geometry.device_solver = self.cst_config.gram_solver
             context = MomentContext(geometry, geometry.current_point())
             expanded = site.moments.expand(
                 site.state,

@@ -12,6 +12,7 @@ class FactoredFrameGeometry(AutogradFrameGeometry):
         if derivatives.factor_atoms is None:
             raise ValueError("factored geometry requires a factor-capable kernel")
         self.derivatives = derivatives
+        self.device_solver = "jacobi"
         u, v = derivatives.factor_atoms(derivatives.current_point())
         self._visible_shape = (v.shape[0], u.shape[0])
         self._factor_point = None
@@ -43,7 +44,13 @@ class FactoredFrameGeometry(AutogradFrameGeometry):
         self._validate_frame(frame)
         f = self.factor_local_derivatives(frame.point)
         matrix = ft.call("_gram_flat", *f, frame.displacement)[0]
-        return GramSystem(matrix, self.point_shape, damping=damping, rtol=rtol)
+        return GramSystem(
+            matrix,
+            self.point_shape,
+            damping=damping,
+            rtol=rtol,
+            device_solver=self.device_solver,
+        )
 
     def pullback_from_frame(self, *, current_point, source_frame, source_coefficients):
         self._validate_frame(source_frame)

@@ -35,8 +35,13 @@ class ImplicitAdamConfig:
     first_moment_damping: float = 0.0
     device_execution: bool = False
     factored_geometry: bool = False
+    gram_solver: Literal["jacobi", "cholesky"] = "jacobi"
 
     def __post_init__(self) -> None:
+        if self.gram_solver not in ("jacobi", "cholesky"):
+            raise ValueError("gram_solver must be jacobi or cholesky")
+        if self.gram_solver == "cholesky" and self.first_moment_damping <= 0:
+            raise ValueError("cholesky requires positive first_moment_damping")
         if not isinstance(self.factored_geometry, bool):
             raise TypeError("factored_geometry must be a bool")
         if not isinstance(self.device_execution, bool):

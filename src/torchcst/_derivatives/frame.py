@@ -77,6 +77,7 @@ class GramSystem:
         *,
         damping: float = 0.0,
         rtol: float | None = None,
+        device_solver: str = "jacobi",
     ) -> None:
         local_size = point_shape[0] * point_shape[1]
         if matrix.shape != (local_size, local_size):
@@ -85,6 +86,13 @@ class GramSystem:
             raise ValueError("damping must be nonnegative")
         if rtol is not None and rtol < 0:
             raise ValueError("rtol must be nonnegative")
+        if device_solver not in ("jacobi", "cholesky"):
+            raise ValueError("device_solver must be jacobi or cholesky")
+        if device_solver == "cholesky" and rtol is not None:
+            raise ValueError("cholesky solves the damped system without an rtol cutoff")
+        if device_solver == "cholesky" and damping <= 0:
+            raise ValueError("cholesky requires explicit positive damping")
+        self.device_solver = device_solver
         self._matrix = matrix.detach().clone()
         self.point_shape = point_shape
         self.damping = float(damping)
@@ -109,6 +117,16 @@ class GramSystem:
             matrix = matrix + self.damping * torch.eye(
                 matrix.shape[0], device=matrix.device, dtype=matrix.dtype
             )
+        if self.device_solver == "cholesky":
+            from ._cholesky import device_solve
+
+            solution, valid = device_solve(matrix, right_hand_side.reshape(-1))
+            require(
+                valid,
+                "damped Gram Cholesky solve failed validation",
+                FloatingPointError,
+            )
+            return solution.reshape(self.point_shape)
         if deferred():
             from ._jacobi import device_pinv_solve
 
@@ -223,6 +241,7 @@ class AutogradFrameGeometry(FrameGeometry):
         if not isinstance(derivatives, AtomDerivatives):
             raise TypeError("derivatives must be an AtomDerivatives instance")
         self.derivatives = derivatives
+        self.device_solver = "jacobi"
         self._visible_shape = tuple(derivatives.represented().shape)
         self._cache_point: Tensor | None = None
         self._cache_jacobian: Tensor | None = None
@@ -374,6 +393,7 @@ class AutogradFrameGeometry(FrameGeometry):
                 self.point_shape,
                 damping=damping,
                 rtol=rtol,
+                device_solver=self.device_solver,
             )
 
         def pushforward(direction: Tensor) -> Tensor:
@@ -391,6 +411,7 @@ class AutogradFrameGeometry(FrameGeometry):
             self.point_shape,
             damping=damping,
             rtol=rtol,
+            device_solver=self.device_solver,
         )
 
     def visible_pushforward(
