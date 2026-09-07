@@ -52,6 +52,18 @@ class FactoredFrameGeometry(AutogradFrameGeometry):
             device_solver=self.device_solver,
         )
 
+    def gram_matvec(self, frame, vector, *, block_size=32, damping=0.0):
+        """Exact blocked Gram action; does not construct a GramSystem."""
+        self._validate_frame(frame)
+        self._validate_local(vector, name="Gram vector")
+        return ft.frame_gram_matvec(
+            self.factor_local_derivatives(frame.point),
+            frame.displacement,
+            vector,
+            block_size=block_size,
+            damping=damping,
+        )
+
     def pullback_from_frame(self, *, current_point, source_frame, source_coefficients):
         self._validate_frame(source_frame)
         self._validate_local(source_coefficients, name="source coefficients")

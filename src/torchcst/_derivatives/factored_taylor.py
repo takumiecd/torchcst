@@ -104,6 +104,52 @@ def frame_gram(f, d):
     return 0.5 * (result + result.T)
 
 
+def _frame_column_block(f, d, start, stop):
+    """Four separated terms per column, generated only for this block."""
+    u, v, ju, jv, hu, hv = f
+    indices = torch.arange(start, stop, device=d.device)
+    atoms, coordinates = indices // d.shape[1], indices % d.shape[1]
+    ub, vb, db = u[atoms], v[atoms], d[atoms]
+    jub, jvb = ju[atoms], jv[atoms]
+    up = jub[torch.arange(stop - start, device=d.device), :, coordinates]
+    vp = jvb[torch.arange(stop - start, device=d.device), :, coordinates]
+    hud = (hu[atoms, :, coordinates, :] * db[:, None, :]).sum(-1)
+    hvd = (hv[atoms, :, coordinates, :] * db[:, None, :]).sum(-1)
+    ud = (jub * db[:, None, :]).sum(-1)
+    vd = (jvb * db[:, None, :]).sum(-1)
+    return (ub, up + hud, ud, up), (vp + hvd, vb, vp, vd)
+
+
+def frame_gram_matvec(f, d, vector, *, block_size=32, damping=0.0):
+    """Apply (B* B + damping I) without a visible matrix or full Gram.
+
+    B is the displaced Taylor frame J + H[d, .]. All 16 cross terms
+    are retained. With fixed P, extra eager inference workspace is
+    O(block_size * (I + O) * P + block_size**2 + K*P), excluding the
+    supplied factor derivatives. Arithmetic remains quadratic in K.
+    This is an exact contraction, not a linear-system solver.
+    """
+    if not isinstance(block_size, int) or block_size <= 0:
+        raise ValueError("block_size must be a positive integer")
+    if vector.shape != d.shape:
+        raise ValueError("vector must have the frame point shape")
+    flat = vector.flatten()
+    rows = []
+    for start in range(0, d.numel(), block_size):
+        stop = min(start + block_size, d.numel())
+        left_u, left_v = _frame_column_block(f, d, start, stop)
+        result = torch.zeros_like(flat[start:stop])
+        for source in range(0, d.numel(), block_size):
+            end = min(source + block_size, d.numel())
+            right_u, right_v = _frame_column_block(f, d, source, end)
+            for i in range(4):
+                for j in range(4):
+                    tile = (left_u[i] @ right_u[j].T) * (left_v[i] @ right_v[j].T)
+                    result = result + tile @ flat[source:end]
+        rows.append(result)
+    return torch.cat(rows).reshape_as(vector) + damping * vector
+
+
 def metric_diagonal(f, row, column, eps):
     u, v, ju, jv, _, _ = f
 
