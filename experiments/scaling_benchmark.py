@@ -76,6 +76,9 @@ def measure(args):
                 device_execution=True,
                 factored_geometry=args.factored_geometry,
                 gram_solver=args.gram_solver,
+                gram_iterations=args.gram_iterations,
+                gram_rtol=args.gram_rtol,
+                gram_block_size=args.gram_block_size,
                 first_moment_damping=args.damping,
             ),
             dense=None,
@@ -126,6 +129,9 @@ def measure(args):
     return {
         "factored_geometry": args.factored_geometry,
         "gram_solver": args.gram_solver,
+        "gram_iterations": args.gram_iterations,
+        "gram_rtol": args.gram_rtol,
+        "gram_block_size": args.gram_block_size,
         "first_moment_damping": args.damping,
         "method": args.method,
         "inputs": args.inputs,
@@ -158,8 +164,11 @@ def main():
     parser.add_argument("--atoms", type=int, default=64)
     parser.add_argument("--factored-geometry", action="store_true")
     parser.add_argument(
-        "--gram-solver", choices=["jacobi", "cholesky"], default="jacobi"
+        "--gram-solver", choices=["jacobi", "cholesky", "pcg"], default="jacobi"
     )
+    parser.add_argument("--gram-iterations", type=int, default=64)
+    parser.add_argument("--gram-rtol", type=float, default=1e-5)
+    parser.add_argument("--gram-block-size", type=int, default=32)
     parser.add_argument("--damping", type=float, default=0.0)
     parser.add_argument("--derivative-cache-mib", type=float)
     parser.add_argument("--batch", type=int, default=128)
@@ -170,7 +179,7 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
     try:
         result = measure(args)
-    except RuntimeError as error:
+    except (RuntimeError, FloatingPointError) as error:
         failure = {
             "status": "failed",
             "error": str(error),

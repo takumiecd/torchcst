@@ -1,10 +1,10 @@
 # Exact separated Gram action
 
 The internal `FactoredFrameGeometry.gram_matvec` applies the displaced Taylor
-frame Gram plus explicit damping, without constructing a GramSystem. It is
-not yet connected to moment compression: production updates still use the
-existing selected solver. This milestone establishes the contraction oracle
-before changing the linear-system algorithm.
+frame Gram plus explicit damping, without constructing a GramSystem. This initial milestone established the contraction oracle before changing
+the linear-system algorithm. An opt-in moment-compression integration now
+exists: see [PCG validation](pcg-gram.md). Existing default updates still use
+the previous solver.
 
 For B = J + H[d, .], each column has four separated rank-one terms. The
 implementation evaluates all sixteen pairs between target and source column
