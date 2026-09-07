@@ -231,3 +231,6 @@ per update, not merely further scheduling/dispatch optimization.
 PYTHONPATH=src python -m experiments.dense_baseline_benchmark \
   --data /path/to/MNIST/raw --output output/dense_baseline.json
 ```
+
+Subsequent work reduced queued time to about 5.65 seconds, with a measured
+accuracy tradeoff; see [reducing work per update](small-work.md).

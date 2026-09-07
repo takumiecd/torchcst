@@ -25,8 +25,8 @@ def config(method, seed=17, steps=128):
     )
 
 
-def audit(data, output):
-    cfg = config("device")
+def audit(data, output, cfg=None):
+    cfg = config("device") if cfg is None else cfg
     model = runner.build_model(cfg, torch.device("cuda"))
     optimizer = runner.build_optimizer(model, cfg)
     x, y = data[0][:128].cuda(), data[1][:128].cuda()
