@@ -111,6 +111,44 @@ updates, small-workspace versus baseline CST has relative parameter L2 differenc
 bitwise equivalence or an accuracy guarantee. Dense parameters match exactly
 in this experiment. No environment setting or runtime default was changed.
 
+### Reuse only the capture/warmup stream
+
+A diagnostic `--shared-stream` variant preserves separate graph pools, input
+and output isolation, events, the same compiled functions, damping and default
+workspace size. Only the cold capture/warmup stream is reused across graph
+entries in this single-thread benchmark. This is not a production concurrency
+implementation.
+
+| Width | Original peak MiB | Shared-stream peak MiB | Reduction MiB |
+| --- | ---: | ---: | ---: |
+| 128 | 76.775879 | 44.275879 | 32.500000 |
+| 512 | 111.110352 | 78.610352 | 32.500000 |
+
+Snapshot attribution shows4 workspaces totaling32.5MiB instead of8 totaling65MiB.
+The full peak drops by exactly the removed32.5MiB. Both saved parameter sets
+match their original baseline bit-for-bit after32 updates. This isolates
+stream-related workspace multiplicity without changing the cuBLAS workspace
+size or replacing the Gram solver. It is stronger evidence than simply
+turning off a mathematical operation. It also identifies a more conservative
+next implementation target than changing workspace configuration.
+
+### Timing without allocation-history recording
+
+Separate fresh-process runs omit stack/history recording but retain the small
+diagnostic wrapper. Three8-step blocks produce these medians:
+
+| Width | Default workspace ms/step | Small workspace ms/step |
+| --- | ---: | ---: |
+| 128 | 15.76 | 16.78 |
+| 512 | 16.35 | 18.07 |
+
+Individual blocks span12.69–20.05ms across these runs. This small, host-sensitive
+sample does not establish performance equivalence; small workspaces can affect
+kernel selection. It does establish that the64MiB reduction does not require
+the multi-second PCG iterations in this experiment. The shared-stream variant
+was measured with allocation history and has no separate clean timing claim.
+
+
 ## Implications
 
 At width512 the same65MiB is58.5% of the111.1MiB peak; the remaining46.1MiB
@@ -143,3 +181,22 @@ for the separate timing check. Snapshot instrumentation materially slows CPU
 submission, so history-enabled wall times must not be compared with ordinary
 uninstrumented benchmark times. The diagnostic wrapper still performs memory
 counter reads in all variants.
+
+
+## Validation and artifacts
+
+All ten history-enabled cases reconstruct the exact measured diagnostic peak,
+with no unmatched allocations/frees or truncated traces. Four additional
+history-disabled timing cases reproduce the corresponding memory peaks. All
+case subprocesses exit successfully. Every complete measured loop passes the
+CUDA synchronization-error guard, and CST passes its final validation latch.
+This is not a full CPU/CUDA profiler synchronization audit.
+
+Ruff and diff checks pass. Runtime source and defaults are unchanged. Raw
+snapshots, attribution JSON, graph inventory, final parameters and logs are
+retained in `output/memory_a100/results.tgz` and extracted alongside it.
+`parameter_comparisons.json` beside the extracted cases records the local
+post-run parameter comparisons. The snapshot archive contains trusted local
+pickle data; do not load arbitrary third-party pickle files.
+
+Initial attribution checkpoint: `724d65a`.
