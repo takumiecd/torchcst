@@ -15,6 +15,7 @@ from experiments import mnist_current_api as runner
 from experiments.device_optimizer_benchmark import config
 from torchcst import DeviceBFGS, DeviceRay
 from torchcst._derivatives.atoms import AtomDerivatives
+from torchcst._derivatives.factored_frame import FactoredFrameGeometry
 from torchcst._derivatives.frame import AutogradFrameGeometry, GramSystem
 
 
@@ -55,6 +56,8 @@ def phases(data, output, cfg=None):
             (DeviceBFGS, "solve"),
             (DeviceRay, "solve"),
             (GramSystem, "solve"),
+            (FactoredFrameGeometry, "gram"),
+            (FactoredFrameGeometry, "pullback_from_frame"),
             (AutogradFrameGeometry, "gram"),
             (AutogradFrameGeometry, "pullback_from_frame"),
             (AtomDerivatives, "materialized_local_derivatives"),

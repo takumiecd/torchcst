@@ -158,6 +158,7 @@ def test_factored_optimizer_updates_without_visible_derivative_cache():
         atoms=3,
         kernel=amplitude_bandwidth(),
         dtype=torch.float64,
+        backend="factored",
     )
     optimizer = CSTOptimizer(
         model,
@@ -169,10 +170,17 @@ def test_factored_optimizer_updates_without_visible_derivative_cache():
     inputs = torch.randn(8, 5, dtype=torch.float64)
     labels = torch.arange(8) % 3
     before = model.atoms.p.detach().clone()
-    with patch.object(
-        AtomDerivatives,
-        "materialized_local_derivatives",
-        side_effect=AssertionError("visible derivatives requested"),
+    with (
+        patch.object(
+            model,
+            "_materialize_atoms",
+            side_effect=AssertionError("atom weights requested"),
+        ),
+        patch.object(
+            AtomDerivatives,
+            "materialized_local_derivatives",
+            side_effect=AssertionError("visible derivatives requested"),
+        ),
     ):
         for _ in range(3):
             optimizer.zero_grad()

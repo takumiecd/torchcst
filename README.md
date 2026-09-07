@@ -694,6 +694,29 @@ See [device execution](docs/experiments/device-execution.md) for restrictions,
 accuracy comparisons, and a training loop without per-step diagnostic reads.
 
 
+For factor-capable kernels, `DeviceRay` can use an experimental compact
+geometry that avoids visible Jacobians/Hessians and their graph-input copies:
+
+```python
+from torchcst import DeviceRay
+
+cst = ImplicitAdamConfig(
+    lr=0.05,
+    quartic=DeviceRay(corrections=1),
+    device_execution=True,
+    factored_geometry=True,
+)
+```
+
+This contracts exact factor-local derivatives for the ray objective, moment
+transport, Gram construction, and backward observations. It retains the
+original quartic and cross-atom terms; only the fixed-budget ray search is
+inexact. It requires a factor-capable kernel and uses the existing separable
+metric. Floating-point contraction order changes, so learning trajectories can
+differ even when derivative-oracle tests pass. The default remains unchanged.
+See [compact derivative measurements](docs/experiments/factored-contractions.md).
+
+
 `SubspaceQuartic` starts from gradient and atom-block-preconditioned directions,
 constructs the exact restricted polynomial on the problem device, and solves
 its small coefficients in CPU float64. It checks the original full-space

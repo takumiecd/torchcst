@@ -46,6 +46,7 @@ def main():
     )
     parser.add_argument("--seeds", nargs="+", type=int, default=[17])
     parser.add_argument("--audit-only", action="store_true")
+    parser.add_argument("--factored-geometry", action="store_true")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     torch.set_num_threads(1)
@@ -54,13 +55,20 @@ def main():
     torch._dynamo.config.cache_size_limit = 64
     data = runner.load_mnist(args.data, train_size=8192, test_size=2000)
     if args.audit_only:
-        cfg = replace(config("device"), solver="device_ray", solver_max_iter=1)
+        cfg = replace(
+            config("device"),
+            solver="device_ray",
+            solver_max_iter=1,
+            factored_geometry=args.factored_geometry,
+        )
         phases(data, args.output, cfg)
         audit(data, args.output, cfg)
         return
     for seed in args.seeds:
         for method in args.methods:
-            cfg = config("device", seed=seed)
+            cfg = replace(
+                config("device", seed=seed), factored_geometry=args.factored_geometry
+            )
             if method.startswith("ray"):
                 cfg = replace(
                     cfg,

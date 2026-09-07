@@ -74,6 +74,7 @@ def measure(args):
                 quartic=DeviceRay(corrections=1),
                 quartic_evaluation="visible",
                 device_execution=True,
+                factored_geometry=args.factored_geometry,
             ),
             dense=None,
         )
@@ -121,6 +122,7 @@ def measure(args):
     if args.method == "cst_ray1":
         optimizer.check_errors()
     return {
+        "factored_geometry": args.factored_geometry,
         "method": args.method,
         "inputs": args.inputs,
         "outputs": args.outputs,
@@ -150,6 +152,7 @@ def main():
     parser.add_argument("--inputs", type=int, required=True)
     parser.add_argument("--outputs", type=int, required=True)
     parser.add_argument("--atoms", type=int, default=64)
+    parser.add_argument("--factored-geometry", action="store_true")
     parser.add_argument("--derivative-cache-mib", type=float)
     parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--steps", type=int, default=32)

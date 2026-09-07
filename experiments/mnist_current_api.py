@@ -63,6 +63,7 @@ class ExperimentConfig:
     solver_execution: Literal["eager", "compiled"] = "eager"
     solver_secular: Literal["host", "device"] = "host"
     device_execution: bool = False
+    factored_geometry: bool = False
     solver_starts: int = 4
     solver_max_iter: int = 80
     solver_max_evaluations: int = 24
@@ -184,6 +185,7 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
             quartic=quartic,
             quartic_evaluation=config.quartic_evaluation,
             device_execution=config.device_execution,
+            factored_geometry=config.factored_geometry,
         ),
         dense=None,
     )

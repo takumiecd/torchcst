@@ -1,5 +1,9 @@
 # Dense versus CST runtime as shapes and atom counts grow
 
+A subsequent implementation removes visible derivative expansion and changes
+these results substantially: see [compact contractions](factored-contractions.md).
+This report preserves the earlier baseline.
+
 ## Scope and protocol
 
 Single linear layer, batch 128, float32, `highest` matmul precision, A100 80GB
