@@ -716,6 +716,16 @@ metric. Floating-point contraction order changes, so learning trajectories can
 differ even when derivative-oracle tests pass. The default remains unchanged.
 See [compact derivative measurements](docs/experiments/factored-contractions.md).
 
+With explicit positive `first_moment_damping`, `gram_solver="cholesky"` opts
+into a faster device solve for the damped compression system. For example,
+add `gram_solver="cholesky", first_moment_damping=1e-4` to the configuration
+above. This changes the previous undamped, rank-truncated pseudoinverse to a
+full-rank damped solve; it can change learning behavior. Cholesky status and
+residual checks feed the same device failure latch. See the
+[damped Gram measurements](docs/experiments/damped-gram.md) for the precision,
+accuracy, and timing tradeoff. The default remains the Jacobi pseudoinverse.
+
+
 
 `SubspaceQuartic` starts from gradient and atom-block-preconditioned directions,
 constructs the exact restricted polynomial on the problem device, and solves

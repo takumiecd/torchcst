@@ -64,6 +64,8 @@ class ExperimentConfig:
     solver_secular: Literal["host", "device"] = "host"
     device_execution: bool = False
     factored_geometry: bool = False
+    gram_solver: str = "jacobi"
+    first_moment_damping: float = 0.0
     solver_starts: int = 4
     solver_max_iter: int = 80
     solver_max_evaluations: int = 24
@@ -186,6 +188,8 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
             quartic_evaluation=config.quartic_evaluation,
             device_execution=config.device_execution,
             factored_geometry=config.factored_geometry,
+            gram_solver=config.gram_solver,
+            first_moment_damping=config.first_moment_damping,
         ),
         dense=None,
     )

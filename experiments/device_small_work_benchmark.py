@@ -47,6 +47,10 @@ def main():
     parser.add_argument("--seeds", nargs="+", type=int, default=[17])
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--factored-geometry", action="store_true")
+    parser.add_argument(
+        "--gram-solver", choices=["jacobi", "cholesky"], default="jacobi"
+    )
+    parser.add_argument("--damping", type=float, default=0.0)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     torch.set_num_threads(1)
@@ -60,6 +64,8 @@ def main():
             solver="device_ray",
             solver_max_iter=1,
             factored_geometry=args.factored_geometry,
+            gram_solver=args.gram_solver,
+            first_moment_damping=args.damping,
         )
         phases(data, args.output, cfg)
         audit(data, args.output, cfg)
@@ -67,7 +73,10 @@ def main():
     for seed in args.seeds:
         for method in args.methods:
             cfg = replace(
-                config("device", seed=seed), factored_geometry=args.factored_geometry
+                config("device", seed=seed),
+                factored_geometry=args.factored_geometry,
+                gram_solver=args.gram_solver,
+                first_moment_damping=args.damping,
             )
             if method.startswith("ray"):
                 cfg = replace(
@@ -80,6 +89,8 @@ def main():
                 cfg = replace(cfg, solver_max_evaluations=int(method[4:]))
             result = measure(data, cfg)
             result["method"] = method
+            result["gram_solver"] = cfg.gram_solver
+            result["first_moment_damping"] = cfg.first_moment_damping
             (args.output / f"{method}_{seed}.json").write_text(
                 json.dumps(result, indent=2)
             )

@@ -67,3 +67,47 @@ def test_cuda_cholesky_graph_and_deferred_failure():
 def test_output_overflow_returns_invalid():
     _, valid = device_solve(torch.eye(2) * 1e-10, torch.ones(2) * 1e38)
     assert not valid
+
+
+def test_failed_cholesky_freezes_optimizer_and_latches_error():
+    from unittest.mock import patch
+
+    from test_device_optimizer import step
+    from test_training_smoke import amplitude_bandwidth
+
+    from torchcst import Chart, CSTLinear, CSTOptimizer, DeviceRay
+
+    model = CSTLinear(
+        Chart.linspace(2),
+        Chart.linspace(2),
+        atoms=2,
+        kernel=amplitude_bandwidth(),
+        backend="factored",
+        dtype=torch.float64,
+    )
+    optimizer = CSTOptimizer(
+        model,
+        cst=ImplicitAdamConfig(
+            lr=0.03,
+            quartic=DeviceRay(corrections=1),
+            device_execution=True,
+            factored_geometry=True,
+            gram_solver="cholesky",
+            first_moment_damping=1e-4,
+        ),
+        dense=None,
+    )
+    step(model, optimizer)
+    previous = model.atoms.p.detach().clone()
+    previous_alpha = optimizer._sites[0].state.first.alpha.clone()
+
+    def failed(matrix, rhs):
+        return torch.full_like(rhs, torch.nan), torch.tensor(False, device=rhs.device)
+
+    with patch("torchcst._derivatives._cholesky.device_solve", side_effect=failed):
+        step(model, optimizer)
+    with pytest.raises(FloatingPointError, match="updates are disabled"):
+        optimizer.check_errors()
+    step(model, optimizer)
+    torch.testing.assert_close(model.atoms.p, previous)
+    torch.testing.assert_close(optimizer._sites[0].state.first.alpha, previous_alpha)

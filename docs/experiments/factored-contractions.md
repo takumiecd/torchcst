@@ -132,3 +132,6 @@ PYTHONPATH=src python -m experiments.device_small_work_benchmark \
   --factored-geometry --audit-only \
   --data /path/to/MNIST/raw --output output/final_factor_audit
 ```
+
+Subsequent work replaces the expensive Gram solve with an explicitly damped
+Cholesky option: [measurements and tradeoffs](damped-gram.md).
