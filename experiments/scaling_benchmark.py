@@ -54,6 +54,13 @@ def measure(args):
     torch.set_num_threads(1)
     torch.set_float32_matmul_precision("highest")
     torch.manual_seed(17)
+    if args.derivative_cache_mib is not None:
+        from torchcst._derivatives.frame import AutogradFrameGeometry
+
+        # Benchmark-only override; the library default remains unchanged.
+        AutogradFrameGeometry._MAX_DERIVATIVE_CACHE_ELEMENTS = int(
+            args.derivative_cache_mib * 2**20 / 4
+        )
     model = model_for(args.method, args.inputs, args.outputs, args.atoms)
     if args.method == "cst_ray1":
         cfg = ExperimentConfig()
@@ -119,6 +126,7 @@ def measure(args):
         "outputs": args.outputs,
         "atoms": args.atoms if args.method != "dense_adam" else None,
         "parameters": sum(p.numel() for p in model.parameters()),
+        "derivative_cache_limit_mib": args.derivative_cache_mib,
         "batch": args.batch,
         "steps_per_repeat": args.steps,
         "seconds": times,
@@ -142,6 +150,7 @@ def main():
     parser.add_argument("--inputs", type=int, required=True)
     parser.add_argument("--outputs", type=int, required=True)
     parser.add_argument("--atoms", type=int, default=64)
+    parser.add_argument("--derivative-cache-mib", type=float)
     parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--steps", type=int, default=32)
     parser.add_argument("--repeats", type=int, default=3)
