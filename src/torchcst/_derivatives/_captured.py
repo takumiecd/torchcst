@@ -54,3 +54,11 @@ def call(name, materialize, *args):
         # Replay performs their exact tensor operations without Python AD work.
         _GRAPHS[key] = CapturedCall(lambda *xs: function(materialize, *xs))
     return _GRAPHS[key](*args)
+
+
+def factor_observation(factor_atoms, point, inputs, output_gradient):
+    def scalar(p):
+        u, v = factor_atoms(p.unsqueeze(0))
+        return ((inputs @ u) * (output_gradient @ v)).sum()
+
+    return vmap(grad(scalar))(point), vmap(hessian(scalar))(point)

@@ -167,6 +167,7 @@ class CSTOptimizer(Optimizer):
                 mode=cst.atom_grad_mode,
                 row_chunk_size=cst.row_chunk_size,
                 request=moments.observation_request,
+                factored=cst.factored_geometry,
             )
             site.atoms.set_grad(atom_grad)
             sites.append(

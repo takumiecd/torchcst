@@ -145,10 +145,10 @@ def test_compact_cuda_graphs_match_visible_oracle(dtype):
 def test_factored_optimizer_updates_without_visible_derivative_cache():
     from unittest.mock import patch
 
-    import torch.nn.functional as functional
     from test_training_smoke import amplitude_bandwidth
+    from torch.nn import functional
 
-    from torchcst import CSTLinear, CSTOptimizer, Chart, DeviceRay, ImplicitAdamConfig
+    from torchcst import Chart, CSTLinear, CSTOptimizer, DeviceRay, ImplicitAdamConfig
     from torchcst._derivatives.atoms import AtomDerivatives
 
     torch.manual_seed(99)
@@ -180,3 +180,22 @@ def test_factored_optimizer_updates_without_visible_derivative_cache():
             optimizer.step()
     assert not torch.equal(before, model.atoms.p)
     assert torch.isfinite(model.atoms.p).all()
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_factor_observation_matches_visible_scalar_hessian(dtype):
+    from torchcst._derivatives._captured import factor_observation
+
+    original, _ = make_pair(dtype, True)
+    geometry = original.context.geometry
+    point = original.context.current_point
+    x = torch.randn(7, 5, dtype=dtype)
+    g = torch.randn(7, 4, dtype=dtype)
+    j, h = geometry.local_quadratic_derivatives(point)
+    force = (g.T @ x).flatten()
+    actual = factor_observation(geometry.derivatives.factor_atoms, point, x, g)
+    expected = (
+        torch.einsum("kmp,m->kp", j, force),
+        torch.einsum("kmpq,m->kpq", h, force),
+    )
+    torch.testing.assert_close(actual, expected)

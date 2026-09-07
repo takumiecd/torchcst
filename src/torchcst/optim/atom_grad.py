@@ -86,8 +86,12 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         mode: AtomGradMode = "auto",
         row_chunk_size: int = 64,
         request: AtomGradRequest | None = None,
+        factored: bool = False,
     ) -> None:
         super().__init__(mode=mode)
+        if not isinstance(factored, bool):
+            raise TypeError("factored must be a bool")
+        self.factored = factored
         if isinstance(row_chunk_size, bool) or not isinstance(row_chunk_size, int):
             raise TypeError("row_chunk_size must be an integer")
         if row_chunk_size < 1:
@@ -190,27 +194,42 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         self._validate_linear_tensors(site, inputs, output_gradient)
 
         flat_inputs = inputs.detach().reshape(-1, site.in_features)
-        flat_output_gradient = output_gradient.detach().reshape(
-            -1, site.out_features
-        )
+        flat_output_gradient = output_gradient.detach().reshape(-1, site.out_features)
         parameter_point = site.atoms.p.detach()
 
         def contracted_atom(atom_point: Tensor) -> Tensor:
             atom = site._materialize_atoms(atom_point.unsqueeze(0))[0]
-            return (
-                F.linear(flat_inputs, atom) * flat_output_gradient
-            ).sum()
+            return (F.linear(flat_inputs, atom) * flat_output_gradient).sum()
 
         contracted_hessian = None
-        with torch.enable_grad():
+        if self.factored and (
+            self.request.gh or (self.request.jg and parameter_gradient is None)
+        ):
+            from torchcst._derivatives._captured import call
+
+            if not site.kernel.supports_factorization:
+                raise ValueError("factored observations require factor-capable kernels")
+            jg, gh = call(
+                "factor_observation",
+                site._factor_atoms,
+                parameter_point,
+                flat_inputs,
+                flat_output_gradient,
+            )
             if self.request.gh:
-                contracted_hessian = vmap(functional_hessian(contracted_atom))(
-                    parameter_point
-                )
+                contracted_hessian = gh
             if self.request.jg and parameter_gradient is None:
-                parameter_gradient = vmap(functional_grad(contracted_atom))(
-                    parameter_point
-                )
+                parameter_gradient = jg
+        else:
+            with torch.enable_grad():
+                if self.request.gh:
+                    contracted_hessian = vmap(functional_hessian(contracted_atom))(
+                        parameter_point
+                    )
+                if self.request.jg and parameter_gradient is None:
+                    parameter_gradient = vmap(functional_grad(contracted_atom))(
+                        parameter_point
+                    )
 
         if self.request.jg:
             assert parameter_gradient is not None
@@ -263,9 +282,7 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
 
         self._r = row_square_mean
         self._c = (
-            column_square_sum / out_features
-            if column_square_sum is not None
-            else None
+            column_square_sum / out_features if column_square_sum is not None else None
         )
         self._terms.clear()
 
@@ -290,8 +307,7 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         expected_output_shape = (*inputs.shape[:-1], site.out_features)
         if output_gradient.shape != expected_output_shape:
             raise ValueError(
-                "output gradient must have shape "
-                f"{list(expected_output_shape)}"
+                f"output gradient must have shape {list(expected_output_shape)}"
             )
         if (
             inputs.device != site.atoms.p.device
