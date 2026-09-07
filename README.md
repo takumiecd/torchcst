@@ -725,6 +725,19 @@ residual checks feed the same device failure latch. See the
 [damped Gram measurements](docs/experiments/damped-gram.md) for the precision,
 accuracy, and timing tradeoff. The default remains the Jacobi pseudoinverse.
 
+Experimental `gram_solver="pcg"` requires `factored_geometry=True` and
+explicit positive `first_moment_damping`. It uses a blocked separated Gram
+operator and diagonal-preconditioned conjugate gradients, controlled by
+`gram_iterations` (default 64), `gram_rtol` (default 1e-5), and
+`gram_block_size` (default 32). These are a fixed iteration budget, a relative
+residual acceptance threshold, and a column tile size, respectively. The
+returned solution is checked against the actual operator; failure freezes
+updates through the device latch when `device_execution=True`. No direct-solve
+fallback runs. This eager experimental path avoids the full Gram but is not
+a faster replacement for Cholesky. Its FP64 factor contractions and iterative
+error can change learning trajectories. See [PCG validation](docs/experiments/pcg-gram.md).
+
+
 
 
 `SubspaceQuartic` starts from gradient and atom-block-preconditioned directions,

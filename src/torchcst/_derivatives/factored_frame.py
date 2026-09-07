@@ -52,6 +52,32 @@ class FactoredFrameGeometry(AutogradFrameGeometry):
             device_solver=self.device_solver,
         )
 
+    def compress(self, *, frame, pullback_numerator, damping=0.0, rtol=None):
+        if self.device_solver != "pcg":
+            return super().compress(
+                frame=frame,
+                pullback_numerator=pullback_numerator,
+                damping=damping,
+                rtol=rtol,
+            )
+        from torchcst._runtime.validation import require
+
+        from ._pcg import PCGOptions, solve
+
+        if rtol is not None:
+            raise ValueError("PCG does not implement a pseudoinverse rank cutoff")
+        self._validate_frame(frame)
+        self._validate_local(pullback_numerator, name="Gram rhs")
+        solution, valid, _, _ = solve(
+            self.factor_local_derivatives(frame.point),
+            frame.displacement,
+            pullback_numerator,
+            damping=damping,
+            options=getattr(self, "pcg_options", PCGOptions()),
+        )
+        require(valid, "PCG Gram solve failed residual validation", FloatingPointError)
+        return solution
+
     def gram_matvec(self, frame, vector, *, block_size=32, damping=0.0):
         """Exact blocked Gram action; does not construct a GramSystem."""
         self._validate_frame(frame)

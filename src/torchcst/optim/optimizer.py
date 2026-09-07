@@ -163,6 +163,7 @@ class CSTOptimizer(Optimizer):
                 else site.cst_frame_geometry()
             )
             geometry.device_solver = cst.gram_solver
+            geometry.pcg_options = self._pcg_options(cst)
             context = MomentContext(geometry, geometry.current_point())
             atom_grad = ImplicitLinearAtomGrad(
                 mode=cst.atom_grad_mode,
@@ -305,6 +306,14 @@ class CSTOptimizer(Optimizer):
             else:
                 site.atom_grad.clear()
 
+    @staticmethod
+    def _pcg_options(config):
+        from torchcst._derivatives._pcg import PCGOptions
+
+        return PCGOptions(
+            config.gram_iterations, config.gram_rtol, config.gram_block_size
+        )
+
     def _build_cst_proposals(self) -> tuple[_CSTProposal, ...]:
         proposals = []
         for site in self._sites:
@@ -314,6 +323,7 @@ class CSTOptimizer(Optimizer):
                 else site.module.cst_frame_geometry()
             )
             geometry.device_solver = self.cst_config.gram_solver
+            geometry.pcg_options = self._pcg_options(self.cst_config)
             context = MomentContext(geometry, geometry.current_point())
             expanded = site.moments.expand(
                 site.state,

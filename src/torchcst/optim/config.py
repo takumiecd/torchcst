@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -35,13 +36,28 @@ class ImplicitAdamConfig:
     first_moment_damping: float = 0.0
     device_execution: bool = False
     factored_geometry: bool = False
-    gram_solver: Literal["jacobi", "cholesky"] = "jacobi"
+    gram_solver: Literal["jacobi", "cholesky", "pcg"] = "jacobi"
+
+    gram_iterations: int = 64
+    gram_rtol: float = 1e-5
+    gram_block_size: int = 32
 
     def __post_init__(self) -> None:
-        if self.gram_solver not in ("jacobi", "cholesky"):
-            raise ValueError("gram_solver must be jacobi or cholesky")
+        from torchcst._derivatives._pcg import PCGOptions
+
+        PCGOptions(self.gram_iterations, self.gram_rtol, self.gram_block_size)
+        if self.gram_solver not in ("jacobi", "cholesky", "pcg"):
+            raise ValueError("gram_solver must be jacobi, cholesky, or pcg")
         if self.gram_solver == "cholesky" and self.first_moment_damping <= 0:
             raise ValueError("cholesky requires positive first_moment_damping")
+        if self.gram_solver == "pcg":
+            if not self.factored_geometry:
+                raise ValueError("pcg requires factored_geometry")
+            if (
+                not math.isfinite(self.first_moment_damping)
+                or self.first_moment_damping <= 0
+            ):
+                raise ValueError("pcg requires finite positive first_moment_damping")
         if not isinstance(self.factored_geometry, bool):
             raise TypeError("factored_geometry must be a bool")
         if not isinstance(self.device_execution, bool):
