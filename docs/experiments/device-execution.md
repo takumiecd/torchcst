@@ -196,3 +196,38 @@ PYTHONPATH=src python -m experiments.device_optimizer_benchmark \
 guard around all 128 forward/backward/update iterations. It reports accuracy
 and errors only after the final synchronization. Its wall time excludes final
 evaluation; the instrumented comparison includes checkpoint evaluations.
+
+## Dense baseline: the remaining cost is large
+
+A subsequent measurement on the same A100, data split, batch128, seed-specific
+minibatch permutation, 128 queued steps and float32 precision:
+
+| Model / optimizer | Trainable parameters | Seed17 seconds | Seed29 seconds | Seed43 seconds |
+| --- | ---: | ---: | ---: | ---: |
+| Dense 784→10, no bias, ordinary Adam | 7,840 | 0.102 | 0.290 | 0.212 |
+| Same CST K64/P4 model, ordinary Adam | 256 | 0.916 | 0.957 | 0.904 |
+| CST with deferred implicit update (previous queued measurement) | 256 | 24.861 | — | — |
+
+Dense and ordinary-CST Adam use lr=0.001, betas=(0.9,0.99), eps=1e-8,
+`foreach=True`, without compilation. Eight steps on separate models warm each
+path; data and permutations are resident on CUDA before timing. First-step
+Adam state initialization remains in the timed run. No per-step diagnostic
+reads; final evaluation is outside timing. These are individual runs with
+visible host-timing variability, not stable microbenchmark estimates.
+
+The input/output sizes match, but parameter budgets and optimizer algorithms
+are different. Dense accuracy is 85.85/86.10/86.60%; ordinary-CST Adam accuracy is
+44.30/53.25/44.85% with this untuned lr. The latter is a timing isolation, not
+an accuracy-matched alternative to the implicit optimizer at lr=0.05.
+
+The implicit update remains roughly 86–243 times slower than these Dense
+runs. Its fixed schedule evaluates the quartic **150 times per outer step**
+(19,200 evaluations over 128 steps), builds derivative information, and solves
+the moment compression system. Removing host synchronization does not remove
+that workload. Reaching Dense-like speed requires reducing the numerical work
+per update, not merely further scheduling/dispatch optimization.
+
+```bash
+PYTHONPATH=src python -m experiments.dense_baseline_benchmark \
+  --data /path/to/MNIST/raw --output output/dense_baseline.json
+```
