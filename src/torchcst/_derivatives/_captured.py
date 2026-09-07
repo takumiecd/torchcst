@@ -3,6 +3,8 @@
 import torch
 from torch.func import grad, hessian, jacfwd, jvp, vmap
 
+from .factored_taylor import factor_derivatives  # noqa: F401
+
 
 def local_derivatives(materialize, point):
     def one(p):

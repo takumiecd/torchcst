@@ -105,22 +105,17 @@ class DeviceRay(QuarticSolver):
             raise TypeError("problem must be a QuarticProblem")
         if not math.isfinite(trust_radius) or trust_radius <= 0:
             raise ValueError("invalid trust radius")
-        coefficients = CompiledQuarticModel(problem).coefficients
-        if coefficients[0].dtype not in (torch.float32, torch.float64):
+        if problem.context.current_point.dtype not in (torch.float32, torch.float64):
             raise ValueError("DeviceRay requires float32/float64")
         with torch.no_grad():
-            if coefficients[0].device.type == "cuda":
-                out = _runner(trust_radius, self.corrections, self.tolerance_grad)(
-                    *coefficients
+            if hasattr(problem.context.geometry, "factor_local_derivatives"):
+                from ._factored_ray import solve
+
+                out = solve(
+                    problem, trust_radius, self.corrections, self.tolerance_grad
                 )
             else:
-                out = _run(
-                    coefficients,
-                    trust_radius,
-                    self.corrections,
-                    self.tolerance_grad,
-                    False,
-                )
+                out = self._visible_solve(problem, trust_radius)
             x, value, residual, count, converged, boundary = out
             require(
                 torch.isfinite(x).all() & torch.isfinite(value),
@@ -130,3 +125,13 @@ class DeviceRay(QuarticSolver):
             return QuarticSolveResult(
                 x, value, residual, 0, count, self.corrections + 1, converged, boundary
             )
+
+    def _visible_solve(self, problem, trust_radius):
+        coefficients = CompiledQuarticModel(problem).coefficients
+        if coefficients[0].device.type == "cuda":
+            return _runner(trust_radius, self.corrections, self.tolerance_grad)(
+                *coefficients
+            )
+        return _run(
+            coefficients, trust_radius, self.corrections, self.tolerance_grad, False
+        )

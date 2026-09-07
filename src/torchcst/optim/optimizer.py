@@ -10,6 +10,7 @@ import torch
 from torch import Tensor, nn
 from torch.optim import Optimizer
 
+from torchcst._derivatives.factored_frame import FactoredFrameGeometry
 from torchcst._runtime.validation import device_checks, require
 from torchcst.nn import CSTLinear
 
@@ -95,7 +96,9 @@ class CSTOptimizer(Optimizer):
             (name, value) for name, value in named_parameters if value.requires_grad
         ]
         if cst.device_execution and len({value.device for _, value in trainable}) != 1:
-            raise ValueError("device_execution currently requires all parameters on one device")
+            raise ValueError(
+                "device_execution currently requires all parameters on one device"
+            )
         aliases: dict[int, list[str]] = {}
         for name, value in model.named_parameters(remove_duplicate=False):
             if value.requires_grad:
@@ -154,7 +157,11 @@ class CSTOptimizer(Optimizer):
                 ),
                 second=SeparableDiagonalSecondMoment(cst.betas[1], eps=cst.eps),
             )
-            geometry = site.cst_frame_geometry()
+            geometry = (
+                FactoredFrameGeometry(site.cst_derivatives())
+                if cst.factored_geometry
+                else site.cst_frame_geometry()
+            )
             context = MomentContext(geometry, geometry.current_point())
             atom_grad = ImplicitLinearAtomGrad(
                 mode=cst.atom_grad_mode,
@@ -299,7 +306,11 @@ class CSTOptimizer(Optimizer):
     def _build_cst_proposals(self) -> tuple[_CSTProposal, ...]:
         proposals = []
         for site in self._sites:
-            geometry = site.module.cst_frame_geometry()
+            geometry = (
+                FactoredFrameGeometry(site.module.cst_derivatives())
+                if self.cst_config.factored_geometry
+                else site.module.cst_frame_geometry()
+            )
             context = MomentContext(geometry, geometry.current_point())
             expanded = site.moments.expand(
                 site.state,

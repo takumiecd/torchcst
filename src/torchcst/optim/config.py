@@ -34,8 +34,11 @@ class ImplicitAdamConfig:
     row_chunk_size: int = 64
     first_moment_damping: float = 0.0
     device_execution: bool = False
+    factored_geometry: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.factored_geometry, bool):
+            raise TypeError("factored_geometry must be a bool")
         if not isinstance(self.device_execution, bool):
             raise TypeError("device_execution must be a bool")
         if self.device_execution and not getattr(
