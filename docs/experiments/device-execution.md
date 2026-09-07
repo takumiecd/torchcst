@@ -108,13 +108,88 @@ from the moment-compression change: compiled Newton with device secular search;
 DeviceBFGS with the original synchronous moment compression; and DeviceBFGS
 with deferred execution and device Jacobi compression.
 
+## Results on 2026-09-07
+
+The final implementation uses float64 accumulation for Gram compression.
+The warmed full-update audit found **zero host synchronization events, zero
+`aten::_local_scalar_dense` events, and zero device-to-host copy events**.
+There were two CUDA graph launches. The 253 `cudaMemcpyAsync` calls are not
+host waits or evidence of device-to-host transfers; the separate copy-direction
+check found no device-to-host events. CPU dispatch and GPU work still occur.
+
+Complete 128-step learning runs, including the same per-step diagnostics and
+checkpoint evaluation as the previous benchmark:
+
+| Method | Mean seconds | Mean accuracy | Mean test loss |
+| --- | ---: | ---: | ---: |
+| Compiled Newton, device secular search | 46.42 | 77.25% | 0.9537 |
+| DeviceBFGS, original synchronous compression | 35.05 | 78.63% | 0.8418 |
+| DeviceBFGS, native-float32 Jacobi prototype | 36.50 | 76.83% | 0.9074 |
+| DeviceBFGS, final deferred float64 compression | 35.80 | 77.30% | 0.8889 |
+
+| Seed | Newton | BFGS + synchronous compression | Final deferred BFGS |
+| ---: | ---: | ---: | ---: |
+| 17 | 79.75% | 79.95% | 77.75% |
+| 29 | 73.20% | 75.15% | 78.05% |
+| 43 | 78.80% | 80.80% | 76.10% |
+
+The final path gives a 1.30x ratio of mean runtimes and almost the same mean
+accuracy (+0.05 points) as compiled Newton. This is **not** a guarantee of
+accuracy preservation: seed 17 loses 2.00 points, seed 29 gains 4.85, and seed
+43 loses 2.70. Synchronous BFGS has higher accuracy in this small sample. The
+final float64-compression choice is supported by its numerical oracle accuracy,
+not by uniform classification gains. The original optimizer default is retained.
+The first three variants were interleaved with method order reversed by seed;
+the final float64 variant was measured in a subsequent sequential pass. Timings
+are single runs per seed, not confidence intervals or concurrent GPU runs.
+
+Removing diagnostic reads from both comparison loops gives this fairer queued
+comparison (seed17, 128 steps, data/permutation already on GPU, independent
+identical initializations, final evaluation excluded from timing):
+
+| Queued loop | Seconds | Final accuracy | Sync-error guard around whole loop |
+| --- | ---: | ---: | --- |
+| Compiled Newton | 42.64 | 79.75% | Disabled: solver still synchronizes |
+| Final deferred BFGS | 24.86 | 77.75% | Passed |
+
+That is **1.72x** faster, a **41.7%** runtime reduction. Forward, backward and
+optimizer update all run inside the device path's sync-error guard. An explicit
+final synchronization and error/accuracy read follow the loop. Accuracy matches
+the corresponding diagnostic learning run. The earlier native-precision device
+prototype took 23.71 seconds with 79.15% accuracy; it is not the final default
+of the experimental device path.
+
+On eight actual early-training Gram systems (seeds17/29, four contiguous
+minibatches each in a separate diagnostic trajectory),
+final float32-returning device solves differ from a float64 SVD oracle by
+2.21e-8 to 2.93e-8 relative solution norm. The original float32 SVD solve differs
+by 3.50e-5 to 2.63e-4 on those same matrices. This supports numerical accuracy of
+the compression, not identity of learned models. The float64 oracle uses the
+**float32 rank cutoff** to compare the same intended truncation.
+
+A separate strict-float64-input probe can fail the tighter decomposition check
+on these cutoff-sensitive matrices with twelve sweeps, even when the retained
+solution is close. The device status therefore matters: this fixed-sweep
+implementation is not a universally converged eigensolver. In the measured
+float32 learning runs every update passed its input-precision validation.
+
+Final validation: 175 local tests passed, 16 skipped; all 20 device-specific
+tests passed on the A100. Ruff and diff checks passed. All experiment processes
+completed successfully; no task-owned background experiment remains running.
+
+Source implementation checkpoints: `4da05a7` (graph/Jacobi primitive) and
+`50098df` (deferred optimizer and float64 accumulation). Reports are under
+`output/device_execution_a100/output/` locally; the isolated A100 workspace is
+`/home/jovyan/work/srv11/cst-lab/torchcst-sync-20260907`.
+
 ## Reproduction
 
 ```bash
 PYTHONPATH=src python -m experiments.device_optimizer_benchmark \
   --stage all --data /path/to/MNIST/raw --output output/device_optimizer
 PYTHONPATH=src python -m experiments.device_optimizer_benchmark \
-  --stage queued --data /path/to/MNIST/raw --output output/device_queued
+  --stage queued --methods newton device \
+  --data /path/to/MNIST/raw --output output/device_queued
 ```
 
 `queued` uploads the data/permutation before timing and enables the sync-error
