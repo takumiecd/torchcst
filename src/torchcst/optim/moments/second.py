@@ -58,6 +58,12 @@ class SeparableDiagonalMetric:
 
         return self._diagonal.clone()
 
+    def separable_weights(self) -> tuple[Tensor, Tensor, float]:
+        """Return s, t, eps with metric diagonal s[:, None] * t + eps."""
+
+        normalizer = self._row.mean().clamp_min(torch.finfo(self._row.dtype).tiny)
+        return (self._row / normalizer).sqrt(), self._column.sqrt(), self.eps
+
     def apply(self, value: Tensor) -> Tensor:
         self._validate_visible(value)
         return self._diagonal * value

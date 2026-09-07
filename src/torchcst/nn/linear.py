@@ -118,7 +118,14 @@ class CSTLinear(nn.Module):
 
         if self.input_chart.trainable or self.output_chart.trainable:
             raise ValueError("the first derivative engine supports frozen charts only")
-        return AtomDerivatives(self.atoms, self._materialize_atoms)
+        return AtomDerivatives(
+            self.atoms,
+            self._materialize_atoms,
+            factor_atoms=self._factor_atoms if self.kernel.supports_factorization else None,
+        )
+
+    def _factor_atoms(self, p: Tensor) -> tuple[Tensor, Tensor]:
+        return self.kernel.factors(self.input_chart, self.output_chart, p)
 
     def cst_frame_geometry(self) -> AutogradFrameGeometry:
         """Build the optimizer-independent representation-frame geometry."""

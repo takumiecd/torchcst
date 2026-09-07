@@ -9,6 +9,7 @@ import torch
 from torch import Tensor
 
 from .atoms import AtomDerivatives
+from .quadratic import QuadraticFeatureGram, factored_quadratic_gram
 
 
 @dataclass(frozen=True)
@@ -188,6 +189,22 @@ class FrameGeometry(ABC):
             pullback_numerator
         )
 
+    def quadratic_feature_gram(
+        self, *, point: Tensor, row_weight: Tensor, column_weight: Tensor, eps: float
+    ) -> QuadraticFeatureGram | None:
+        """Optional exact acceleration for a separable visible metric."""
+
+        return None
+
+    @property
+    def supports_quadratic_feature_gram(self) -> bool:
+        return False
+
+    def local_quadratic_derivatives(self, point: Tensor) -> tuple[Tensor, Tensor] | None:
+        """Optional detached J[k,m,p], H[k,m,p,q] for exact solver models."""
+
+        return None
+
 
 class AutogradFrameGeometry(FrameGeometry):
     """Correctness implementation built from generic derivative contractions."""
@@ -214,6 +231,25 @@ class AutogradFrameGeometry(FrameGeometry):
 
     def current_point(self) -> Tensor:
         return self.derivatives.current_point()
+
+    @property
+    def supports_quadratic_feature_gram(self) -> bool:
+        return self.derivatives.factor_atoms is not None
+
+    def local_quadratic_derivatives(self, point: Tensor) -> tuple[Tensor, Tensor] | None:
+        self._validate_local(point, name="quadratic derivative point")
+        cached = self._local_derivatives(point)
+        return None if cached is None else self._flattened_derivatives(cached)
+
+    def quadratic_feature_gram(
+        self, *, point: Tensor, row_weight: Tensor, column_weight: Tensor, eps: float
+    ) -> QuadraticFeatureGram | None:
+        self._validate_local(point, name="quadratic feature point")
+        if self.derivatives.factor_atoms is None:
+            return None
+        return factored_quadratic_gram(
+            self.derivatives.factor_atoms, point, row_weight, column_weight, eps
+        )
 
     def frame(
         self, point: Tensor, displacement: Tensor | None = None

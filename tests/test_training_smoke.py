@@ -6,6 +6,7 @@ import torch
 from torchcst import (
     Amplitude,
     AmplitudeBandwidthSeparable,
+    BallNewton,
     Chart,
     CSTLinear,
     CSTOptimizer,
@@ -14,6 +15,7 @@ from torchcst import (
     ImplicitAdamConfig,
     Kernel,
     Separable,
+    SubspaceQuartic,
 )
 
 
@@ -37,8 +39,12 @@ def amplitude_bandwidth() -> Kernel:
 
 
 @pytest.mark.parametrize("kernel_factory", [independent_amplitude, amplitude_bandwidth])
+@pytest.mark.parametrize("evaluation", ["visible", "gram"])
+@pytest.mark.parametrize("solver_name", ["full", "newton", "subspace"])
 def test_full_optimizer_reduces_loss_for_new_amplitude_kernels(
     kernel_factory: Callable[[], Kernel],
+    evaluation: str,
+    solver_name: str,
 ) -> None:
     torch.manual_seed(9)
     model = CSTLinear(
@@ -55,7 +61,12 @@ def test_full_optimizer_reduces_loss_for_new_amplitude_kernels(
             lr=0.03,
             betas=(0.5, 0.8),
             trust_radius=0.08,
-            quartic=FullQuartic(starts=1, max_iter=20),
+            quartic={
+                "full": FullQuartic(starts=1, max_iter=20),
+                "newton": BallNewton(max_iter=20),
+                "subspace": SubspaceQuartic(max_models=4),
+            }[solver_name],
+            quartic_evaluation=evaluation,
         ),
         dense=None,
     )

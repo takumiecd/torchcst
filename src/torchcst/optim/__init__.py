@@ -33,7 +33,14 @@ from .moments import (
 )
 from .optimizer import CSTOptimizer, CSTStepResult
 from .problem import QuarticProblem
-from .solvers import FullQuartic, ProjectedLBFGS, QuarticSolver, QuarticSolveResult
+from .solvers import (
+    BallNewton,
+    FullQuartic,
+    ProjectedLBFGS,
+    QuarticSolver,
+    QuarticSolveResult,
+    SubspaceQuartic,
+)
 
 __all__ = [
     "AcceptedFrameFirstMoment",
@@ -41,6 +48,7 @@ __all__ = [
     "AdamWConfig",
     "AtomGradRequest",
     "AtomGradientObservation",
+    "BallNewton",
     "CSTOptimizer",
     "CSTStepResult",
     "DenseAdamWProposal",
@@ -64,5 +72,6 @@ __all__ = [
     "SeparableDiagonalMetric",
     "SeparableDiagonalSecondMoment",
     "SeparableSecondMomentState",
+    "SubspaceQuartic",
     "VisibleMetric",
 ]

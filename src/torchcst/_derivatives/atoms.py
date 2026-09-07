@@ -12,18 +12,28 @@ from torch.func import jacfwd, jvp, vjp, vmap
 from torchcst.atoms import Atoms
 
 MaterializeAtoms = Callable[[Tensor], Tensor]
+FactorAtoms = Callable[[Tensor], tuple[Tensor, Tensor]]
 
 
 class AtomDerivatives:
     """Differentiate ``sum(kernel(p[a]))`` in opaque ``[K, P]`` coordinates."""
 
-    def __init__(self, atoms: Atoms, materialize_atoms: MaterializeAtoms) -> None:
+    def __init__(
+        self,
+        atoms: Atoms,
+        materialize_atoms: MaterializeAtoms,
+        *,
+        factor_atoms: FactorAtoms | None = None,
+    ) -> None:
         if not isinstance(atoms, Atoms):
             raise TypeError("atoms must be an Atoms instance")
         if not callable(materialize_atoms):
             raise TypeError("materialize_atoms must be callable")
+        if factor_atoms is not None and not callable(factor_atoms):
+            raise TypeError("factor_atoms must be callable or None")
         self.atoms = atoms
         self._materialize_atoms = materialize_atoms
+        self.factor_atoms = factor_atoms
 
     @property
     def parameters(self) -> tuple[nn.Parameter]:

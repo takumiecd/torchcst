@@ -13,10 +13,12 @@ from .kernels import (
 from .nn import CSTLinear
 from .optim import (
     AdamWConfig,
+    BallNewton,
     CSTOptimizer,
     FullQuartic,
     ImplicitAdamConfig,
     ProjectedLBFGS,
+    SubspaceQuartic,
 )
 
 __all__ = [
@@ -24,6 +26,7 @@ __all__ = [
     "Amplitude",
     "AmplitudeBandwidthSeparable",
     "Atoms",
+    "BallNewton",
     "CSTLinear",
     "CSTOptimizer",
     "Chart",
@@ -34,4 +37,5 @@ __all__ = [
     "Profile",
     "ProjectedLBFGS",
     "Separable",
+    "SubspaceQuartic",
 ]

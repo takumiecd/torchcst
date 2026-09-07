@@ -260,6 +260,7 @@ class CSTOptimizer(Optimizer):
                 context,
                 expanded,
                 learning_rate=self.cst_config.lr,
+                evaluation=self.cst_config.quartic_evaluation,
             )
             solve = self.cst_config.quartic.solve(
                 problem,

@@ -29,6 +29,7 @@ class ImplicitAdamConfig:
     second_moment: Literal["separable"] = "separable"
     trust_radius: float = 0.25
     quartic: QuarticSolver = field(default_factory=FullQuartic)
+    quartic_evaluation: Literal["auto", "visible", "gram"] = "auto"
     atom_grad_mode: AtomGradMode = "auto"
     row_chunk_size: int = 64
     first_moment_damping: float = 0.0
@@ -45,6 +46,8 @@ class ImplicitAdamConfig:
             raise ValueError("trust_radius must be positive")
         if not isinstance(self.quartic, QuarticSolver):
             raise TypeError("quartic must be a QuarticSolver")
+        if self.quartic_evaluation not in ("auto", "visible", "gram"):
+            raise ValueError("quartic_evaluation must be 'auto', 'visible', or 'gram'")
         if self.atom_grad_mode not in ("auto", "custom", "hooks"):
             raise ValueError("atom_grad_mode must be 'auto', 'custom', or 'hooks'")
         if isinstance(self.row_chunk_size, bool) or not isinstance(
