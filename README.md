@@ -682,6 +682,18 @@ no lower-precision approximation is enabled. Adaptive Python decisions and
 latency; floating-point fusion can change the optimization trajectory.
 See [the compiled Newton measurements](docs/experiments/compiled-newton.md).
 
+`DeviceBFGS(max_iter=30, max_evaluations=150)` is an experimental alternative
+for `ImplicitAdamConfig(quartic=..., device_execution=True)`. It retains the
+complete quartic but changes the search to projected BFGS. Adaptive decisions,
+validation flags, and moment compression remain on the device. Warmed CUDA
+updates avoid host synchronization in the tested configuration; compilation,
+initialization, and explicit `optimizer.check_errors()` are outside that scope.
+Its iteration/convergence/boundary diagnostics are device tensors. Check errors
+at an explicit reporting boundary; a failed check latches and disables updates.
+See [device execution](docs/experiments/device-execution.md) for restrictions,
+accuracy comparisons, and a training loop without per-step diagnostic reads.
+
+
 `SubspaceQuartic` starts from gradient and atom-block-preconditioned directions,
 constructs the exact restricted polynomial on the problem device, and solves
 its small coefficients in CPU float64. It checks the original full-space

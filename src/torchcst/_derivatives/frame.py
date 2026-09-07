@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from torchcst._runtime.validation import deferred, require
+
 from .atoms import AtomDerivatives
 from .quadratic import QuadraticFeatureGram, factored_quadratic_gram
 
@@ -32,9 +34,7 @@ class AffinePullback:
             raise ValueError("constant must have shape [K, P]")
         expected_linear_shape = (*self.constant.shape, self.constant.shape[1])
         if self.linear.shape != expected_linear_shape:
-            raise ValueError(
-                f"linear must have shape {list(expected_linear_shape)}"
-            )
+            raise ValueError(f"linear must have shape {list(expected_linear_shape)}")
         if (
             self.constant.device != self.linear.device
             or self.constant.dtype != self.linear.dtype
@@ -53,9 +53,7 @@ class AffinePullback:
             or displacement.dtype != self.constant.dtype
         ):
             raise ValueError("displacement must match pullback device and dtype")
-        return self.constant + torch.einsum(
-            "kpq,kq->kp", self.linear, displacement
-        )
+        return self.constant + torch.einsum("kpq,kq->kp", self.linear, displacement)
 
     def scaled(self, factor: float | Tensor) -> AffinePullback:
         return AffinePullback(self.constant * factor, self.linear * factor)
@@ -82,9 +80,7 @@ class GramSystem:
     ) -> None:
         local_size = point_shape[0] * point_shape[1]
         if matrix.shape != (local_size, local_size):
-            raise ValueError(
-                f"matrix must have shape {[local_size, local_size]}"
-            )
+            raise ValueError(f"matrix must have shape {[local_size, local_size]}")
         if damping < 0:
             raise ValueError("damping must be nonnegative")
         if rtol is not None and rtol < 0:
@@ -113,6 +109,18 @@ class GramSystem:
             matrix = matrix + self.damping * torch.eye(
                 matrix.shape[0], device=matrix.device, dtype=matrix.dtype
             )
+        if deferred():
+            from ._jacobi import device_pinv_solve
+
+            solution, valid = device_pinv_solve(
+                matrix, right_hand_side.reshape(-1), rtol=self.rtol
+            )
+            require(
+                valid,
+                "device Gram decomposition failed its residual check",
+                FloatingPointError,
+            )
+            return solution.reshape(self.point_shape)
         options = {} if self.rtol is None else {"rtol": self.rtol}
         inverse = torch.linalg.pinv(matrix, **options)
         return (inverse @ right_hand_side.reshape(-1)).reshape(self.point_shape)
@@ -185,9 +193,7 @@ class FrameGeometry(ABC):
     ) -> Tensor:
         """Compress a visible target from its frame pullback numerator."""
 
-        return self.gram(frame, damping=damping, rtol=rtol).solve(
-            pullback_numerator
-        )
+        return self.gram(frame, damping=damping, rtol=rtol).solve(pullback_numerator)
 
     def quadratic_feature_gram(
         self, *, point: Tensor, row_weight: Tensor, column_weight: Tensor, eps: float
@@ -200,7 +206,9 @@ class FrameGeometry(ABC):
     def supports_quadratic_feature_gram(self) -> bool:
         return False
 
-    def local_quadratic_derivatives(self, point: Tensor) -> tuple[Tensor, Tensor] | None:
+    def local_quadratic_derivatives(
+        self, point: Tensor
+    ) -> tuple[Tensor, Tensor] | None:
         """Optional detached J[k,m,p], H[k,m,p,q] for exact solver models."""
 
         return None
@@ -236,7 +244,9 @@ class AutogradFrameGeometry(FrameGeometry):
     def supports_quadratic_feature_gram(self) -> bool:
         return self.derivatives.factor_atoms is not None
 
-    def local_quadratic_derivatives(self, point: Tensor) -> tuple[Tensor, Tensor] | None:
+    def local_quadratic_derivatives(
+        self, point: Tensor
+    ) -> tuple[Tensor, Tensor] | None:
         self._validate_local(point, name="quadratic derivative point")
         cached = self._local_derivatives(point)
         return None if cached is None else self._flattened_derivatives(cached)
@@ -295,9 +305,7 @@ class AutogradFrameGeometry(FrameGeometry):
         if cached is not None:
             jacobian, hessian = self._flattened_derivatives(cached)
             linear = torch.einsum("kmp,kp->m", jacobian, direction)
-            quadratic = torch.einsum(
-                "kmpq,kp,kq->m", hessian, direction, direction
-            )
+            quadratic = torch.einsum("kmpq,kp,kq->m", hessian, direction, direction)
             return (linear + 0.5 * quadratic).reshape(self.visible_shape)
         return self.derivatives.displacement(direction, parameter_point=point)
 
@@ -347,9 +355,7 @@ class AutogradFrameGeometry(FrameGeometry):
             frame_jacobian = jacobian + torch.einsum(
                 "kmpq,kq->kmp", hessian, frame.displacement
             )
-            visible_columns = frame_jacobian.permute(1, 0, 2).reshape(
-                -1, local_size
-            )
+            visible_columns = frame_jacobian.permute(1, 0, 2).reshape(-1, local_size)
             matrix = visible_columns.transpose(0, 1) @ visible_columns
             return GramSystem(
                 matrix,
@@ -408,16 +414,18 @@ class AutogradFrameGeometry(FrameGeometry):
         if value.device != parameter.device or value.dtype != parameter.dtype:
             raise ValueError(f"{name} must match atom device and dtype")
 
-    def _local_derivatives(
-        self, point: Tensor
-    ) -> tuple[Tensor, Tensor] | None:
+    def _local_derivatives(self, point: Tensor) -> tuple[Tensor, Tensor] | None:
         if self._cache_disabled:
             return None
         if self._cache_point is point:
             assert self._cache_jacobian is not None
             assert self._cache_hessian is not None
             return self._cache_jacobian, self._cache_hessian
-        if self._cache_point is not None and torch.equal(self._cache_point, point):
+        if (
+            not deferred()
+            and self._cache_point is not None
+            and torch.equal(self._cache_point, point)
+        ):
             assert self._cache_jacobian is not None
             assert self._cache_hessian is not None
             return self._cache_jacobian, self._cache_hessian

@@ -33,8 +33,17 @@ class ImplicitAdamConfig:
     atom_grad_mode: AtomGradMode = "auto"
     row_chunk_size: int = 64
     first_moment_damping: float = 0.0
+    device_execution: bool = False
 
     def __post_init__(self) -> None:
+        if not isinstance(self.device_execution, bool):
+            raise TypeError("device_execution must be a bool")
+        if self.device_execution and not getattr(
+            self.quartic, "supports_deferred_execution", False
+        ):
+            raise ValueError(
+                "device_execution requires a solver with deferred device diagnostics"
+            )
         if self.lr <= 0:
             raise ValueError("lr must be positive")
         object.__setattr__(self, "betas", _validate_betas(self.betas))

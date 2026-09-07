@@ -10,6 +10,7 @@ import torch
 from torch import Tensor, nn
 from torch.optim import Optimizer
 
+from torchcst._runtime.validation import device_checks, require
 from torchcst.nn import CSTLinear
 
 from .atom_grad import ImplicitLinearAtomGrad
@@ -32,6 +33,7 @@ class CSTStepResult:
     """Diagnostics from the most recent optimizer step."""
 
     site_results: tuple[QuarticSolveResult, ...]
+    device_valid: Tensor | None = None
 
 
 @dataclass
@@ -78,6 +80,7 @@ class CSTOptimizer(Optimizer):
         self.strict = strict
         self._stepping = False
         self.last_step: CSTStepResult | None = None
+        self._device_valid: Tensor | None = None
 
         site_modules = [
             (name or "<root>", module)
@@ -88,7 +91,11 @@ class CSTOptimizer(Optimizer):
             raise ValueError("model does not contain a CSTLinear site")
 
         named_parameters = list(model.named_parameters())
-        trainable = [(name, value) for name, value in named_parameters if value.requires_grad]
+        trainable = [
+            (name, value) for name, value in named_parameters if value.requires_grad
+        ]
+        if cst.device_execution and len({value.device for _, value in trainable}) != 1:
+            raise ValueError("device_execution currently requires all parameters on one device")
         aliases: dict[int, list[str]] = {}
         for name, value in model.named_parameters(remove_duplicate=False):
             if value.requires_grad:
@@ -109,7 +116,9 @@ class CSTOptimizer(Optimizer):
                     raise ValueError(f"CST parameter owned by {site_name} is frozen")
                 identity = id(parameter)
                 if identity in cst_owner_by_id:
-                    raise ValueError("a trainable parameter is owned by multiple CST sites")
+                    raise ValueError(
+                        "a trainable parameter is owned by multiple CST sites"
+                    )
                 if identity not in names_by_id:
                     raise ValueError("a CST-owned parameter is absent from the model")
                 cst_owner_by_id[identity] = site_name
@@ -143,9 +152,7 @@ class CSTOptimizer(Optimizer):
                 first=AcceptedFrameFirstMoment(
                     cst.betas[0], damping=cst.first_moment_damping
                 ),
-                second=SeparableDiagonalSecondMoment(
-                    cst.betas[1], eps=cst.eps
-                ),
+                second=SeparableDiagonalSecondMoment(cst.betas[1], eps=cst.eps),
             )
             geometry = site.cst_frame_geometry()
             context = MomentContext(geometry, geometry.current_point())
@@ -183,11 +190,15 @@ class CSTOptimizer(Optimizer):
             raise RuntimeError("CSTOptimizer.step cannot be called recursively")
         self._stepping = True
         try:
-            self._step()
+            if self.cst_config.device_execution:
+                with device_checks() as checks:
+                    self._step(checks)
+            else:
+                self._step()
         finally:
             self._stepping = False
 
-    def _step(self) -> None:
+    def _step(self, checks=None) -> None:
         try:
             self._complete_capture()
         except BaseException:
@@ -209,19 +220,58 @@ class CSTOptimizer(Optimizer):
             self._abort_capture()
             raise
 
+        valid = None
+        if checks is not None:
+            for proposal in dense_proposals.values():
+                require(
+                    torch.isfinite(proposal.displacement).all(),
+                    "non-finite dense update",
+                    FloatingPointError,
+                )
+            valid = torch.stack(checks).all()
+            if self._device_valid is not None:
+                valid = valid & self._device_valid
+            self._device_valid = valid
+            next_cst_states = tuple(
+                _select_device_state(valid, new, proposal.site.state)
+                for proposal, new in zip(cst_proposals, next_cst_states)
+            )
         with torch.no_grad():
             for proposal in cst_proposals:
-                proposal.site.module.atoms.p.add_(proposal.solve.displacement)
+                delta = proposal.solve.displacement
+                proposal.site.module.atoms.p.add_(
+                    delta if valid is None else torch.where(valid, delta, 0)
+                )
             for parameter, proposal in dense_proposals.items():
-                parameter.add_(proposal.displacement)
+                delta = proposal.displacement
+                parameter.add_(delta if valid is None else torch.where(valid, delta, 0))
         for proposal, state in zip(cst_proposals, next_cst_states):
             proposal.site.state = state
         for parameter, proposal in dense_proposals.items():
-            self._dense_states[parameter] = proposal.pending_state
+            self._dense_states[parameter] = (
+                proposal.pending_state
+                if valid is None
+                else _select_device_state(
+                    valid, proposal.pending_state, self._dense_states[parameter]
+                )
+            )
 
         self.last_step = CSTStepResult(
             site_results=tuple(proposal.solve for proposal in cst_proposals),
+            device_valid=valid,
         )
+
+    def check_errors(self) -> None:
+        """Explicit synchronization boundary for deferred errors.
+
+        Failure latches the optimizer: all subsequent parameter/tensor-state
+        commits are suppressed. Restore a valid checkpoint into a new optimizer
+        before resuming; this method never clears the latch.
+        """
+        if self._device_valid is not None and not bool(self._device_valid):
+            raise FloatingPointError(
+                "deferred CST validation failed; updates are disabled"
+            )
 
     def _begin_capture(self) -> None:
         begun = []
@@ -283,12 +333,17 @@ class CSTOptimizer(Optimizer):
         point = context.current_point
         if displacement.device != point.device or displacement.dtype != point.dtype:
             raise ValueError("quartic displacement must match its CST point")
-        if not torch.isfinite(displacement).all():
-            raise FloatingPointError("quartic displacement must be finite")
+        require(
+            torch.isfinite(displacement).all(),
+            "quartic displacement must be finite",
+            FloatingPointError,
+        )
         norm = torch.linalg.vector_norm(displacement)
         tolerance = 10.0 * torch.finfo(displacement.dtype).eps
-        if norm > self.cst_config.trust_radius * (1.0 + tolerance):
-            raise ValueError("quartic displacement exceeds the trust radius")
+        require(
+            norm <= self.cst_config.trust_radius * (1.0 + tolerance),
+            "quartic displacement exceeds the trust radius",
+        )
 
     def _build_dense_proposals(self) -> dict[nn.Parameter, DenseAdamWProposal]:
         if self._dense_engine is None:
@@ -300,7 +355,9 @@ class CSTOptimizer(Optimizer):
             for parameter in self._dense_parameters
         }
 
-    def _make_manifest(self, cst_owner_by_id: dict[int, str]) -> tuple[dict[str, Any], ...]:
+    def _make_manifest(
+        self, cst_owner_by_id: dict[int, str]
+    ) -> tuple[dict[str, Any], ...]:
         manifest = []
         for parameter in self._trainable_parameters:
             identity = id(parameter)
@@ -317,6 +374,9 @@ class CSTOptimizer(Optimizer):
     def state_dict(self) -> dict[str, Any]:
         """Return compact optimizer state plus its exact ownership manifest."""
 
+        # Saving is an explicit host boundary: do not serialize a latched,
+        # partially advanced metadata state as a resumable checkpoint.
+        self.check_errors()
         return {
             "version": self._STATE_VERSION,
             "manifest": copy.deepcopy(self._manifest),
@@ -325,9 +385,7 @@ class CSTOptimizer(Optimizer):
                 for site in self._sites
             },
             "dense": {
-                self._parameter_names[id(parameter)]: self._map_state(
-                    state, clone=True
-                )
+                self._parameter_names[id(parameter)]: self._map_state(state, clone=True)
                 for parameter, state in self._dense_states.items()
             },
         }
@@ -386,10 +444,14 @@ class CSTOptimizer(Optimizer):
     ) -> Any:
         if isinstance(value, Tensor):
             if reference is not None:
-                return value.detach().to(
-                    device=reference.device,
-                    dtype=reference.dtype,
-                ).clone()
+                return (
+                    value.detach()
+                    .to(
+                        device=reference.device,
+                        dtype=reference.dtype,
+                    )
+                    .clone()
+                )
             return value.detach().clone() if clone else value
         if is_dataclass(value) and not isinstance(value, type):
             return type(value)(
@@ -409,12 +471,27 @@ class CSTOptimizer(Optimizer):
             }
         if isinstance(value, tuple):
             return tuple(
-                cls._map_state(item, clone=clone, reference=reference)
-                for item in value
+                cls._map_state(item, clone=clone, reference=reference) for item in value
             )
         if isinstance(value, list):
             return [
-                cls._map_state(item, clone=clone, reference=reference)
-                for item in value
+                cls._map_state(item, clone=clone, reference=reference) for item in value
             ]
         return copy.deepcopy(value) if clone else value
+
+
+def _select_device_state(valid, new, previous):
+    if isinstance(new, Tensor):
+        return torch.where(valid, new, previous)
+    if is_dataclass(new):
+        return type(new)(
+            **{
+                f.name: _select_device_state(
+                    valid, getattr(new, f.name), getattr(previous, f.name)
+                )
+                for f in fields(new)
+            }
+        )
+    # Counters/configuration are host metadata. After a failure the latch keeps
+    # every tensor frozen; the optimizer cannot resume without restoration.
+    return new

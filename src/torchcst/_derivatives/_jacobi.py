@@ -91,18 +91,23 @@ def device_eigh(matrix, *, sweeps=12):
 
 def device_pinv_solve(matrix, rhs, *, rtol=None, sweeps=12):
     original_size = matrix.shape[0]
+    original_dtype = matrix.dtype
+    original_eps = torch.finfo(original_dtype).eps
+    # Accumulate on device in double precision while retaining the input
+    # precision's rank cutoff. Gram construction itself may be float32.
+    matrix, rhs = matrix.double(), rhs.double()
     if original_size % 2 or original_size < 2:
         matrix = torch.nn.functional.pad(matrix, (0, 1, 0, 1))
         rhs = torch.nn.functional.pad(rhs, (0, 1))
     values, vectors = device_eigh(matrix, sweeps=sweeps)
-    cutoff = original_size * torch.finfo(matrix.dtype).eps if rtol is None else rtol
+    cutoff = original_size * original_eps if rtol is None else rtol
     keep = values.abs() > cutoff * values.abs().amax()
     inverse = torch.where(keep, 1 / torch.where(keep, values, 1), 0)
     solution = vectors @ ((vectors.T @ rhs) * inverse)
     # A posteriori diagonalization check stays on device; no silent host fallback.
     residual = (matrix @ vectors - vectors * values).norm()
-    tolerance = 64 * original_size * torch.finfo(matrix.dtype).eps
+    tolerance = 64 * original_size * original_eps
     valid = torch.isfinite(solution).all() & (
         residual <= tolerance * matrix.norm().clamp_min(1e-30)
     )
-    return solution[:original_size], valid
+    return solution[:original_size].to(original_dtype), valid

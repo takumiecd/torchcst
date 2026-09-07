@@ -10,6 +10,7 @@ rewrite:
 - `second-order-pullback-moment-spaces.md` — second-order moment-space analysis.
 - `experiments/mnist-current-api.md` — current public-API MNIST reproduction.
 - `experiments/solver-learning-profile.md` — controlled FullQuartic/Newton learning comparison and A100 profiles.
+- `experiments/device-execution.md` — deferred device execution and whole-update synchronization audit.
 - `experiments/compiled-newton.md` — compiled one-start Newton, GPU secular search, and remaining CPU synchronization.
 
 Historical structural-policy and mutation designs remain available in Git

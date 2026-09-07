@@ -19,10 +19,10 @@ class QuarticSolveResult:
     objective: Tensor
     projected_gradient_norm: Tensor
     start_index: int
-    iterations: int
+    iterations: int | Tensor
     evaluations: int
-    converged: bool
-    on_boundary: bool
+    converged: bool | Tensor
+    on_boundary: bool | Tensor
 
 
 class FullQuartic(QuarticSolver):

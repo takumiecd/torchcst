@@ -29,6 +29,7 @@ from torchcst import (
     Chart,
     CSTLinear,
     CSTOptimizer,
+    DeviceBFGS,
     FullQuartic,
     Gaussian,
     ImplicitAdamConfig,
@@ -56,10 +57,11 @@ class ExperimentConfig:
     beta2: float = 0.99
     epsilon: float = 1e-8
     trust_radius: float = 0.25
-    solver: Literal["full", "projected", "newton"] = "full"
+    solver: Literal["full", "projected", "newton", "device_bfgs"] = "full"
     quartic_evaluation: Literal["auto", "visible", "gram"] = "auto"
     solver_execution: Literal["eager", "compiled"] = "eager"
     solver_secular: Literal["host", "device"] = "host"
+    device_execution: bool = False
     solver_starts: int = 4
     solver_max_iter: int = 80
     solver_max_evaluations: int = 24
@@ -153,13 +155,20 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
             max_iter=config.solver_max_iter,
             max_evaluations=config.solver_max_evaluations,
         )
+    elif config.solver == "device_bfgs":
+        if config.solver_starts != 1:
+            raise ValueError("DeviceBFGS supports exactly one start")
+        quartic = DeviceBFGS(
+            max_iter=config.solver_max_iter,
+            max_evaluations=config.solver_max_evaluations,
+        )
     elif config.solver == "projected":
         quartic = ProjectedLBFGS(
             max_iter=config.solver_max_iter,
             max_evaluations=config.solver_max_evaluations,
         )
     else:
-        raise ValueError("solver must be 'full', 'projected', or 'newton'")
+        raise ValueError("unknown solver")
     return CSTOptimizer(
         model,
         cst=ImplicitAdamConfig(
@@ -169,6 +178,7 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
             trust_radius=config.trust_radius,
             quartic=quartic,
             quartic_evaluation=config.quartic_evaluation,
+            device_execution=config.device_execution,
         ),
         dense=None,
     )
@@ -227,6 +237,7 @@ def run_seed(
         optimizer.step()
         _synchronize(device)
         step_seconds = time.perf_counter() - step_started
+        optimizer.check_errors()
         result = optimizer.last_step
         if result is None:
             raise RuntimeError("optimizer did not publish step diagnostics")
@@ -237,11 +248,11 @@ def run_seed(
             "loss": float(loss.detach()),
             "solver_objective": float(solve.objective),
             "solver_evaluations": solve.evaluations,
-            "solver_iterations": solve.iterations,
+            "solver_iterations": int(solve.iterations),
             "solver_start_index": solve.start_index,
-            "solver_converged": solve.converged,
+            "solver_converged": bool(solve.converged),
             "solver_projected_gradient_norm": float(solve.projected_gradient_norm),
-            "on_trust_boundary": solve.on_boundary,
+            "on_trust_boundary": bool(solve.on_boundary),
         }
         trace.append(row)
         if step_index + 1 in checkpoint_steps:
@@ -296,7 +307,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--test-size", type=int, default=2000)
     parser.add_argument("--trust-radius", type=float, default=0.25)
     parser.add_argument(
-        "--solver", choices=("full", "projected", "newton"), default="full"
+        "--solver",
+        choices=("full", "projected", "newton", "device_bfgs"),
+        default="full",
     )
     parser.add_argument(
         "--quartic-evaluation", choices=("auto", "visible", "gram"), default="auto"
@@ -321,6 +334,7 @@ def main() -> None:
         test_size=args.test_size,
         trust_radius=args.trust_radius,
         solver=args.solver,
+        device_execution=args.device_execution,
         solver_execution=args.solver_execution,
         solver_secular=args.solver_secular,
         quartic_evaluation=args.quartic_evaluation,

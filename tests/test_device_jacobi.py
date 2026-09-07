@@ -41,3 +41,17 @@ def test_padded_sizes(size):
     out, valid = device_pinv_solve(a, rhs)
     assert valid
     torch.testing.assert_close(out, rhs)
+
+
+def test_float32_rank_cutoff_is_retained_with_double_accumulation():
+    matrix = torch.diag(torch.tensor([1.0, 1e-8, 0.0, 0.0], dtype=torch.float32))
+    solution, valid = device_pinv_solve(matrix, torch.ones(4))
+    assert valid
+    assert solution.dtype == torch.float32
+    torch.testing.assert_close(solution, torch.tensor([1.0, 0.0, 0.0, 0.0]))
+
+
+def test_unconverged_decomposition_returns_invalid_status():
+    matrix = torch.tensor([[2.0, 1.0], [1.0, 2.0]], dtype=torch.float64)
+    _, valid = device_pinv_solve(matrix, torch.ones(2, dtype=matrix.dtype), sweeps=0)
+    assert not valid

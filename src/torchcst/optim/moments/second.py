@@ -8,6 +8,8 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from torchcst._runtime.validation import require
+
 from ..atom_grad import AtomGradientObservation, AtomGradRequest
 from .base import ExpandedSecondMoment, MomentContext, SecondMomentComponent
 
@@ -29,8 +31,10 @@ class SeparableDiagonalMetric:
             raise ValueError("row and column must be vectors")
         if row.device != column.device or row.dtype != column.dtype:
             raise ValueError("row and column must share one device and dtype")
-        if torch.any(row < 0) or torch.any(column < 0):
-            raise ValueError("second-moment values must be nonnegative")
+        require(
+            (row >= 0).all() & (column >= 0).all(),
+            "second-moment values must be nonnegative",
+        )
         if eps <= 0:
             raise ValueError("eps must be positive")
         self._row = row.detach().clone()
@@ -130,8 +134,7 @@ class SeparableDiagonalSecondMoment(SecondMomentComponent):
 
         row = self.beta * state.row + (1.0 - self.beta) * observation.row_square
         column = (
-            self.beta * state.column
-            + (1.0 - self.beta) * observation.column_square
+            self.beta * state.column + (1.0 - self.beta) * observation.column_square
         )
         beta_power = state.beta_power * self.beta
         correction = 1.0 - beta_power

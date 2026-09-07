@@ -115,7 +115,7 @@ class CompiledQuarticModel:
             problem._first_linear.detach(),
             *(value.detach() for value in local),
             problem.moments.second.metric.diagonal().reshape(-1).detach(),
-            problem.context.current_point.new_tensor(1.0 / problem.learning_rate),
+            problem.context.current_point.new_full((), 1.0 / problem.learning_rate),
         )
         self.backend, self.mode = backend, mode
 

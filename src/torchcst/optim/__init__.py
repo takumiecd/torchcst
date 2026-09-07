@@ -35,6 +35,7 @@ from .optimizer import CSTOptimizer, CSTStepResult
 from .problem import QuarticProblem
 from .solvers import (
     BallNewton,
+    DeviceBFGS,
     FullQuartic,
     ProjectedLBFGS,
     QuarticSolver,
@@ -53,6 +54,7 @@ __all__ = [
     "CSTStepResult",
     "DenseAdamWProposal",
     "DenseAdamWState",
+    "DeviceBFGS",
     "ExpandedFirstMoment",
     "ExpandedMoments",
     "ExpandedSecondMoment",
