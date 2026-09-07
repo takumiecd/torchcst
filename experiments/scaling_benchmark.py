@@ -156,8 +156,24 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    result = measure(args)
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        result = measure(args)
+    except RuntimeError as error:
+        failure = {
+            "status": "failed",
+            "error": str(error),
+            "method": args.method,
+            "inputs": args.inputs,
+            "outputs": args.outputs,
+            "atoms": args.atoms,
+            "peak_allocated_mib": torch.cuda.max_memory_allocated() / 2**20,
+            "peak_reserved_mib": torch.cuda.max_memory_reserved() / 2**20,
+        }
+        args.output.with_suffix(".failure.json").write_text(
+            json.dumps(failure, indent=2)
+        )
+        raise
     args.output.write_text(json.dumps(result, indent=2))
     print(json.dumps(result), flush=True)
 
