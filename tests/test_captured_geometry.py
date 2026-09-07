@@ -70,3 +70,23 @@ def test_captured_geometry_matches_original_derivative_contract(device):
         torch.testing.assert_close(
             (actual.constant, actual.linear), (expected.constant, expected.linear)
         )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_capture_invalidates_when_kernel_buffer_changes():
+    model = CSTLinear(
+        Chart.linspace(3),
+        Chart.linspace(2),
+        atoms=3,
+        kernel=amplitude_bandwidth(),
+        dtype=torch.float64,
+    ).cuda()
+    materialize = model.cst_derivatives()._materialize_atoms
+    point = model.atoms.p.detach().clone()
+    before = call("local_derivatives", materialize, point)
+    saved = tuple(x.clone() for x in before)
+    model.kernel.input_profile.sigma.mul_(1.5)
+    after = call("local_derivatives", materialize, point)
+    torch.testing.assert_close(after, local_derivatives(materialize, point))
+    torch.testing.assert_close(before, saved)
+    assert not torch.allclose(before[0], after[0])

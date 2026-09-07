@@ -30,6 +30,7 @@ from torchcst import (
     CSTLinear,
     CSTOptimizer,
     DeviceBFGS,
+    DeviceRay,
     FullQuartic,
     Gaussian,
     ImplicitAdamConfig,
@@ -57,7 +58,7 @@ class ExperimentConfig:
     beta2: float = 0.99
     epsilon: float = 1e-8
     trust_radius: float = 0.25
-    solver: Literal["full", "projected", "newton", "device_bfgs"] = "full"
+    solver: Literal["full", "projected", "newton", "device_bfgs", "device_ray"] = "full"
     quartic_evaluation: Literal["auto", "visible", "gram"] = "auto"
     solver_execution: Literal["eager", "compiled"] = "eager"
     solver_secular: Literal["host", "device"] = "host"
@@ -162,6 +163,10 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
             max_iter=config.solver_max_iter,
             max_evaluations=config.solver_max_evaluations,
         )
+    elif config.solver == "device_ray":
+        if config.solver_starts != 1:
+            raise ValueError("DeviceRay supports exactly one start")
+        quartic = DeviceRay(corrections=config.solver_max_iter)
     elif config.solver == "projected":
         quartic = ProjectedLBFGS(
             max_iter=config.solver_max_iter,
@@ -308,7 +313,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trust-radius", type=float, default=0.25)
     parser.add_argument(
         "--solver",
-        choices=("full", "projected", "newton", "device_bfgs"),
+        choices=("full", "projected", "newton", "device_bfgs", "device_ray"),
         default="full",
     )
     parser.add_argument(

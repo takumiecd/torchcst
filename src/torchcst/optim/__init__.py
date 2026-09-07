@@ -36,6 +36,7 @@ from .problem import QuarticProblem
 from .solvers import (
     BallNewton,
     DeviceBFGS,
+    DeviceRay,
     FullQuartic,
     ProjectedLBFGS,
     QuarticSolver,
@@ -55,6 +56,7 @@ __all__ = [
     "DenseAdamWProposal",
     "DenseAdamWState",
     "DeviceBFGS",
+    "DeviceRay",
     "ExpandedFirstMoment",
     "ExpandedMoments",
     "ExpandedSecondMoment",
