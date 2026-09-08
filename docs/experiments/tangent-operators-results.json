@@ -1,0 +1,374 @@
+{
+  "implementation_commits": [
+    "bbe78ae",
+    "efefda8"
+  ],
+  "cpu": {
+    "environment": {
+      "source_sha256": "873c3a32c0a5d6922a945886463b93b6ccefa9d4aba37f9550bbf61d2f161f10",
+      "torch": "2.13.0",
+      "platform": "macOS-26.5.2-arm64-arm-64bit",
+      "gpu": null,
+      "threads": 1
+    },
+    "options": {
+      "device": "cpu",
+      "dtype": "float32",
+      "atoms": [
+        32,
+        85,
+        256
+      ],
+      "inputs": 784,
+      "outputs": 10,
+      "tile": 32,
+      "damping": 0.01,
+      "max_iter": 128,
+      "rtol": 1e-05,
+      "repeats": 3,
+      "output": "output/tangent-ops-cpu.json"
+    },
+    "cases": [
+      {
+        "atoms": 32,
+        "inputs": 784,
+        "outputs": 10,
+        "parameters": 96,
+        "single_prepared_factor_bytes": 406912,
+        "single_dense_gram_bytes": 36864,
+        "transport_relative_error": 1.3095725248842287e-07,
+        "alpha_relative_error_vs_direct": 0.0005445481866312143,
+        "visible_history_relative_error_vs_direct": 3.715075721634044e-05,
+        "direct_true_relative_residual": 2.530333035373288e-05,
+        "pcg": {
+          "iterations": 63,
+          "relative_residual": 8.300918257930318e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "timings": {
+          "prepare_specialized": {
+            "median_ms": 0.2581672742962837,
+            "incremental_cuda_peak_bytes": null
+          },
+          "prepare_factor_autograd": {
+            "median_ms": 1.7264168709516525,
+            "incremental_cuda_peak_bytes": null
+          },
+          "transport_action": {
+            "median_ms": 0.16962550580501556,
+            "incremental_cuda_peak_bytes": null
+          },
+          "transport_full_gram": {
+            "median_ms": 0.2608327195048332,
+            "incremental_cuda_peak_bytes": null
+          },
+          "weighted_action": {
+            "median_ms": 0.3022504970431328,
+            "incremental_cuda_peak_bytes": null
+          },
+          "weighted_full_gram": {
+            "median_ms": 0.5935830995440483,
+            "incremental_cuda_peak_bytes": null
+          },
+          "recompression_direct": {
+            "median_ms": 0.5863336846232414,
+            "incremental_cuda_peak_bytes": null
+          },
+          "recompression_pcg": {
+            "median_ms": 12.879082933068275,
+            "incremental_cuda_peak_bytes": null
+          }
+        }
+      },
+      {
+        "atoms": 85,
+        "inputs": 784,
+        "outputs": 10,
+        "parameters": 255,
+        "single_prepared_factor_bytes": 1080860,
+        "single_dense_gram_bytes": 260100,
+        "transport_relative_error": 1.0234272201646222e-07,
+        "alpha_relative_error_vs_direct": 0.0011125619596665652,
+        "visible_history_relative_error_vs_direct": 0.00010361707940399558,
+        "direct_true_relative_residual": 9.034619424173163e-05,
+        "pcg": {
+          "iterations": 76,
+          "relative_residual": 5.974505504161567e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "timings": {
+          "prepare_specialized": {
+            "median_ms": 0.5489587783813477,
+            "incremental_cuda_peak_bytes": null
+          },
+          "prepare_factor_autograd": {
+            "median_ms": 2.08474975079298,
+            "incremental_cuda_peak_bytes": null
+          },
+          "transport_action": {
+            "median_ms": 0.6282506510615349,
+            "incremental_cuda_peak_bytes": null
+          },
+          "transport_full_gram": {
+            "median_ms": 0.6622923538088799,
+            "incremental_cuda_peak_bytes": null
+          },
+          "weighted_action": {
+            "median_ms": 1.1960417032241821,
+            "incremental_cuda_peak_bytes": null
+          },
+          "weighted_full_gram": {
+            "median_ms": 1.7151664942502975,
+            "incremental_cuda_peak_bytes": null
+          },
+          "recompression_direct": {
+            "median_ms": 3.0356664210557938,
+            "incremental_cuda_peak_bytes": null
+          },
+          "recompression_pcg": {
+            "median_ms": 52.01470945030451,
+            "incremental_cuda_peak_bytes": null
+          }
+        }
+      },
+      {
+        "atoms": 256,
+        "inputs": 784,
+        "outputs": 10,
+        "parameters": 768,
+        "single_prepared_factor_bytes": 3255296,
+        "single_dense_gram_bytes": 2359296,
+        "transport_relative_error": 1.785396702342652e-07,
+        "alpha_relative_error_vs_direct": 0.0026412979399400034,
+        "visible_history_relative_error_vs_direct": 0.0002596607945413594,
+        "direct_true_relative_residual": 0.0002473628681318009,
+        "pcg": {
+          "iterations": 103,
+          "relative_residual": 9.325204971695519e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "timings": {
+          "prepare_specialized": {
+            "median_ms": 1.7006248235702515,
+            "incremental_cuda_peak_bytes": null
+          },
+          "prepare_factor_autograd": {
+            "median_ms": 4.425959661602974,
+            "incremental_cuda_peak_bytes": null
+          },
+          "transport_action": {
+            "median_ms": 3.333957865834236,
+            "incremental_cuda_peak_bytes": null
+          },
+          "transport_full_gram": {
+            "median_ms": 4.094666801393032,
+            "incremental_cuda_peak_bytes": null
+          },
+          "weighted_action": {
+            "median_ms": 6.512582302093506,
+            "incremental_cuda_peak_bytes": null
+          },
+          "weighted_full_gram": {
+            "median_ms": 8.063082583248615,
+            "incremental_cuda_peak_bytes": null
+          },
+          "recompression_direct": {
+            "median_ms": 31.268540769815445,
+            "incremental_cuda_peak_bytes": null
+          },
+          "recompression_pcg": {
+            "median_ms": 338.5078748688102,
+            "incremental_cuda_peak_bytes": null
+          }
+        }
+      }
+    ]
+  },
+  "a100_mig": {
+    "environment": {
+      "source_sha256": "873c3a32c0a5d6922a945886463b93b6ccefa9d4aba37f9550bbf61d2f161f10",
+      "torch": "2.6.0+cu126",
+      "platform": "Linux-6.8.0-55-generic-x86_64-with-glibc2.39",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "threads": 1
+    },
+    "options": {
+      "device": "cuda",
+      "dtype": "float32",
+      "atoms": [
+        32,
+        85,
+        256
+      ],
+      "inputs": 784,
+      "outputs": 10,
+      "tile": 32,
+      "damping": 0.01,
+      "max_iter": 128,
+      "rtol": 1e-05,
+      "repeats": 3,
+      "output": "output/tangent-ops-a100.json"
+    },
+    "cases": [
+      {
+        "atoms": 32,
+        "inputs": 784,
+        "outputs": 10,
+        "parameters": 96,
+        "single_prepared_factor_bytes": 406912,
+        "single_dense_gram_bytes": 36864,
+        "transport_relative_error": 1.5619805192193838e-07,
+        "alpha_relative_error_vs_direct": 0.00038233667087182076,
+        "visible_history_relative_error_vs_direct": 2.2845844563661084e-05,
+        "direct_true_relative_residual": 1.660597524576809e-05,
+        "pcg": {
+          "iterations": 57,
+          "relative_residual": 5.453284443963374e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "timings": {
+          "prepare_specialized": {
+            "median_ms": 1.2210519053041935,
+            "incremental_cuda_peak_bytes": 905216
+          },
+          "prepare_factor_autograd": {
+            "median_ms": 4.17218217626214,
+            "incremental_cuda_peak_bytes": 2011136
+          },
+          "transport_action": {
+            "median_ms": 0.37531694397330284,
+            "incremental_cuda_peak_bytes": 505344
+          },
+          "transport_full_gram": {
+            "median_ms": 0.6163842044770718,
+            "incremental_cuda_peak_bytes": 749568
+          },
+          "weighted_action": {
+            "median_ms": 0.6891582161188126,
+            "incremental_cuda_peak_bytes": 611328
+          },
+          "weighted_full_gram": {
+            "median_ms": 0.9057107381522655,
+            "incremental_cuda_peak_bytes": 1058816
+          },
+          "recompression_direct": {
+            "median_ms": 3.8057100027799606,
+            "incremental_cuda_peak_bytes": 749568
+          },
+          "recompression_pcg": {
+            "median_ms": 45.41115602478385,
+            "incremental_cuda_peak_bytes": 513536
+          }
+        }
+      },
+      {
+        "atoms": 85,
+        "inputs": 784,
+        "outputs": 10,
+        "parameters": 255,
+        "single_prepared_factor_bytes": 1080860,
+        "single_dense_gram_bytes": 260100,
+        "transport_relative_error": 1.653781220246833e-07,
+        "alpha_relative_error_vs_direct": 0.0010019479610441327,
+        "visible_history_relative_error_vs_direct": 5.9675976167586346e-05,
+        "direct_true_relative_residual": 3.56513080495194e-05,
+        "pcg": {
+          "iterations": 80,
+          "relative_residual": 8.1174242985638e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "timings": {
+          "prepare_specialized": {
+            "median_ms": 0.9121480397880077,
+            "incremental_cuda_peak_bytes": 2403328
+          },
+          "prepare_factor_autograd": {
+            "median_ms": 4.086516797542572,
+            "incremental_cuda_peak_bytes": 5340672
+          },
+          "transport_action": {
+            "median_ms": 1.6935430467128754,
+            "incremental_cuda_peak_bytes": 674816
+          },
+          "transport_full_gram": {
+            "median_ms": 0.6217649206519127,
+            "incremental_cuda_peak_bytes": 2641920
+          },
+          "weighted_action": {
+            "median_ms": 3.3325939439237118,
+            "incremental_cuda_peak_bytes": 780800
+          },
+          "weighted_full_gram": {
+            "median_ms": 0.9051491506397724,
+            "incremental_cuda_peak_bytes": 3456000
+          },
+          "recompression_direct": {
+            "median_ms": 13.105455320328474,
+            "incremental_cuda_peak_bytes": 2641920
+          },
+          "recompression_pcg": {
+            "median_ms": 167.95666702091694,
+            "incremental_cuda_peak_bytes": 688640
+          }
+        }
+      },
+      {
+        "atoms": 256,
+        "inputs": 784,
+        "outputs": 10,
+        "parameters": 768,
+        "single_prepared_factor_bytes": 3255296,
+        "single_dense_gram_bytes": 2359296,
+        "transport_relative_error": 7.359385409860892e-07,
+        "alpha_relative_error_vs_direct": 0.0018111001433990497,
+        "visible_history_relative_error_vs_direct": 0.00010772496707124371,
+        "direct_true_relative_residual": 8.361414322112203e-05,
+        "pcg": {
+          "iterations": 117,
+          "relative_residual": 6.700896920390814e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "timings": {
+          "prepare_specialized": {
+            "median_ms": 0.9111328981816769,
+            "incremental_cuda_peak_bytes": 7230976
+          },
+          "prepare_factor_autograd": {
+            "median_ms": 4.0709273889660835,
+            "incremental_cuda_peak_bytes": 16079360
+          },
+          "transport_action": {
+            "median_ms": 9.423819836229086,
+            "incremental_cuda_peak_bytes": 1219584
+          },
+          "transport_full_gram": {
+            "median_ms": 1.0870960541069508,
+            "incremental_cuda_peak_bytes": 14303232
+          },
+          "weighted_action": {
+            "median_ms": 18.950272351503372,
+            "incremental_cuda_peak_bytes": 1325568
+          },
+          "weighted_full_gram": {
+            "median_ms": 1.858890987932682,
+            "incremental_cuda_peak_bytes": 16746496
+          },
+          "recompression_direct": {
+            "median_ms": 70.83734031766653,
+            "incremental_cuda_peak_bytes": 16733184
+          },
+          "recompression_pcg": {
+            "median_ms": 1168.737679719925,
+            "incremental_cuda_peak_bytes": 1256448
+          }
+        }
+      }
+    ]
+  }
+}

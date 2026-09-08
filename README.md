@@ -543,7 +543,8 @@ Neither is claimed to reproduce diagonal Adam or preserve learning accuracy.
 
 `FirstOrderAdamConfig` contains only first-order controls: learning rate, betas,
 epsilon, trust radius, second-moment backend, first-moment damping, observation
-mode/chunk size, factored geometry and tangent rank cutoff. There is no
+mode/chunk size, factored geometry, tangent rank cutoff, prepared backend/tile,
+and recompression solver/budget/tolerance. There is no
 `approximation_order` or `first_moment_frame` switch and no quartic setting.
 The old `CSTOptimizer` and `ImplicitAdamConfig` names have been replaced.
 
@@ -612,7 +613,7 @@ solver still constructs its full weighted Gram; only transport/recompression
 have moved to the matrix-free path in this implementation.
 
 Checkpoints use schema version 2 and record the algorithm and moment contract.
-Loading a different algorithm/backend or incompatible parameter ownership is an
+Loading a different algorithm/second-moment definition or incompatible parameter ownership is an
 error; there is no implicit conversion of old checkpoints.
 
 See [the mathematical design and complete memory accounting](docs/first-order-rebuild.ja.md)

@@ -38,7 +38,7 @@ optimizerと汎用縮約コードには`p[:, 0]`を振幅とみなす処理や�
 
 ## 2. Parameter入力と準備済み作用
 
-内部APIの提案：
+実装した内部API：
 
 ```python
 ops = site.cst_derivatives().tangent_ops(backend="auto")
