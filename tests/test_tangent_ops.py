@@ -27,6 +27,10 @@ def site_for(kind, dtype=torch.float64):
             site.atoms.p[:, 0].copy_(
                 torch.tensor([0.0, 1e-10, -0.2, 0.5, -1.0], dtype=dtype)
             )
+        if kind == "bandwidth":
+            site.atoms.p[:, 0].copy_(
+                torch.tensor([0.0, 1e-10, -0.003, 0.005, -0.02], dtype=dtype)
+            )
     return site
 
 
@@ -84,6 +88,8 @@ def test_descriptor_compatibility_and_fixed_config_guard():
     ops = site.cst_derivatives().tangent_ops()
     p = site.atoms.p
     prepared = ops.prepare(p)
+    with pytest.raises(ValueError, match="dtype/device"):
+        ops.prepare(p.float())
     clone = copy.deepcopy(site)
     same = clone.cst_derivatives().tangent_ops().prepare(p)
     torch.testing.assert_close(
@@ -147,3 +153,41 @@ def test_fast_gram_scratch_is_bounded_by_tile():
     with AllocationGuard():
         frame.gram_matvec(x)
         frame.weighted_gram_matvec(metric, x)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("backend", ["specialized", "factor_autograd", "reference"])
+def test_cuda_weighted_transport_and_compression(dtype, backend):
+    from torchcst._derivatives.tangent_solve import solve_compression
+
+    site = site_for("bandwidth", dtype).to("cuda")
+    p = site.atoms.p.detach().clone()
+    old = p + 0.015 * torch.randn_like(p)
+    ops = site.cst_derivatives().tangent_ops(backend=backend, atom_tile=3)
+    current, previous = ops.prepare(p), ops.prepare(old)
+    j, js = jacobian(site, p), jacobian(site, old)
+    x = torch.randn_like(p)
+    metric = SeparableDiagonalMetric(
+        torch.rand(4, device=p.device, dtype=dtype),
+        torch.rand(6, device=p.device, dtype=dtype),
+        eps=0.1,
+    )
+    tolerance = 3e-5 if dtype == torch.float32 else 1e-10
+    expected = j.T @ (metric.diagonal().flatten()[:, None] * js) @ x.flatten()
+    torch.testing.assert_close(
+        current.cross_gram_matvec(previous, x, metric=metric).flatten(),
+        expected,
+        rtol=tolerance,
+        atol=tolerance,
+    )
+    alpha, result = solve_compression(
+        current, x, damping=0.1, rtol=tolerance, max_iter=128
+    )
+    direct = torch.linalg.solve(
+        j.T @ j + 0.1 * torch.eye(p.numel(), device=p.device, dtype=dtype), x.flatten()
+    )
+    torch.testing.assert_close(
+        alpha.flatten(), direct, rtol=10 * tolerance, atol=10 * tolerance
+    )
+    assert result.converged

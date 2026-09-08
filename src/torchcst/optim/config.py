@@ -25,12 +25,48 @@ class FirstOrderAdamConfig:
     row_chunk_size: int = 16
     factored_geometry: bool = True
     tangent_rtol: float = 1e-6
+    tangent_backend: Literal["auto", "specialized", "factor_autograd", "reference"] = (
+        "auto"
+    )
+    tangent_atom_tile: int = 32
+    recompression: Literal["direct", "pcg"] = "direct"
+    recompression_max_iter: int = 64
+    recompression_rtol: float = 1e-5
 
     @property
     def device_execution(self) -> bool:
         return False
 
     def __post_init__(self) -> None:
+        from torchcst._derivatives.tangent_solve import validate_pcg
+
+        if self.tangent_backend not in (
+            "auto",
+            "specialized",
+            "factor_autograd",
+            "reference",
+        ):
+            raise ValueError("invalid tangent_backend")
+        if not self.factored_geometry and self.tangent_backend not in (
+            "auto",
+            "reference",
+        ):
+            raise ValueError(
+                "factored_geometry=False requires auto or reference backend"
+            )
+        if (
+            isinstance(self.tangent_atom_tile, bool)
+            or not isinstance(self.tangent_atom_tile, int)
+            or self.tangent_atom_tile < 1
+        ):
+            raise ValueError("tangent_atom_tile must be a positive integer")
+        if self.recompression not in ("direct", "pcg"):
+            raise ValueError("recompression must be direct or pcg")
+        validate_pcg(
+            damping=self.first_moment_damping if self.recompression == "pcg" else 1.0,
+            max_iter=self.recompression_max_iter,
+            rtol=self.recompression_rtol,
+        )
         for name in ("lr", "eps", "trust_radius", "tangent_rtol"):
             value = getattr(self, name)
             if not math.isfinite(value) or value <= 0:

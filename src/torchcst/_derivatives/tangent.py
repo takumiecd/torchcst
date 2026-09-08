@@ -12,8 +12,26 @@ class TangentGeometry(AutogradFrameGeometry):
     observations stream output rows and atoms rather than storing a visible J.
     """
 
-    def __init__(self, derivatives, *, factored=True):
-        self.factored = factored and derivatives.factor_atoms is not None
+    def __init__(
+        self,
+        derivatives,
+        *,
+        factored=True,
+        ops=None,
+        recompression="direct",
+        recompression_max_iter=64,
+        recompression_rtol=1e-5,
+    ):
+        self.ops = ops or derivatives.tangent_ops(
+            backend="auto" if factored else "reference"
+        )
+        self.ops.check_configuration()
+        self._prepared = []
+        self.recompression = recompression
+        self.recompression_max_iter = recompression_max_iter
+        self.recompression_rtol = recompression_rtol
+        self.compression_result = None
+        self.factored = factored and self.ops.backend != "reference"
         if self.factored:
             self.derivatives = derivatives
             u, v = derivatives.factor_atoms(derivatives.current_point())
@@ -24,18 +42,23 @@ class TangentGeometry(AutogradFrameGeometry):
         self._tangent_point = None
         self._columns = None
 
+    def prepared(self, point):
+        for original, version, prepared in self._prepared:
+            if (original is point and version == point._version) or torch.equal(
+                prepared._point, point
+            ):
+                return prepared
+        result = self.ops.prepare(point)
+        self._prepared = (self._prepared + [(point, point._version, result)])[-2:]
+        return result
+
     def _parts(self, point):
         if self._tangent_point is not None and torch.equal(self._tangent_point, point):
             return self._columns
         with torch.no_grad():
             if self.factored:
-
-                def one(p):
-                    u, v = self.derivatives.factor_atoms(p[None])
-                    return u[:, 0], v[:, 0]
-
-                u, v = torch.vmap(one)(point)
-                du, dv = torch.vmap(torch.func.jacfwd(one))(point)
+                prepared = self.prepared(point)
+                u, v, du, dv = (prepared._u, prepared._v, prepared._du, prepared._dv)
                 q = point.shape[-1]
                 left = (dv.transpose(1, 2), v[:, None].expand(-1, q, -1))
                 right = (u[:, None].expand(-1, q, -1), du.transpose(1, 2))
@@ -60,13 +83,7 @@ class TangentGeometry(AutogradFrameGeometry):
     def cross(self, point, source_point, *, local=False, metric=None):
         """J(point)^T D J(source), optionally only matching atom blocks."""
         current = self._parts(point)
-        # A distinct cache preserves the current factors for the rest of the step.
-        source = (
-            self
-            if torch.equal(point, source_point)
-            else TangentGeometry(self.derivatives, factored=self.factored)
-        )
-        previous = source._parts(source_point)
+        previous = self._parts(source_point)
         if self.factored and (metric is None or hasattr(metric, "separable_weights")):
             left, right = current
             old_left, old_right = previous
@@ -141,10 +158,9 @@ class TangentGeometry(AutogradFrameGeometry):
 
     def pullback_from_frame(self, *, current_point, source_frame, source_coefficients):
         self._validate_frame(source_frame)
-        constant = (
-            self.cross(current_point, source_frame.point)
-            @ source_coefficients.flatten()
-        ).reshape_as(current_point)
+        constant = self.prepared(current_point).cross_gram_matvec(
+            self.prepared(source_frame.point), source_coefficients
+        )
         return AffinePullback(
             constant,
             current_point.new_zeros(*current_point.shape, current_point.shape[-1]),
@@ -157,3 +173,25 @@ class TangentGeometry(AutogradFrameGeometry):
             damping=damping,
             rtol=rtol,
         )
+
+    def compress(self, *, frame, pullback_numerator, damping=0.0, rtol=None):
+        if self.recompression == "direct":
+            return super().compress(
+                frame=frame,
+                pullback_numerator=pullback_numerator,
+                damping=damping,
+                rtol=rtol,
+            )
+        if self.recompression != "pcg":
+            raise ValueError("recompression must be direct or pcg")
+        from .tangent_solve import solve_compression
+
+        self._validate_frame(frame)
+        alpha, self.compression_result = solve_compression(
+            self.prepared(frame.point),
+            pullback_numerator,
+            damping=damping,
+            max_iter=self.recompression_max_iter,
+            rtol=self.recompression_rtol,
+        )
+        return alpha

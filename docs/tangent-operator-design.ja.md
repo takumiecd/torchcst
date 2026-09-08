@@ -1,8 +1,18 @@
 # Parameter値を受け取るCST専用1次作用の設計
 
-2026-09-08。**設計案。以下の新しいAPI・高速経路はまだ未実装。**
+2026-09-08。**準備済み作用・輸送・PCG再圧縮を実装済み。**
 現在稼働するoptimizerは[first-order-rebuild.ja.md](first-order-rebuild.ja.md)を参照。
 今回の対象は1次版の輸送・再圧縮。2次optimizerの更新式は変更しない。
+
+実装：`AtomDerivatives.tangent_ops()`、kernel-owned analytic factor微分、
+tile化cross/weighted Gram作用、block前処理PCG。`CSTAdam`の輸送は新作用を使い、
+`recompression="pcg"`と正の`first_moment_damping`で再圧縮も切り替える。
+既定はdamping=0のdirect圧縮を維持。詳細な使用例・設定はREADME参照。
+
+現在の制約：factor配列は`O(Kq(I+O))`、atom間の計算量は依然二乗。
+PyTorch eager実装でCUDA融合は未実装、PCG収束判定はhost同期を伴う。
+更新方向を解くweighted Gramの直接求解は残っており、optimizer全体の
+linear-memory化までは完了していない。以下はその先も含む設計契約である。
 
 ## 1. 選択する境界
 

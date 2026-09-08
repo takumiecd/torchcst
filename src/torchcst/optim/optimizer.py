@@ -31,6 +31,7 @@ class CSTStepResult:
 
     site_results: tuple[QuarticSolveResult, ...]
     device_valid: Tensor | None = None
+    compression_results: tuple = ()
 
 
 @dataclass
@@ -259,6 +260,10 @@ class _ModelOptimizer(Optimizer):
         self.last_step = CSTStepResult(
             site_results=tuple(proposal.solve for proposal in cst_proposals),
             device_valid=valid,
+            compression_results=tuple(
+                getattr(proposal.context.geometry, "compression_result", None)
+                for proposal in cst_proposals
+            ),
         )
 
     def check_errors(self) -> None:

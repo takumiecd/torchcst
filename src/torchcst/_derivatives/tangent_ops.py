@@ -122,6 +122,9 @@ class TangentOps:
         self.check_configuration()
         if tuple(p.shape) != self.derivatives.point_shape:
             raise ValueError("parameter shape does not match tangent operator")
+        parameter = self.derivatives.atoms.p
+        if p.dtype != parameter.dtype or p.device != parameter.device:
+            raise ValueError("parameter dtype/device must match the bound site")
         if not p.is_floating_point() or not torch.isfinite(p).all():
             raise ValueError("parameters must be finite floating-point values")
         point = p.detach().clone()

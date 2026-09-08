@@ -550,9 +550,66 @@ The old `CSTOptimizer` and `ImplicitAdamConfig` names have been replaced.
 This first-order implementation is eager CPU/CUDA float32/64. It does not
 support MPS or deferred device execution. The direct solver retains a full
 parameter-space Gram for the separable metric. First-moment compression and
-transport also retain full Gram/cross-Gram matrices for **all three backends**.
+transport use the prepared tangent operator described below; compression is
+matrix-free when `recompression="pcg"` is explicitly selected.
 Atom block/diagonal metric state scales linearly with atom count at fixed
 parameters per atom, but the complete optimizer is not yet linear-memory.
+
+### Prepared tangent actions and recompression
+
+```python
+ops = layer.cst_derivatives().tangent_ops(backend="auto", atom_tile=32)
+current = ops.prepare(layer.atoms.p)  # ordinary Tensor / nn.Parameter
+previous = ops.prepare(saved_parameters)
+pulled = current.cross_gram_matvec(previous, alpha)  # J_current.T @ J_old @ alpha
+gram_x = current.gram_matvec(x)
+weighted_x = current.weighted_gram_matvec(metric, x)
+blocks = current.gram_blocks()  # exact same-atom blocks, for preconditioning
+
+optimizer = CSTAdam(
+    model,
+    recompression="pcg",
+    first_moment_damping=1e-3,  # explicit algorithm choice, not a tuned default
+    recompression_max_iter=64,
+    recompression_rtol=1e-5,
+    tangent_atom_tile=32,
+)
+# After optimizer.step():
+diagnostics = optimizer.last_step.compression_results
+```
+
+`auto` selects kernel-owned analytic first factor derivatives when available
+(Gaussian Separable, Amplitude, AmplitudeBandwidthSeparable), then exact
+`factor_autograd`, then `reference`. The selected name is `ops.backend`.
+`specialized` fails explicitly if unsupported. `factored_geometry=False` forces
+the reference path. Prepared objects own detached parameter/factor snapshots;
+their `jvp(x)` and `vjp(force)` are also available as dense-visible oracles.
+
+Fast Gram actions preserve cross-atom coupling, with bounded atom-pair tiles
+and no full Gram or visible weight matrix. `weighted_gram_matvec` accepts the
+separable row/column metric and includes epsilon exactly. Metric construction
+does not materialize its visible diagonal until a dense operation requests it.
+Cached factors cost O(K q (inputs + outputs)); pairwise arithmetic still scales
+quadratically in K. These are eager PyTorch contractions, not fused CUDA kernels.
+
+PCG solves **(J.T J + damping I) alpha = b**, using exact same-atom blocks only
+as a preconditioner. It does not introduce D into first-moment compression or
+discard cross-atom terms. Positive damping is required; zero-damping minimum-norm
+compression keeps the existing `direct` default. PCG uses native parameter dtype
+and FP64 scalar reductions, checks the true residual of the returned alpha, and
+raises before any parameter/moment commit on failure. CUDA convergence checks
+currently synchronize with the host. Diagnostics report iterations and residual;
+direct compression reports `None`.
+
+Fixed kernel/profile configuration and chart buffers must remain unchanged for
+the lifetime of an optimizer. Checkpoints now include their tangent descriptors;
+first-order checkpoints without descriptors are rejected. Load model state before
+constructing the optimizer. Custom kernels/profiles declare non-buffer settings
+through `tangent_config()` and bump `tangent_layout_version` when layout semantics
+change. Writes through tensor `.data` bypass version checks and are unsupported.
+Prepared caches are step-local and never serialized. The separable **update**
+solver still constructs its full weighted Gram; only transport/recompression
+have moved to the matrix-free path in this implementation.
 
 Checkpoints use schema version 2 and record the algorithm and moment contract.
 Loading a different algorithm/backend or incompatible parameter ownership is an
