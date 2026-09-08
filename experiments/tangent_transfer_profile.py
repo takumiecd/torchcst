@@ -32,7 +32,15 @@ from torchcst.kernels import Amplitude, Gaussian, Separable
 from torchcst.optim.moments import SeparableDiagonalMetric
 
 
-def setup(atoms, device_execution=False):
+def setup(
+    atoms,
+    device_execution=False,
+    update_solver="spectral",
+    *,
+    update_max_iter=512,
+    update_shift_steps=32,
+    update_rtol=1e-5,
+):
     torch.manual_seed(17)
     site = CSTLinear(
         Chart.linspace(784),
@@ -65,6 +73,10 @@ def setup(atoms, device_execution=False):
         first_moment_damping=0.01,
         recompression_max_iter=256,
         device_execution=device_execution,
+        update_solver=update_solver,
+        update_max_iter=update_max_iter,
+        update_shift_steps=update_shift_steps,
+        update_rtol=update_rtol,
     )
     inputs = torch.randn(32, 784, device="cuda")
     targets = torch.randn(32, 10, device="cuda")
@@ -76,6 +88,21 @@ def setup(atoms, device_execution=False):
         return optimizer.last_step.compression_results[0]
 
     training_step.check_errors = optimizer.check_errors
+
+    def update_diagnostics():
+        result = optimizer.last_step.site_results[0]
+        names = (
+            "iterations",
+            "converged",
+            "on_boundary",
+            "shift",
+            "relative_residual",
+            "relative_complementarity",
+            "shift_iterations",
+        )
+        return {name: getattr(result, name) for name in names if hasattr(result, name)}
+
+    training_step.update_diagnostics = update_diagnostics
 
     operations = {
         "prepare": lambda: ops.prepare(p),
@@ -281,6 +308,11 @@ def capture(fn, name, destination):
     info["allocated_after_warmup_bytes"] = allocated_warm
     info["steady_peak_allocated_bytes"] = peak_bytes
     info["profiled_diagnostics"] = diagnostics(value)
+    if hasattr(fn, "update_diagnostics"):
+        info["update_diagnostics"] = {
+            k: v.item() if isinstance(v, torch.Tensor) else v
+            for k, v in fn.update_diagnostics().items()
+        }
     with trace.open("rb") as source, gzip.open(str(trace) + ".gz", "wb") as target:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             target.write(chunk)
@@ -305,6 +337,12 @@ def main():
     parser.add_argument("--atoms", type=int, default=85)
     parser.add_argument("--device-execution", action="store_true")
     parser.add_argument(
+        "--update-solver", choices=["spectral", "pcg"], default="spectral"
+    )
+    parser.add_argument("--update-max-iter", type=int, default=512)
+    parser.add_argument("--update-shift-steps", type=int, default=32)
+    parser.add_argument("--update-rtol", type=float, default=1e-5)
+    parser.add_argument(
         "--operations",
         nargs="+",
         default=["prepare", "transport", "weighted", "direct", "pcg", "training_step"],
@@ -327,12 +365,23 @@ def main():
     result = {
         "atoms": args.atoms,
         "device_execution": args.device_execution,
+        "update_solver": args.update_solver,
+        "update_max_iter": args.update_max_iter,
+        "update_shift_steps": args.update_shift_steps,
+        "update_rtol": args.update_rtol,
         "torch": torch.__version__,
         "gpu": torch.cuda.get_device_name(),
         "source_sha256": fingerprint.hexdigest(),
         "operations": {},
     }
-    operations = setup(args.atoms, args.device_execution)
+    operations = setup(
+        args.atoms,
+        args.device_execution,
+        args.update_solver,
+        update_max_iter=args.update_max_iter,
+        update_shift_steps=args.update_shift_steps,
+        update_rtol=args.update_rtol,
+    )
     for name in args.operations:
         info = capture(operations[name], name, args.output)
         result["operations"][name] = info

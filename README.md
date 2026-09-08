@@ -710,6 +710,8 @@ budget and inactive graph nodes still launch. This can be slower than spectral
 updates on small problems; it is an explicit memory-oriented option.
 The PCG update does not build or call the native cuSOLVER extension.
 
+See [the matrix-free solver's A100 timings, memory costs, and dense accuracy audit](docs/experiments/trust-pcg.ja.md).
+
 Fixed kernel/profile configuration and chart buffers must remain unchanged for
 the lifetime of an optimizer. Checkpoints now include their tangent descriptors;
 first-order checkpoints without descriptors are rejected. Load model state before
