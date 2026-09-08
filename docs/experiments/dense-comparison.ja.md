@@ -82,3 +82,5 @@ python -m experiments.summarize_dense_comparison output/dense-comparison \
 ```
 
 [集約値・各seedの全評価checkpoint・ソースhash](dense-comparison-results.json)。
+
+[追加測定：処理別の時間内訳](stage-timing.ja.md)で再圧縮が約70%を占めることを確認した。
