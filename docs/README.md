@@ -4,7 +4,9 @@
 mathematical derivation and experimental decisions behind the continuous-only
 rewrite:
 
-- `implicit-projected-adam-decisions.ja.md` — selected implementation decisions;
+- [first-order-rebuild.ja.md](first-order-rebuild.ja.md) — current optimizer API, equations, experimental metrics and memory boundaries;
+- [experiments/tangent-rebuild.md](experiments/tangent-rebuild.md) — rebuilt first-order learning pilot;
+- `implicit-projected-adam-decisions.ja.md` — historical second-order implementation decisions;
 - `implicit-projected-moment-transport.md` — moment-transport derivation;
 - `implicit-projected-moment-transport.ja.md` — Japanese version;
 - `second-order-pullback-moment-spaces.md` — second-order moment-space analysis.

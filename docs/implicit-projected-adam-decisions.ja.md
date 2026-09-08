@@ -1,5 +1,8 @@
 # Implicit projected Adam: 実験知見と設計判断
 
+> 2026-09-08追記：optimizerの主軸を1次へ変更し、2次は任意APIとして残す。
+> 現在の選択は[first-order-rebuild.ja.md](first-order-rebuild.ja.md)を参照。以下は以前の判断記録。
+
 Status: selected research direction; production implementation is not yet complete.
 
 この文書は、implicit projected moment optimizer に関する議論と実験から、

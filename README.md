@@ -1,9 +1,8 @@
 # torchcst — fixed-shape continuous operators for PyTorch
 
 > [!WARNING]
-> **Ground-up research rewrite.** This branch defines the target contract and
-> implements it in separately tested milestones. Imports may be unavailable
-> until their milestone lands. There is intentionally no compatibility promise for earlier
+> **Research API.** First-order CST Adam is the primary optimizer; the full
+> second-order algorithm remains an explicit option. There is intentionally no compatibility promise for earlier
 > `SynapseStore`, structural-policy, or Pullback Adam APIs.
 
 `torchcst` represents an operator as a sum of a fixed number of kernel-defined
@@ -19,16 +18,18 @@ The initial scope is deliberately narrow:
 - fixed-cardinality input and output charts whose coordinates are frozen by
   default;
 - an implicit projected Adam optimizer;
-- a full second-order CST displacement and unapproximated quartic objective;
-- direct commit of the trust-bounded quartic proposal;
+- a primary first-order optimizer with current-tangent moment compression and transport;
+- an optional second-order optimizer retaining the full quartic objective;
+- direct commit of a trust-bounded proposal;
 - no persistent dense represented-weight moments.
 
-The selected mathematical and experimental decisions are recorded in
-[`docs/implicit-projected-adam-decisions.ja.md`](docs/implicit-projected-adam-decisions.ja.md).
+The current optimizer design, equations and memory limits are recorded in
+[the first-order rebuild](docs/first-order-rebuild.ja.md). Earlier second-order
+decisions remain in [the historical decision record](docs/implicit-projected-adam-decisions.ja.md).
 
-## Target API
+## Basic use
 
-The README example is the public contract for the rewrite.
+The README example is the public API contract.
 
 ```python
 import torch
@@ -40,10 +41,8 @@ from torchcst import (
     AmplitudeBandwidthSeparable,
     Chart,
     CSTLinear,
-    CSTOptimizer,
-    FullQuartic,
+    CSTAdam,
     Gaussian,
-    ImplicitAdamConfig,
     Separable,
 )
 
@@ -64,16 +63,12 @@ model = CSTLinear(
     backend="auto",
 )
 
-optimizer = CSTOptimizer(
+optimizer = CSTAdam(
     model,
-    cst=ImplicitAdamConfig(
-        lr=0.05,
-        betas=(0.9, 0.99),
-        eps=1e-8,
-        second_moment="separable",
-        trust_radius=0.25,
-        quartic=FullQuartic(starts=4, max_iter=80),
-    ),
+    lr=0.05,
+    betas=(0.9, 0.99),
+    trust_radius=0.25,
+    second_moment="separable",
     dense=None,
 )
 
@@ -91,7 +86,7 @@ This API makes seven ownership decisions explicit:
 2. `Atoms` owns one fixed-shape opaque parameter table;
 3. a `Kernel` interprets complete atom rows but owns no trainable state;
 4. a `CSTLinear` composes charts, atoms, and one kernel;
-5. a `CSTOptimizer` partitions and exclusively owns every trainable parameter;
+5. a CST optimizer partitions and exclusively owns every trainable parameter;
 6. the CST engine attaches its concrete transient `AtomGrad` to each atom table;
 7. its implicit CST engine owns compressed moment and accepted-frame state;
 
@@ -475,7 +470,7 @@ interfaces.
 
 ### Exact structured quartic evaluation
 
-`ImplicitAdamConfig(quartic_evaluation="auto")` selects an exact quadratic-feature
+`SecondOrderAdamConfig(quartic_evaluation="auto")` selects an exact quadratic-feature
 Gram evaluation when the kernel supplies an exact factorization and the visible
 metric is separable. `"visible"` forces the reference evaluation; `"gram"` forces
 the structured path and raises an error for unsupported geometry, metric, or
@@ -505,17 +500,78 @@ parameter or moment update. The solver and its stopping tolerances are unchanged
 The setup-inclusive CPU benchmark and its limitations are described in
 [the structured quartic report](docs/experiments/quartic-gram.md).
 
-## `CSTOptimizer`
+## `CSTAdam`: primary first-order optimizer
 
-`CSTOptimizer` is the public model-level optimizer. It accepts the complete
+`CSTAdam` uses only first derivatives of the represented weight map. It stores
+first-moment coefficients in the pre-update tangent, transports that history
+into the next current tangent, and solves a convex quadratic inside the
+parameter-space Euclidean trust ball. It preserves cross-atom terms with the
+default separable metric. It never requests Hessian observations.
+
+```python
+from torchcst import CSTAdam, CSTSecondOrderAdam, FirstOrderAdamConfig, FullQuartic
+
+optimizer = CSTAdam(model, lr=0.05, trust_radius=0.25)
+# Equivalent configuration object; do not mix cst= with direct options.
+optimizer = CSTAdam(model, cst=FirstOrderAdamConfig(lr=0.05))
+
+# Experimental visible RMS, transported separately for each atom.
+optimizer = CSTAdam(model, lr=0.05, second_moment="atom_block")
+optimizer = CSTAdam(model, lr=0.05, second_moment="atom_diag")
+
+# Select the optional second-order algorithm explicitly.
+optimizer = CSTSecondOrderAdam(model, lr=0.05, quartic=FullQuartic())
+```
+
+These examples are alternatives; one model's atoms have exactly one optimizer
+owner. `dense=AdamWConfig(...)` includes ordinary dense parameters in the same
+coordinated step. The training/ownership contract below applies to both classes.
+
+For the default metric, the first-order problem is
+
+$$
+\min_{\|d\|\le r}\quad
+(J^\top\widehat m)^\top d+\frac{1}{2\eta}d^\top J^\top D Jd.
+$$
+
+`separable` stores row/column EMAs of squared represented gradients, then
+reconstructs the diagonal RMS action. `atom_block` and `atom_diag` are different,
+experimental metrics: they transport squared-gradient operators in each atom's
+tangent space before taking matrix square roots. They omit cross-atom metric
+couplings; `atom_diag` additionally drops within-atom off-diagonals each step.
+Neither is claimed to reproduce diagonal Adam or preserve learning accuracy.
+
+`FirstOrderAdamConfig` contains only first-order controls: learning rate, betas,
+epsilon, trust radius, second-moment backend, first-moment damping, observation
+mode/chunk size, factored geometry and tangent rank cutoff. There is no
+`approximation_order` or `first_moment_frame` switch and no quartic setting.
+The old `CSTOptimizer` and `ImplicitAdamConfig` names have been replaced.
+
+This first-order implementation is eager CPU/CUDA float32/64. It does not
+support MPS or deferred device execution. The direct solver retains a full
+parameter-space Gram for the separable metric. First-moment compression and
+transport also retain full Gram/cross-Gram matrices for **all three backends**.
+Atom block/diagonal metric state scales linearly with atom count at fixed
+parameters per atom, but the complete optimizer is not yet linear-memory.
+
+Checkpoints use schema version 2 and record the algorithm and moment contract.
+Loading a different algorithm/backend or incompatible parameter ownership is an
+error; there is no implicit conversion of old checkpoints.
+
+See [the mathematical design and complete memory accounting](docs/first-order-rebuild.ja.md)
+and [the paired pilot](docs/experiments/tangent-rebuild.md).
+
+## `CSTSecondOrderAdam`
+
+`CSTSecondOrderAdam` is the optional second-order model-level optimizer. It accepts the complete
 model rather than an arbitrary iterable of tensors, discovers every CST site,
 and partitions every remaining trainable parameter into its dense block.
 
 ```python
-CSTOptimizer(
+CSTSecondOrderAdam(
     model,
     *,
-    cst=ImplicitAdamConfig(...),
+    cst=SecondOrderAdamConfig(...),
     dense=AdamWConfig(...) | None,
     strict=True,
 )
@@ -523,15 +579,15 @@ CSTOptimizer(
 
 Users do not construct a separate dense optimizer. Internally, the coordinator
 uses a strict CST-only implicit engine and a functional dense AdamW engine.
-The latter is a proposal/state implementation owned by `CSTOptimizer`, not an
+The latter is a proposal/state implementation owned by `CSTSecondOrderAdam`, not an
 independently stepping `torch.optim.AdamW` instance.
 
 For mixed models:
 
 ```python
-optimizer = CSTOptimizer(
+optimizer = CSTSecondOrderAdam(
     model,
-    cst=ImplicitAdamConfig(
+    cst=SecondOrderAdamConfig(
         lr=0.05,
         second_moment="separable",
         trust_radius=0.25,
@@ -573,7 +629,7 @@ solver through the supported API.
 
 ### Step contract
 
-`CSTOptimizer` follows the ordinary PyTorch training order:
+`CSTSecondOrderAdam` follows the ordinary PyTorch training order:
 
 1. `optimizer.zero_grad(set_to_none=True)` clears parameter gradients and begins
    the CST observation scope;
@@ -630,7 +686,7 @@ Internally, `QuarticProblem` receives only the current `MomentContext` and an
 immutable `ExpandedMoments` proposal. It exposes the scalar objective and its
 exact cubic gradient, dense Hessian, and restricted quartic models; it does not
 read or mutate persistent optimizer state.
-`FullQuartic` is the production default and deterministic comparison solver.
+`FullQuartic` is the second-order default and deterministic comparison solver.
 It evaluates cold zero, negative-gradient, and deterministic starts through a
 smooth trust-ball parameterization. `ProjectedLBFGS` is an experimental,
 strict-budget alternative that uses the exact analytic quartic gradient,
@@ -644,12 +700,12 @@ Two additional experimental solvers use the structure of the full quartic:
 from torchcst import BallNewton, SubspaceQuartic
 
 # Direct ball-constrained Newton models, including negative curvature.
-cst = ImplicitAdamConfig(
+cst = SecondOrderAdamConfig(
     quartic=BallNewton(starts=4, max_iter=30, max_evaluations=150),
 )
 
 # Adaptively solve exact quartics in small orthonormal subspaces.
-cst = ImplicitAdamConfig(
+cst = SecondOrderAdamConfig(
     quartic=SubspaceQuartic(max_dimension=8, max_models=8),
 )
 ```
@@ -683,7 +739,7 @@ latency; floating-point fusion can change the optimization trajectory.
 See [the compiled Newton measurements](docs/experiments/compiled-newton.md).
 
 `DeviceBFGS(max_iter=30, max_evaluations=150)` is an experimental alternative
-for `ImplicitAdamConfig(quartic=..., device_execution=True)`. It retains the
+for `SecondOrderAdamConfig(quartic=..., device_execution=True)`. It retains the
 complete quartic but changes the search to projected BFGS. Adaptive decisions,
 validation flags, and moment compression remain on the device. Warmed CUDA
 updates avoid host synchronization in the tested configuration; compilation,
@@ -700,7 +756,7 @@ geometry that avoids visible Jacobians/Hessians and their graph-input copies:
 ```python
 from torchcst import DeviceRay
 
-cst = ImplicitAdamConfig(
+cst = SecondOrderAdamConfig(
     lr=0.05,
     quartic=DeviceRay(corrections=1),
     device_execution=True,
@@ -776,7 +832,7 @@ $$
 
 Here "no dense moments" refers to the potentially huge represented CST weight
 $W$. Ordinary dense parameters retain their ordinary per-parameter AdamW
-moments inside `CSTOptimizer`.
+moments inside `CSTSecondOrderAdam`.
 
 The separable second moment reconstructs
 
