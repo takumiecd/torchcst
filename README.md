@@ -1188,3 +1188,7 @@ The bound derivative API exposes the same selection as
 include successful large-atom trials, explicit basis-exhaustion cases and paired
 MNIST results. A passing linear-system residual does not establish equal training
 accuracy; the combined Krylov/streamed path has not established that equivalence.
+
+[Time to accuracy and peak memory](docs/experiments/time-to-accuracy.ja.md)
+compares three seeds over 512 updates, recording both first observed targets and
+three consecutive confirmations. Unreached targets remain explicitly censored.

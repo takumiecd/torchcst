@@ -187,6 +187,11 @@ def plot(result, destination):
     fig.tight_layout(rect=(0, 0.1, 1, 0.95))
     for suffix in ["png", "svg"]:
         fig.savefig(destination.with_suffix("." + suffix), dpi=180, bbox_inches="tight")
+        if suffix == "svg":
+            svg = destination.with_suffix(".svg")
+            svg.write_text(
+                "\n".join(line.rstrip() for line in svg.read_text().splitlines()) + "\n"
+            )
     plt.close(fig)
 
 
@@ -194,6 +199,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--archive", type=Path)
     args = parser.parse_args()
     paths = sorted(args.input.glob("*-s*.json"))
     if len(paths) != 9:
@@ -205,6 +211,18 @@ def main():
     }
     if observed != expected or len(result["source_versions"]) != 1:
         parser.error("expected paired methods/seeds and identical experiment sources")
+    root = Path(__file__).resolve().parents[1]
+    files = [Path(__file__).resolve(), root / "experiments/accuracy_targets.py"]
+    result["aggregation_source_sha256"] = {
+        str(f.relative_to(root)): hashlib.sha256(f.read_bytes()).hexdigest()
+        for f in files
+    }
+    if args.archive is not None:
+        result["archive"] = {
+            "path": str(args.archive),
+            "sha256": hashlib.sha256(args.archive.read_bytes()).hexdigest(),
+            "bytes": args.archive.stat().st_size,
+        }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     plot(result, args.output.with_suffix(""))
