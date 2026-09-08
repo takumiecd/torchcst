@@ -5,6 +5,7 @@ mathematical derivation and experimental decisions behind the continuous-only
 rewrite:
 
 - [first-order-rebuild.ja.md](first-order-rebuild.ja.md) — current optimizer API, equations, experimental metrics and memory boundaries;
+- [tangent-operator-design.ja.md](tangent-operator-design.ja.md) — proposed parameter-driven, kernel-aware Gram actions and matrix-free recompression;
 - [experiments/tangent-rebuild.md](experiments/tangent-rebuild.md) — rebuilt first-order learning pilot;
 - `implicit-projected-adam-decisions.ja.md` — historical second-order implementation decisions;
 - `implicit-projected-moment-transport.md` — moment-transport derivation;
