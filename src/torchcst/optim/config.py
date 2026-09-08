@@ -35,6 +35,7 @@ class FirstOrderAdamConfig:
 
     device_execution: bool = False
     update_solver: Literal["spectral", "pcg"] = "spectral"
+    update_approximation: Literal["full", "diagonal", "atom_block"] = "full"
     update_max_iter: int = 512
     update_shift_steps: int = 32
     update_rtol: float = 1e-5
@@ -44,6 +45,20 @@ class FirstOrderAdamConfig:
 
         if self.update_solver not in ("spectral", "pcg"):
             raise ValueError("update_solver must be spectral or pcg")
+        if self.update_approximation not in ("full", "diagonal", "atom_block"):
+            raise ValueError(
+                "update_approximation must be full, diagonal or atom_block"
+            )
+        if self.update_approximation != "full" and (
+            self.update_solver != "spectral"
+            or self.second_moment != "separable"
+            or not self.factored_geometry
+            or self.tangent_backend == "reference"
+        ):
+            raise ValueError(
+                "local update approximations require spectral solver, separable "
+                "moments and factorized tangents"
+            )
         for name in ("update_max_iter", "update_shift_steps"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:

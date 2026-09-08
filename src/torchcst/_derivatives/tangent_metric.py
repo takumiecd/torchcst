@@ -63,7 +63,24 @@ class FactorMetricAction:
         ) / self.rate
 
     def diagonal(self):
-        return self.blocks().diagonal(dim1=-2, dim2=-1)
+        p = self.prepared
+        u, v, du, dv = p._u, p._v, p._du, p._dv
+
+        def term(row, column):
+            return (
+                (du.square() * column[None, :, None]).sum(1)
+                * (v.square() * row).sum(1)[:, None]
+                + (dv.square() * row[None, :, None]).sum(1)
+                * (u.square() * column).sum(1)[:, None]
+                + 2
+                * (du * u[:, :, None] * column[None, :, None]).sum(1)
+                * (dv * v[:, :, None] * row[None, :, None]).sum(1)
+            )
+
+        return (
+            term(self.row, self.column)
+            + self.eps * term(torch.ones_like(self.row), torch.ones_like(self.column))
+        ) / self.rate
 
 
 def from_prepared(prepared, metric, rate):

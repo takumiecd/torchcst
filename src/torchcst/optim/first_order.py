@@ -103,6 +103,17 @@ class CSTAdam(_ModelOptimizer):
     def _solve(self, context, expanded):
         from .quadratic import TangentProblem, solve_tangent
 
+        if self.cst_config.update_approximation != "full":
+            from ._local_tangent import solve
+            from .quadratic import MatrixFreeTangentProblem
+
+            c = self.cst_config
+            return solve(
+                MatrixFreeTangentProblem(context, expanded, learning_rate=c.lr),
+                approximation=c.update_approximation,
+                radius=c.trust_radius,
+                rtol=c.update_rtol,
+            )
         if self.cst_config.update_solver == "pcg":
             from ._trust_pcg import solve
             from .quadratic import MatrixFreeTangentProblem
