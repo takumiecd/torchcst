@@ -1183,3 +1183,8 @@ which contraction is faster depends on atom count and visible dimensions.
 Damping, the full residual criterion and moment definitions are unchanged.
 The bound derivative API exposes the same selection as
 `site.cst_derivatives().tangent_ops(gram_action="jvp_vjp")`.
+
+[Measured solver, recompression and learning tradeoffs](docs/experiments/krylov-recompression.ja.md)
+include successful large-atom trials, explicit basis-exhaustion cases and paired
+MNIST results. A passing linear-system residual does not establish equal training
+accuracy; the combined Krylov/streamed path has not established that equivalence.

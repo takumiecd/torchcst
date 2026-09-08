@@ -25,6 +25,11 @@ def main():
     parser.add_argument(
         "--approximation", choices=("full", "diagonal", "atom_block"), required=True
     )
+    parser.add_argument("--solver", choices=("spectral", "krylov"), default="spectral")
+    parser.add_argument(
+        "--recompression-action", choices=("pair", "jvp_vjp"), default="pair"
+    )
+    parser.add_argument("--basis-size", type=int, default=128)
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--steps", type=int, default=128)
     parser.add_argument("--atoms", type=int, default=64)
@@ -59,6 +64,9 @@ def main():
         recompression_rtol=1e-5,
         first_moment_damping=0.01,
         update_approximation=args.approximation,
+        update_solver=args.solver,
+        update_basis_size=args.basis_size,
+        recompression_action=args.recompression_action,
         update_rtol=1e-5,
     )
     optimizer.solve_start = torch.cuda.Event(enable_timing=True)

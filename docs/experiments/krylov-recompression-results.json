@@ -1,0 +1,3912 @@
+{
+  "date": "2026-09-08",
+  "implementation_versions": {
+    "d1b571b354974b08": {
+      "src/torchcst/__init__.py": "8a2ab2b8e3ff607f9287f626648d1b4368f049c215f7d44a7b8aa763e4e9a324",
+      "src/torchcst/_derivatives/__init__.py": "3f1b18ad7115a8d825d9af9c8b806801c3bc64dbb3edec512d0ecde3ffead6a8",
+      "src/torchcst/_derivatives/_captured.py": "0a6fa975dafc0e75699a99e73bb108328552291c578cde20fd3a53f4edfb1baa",
+      "src/torchcst/_derivatives/_cholesky.py": "c852057aa0475b7bc8a2ae2c1d9ccbb504dd40b2b45b8d0774f54fda8f55fd33",
+      "src/torchcst/_derivatives/_jacobi.py": "13b5a85d32627d6bd3644dcf53d8e6308435c5b8481ad7f403c75c755ad106a3",
+      "src/torchcst/_derivatives/_pcg.py": "734108bbb82c12d3515b0e46fad9d252dddcfc3f15a6822b7025d7a8e37ad678",
+      "src/torchcst/_derivatives/atoms.py": "8aa0787ad5aea00042044e4eeaee07428c74fec3e95d313a988c14bf6689e665",
+      "src/torchcst/_derivatives/block_eigh.py": "ac4a3e688a820c0b721d4fb5c5290df92616a7cf70aa888ffefe1c3bb202c8b3",
+      "src/torchcst/_derivatives/dense.py": "2c8598a1e395707c68c48c3f37e0d445c8cf4aa4580cf7a21d25f84c83e0585d",
+      "src/torchcst/_derivatives/factored_frame.py": "97a19168fdbad56e9347bd5fa8121f9013db1b7c42e58d217d81975f65bfa5c4",
+      "src/torchcst/_derivatives/factored_taylor.py": "f106bf3231557e28455aae9eb1a7541e1961d95328c06693e44cf72e0616bd86",
+      "src/torchcst/_derivatives/frame.py": "b05209bd2127011fa546d4321a77e9e77e4715369960475ef89a95e5a56b8fc9",
+      "src/torchcst/_derivatives/protocol.py": "34ef0e173a2353372a073aac04a6aaea5045b94afad47e8c5d6f18880c9e9530",
+      "src/torchcst/_derivatives/quadratic.py": "5790683f3f4723be862adcaf7faa1a9200de5e0e89a6f051effc3b1a5a8648ec",
+      "src/torchcst/_derivatives/tangent.py": "cedcb43a2aa5f9ddde1d5570367f7de4ca4fec8f9869f0241c842d1c5e94bd4d",
+      "src/torchcst/_derivatives/tangent_device.py": "b297b2b5c73034907c67a949f02031a379b38ff7a6c3dd2a8a10f3310445a525",
+      "src/torchcst/_derivatives/tangent_eigh.py": "411a3f00b611325de84c99b3f653c36f235005a23558bb6ef3f0f5deec9e22e0",
+      "src/torchcst/_derivatives/tangent_metric.py": "fb274a9dd3093a103a678e860c8b64259761bc96d0939e2f6bd2365784ca1c43",
+      "src/torchcst/_derivatives/tangent_ops.py": "a13d5ad14d6d5e97bb3c6732d5fbed1b327bf39f1ece9293fe2a38f6105705cd",
+      "src/torchcst/_derivatives/tangent_solve.py": "9d9fc8326abab42061b41cdf2844a6e69f36aba5d3889790e10b8c69dc073399",
+      "src/torchcst/_derivatives/tangent_triton.py": "e93429b03e4fd09631b06678a205470876834b63f85d208c42b63a38c74496d2",
+      "src/torchcst/_runtime/__init__.py": "c2f3ecd5ca97b643a4c503fa20a7b98b6f7f70ddc2ba202f89fd118e29c81007",
+      "src/torchcst/_runtime/graphs.py": "b922e3f4c664733ae0f4b161e1f6a8874506828b0e314caa98c56d58bd3284d5",
+      "src/torchcst/_runtime/validation.py": "68438c0f1b7d160327effbfad1e4ae429277286f50f90238e6ab632e3caadb71",
+      "src/torchcst/atoms/__init__.py": "e26a0995cad48c8afa55d81bc0e7b258628abf19144cbb920f19e8ee7b4bd14d",
+      "src/torchcst/atoms/atoms.py": "fed067ffdf4875f0bf16b56ee304ea116aba3529ed034bbf523854cc243b056e",
+      "src/torchcst/atoms/grad.py": "4731d6e54790af7be75d2f450d9c2dd116a7211ad5e3c7d28b4e2908a8fba802",
+      "src/torchcst/geometry/__init__.py": "090dc3a94b825df2582451205621c13fe4ba3669570f53ef86b0c03c9377c18c",
+      "src/torchcst/geometry/chart.py": "7f8364d3ea356207eb9e088e0b71ffe9d1a13b10da06fa0c8c882a135b72cdc1",
+      "src/torchcst/kernels/__init__.py": "2b6120e2dcad11c90be61f1c1e8ae71b6788d3b08fee5612dc4c89024638b9bb",
+      "src/torchcst/kernels/_tangent.py": "0ef53240dc963a5f59de6c094cd877e0d583bbdec4bcdfac81be83dda80a9070",
+      "src/torchcst/kernels/amplitude.py": "a394fc3fabf90edea23484a816d466c2a9d54fafce959c0fba119cd120055931",
+      "src/torchcst/kernels/amplitude_bandwidth.py": "d956f19b12a4124bffe574a2d035d614c793e62a2f6b6cf082218d8dac5b89de",
+      "src/torchcst/kernels/base.py": "404ae3efb6b0c53ef91407baf29a433d55d308dd4abf81b88c4c007953e72502",
+      "src/torchcst/kernels/gaussian.py": "8de20f4fee70e6527f44573b4a5be60587298db13aa89c5993354af74fddae95",
+      "src/torchcst/kernels/separable.py": "e3d1c6212e605b362d00546230a8ade1c012e935138086771d8194ea9a7f8695",
+      "src/torchcst/nn/__init__.py": "428c2941cdb625f7e94f57476a0a76af9828599afb78e7c78c5fcb2e552acfa6",
+      "src/torchcst/nn/atom_grad.py": "852c6ba919550ed0c4860e8a5d4aa81f7e36c04c037f46d1c5288f938b6d74f0",
+      "src/torchcst/nn/linear.py": "3306af1e2d3f8de6c9620435f7cf6c0a1c5a733205d559945de78fd0096b318f",
+      "src/torchcst/optim/__init__.py": "c7ee4b780904c9f8c59b4ee94ff1470c3e8302ae045481c47fe3c3d2f5fc10a2",
+      "src/torchcst/optim/_local_tangent.py": "1ab5027943028b499db7ef76f9578d073fd0b3681fc55ea5c9a2a00996b3c80c",
+      "src/torchcst/optim/_tangent_device.py": "c7e1dab2586ffd1a9ef42d099d5bce54dcc2e8f860c0f9e94ef2a6d97ea07cb0",
+      "src/torchcst/optim/_trust_krylov.py": "590b3a5bff311b871f19319815152f09653b3d998473e97bae82ae63ae7faefd",
+      "src/torchcst/optim/_trust_pcg.py": "03c5d0c8d2dbc9fc4df46561d2eddf9127626080b7360c6d1ce05acb58c2f542",
+      "src/torchcst/optim/atom_grad.py": "be6cc602222f6407af98b56fc4721585cc36795f4beb30061a01c69599012d54",
+      "src/torchcst/optim/config.py": "d1fd44d0e68b9f1dc241e1b2a0028226592e3f441afbb10a134480c49674f7d3",
+      "src/torchcst/optim/dense.py": "b5f740d8bb1343b56b7b204db7af624f6f50b563e374151ece207ffc8e64716c",
+      "src/torchcst/optim/first_order.py": "d47732aa8ca3c92c0819d2a0f87d5fb6ffad2b6358f54694f99826640cb073c3",
+      "src/torchcst/optim/moments/__init__.py": "053e301600775b2241766216a4f3901ed898f61d7240f9aba49556ca09ce6ae2",
+      "src/torchcst/optim/moments/atom_rms.py": "3e8087f73e407e175699d02b09a1a60e7a9f01b48fed2e6d3e43cfbdcb86d4b6",
+      "src/torchcst/optim/moments/base.py": "b8682ffd741de0cb48c8930123d5cf409a29f230424971fe34dad47467ddc909",
+      "src/torchcst/optim/moments/first.py": "fa1518615d93cead4a481ec76b955ef966223eaec35d04d1b16771c743d433ca",
+      "src/torchcst/optim/moments/second.py": "bf81e8d34d25ab116de5e511ba376bb9e12471cbc31edc4d180a4368c74ef9fc",
+      "src/torchcst/optim/moments/system.py": "57390af5c3756908adbe42912fc188200da0312c5bf6a33c942115be1f6ee25d",
+      "src/torchcst/optim/moments/tangent.py": "13ba90b765d624374bf5e16818f03f708e6aa9e84db288e99398bdb9676fb7af",
+      "src/torchcst/optim/optimizer.py": "b8f209d624ebe77586d48a262a915c8649566467d0d0559215d84a31ccb1fad9",
+      "src/torchcst/optim/problem.py": "20221cf060fdb6736b52b039e6b4d1bb3748e1ebb1ae3cf9fdde7d42b72dde33",
+      "src/torchcst/optim/quadratic.py": "889d7f7260d93bc08d1a0b7f93d916498e2921a336414ed31db64435ae8db3f0",
+      "src/torchcst/optim/second_order.py": "660858d82750357bc67f769359b7b62dae9785cf22619659184383affdcc1fe3",
+      "src/torchcst/optim/solvers/__init__.py": "530e3b65c5800663afcf4705baff7f7eb5298259a1d3055d22a6ed217d1d4db8",
+      "src/torchcst/optim/solvers/_compiled.py": "b36e4e20fd01c9a1f162fca1e59c3eebafb000259016c89e29e48a20a9cfa27f",
+      "src/torchcst/optim/solvers/_factored_ray.py": "7ea963e492c1565109943c465fd3f8142f6ee5272da058fcf52d7695a3399583",
+      "src/torchcst/optim/solvers/_ray.py": "50b65404502167e8b9f736ca9d4a94a1e47c9c1e7691f951fdb0d61931f61726",
+      "src/torchcst/optim/solvers/base.py": "bbbef4797366114a193265b6cb4c1b49acfab2b341b3a2bed7248e1ef541b77b",
+      "src/torchcst/optim/solvers/device.py": "5e9dc2e11a8db139d6b4fe84c77e301a928861dd6f345190c370c251a1d5fb54",
+      "src/torchcst/optim/solvers/newton.py": "9b5bff144da6fe8b656ae7d9d8c0dced958db1f2107dd075dca371c74ad69b16",
+      "src/torchcst/optim/solvers/projected.py": "82a2a32c76f12cbaacda28c3d98dfde7969fd42affafdc5a018ac97d254ab38b",
+      "src/torchcst/optim/solvers/quartic.py": "f99351a5120b2a4a8c990e69e8f2fd470aea3aa5f282c627c6978c84ad08e1c2",
+      "src/torchcst/optim/solvers/ray.py": "7a6cbe48047bf49909db31e612dd7abb92986a76abbfddd953f1c1db2a67b27f",
+      "src/torchcst/optim/solvers/subspace.py": "ce1d800e4500c6ffb7a57624178464a2c2372e6a3c44abb67ccf1017e4863500",
+      "src/torchcst/_derivatives/tangent_eigh.cpp": "8d15ef9ef488128b5da4cc7f10822e9c29f91e5e3fd384a4728c56cc058e7f3f"
+    },
+    "79556dbf6ed01afb": {
+      "src/torchcst/__init__.py": "8a2ab2b8e3ff607f9287f626648d1b4368f049c215f7d44a7b8aa763e4e9a324",
+      "src/torchcst/_derivatives/__init__.py": "3f1b18ad7115a8d825d9af9c8b806801c3bc64dbb3edec512d0ecde3ffead6a8",
+      "src/torchcst/_derivatives/_captured.py": "0a6fa975dafc0e75699a99e73bb108328552291c578cde20fd3a53f4edfb1baa",
+      "src/torchcst/_derivatives/_cholesky.py": "c852057aa0475b7bc8a2ae2c1d9ccbb504dd40b2b45b8d0774f54fda8f55fd33",
+      "src/torchcst/_derivatives/_jacobi.py": "13b5a85d32627d6bd3644dcf53d8e6308435c5b8481ad7f403c75c755ad106a3",
+      "src/torchcst/_derivatives/_pcg.py": "734108bbb82c12d3515b0e46fad9d252dddcfc3f15a6822b7025d7a8e37ad678",
+      "src/torchcst/_derivatives/atoms.py": "8996ba1a394fc22d16b9c5825d89b255372d4bfb486da6b810dd18865a910ebb",
+      "src/torchcst/_derivatives/block_eigh.py": "2544f9b4e3d6f9b92fed86120bd501bf693e1f16269dd1c48d0c3726737033c5",
+      "src/torchcst/_derivatives/dense.py": "2c8598a1e395707c68c48c3f37e0d445c8cf4aa4580cf7a21d25f84c83e0585d",
+      "src/torchcst/_derivatives/factored_frame.py": "97a19168fdbad56e9347bd5fa8121f9013db1b7c42e58d217d81975f65bfa5c4",
+      "src/torchcst/_derivatives/factored_taylor.py": "f106bf3231557e28455aae9eb1a7541e1961d95328c06693e44cf72e0616bd86",
+      "src/torchcst/_derivatives/frame.py": "b05209bd2127011fa546d4321a77e9e77e4715369960475ef89a95e5a56b8fc9",
+      "src/torchcst/_derivatives/protocol.py": "34ef0e173a2353372a073aac04a6aaea5045b94afad47e8c5d6f18880c9e9530",
+      "src/torchcst/_derivatives/quadratic.py": "5790683f3f4723be862adcaf7faa1a9200de5e0e89a6f051effc3b1a5a8648ec",
+      "src/torchcst/_derivatives/tangent.py": "cedcb43a2aa5f9ddde1d5570367f7de4ca4fec8f9869f0241c842d1c5e94bd4d",
+      "src/torchcst/_derivatives/tangent_device.py": "98873bea3a711460ced8ea1967a1d1a5e44ce287ea0e68756959db537c224c06",
+      "src/torchcst/_derivatives/tangent_eigh.py": "411a3f00b611325de84c99b3f653c36f235005a23558bb6ef3f0f5deec9e22e0",
+      "src/torchcst/_derivatives/tangent_metric.py": "fb274a9dd3093a103a678e860c8b64259761bc96d0939e2f6bd2365784ca1c43",
+      "src/torchcst/_derivatives/tangent_nystrom.py": "2afee876e6a0bdf02f0d8290ef067ae074713df4f3c9472dff4d4cdb409b73d0",
+      "src/torchcst/_derivatives/tangent_ops.py": "351d7b990e97b488871cd40ee804e36e049a1c5af7bea48924f920a0b5dea0f9",
+      "src/torchcst/_derivatives/tangent_solve.py": "9d9fc8326abab42061b41cdf2844a6e69f36aba5d3889790e10b8c69dc073399",
+      "src/torchcst/_derivatives/tangent_triton.py": "54618a410e0d3ca092fbefcb7ed95fd7d4d9db29f5af27f9071668c93d3f3f94",
+      "src/torchcst/_runtime/__init__.py": "c2f3ecd5ca97b643a4c503fa20a7b98b6f7f70ddc2ba202f89fd118e29c81007",
+      "src/torchcst/_runtime/graphs.py": "b922e3f4c664733ae0f4b161e1f6a8874506828b0e314caa98c56d58bd3284d5",
+      "src/torchcst/_runtime/validation.py": "68438c0f1b7d160327effbfad1e4ae429277286f50f90238e6ab632e3caadb71",
+      "src/torchcst/atoms/__init__.py": "e26a0995cad48c8afa55d81bc0e7b258628abf19144cbb920f19e8ee7b4bd14d",
+      "src/torchcst/atoms/atoms.py": "fed067ffdf4875f0bf16b56ee304ea116aba3529ed034bbf523854cc243b056e",
+      "src/torchcst/atoms/grad.py": "4731d6e54790af7be75d2f450d9c2dd116a7211ad5e3c7d28b4e2908a8fba802",
+      "src/torchcst/geometry/__init__.py": "090dc3a94b825df2582451205621c13fe4ba3669570f53ef86b0c03c9377c18c",
+      "src/torchcst/geometry/chart.py": "7f8364d3ea356207eb9e088e0b71ffe9d1a13b10da06fa0c8c882a135b72cdc1",
+      "src/torchcst/kernels/__init__.py": "2b6120e2dcad11c90be61f1c1e8ae71b6788d3b08fee5612dc4c89024638b9bb",
+      "src/torchcst/kernels/_tangent.py": "0ef53240dc963a5f59de6c094cd877e0d583bbdec4bcdfac81be83dda80a9070",
+      "src/torchcst/kernels/amplitude.py": "a394fc3fabf90edea23484a816d466c2a9d54fafce959c0fba119cd120055931",
+      "src/torchcst/kernels/amplitude_bandwidth.py": "d956f19b12a4124bffe574a2d035d614c793e62a2f6b6cf082218d8dac5b89de",
+      "src/torchcst/kernels/base.py": "404ae3efb6b0c53ef91407baf29a433d55d308dd4abf81b88c4c007953e72502",
+      "src/torchcst/kernels/gaussian.py": "8de20f4fee70e6527f44573b4a5be60587298db13aa89c5993354af74fddae95",
+      "src/torchcst/kernels/separable.py": "e3d1c6212e605b362d00546230a8ade1c012e935138086771d8194ea9a7f8695",
+      "src/torchcst/nn/__init__.py": "428c2941cdb625f7e94f57476a0a76af9828599afb78e7c78c5fcb2e552acfa6",
+      "src/torchcst/nn/atom_grad.py": "852c6ba919550ed0c4860e8a5d4aa81f7e36c04c037f46d1c5288f938b6d74f0",
+      "src/torchcst/nn/linear.py": "3306af1e2d3f8de6c9620435f7cf6c0a1c5a733205d559945de78fd0096b318f",
+      "src/torchcst/optim/__init__.py": "c7ee4b780904c9f8c59b4ee94ff1470c3e8302ae045481c47fe3c3d2f5fc10a2",
+      "src/torchcst/optim/_local_tangent.py": "1ab5027943028b499db7ef76f9578d073fd0b3681fc55ea5c9a2a00996b3c80c",
+      "src/torchcst/optim/_tangent_device.py": "c7e1dab2586ffd1a9ef42d099d5bce54dcc2e8f860c0f9e94ef2a6d97ea07cb0",
+      "src/torchcst/optim/_trust_krylov.py": "590b3a5bff311b871f19319815152f09653b3d998473e97bae82ae63ae7faefd",
+      "src/torchcst/optim/_trust_pcg.py": "03c5d0c8d2dbc9fc4df46561d2eddf9127626080b7360c6d1ce05acb58c2f542",
+      "src/torchcst/optim/atom_grad.py": "be6cc602222f6407af98b56fc4721585cc36795f4beb30061a01c69599012d54",
+      "src/torchcst/optim/config.py": "e2768a413240b333837ca378414f2671f7c4b4895ba53bebc6f5dfc697534dfa",
+      "src/torchcst/optim/dense.py": "b5f740d8bb1343b56b7b204db7af624f6f50b563e374151ece207ffc8e64716c",
+      "src/torchcst/optim/first_order.py": "d74ea0dc2246dc2018e64b9b21c92a57b3427a6c2b0924b57c0723bc04db0ceb",
+      "src/torchcst/optim/moments/__init__.py": "053e301600775b2241766216a4f3901ed898f61d7240f9aba49556ca09ce6ae2",
+      "src/torchcst/optim/moments/atom_rms.py": "3e8087f73e407e175699d02b09a1a60e7a9f01b48fed2e6d3e43cfbdcb86d4b6",
+      "src/torchcst/optim/moments/base.py": "b8682ffd741de0cb48c8930123d5cf409a29f230424971fe34dad47467ddc909",
+      "src/torchcst/optim/moments/first.py": "fa1518615d93cead4a481ec76b955ef966223eaec35d04d1b16771c743d433ca",
+      "src/torchcst/optim/moments/second.py": "bf81e8d34d25ab116de5e511ba376bb9e12471cbc31edc4d180a4368c74ef9fc",
+      "src/torchcst/optim/moments/system.py": "57390af5c3756908adbe42912fc188200da0312c5bf6a33c942115be1f6ee25d",
+      "src/torchcst/optim/moments/tangent.py": "13ba90b765d624374bf5e16818f03f708e6aa9e84db288e99398bdb9676fb7af",
+      "src/torchcst/optim/optimizer.py": "b8f209d624ebe77586d48a262a915c8649566467d0d0559215d84a31ccb1fad9",
+      "src/torchcst/optim/problem.py": "20221cf060fdb6736b52b039e6b4d1bb3748e1ebb1ae3cf9fdde7d42b72dde33",
+      "src/torchcst/optim/quadratic.py": "889d7f7260d93bc08d1a0b7f93d916498e2921a336414ed31db64435ae8db3f0",
+      "src/torchcst/optim/second_order.py": "660858d82750357bc67f769359b7b62dae9785cf22619659184383affdcc1fe3",
+      "src/torchcst/optim/solvers/__init__.py": "530e3b65c5800663afcf4705baff7f7eb5298259a1d3055d22a6ed217d1d4db8",
+      "src/torchcst/optim/solvers/_compiled.py": "b36e4e20fd01c9a1f162fca1e59c3eebafb000259016c89e29e48a20a9cfa27f",
+      "src/torchcst/optim/solvers/_factored_ray.py": "7ea963e492c1565109943c465fd3f8142f6ee5272da058fcf52d7695a3399583",
+      "src/torchcst/optim/solvers/_ray.py": "50b65404502167e8b9f736ca9d4a94a1e47c9c1e7691f951fdb0d61931f61726",
+      "src/torchcst/optim/solvers/base.py": "bbbef4797366114a193265b6cb4c1b49acfab2b341b3a2bed7248e1ef541b77b",
+      "src/torchcst/optim/solvers/device.py": "5e9dc2e11a8db139d6b4fe84c77e301a928861dd6f345190c370c251a1d5fb54",
+      "src/torchcst/optim/solvers/newton.py": "9b5bff144da6fe8b656ae7d9d8c0dced958db1f2107dd075dca371c74ad69b16",
+      "src/torchcst/optim/solvers/projected.py": "82a2a32c76f12cbaacda28c3d98dfde7969fd42affafdc5a018ac97d254ab38b",
+      "src/torchcst/optim/solvers/quartic.py": "f99351a5120b2a4a8c990e69e8f2fd470aea3aa5f282c627c6978c84ad08e1c2",
+      "src/torchcst/optim/solvers/ray.py": "7a6cbe48047bf49909db31e612dd7abb92986a76abbfddd953f1c1db2a67b27f",
+      "src/torchcst/optim/solvers/subspace.py": "ce1d800e4500c6ffb7a57624178464a2c2372e6a3c44abb67ccf1017e4863500",
+      "src/torchcst/_derivatives/tangent_eigh.cpp": "8d15ef9ef488128b5da4cc7f10822e9c29f91e5e3fd384a4728c56cc058e7f3f"
+    },
+    "438f553ff35fd3e5": {
+      "src/torchcst/__init__.py": "8a2ab2b8e3ff607f9287f626648d1b4368f049c215f7d44a7b8aa763e4e9a324",
+      "src/torchcst/_derivatives/__init__.py": "3f1b18ad7115a8d825d9af9c8b806801c3bc64dbb3edec512d0ecde3ffead6a8",
+      "src/torchcst/_derivatives/_captured.py": "0a6fa975dafc0e75699a99e73bb108328552291c578cde20fd3a53f4edfb1baa",
+      "src/torchcst/_derivatives/_cholesky.py": "c852057aa0475b7bc8a2ae2c1d9ccbb504dd40b2b45b8d0774f54fda8f55fd33",
+      "src/torchcst/_derivatives/_jacobi.py": "13b5a85d32627d6bd3644dcf53d8e6308435c5b8481ad7f403c75c755ad106a3",
+      "src/torchcst/_derivatives/_pcg.py": "734108bbb82c12d3515b0e46fad9d252dddcfc3f15a6822b7025d7a8e37ad678",
+      "src/torchcst/_derivatives/atoms.py": "8996ba1a394fc22d16b9c5825d89b255372d4bfb486da6b810dd18865a910ebb",
+      "src/torchcst/_derivatives/block_eigh.py": "95e3e2896566ae397f9c5c12a17468a05523e15746fa0b7d4aa18fcbead2cb8b",
+      "src/torchcst/_derivatives/dense.py": "2c8598a1e395707c68c48c3f37e0d445c8cf4aa4580cf7a21d25f84c83e0585d",
+      "src/torchcst/_derivatives/factored_frame.py": "97a19168fdbad56e9347bd5fa8121f9013db1b7c42e58d217d81975f65bfa5c4",
+      "src/torchcst/_derivatives/factored_taylor.py": "f106bf3231557e28455aae9eb1a7541e1961d95328c06693e44cf72e0616bd86",
+      "src/torchcst/_derivatives/frame.py": "b05209bd2127011fa546d4321a77e9e77e4715369960475ef89a95e5a56b8fc9",
+      "src/torchcst/_derivatives/protocol.py": "34ef0e173a2353372a073aac04a6aaea5045b94afad47e8c5d6f18880c9e9530",
+      "src/torchcst/_derivatives/quadratic.py": "5790683f3f4723be862adcaf7faa1a9200de5e0e89a6f051effc3b1a5a8648ec",
+      "src/torchcst/_derivatives/tangent.py": "cedcb43a2aa5f9ddde1d5570367f7de4ca4fec8f9869f0241c842d1c5e94bd4d",
+      "src/torchcst/_derivatives/tangent_device.py": "98873bea3a711460ced8ea1967a1d1a5e44ce287ea0e68756959db537c224c06",
+      "src/torchcst/_derivatives/tangent_eigh.py": "411a3f00b611325de84c99b3f653c36f235005a23558bb6ef3f0f5deec9e22e0",
+      "src/torchcst/_derivatives/tangent_metric.py": "fb274a9dd3093a103a678e860c8b64259761bc96d0939e2f6bd2365784ca1c43",
+      "src/torchcst/_derivatives/tangent_nystrom.py": "896d6e35e37f5cfcffe27df0503899bc1b93fd29a6ae84719c406fccfd08ea8e",
+      "src/torchcst/_derivatives/tangent_ops.py": "351d7b990e97b488871cd40ee804e36e049a1c5af7bea48924f920a0b5dea0f9",
+      "src/torchcst/_derivatives/tangent_solve.py": "9d9fc8326abab42061b41cdf2844a6e69f36aba5d3889790e10b8c69dc073399",
+      "src/torchcst/_derivatives/tangent_triton.py": "54618a410e0d3ca092fbefcb7ed95fd7d4d9db29f5af27f9071668c93d3f3f94",
+      "src/torchcst/_runtime/__init__.py": "c2f3ecd5ca97b643a4c503fa20a7b98b6f7f70ddc2ba202f89fd118e29c81007",
+      "src/torchcst/_runtime/graphs.py": "b922e3f4c664733ae0f4b161e1f6a8874506828b0e314caa98c56d58bd3284d5",
+      "src/torchcst/_runtime/validation.py": "68438c0f1b7d160327effbfad1e4ae429277286f50f90238e6ab632e3caadb71",
+      "src/torchcst/atoms/__init__.py": "e26a0995cad48c8afa55d81bc0e7b258628abf19144cbb920f19e8ee7b4bd14d",
+      "src/torchcst/atoms/atoms.py": "fed067ffdf4875f0bf16b56ee304ea116aba3529ed034bbf523854cc243b056e",
+      "src/torchcst/atoms/grad.py": "4731d6e54790af7be75d2f450d9c2dd116a7211ad5e3c7d28b4e2908a8fba802",
+      "src/torchcst/geometry/__init__.py": "090dc3a94b825df2582451205621c13fe4ba3669570f53ef86b0c03c9377c18c",
+      "src/torchcst/geometry/chart.py": "7f8364d3ea356207eb9e088e0b71ffe9d1a13b10da06fa0c8c882a135b72cdc1",
+      "src/torchcst/kernels/__init__.py": "2b6120e2dcad11c90be61f1c1e8ae71b6788d3b08fee5612dc4c89024638b9bb",
+      "src/torchcst/kernels/_tangent.py": "0ef53240dc963a5f59de6c094cd877e0d583bbdec4bcdfac81be83dda80a9070",
+      "src/torchcst/kernels/amplitude.py": "a394fc3fabf90edea23484a816d466c2a9d54fafce959c0fba119cd120055931",
+      "src/torchcst/kernels/amplitude_bandwidth.py": "d956f19b12a4124bffe574a2d035d614c793e62a2f6b6cf082218d8dac5b89de",
+      "src/torchcst/kernels/base.py": "404ae3efb6b0c53ef91407baf29a433d55d308dd4abf81b88c4c007953e72502",
+      "src/torchcst/kernels/gaussian.py": "8de20f4fee70e6527f44573b4a5be60587298db13aa89c5993354af74fddae95",
+      "src/torchcst/kernels/separable.py": "e3d1c6212e605b362d00546230a8ade1c012e935138086771d8194ea9a7f8695",
+      "src/torchcst/nn/__init__.py": "428c2941cdb625f7e94f57476a0a76af9828599afb78e7c78c5fcb2e552acfa6",
+      "src/torchcst/nn/atom_grad.py": "852c6ba919550ed0c4860e8a5d4aa81f7e36c04c037f46d1c5288f938b6d74f0",
+      "src/torchcst/nn/linear.py": "3306af1e2d3f8de6c9620435f7cf6c0a1c5a733205d559945de78fd0096b318f",
+      "src/torchcst/optim/__init__.py": "c7ee4b780904c9f8c59b4ee94ff1470c3e8302ae045481c47fe3c3d2f5fc10a2",
+      "src/torchcst/optim/_local_tangent.py": "1ab5027943028b499db7ef76f9578d073fd0b3681fc55ea5c9a2a00996b3c80c",
+      "src/torchcst/optim/_tangent_device.py": "c7e1dab2586ffd1a9ef42d099d5bce54dcc2e8f860c0f9e94ef2a6d97ea07cb0",
+      "src/torchcst/optim/_trust_krylov.py": "590b3a5bff311b871f19319815152f09653b3d998473e97bae82ae63ae7faefd",
+      "src/torchcst/optim/_trust_pcg.py": "03c5d0c8d2dbc9fc4df46561d2eddf9127626080b7360c6d1ce05acb58c2f542",
+      "src/torchcst/optim/atom_grad.py": "be6cc602222f6407af98b56fc4721585cc36795f4beb30061a01c69599012d54",
+      "src/torchcst/optim/config.py": "e2768a413240b333837ca378414f2671f7c4b4895ba53bebc6f5dfc697534dfa",
+      "src/torchcst/optim/dense.py": "b5f740d8bb1343b56b7b204db7af624f6f50b563e374151ece207ffc8e64716c",
+      "src/torchcst/optim/first_order.py": "d74ea0dc2246dc2018e64b9b21c92a57b3427a6c2b0924b57c0723bc04db0ceb",
+      "src/torchcst/optim/moments/__init__.py": "053e301600775b2241766216a4f3901ed898f61d7240f9aba49556ca09ce6ae2",
+      "src/torchcst/optim/moments/atom_rms.py": "3e8087f73e407e175699d02b09a1a60e7a9f01b48fed2e6d3e43cfbdcb86d4b6",
+      "src/torchcst/optim/moments/base.py": "b8682ffd741de0cb48c8930123d5cf409a29f230424971fe34dad47467ddc909",
+      "src/torchcst/optim/moments/first.py": "fa1518615d93cead4a481ec76b955ef966223eaec35d04d1b16771c743d433ca",
+      "src/torchcst/optim/moments/second.py": "bf81e8d34d25ab116de5e511ba376bb9e12471cbc31edc4d180a4368c74ef9fc",
+      "src/torchcst/optim/moments/system.py": "57390af5c3756908adbe42912fc188200da0312c5bf6a33c942115be1f6ee25d",
+      "src/torchcst/optim/moments/tangent.py": "13ba90b765d624374bf5e16818f03f708e6aa9e84db288e99398bdb9676fb7af",
+      "src/torchcst/optim/optimizer.py": "b8f209d624ebe77586d48a262a915c8649566467d0d0559215d84a31ccb1fad9",
+      "src/torchcst/optim/problem.py": "20221cf060fdb6736b52b039e6b4d1bb3748e1ebb1ae3cf9fdde7d42b72dde33",
+      "src/torchcst/optim/quadratic.py": "889d7f7260d93bc08d1a0b7f93d916498e2921a336414ed31db64435ae8db3f0",
+      "src/torchcst/optim/second_order.py": "660858d82750357bc67f769359b7b62dae9785cf22619659184383affdcc1fe3",
+      "src/torchcst/optim/solvers/__init__.py": "530e3b65c5800663afcf4705baff7f7eb5298259a1d3055d22a6ed217d1d4db8",
+      "src/torchcst/optim/solvers/_compiled.py": "b36e4e20fd01c9a1f162fca1e59c3eebafb000259016c89e29e48a20a9cfa27f",
+      "src/torchcst/optim/solvers/_factored_ray.py": "7ea963e492c1565109943c465fd3f8142f6ee5272da058fcf52d7695a3399583",
+      "src/torchcst/optim/solvers/_ray.py": "50b65404502167e8b9f736ca9d4a94a1e47c9c1e7691f951fdb0d61931f61726",
+      "src/torchcst/optim/solvers/base.py": "bbbef4797366114a193265b6cb4c1b49acfab2b341b3a2bed7248e1ef541b77b",
+      "src/torchcst/optim/solvers/device.py": "5e9dc2e11a8db139d6b4fe84c77e301a928861dd6f345190c370c251a1d5fb54",
+      "src/torchcst/optim/solvers/newton.py": "9b5bff144da6fe8b656ae7d9d8c0dced958db1f2107dd075dca371c74ad69b16",
+      "src/torchcst/optim/solvers/projected.py": "82a2a32c76f12cbaacda28c3d98dfde7969fd42affafdc5a018ac97d254ab38b",
+      "src/torchcst/optim/solvers/quartic.py": "f99351a5120b2a4a8c990e69e8f2fd470aea3aa5f282c627c6978c84ad08e1c2",
+      "src/torchcst/optim/solvers/ray.py": "7a6cbe48047bf49909db31e612dd7abb92986a76abbfddd953f1c1db2a67b27f",
+      "src/torchcst/optim/solvers/subspace.py": "ce1d800e4500c6ffb7a57624178464a2c2372e6a3c44abb67ccf1017e4863500",
+      "src/torchcst/_derivatives/tangent_eigh.cpp": "8d15ef9ef488128b5da4cc7f10822e9c29f91e5e3fd384a4728c56cc058e7f3f"
+    },
+    "93e2bac83af241bd": {
+      "src/torchcst/__init__.py": "8a2ab2b8e3ff607f9287f626648d1b4368f049c215f7d44a7b8aa763e4e9a324",
+      "src/torchcst/_derivatives/__init__.py": "3f1b18ad7115a8d825d9af9c8b806801c3bc64dbb3edec512d0ecde3ffead6a8",
+      "src/torchcst/_derivatives/_captured.py": "0a6fa975dafc0e75699a99e73bb108328552291c578cde20fd3a53f4edfb1baa",
+      "src/torchcst/_derivatives/_cholesky.py": "c852057aa0475b7bc8a2ae2c1d9ccbb504dd40b2b45b8d0774f54fda8f55fd33",
+      "src/torchcst/_derivatives/_jacobi.py": "13b5a85d32627d6bd3644dcf53d8e6308435c5b8481ad7f403c75c755ad106a3",
+      "src/torchcst/_derivatives/_pcg.py": "734108bbb82c12d3515b0e46fad9d252dddcfc3f15a6822b7025d7a8e37ad678",
+      "src/torchcst/_derivatives/atoms.py": "8996ba1a394fc22d16b9c5825d89b255372d4bfb486da6b810dd18865a910ebb",
+      "src/torchcst/_derivatives/block_eigh.py": "95e3e2896566ae397f9c5c12a17468a05523e15746fa0b7d4aa18fcbead2cb8b",
+      "src/torchcst/_derivatives/dense.py": "2c8598a1e395707c68c48c3f37e0d445c8cf4aa4580cf7a21d25f84c83e0585d",
+      "src/torchcst/_derivatives/factored_frame.py": "97a19168fdbad56e9347bd5fa8121f9013db1b7c42e58d217d81975f65bfa5c4",
+      "src/torchcst/_derivatives/factored_taylor.py": "f106bf3231557e28455aae9eb1a7541e1961d95328c06693e44cf72e0616bd86",
+      "src/torchcst/_derivatives/frame.py": "b05209bd2127011fa546d4321a77e9e77e4715369960475ef89a95e5a56b8fc9",
+      "src/torchcst/_derivatives/protocol.py": "34ef0e173a2353372a073aac04a6aaea5045b94afad47e8c5d6f18880c9e9530",
+      "src/torchcst/_derivatives/quadratic.py": "5790683f3f4723be862adcaf7faa1a9200de5e0e89a6f051effc3b1a5a8648ec",
+      "src/torchcst/_derivatives/tangent.py": "cedcb43a2aa5f9ddde1d5570367f7de4ca4fec8f9869f0241c842d1c5e94bd4d",
+      "src/torchcst/_derivatives/tangent_device.py": "98873bea3a711460ced8ea1967a1d1a5e44ce287ea0e68756959db537c224c06",
+      "src/torchcst/_derivatives/tangent_eigh.py": "411a3f00b611325de84c99b3f653c36f235005a23558bb6ef3f0f5deec9e22e0",
+      "src/torchcst/_derivatives/tangent_metric.py": "fb274a9dd3093a103a678e860c8b64259761bc96d0939e2f6bd2365784ca1c43",
+      "src/torchcst/_derivatives/tangent_nystrom.py": "896d6e35e37f5cfcffe27df0503899bc1b93fd29a6ae84719c406fccfd08ea8e",
+      "src/torchcst/_derivatives/tangent_ops.py": "351d7b990e97b488871cd40ee804e36e049a1c5af7bea48924f920a0b5dea0f9",
+      "src/torchcst/_derivatives/tangent_solve.py": "9d9fc8326abab42061b41cdf2844a6e69f36aba5d3889790e10b8c69dc073399",
+      "src/torchcst/_derivatives/tangent_triton.py": "54618a410e0d3ca092fbefcb7ed95fd7d4d9db29f5af27f9071668c93d3f3f94",
+      "src/torchcst/_runtime/__init__.py": "c2f3ecd5ca97b643a4c503fa20a7b98b6f7f70ddc2ba202f89fd118e29c81007",
+      "src/torchcst/_runtime/graphs.py": "b922e3f4c664733ae0f4b161e1f6a8874506828b0e314caa98c56d58bd3284d5",
+      "src/torchcst/_runtime/validation.py": "68438c0f1b7d160327effbfad1e4ae429277286f50f90238e6ab632e3caadb71",
+      "src/torchcst/atoms/__init__.py": "e26a0995cad48c8afa55d81bc0e7b258628abf19144cbb920f19e8ee7b4bd14d",
+      "src/torchcst/atoms/atoms.py": "fed067ffdf4875f0bf16b56ee304ea116aba3529ed034bbf523854cc243b056e",
+      "src/torchcst/atoms/grad.py": "4731d6e54790af7be75d2f450d9c2dd116a7211ad5e3c7d28b4e2908a8fba802",
+      "src/torchcst/geometry/__init__.py": "090dc3a94b825df2582451205621c13fe4ba3669570f53ef86b0c03c9377c18c",
+      "src/torchcst/geometry/chart.py": "7f8364d3ea356207eb9e088e0b71ffe9d1a13b10da06fa0c8c882a135b72cdc1",
+      "src/torchcst/kernels/__init__.py": "2b6120e2dcad11c90be61f1c1e8ae71b6788d3b08fee5612dc4c89024638b9bb",
+      "src/torchcst/kernels/_tangent.py": "0ef53240dc963a5f59de6c094cd877e0d583bbdec4bcdfac81be83dda80a9070",
+      "src/torchcst/kernels/amplitude.py": "a394fc3fabf90edea23484a816d466c2a9d54fafce959c0fba119cd120055931",
+      "src/torchcst/kernels/amplitude_bandwidth.py": "d956f19b12a4124bffe574a2d035d614c793e62a2f6b6cf082218d8dac5b89de",
+      "src/torchcst/kernels/base.py": "404ae3efb6b0c53ef91407baf29a433d55d308dd4abf81b88c4c007953e72502",
+      "src/torchcst/kernels/gaussian.py": "8de20f4fee70e6527f44573b4a5be60587298db13aa89c5993354af74fddae95",
+      "src/torchcst/kernels/separable.py": "e3d1c6212e605b362d00546230a8ade1c012e935138086771d8194ea9a7f8695",
+      "src/torchcst/nn/__init__.py": "428c2941cdb625f7e94f57476a0a76af9828599afb78e7c78c5fcb2e552acfa6",
+      "src/torchcst/nn/atom_grad.py": "852c6ba919550ed0c4860e8a5d4aa81f7e36c04c037f46d1c5288f938b6d74f0",
+      "src/torchcst/nn/linear.py": "3306af1e2d3f8de6c9620435f7cf6c0a1c5a733205d559945de78fd0096b318f",
+      "src/torchcst/optim/__init__.py": "c7ee4b780904c9f8c59b4ee94ff1470c3e8302ae045481c47fe3c3d2f5fc10a2",
+      "src/torchcst/optim/_local_tangent.py": "1ab5027943028b499db7ef76f9578d073fd0b3681fc55ea5c9a2a00996b3c80c",
+      "src/torchcst/optim/_tangent_device.py": "c7e1dab2586ffd1a9ef42d099d5bce54dcc2e8f860c0f9e94ef2a6d97ea07cb0",
+      "src/torchcst/optim/_trust_krylov.py": "590b3a5bff311b871f19319815152f09653b3d998473e97bae82ae63ae7faefd",
+      "src/torchcst/optim/_trust_pcg.py": "03c5d0c8d2dbc9fc4df46561d2eddf9127626080b7360c6d1ce05acb58c2f542",
+      "src/torchcst/optim/atom_grad.py": "be6cc602222f6407af98b56fc4721585cc36795f4beb30061a01c69599012d54",
+      "src/torchcst/optim/config.py": "e2768a413240b333837ca378414f2671f7c4b4895ba53bebc6f5dfc697534dfa",
+      "src/torchcst/optim/dense.py": "b5f740d8bb1343b56b7b204db7af624f6f50b563e374151ece207ffc8e64716c",
+      "src/torchcst/optim/first_order.py": "d74ea0dc2246dc2018e64b9b21c92a57b3427a6c2b0924b57c0723bc04db0ceb",
+      "src/torchcst/optim/moments/__init__.py": "053e301600775b2241766216a4f3901ed898f61d7240f9aba49556ca09ce6ae2",
+      "src/torchcst/optim/moments/atom_rms.py": "3e8087f73e407e175699d02b09a1a60e7a9f01b48fed2e6d3e43cfbdcb86d4b6",
+      "src/torchcst/optim/moments/base.py": "b8682ffd741de0cb48c8930123d5cf409a29f230424971fe34dad47467ddc909",
+      "src/torchcst/optim/moments/first.py": "fa1518615d93cead4a481ec76b955ef966223eaec35d04d1b16771c743d433ca",
+      "src/torchcst/optim/moments/second.py": "bf81e8d34d25ab116de5e511ba376bb9e12471cbc31edc4d180a4368c74ef9fc",
+      "src/torchcst/optim/moments/system.py": "57390af5c3756908adbe42912fc188200da0312c5bf6a33c942115be1f6ee25d",
+      "src/torchcst/optim/moments/tangent.py": "13ba90b765d624374bf5e16818f03f708e6aa9e84db288e99398bdb9676fb7af",
+      "src/torchcst/optim/optimizer.py": "b8f209d624ebe77586d48a262a915c8649566467d0d0559215d84a31ccb1fad9",
+      "src/torchcst/optim/problem.py": "20221cf060fdb6736b52b039e6b4d1bb3748e1ebb1ae3cf9fdde7d42b72dde33",
+      "src/torchcst/optim/quadratic.py": "889d7f7260d93bc08d1a0b7f93d916498e2921a336414ed31db64435ae8db3f0",
+      "src/torchcst/optim/second_order.py": "660858d82750357bc67f769359b7b62dae9785cf22619659184383affdcc1fe3",
+      "src/torchcst/optim/solvers/__init__.py": "530e3b65c5800663afcf4705baff7f7eb5298259a1d3055d22a6ed217d1d4db8",
+      "src/torchcst/optim/solvers/_compiled.py": "b36e4e20fd01c9a1f162fca1e59c3eebafb000259016c89e29e48a20a9cfa27f",
+      "src/torchcst/optim/solvers/_factored_ray.py": "7ea963e492c1565109943c465fd3f8142f6ee5272da058fcf52d7695a3399583",
+      "src/torchcst/optim/solvers/_ray.py": "50b65404502167e8b9f736ca9d4a94a1e47c9c1e7691f951fdb0d61931f61726",
+      "src/torchcst/optim/solvers/base.py": "bbbef4797366114a193265b6cb4c1b49acfab2b341b3a2bed7248e1ef541b77b",
+      "src/torchcst/optim/solvers/device.py": "5e9dc2e11a8db139d6b4fe84c77e301a928861dd6f345190c370c251a1d5fb54",
+      "src/torchcst/optim/solvers/newton.py": "9b5bff144da6fe8b656ae7d9d8c0dced958db1f2107dd075dca371c74ad69b16",
+      "src/torchcst/optim/solvers/projected.py": "82a2a32c76f12cbaacda28c3d98dfde7969fd42affafdc5a018ac97d254ab38b",
+      "src/torchcst/optim/solvers/quartic.py": "f99351a5120b2a4a8c990e69e8f2fd470aea3aa5f282c627c6978c84ad08e1c2",
+      "src/torchcst/optim/solvers/ray.py": "7a6cbe48047bf49909db31e612dd7abb92986a76abbfddd953f1c1db2a67b27f",
+      "src/torchcst/optim/solvers/subspace.py": "ce1d800e4500c6ffb7a57624178464a2c2372e6a3c44abb67ccf1017e4863500"
+    }
+  },
+  "archives": {
+    "output/krylov-initial-results.tgz": {
+      "sha256": "0ddb19d5d75f269606ba2201305e353bb9060b72f9e4b683f5562ef462447b0c",
+      "bytes": 7709
+    },
+    "output/krylov-stream-results.tgz": {
+      "sha256": "6238e3052d57e3aa0c331fef55655dd5c02d147b518f56ab84f46754be6d6937",
+      "bytes": 9031
+    },
+    "output/krylov-eval-results.tgz": {
+      "sha256": "a9682a8f6be60f1fe4acb51401bd4705739c6798bd864b0adf0c2f845ddc3de0",
+      "bytes": 924363
+    },
+    "output/nystrom-final-results.tgz": {
+      "sha256": "6b25afe50a8114bc2a30994f21e64ebe1541d4aea7f12c36b66d5be8410bda2f",
+      "bytes": 165963
+    }
+  },
+  "scaling": [
+    {
+      "config": {
+        "atoms": 1024,
+        "input": 784,
+        "output_width": 10,
+        "solver": "krylov",
+        "steps": 5,
+        "basis_size": 128,
+        "approximation": "full",
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 1024,
+        "output": "output/krylov-k1024.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 21.896216816734523,
+          "update_ms": 4582.39306640625,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 108.0,
+            "peak_allocated_mib": 159.72265625,
+            "peak_reserved_mib": 194.0
+          },
+          "loss": 0.979291558265686,
+          "compression": {
+            "iterations": 263,
+            "converged": true,
+            "relative_residual": 9.21718992860069e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0032648711232204915,
+            "relative_residual": 2.33342921347786e-06,
+            "relative_complementarity": 1.360926411961051e-12,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 1.9026089223613629e-06,
+            "objective": -0.0010501514508707034
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 5.620052063837647,
+          "update_ms": 86.68364715576172,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 246.0,
+            "peak_allocated_mib": 181.24609375,
+            "peak_reserved_mib": 246.0
+          },
+          "loss": 0.9774055480957031,
+          "compression": {
+            "iterations": 301,
+            "converged": true,
+            "relative_residual": 7.247247938894752e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0009966897552899203,
+            "relative_residual": 2.5168971482889943e-06,
+            "relative_complementarity": 6.302807594089677e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 2.045298560754396e-06,
+            "objective": -0.0006981589422808783
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 5.579528275877237,
+          "update_ms": 86.63654327392578,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 246.0,
+            "peak_allocated_mib": 181.24609375,
+            "peak_reserved_mib": 246.0
+          },
+          "loss": 0.9756030440330505,
+          "compression": {
+            "iterations": 299,
+            "converged": true,
+            "relative_residual": 8.472696422671238e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00046321930665157226,
+            "relative_residual": 1.5896206742928051e-06,
+            "relative_complementarity": 3.868704921041641e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 1.2873040232870415e-06,
+            "objective": -0.0005807660058041533
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 5.508513160981238,
+          "update_ms": 86.61811065673828,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 246.0,
+            "peak_allocated_mib": 181.24609375,
+            "peak_reserved_mib": 246.0
+          },
+          "loss": 0.9738916754722595,
+          "compression": {
+            "iterations": 295,
+            "converged": true,
+            "relative_residual": 8.730135081231703e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0002487731324898721,
+            "relative_residual": 1.9600388680211786e-06,
+            "relative_complementarity": 2.6155934197783544e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 1.5822258860702383e-06,
+            "objective": -0.0005229107487210258
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 5.761677419766784,
+          "update_ms": 86.6160659790039,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 246.0,
+            "peak_allocated_mib": 181.24609375,
+            "peak_reserved_mib": 246.0
+          },
+          "loss": 0.9723225831985474,
+          "compression": {
+            "iterations": 309,
+            "converged": true,
+            "relative_residual": 8.456565241393247e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00014666655252836586,
+            "relative_residual": 1.3043361273281181e-06,
+            "relative_complementarity": 1.305381905457246e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 1.0498712314672135e-06,
+            "objective": -0.00048787366781139613
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 3072,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.15771484375,
+        "reserved_mib": 22.0,
+        "peak_allocated_mib": 12.28369140625,
+        "peak_reserved_mib": 22.0
+      },
+      "warm_median_ms": 5579.528275877237,
+      "warm_update_median_ms": 86.61811065673828,
+      "warm_peak_allocated_mib": 181.24609375,
+      "warm_peak_reserved_mib": 246.0,
+      "implementation_version": "d1b571b354974b08",
+      "experiment_source_sha256": {
+        "experiments/trust_pcg_scaling.py": "b9dd44f3cb897d8b078d45c73b00ba400a5618ed561e33e89da069256ff4789e"
+      },
+      "raw_file": "output/krylov-initial/output/krylov-k1024.json"
+    },
+    {
+      "config": {
+        "atoms": 85,
+        "input": 784,
+        "output_width": 10,
+        "solver": "krylov",
+        "steps": 5,
+        "basis_size": 128,
+        "approximation": "full",
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 1024,
+        "output": "output/krylov-k85.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 11.510795569978654,
+          "update_ms": 8073.68701171875,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 58.0,
+            "peak_allocated_mib": 277.77197265625,
+            "peak_reserved_mib": 302.0
+          },
+          "loss": 0.9750469326972961,
+          "compression": {
+            "iterations": 115,
+            "converged": true,
+            "relative_residual": 9.465340353602967e-06
+          },
+          "update": {
+            "iterations": 64,
+            "evaluations": 67,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0016669896189184198,
+            "relative_residual": 2.335559179735657e-06,
+            "relative_complementarity": 1.3968844853872078e-11,
+            "basis_dimension": 64,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 5.59534811840606e-07,
+            "objective": -0.0005539075012655982
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.13238066900521517,
+          "update_ms": 86.81983947753906,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 80.0,
+            "peak_allocated_mib": 35.32373046875,
+            "peak_reserved_mib": 80.0
+          },
+          "loss": 0.9741107821464539,
+          "compression": {
+            "iterations": 119,
+            "converged": true,
+            "relative_residual": 8.885024090190538e-06
+          },
+          "update": {
+            "iterations": 64,
+            "evaluations": 67,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.000551286553480139,
+            "relative_residual": 2.9291694322922318e-06,
+            "relative_complementarity": 1.4464421201866518e-12,
+            "basis_dimension": 64,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 7.048835638192153e-07,
+            "objective": -0.0003827604786285721
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.13361229095607996,
+          "update_ms": 90.07718658447266,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 80.0,
+            "peak_allocated_mib": 35.32373046875,
+            "peak_reserved_mib": 80.0
+          },
+          "loss": 0.9730982780456543,
+          "compression": {
+            "iterations": 130,
+            "converged": true,
+            "relative_residual": 7.837249896536059e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0002548672653764038,
+            "relative_residual": 5.104666321289592e-07,
+            "relative_complementarity": 5.262452301269894e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 1.2330931550961593e-07,
+            "objective": -0.0003194768043698167
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.13010558485984802,
+          "update_ms": 84.97254180908203,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 80.0,
+            "peak_allocated_mib": 35.32373046875,
+            "peak_reserved_mib": 80.0
+          },
+          "loss": 0.9721669554710388,
+          "compression": {
+            "iterations": 129,
+            "converged": true,
+            "relative_residual": 7.167033440595796e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00016886762156231654,
+            "relative_residual": 1.1072397140508087e-06,
+            "relative_complementarity": 6.646421321896142e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 2.6807747121423235e-07,
+            "objective": -0.0002877965727817592
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.1319190221838653,
+          "update_ms": 85.9125747680664,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 80.0,
+            "peak_allocated_mib": 35.32373046875,
+            "peak_reserved_mib": 80.0
+          },
+          "loss": 0.9711869359016418,
+          "compression": {
+            "iterations": 131,
+            "converged": true,
+            "relative_residual": 6.248614767884461e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0001280678875066819,
+            "relative_residual": 1.1878135563686598e-06,
+            "relative_complementarity": 1.3007944386336342e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 2.890780860181056e-07,
+            "objective": -0.00026845494245455754
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 255,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.11474609375,
+        "reserved_mib": 2.0,
+        "peak_allocated_mib": 1.02978515625,
+        "peak_reserved_mib": 2.0
+      },
+      "warm_median_ms": 131.9190221838653,
+      "warm_update_median_ms": 85.9125747680664,
+      "warm_peak_allocated_mib": 35.32373046875,
+      "warm_peak_reserved_mib": 80.0,
+      "implementation_version": "d1b571b354974b08",
+      "experiment_source_sha256": {
+        "experiments/trust_pcg_scaling.py": "b9dd44f3cb897d8b078d45c73b00ba400a5618ed561e33e89da069256ff4789e"
+      },
+      "raw_file": "output/krylov-initial/output/krylov-k85.json"
+    },
+    {
+      "config": {
+        "atoms": 1024,
+        "input": 784,
+        "output_width": 10,
+        "solver": "krylov",
+        "steps": 5,
+        "basis_size": 128,
+        "recompression_action": "jvp_vjp",
+        "approximation": "full",
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 1024,
+        "output": "output/stream-k1024.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 8.194221690297127,
+          "update_ms": 3976.732666015625,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 108.0,
+            "peak_allocated_mib": 159.72265625,
+            "peak_reserved_mib": 194.0
+          },
+          "loss": 0.979291558265686,
+          "compression": {
+            "iterations": 254,
+            "converged": true,
+            "relative_residual": 7.733637731015286e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0032648711232204915,
+            "relative_residual": 2.33342921347786e-06,
+            "relative_complementarity": 1.360926411961051e-12,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 1.9026089223613629e-06,
+            "objective": -0.0010501514508707034
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.2220803559757769,
+          "update_ms": 88.2165756225586,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 246.0,
+            "peak_allocated_mib": 181.24609375,
+            "peak_reserved_mib": 246.0
+          },
+          "loss": 0.9774055480957031,
+          "compression": {
+            "iterations": 291,
+            "converged": true,
+            "relative_residual": 6.316952859334429e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0009966887513023538,
+            "relative_residual": 1.0361590420539319e-06,
+            "relative_complementarity": 9.053754876603979e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 8.4200999005305e-07,
+            "objective": -0.0006981556208786805
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.22111735586076975,
+          "update_ms": 88.0025634765625,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 246.0,
+            "peak_allocated_mib": 181.24609375,
+            "peak_reserved_mib": 246.0
+          },
+          "loss": 0.9756030440330505,
+          "compression": {
+            "iterations": 296,
+            "converged": true,
+            "relative_residual": 7.914085088209152e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00046323086912927167,
+            "relative_residual": 2.2925734759137007e-06,
+            "relative_complementarity": 2.1733964800860669e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 1.856565578122732e-06,
+            "objective": -0.0005807619994550452
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.22038024524226785,
+          "update_ms": 87.75270080566406,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 246.0,
+            "peak_allocated_mib": 181.24609375,
+            "peak_reserved_mib": 246.0
+          },
+          "loss": 0.9738916754722595,
+          "compression": {
+            "iterations": 295,
+            "converged": true,
+            "relative_residual": 7.266421212337551e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0002487251665813539,
+            "relative_residual": 2.1242821394574925e-06,
+            "relative_complementarity": 1.7685074483355201e-15,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 1.7148072351904881e-06,
+            "objective": -0.0005229095370237769
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.2212057919241488,
+          "update_ms": 87.65337371826172,
+          "memory": {
+            "allocated_mib": 37.958984375,
+            "reserved_mib": 246.0,
+            "peak_allocated_mib": 181.24609375,
+            "peak_reserved_mib": 246.0
+          },
+          "loss": 0.9723222851753235,
+          "compression": {
+            "iterations": 298,
+            "converged": true,
+            "relative_residual": 6.7520750492678315e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00014662927896745017,
+            "relative_residual": 2.0339128603164424e-06,
+            "relative_complementarity": 1.9081986022300597e-14,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 6291456,
+            "projected_gradient_norm": 1.6371093529418547e-06,
+            "objective": -0.00048786903820260854
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 3072,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.15771484375,
+        "reserved_mib": 22.0,
+        "peak_allocated_mib": 12.28369140625,
+        "peak_reserved_mib": 22.0
+      },
+      "warm_median_ms": 221.11735586076975,
+      "warm_update_median_ms": 87.75270080566406,
+      "warm_peak_allocated_mib": 181.24609375,
+      "warm_peak_reserved_mib": 246.0,
+      "implementation_version": "79556dbf6ed01afb",
+      "experiment_source_sha256": {
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/krylov-stream/output/stream-k1024.json"
+    },
+    {
+      "config": {
+        "atoms": 85,
+        "input": 784,
+        "output_width": 10,
+        "solver": "krylov",
+        "steps": 5,
+        "basis_size": 128,
+        "recompression_action": "jvp_vjp",
+        "approximation": "full",
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 1024,
+        "output": "output/stream-k85.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 10.760485867969692,
+          "update_ms": 5711.41748046875,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 58.0,
+            "peak_allocated_mib": 276.08447265625,
+            "peak_reserved_mib": 302.0
+          },
+          "loss": 0.9750469326972961,
+          "compression": {
+            "iterations": 112,
+            "converged": true,
+            "relative_residual": 7.810540764920976e-06
+          },
+          "update": {
+            "iterations": 64,
+            "evaluations": 67,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0016669896189184198,
+            "relative_residual": 2.335559179735657e-06,
+            "relative_complementarity": 1.3968844853872078e-11,
+            "basis_dimension": 64,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 5.59534811840606e-07,
+            "objective": -0.0005539075012655982
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.35205310117453337,
+          "update_ms": 103.77011108398438,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 80.0,
+            "peak_allocated_mib": 35.32373046875,
+            "peak_reserved_mib": 80.0
+          },
+          "loss": 0.9741107821464539,
+          "compression": {
+            "iterations": 120,
+            "converged": true,
+            "relative_residual": 7.078733239967545e-06
+          },
+          "update": {
+            "iterations": 64,
+            "evaluations": 67,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0005512758280492436,
+            "relative_residual": 2.035391352214692e-06,
+            "relative_complementarity": 1.3272017119419816e-13,
+            "basis_dimension": 64,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 4.898028361709838e-07,
+            "objective": -0.0003827596872445786
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.12543115206062794,
+          "update_ms": 81.57183837890625,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 80.0,
+            "peak_allocated_mib": 35.32373046875,
+            "peak_reserved_mib": 80.0
+          },
+          "loss": 0.9730983972549438,
+          "compression": {
+            "iterations": 127,
+            "converged": true,
+            "relative_residual": 8.357029778987546e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.000254864875511461,
+            "relative_residual": 5.523386228833273e-07,
+            "relative_complementarity": 5.274582714223451e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 1.334241232170656e-07,
+            "objective": -0.0003194774853181742
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.12565888604149222,
+          "update_ms": 81.17145538330078,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 80.0,
+            "peak_allocated_mib": 35.32373046875,
+            "peak_reserved_mib": 80.0
+          },
+          "loss": 0.9721668362617493,
+          "compression": {
+            "iterations": 128,
+            "converged": true,
+            "relative_residual": 7.72053768326648e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0001688603111779744,
+            "relative_residual": 1.2903315275161917e-06,
+            "relative_complementarity": 2.862128649196331e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 3.124086148045284e-07,
+            "objective": -0.0002877950770021527
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.12635936634615064,
+          "update_ms": 81.29740905761719,
+          "memory": {
+            "allocated_mib": 26.4755859375,
+            "reserved_mib": 80.0,
+            "peak_allocated_mib": 35.32373046875,
+            "peak_reserved_mib": 80.0
+          },
+          "loss": 0.971186637878418,
+          "compression": {
+            "iterations": 123,
+            "converged": true,
+            "relative_residual": 9.400247088313577e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00012805610029336452,
+            "relative_residual": 9.889722276616743e-07,
+            "relative_complementarity": 3.274081226773744e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 522240,
+            "projected_gradient_norm": 2.406868303970508e-07,
+            "objective": -0.00026845239366765617
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 255,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.11474609375,
+        "reserved_mib": 2.0,
+        "peak_allocated_mib": 1.02978515625,
+        "peak_reserved_mib": 2.0
+      },
+      "warm_median_ms": 125.65888604149222,
+      "warm_update_median_ms": 81.29740905761719,
+      "warm_peak_allocated_mib": 35.32373046875,
+      "warm_peak_reserved_mib": 80.0,
+      "implementation_version": "79556dbf6ed01afb",
+      "experiment_source_sha256": {
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/krylov-stream/output/stream-k85.json"
+    },
+    {
+      "config": {
+        "atoms": 2048,
+        "input": 784,
+        "output_width": 10,
+        "solver": "krylov",
+        "steps": 5,
+        "basis_size": 128,
+        "recompression_action": "jvp_vjp",
+        "approximation": "full",
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 1024,
+        "output": "output/stream-k2048.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 10.42166542634368,
+          "update_ms": 4248.9404296875,
+          "memory": {
+            "allocated_mib": 50.482421875,
+            "reserved_mib": 158.0,
+            "peak_allocated_mib": 263.203125,
+            "peak_reserved_mib": 294.0
+          },
+          "loss": 0.9783183336257935,
+          "compression": {
+            "iterations": 330,
+            "converged": true,
+            "relative_residual": 9.05733162408122e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00349714954727309,
+            "relative_residual": 3.1391105335834313e-06,
+            "relative_complementarity": 5.36533886172746e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 12582912,
+            "projected_gradient_norm": 3.457101131866991e-06,
+            "objective": -0.0011240438814479259
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.6348750358447433,
+          "update_ms": 361.53753662109375,
+          "memory": {
+            "allocated_mib": 50.482421875,
+            "reserved_mib": 388.0,
+            "peak_allocated_mib": 297.1796875,
+            "peak_reserved_mib": 388.0
+          },
+          "loss": 0.9762886166572571,
+          "compression": {
+            "iterations": 372,
+            "converged": true,
+            "relative_residual": 7.694050943049458e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0010154556948824057,
+            "relative_residual": 1.5512004408883544e-06,
+            "relative_complementarity": 2.2497927059525812e-13,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 12582912,
+            "projected_gradient_norm": 1.7024872538627166e-06,
+            "objective": -0.0007494157420134203
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.41625869693234563,
+          "update_ms": 145.52780151367188,
+          "memory": {
+            "allocated_mib": 50.482421875,
+            "reserved_mib": 388.0,
+            "peak_allocated_mib": 297.1796875,
+            "peak_reserved_mib": 388.0
+          },
+          "loss": 0.9743900299072266,
+          "compression": {
+            "iterations": 382,
+            "converged": true,
+            "relative_residual": 9.65396501770556e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00043836999483247034,
+            "relative_residual": 2.130674914712987e-06,
+            "relative_complementarity": 5.4789489041991555e-14,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 12582912,
+            "projected_gradient_norm": 2.3306644527087622e-06,
+            "objective": -0.0006216695706302404
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.4143092827871442,
+          "update_ms": 145.5820770263672,
+          "memory": {
+            "allocated_mib": 50.482421875,
+            "reserved_mib": 388.0,
+            "peak_allocated_mib": 297.1796875,
+            "peak_reserved_mib": 388.0
+          },
+          "loss": 0.9725936055183411,
+          "compression": {
+            "iterations": 378,
+            "converged": true,
+            "relative_residual": 8.887512111115358e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00021486810215477284,
+            "relative_residual": 1.8823379343042044e-06,
+            "relative_complementarity": 8.264297456625202e-14,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 12582912,
+            "projected_gradient_norm": 2.0524502678058082e-06,
+            "objective": -0.0005587521716024022
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.41375352814793587,
+          "update_ms": 145.5810546875,
+          "memory": {
+            "allocated_mib": 50.482421875,
+            "reserved_mib": 388.0,
+            "peak_allocated_mib": 297.1796875,
+            "peak_reserved_mib": 388.0
+          },
+          "loss": 0.9709596633911133,
+          "compression": {
+            "iterations": 375,
+            "converged": true,
+            "relative_residual": 8.783859874114314e-06
+          },
+          "update": {
+            "iterations": 96,
+            "evaluations": 100,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.00013269851324974682,
+            "relative_residual": 2.6566581585626602e-06,
+            "relative_complementarity": 7.401076751026979e-14,
+            "basis_dimension": 96,
+            "basis_capacity": 128,
+            "basis_bytes": 12582912,
+            "projected_gradient_norm": 2.8879191874375693e-06,
+            "objective": -0.0005212984116344204
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 6144,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.20458984375,
+        "reserved_mib": 42.0,
+        "peak_allocated_mib": 24.55712890625,
+        "peak_reserved_mib": 42.0
+      },
+      "warm_median_ms": 414.3092827871442,
+      "warm_update_median_ms": 145.5810546875,
+      "warm_peak_allocated_mib": 297.1796875,
+      "warm_peak_reserved_mib": 388.0,
+      "implementation_version": "79556dbf6ed01afb",
+      "experiment_source_sha256": {
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/krylov-eval/output/stream-k2048.json"
+    }
+  ],
+  "learning": [
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-s17.json",
+        "approximation": "full",
+        "solver": "krylov",
+        "recompression_action": "jvp_vjp",
+        "seed": 17,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "72ad553e86ab6a7703f23c63d3ffbc46b85474539613859a0760c4250e238c6f",
+      "batch_permutation_sha256": "2602d182f0914756688fc056cf8c5f92434fa8e7532fed896c9f905382a90c46",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08150000125169754,
+          "test_loss": 2.315807342529297
+        },
+        {
+          "step": 1,
+          "accuracy": 0.15950000286102295,
+          "test_loss": 2.2432596683502197
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6945000290870667,
+          "test_loss": 1.085410714149475
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7615000605583191,
+          "test_loss": 0.8324424624443054
+        }
+      ],
+      "status": "failed",
+      "error": "FloatingPointError: deferred CST validation failed; updates are disabled",
+      "implementation_version": "79556dbf6ed01afb",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "c841647dac297a76691ad2473143c8261c9fec8dc4fb5991823928ac89b9bc15",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/krylov-eval/output/mnist-s17.json",
+      "row_summary": {
+        "attempted_steps": 101,
+        "update_converged_steps": 100,
+        "compression_converged_steps": 101,
+        "max_basis_dimension": 128,
+        "max_returned_update_relative_residual": 1.0,
+        "max_compression_relative_residual": 9.97278191844145e-06,
+        "warm_compression_iterations_median": 211
+      },
+      "last_attempt": {
+        "step": 101,
+        "seconds": 0.1294473293237388,
+        "update_ms": 81.50425720214844,
+        "memory": {
+          "allocated_mib": 56.94921875,
+          "reserved_mib": 106.0,
+          "peak_allocated_mib": 62.330078125,
+          "peak_reserved_mib": 106.0
+        },
+        "train_loss": 0.6362256407737732,
+        "update": {
+          "iterations": 128,
+          "evaluations": 133,
+          "converged": false,
+          "on_boundary": false,
+          "shift": 0.0,
+          "relative_residual": 1.0,
+          "relative_complementarity": 0.0,
+          "basis_dimension": 128,
+          "basis_capacity": 128,
+          "basis_bytes": 524288,
+          "projected_gradient_norm": 1.2405423141988112,
+          "objective": 0.0
+        },
+        "compression": {
+          "iterations": 174,
+          "converged": true,
+          "relative_residual": 7.313966041144849e-06
+        }
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-s29.json",
+        "approximation": "full",
+        "solver": "krylov",
+        "recompression_action": "jvp_vjp",
+        "seed": 29,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "164d4d86717ee908af7303adf03622a9ab6dbba3e40b14b967ddd1884804f572",
+      "batch_permutation_sha256": "1a6d7768a59c9e33c7fd43acf56bd570c420d167970708d666a50e87e2791efd",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08800000697374344,
+          "test_loss": 2.311913251876831
+        },
+        {
+          "step": 1,
+          "accuracy": 0.14800000190734863,
+          "test_loss": 2.226320266723633
+        },
+        {
+          "step": 32,
+          "accuracy": 0.7595000267028809,
+          "test_loss": 0.8321775197982788
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7095000147819519,
+          "test_loss": 1.0959776639938354
+        }
+      ],
+      "status": "failed",
+      "error": "FloatingPointError: deferred CST validation failed; updates are disabled",
+      "implementation_version": "79556dbf6ed01afb",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "c841647dac297a76691ad2473143c8261c9fec8dc4fb5991823928ac89b9bc15",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/krylov-eval/output/mnist-s29.json",
+      "row_summary": {
+        "attempted_steps": 110,
+        "update_converged_steps": 109,
+        "compression_converged_steps": 110,
+        "max_basis_dimension": 128,
+        "max_returned_update_relative_residual": 1.0,
+        "max_compression_relative_residual": 9.981350650552809e-06,
+        "warm_compression_iterations_median": 268.0
+      },
+      "last_attempt": {
+        "step": 110,
+        "seconds": 0.1296770009212196,
+        "update_ms": 80.13619232177734,
+        "memory": {
+          "allocated_mib": 56.94921875,
+          "reserved_mib": 106.0,
+          "peak_allocated_mib": 62.330078125,
+          "peak_reserved_mib": 106.0
+        },
+        "train_loss": 0.51053386926651,
+        "update": {
+          "iterations": 128,
+          "evaluations": 133,
+          "converged": false,
+          "on_boundary": false,
+          "shift": 0.0,
+          "relative_residual": 1.0,
+          "relative_complementarity": 0.0,
+          "basis_dimension": 128,
+          "basis_capacity": 128,
+          "basis_bytes": 524288,
+          "projected_gradient_norm": 1.383176426753001,
+          "objective": 0.0
+        },
+        "compression": {
+          "iterations": 225,
+          "converged": true,
+          "relative_residual": 9.00276688439419e-06
+        }
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-s43.json",
+        "approximation": "full",
+        "solver": "krylov",
+        "recompression_action": "jvp_vjp",
+        "seed": 43,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "0fd36c32b3fba0be1e837bae893e034c37169002b52d7895acdf9d483150f58a",
+      "batch_permutation_sha256": "544e73dfa92736239a35ee929d95f550d094f6e3f60f447e5460df5379e2b82b",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.10750000178813934,
+          "test_loss": 2.3069283962249756
+        },
+        {
+          "step": 1,
+          "accuracy": 0.12800000607967377,
+          "test_loss": 2.279512643814087
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6915000081062317,
+          "test_loss": 1.0056779384613037
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7640000581741333,
+          "test_loss": 0.8487194180488586
+        }
+      ],
+      "status": "failed",
+      "error": "FloatingPointError: deferred CST validation failed; updates are disabled",
+      "implementation_version": "79556dbf6ed01afb",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "c841647dac297a76691ad2473143c8261c9fec8dc4fb5991823928ac89b9bc15",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/krylov-eval/output/mnist-s43.json",
+      "row_summary": {
+        "attempted_steps": 100,
+        "update_converged_steps": 99,
+        "compression_converged_steps": 100,
+        "max_basis_dimension": 128,
+        "max_returned_update_relative_residual": 1.0,
+        "max_compression_relative_residual": 9.990390079590783e-06,
+        "warm_compression_iterations_median": 246.5
+      },
+      "last_attempt": {
+        "step": 100,
+        "seconds": 0.12908819410949945,
+        "update_ms": 79.05075073242188,
+        "memory": {
+          "allocated_mib": 56.94921875,
+          "reserved_mib": 106.0,
+          "peak_allocated_mib": 62.330078125,
+          "peak_reserved_mib": 106.0
+        },
+        "train_loss": 0.38455668091773987,
+        "update": {
+          "iterations": 128,
+          "evaluations": 133,
+          "converged": false,
+          "on_boundary": false,
+          "shift": 0.0,
+          "relative_residual": 1.0,
+          "relative_complementarity": 0.0,
+          "basis_dimension": 128,
+          "basis_capacity": 128,
+          "basis_bytes": 524288,
+          "projected_gradient_norm": 1.394193355960958,
+          "objective": 0.0
+        },
+        "compression": {
+          "iterations": 244,
+          "converged": true,
+          "relative_residual": 9.176250241797554e-06
+        }
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-b256-s17.json",
+        "approximation": "full",
+        "solver": "krylov",
+        "recompression_action": "jvp_vjp",
+        "basis_size": 256,
+        "seed": 17,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "72ad553e86ab6a7703f23c63d3ffbc46b85474539613859a0760c4250e238c6f",
+      "batch_permutation_sha256": "2602d182f0914756688fc056cf8c5f92434fa8e7532fed896c9f905382a90c46",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08150000125169754,
+          "test_loss": 2.315807342529297
+        },
+        {
+          "step": 1,
+          "accuracy": 0.15950000286102295,
+          "test_loss": 2.2432596683502197
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6945000290870667,
+          "test_loss": 1.085410714149475
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7615000605583191,
+          "test_loss": 0.8324424624443054
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7980000376701355,
+          "test_loss": 0.7458206415176392
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7980000376701355,
+      "warm_median_ms": 219.28721177391708,
+      "warm_update_median_ms": 170.07308959960938,
+      "warm_peak_allocated_mib": 71.203125,
+      "implementation_version": "438f553ff35fd3e5",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "87b6ffe980b31eeaadec7870a6ac9ee59976c5571efd375d4142724abf66b3df",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/nystrom-final/output/mnist-b256-s17.json",
+      "row_summary": {
+        "attempted_steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "max_basis_dimension": 160,
+        "max_returned_update_relative_residual": 8.319201902889177e-06,
+        "max_compression_relative_residual": 9.97278191844145e-06,
+        "warm_compression_iterations_median": 198.5
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-b256-s29.json",
+        "approximation": "full",
+        "solver": "krylov",
+        "recompression_action": "jvp_vjp",
+        "basis_size": 256,
+        "seed": 29,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "164d4d86717ee908af7303adf03622a9ab6dbba3e40b14b967ddd1884804f572",
+      "batch_permutation_sha256": "1a6d7768a59c9e33c7fd43acf56bd570c420d167970708d666a50e87e2791efd",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08800000697374344,
+          "test_loss": 2.311913251876831
+        },
+        {
+          "step": 1,
+          "accuracy": 0.14800000190734863,
+          "test_loss": 2.226320266723633
+        },
+        {
+          "step": 32,
+          "accuracy": 0.7595000267028809,
+          "test_loss": 0.8321775197982788
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7095000147819519,
+          "test_loss": 1.0959776639938354
+        },
+        {
+          "step": 128,
+          "accuracy": 0.6985000371932983,
+          "test_loss": 1.3317303657531738
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.6985000371932983,
+      "warm_median_ms": 221.77207353524864,
+      "warm_update_median_ms": 171.00186157226562,
+      "warm_peak_allocated_mib": 71.203125,
+      "implementation_version": "438f553ff35fd3e5",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "87b6ffe980b31eeaadec7870a6ac9ee59976c5571efd375d4142724abf66b3df",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/nystrom-final/output/mnist-b256-s29.json",
+      "row_summary": {
+        "attempted_steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "max_basis_dimension": 160,
+        "max_returned_update_relative_residual": 9.91552634784469e-06,
+        "max_compression_relative_residual": 9.981350650552809e-06,
+        "warm_compression_iterations_median": 268.0
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-b256-s43.json",
+        "approximation": "full",
+        "solver": "krylov",
+        "recompression_action": "jvp_vjp",
+        "basis_size": 256,
+        "seed": 43,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "0fd36c32b3fba0be1e837bae893e034c37169002b52d7895acdf9d483150f58a",
+      "batch_permutation_sha256": "544e73dfa92736239a35ee929d95f550d094f6e3f60f447e5460df5379e2b82b",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.10750000178813934,
+          "test_loss": 2.3069283962249756
+        },
+        {
+          "step": 1,
+          "accuracy": 0.12800000607967377,
+          "test_loss": 2.279512643814087
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6915000081062317,
+          "test_loss": 1.0056779384613037
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7640000581741333,
+          "test_loss": 0.8487194180488586
+        },
+        {
+          "step": 128,
+          "accuracy": 0.781000018119812,
+          "test_loss": 0.8260440826416016
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.781000018119812,
+      "warm_median_ms": 227.63181827031076,
+      "warm_update_median_ms": 177.2928009033203,
+      "warm_peak_allocated_mib": 71.203125,
+      "implementation_version": "438f553ff35fd3e5",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "87b6ffe980b31eeaadec7870a6ac9ee59976c5571efd375d4142724abf66b3df",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/nystrom-final/output/mnist-b256-s43.json",
+      "row_summary": {
+        "attempted_steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "max_basis_dimension": 160,
+        "max_returned_update_relative_residual": 9.70524649886163e-06,
+        "max_compression_relative_residual": 9.997808546799019e-06,
+        "warm_compression_iterations_median": 236.5
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-krylov-pair-s17.json",
+        "approximation": "full",
+        "solver": "krylov",
+        "recompression_action": "pair",
+        "basis_size": 256,
+        "seed": 17,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "72ad553e86ab6a7703f23c63d3ffbc46b85474539613859a0760c4250e238c6f",
+      "batch_permutation_sha256": "2602d182f0914756688fc056cf8c5f92434fa8e7532fed896c9f905382a90c46",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08150000125169754,
+          "test_loss": 2.315807342529297
+        },
+        {
+          "step": 1,
+          "accuracy": 0.15950000286102295,
+          "test_loss": 2.2432596683502197
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6950000524520874,
+          "test_loss": 1.0839062929153442
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7635000348091125,
+          "test_loss": 0.8329534530639648
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7880000472068787,
+          "test_loss": 0.7904061079025269
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7880000472068787,
+      "warm_median_ms": 226.6984803136438,
+      "warm_update_median_ms": 174.73792266845703,
+      "warm_peak_allocated_mib": 71.203125,
+      "implementation_version": "438f553ff35fd3e5",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "87b6ffe980b31eeaadec7870a6ac9ee59976c5571efd375d4142724abf66b3df",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/nystrom-final/output/mnist-krylov-pair-s17.json",
+      "row_summary": {
+        "attempted_steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "max_basis_dimension": 160,
+        "max_returned_update_relative_residual": 9.287308262436925e-06,
+        "max_compression_relative_residual": 9.989545707195119e-06,
+        "warm_compression_iterations_median": 206.0
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-krylov-pair-s29.json",
+        "approximation": "full",
+        "solver": "krylov",
+        "recompression_action": "pair",
+        "basis_size": 256,
+        "seed": 29,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "164d4d86717ee908af7303adf03622a9ab6dbba3e40b14b967ddd1884804f572",
+      "batch_permutation_sha256": "1a6d7768a59c9e33c7fd43acf56bd570c420d167970708d666a50e87e2791efd",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08800000697374344,
+          "test_loss": 2.311913251876831
+        },
+        {
+          "step": 1,
+          "accuracy": 0.14800000190734863,
+          "test_loss": 2.226320266723633
+        },
+        {
+          "step": 32,
+          "accuracy": 0.7625000476837158,
+          "test_loss": 0.8425557017326355
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7075000405311584,
+          "test_loss": 1.0746217966079712
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7750000357627869,
+          "test_loss": 0.8581856489181519
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7750000357627869,
+      "warm_median_ms": 226.45144537091255,
+      "warm_update_median_ms": 168.32972717285156,
+      "warm_peak_allocated_mib": 71.203125,
+      "implementation_version": "438f553ff35fd3e5",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "87b6ffe980b31eeaadec7870a6ac9ee59976c5571efd375d4142724abf66b3df",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/nystrom-final/output/mnist-krylov-pair-s29.json",
+      "row_summary": {
+        "attempted_steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "max_basis_dimension": 160,
+        "max_returned_update_relative_residual": 9.524743104755605e-06,
+        "max_compression_relative_residual": 9.94871342828916e-06,
+        "warm_compression_iterations_median": 260.0
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-krylov-pair-s43.json",
+        "approximation": "full",
+        "solver": "krylov",
+        "recompression_action": "pair",
+        "basis_size": 256,
+        "seed": 43,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "0fd36c32b3fba0be1e837bae893e034c37169002b52d7895acdf9d483150f58a",
+      "batch_permutation_sha256": "544e73dfa92736239a35ee929d95f550d094f6e3f60f447e5460df5379e2b82b",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.10750000178813934,
+          "test_loss": 2.3069283962249756
+        },
+        {
+          "step": 1,
+          "accuracy": 0.12800000607967377,
+          "test_loss": 2.279512643814087
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6930000185966492,
+          "test_loss": 1.0042064189910889
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7575000524520874,
+          "test_loss": 0.8704426288604736
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7605000138282776,
+          "test_loss": 0.9116017818450928
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7605000138282776,
+      "warm_median_ms": 219.68232351355255,
+      "warm_update_median_ms": 165.59820556640625,
+      "warm_peak_allocated_mib": 71.203125,
+      "implementation_version": "438f553ff35fd3e5",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "87b6ffe980b31eeaadec7870a6ac9ee59976c5571efd375d4142724abf66b3df",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/nystrom-final/output/mnist-krylov-pair-s43.json",
+      "row_summary": {
+        "attempted_steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "max_basis_dimension": 160,
+        "max_returned_update_relative_residual": 9.464601074126638e-06,
+        "max_compression_relative_residual": 9.989030862943534e-06,
+        "warm_compression_iterations_median": 226.5
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-spectral-stream-s17.json",
+        "approximation": "full",
+        "solver": "spectral",
+        "recompression_action": "jvp_vjp",
+        "basis_size": 128,
+        "seed": 17,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "72ad553e86ab6a7703f23c63d3ffbc46b85474539613859a0760c4250e238c6f",
+      "batch_permutation_sha256": "2602d182f0914756688fc056cf8c5f92434fa8e7532fed896c9f905382a90c46",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08150000125169754,
+          "test_loss": 2.315807342529297
+        },
+        {
+          "step": 1,
+          "accuracy": 0.15950000286102295,
+          "test_loss": 2.2432596683502197
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6950000524520874,
+          "test_loss": 1.0812982320785522
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7560000419616699,
+          "test_loss": 0.8272556662559509
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7695000171661377,
+          "test_loss": 0.8537704348564148
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7695000171661377,
+      "warm_median_ms": 52.34216991811991,
+      "warm_update_median_ms": 3.7560319900512695,
+      "warm_peak_allocated_mib": 61.73046875,
+      "implementation_version": "438f553ff35fd3e5",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "87b6ffe980b31eeaadec7870a6ac9ee59976c5571efd375d4142724abf66b3df",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/nystrom-final/output/mnist-spectral-stream-s17.json",
+      "row_summary": {
+        "attempted_steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "max_basis_dimension": 0,
+        "max_returned_update_relative_residual": 0,
+        "max_compression_relative_residual": 9.992895359029924e-06,
+        "warm_compression_iterations_median": 199.0
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-spectral-stream-s29.json",
+        "approximation": "full",
+        "solver": "spectral",
+        "recompression_action": "jvp_vjp",
+        "basis_size": 128,
+        "seed": 29,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "164d4d86717ee908af7303adf03622a9ab6dbba3e40b14b967ddd1884804f572",
+      "batch_permutation_sha256": "1a6d7768a59c9e33c7fd43acf56bd570c420d167970708d666a50e87e2791efd",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08800000697374344,
+          "test_loss": 2.311913251876831
+        },
+        {
+          "step": 1,
+          "accuracy": 0.14800000190734863,
+          "test_loss": 2.226320266723633
+        },
+        {
+          "step": 32,
+          "accuracy": 0.7615000605583191,
+          "test_loss": 0.8343894481658936
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7050000429153442,
+          "test_loss": 1.0849875211715698
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7925000190734863,
+          "test_loss": 0.8119249939918518
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7925000190734863,
+      "warm_median_ms": 54.80567994527519,
+      "warm_update_median_ms": 3.7365760803222656,
+      "warm_peak_allocated_mib": 61.73046875,
+      "implementation_version": "438f553ff35fd3e5",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "87b6ffe980b31eeaadec7870a6ac9ee59976c5571efd375d4142724abf66b3df",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/nystrom-final/output/mnist-spectral-stream-s29.json",
+      "row_summary": {
+        "attempted_steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "max_basis_dimension": 0,
+        "max_returned_update_relative_residual": 0,
+        "max_compression_relative_residual": 9.996131073200337e-06,
+        "warm_compression_iterations_median": 296.0
+      },
+      "paired_baseline_hashes_match": true
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-spectral-stream-s43.json",
+        "approximation": "full",
+        "solver": "spectral",
+        "recompression_action": "jvp_vjp",
+        "basis_size": 128,
+        "seed": 43,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "0fd36c32b3fba0be1e837bae893e034c37169002b52d7895acdf9d483150f58a",
+      "batch_permutation_sha256": "544e73dfa92736239a35ee929d95f550d094f6e3f60f447e5460df5379e2b82b",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.10750000178813934,
+          "test_loss": 2.3069283962249756
+        },
+        {
+          "step": 1,
+          "accuracy": 0.12800000607967377,
+          "test_loss": 2.279512882232666
+        },
+        {
+          "step": 32,
+          "accuracy": 0.690500020980835,
+          "test_loss": 1.0062499046325684
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7735000252723694,
+          "test_loss": 0.8219760060310364
+        },
+        {
+          "step": 128,
+          "accuracy": 0.796000063419342,
+          "test_loss": 0.8168907761573792
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.796000063419342,
+      "warm_median_ms": 53.285263013094664,
+      "warm_update_median_ms": 3.7524479627609253,
+      "warm_peak_allocated_mib": 61.73046875,
+      "implementation_version": "438f553ff35fd3e5",
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "87b6ffe980b31eeaadec7870a6ac9ee59976c5571efd375d4142724abf66b3df",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "26ff0e996604b5199506eb57dbe560cff7db6b04d633196807cd6086ee9c52f9"
+      },
+      "raw_file": "output/nystrom-final/output/mnist-spectral-stream-s43.json",
+      "row_summary": {
+        "attempted_steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "max_basis_dimension": 0,
+        "max_returned_update_relative_residual": 0,
+        "max_compression_relative_residual": 9.98916941334799e-06,
+        "warm_compression_iterations_median": 223.5
+      },
+      "paired_baseline_hashes_match": true
+    }
+  ],
+  "baseline_learning": [
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-17-full.json",
+        "approximation": "full",
+        "seed": 17,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "72ad553e86ab6a7703f23c63d3ffbc46b85474539613859a0760c4250e238c6f",
+      "batch_permutation_sha256": "2602d182f0914756688fc056cf8c5f92434fa8e7532fed896c9f905382a90c46",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08150000125169754,
+          "test_loss": 2.315807342529297
+        },
+        {
+          "step": 1,
+          "accuracy": 0.15950000286102295,
+          "test_loss": 2.2432596683502197
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6945000290870667,
+          "test_loss": 1.088492751121521
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7745000123977661,
+          "test_loss": 0.8015140295028687
+        },
+        {
+          "step": 128,
+          "accuracy": 0.8060000538825989,
+          "test_loss": 0.7916288375854492
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.8060000538825989,
+      "warm_median_ms": 56.249030167236924,
+      "warm_update_median_ms": 4.224512100219727,
+      "warm_peak_allocated_mib": 61.73046875,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 68,
+          "median": 193.5,
+          "max": 358
+        },
+        "max_compression_relative_residual": 9.991464356089699e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-29-full.json",
+        "approximation": "full",
+        "seed": 29,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "164d4d86717ee908af7303adf03622a9ab6dbba3e40b14b967ddd1884804f572",
+      "batch_permutation_sha256": "1a6d7768a59c9e33c7fd43acf56bd570c420d167970708d666a50e87e2791efd",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08800000697374344,
+          "test_loss": 2.311913251876831
+        },
+        {
+          "step": 1,
+          "accuracy": 0.14800000190734863,
+          "test_loss": 2.226320266723633
+        },
+        {
+          "step": 32,
+          "accuracy": 0.7585000395774841,
+          "test_loss": 0.8434323668479919
+        },
+        {
+          "step": 64,
+          "accuracy": 0.6990000605583191,
+          "test_loss": 1.1414203643798828
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7500000596046448,
+          "test_loss": 0.9953758716583252
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7500000596046448,
+      "warm_median_ms": 62.10603401996195,
+      "warm_update_median_ms": 3.8297600746154785,
+      "warm_peak_allocated_mib": 61.73046875,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 75,
+          "median": 259.5,
+          "max": 475
+        },
+        "max_compression_relative_residual": 9.95172799841252e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-43-full.json",
+        "approximation": "full",
+        "seed": 43,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "0fd36c32b3fba0be1e837bae893e034c37169002b52d7895acdf9d483150f58a",
+      "batch_permutation_sha256": "544e73dfa92736239a35ee929d95f550d094f6e3f60f447e5460df5379e2b82b",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.10750000178813934,
+          "test_loss": 2.3069283962249756
+        },
+        {
+          "step": 1,
+          "accuracy": 0.12800000607967377,
+          "test_loss": 2.279512882232666
+        },
+        {
+          "step": 32,
+          "accuracy": 0.690000057220459,
+          "test_loss": 1.0077893733978271
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7625000476837158,
+          "test_loss": 0.8544533848762512
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7850000262260437,
+          "test_loss": 0.7984023094177246
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7850000262260437,
+      "warm_median_ms": 57.780836476013064,
+      "warm_update_median_ms": 3.8236160278320312,
+      "warm_peak_allocated_mib": 61.73046875,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 80,
+          "median": 223.5,
+          "max": 395
+        },
+        "max_compression_relative_residual": 9.971737176484008e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    }
+  ],
+  "baseline_learning_source": "docs/experiments/local-tangent-results.json",
+  "nystrom_initial_compression": [
+    {
+      "atoms": 1024,
+      "rank": 0,
+      "sketch_budget_bytes": 98304,
+      "rows": [
+        {
+          "ms": 116.31206512451172,
+          "iterations": 254,
+          "relative_residual": 7.733637731015286e-06,
+          "converged": true,
+          "peak_allocated_mib": 49.603515625
+        },
+        {
+          "ms": 116.25081634521484,
+          "iterations": 254,
+          "relative_residual": 7.733637731015286e-06,
+          "converged": true,
+          "peak_allocated_mib": 49.61669921875
+        },
+        {
+          "ms": 116.17961883544922,
+          "iterations": 254,
+          "relative_residual": 7.733637731015286e-06,
+          "converged": true,
+          "peak_allocated_mib": 49.61669921875
+        }
+      ],
+      "dense_relative_residual": 7.755507317024333e-06,
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "torch": "2.6.0+cu126",
+      "implementation_version": "93e2bac83af241bd",
+      "experiment_source_sha256": {
+        "experiments/recompression_nystrom.py": "eb8872ec83d3242ec88616096dc0bb839f0befe08f5ddffa50de3f32afbae01b"
+      },
+      "raw_file": "output/nystrom-final/output/nystrom-r0.json"
+    },
+    {
+      "atoms": 1024,
+      "rank": 32,
+      "sketch_budget_bytes": 3145728,
+      "rows": [
+        {
+          "ms": 94.79167938232422,
+          "iterations": 40,
+          "relative_residual": 3.4841193355453746e-06,
+          "converged": true,
+          "peak_allocated_mib": 51.064453125
+        },
+        {
+          "ms": 94.76937866210938,
+          "iterations": 40,
+          "relative_residual": 3.4841193355453746e-06,
+          "converged": true,
+          "peak_allocated_mib": 51.07763671875
+        },
+        {
+          "ms": 94.72799682617188,
+          "iterations": 40,
+          "relative_residual": 3.4841193355453746e-06,
+          "converged": true,
+          "peak_allocated_mib": 51.07763671875
+        }
+      ],
+      "dense_relative_residual": 3.466817587235524e-06,
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "torch": "2.6.0+cu126",
+      "implementation_version": "93e2bac83af241bd",
+      "experiment_source_sha256": {
+        "experiments/recompression_nystrom.py": "eb8872ec83d3242ec88616096dc0bb839f0befe08f5ddffa50de3f32afbae01b"
+      },
+      "raw_file": "output/nystrom-final/output/nystrom-r32.json"
+    },
+    {
+      "atoms": 1024,
+      "rank": 64,
+      "sketch_budget_bytes": 6291456,
+      "rows": [
+        {
+          "ms": 106.68134307861328,
+          "iterations": 6,
+          "relative_residual": 5.371405277886502e-07,
+          "converged": true,
+          "peak_allocated_mib": 52.58740234375
+        },
+        {
+          "ms": 106.62582397460938,
+          "iterations": 6,
+          "relative_residual": 5.371405277886502e-07,
+          "converged": true,
+          "peak_allocated_mib": 52.6005859375
+        },
+        {
+          "ms": 106.55197143554688,
+          "iterations": 6,
+          "relative_residual": 5.371405277886502e-07,
+          "converged": true,
+          "peak_allocated_mib": 52.6005859375
+        }
+      ],
+      "dense_relative_residual": 5.748242254724382e-07,
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "torch": "2.6.0+cu126",
+      "implementation_version": "93e2bac83af241bd",
+      "experiment_source_sha256": {
+        "experiments/recompression_nystrom.py": "eb8872ec83d3242ec88616096dc0bb839f0befe08f5ddffa50de3f32afbae01b"
+      },
+      "raw_file": "output/nystrom-final/output/nystrom-r64.json"
+    }
+  ],
+  "independent_dense_oracles": [
+    {
+      "atoms": 1024,
+      "solver": "krylov",
+      "basis_size": 128,
+      "steps": 1,
+      "compression_max_iter": 1024,
+      "update_shift_steps": 64,
+      "losses": [
+        0.979291558265686
+      ],
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "updates": [
+        {
+          "objective": -0.001050151450880231,
+          "reference_objective": -0.0010501514506033056,
+          "objective_gap": -2.7692540101320606e-13,
+          "relative_gap": -2.637004413545438e-10,
+          "dense_relative_residual": 2.333429202768958e-06,
+          "reference_relative_residual": 4.345754879979422e-13,
+          "relative_complementarity": 1.360926411961051e-12,
+          "displacement_difference_norm": 6.252191289349641e-09,
+          "displacement_norm": 0.25,
+          "shift": 0.0032648711232204915,
+          "cg_iterations": 96,
+          "shift_iterations": 0,
+          "basis_dimension": 96
+        }
+      ]
+    },
+    {
+      "atoms": 85,
+      "solver": "krylov",
+      "basis_size": 128,
+      "steps": 1,
+      "compression_max_iter": 1024,
+      "update_shift_steps": 64,
+      "losses": [
+        0.9750469326972961
+      ],
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "updates": [
+        {
+          "objective": -0.0005539075012659753,
+          "reference_objective": -0.000553907502103216,
+          "objective_gap": 8.372406500728458e-13,
+          "relative_gap": 1.5115170798261423e-09,
+          "dense_relative_residual": 2.335559168536161e-06,
+          "reference_relative_residual": 1.2862201558421182e-13,
+          "relative_complementarity": 1.3968844853872078e-11,
+          "displacement_difference_norm": 1.4667568245092587e-07,
+          "displacement_norm": 0.25,
+          "shift": 0.0016669896189184198,
+          "cg_iterations": 64,
+          "shift_iterations": 0,
+          "basis_dimension": 64
+        }
+      ]
+    },
+    {
+      "atoms": 1024,
+      "solver": "krylov",
+      "basis_size": 128,
+      "steps": 1,
+      "compression_max_iter": 1024,
+      "update_shift_steps": 64,
+      "losses": [
+        0.979291558265686
+      ],
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "updates": [
+        {
+          "objective": -0.001050151450880231,
+          "reference_objective": -0.0010501514506033056,
+          "objective_gap": -2.7692540101320606e-13,
+          "relative_gap": -2.637004413545438e-10,
+          "dense_relative_residual": 2.333429202768958e-06,
+          "reference_relative_residual": 4.345754879979422e-13,
+          "relative_complementarity": 1.360926411961051e-12,
+          "displacement_difference_norm": 6.252191289349641e-09,
+          "displacement_norm": 0.25,
+          "shift": 0.0032648711232204915,
+          "solver_iterations": 96,
+          "shift_iterations": 0,
+          "basis_dimension": 96
+        }
+      ]
+    }
+  ],
+  "profile": {
+    "atoms": 85,
+    "device_execution": true,
+    "update_solver": "krylov",
+    "update_approximation": "full",
+    "recompression_action": "jvp_vjp",
+    "update_max_iter": 512,
+    "update_shift_steps": 32,
+    "update_rtol": 1e-05,
+    "torch": "2.6.0+cu126",
+    "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+    "source_sha256": "d875d420839e4d0095fc36099ec4c6f603e60196c06f654a3baa5a629d859ead",
+    "operations": {
+      "transport": {
+        "scope_host_duration_us": 3741.633,
+        "cuda_runtime": {
+          "cudaLaunchKernel": {
+            "count": 2,
+            "duration_us": 54.803,
+            "bytes": 0
+          },
+          "cuLaunchKernel": {
+            "count": 3,
+            "duration_us": 34.827,
+            "bytes": 0
+          }
+        },
+        "runtime_by_cpu_op": {
+          "aten::fill_": {
+            "cudaLaunchKernel": {
+              "count": 2,
+              "duration_us": 54.803,
+              "bytes": 0
+            }
+          },
+          "unattributed": {
+            "cuLaunchKernel": {
+              "count": 3,
+              "duration_us": 34.827,
+              "bytes": 0
+            }
+          }
+        },
+        "gpu_transfer": {},
+        "transfer_attribution": [],
+        "gpu_kernel_count": 5,
+        "gpu_kernel_union_us": 31.650390625,
+        "top_kernels": [
+          [
+            "_metric_pullback",
+            {
+              "count": 1,
+              "duration_us": 15.393,
+              "bytes": 0
+            }
+          ],
+          [
+            "_metric_force",
+            {
+              "count": 1,
+              "duration_us": 10.336,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)",
+            {
+              "count": 2,
+              "duration_us": 3.104,
+              "bytes": 0
+            }
+          ],
+          [
+            "_direction",
+            {
+              "count": 1,
+              "duration_us": 2.817,
+              "bytes": 0
+            }
+          ]
+        ],
+        "scalar_cpu_ops": {},
+        "unprofiled_median_ms": 0.26896875351667404,
+        "first_call_ms": 0.530649907886982,
+        "allocated_before_bytes": 2303488,
+        "allocated_after_warmup_bytes": 2303488,
+        "steady_peak_allocated_bytes": 2610688,
+        "profiled_diagnostics": null,
+        "scalar_audit_diagnostics": null,
+        "scalar_audit": []
+      },
+      "pcg": {
+        "scope_host_duration_us": 11668.311,
+        "cuda_runtime": {
+          "cudaStreamWaitEvent": {
+            "count": 1,
+            "duration_us": 6.207,
+            "bytes": 0
+          },
+          "cudaMemcpyAsync": {
+            "count": 10,
+            "duration_us": 140.689,
+            "bytes": 0
+          },
+          "cudaStreamIsCapturing": {
+            "count": 2,
+            "duration_us": 1.612,
+            "bytes": 0
+          },
+          "cudaLaunchKernel": {
+            "count": 2,
+            "duration_us": 31.091,
+            "bytes": 0
+          },
+          "cudaGraphLaunch": {
+            "count": 1,
+            "duration_us": 8413.873,
+            "bytes": 0
+          },
+          "cudaDriverGetVersion": {
+            "count": 1,
+            "duration_us": 0.193,
+            "bytes": 0
+          },
+          "cudaEventRecord": {
+            "count": 1,
+            "duration_us": 3.042,
+            "bytes": 0
+          }
+        },
+        "runtime_by_cpu_op": {
+          "unattributed": {
+            "cudaStreamWaitEvent": {
+              "count": 1,
+              "duration_us": 6.207,
+              "bytes": 0
+            },
+            "cudaStreamIsCapturing": {
+              "count": 2,
+              "duration_us": 1.612,
+              "bytes": 0
+            },
+            "cudaGraphLaunch": {
+              "count": 1,
+              "duration_us": 8413.873,
+              "bytes": 0
+            },
+            "cudaDriverGetVersion": {
+              "count": 1,
+              "duration_us": 0.193,
+              "bytes": 0
+            },
+            "cudaEventRecord": {
+              "count": 1,
+              "duration_us": 3.042,
+              "bytes": 0
+            }
+          },
+          "aten::copy_": {
+            "cudaMemcpyAsync": {
+              "count": 10,
+              "duration_us": 140.689,
+              "bytes": 0
+            }
+          },
+          "aten::fill_": {
+            "cudaLaunchKernel": {
+              "count": 2,
+              "duration_us": 31.091,
+              "bytes": 0
+            }
+          }
+        },
+        "gpu_transfer": {
+          "Memcpy DtoD (Device -> Device)": {
+            "count": 11,
+            "duration_us": 21.087000000000003,
+            "bytes": 1083933
+          }
+        },
+        "transfer_attribution": [
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 1020,
+            "count": 3
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 266560,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 3400,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 799680,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 10200,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "unattributed",
+            "bytes_each": 1020,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 4,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 8,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 1,
+            "count": 1
+          }
+        ],
+        "gpu_kernel_count": 3023,
+        "gpu_kernel_union_us": 7157.365234375,
+        "top_kernels": [
+          [
+            "_metric_pullback",
+            {
+              "count": 257,
+              "duration_us": 1540.233000000003,
+              "bytes": 0
+            }
+          ],
+          [
+            "_metric_force",
+            {
+              "count": 257,
+              "duration_us": 1108.005999999999,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)",
+            {
+              "count": 772,
+              "duration_us": 952.9390000000084,
+              "bytes": 0
+            }
+          ],
+          [
+            "_direction",
+            {
+              "count": 257,
+              "duration_us": 533.8589999999988,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(bool, float, float)#1}>(at::TensorIteratorBase&, at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(bool, float, float)#1} const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(bool, float, float)#1}>(at::TensorIteratorBase&, at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(bool, float, float)#1} const&)::{lambda(int)#1})",
+            {
+              "count": 257,
+              "duration_us": 455.14700000000056,
+              "bytes": 0
+            }
+          ],
+          [
+            "ampere_sgemm_128x128_nt",
+            {
+              "count": 1,
+              "duration_us": 438.276,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::vectorized_elementwise_kernel<4, at::native::CUDAFunctor_add<float>, std::array<char*, 3ul> >(int, at::native::CUDAFunctor_add<float>, std::array<char*, 3ul>)",
+            {
+              "count": 261,
+              "duration_us": 377.9259999999996,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::vectorized_elementwise_kernel<4, at::native::AUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> >, std::array<char*, 2ul> >(int, at::native::AUnaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> >, std::array<char*, 2ul>)",
+            {
+              "count": 257,
+              "duration_us": 369.15499999999963,
+              "bytes": 0
+            }
+          ],
+          [
+            "triton_per_fused__to_copy_abs_add_bitwise_and_bitwise_not_bitwise_or_div_eq_gt_le_mul_ne_scalar_tensor_sqrt_sub_sum_where_0",
+            {
+              "count": 128,
+              "duration_us": 317.9839999999998,
+              "bytes": 0
+            }
+          ],
+          [
+            "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, float, float, float, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float>, float>)",
+            {
+              "count": 129,
+              "duration_us": 282.1129999999999,
+              "bytes": 0
+            }
+          ],
+          [
+            "triton_per_fused__to_copy_bitwise_and_bitwise_not_le_mul_sqrt_sub_sum_where_0",
+            {
+              "count": 128,
+              "duration_us": 242.98100000000014,
+              "bytes": 0
+            }
+          ],
+          [
+            "triton_per_fused__to_copy_add_bitwise_and_bitwise_not_div_mul_ne_scalar_tensor_sum_where_1",
+            {
+              "count": 128,
+              "duration_us": 231.51000000000022,
+              "bytes": 0
+            }
+          ]
+        ],
+        "scalar_cpu_ops": {},
+        "unprofiled_median_ms": 8.501945063471794,
+        "first_call_ms": 3872.7338761091232,
+        "allocated_before_bytes": 2303488,
+        "allocated_after_warmup_bytes": 11909120,
+        "steady_peak_allocated_bytes": 11911680,
+        "profiled_diagnostics": {
+          "iterations": 78,
+          "relative_residual": 9.874269831110681e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "scalar_audit_diagnostics": {
+          "iterations": 78,
+          "relative_residual": 9.874269831110681e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "scalar_audit": []
+      },
+      "training_step": {
+        "scope_host_duration_us": 173937.296,
+        "cuda_runtime": {
+          "cudaLaunchKernel": {
+            "count": 5256,
+            "duration_us": 28321.958999999966,
+            "bytes": 0
+          },
+          "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+            "count": 12,
+            "duration_us": 21.220999999999997,
+            "bytes": 0
+          },
+          "cudaOccupancyMaxActiveBlocksPerMultiprocessor": {
+            "count": 3,
+            "duration_us": 8.341000000000001,
+            "bytes": 0
+          },
+          "cudaMemcpyAsync": {
+            "count": 329,
+            "duration_us": 3073.3170000000023,
+            "bytes": 0
+          },
+          "cudaMemsetAsync": {
+            "count": 1,
+            "duration_us": 15.41,
+            "bytes": 0
+          },
+          "cuLaunchKernel": {
+            "count": 422,
+            "duration_us": 2451.6570000000015,
+            "bytes": 0
+          },
+          "cudaDeviceGetAttribute": {
+            "count": 16,
+            "duration_us": 10.280999999999999,
+            "bytes": 0
+          },
+          "cudaStreamWaitEvent": {
+            "count": 5,
+            "duration_us": 9.44,
+            "bytes": 0
+          },
+          "cudaStreamIsCapturing": {
+            "count": 10,
+            "duration_us": 5.759,
+            "bytes": 0
+          },
+          "cudaGraphLaunch": {
+            "count": 5,
+            "duration_us": 25492.047,
+            "bytes": 0
+          },
+          "cudaDriverGetVersion": {
+            "count": 5,
+            "duration_us": 0.504,
+            "bytes": 0
+          },
+          "cudaEventRecord": {
+            "count": 5,
+            "duration_us": 9.350000000000001,
+            "bytes": 0
+          }
+        },
+        "runtime_by_cpu_op": {
+          "aten::reciprocal": {
+            "cudaLaunchKernel": {
+              "count": 14,
+              "duration_us": 121.74400000000001,
+              "bytes": 0
+            }
+          },
+          "aten::pow": {
+            "cudaLaunchKernel": {
+              "count": 34,
+              "duration_us": 241.515,
+              "bytes": 0
+            }
+          },
+          "aten::sub": {
+            "cudaLaunchKernel": {
+              "count": 302,
+              "duration_us": 1489.7240000000004,
+              "bytes": 0
+            }
+          },
+          "aten::sum": {
+            "cudaLaunchKernel": {
+              "count": 51,
+              "duration_us": 337.6209999999999,
+              "bytes": 0
+            },
+            "cudaMemsetAsync": {
+              "count": 1,
+              "duration_us": 15.41,
+              "bytes": 0
+            }
+          },
+          "aten::neg": {
+            "cudaLaunchKernel": {
+              "count": 15,
+              "duration_us": 117.29599999999999,
+              "bytes": 0
+            }
+          },
+          "aten::mul": {
+            "cudaLaunchKernel": {
+              "count": 425,
+              "duration_us": 2297.407999999999,
+              "bytes": 0
+            }
+          },
+          "aten::_log_softmax": {
+            "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+              "count": 10,
+              "duration_us": 15.518,
+              "bytes": 0
+            },
+            "cudaLaunchKernel": {
+              "count": 10,
+              "duration_us": 63.81899999999999,
+              "bytes": 0
+            }
+          },
+          "aten::exp": {
+            "cudaLaunchKernel": {
+              "count": 10,
+              "duration_us": 64.37899999999999,
+              "bytes": 0
+            }
+          },
+          "aten::mm": {
+            "cudaOccupancyMaxActiveBlocksPerMultiprocessor": {
+              "count": 3,
+              "duration_us": 8.341000000000001,
+              "bytes": 0
+            },
+            "cudaLaunchKernel": {
+              "count": 5,
+              "duration_us": 74.271,
+              "bytes": 0
+            },
+            "cudaDeviceGetAttribute": {
+              "count": 16,
+              "duration_us": 10.280999999999999,
+              "bytes": 0
+            },
+            "cuLaunchKernel": {
+              "count": 16,
+              "duration_us": 98.02,
+              "bytes": 0
+            }
+          },
+          "aten::mean": {
+            "cudaLaunchKernel": {
+              "count": 3,
+              "duration_us": 17.409,
+              "bytes": 0
+            }
+          },
+          "aten::fill_": {
+            "cudaLaunchKernel": {
+              "count": 446,
+              "duration_us": 2225.292000000001,
+              "bytes": 0
+            }
+          },
+          "aten::div": {
+            "cudaLaunchKernel": {
+              "count": 144,
+              "duration_us": 741.5300000000001,
+              "bytes": 0
+            }
+          },
+          "aten::copy_": {
+            "cudaMemcpyAsync": {
+              "count": 329,
+              "duration_us": 3073.3170000000023,
+              "bytes": 0
+            },
+            "cudaLaunchKernel": {
+              "count": 325,
+              "duration_us": 1736.6109999999994,
+              "bytes": 0
+            }
+          },
+          "aten::_log_softmax_backward_data": {
+            "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+              "count": 2,
+              "duration_us": 5.702999999999999,
+              "bytes": 0
+            },
+            "cudaLaunchKernel": {
+              "count": 2,
+              "duration_us": 20.799999999999997,
+              "bytes": 0
+            }
+          },
+          "aten::add_": {
+            "cudaLaunchKernel": {
+              "count": 5,
+              "duration_us": 36.869,
+              "bytes": 0
+            }
+          },
+          "aten::abs": {
+            "cudaLaunchKernel": {
+              "count": 164,
+              "duration_us": 970.4289999999999,
+              "bytes": 0
+            }
+          },
+          "aten::ne": {
+            "cudaLaunchKernel": {
+              "count": 159,
+              "duration_us": 805.9449999999996,
+              "bytes": 0
+            }
+          },
+          "aten::eq": {
+            "cudaLaunchKernel": {
+              "count": 160,
+              "duration_us": 753.971,
+              "bytes": 0
+            }
+          },
+          "aten::all": {
+            "cudaLaunchKernel": {
+              "count": 148,
+              "duration_us": 810.4990000000001,
+              "bytes": 0
+            }
+          },
+          "aten::cat": {
+            "cudaLaunchKernel": {
+              "count": 5,
+              "duration_us": 32.481,
+              "bytes": 0
+            }
+          },
+          "unattributed": {
+            "cuLaunchKernel": {
+              "count": 406,
+              "duration_us": 2353.6370000000006,
+              "bytes": 0
+            },
+            "cudaStreamWaitEvent": {
+              "count": 5,
+              "duration_us": 9.44,
+              "bytes": 0
+            },
+            "cudaStreamIsCapturing": {
+              "count": 10,
+              "duration_us": 5.759,
+              "bytes": 0
+            },
+            "cudaGraphLaunch": {
+              "count": 5,
+              "duration_us": 25492.047,
+              "bytes": 0
+            },
+            "cudaDriverGetVersion": {
+              "count": 5,
+              "duration_us": 0.504,
+              "bytes": 0
+            },
+            "cudaEventRecord": {
+              "count": 5,
+              "duration_us": 9.350000000000001,
+              "bytes": 0
+            }
+          },
+          "aten::add": {
+            "cudaLaunchKernel": {
+              "count": 275,
+              "duration_us": 1274.1330000000003,
+              "bytes": 0
+            }
+          },
+          "aten::ge": {
+            "cudaLaunchKernel": {
+              "count": 12,
+              "duration_us": 59.723,
+              "bytes": 0
+            }
+          },
+          "aten::bitwise_and": {
+            "cudaLaunchKernel": {
+              "count": 713,
+              "duration_us": 4821.3460000000005,
+              "bytes": 0
+            }
+          },
+          "aten::clamp_min": {
+            "cudaLaunchKernel": {
+              "count": 279,
+              "duration_us": 1352.681,
+              "bytes": 0
+            }
+          },
+          "aten::sqrt": {
+            "cudaLaunchKernel": {
+              "count": 17,
+              "duration_us": 79.278,
+              "bytes": 0
+            }
+          },
+          "aten::linalg_vector_norm": {
+            "cudaLaunchKernel": {
+              "count": 284,
+              "duration_us": 1535.7040000000004,
+              "bytes": 0
+            }
+          },
+          "aten::gt": {
+            "cudaLaunchKernel": {
+              "count": 134,
+              "duration_us": 669.8209999999999,
+              "bytes": 0
+            }
+          },
+          "aten::where": {
+            "cudaLaunchKernel": {
+              "count": 407,
+              "duration_us": 2049.8249999999994,
+              "bytes": 0
+            }
+          },
+          "aten::bitwise_not": {
+            "cudaLaunchKernel": {
+              "count": 140,
+              "duration_us": 672.501,
+              "bytes": 0
+            }
+          },
+          "aten::addmv_": {
+            "cudaLaunchKernel": {
+              "count": 528,
+              "duration_us": 2646.5149999999985,
+              "bytes": 0
+            }
+          },
+          "aten::le": {
+            "cudaLaunchKernel": {
+              "count": 28,
+              "duration_us": 139.691,
+              "bytes": 0
+            }
+          },
+          "aten::min": {
+            "cudaLaunchKernel": {
+              "count": 4,
+              "duration_us": 21.917,
+              "bytes": 0
+            }
+          },
+          "aten::clamp": {
+            "cudaLaunchKernel": {
+              "count": 4,
+              "duration_us": 18.958000000000002,
+              "bytes": 0
+            }
+          },
+          "aten::bitwise_or": {
+            "cudaLaunchKernel": {
+              "count": 4,
+              "duration_us": 20.253,
+              "bytes": 0
+            }
+          }
+        },
+        "gpu_transfer": {
+          "Memcpy DtoD (Device -> Device)": {
+            "count": 334,
+            "duration_us": 502.9839999999999,
+            "bytes": 5399945
+          }
+        },
+        "transfer_attribution": [
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 1280,
+            "count": 2
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 340,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 3400,
+            "count": 4
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 680,
+            "count": 2
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 266560,
+            "count": 4
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 1020,
+            "count": 15
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 100352,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 40,
+            "count": 6
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 3136,
+            "count": 5
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 799680,
+            "count": 3
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 10200,
+            "count": 3
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 2040,
+            "count": 256
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 8192,
+            "count": 3
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 7936,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "unattributed",
+            "bytes_each": 8192,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 256,
+            "count": 2
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 32768,
+            "count": 3
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 32256,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "unattributed",
+            "bytes_each": 32768,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 512,
+            "count": 2
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 73728,
+            "count": 3
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 72960,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "unattributed",
+            "bytes_each": 73728,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 768,
+            "count": 2
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 131072,
+            "count": 3
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 130048,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "unattributed",
+            "bytes_each": 131072,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 1024,
+            "count": 2
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "unattributed",
+            "bytes_each": 1020,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 4,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 8,
+            "count": 1
+          },
+          {
+            "transfer": "Memcpy DtoD (Device -> Device)",
+            "cpu_op": "aten::copy_",
+            "bytes_each": 1,
+            "count": 1
+          }
+        ],
+        "gpu_kernel_count": 19262,
+        "gpu_kernel_union_us": 49467.7333984375,
+        "top_kernels": [
+          [
+            "triton_poi_fused_add_eq_index_select_mul_scalar_tensor_where_1",
+            {
+              "count": 3792,
+              "duration_us": 9741.825999999968,
+              "bytes": 0
+            }
+          ],
+          [
+            "triton_poi_fused_add_arange_copysign_div_index_select_lt_mul_ne_neg_pow_scalar_tensor_sqrt_sub_where_0",
+            {
+              "count": 3792,
+              "duration_us": 7421.08699999998,
+              "bytes": 0
+            }
+          ],
+          [
+            "_metric_pullback",
+            {
+              "count": 647,
+              "duration_us": 6546.652999999983,
+              "bytes": 0
+            }
+          ],
+          [
+            "_metric_force",
+            {
+              "count": 647,
+              "duration_us": 3412.458,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::(anonymous namespace)::cunn_SpatialSoftMaxForward<float, float, float, int, at::native::(anonymous namespace)::LogSoftMaxForwardEpilogue>(float*, float const*, int, int, int)",
+            {
+              "count": 10,
+              "duration_us": 2061.62,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::vectorized_elementwise_kernel<4, at::native::FillFunctor<float>, std::array<char*, 1ul> >(int, at::native::FillFunctor<float>, std::array<char*, 1ul>)",
+            {
+              "count": 1566,
+              "duration_us": 1936.359999999998,
+              "bytes": 0
+            }
+          ],
+          [
+            "_direction",
+            {
+              "count": 647,
+              "duration_us": 1491.4580000000017,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::vectorized_elementwise_kernel<4, at::native::BinaryFunctor<bool, bool, bool, at::native::BitwiseAndFunctor<bool> >, std::array<char*, 3ul> >(int, at::native::BinaryFunctor<bool, bool, bool, at::native::BitwiseAndFunctor<bool> >, std::array<char*, 3ul>)",
+            {
+              "count": 718,
+              "duration_us": 1142.5740000000005,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::reduce_kernel<512, 1, at::native::ReduceOp<double, at::native::NormTwoOps<double, double, double>, unsigned int, double, 4> >(at::native::ReduceOp<double, at::native::NormTwoOps<double, double, double>, unsigned int, double, 4>)",
+            {
+              "count": 283,
+              "duration_us": 976.2200000000013,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(bool, float, float)#1}>(at::TensorIteratorBase&, at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(bool, float, float)#1} const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(bool, float, float)#1}>(at::TensorIteratorBase&, at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#7}::operator()() const::{lambda(bool, float, float)#1} const&)::{lambda(int)#1})",
+            {
+              "count": 523,
+              "duration_us": 925.3890000000029,
+              "bytes": 0
+            }
+          ],
+          [
+            "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, double, double, double, double, false, true, true, false, 7, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<double const>, cublasGemvTensorStridedBatched<double const>, cublasGemvTensorStridedBatched<double>, double> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<double const>, cublasGemvTensorStridedBatched<double const>, cublasGemvTensorStridedBatched<double>, double>)",
+            {
+              "count": 264,
+              "duration_us": 919.4350000000002,
+              "bytes": 0
+            }
+          ],
+          [
+            "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#6}::operator()() const::{lambda(bool, double, double)#1}>(at::TensorIteratorBase&, at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#6}::operator()() const::{lambda(bool, double, double)#1} const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#6}::operator()() const::{lambda(bool, double, double)#1}>(at::TensorIteratorBase&, at::native::(anonymous namespace)::where_kernel_impl(at::TensorIterator&)::{lambda()#1}::operator()() const::{lambda()#6}::operator()() const::{lambda(bool, double, double)#1} const&)::{lambda(int)#1})",
+            {
+              "count": 393,
+              "duration_us": 856.7589999999993,
+              "bytes": 0
+            }
+          ]
+        ],
+        "scalar_cpu_ops": {
+          "aten::_to_copy": {
+            "count": 307,
+            "duration_us": 6024.180999999997,
+            "bytes": 0
+          }
+        },
+        "unprofiled_median_ms": 125.98978308960795,
+        "first_call_ms": 4743.5398092493415,
+        "allocated_before_bytes": 11909120,
+        "allocated_after_warmup_bytes": 39548928,
+        "steady_peak_allocated_bytes": 48827392,
+        "profiled_diagnostics": {
+          "iterations": 137,
+          "relative_residual": 6.082544354190152e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "update_diagnostics": {
+          "iterations": 96,
+          "converged": true,
+          "on_boundary": true,
+          "shift": 0.00010166165014000635,
+          "relative_residual": 1.4100202469428769e-06,
+          "relative_complementarity": 1.970554710821737e-13
+        },
+        "scalar_audit_diagnostics": {
+          "iterations": 135,
+          "relative_residual": 9.89572732038011e-06,
+          "converged": true,
+          "backend": "specialized"
+        },
+        "scalar_audit": [],
+        "optimizer_device_checks_passed": true
+      }
+    }
+  },
+  "validation": {
+    "cpu": {
+      "passed": 398,
+      "skipped": 73
+    },
+    "a100": {
+      "passed": 471
+    },
+    "ruff": "passed"
+  },
+  "resolved_failures": [
+    "Static Jacobi compilation exceeded shape cache; use dynamic shapes.",
+    "Nested graph event dependency during Nystrom setup; capture rotations within enclosing graph."
+  ]
+}

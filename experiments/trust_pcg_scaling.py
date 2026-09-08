@@ -40,6 +40,9 @@ def diagnostics(result):
         "relative_residual",
         "relative_complementarity",
         "shift_iterations",
+        "basis_dimension",
+        "basis_capacity",
+        "basis_bytes",
         "projected_gradient_norm",
         "objective",
     )
@@ -67,8 +70,14 @@ def main():
     parser.add_argument("--atoms", type=int, required=True)
     parser.add_argument("--input", type=int, default=784)
     parser.add_argument("--output-width", type=int, default=10)
-    parser.add_argument("--solver", choices=("spectral", "pcg"), required=True)
+    parser.add_argument(
+        "--solver", choices=("spectral", "pcg", "krylov"), required=True
+    )
     parser.add_argument("--steps", type=int, default=5)
+    parser.add_argument("--basis-size", type=int, default=128)
+    parser.add_argument(
+        "--recompression-action", choices=("pair", "jvp_vjp"), default="pair"
+    )
     parser.add_argument(
         "--approximation", choices=("full", "diagonal", "atom_block"), default="full"
     )
@@ -123,6 +132,8 @@ def main():
             site,
             device_execution=True,
             update_solver=args.solver,
+            update_basis_size=args.basis_size,
+            recompression_action=args.recompression_action,
             update_approximation=args.approximation,
             recompression="pcg",
             first_moment_damping=0.01,

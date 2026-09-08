@@ -38,6 +38,7 @@ def setup(
     update_solver="spectral",
     *,
     update_approximation="full",
+    recompression_action="pair",
     update_max_iter=512,
     update_shift_steps=32,
     update_rtol=1e-5,
@@ -57,7 +58,9 @@ def setup(
     old = p + 0.015 * torch.randn_like(p)
     x = torch.randn_like(p)
     ops = site.cst_derivatives().tangent_ops(
-        atom_tile=32, execution="triton" if device_execution else "eager"
+        atom_tile=32,
+        execution="triton" if device_execution else "eager",
+        gram_action=recompression_action,
     )
     current, previous = ops.prepare(p), ops.prepare(old)
     geometry = TangentGeometry(ops.derivatives, ops=ops)
@@ -76,6 +79,7 @@ def setup(
         device_execution=device_execution,
         update_solver=update_solver,
         update_approximation=update_approximation,
+        recompression_action=recompression_action,
         update_max_iter=update_max_iter,
         update_shift_steps=update_shift_steps,
         update_rtol=update_rtol,
@@ -339,12 +343,15 @@ def main():
     parser.add_argument("--atoms", type=int, default=85)
     parser.add_argument("--device-execution", action="store_true")
     parser.add_argument(
-        "--update-solver", choices=["spectral", "pcg"], default="spectral"
+        "--update-solver", choices=["spectral", "pcg", "krylov"], default="spectral"
     )
     parser.add_argument(
         "--update-approximation",
         choices=("full", "diagonal", "atom_block"),
         default="full",
+    )
+    parser.add_argument(
+        "--recompression-action", choices=("pair", "jvp_vjp"), default="pair"
     )
     parser.add_argument("--update-max-iter", type=int, default=512)
     parser.add_argument("--update-shift-steps", type=int, default=32)
@@ -374,6 +381,7 @@ def main():
         "device_execution": args.device_execution,
         "update_solver": args.update_solver,
         "update_approximation": args.update_approximation,
+        "recompression_action": args.recompression_action,
         "update_max_iter": args.update_max_iter,
         "update_shift_steps": args.update_shift_steps,
         "update_rtol": args.update_rtol,
@@ -387,6 +395,7 @@ def main():
         args.device_execution,
         args.update_solver,
         update_approximation=args.update_approximation,
+        recompression_action=args.recompression_action,
         update_max_iter=args.update_max_iter,
         update_shift_steps=args.update_shift_steps,
         update_rtol=args.update_rtol,

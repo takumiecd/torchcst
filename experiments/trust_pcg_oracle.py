@@ -9,7 +9,6 @@ from torchcst import Chart, CSTAdam, CSTLinear
 from torchcst._runtime.validation import device_checks
 from torchcst.kernels import Amplitude, Gaussian, Separable
 from torchcst.optim._tangent_device import solve as spectral_solve
-from torchcst.optim._trust_pcg import solve
 from torchcst.optim.quadratic import MatrixFreeTangentProblem, TangentProblem
 
 
@@ -17,13 +16,7 @@ class AuditedAdam(CSTAdam):
     def _solve(self, context, expanded):
         c = self.cst_config
         problem = MatrixFreeTangentProblem(context, expanded, learning_rate=c.lr)
-        result = solve(
-            problem,
-            radius=c.trust_radius,
-            max_iter=c.update_max_iter,
-            shift_steps=c.update_shift_steps,
-            rtol=c.update_rtol,
-        )
+        result = super()._solve(context, expanded)
         action = problem.operator
         p = action.prepared
         # Independent dense contraction, used only in this correctness audit.
@@ -52,7 +45,12 @@ class AuditedAdam(CSTAdam):
             "shift": result.shift.item(),
             "relative_residual": result.relative_residual.item(),
             "relative_complementarity": result.relative_complementarity.item(),
-            "shift_iterations": result.shift_iterations.item(),
+            "shift_iterations": getattr(
+                result, "shift_iterations", torch.tensor(0)
+            ).item(),
+            "basis_dimension": getattr(
+                result, "basis_dimension", torch.tensor(0)
+            ).item(),
         }
         assert residual / norm_b <= c.update_rtol
         assert gap.abs() <= 3 * c.trust_radius * norm_b * c.update_rtol + 1e-12
@@ -74,8 +72,13 @@ class AuditedAdam(CSTAdam):
                 .item(),
                 "displacement_norm": result.displacement.norm().item(),
                 "shift": result.shift.item(),
-                "cg_iterations": result.iterations.item(),
-                "shift_iterations": result.shift_iterations.item(),
+                "solver_iterations": result.iterations.item(),
+                "shift_iterations": getattr(
+                    result, "shift_iterations", torch.tensor(0)
+                ).item(),
+                "basis_dimension": getattr(
+                    result, "basis_dimension", torch.tensor(0)
+                ).item(),
             }
         )
         return result
@@ -85,6 +88,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--atoms", type=int, default=85)
     parser.add_argument("--steps", type=int, default=3)
+    parser.add_argument("--solver", choices=("pcg", "krylov"), default="pcg")
+    parser.add_argument("--basis-size", type=int, default=128)
+    parser.add_argument(
+        "--recompression-action", choices=("pair", "jvp_vjp"), default="pair"
+    )
     parser.add_argument("--compression-max-iter", type=int, default=256)
     parser.add_argument("--update-shift-steps", type=int, default=64)
     args = parser.parse_args()
@@ -105,7 +113,9 @@ def main():
     optimizer = AuditedAdam(
         site,
         device_execution=True,
-        update_solver="pcg",
+        update_solver=args.solver,
+        update_basis_size=args.basis_size,
+        recompression_action=args.recompression_action,
         recompression="pcg",
         first_moment_damping=0.01,
         recompression_max_iter=args.compression_max_iter,
@@ -125,6 +135,8 @@ def main():
         json.dumps(
             {
                 "atoms": args.atoms,
+                "solver": args.solver,
+                "basis_size": args.basis_size,
                 "steps": args.steps,
                 "compression_max_iter": args.compression_max_iter,
                 "update_shift_steps": args.update_shift_steps,
