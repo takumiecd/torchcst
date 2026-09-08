@@ -25,6 +25,7 @@ def main():
         "--method", choices=("cst", "cst-adam", "dense-adam"), default="cst"
     )
     parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--stage-timing", action="store_true")
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -93,6 +94,14 @@ def main():
         optimizer = torch.optim.Adam(
             model.parameters(), lr=lr, betas=(0.9, 0.99), eps=1e-8, foreach=True
         )
+    timer = None
+    if args.stage_timing:
+        if args.method != "cst":
+            parser.error("stage timing currently requires --method cst")
+        from experiments.stage_timing import StageTimer
+
+        timer = StageTimer()
+        timer.install(optimizer)
     root = Path(__file__).resolve().parents[1]
     sources = sorted((root / "src").rglob("*.py")) + sorted(
         (root / "src").rglob("*.cpp")
@@ -102,6 +111,7 @@ def main():
         root / "experiments/mnist_current_api.py",
         root / "experiments/trust_pcg_scaling.py",
         root / "experiments/accuracy_targets.py",
+        root / "experiments/stage_timing.py",
     ]
     report = {
         "config": {
@@ -195,8 +205,14 @@ def main():
             torch.cuda.reset_peak_memory_stats()
             begin = time.perf_counter()
             optimizer.zero_grad()
-            loss = F.cross_entropy(model(x[indices]), y[indices])
-            loss.backward()
+            if timer is None:
+                loss = F.cross_entropy(model(x[indices]), y[indices])
+                loss.backward()
+            else:
+                with timer.stage("forward_loss"):
+                    loss = F.cross_entropy(model(x[indices]), y[indices])
+                with timer.stage("backward"):
+                    loss.backward()
             optimizer.step()
             torch.cuda.synchronize()
             elapsed = time.perf_counter() - begin
@@ -215,6 +231,8 @@ def main():
                 if args.method == "cst"
                 else None,
             }
+            if timer is not None:
+                row["stages"] = timer.collect()
             report["rows"].append(row)
             if args.method == "cst":
                 optimizer.check_errors()
