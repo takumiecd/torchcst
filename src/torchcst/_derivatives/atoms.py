@@ -39,7 +39,7 @@ class AtomDerivatives:
         self._tangent_backend = tangent_backend
         self._tangent_modules = tangent_modules
 
-    def tangent_ops(self, *, backend="auto", atom_tile=32):
+    def tangent_ops(self, *, backend="auto", atom_tile=32, execution="eager"):
         """Bind first-order operations; prepare accepts an ordinary parameter tensor."""
         from .tangent_ops import TangentOps
 
@@ -49,6 +49,7 @@ class AtomDerivatives:
             atom_tile=atom_tile,
             specialized=self._tangent_backend,
             modules=self._tangent_modules,
+            execution=execution,
         )
 
     @property

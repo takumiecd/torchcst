@@ -4,6 +4,8 @@ import math
 
 import torch
 
+from torchcst._runtime.validation import deferred
+
 from .solvers.quartic import QuarticSolveResult
 
 
@@ -44,6 +46,10 @@ def solve_tangent(problem, *, radius):
         or problem.matrix.device.type == "mps"
     ):
         raise ValueError("CSTAdam requires CPU/CUDA float32/float64")
+    if deferred():
+        from ._tangent_device import solve
+
+        return solve(problem, radius)
     with torch.no_grad():
         matrix = problem.matrix.double()
         linear = problem.linear.double()

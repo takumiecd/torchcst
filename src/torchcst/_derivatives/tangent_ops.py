@@ -10,6 +10,8 @@ import hashlib
 
 import torch
 
+from torchcst._runtime.validation import require
+
 
 def _configuration(modules):
     return tuple(
@@ -35,7 +37,14 @@ class TangentOps:
     """
 
     def __init__(
-        self, derivatives, *, backend="auto", atom_tile=32, specialized=None, modules=()
+        self,
+        derivatives,
+        *,
+        backend="auto",
+        atom_tile=32,
+        specialized=None,
+        modules=(),
+        execution="eager",
     ):
         if backend not in ("auto", "specialized", "factor_autograd", "reference"):
             raise ValueError("unknown tangent backend")
@@ -57,6 +66,17 @@ class TangentOps:
             raise ValueError("kernel has no specialized tangent backend")
         if backend == "factor_autograd" and derivatives.factor_atoms is None:
             raise ValueError("kernel has no factorized backend")
+        if execution not in ("eager", "triton"):
+            raise ValueError("execution must be eager or triton")
+        if execution == "triton" and (
+            backend == "reference"
+            or not derivatives.atoms.p.is_cuda
+            or derivatives.atoms.p.dtype not in (torch.float32, torch.float64)
+        ):
+            raise ValueError(
+                "Triton execution requires factorized CUDA float32/float64 parameters"
+            )
+        self.execution = execution
         self.backend = backend
         self.atom_tile = atom_tile
         self.derivatives = derivatives
@@ -125,8 +145,11 @@ class TangentOps:
         parameter = self.derivatives.atoms.p
         if p.dtype != parameter.dtype or p.device != parameter.device:
             raise ValueError("parameter dtype/device must match the bound site")
-        if not p.is_floating_point() or not torch.isfinite(p).all():
+        if not p.is_floating_point():
             raise ValueError("parameters must be finite floating-point values")
+        require(
+            torch.isfinite(p).all(), "parameters must be finite floating-point values"
+        )
         point = p.detach().clone()
         if self.backend == "reference":
             jacobian = torch.func.jacfwd(self.derivatives.represented)(point)
@@ -153,7 +176,16 @@ class TangentOps:
             or dv.shape != (*v.shape, q)
         ):
             raise ValueError("invalid kernel tangent factor layout")
-        return PreparedFactors(self, point, tuple(t.detach().clone() for t in parts))
+        return PreparedFactors(
+            self,
+            point,
+            tuple(
+                t.detach().clone().contiguous()
+                if self.execution == "triton"
+                else t.detach().clone()
+                for t in parts
+            ),
+        )
 
 
 class _Prepared:
@@ -219,6 +251,15 @@ class PreparedFactors(_Prepared):
         source._vector(x)
         if not isinstance(source, PreparedFactors):
             raise TypeError("fast cross action requires two factorized preparations")
+        if self._ops.execution == "triton":
+            from .tangent_triton import cross
+
+            if metric is None:
+                return cross(self, source, x)
+            row, column, eps = metric.separable_weights()
+            return cross(self, source, x, row=row, column=column) + eps * cross(
+                self, source, x
+            )
         ds_u, ds_v = source.factor_jvp(x)
         terms = [(None, None, 1.0)]
         if metric is not None:
@@ -250,6 +291,14 @@ class PreparedFactors(_Prepared):
                 )
                 result[sl].add_(value, alpha=scale)
         return result
+
+    def _device_gram(self, x, *, damping=0.0, active=None):
+        if self._ops.execution == "triton":
+            from .tangent_triton import cross
+
+            return cross(self, self, x, damping=damping, active=active)
+        result = self.gram_matvec(x) + damping * x
+        return result if active is None else torch.where(active, result, 0)
 
     def gram_blocks(self):
         """Exact matching-atom diagonal blocks; cross-atom terms remain in actions."""

@@ -24,6 +24,9 @@ class CSTAdam(_ModelOptimizer):
             self._tangent_operators[site] = site.cst_derivatives().tangent_ops(
                 backend=c.tangent_backend if c.factored_geometry else "reference",
                 atom_tile=c.tangent_atom_tile,
+                execution="triton"
+                if c.device_execution and site.atoms.p.is_cuda
+                else "eager",
             )
         ops = self._tangent_operators[site]
         return TangentGeometry(

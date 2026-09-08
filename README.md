@@ -591,7 +591,8 @@ and no full Gram or visible weight matrix. `weighted_gram_matvec` accepts the
 separable row/column metric and includes epsilon exactly. Metric construction
 does not materialize its visible diagonal until a dense operation requests it.
 Cached factors cost O(K q (inputs + outputs)); pairwise arithmetic still scales
-quadratically in K. These are eager PyTorch contractions, not fused CUDA kernels.
+quadratically in K. The default uses eager PyTorch contractions; the optional
+CUDA path below fuses these actions.
 
 PCG solves **(J.T J + damping I) alpha = b**, using exact same-atom blocks only
 as a preconditioner. It does not introduce D into first-moment compression or
@@ -599,8 +600,50 @@ discard cross-atom terms. Positive damping is required; zero-damping minimum-nor
 compression keeps the existing `direct` default. PCG uses native parameter dtype
 and FP64 scalar reductions, checks the true residual of the returned alpha, and
 raises before any parameter/moment commit on failure. CUDA convergence checks
-currently synchronize with the host. Diagnostics report iterations and residual;
+in eager execution synchronize with the host. Diagnostics report iterations and residual;
 direct compression reports `None`.
+
+### Optional GPU execution for first-order Adam
+
+```python
+optimizer = CSTAdam(
+    model,
+    device_execution=True,
+    recompression="pcg",
+    first_moment_damping=1e-3,
+    recompression_max_iter=128,
+)
+# Run ordinary zero_grad / backward / step calls.
+optimizer.check_errors()  # explicit synchronization, e.g. at a logging boundary
+```
+
+This opt-in path requires factorized tangents and `second_moment="separable"`.
+CUDA float32/float64 execution uses Triton factor contractions, a captured PCG
+loop, and a GPU spectral trust-region search. Same-atom blocks precondition the
+full cross-atom system; the approximation and damping are unchanged. Convergence
+and true-residual checks stay on the GPU. Inactive iterations skip Gram arithmetic,
+but graph replay still launches the fixed iteration budget. CPU execution provides
+a tensor-controlled correctness fallback, not a performance optimization.
+
+Install `pip install -e '.[cuda]'` on Linux with a matching CUDA-enabled PyTorch,
+CUDA development headers/libraries, and a C++ compiler. The native cuSOLVER wrapper
+is built with Ninja on first use. Triton/Inductor compilation, graph capture, and
+native initialization are cold-path costs. Graph buffers persist per shape,
+dtype, device and solver settings; changing shapes/settings retains cached graphs.
+There is no silent fallback if these CUDA dependencies are unavailable.
+
+Device-mode compression diagnostics contain scalar tensors. Calling `.item()`,
+printing them, or `check_errors()` intentionally synchronizes. Numerical failures
+latch a device error and suppress subsequent parameter/moment tensor commits;
+inspect `check_errors()` and restore a valid checkpoint into a fresh optimizer
+before resuming. Python step metadata still advances while the latch is set.
+The update solver still allocates a full weighted Gram and uses cuSOLVER; this
+option does not make the complete optimizer linear-memory or guarantee that
+vendor-library internals never synchronize.
+
+For standalone prepared actions, pass `execution="triton"` to `tangent_ops`.
+Standalone `prepare` validates immediately, and standalone PCG reads its final
+success flag once. The optimizer defers these checks to its device error latch.
 
 Fixed kernel/profile configuration and chart buffers must remain unchanged for
 the lifetime of an optimizer. Checkpoints now include their tangent descriptors;

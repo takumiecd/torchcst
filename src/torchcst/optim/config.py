@@ -33,12 +33,22 @@ class FirstOrderAdamConfig:
     recompression_max_iter: int = 64
     recompression_rtol: float = 1e-5
 
-    @property
-    def device_execution(self) -> bool:
-        return False
+    device_execution: bool = False
 
     def __post_init__(self) -> None:
         from torchcst._derivatives.tangent_solve import validate_pcg
+
+        if not isinstance(self.device_execution, bool):
+            raise TypeError("device_execution must be a bool")
+        if self.device_execution and (
+            self.recompression != "pcg"
+            or self.second_moment != "separable"
+            or not self.factored_geometry
+            or self.tangent_backend == "reference"
+        ):
+            raise ValueError(
+                "device_execution requires PCG, separable moments and factorized tangents"
+            )
 
         if self.tangent_backend not in (
             "auto",

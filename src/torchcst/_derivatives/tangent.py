@@ -2,6 +2,8 @@
 
 import torch
 
+from torchcst._runtime.validation import deferred
+
 from .frame import AffinePullback, AutogradFrameGeometry, GramSystem
 
 
@@ -41,19 +43,38 @@ class TangentGeometry(AutogradFrameGeometry):
             super().__init__(derivatives)
         self._tangent_point = None
         self._columns = None
+        self._columns_source = None
+        self._columns_version = None
+
+    def frame(self, point, displacement=None):
+        frame = super().frame(point, displacement)
+        # This clone is known to represent the same point. No value comparison.
+        for original, version, prepared in self._prepared:
+            if original is point and version == point._version:
+                self._prepared = (
+                    self._prepared + [(frame.point, frame.point._version, prepared)]
+                )[-4:]
+                break
+        return frame
 
     def prepared(self, point):
         for original, version, prepared in self._prepared:
-            if (original is point and version == point._version) or torch.equal(
-                prepared._point, point
+            if (original is point and version == point._version) or (
+                not deferred() and torch.equal(prepared._point, point)
             ):
                 return prepared
         result = self.ops.prepare(point)
-        self._prepared = (self._prepared + [(point, point._version, result)])[-2:]
+        self._prepared = (self._prepared + [(point, point._version, result)])[-4:]
         return result
 
     def _parts(self, point):
-        if self._tangent_point is not None and torch.equal(self._tangent_point, point):
+        if self._columns_source is point and self._columns_version == point._version:
+            return self._columns
+        if (
+            self._tangent_point is not None
+            and not deferred()
+            and torch.equal(self._tangent_point, point)
+        ):
             return self._columns
         with torch.no_grad():
             if self.factored:
@@ -71,6 +92,7 @@ class TangentGeometry(AutogradFrameGeometry):
                 columns = torch.vmap(torch.func.jacfwd(one))(point).detach()
         self._tangent_point = point.detach().clone()
         self._columns = columns
+        self._columns_source, self._columns_version = point, point._version
         return columns
 
     def _local_derivatives(self, point):

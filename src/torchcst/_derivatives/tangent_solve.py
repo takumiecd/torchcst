@@ -5,12 +5,14 @@ from dataclasses import dataclass
 
 import torch
 
+from torchcst._runtime.validation import deferred, require
+
 
 @dataclass(frozen=True)
 class CompressionResult:
-    iterations: int
-    relative_residual: float
-    converged: bool
+    iterations: int | torch.Tensor
+    relative_residual: float | torch.Tensor
+    converged: bool | torch.Tensor
     backend: str
 
 
@@ -43,6 +45,18 @@ def solve_compression(prepared, rhs, *, damping, max_iter=64, rtol=1e-5):
     """
     validate_pcg(damping=damping, max_iter=max_iter, rtol=rtol)
     prepared._vector(rhs)
+    if deferred() or prepared._ops.execution == "triton":
+        from .tangent_device import solve
+
+        alpha, count, relative, valid = solve(
+            prepared, rhs, damping=damping, max_iter=max_iter, rtol=rtol
+        )
+        result = CompressionResult(count, relative, valid, prepared.backend)
+        if deferred():
+            require(valid, "device tangent recompression failed", FloatingPointError)
+        elif not bool(valid):
+            raise CompressionError(result)
+        return alpha, result
     if not torch.isfinite(rhs).all():
         raise ValueError("recompression right-hand side must be finite")
 
