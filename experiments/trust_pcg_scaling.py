@@ -70,6 +70,9 @@ def main():
     parser.add_argument("--solver", choices=("spectral", "pcg"), required=True)
     parser.add_argument("--steps", type=int, default=5)
     parser.add_argument(
+        "--approximation", choices=("full", "diagonal", "atom_block"), default="full"
+    )
+    parser.add_argument(
         "--backend", choices=("auto", "factored", "materialized"), default="auto"
     )
     parser.add_argument("--update-max-iter", type=int, default=512)
@@ -120,6 +123,7 @@ def main():
             site,
             device_execution=True,
             update_solver=args.solver,
+            update_approximation=args.approximation,
             recompression="pcg",
             first_moment_damping=0.01,
             recompression_max_iter=args.compression_max_iter,

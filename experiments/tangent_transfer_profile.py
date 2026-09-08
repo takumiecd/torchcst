@@ -37,6 +37,7 @@ def setup(
     device_execution=False,
     update_solver="spectral",
     *,
+    update_approximation="full",
     update_max_iter=512,
     update_shift_steps=32,
     update_rtol=1e-5,
@@ -74,6 +75,7 @@ def setup(
         recompression_max_iter=256,
         device_execution=device_execution,
         update_solver=update_solver,
+        update_approximation=update_approximation,
         update_max_iter=update_max_iter,
         update_shift_steps=update_shift_steps,
         update_rtol=update_rtol,
@@ -339,6 +341,11 @@ def main():
     parser.add_argument(
         "--update-solver", choices=["spectral", "pcg"], default="spectral"
     )
+    parser.add_argument(
+        "--update-approximation",
+        choices=("full", "diagonal", "atom_block"),
+        default="full",
+    )
     parser.add_argument("--update-max-iter", type=int, default=512)
     parser.add_argument("--update-shift-steps", type=int, default=32)
     parser.add_argument("--update-rtol", type=float, default=1e-5)
@@ -366,6 +373,7 @@ def main():
         "atoms": args.atoms,
         "device_execution": args.device_execution,
         "update_solver": args.update_solver,
+        "update_approximation": args.update_approximation,
         "update_max_iter": args.update_max_iter,
         "update_shift_steps": args.update_shift_steps,
         "update_rtol": args.update_rtol,
@@ -378,6 +386,7 @@ def main():
         args.atoms,
         args.device_execution,
         args.update_solver,
+        update_approximation=args.update_approximation,
         update_max_iter=args.update_max_iter,
         update_shift_steps=args.update_shift_steps,
         update_rtol=args.update_rtol,

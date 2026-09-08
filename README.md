@@ -712,6 +712,52 @@ The PCG update does not build or call the native cuSOLVER extension.
 
 See [the matrix-free solver's A100 timings, memory costs, and dense accuracy audit](docs/experiments/trust-pcg.ja.md).
 
+### Optional diagonal and atom-block updates
+
+`update_approximation="diagonal"` or `"atom_block"` explicitly approximates only
+the update quadratic. The default `"full"` retains all cross-atom terms.
+
+```python
+optimizer = CSTAdam(
+    model,
+    update_approximation="diagonal",  # or "atom_block"
+    update_solver="spectral",
+    second_moment="separable",
+    recompression="pcg",
+    first_moment_damping=0.01,
+    device_execution=True,
+)
+```
+
+For `H = J.T D J / lr`, the diagonal option uses `diag(diag(H))`; atom-block uses
+`block_diag(H_aa)`. D's separable EMA, the linear term, cross-frame first-moment
+transport, and full cross-atom recompression are unchanged. These options differ
+from `second_moment="atom_diag"` / `"atom_block"`, which change the second-moment
+model itself. They require separable moments, factorized tangents and the
+`"spectral"` solver; combining them with `update_solver="pcg"` is rejected.
+
+Both solve one global Euclidean trust ball. Diagonal updates are
+`d_i = -b_i / (H_ii + shift)`; atom-block updates use small per-atom eigensystems.
+All coordinates share the same shift, found by a scalar secular search. No CG
+iterations, full parameter-space Gram, or global eigenbasis is needed for these
+updates. Recompression may still iterate. CUDA atom-block eigensystems use
+fixed-sweep batched Jacobi with residual/orthogonality checks, avoiding host
+eigensolver status reads on warmed calls. Odd coordinate widths are padded
+internally; the kernel still owns the atom layout.
+
+`update_rtol` checks stationarity and complementarity of the **approximated**
+quadratic after conversion to parameter dtype. It does not certify a solution
+of the full quadratic. Non-finite data or failed certificates raise in eager
+mode and latch/suppress updates with deferred execution. `site_results` exposes
+`shift`, `relative_residual`, and `relative_complementarity`; its objective is
+the approximate objective. The reported 80 `iterations` are the fixed scalar
+search budget, not CG iterations. `update_max_iter` / `update_shift_steps` are
+PCG-only controls and do not affect these options.
+
+These approximations trade cross-atom coupling for lower update cost; their
+learning accuracy is task-dependent. See the [paired accuracy and timing
+experiment](docs/experiments/local-tangent.ja.md).
+
 Fixed kernel/profile configuration and chart buffers must remain unchanged for
 the lifetime of an optimizer. Checkpoints now include their tangent descriptors;
 first-order checkpoints without descriptors are rejected. Load model state before

@@ -174,3 +174,34 @@ def test_nonfinite_local_objective_latches_deferred_error(approximation):
             rtol=1e-5,
         )
     assert not torch.stack(checks).all()
+
+
+@pytest.mark.parametrize("approximation", ["diagonal", "atom_block"])
+def test_invalid_local_update_suppresses_parameter_and_moment_commits(
+    approximation, monkeypatch
+):
+    from torchcst._derivatives.tangent_metric import FactorMetricAction
+
+    site = site_for("amplitude")
+    optimizer = CSTAdam(
+        site,
+        update_approximation=approximation,
+        recompression="pcg",
+        first_moment_damping=0.1,
+        device_execution=True,
+    )
+    point = site.atoms.p.detach().clone()
+    method = "diagonal" if approximation == "diagonal" else "blocks"
+    original = getattr(FactorMetricAction, method)
+    monkeypatch.setattr(
+        FactorMetricAction,
+        method,
+        lambda self: torch.full_like(original(self), float("nan")),
+    )
+    optimizer.zero_grad()
+    site(torch.ones(2, 6, dtype=point.dtype)).sum().backward()
+    optimizer.step()
+    with pytest.raises(FloatingPointError, match="deferred"):
+        optimizer.check_errors()
+    torch.testing.assert_close(site.atoms.p, point, atol=0, rtol=0)
+    assert torch.count_nonzero(optimizer._sites[0].state.first.alpha) == 0

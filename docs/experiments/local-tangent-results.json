@@ -1,0 +1,2506 @@
+{
+  "date": "2026-09-08",
+  "implementation_sha256": {
+    "src/torchcst/__init__.py": "8a2ab2b8e3ff607f9287f626648d1b4368f049c215f7d44a7b8aa763e4e9a324",
+    "src/torchcst/_derivatives/__init__.py": "3f1b18ad7115a8d825d9af9c8b806801c3bc64dbb3edec512d0ecde3ffead6a8",
+    "src/torchcst/_derivatives/_captured.py": "0a6fa975dafc0e75699a99e73bb108328552291c578cde20fd3a53f4edfb1baa",
+    "src/torchcst/_derivatives/_cholesky.py": "c852057aa0475b7bc8a2ae2c1d9ccbb504dd40b2b45b8d0774f54fda8f55fd33",
+    "src/torchcst/_derivatives/_jacobi.py": "13b5a85d32627d6bd3644dcf53d8e6308435c5b8481ad7f403c75c755ad106a3",
+    "src/torchcst/_derivatives/_pcg.py": "734108bbb82c12d3515b0e46fad9d252dddcfc3f15a6822b7025d7a8e37ad678",
+    "src/torchcst/_derivatives/atoms.py": "8aa0787ad5aea00042044e4eeaee07428c74fec3e95d313a988c14bf6689e665",
+    "src/torchcst/_derivatives/block_eigh.py": "ac4a3e688a820c0b721d4fb5c5290df92616a7cf70aa888ffefe1c3bb202c8b3",
+    "src/torchcst/_derivatives/dense.py": "2c8598a1e395707c68c48c3f37e0d445c8cf4aa4580cf7a21d25f84c83e0585d",
+    "src/torchcst/_derivatives/factored_frame.py": "97a19168fdbad56e9347bd5fa8121f9013db1b7c42e58d217d81975f65bfa5c4",
+    "src/torchcst/_derivatives/factored_taylor.py": "f106bf3231557e28455aae9eb1a7541e1961d95328c06693e44cf72e0616bd86",
+    "src/torchcst/_derivatives/frame.py": "b05209bd2127011fa546d4321a77e9e77e4715369960475ef89a95e5a56b8fc9",
+    "src/torchcst/_derivatives/protocol.py": "34ef0e173a2353372a073aac04a6aaea5045b94afad47e8c5d6f18880c9e9530",
+    "src/torchcst/_derivatives/quadratic.py": "5790683f3f4723be862adcaf7faa1a9200de5e0e89a6f051effc3b1a5a8648ec",
+    "src/torchcst/_derivatives/tangent.py": "cedcb43a2aa5f9ddde1d5570367f7de4ca4fec8f9869f0241c842d1c5e94bd4d",
+    "src/torchcst/_derivatives/tangent_device.py": "b297b2b5c73034907c67a949f02031a379b38ff7a6c3dd2a8a10f3310445a525",
+    "src/torchcst/_derivatives/tangent_eigh.py": "411a3f00b611325de84c99b3f653c36f235005a23558bb6ef3f0f5deec9e22e0",
+    "src/torchcst/_derivatives/tangent_metric.py": "fb274a9dd3093a103a678e860c8b64259761bc96d0939e2f6bd2365784ca1c43",
+    "src/torchcst/_derivatives/tangent_ops.py": "a13d5ad14d6d5e97bb3c6732d5fbed1b327bf39f1ece9293fe2a38f6105705cd",
+    "src/torchcst/_derivatives/tangent_solve.py": "9d9fc8326abab42061b41cdf2844a6e69f36aba5d3889790e10b8c69dc073399",
+    "src/torchcst/_derivatives/tangent_triton.py": "e93429b03e4fd09631b06678a205470876834b63f85d208c42b63a38c74496d2",
+    "src/torchcst/_runtime/__init__.py": "c2f3ecd5ca97b643a4c503fa20a7b98b6f7f70ddc2ba202f89fd118e29c81007",
+    "src/torchcst/_runtime/graphs.py": "b922e3f4c664733ae0f4b161e1f6a8874506828b0e314caa98c56d58bd3284d5",
+    "src/torchcst/_runtime/validation.py": "68438c0f1b7d160327effbfad1e4ae429277286f50f90238e6ab632e3caadb71",
+    "src/torchcst/atoms/__init__.py": "e26a0995cad48c8afa55d81bc0e7b258628abf19144cbb920f19e8ee7b4bd14d",
+    "src/torchcst/atoms/atoms.py": "fed067ffdf4875f0bf16b56ee304ea116aba3529ed034bbf523854cc243b056e",
+    "src/torchcst/atoms/grad.py": "4731d6e54790af7be75d2f450d9c2dd116a7211ad5e3c7d28b4e2908a8fba802",
+    "src/torchcst/geometry/__init__.py": "090dc3a94b825df2582451205621c13fe4ba3669570f53ef86b0c03c9377c18c",
+    "src/torchcst/geometry/chart.py": "7f8364d3ea356207eb9e088e0b71ffe9d1a13b10da06fa0c8c882a135b72cdc1",
+    "src/torchcst/kernels/__init__.py": "2b6120e2dcad11c90be61f1c1e8ae71b6788d3b08fee5612dc4c89024638b9bb",
+    "src/torchcst/kernels/_tangent.py": "0ef53240dc963a5f59de6c094cd877e0d583bbdec4bcdfac81be83dda80a9070",
+    "src/torchcst/kernels/amplitude.py": "a394fc3fabf90edea23484a816d466c2a9d54fafce959c0fba119cd120055931",
+    "src/torchcst/kernels/amplitude_bandwidth.py": "d956f19b12a4124bffe574a2d035d614c793e62a2f6b6cf082218d8dac5b89de",
+    "src/torchcst/kernels/base.py": "404ae3efb6b0c53ef91407baf29a433d55d308dd4abf81b88c4c007953e72502",
+    "src/torchcst/kernels/gaussian.py": "8de20f4fee70e6527f44573b4a5be60587298db13aa89c5993354af74fddae95",
+    "src/torchcst/kernels/separable.py": "e3d1c6212e605b362d00546230a8ade1c012e935138086771d8194ea9a7f8695",
+    "src/torchcst/nn/__init__.py": "428c2941cdb625f7e94f57476a0a76af9828599afb78e7c78c5fcb2e552acfa6",
+    "src/torchcst/nn/atom_grad.py": "852c6ba919550ed0c4860e8a5d4aa81f7e36c04c037f46d1c5288f938b6d74f0",
+    "src/torchcst/nn/linear.py": "3306af1e2d3f8de6c9620435f7cf6c0a1c5a733205d559945de78fd0096b318f",
+    "src/torchcst/optim/__init__.py": "c7ee4b780904c9f8c59b4ee94ff1470c3e8302ae045481c47fe3c3d2f5fc10a2",
+    "src/torchcst/optim/_local_tangent.py": "1ab5027943028b499db7ef76f9578d073fd0b3681fc55ea5c9a2a00996b3c80c",
+    "src/torchcst/optim/_tangent_device.py": "c7e1dab2586ffd1a9ef42d099d5bce54dcc2e8f860c0f9e94ef2a6d97ea07cb0",
+    "src/torchcst/optim/_trust_pcg.py": "03c5d0c8d2dbc9fc4df46561d2eddf9127626080b7360c6d1ce05acb58c2f542",
+    "src/torchcst/optim/atom_grad.py": "be6cc602222f6407af98b56fc4721585cc36795f4beb30061a01c69599012d54",
+    "src/torchcst/optim/config.py": "8b7f3156253ee769e5cb8c6211253eacc1620eb860c843d5faae7c15fd593d8c",
+    "src/torchcst/optim/dense.py": "b5f740d8bb1343b56b7b204db7af624f6f50b563e374151ece207ffc8e64716c",
+    "src/torchcst/optim/first_order.py": "5418010028e53435969f5a91cbd39ca79aaf163e52829ab5ca3cbbc8082dcb91",
+    "src/torchcst/optim/moments/__init__.py": "053e301600775b2241766216a4f3901ed898f61d7240f9aba49556ca09ce6ae2",
+    "src/torchcst/optim/moments/atom_rms.py": "3e8087f73e407e175699d02b09a1a60e7a9f01b48fed2e6d3e43cfbdcb86d4b6",
+    "src/torchcst/optim/moments/base.py": "b8682ffd741de0cb48c8930123d5cf409a29f230424971fe34dad47467ddc909",
+    "src/torchcst/optim/moments/first.py": "fa1518615d93cead4a481ec76b955ef966223eaec35d04d1b16771c743d433ca",
+    "src/torchcst/optim/moments/second.py": "bf81e8d34d25ab116de5e511ba376bb9e12471cbc31edc4d180a4368c74ef9fc",
+    "src/torchcst/optim/moments/system.py": "57390af5c3756908adbe42912fc188200da0312c5bf6a33c942115be1f6ee25d",
+    "src/torchcst/optim/moments/tangent.py": "13ba90b765d624374bf5e16818f03f708e6aa9e84db288e99398bdb9676fb7af",
+    "src/torchcst/optim/optimizer.py": "b8f209d624ebe77586d48a262a915c8649566467d0d0559215d84a31ccb1fad9",
+    "src/torchcst/optim/problem.py": "20221cf060fdb6736b52b039e6b4d1bb3748e1ebb1ae3cf9fdde7d42b72dde33",
+    "src/torchcst/optim/quadratic.py": "889d7f7260d93bc08d1a0b7f93d916498e2921a336414ed31db64435ae8db3f0",
+    "src/torchcst/optim/second_order.py": "660858d82750357bc67f769359b7b62dae9785cf22619659184383affdcc1fe3",
+    "src/torchcst/optim/solvers/__init__.py": "530e3b65c5800663afcf4705baff7f7eb5298259a1d3055d22a6ed217d1d4db8",
+    "src/torchcst/optim/solvers/_compiled.py": "b36e4e20fd01c9a1f162fca1e59c3eebafb000259016c89e29e48a20a9cfa27f",
+    "src/torchcst/optim/solvers/_factored_ray.py": "7ea963e492c1565109943c465fd3f8142f6ee5272da058fcf52d7695a3399583",
+    "src/torchcst/optim/solvers/_ray.py": "50b65404502167e8b9f736ca9d4a94a1e47c9c1e7691f951fdb0d61931f61726",
+    "src/torchcst/optim/solvers/base.py": "bbbef4797366114a193265b6cb4c1b49acfab2b341b3a2bed7248e1ef541b77b",
+    "src/torchcst/optim/solvers/device.py": "5e9dc2e11a8db139d6b4fe84c77e301a928861dd6f345190c370c251a1d5fb54",
+    "src/torchcst/optim/solvers/newton.py": "9b5bff144da6fe8b656ae7d9d8c0dced958db1f2107dd075dca371c74ad69b16",
+    "src/torchcst/optim/solvers/projected.py": "82a2a32c76f12cbaacda28c3d98dfde7969fd42affafdc5a018ac97d254ab38b",
+    "src/torchcst/optim/solvers/quartic.py": "f99351a5120b2a4a8c990e69e8f2fd470aea3aa5f282c627c6978c84ad08e1c2",
+    "src/torchcst/optim/solvers/ray.py": "7a6cbe48047bf49909db31e612dd7abb92986a76abbfddd953f1c1db2a67b27f",
+    "src/torchcst/optim/solvers/subspace.py": "ce1d800e4500c6ffb7a57624178464a2c2372e6a3c44abb67ccf1017e4863500",
+    "src/torchcst/_derivatives/tangent_eigh.cpp": "8d15ef9ef488128b5da4cc7f10822e9c29f91e5e3fd384a4728c56cc058e7f3f"
+  },
+  "archive": {
+    "path": "output/local-tangent-final.tgz",
+    "sha256": "ce6ea25fa108123adacb6d79218fcd440dd4e5cea38c0a200578de254f724a3f"
+  },
+  "learning": [
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-17-atom_block.json",
+        "approximation": "atom_block",
+        "seed": 17,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "72ad553e86ab6a7703f23c63d3ffbc46b85474539613859a0760c4250e238c6f",
+      "batch_permutation_sha256": "2602d182f0914756688fc056cf8c5f92434fa8e7532fed896c9f905382a90c46",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08150000125169754,
+          "test_loss": 2.315807342529297
+        },
+        {
+          "step": 1,
+          "accuracy": 0.19550001621246338,
+          "test_loss": 2.228400230407715
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6105000376701355,
+          "test_loss": 1.441184639930725
+        },
+        {
+          "step": 64,
+          "accuracy": 0.6565000414848328,
+          "test_loss": 1.2857913970947266
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7080000042915344,
+          "test_loss": 1.2144297361373901
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7080000042915344,
+      "warm_median_ms": 64.59737592376769,
+      "warm_update_median_ms": 2.2527999877929688,
+      "warm_peak_allocated_mib": 63.02099609375,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 72,
+          "median": 288.0,
+          "max": 452
+        },
+        "max_compression_relative_residual": 9.993849828815762e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-17-diagonal.json",
+        "approximation": "diagonal",
+        "seed": 17,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "72ad553e86ab6a7703f23c63d3ffbc46b85474539613859a0760c4250e238c6f",
+      "batch_permutation_sha256": "2602d182f0914756688fc056cf8c5f92434fa8e7532fed896c9f905382a90c46",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08150000125169754,
+          "test_loss": 2.315807342529297
+        },
+        {
+          "step": 1,
+          "accuracy": 0.19600000977516174,
+          "test_loss": 2.2283380031585693
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6345000267028809,
+          "test_loss": 1.3216633796691895
+        },
+        {
+          "step": 64,
+          "accuracy": 0.6790000200271606,
+          "test_loss": 1.1853727102279663
+        },
+        {
+          "step": 128,
+          "accuracy": 0.6875000596046448,
+          "test_loss": 1.451144814491272
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.6875000596046448,
+      "warm_median_ms": 63.520206371322274,
+      "warm_update_median_ms": 1.8631680011749268,
+      "warm_peak_allocated_mib": 62.99853515625,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 73,
+          "median": 274.0,
+          "max": 490
+        },
+        "max_compression_relative_residual": 9.98576749142119e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-17-full.json",
+        "approximation": "full",
+        "seed": 17,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "72ad553e86ab6a7703f23c63d3ffbc46b85474539613859a0760c4250e238c6f",
+      "batch_permutation_sha256": "2602d182f0914756688fc056cf8c5f92434fa8e7532fed896c9f905382a90c46",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08150000125169754,
+          "test_loss": 2.315807342529297
+        },
+        {
+          "step": 1,
+          "accuracy": 0.15950000286102295,
+          "test_loss": 2.2432596683502197
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6945000290870667,
+          "test_loss": 1.088492751121521
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7745000123977661,
+          "test_loss": 0.8015140295028687
+        },
+        {
+          "step": 128,
+          "accuracy": 0.8060000538825989,
+          "test_loss": 0.7916288375854492
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.8060000538825989,
+      "warm_median_ms": 56.249030167236924,
+      "warm_update_median_ms": 4.224512100219727,
+      "warm_peak_allocated_mib": 61.73046875,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 68,
+          "median": 193.5,
+          "max": 358
+        },
+        "max_compression_relative_residual": 9.991464356089699e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-29-atom_block.json",
+        "approximation": "atom_block",
+        "seed": 29,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "164d4d86717ee908af7303adf03622a9ab6dbba3e40b14b967ddd1884804f572",
+      "batch_permutation_sha256": "1a6d7768a59c9e33c7fd43acf56bd570c420d167970708d666a50e87e2791efd",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08800000697374344,
+          "test_loss": 2.311913251876831
+        },
+        {
+          "step": 1,
+          "accuracy": 0.14400000870227814,
+          "test_loss": 2.2592227458953857
+        },
+        {
+          "step": 32,
+          "accuracy": 0.7000000476837158,
+          "test_loss": 0.9903779029846191
+        },
+        {
+          "step": 64,
+          "accuracy": 0.6565000414848328,
+          "test_loss": 1.4583152532577515
+        },
+        {
+          "step": 128,
+          "accuracy": 0.6895000338554382,
+          "test_loss": 1.3669449090957642
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.6895000338554382,
+      "warm_median_ms": 83.34550238214433,
+      "warm_update_median_ms": 2.21235191822052,
+      "warm_peak_allocated_mib": 63.02099609375,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 77,
+          "median": 452.5,
+          "max": 645
+        },
+        "max_compression_relative_residual": 9.996299242295582e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-29-diagonal.json",
+        "approximation": "diagonal",
+        "seed": 29,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "164d4d86717ee908af7303adf03622a9ab6dbba3e40b14b967ddd1884804f572",
+      "batch_permutation_sha256": "1a6d7768a59c9e33c7fd43acf56bd570c420d167970708d666a50e87e2791efd",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08800000697374344,
+          "test_loss": 2.311913251876831
+        },
+        {
+          "step": 1,
+          "accuracy": 0.14500001072883606,
+          "test_loss": 2.2590854167938232
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6550000309944153,
+          "test_loss": 1.2716032266616821
+        },
+        {
+          "step": 64,
+          "accuracy": 0.6465000510215759,
+          "test_loss": 1.4398701190948486
+        },
+        {
+          "step": 128,
+          "accuracy": 0.6880000233650208,
+          "test_loss": 1.7866089344024658
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.6880000233650208,
+      "warm_median_ms": 78.76437995582819,
+      "warm_update_median_ms": 1.5544320344924927,
+      "warm_peak_allocated_mib": 62.99853515625,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 76,
+          "median": 417.0,
+          "max": 582
+        },
+        "max_compression_relative_residual": 9.987531600846359e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-29-full.json",
+        "approximation": "full",
+        "seed": 29,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "164d4d86717ee908af7303adf03622a9ab6dbba3e40b14b967ddd1884804f572",
+      "batch_permutation_sha256": "1a6d7768a59c9e33c7fd43acf56bd570c420d167970708d666a50e87e2791efd",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.08800000697374344,
+          "test_loss": 2.311913251876831
+        },
+        {
+          "step": 1,
+          "accuracy": 0.14800000190734863,
+          "test_loss": 2.226320266723633
+        },
+        {
+          "step": 32,
+          "accuracy": 0.7585000395774841,
+          "test_loss": 0.8434323668479919
+        },
+        {
+          "step": 64,
+          "accuracy": 0.6990000605583191,
+          "test_loss": 1.1414203643798828
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7500000596046448,
+          "test_loss": 0.9953758716583252
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7500000596046448,
+      "warm_median_ms": 62.10603401996195,
+      "warm_update_median_ms": 3.8297600746154785,
+      "warm_peak_allocated_mib": 61.73046875,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 75,
+          "median": 259.5,
+          "max": 475
+        },
+        "max_compression_relative_residual": 9.95172799841252e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-43-atom_block.json",
+        "approximation": "atom_block",
+        "seed": 43,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "0fd36c32b3fba0be1e837bae893e034c37169002b52d7895acdf9d483150f58a",
+      "batch_permutation_sha256": "544e73dfa92736239a35ee929d95f550d094f6e3f60f447e5460df5379e2b82b",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.10750000178813934,
+          "test_loss": 2.3069283962249756
+        },
+        {
+          "step": 1,
+          "accuracy": 0.12700000405311584,
+          "test_loss": 2.3191938400268555
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6255000233650208,
+          "test_loss": 1.3056248426437378
+        },
+        {
+          "step": 64,
+          "accuracy": 0.6425000429153442,
+          "test_loss": 1.7964510917663574
+        },
+        {
+          "step": 128,
+          "accuracy": 0.6965000033378601,
+          "test_loss": 1.5267345905303955
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.6965000033378601,
+      "warm_median_ms": 87.68550306558609,
+      "warm_update_median_ms": 2.1990400552749634,
+      "warm_peak_allocated_mib": 63.02099609375,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 75,
+          "median": 488.5,
+          "max": 656
+        },
+        "max_compression_relative_residual": 9.992836104191067e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-43-diagonal.json",
+        "approximation": "diagonal",
+        "seed": 43,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "0fd36c32b3fba0be1e837bae893e034c37169002b52d7895acdf9d483150f58a",
+      "batch_permutation_sha256": "544e73dfa92736239a35ee929d95f550d094f6e3f60f447e5460df5379e2b82b",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.10750000178813934,
+          "test_loss": 2.3069283962249756
+        },
+        {
+          "step": 1,
+          "accuracy": 0.12700000405311584,
+          "test_loss": 2.319167375564575
+        },
+        {
+          "step": 32,
+          "accuracy": 0.6300000548362732,
+          "test_loss": 1.3063023090362549
+        },
+        {
+          "step": 64,
+          "accuracy": 0.6940000057220459,
+          "test_loss": 1.164385199546814
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7245000600814819,
+          "test_loss": 1.2305649518966675
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7245000600814819,
+      "warm_median_ms": 90.46717453747988,
+      "warm_update_median_ms": 1.5226880311965942,
+      "warm_peak_allocated_mib": 62.99853515625,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 77,
+          "median": 521.0,
+          "max": 672
+        },
+        "max_compression_relative_residual": 9.962583144980076e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    },
+    {
+      "config": {
+        "data": "/home/jovyan/work/srv11/cst-lab/data/MNIST/raw",
+        "output": "output/mnist-43-full.json",
+        "approximation": "full",
+        "seed": 43,
+        "steps": 128,
+        "atoms": 64,
+        "device": "cuda"
+      },
+      "protocol": {
+        "lr": 0.05,
+        "betas": [
+          0.9,
+          0.99
+        ],
+        "radius": 0.25,
+        "damping": 0.01,
+        "compression_max_iter": 1024,
+        "rtol": 1e-05,
+        "backend": "factored",
+        "batch": 128,
+        "train_size": 8192,
+        "test_size": 2000
+      },
+      "initial_parameter_sha256": "0fd36c32b3fba0be1e837bae893e034c37169002b52d7895acdf9d483150f58a",
+      "batch_permutation_sha256": "544e73dfa92736239a35ee929d95f550d094f6e3f60f447e5460df5379e2b82b",
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "evaluations": [
+        {
+          "step": 0,
+          "accuracy": 0.10750000178813934,
+          "test_loss": 2.3069283962249756
+        },
+        {
+          "step": 1,
+          "accuracy": 0.12800000607967377,
+          "test_loss": 2.279512882232666
+        },
+        {
+          "step": 32,
+          "accuracy": 0.690000057220459,
+          "test_loss": 1.0077893733978271
+        },
+        {
+          "step": 64,
+          "accuracy": 0.7625000476837158,
+          "test_loss": 0.8544533848762512
+        },
+        {
+          "step": 128,
+          "accuracy": 0.7850000262260437,
+          "test_loss": 0.7984023094177246
+        }
+      ],
+      "status": "passed",
+      "final_accuracy": 0.7850000262260437,
+      "warm_median_ms": 57.780836476013064,
+      "warm_update_median_ms": 3.8236160278320312,
+      "warm_peak_allocated_mib": 61.73046875,
+      "row_summary": {
+        "steps": 128,
+        "update_converged_steps": 128,
+        "compression_converged_steps": 128,
+        "warm_compression_iterations": {
+          "min": 80,
+          "median": 223.5,
+          "max": 395
+        },
+        "max_compression_relative_residual": 9.971737176484008e-06
+      },
+      "experiment_source_sha256": {
+        "experiments/local_tangent_learning.py": "f510d234d5c4ee5923e1940a9821f6fc01719599d54782d8fa4d61cf2ae95ba5",
+        "experiments/mnist_current_api.py": "7212e2102ae1ab050e45b7d3f9eab4cd67448131c6c96fd14dc3fff17ed1c737",
+        "experiments/trust_pcg_scaling.py": "134ed722af4bbc8691e2d7f6cea3b9f8c4d57332e10559342b8a8e2e8f0e1602"
+      }
+    }
+  ],
+  "scaling": [
+    {
+      "config": {
+        "atoms": 256,
+        "input": 784,
+        "output_width": 10,
+        "solver": "spectral",
+        "steps": 5,
+        "approximation": "atom_block",
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 1024,
+        "output": "output/scaling-k256-atom_block.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 7.8499580840580165,
+          "update_ms": 3961.913330078125,
+          "memory": {
+            "allocated_mib": 27.7001953125,
+            "reserved_mib": 70.0,
+            "peak_allocated_mib": 281.99560546875,
+            "peak_reserved_mib": 344.0
+          },
+          "loss": 0.9779031872749329,
+          "compression": {
+            "iterations": 169,
+            "converged": true,
+            "relative_residual": 8.072059948005137e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.0255215077492107,
+            "relative_residual": 2.4257333595862043e-08,
+            "relative_complementarity": 7.716642032034349e-15,
+            "projected_gradient_norm": 9.606195341670856e-09,
+            "objective": -0.004433643367131441
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.2480776677839458,
+          "update_ms": 1.8606079816818237,
+          "memory": {
+            "allocated_mib": 27.7001953125,
+            "reserved_mib": 114.0,
+            "peak_allocated_mib": 69.1171875,
+            "peak_reserved_mib": 114.0
+          },
+          "loss": 0.9711057543754578,
+          "compression": {
+            "iterations": 175,
+            "converged": true,
+            "relative_residual": 9.324797673201562e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.02288450063099079,
+            "relative_residual": 2.6817980308556314e-08,
+            "relative_complementarity": 3.721557689907546e-12,
+            "projected_gradient_norm": 9.900024239964127e-09,
+            "objective": -0.0039480552193232096
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.23381750518456101,
+          "update_ms": 1.558527946472168,
+          "memory": {
+            "allocated_mib": 27.7001953125,
+            "reserved_mib": 114.0,
+            "peak_allocated_mib": 68.4921875,
+            "peak_reserved_mib": 114.0
+          },
+          "loss": 0.9654501080513,
+          "compression": {
+            "iterations": 168,
+            "converged": true,
+            "relative_residual": 6.7439786724184485e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.020209161694017482,
+            "relative_residual": 2.7488684934848946e-08,
+            "relative_complementarity": 3.124911191107872e-11,
+            "projected_gradient_norm": 9.49186015570122e-09,
+            "objective": -0.003515127474908401
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.22177911596372724,
+          "update_ms": 1.358847975730896,
+          "memory": {
+            "allocated_mib": 27.7001953125,
+            "reserved_mib": 114.0,
+            "peak_allocated_mib": 68.4921875,
+            "peak_reserved_mib": 114.0
+          },
+          "loss": 0.9607558250427246,
+          "compression": {
+            "iterations": 158,
+            "converged": true,
+            "relative_residual": 7.875580384815474e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.01753807349398449,
+            "relative_residual": 2.3435062909889007e-08,
+            "relative_complementarity": 1.1302871391144053e-11,
+            "projected_gradient_norm": 7.578152506592863e-09,
+            "objective": -0.0031171590109794587
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.23074738215655088,
+          "update_ms": 1.3025280237197876,
+          "memory": {
+            "allocated_mib": 27.7001953125,
+            "reserved_mib": 114.0,
+            "peak_allocated_mib": 68.4921875,
+            "peak_reserved_mib": 114.0
+          },
+          "loss": 0.9568802118301392,
+          "compression": {
+            "iterations": 164,
+            "converged": true,
+            "relative_residual": 7.214091347848931e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.014989416034874848,
+            "relative_residual": 2.350395329195917e-08,
+            "relative_complementarity": 3.987141346842843e-11,
+            "projected_gradient_norm": 7.113601965479432e-09,
+            "objective": -0.002748695080234278
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 768,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.12255859375,
+        "reserved_mib": 4.0,
+        "peak_allocated_mib": 3.07861328125,
+        "peak_reserved_mib": 4.0
+      },
+      "warm_median_ms": 230.74738215655088,
+      "warm_update_median_ms": 1.358847975730896,
+      "warm_peak_allocated_mib": 68.4921875,
+      "warm_peak_reserved_mib": 114.0
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 784,
+        "output_width": 10,
+        "solver": "spectral",
+        "steps": 5,
+        "approximation": "diagonal",
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 1024,
+        "output": "output/scaling-k256-diagonal.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 4.493797458242625,
+          "update_ms": 318.234619140625,
+          "memory": {
+            "allocated_mib": 27.62890625,
+            "reserved_mib": 68.0,
+            "peak_allocated_mib": 57.7998046875,
+            "peak_reserved_mib": 108.0
+          },
+          "loss": 0.9779031872749329,
+          "compression": {
+            "iterations": 169,
+            "converged": true,
+            "relative_residual": 8.072059948005137e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.02548714217386625,
+            "relative_residual": 2.48507210278333e-08,
+            "relative_complementarity": 5.5253250279322574e-11,
+            "projected_gradient_norm": 9.841183889042801e-09,
+            "objective": -0.004431613333001411
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.23449846962466836,
+          "update_ms": 0.8714240193367004,
+          "memory": {
+            "allocated_mib": 27.62890625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 69.0458984375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9711063504219055,
+          "compression": {
+            "iterations": 166,
+            "converged": true,
+            "relative_residual": 7.438278314977011e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.02285536757944102,
+            "relative_residual": 2.6784561505820035e-08,
+            "relative_complementarity": 4.706356280008276e-11,
+            "projected_gradient_norm": 9.888814663738876e-09,
+            "objective": -0.003946901265771425
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.22323146415874362,
+          "update_ms": 0.7485439777374268,
+          "memory": {
+            "allocated_mib": 27.62890625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.4208984375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9654489755630493,
+          "compression": {
+            "iterations": 159,
+            "converged": true,
+            "relative_residual": 7.1044833656237636e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.020189159335255176,
+            "relative_residual": 2.5076636084649875e-08,
+            "relative_complementarity": 5.883497330553449e-11,
+            "projected_gradient_norm": 8.661065957253442e-09,
+            "objective": -0.0035149395896086066
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.22466164967045188,
+          "update_ms": 0.7464960217475891,
+          "memory": {
+            "allocated_mib": 27.62890625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.4208984375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9607505202293396,
+          "compression": {
+            "iterations": 161,
+            "converged": true,
+            "relative_residual": 5.786612340608488e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.01753146241360089,
+            "relative_residual": 2.766854500052128e-08,
+            "relative_complementarity": 3.389520660181366e-11,
+            "projected_gradient_norm": 8.950479589398846e-09,
+            "objective": -0.003118061329728147
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.22223953204229474,
+          "update_ms": 0.7464960217475891,
+          "memory": {
+            "allocated_mib": 27.62890625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.4208984375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9568687677383423,
+          "compression": {
+            "iterations": 159,
+            "converged": true,
+            "relative_residual": 9.423593343488779e-06
+          },
+          "update": {
+            "iterations": 80,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.014999811342679427,
+            "relative_residual": 2.4071888790576133e-08,
+            "relative_complementarity": 2.7630122441567395e-11,
+            "projected_gradient_norm": 7.289190212942108e-09,
+            "objective": -0.00275081892911763
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 768,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.12255859375,
+        "reserved_mib": 4.0,
+        "peak_allocated_mib": 3.07861328125,
+        "peak_reserved_mib": 4.0
+      },
+      "warm_median_ms": 223.23146415874362,
+      "warm_update_median_ms": 0.7464960217475891,
+      "warm_peak_allocated_mib": 68.4208984375,
+      "warm_peak_reserved_mib": 112.0
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 784,
+        "output_width": 10,
+        "solver": "spectral",
+        "steps": 5,
+        "approximation": "full",
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 1024,
+        "output": "output/scaling-k256-full.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 5.471517611294985,
+          "update_ms": 727.8345947265625,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 68.0,
+            "peak_allocated_mib": 57.7998046875,
+            "peak_reserved_mib": 108.0
+          },
+          "loss": 0.9779031872749329,
+          "compression": {
+            "iterations": 169,
+            "converged": true,
+            "relative_residual": 8.072059948005137e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.652911684388528e-06,
+            "objective": -0.0008621433516964316
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.26782811991870403,
+          "update_ms": 12.6494722366333,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 69.04443359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9764146208763123,
+          "compression": {
+            "iterations": 184,
+            "converged": true,
+            "relative_residual": 9.35464568651696e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.51420555691584e-06,
+            "objective": -0.0005425801500678062
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.26356632076203823,
+          "update_ms": 12.469247817993164,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.41943359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9749695062637329,
+          "compression": {
+            "iterations": 184,
+            "converged": true,
+            "relative_residual": 7.769103747877967e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.9153245527122635e-06,
+            "objective": -0.0004459647461771965
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.27330021001398563,
+          "update_ms": 12.44057559967041,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.41943359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9737834334373474,
+          "compression": {
+            "iterations": 192,
+            "converged": true,
+            "relative_residual": 7.409540417106159e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.735357379104244e-06,
+            "objective": -0.00040272821206599474
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.2847872031852603,
+          "update_ms": 12.414976119995117,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.41943359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9726210832595825,
+          "compression": {
+            "iterations": 201,
+            "converged": true,
+            "relative_residual": 8.112898263552902e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 6.389932877937099e-06,
+            "objective": -0.000378655968233943
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 768,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.12255859375,
+        "reserved_mib": 4.0,
+        "peak_allocated_mib": 3.07861328125,
+        "peak_reserved_mib": 4.0
+      },
+      "warm_median_ms": 273.30021001398563,
+      "warm_update_median_ms": 12.44057559967041,
+      "warm_peak_allocated_mib": 68.41943359375,
+      "warm_peak_reserved_mib": 112.0
+    }
+  ],
+  "profiles": [
+    {
+      "atoms": 85,
+      "device_execution": true,
+      "update_solver": "spectral",
+      "update_approximation": "atom_block",
+      "update_max_iter": 512,
+      "update_shift_steps": 32,
+      "update_rtol": 1e-05,
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "source_sha256": "a3187462d80d34b75c13100631bad8d112ca95b642ad438dba26e32e8ffee7a5",
+      "operations": {
+        "training_step": {
+          "scope_host_duration_us": 28466.576,
+          "cuda_runtime": {
+            "cudaLaunchKernel": {
+              "count": 462,
+              "duration_us": 3521.482000000003,
+              "bytes": 0
+            },
+            "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+              "count": 12,
+              "duration_us": 23.398999999999997,
+              "bytes": 0
+            },
+            "cudaOccupancyMaxActiveBlocksPerMultiprocessor": {
+              "count": 3,
+              "duration_us": 7.986,
+              "bytes": 0
+            },
+            "cudaMemcpyAsync": {
+              "count": 53,
+              "duration_us": 629.6849999999998,
+              "bytes": 0
+            },
+            "cudaMemsetAsync": {
+              "count": 1,
+              "duration_us": 15.782,
+              "bytes": 0
+            },
+            "cuLaunchKernel": {
+              "count": 8,
+              "duration_us": 61.58700000000001,
+              "bytes": 0
+            },
+            "cudaDeviceGetAttribute": {
+              "count": 5,
+              "duration_us": 4.151000000000001,
+              "bytes": 0
+            },
+            "cudaStreamWaitEvent": {
+              "count": 2,
+              "duration_us": 4.6129999999999995,
+              "bytes": 0
+            },
+            "cudaStreamIsCapturing": {
+              "count": 4,
+              "duration_us": 2.952,
+              "bytes": 0
+            },
+            "cudaGraphLaunch": {
+              "count": 2,
+              "duration_us": 4746.397,
+              "bytes": 0
+            },
+            "cudaDriverGetVersion": {
+              "count": 2,
+              "duration_us": 0.227,
+              "bytes": 0
+            },
+            "cudaEventRecord": {
+              "count": 2,
+              "duration_us": 5.215999999999999,
+              "bytes": 0
+            }
+          },
+          "runtime_by_cpu_op": {
+            "aten::reciprocal": {
+              "cudaLaunchKernel": {
+                "count": 11,
+                "duration_us": 130.058,
+                "bytes": 0
+              }
+            },
+            "aten::pow": {
+              "cudaLaunchKernel": {
+                "count": 34,
+                "duration_us": 232.85699999999997,
+                "bytes": 0
+              }
+            },
+            "aten::sub": {
+              "cudaLaunchKernel": {
+                "count": 26,
+                "duration_us": 184.63,
+                "bytes": 0
+              }
+            },
+            "aten::sum": {
+              "cudaLaunchKernel": {
+                "count": 40,
+                "duration_us": 308.868,
+                "bytes": 0
+              },
+              "cudaMemsetAsync": {
+                "count": 1,
+                "duration_us": 15.782,
+                "bytes": 0
+              }
+            },
+            "aten::neg": {
+              "cudaLaunchKernel": {
+                "count": 15,
+                "duration_us": 127.28200000000001,
+                "bytes": 0
+              }
+            },
+            "aten::mul": {
+              "cudaLaunchKernel": {
+                "count": 127,
+                "duration_us": 914.931,
+                "bytes": 0
+              }
+            },
+            "aten::_log_softmax": {
+              "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+                "count": 10,
+                "duration_us": 17.72,
+                "bytes": 0
+              },
+              "cudaLaunchKernel": {
+                "count": 10,
+                "duration_us": 77.005,
+                "bytes": 0
+              }
+            },
+            "aten::exp": {
+              "cudaLaunchKernel": {
+                "count": 10,
+                "duration_us": 71.197,
+                "bytes": 0
+              }
+            },
+            "aten::mm": {
+              "cudaOccupancyMaxActiveBlocksPerMultiprocessor": {
+                "count": 3,
+                "duration_us": 7.986,
+                "bytes": 0
+              },
+              "cudaLaunchKernel": {
+                "count": 5,
+                "duration_us": 69.241,
+                "bytes": 0
+              }
+            },
+            "aten::mean": {
+              "cudaLaunchKernel": {
+                "count": 3,
+                "duration_us": 24.387,
+                "bytes": 0
+              }
+            },
+            "aten::fill_": {
+              "cudaLaunchKernel": {
+                "count": 36,
+                "duration_us": 295.79599999999994,
+                "bytes": 0
+              }
+            },
+            "aten::div": {
+              "cudaLaunchKernel": {
+                "count": 8,
+                "duration_us": 87.99499999999999,
+                "bytes": 0
+              }
+            },
+            "aten::copy_": {
+              "cudaMemcpyAsync": {
+                "count": 53,
+                "duration_us": 629.6849999999998,
+                "bytes": 0
+              },
+              "cudaLaunchKernel": {
+                "count": 27,
+                "duration_us": 232.14600000000002,
+                "bytes": 0
+              }
+            },
+            "aten::_log_softmax_backward_data": {
+              "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+                "count": 2,
+                "duration_us": 5.679,
+                "bytes": 0
+              },
+              "cudaLaunchKernel": {
+                "count": 2,
+                "duration_us": 22.601,
+                "bytes": 0
+              }
+            },
+            "aten::add_": {
+              "cudaLaunchKernel": {
+                "count": 5,
+                "duration_us": 41.21,
+                "bytes": 0
+              }
+            },
+            "aten::abs": {
+              "cudaLaunchKernel": {
+                "count": 9,
+                "duration_us": 67.11,
+                "bytes": 0
+              }
+            },
+            "aten::ne": {
+              "cudaLaunchKernel": {
+                "count": 7,
+                "duration_us": 47.372,
+                "bytes": 0
+              }
+            },
+            "aten::eq": {
+              "cudaLaunchKernel": {
+                "count": 7,
+                "duration_us": 43.606,
+                "bytes": 0
+              }
+            },
+            "aten::all": {
+              "cudaLaunchKernel": {
+                "count": 12,
+                "duration_us": 83.44500000000001,
+                "bytes": 0
+              }
+            },
+            "aten::cat": {
+              "cudaLaunchKernel": {
+                "count": 5,
+                "duration_us": 42.66,
+                "bytes": 0
+              }
+            },
+            "unattributed": {
+              "cuLaunchKernel": {
+                "count": 3,
+                "duration_us": 28.033,
+                "bytes": 0
+              },
+              "cudaStreamWaitEvent": {
+                "count": 2,
+                "duration_us": 4.6129999999999995,
+                "bytes": 0
+              },
+              "cudaStreamIsCapturing": {
+                "count": 4,
+                "duration_us": 2.952,
+                "bytes": 0
+              },
+              "cudaGraphLaunch": {
+                "count": 2,
+                "duration_us": 4746.397,
+                "bytes": 0
+              },
+              "cudaDriverGetVersion": {
+                "count": 2,
+                "duration_us": 0.227,
+                "bytes": 0
+              },
+              "cudaEventRecord": {
+                "count": 2,
+                "duration_us": 5.215999999999999,
+                "bytes": 0
+              }
+            },
+            "aten::add": {
+              "cudaLaunchKernel": {
+                "count": 13,
+                "duration_us": 75.60700000000001,
+                "bytes": 0
+              }
+            },
+            "aten::ge": {
+              "cudaLaunchKernel": {
+                "count": 4,
+                "duration_us": 26.762,
+                "bytes": 0
+              }
+            },
+            "aten::bitwise_and": {
+              "cudaLaunchKernel": {
+                "count": 8,
+                "duration_us": 49.693,
+                "bytes": 0
+              }
+            },
+            "aten::clamp_min": {
+              "cudaLaunchKernel": {
+                "count": 6,
+                "duration_us": 42.376,
+                "bytes": 0
+              }
+            },
+            "aten::sqrt": {
+              "cudaLaunchKernel": {
+                "count": 2,
+                "duration_us": 14.244,
+                "bytes": 0
+              }
+            },
+            "aten::bmm": {
+              "cudaDeviceGetAttribute": {
+                "count": 5,
+                "duration_us": 4.151000000000001,
+                "bytes": 0
+              },
+              "cuLaunchKernel": {
+                "count": 5,
+                "duration_us": 33.554,
+                "bytes": 0
+              },
+              "cudaLaunchKernel": {
+                "count": 4,
+                "duration_us": 34.303000000000004,
+                "bytes": 0
+              }
+            },
+            "aten::where": {
+              "cudaLaunchKernel": {
+                "count": 8,
+                "duration_us": 52.006,
+                "bytes": 0
+              }
+            },
+            "aten::linalg_vector_norm": {
+              "cudaLaunchKernel": {
+                "count": 10,
+                "duration_us": 69.91,
+                "bytes": 0
+              }
+            },
+            "aten::le": {
+              "cudaLaunchKernel": {
+                "count": 6,
+                "duration_us": 39.607,
+                "bytes": 0
+              }
+            },
+            "aten::amax": {
+              "cudaLaunchKernel": {
+                "count": 1,
+                "duration_us": 6.838,
+                "bytes": 0
+              }
+            },
+            "aten::clamp": {
+              "cudaLaunchKernel": {
+                "count": 1,
+                "duration_us": 5.739,
+                "bytes": 0
+              }
+            }
+          },
+          "gpu_transfer": {
+            "Memcpy DtoD (Device -> Device)": {
+              "count": 53,
+              "duration_us": 85.15399999999998,
+              "bytes": 3669901
+            }
+          },
+          "transfer_attribution": [
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 1280,
+              "count": 2
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 340,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 3400,
+              "count": 4
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 680,
+              "count": 2
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 266560,
+              "count": 4
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 1020,
+              "count": 15
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 100352,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 40,
+              "count": 6
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 3136,
+              "count": 5
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 799680,
+              "count": 3
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 10200,
+              "count": 3
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 10880,
+              "count": 2
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 96,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 2720,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 4,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 8,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 1,
+              "count": 1
+            }
+          ],
+          "gpu_kernel_count": 2929,
+          "gpu_kernel_union_us": 25584.9189453125,
+          "top_kernels": [
+            [
+              "_gram",
+              {
+                "count": 514,
+                "duration_us": 17628.817999999752,
+                "bytes": 0
+              }
+            ],
+            [
+              "void at::native::(anonymous namespace)::cunn_SpatialSoftMaxForward<float, float, float, int, at::native::(anonymous namespace)::LogSoftMaxForwardEpilogue>(float*, float const*, int, int, int)",
+              {
+                "count": 10,
+                "duration_us": 2063.6440000000002,
+                "bytes": 0
+              }
+            ],
+            [
+              "_direction",
+              {
+                "count": 514,
+                "duration_us": 1017.6749999999929,
+                "bytes": 0
+              }
+            ],
+            [
+              "triton_per_fused__to_copy_abs_add_bitwise_and_bitwise_not_bitwise_or_div_eq_gt_le_mul_ne_scalar_tensor_sqrt_sub_sum_where_0",
+              {
+                "count": 256,
+                "duration_us": 630.0470000000017,
+                "bytes": 0
+              }
+            ],
+            [
+              "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, float, float, float, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float>, float>)",
+              {
+                "count": 257,
+                "duration_us": 540.0060000000003,
+                "bytes": 0
+              }
+            ],
+            [
+              "triton_per_fused__to_copy_bitwise_and_bitwise_not_le_mul_sqrt_sub_sum_where_0",
+              {
+                "count": 256,
+                "duration_us": 484.49099999999896,
+                "bytes": 0
+              }
+            ],
+            [
+              "triton_per_fused__to_copy_add_bitwise_and_bitwise_not_div_mul_ne_scalar_tensor_sum_where_1",
+              {
+                "count": 256,
+                "duration_us": 458.6669999999983,
+                "bytes": 0
+              }
+            ],
+            [
+              "ampere_sgemm_128x128_nt",
+              {
+                "count": 1,
+                "duration_us": 438.789,
+                "bytes": 0
+              }
+            ],
+            [
+              "triton_poi_fused__to_copy_add_1",
+              {
+                "count": 256,
+                "duration_us": 349.5309999999994,
+                "bytes": 0
+              }
+            ],
+            [
+              "_secular",
+              {
+                "count": 1,
+                "duration_us": 234.755,
+                "bytes": 0
+              }
+            ],
+            [
+              "void at::native::(anonymous namespace)::cunn_SpatialSoftMaxBackward<float, float, float, at::native::(anonymous namespace)::LogSoftMaxBackwardEpilogue>(float*, float const*, float const*, unsigned int, unsigned int, unsigned int)",
+              {
+                "count": 2,
+                "duration_us": 188.771,
+                "bytes": 0
+              }
+            ],
+            [
+              "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+              {
+                "count": 36,
+                "duration_us": 133.41000000000003,
+                "bytes": 0
+              }
+            ]
+          ],
+          "scalar_cpu_ops": {
+            "aten::_to_copy": {
+              "count": 10,
+              "duration_us": 208.92100000000002,
+              "bytes": 0
+            }
+          },
+          "unprofiled_median_ms": 33.65974687039852,
+          "first_call_ms": 6324.743372388184,
+          "allocated_before_bytes": 2303488,
+          "allocated_after_warmup_bytes": 28987904,
+          "steady_peak_allocated_bytes": 38266368,
+          "profiled_diagnostics": {
+            "iterations": 105,
+            "relative_residual": 8.140806943000072e-06,
+            "converged": true,
+            "backend": "specialized"
+          },
+          "update_diagnostics": {
+            "iterations": 80,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.008127615392156624,
+            "relative_residual": 2.5599420559446618e-08,
+            "relative_complementarity": 9.221257781823044e-12
+          },
+          "scalar_audit_diagnostics": {
+            "iterations": 106,
+            "relative_residual": 7.052658932859974e-06,
+            "converged": true,
+            "backend": "specialized"
+          },
+          "scalar_audit": [],
+          "optimizer_device_checks_passed": true
+        }
+      }
+    },
+    {
+      "atoms": 85,
+      "device_execution": true,
+      "update_solver": "spectral",
+      "update_approximation": "diagonal",
+      "update_max_iter": 512,
+      "update_shift_steps": 32,
+      "update_rtol": 1e-05,
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "source_sha256": "a3187462d80d34b75c13100631bad8d112ca95b642ad438dba26e32e8ffee7a5",
+      "operations": {
+        "training_step": {
+          "scope_host_duration_us": 22313.105,
+          "cuda_runtime": {
+            "cudaLaunchKernel": {
+              "count": 442,
+              "duration_us": 2605.174999999996,
+              "bytes": 0
+            },
+            "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+              "count": 12,
+              "duration_us": 21.159000000000002,
+              "bytes": 0
+            },
+            "cudaOccupancyMaxActiveBlocksPerMultiprocessor": {
+              "count": 3,
+              "duration_us": 8.213000000000001,
+              "bytes": 0
+            },
+            "cudaMemcpyAsync": {
+              "count": 49,
+              "duration_us": 496.054,
+              "bytes": 0
+            },
+            "cudaMemsetAsync": {
+              "count": 1,
+              "duration_us": 16.392,
+              "bytes": 0
+            },
+            "cuLaunchKernel": {
+              "count": 3,
+              "duration_us": 21.853,
+              "bytes": 0
+            },
+            "cudaStreamWaitEvent": {
+              "count": 1,
+              "duration_us": 2.66,
+              "bytes": 0
+            },
+            "cudaStreamIsCapturing": {
+              "count": 2,
+              "duration_us": 1.387,
+              "bytes": 0
+            },
+            "cudaGraphLaunch": {
+              "count": 1,
+              "duration_us": 2782.199,
+              "bytes": 0
+            },
+            "cudaDriverGetVersion": {
+              "count": 1,
+              "duration_us": 0.082,
+              "bytes": 0
+            },
+            "cudaEventRecord": {
+              "count": 1,
+              "duration_us": 3.039,
+              "bytes": 0
+            }
+          },
+          "runtime_by_cpu_op": {
+            "aten::reciprocal": {
+              "cudaLaunchKernel": {
+                "count": 11,
+                "duration_us": 95.159,
+                "bytes": 0
+              }
+            },
+            "aten::pow": {
+              "cudaLaunchKernel": {
+                "count": 38,
+                "duration_us": 185.22699999999995,
+                "bytes": 0
+              }
+            },
+            "aten::sub": {
+              "cudaLaunchKernel": {
+                "count": 24,
+                "duration_us": 130.779,
+                "bytes": 0
+              }
+            },
+            "aten::sum": {
+              "cudaLaunchKernel": {
+                "count": 44,
+                "duration_us": 255.17200000000003,
+                "bytes": 0
+              },
+              "cudaMemsetAsync": {
+                "count": 1,
+                "duration_us": 16.392,
+                "bytes": 0
+              }
+            },
+            "aten::neg": {
+              "cudaLaunchKernel": {
+                "count": 15,
+                "duration_us": 126.32700000000003,
+                "bytes": 0
+              }
+            },
+            "aten::mul": {
+              "cudaLaunchKernel": {
+                "count": 126,
+                "duration_us": 699.8629999999998,
+                "bytes": 0
+              }
+            },
+            "aten::_log_softmax": {
+              "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+                "count": 10,
+                "duration_us": 15.906999999999998,
+                "bytes": 0
+              },
+              "cudaLaunchKernel": {
+                "count": 10,
+                "duration_us": 56.915,
+                "bytes": 0
+              }
+            },
+            "aten::exp": {
+              "cudaLaunchKernel": {
+                "count": 10,
+                "duration_us": 55.162,
+                "bytes": 0
+              }
+            },
+            "aten::mm": {
+              "cudaOccupancyMaxActiveBlocksPerMultiprocessor": {
+                "count": 3,
+                "duration_us": 8.213000000000001,
+                "bytes": 0
+              },
+              "cudaLaunchKernel": {
+                "count": 5,
+                "duration_us": 62.619,
+                "bytes": 0
+              }
+            },
+            "aten::mean": {
+              "cudaLaunchKernel": {
+                "count": 3,
+                "duration_us": 18.124,
+                "bytes": 0
+              }
+            },
+            "aten::fill_": {
+              "cudaLaunchKernel": {
+                "count": 29,
+                "duration_us": 212.775,
+                "bytes": 0
+              }
+            },
+            "aten::div": {
+              "cudaLaunchKernel": {
+                "count": 8,
+                "duration_us": 88.944,
+                "bytes": 0
+              }
+            },
+            "aten::copy_": {
+              "cudaMemcpyAsync": {
+                "count": 49,
+                "duration_us": 496.054,
+                "bytes": 0
+              },
+              "cudaLaunchKernel": {
+                "count": 24,
+                "duration_us": 150.76400000000007,
+                "bytes": 0
+              }
+            },
+            "aten::_log_softmax_backward_data": {
+              "cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags": {
+                "count": 2,
+                "duration_us": 5.252000000000001,
+                "bytes": 0
+              },
+              "cudaLaunchKernel": {
+                "count": 2,
+                "duration_us": 20.233,
+                "bytes": 0
+              }
+            },
+            "aten::add_": {
+              "cudaLaunchKernel": {
+                "count": 5,
+                "duration_us": 33.667,
+                "bytes": 0
+              }
+            },
+            "aten::abs": {
+              "cudaLaunchKernel": {
+                "count": 9,
+                "duration_us": 46.873999999999995,
+                "bytes": 0
+              }
+            },
+            "aten::ne": {
+              "cudaLaunchKernel": {
+                "count": 7,
+                "duration_us": 31.046,
+                "bytes": 0
+              }
+            },
+            "aten::eq": {
+              "cudaLaunchKernel": {
+                "count": 7,
+                "duration_us": 29.410999999999998,
+                "bytes": 0
+              }
+            },
+            "aten::all": {
+              "cudaLaunchKernel": {
+                "count": 10,
+                "duration_us": 47.23899999999999,
+                "bytes": 0
+              }
+            },
+            "aten::cat": {
+              "cudaLaunchKernel": {
+                "count": 5,
+                "duration_us": 33.18,
+                "bytes": 0
+              }
+            },
+            "unattributed": {
+              "cuLaunchKernel": {
+                "count": 3,
+                "duration_us": 21.853,
+                "bytes": 0
+              },
+              "cudaStreamWaitEvent": {
+                "count": 1,
+                "duration_us": 2.66,
+                "bytes": 0
+              },
+              "cudaStreamIsCapturing": {
+                "count": 2,
+                "duration_us": 1.387,
+                "bytes": 0
+              },
+              "cudaGraphLaunch": {
+                "count": 1,
+                "duration_us": 2782.199,
+                "bytes": 0
+              },
+              "cudaDriverGetVersion": {
+                "count": 1,
+                "duration_us": 0.082,
+                "bytes": 0
+              },
+              "cudaEventRecord": {
+                "count": 1,
+                "duration_us": 3.039,
+                "bytes": 0
+              }
+            },
+            "aten::add": {
+              "cudaLaunchKernel": {
+                "count": 11,
+                "duration_us": 42.549,
+                "bytes": 0
+              }
+            },
+            "aten::ge": {
+              "cudaLaunchKernel": {
+                "count": 4,
+                "duration_us": 20.326999999999998,
+                "bytes": 0
+              }
+            },
+            "aten::bitwise_and": {
+              "cudaLaunchKernel": {
+                "count": 7,
+                "duration_us": 30.37,
+                "bytes": 0
+              }
+            },
+            "aten::clamp_min": {
+              "cudaLaunchKernel": {
+                "count": 5,
+                "duration_us": 25.143,
+                "bytes": 0
+              }
+            },
+            "aten::sqrt": {
+              "cudaLaunchKernel": {
+                "count": 2,
+                "duration_us": 8.674,
+                "bytes": 0
+              }
+            },
+            "aten::where": {
+              "cudaLaunchKernel": {
+                "count": 8,
+                "duration_us": 35.789,
+                "bytes": 0
+              }
+            },
+            "aten::amax": {
+              "cudaLaunchKernel": {
+                "count": 1,
+                "duration_us": 6.148,
+                "bytes": 0
+              }
+            },
+            "aten::linalg_vector_norm": {
+              "cudaLaunchKernel": {
+                "count": 7,
+                "duration_us": 34.057,
+                "bytes": 0
+              }
+            },
+            "aten::clamp": {
+              "cudaLaunchKernel": {
+                "count": 1,
+                "duration_us": 4.314,
+                "bytes": 0
+              }
+            },
+            "aten::le": {
+              "cudaLaunchKernel": {
+                "count": 4,
+                "duration_us": 18.323999999999998,
+                "bytes": 0
+              }
+            }
+          },
+          "gpu_transfer": {
+            "Memcpy DtoD (Device -> Device)": {
+              "count": 49,
+              "duration_us": 78.88099999999999,
+              "bytes": 3645325
+            }
+          },
+          "transfer_attribution": [
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 1280,
+              "count": 2
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 340,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 3400,
+              "count": 4
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 680,
+              "count": 2
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 266560,
+              "count": 4
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 1020,
+              "count": 15
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 100352,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 40,
+              "count": 6
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 3136,
+              "count": 5
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 799680,
+              "count": 3
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 10200,
+              "count": 3
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 4,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 8,
+              "count": 1
+            },
+            {
+              "transfer": "Memcpy DtoD (Device -> Device)",
+              "cpu_op": "aten::copy_",
+              "bytes_each": 1,
+              "count": 1
+            }
+          ],
+          "gpu_kernel_count": 2822,
+          "gpu_kernel_union_us": 25983.798828125,
+          "top_kernels": [
+            [
+              "_gram",
+              {
+                "count": 514,
+                "duration_us": 18402.11299999977,
+                "bytes": 0
+              }
+            ],
+            [
+              "void at::native::(anonymous namespace)::cunn_SpatialSoftMaxForward<float, float, float, int, at::native::(anonymous namespace)::LogSoftMaxForwardEpilogue>(float*, float const*, int, int, int)",
+              {
+                "count": 10,
+                "duration_us": 2062.516,
+                "bytes": 0
+              }
+            ],
+            [
+              "_direction",
+              {
+                "count": 514,
+                "duration_us": 1023.8799999999932,
+                "bytes": 0
+              }
+            ],
+            [
+              "triton_per_fused__to_copy_abs_add_bitwise_and_bitwise_not_bitwise_or_div_eq_gt_le_mul_ne_scalar_tensor_sqrt_sub_sum_where_0",
+              {
+                "count": 256,
+                "duration_us": 629.674000000002,
+                "bytes": 0
+              }
+            ],
+            [
+              "std::enable_if<!(false), void>::type internal::gemvx::kernel<int, int, float, float, float, float, false, true, true, false, 6, false, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float>, float> >(cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float const>, cublasGemvTensorStridedBatched<float>, float>)",
+              {
+                "count": 257,
+                "duration_us": 542.6399999999993,
+                "bytes": 0
+              }
+            ],
+            [
+              "triton_per_fused__to_copy_bitwise_and_bitwise_not_le_mul_sqrt_sub_sum_where_0",
+              {
+                "count": 256,
+                "duration_us": 484.3799999999985,
+                "bytes": 0
+              }
+            ],
+            [
+              "triton_per_fused__to_copy_add_bitwise_and_bitwise_not_div_mul_ne_scalar_tensor_sum_where_1",
+              {
+                "count": 256,
+                "duration_us": 458.0879999999979,
+                "bytes": 0
+              }
+            ],
+            [
+              "ampere_sgemm_128x128_nt",
+              {
+                "count": 1,
+                "duration_us": 438.627,
+                "bytes": 0
+              }
+            ],
+            [
+              "triton_poi_fused__to_copy_add_1",
+              {
+                "count": 256,
+                "duration_us": 347.7859999999992,
+                "bytes": 0
+              }
+            ],
+            [
+              "void at::native::(anonymous namespace)::cunn_SpatialSoftMaxBackward<float, float, float, at::native::(anonymous namespace)::LogSoftMaxBackwardEpilogue>(float*, float const*, float const*, unsigned int, unsigned int, unsigned int)",
+              {
+                "count": 2,
+                "duration_us": 188.738,
+                "bytes": 0
+              }
+            ],
+            [
+              "void at::native::elementwise_kernel<128, 2, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1}>(int, at::native::gpu_kernel_impl_nocast<at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > >(at::TensorIteratorBase&, at::native::BinaryFunctor<float, float, float, at::native::binary_internal::MulFunctor<float> > const&)::{lambda(int)#1})",
+              {
+                "count": 36,
+                "duration_us": 133.474,
+                "bytes": 0
+              }
+            ],
+            [
+              "_secular",
+              {
+                "count": 1,
+                "duration_us": 129.057,
+                "bytes": 0
+              }
+            ]
+          ],
+          "scalar_cpu_ops": {
+            "aten::_to_copy": {
+              "count": 10,
+              "duration_us": 160.78699999999998,
+              "bytes": 0
+            }
+          },
+          "unprofiled_median_ms": 30.915293376892805,
+          "first_call_ms": 2891.6052826680243,
+          "allocated_before_bytes": 2303488,
+          "allocated_after_warmup_bytes": 28961280,
+          "steady_peak_allocated_bytes": 38239744,
+          "profiled_diagnostics": {
+            "iterations": 110,
+            "relative_residual": 7.86575961804481e-06,
+            "converged": true,
+            "backend": "specialized"
+          },
+          "update_diagnostics": {
+            "iterations": 80,
+            "converged": true,
+            "on_boundary": true,
+            "shift": 0.008094369513616183,
+            "relative_residual": 2.364641307256983e-08,
+            "relative_complementarity": 2.8715728914288907e-11
+          },
+          "scalar_audit_diagnostics": {
+            "iterations": 106,
+            "relative_residual": 7.162208735589023e-06,
+            "converged": true,
+            "backend": "specialized"
+          },
+          "scalar_audit": [],
+          "optimizer_device_checks_passed": true
+        }
+      }
+    }
+  ],
+  "validation": {
+    "cuda_passed": 429,
+    "local_passed": 373,
+    "local_skipped": 56
+  }
+}
