@@ -58,3 +58,47 @@ def test_nystrom_inverse_and_full_residual(device, rank):
         (h + 0.1 * torch.eye(n, device=device, dtype=j.dtype)) @ alpha.flatten()
         - rhs.flatten()
     ).norm() <= 1e-9 * rhs.norm()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_nystrom_setup_captured_with_fresh_factors():
+    from torchcst._runtime.graphs import CapturedCall
+
+    torch.manual_seed(47)
+    n = 10
+    point = torch.zeros(1, n, device="cuda", dtype=torch.float64)
+    omega = torch.linalg.qr(torch.randn(n, 4, device="cuda", dtype=point.dtype)).Q
+
+    def run(j, rhs, sketch):
+        p = PreparedFactors(
+            SimpleNamespace(
+                backend="specialized", execution="triton", gram_action="jvp_vjp"
+            ),
+            torch.zeros_like(rhs),
+            (
+                torch.zeros_like(rhs),
+                torch.ones(1, 1, device=rhs.device, dtype=rhs.dtype),
+                j[None],
+                torch.zeros(1, 1, n, device=rhs.device, dtype=rhs.dtype),
+            ),
+        )
+        return pcg(
+            p,
+            rhs,
+            damping=0.1,
+            max_iter=40,
+            rtol=1e-8,
+            compiled=True,
+            nystrom=build(p, sketch, 0.1),
+        )
+
+    call = CapturedCall(run)
+    for _ in range(2):
+        j = torch.randn(n, n, device="cuda", dtype=point.dtype)
+        rhs = torch.randn_like(point)
+        alpha, _, _, valid = call(j, rhs, omega)
+        assert valid
+        residual = (
+            j.T @ j + 0.1 * torch.eye(n, device="cuda", dtype=point.dtype)
+        ) @ alpha.flatten() - rhs.flatten()
+        assert residual.norm() <= 1e-8 * rhs.norm()

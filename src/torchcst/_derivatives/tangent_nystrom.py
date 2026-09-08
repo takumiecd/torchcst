@@ -44,7 +44,7 @@ def build(prepared, omega, damping):
     c, info = torch.linalg.cholesky_ex(core, check_errors=False)
     b = torch.linalg.solve_triangular(c, shifted.T, upper=False).T
     bb = b.T @ b
-    values, vectors = block_eigh(((bb + bb.T) * 0.5)[None])
+    values, vectors = block_eigh(((bb + bb.T) * 0.5)[None], capture=False)
     # block_eigh pads odd dimensions; ignore its artificial coordinate.
     vectors = vectors[0, :rank]
     values = values[0]

@@ -59,10 +59,14 @@ def _runner():
     return CapturedCall(eigensystems)
 
 
-def block_eigh(blocks):
+def block_eigh(blocks, *, capture=True):
     if not blocks.is_cuda:
         return torch.linalg.eigh(blocks)
     q = blocks.shape[-1]
     if q % 2 or q < 2:
         blocks = torch.nn.functional.pad(blocks, (0, 1, 0, 1))
-    return _runner()(blocks, _schedule(blocks.shape[-1], blocks.device))
+    schedule = _schedule(blocks.shape[-1], blocks.device)
+    # Callers capturing a larger solve must not depend on another graph's event.
+    if not capture:
+        return eigensystems(blocks, schedule)
+    return _runner()(blocks, schedule)
