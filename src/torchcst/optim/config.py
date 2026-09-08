@@ -11,6 +11,52 @@ from torchcst.atoms import AtomGradMode
 from .solvers import FullQuartic, QuarticSolver
 
 
+@dataclass(frozen=True)
+class FirstOrderAdamConfig:
+    """Tangent-only Adam; block/diagonal visible RMS are experimental metrics."""
+
+    lr: float = 1e-3
+    betas: tuple[float, float] = (0.9, 0.999)
+    eps: float = 1e-8
+    trust_radius: float = 0.25
+    second_moment: Literal["separable", "atom_block", "atom_diag"] = "separable"
+    first_moment_damping: float = 0.0
+    atom_grad_mode: AtomGradMode = "auto"
+    row_chunk_size: int = 16
+    factored_geometry: bool = True
+    tangent_rtol: float = 1e-6
+
+    @property
+    def device_execution(self) -> bool:
+        return False
+
+    def __post_init__(self) -> None:
+        for name in ("lr", "eps", "trust_radius", "tangent_rtol"):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        if self.tangent_rtol >= 1:
+            raise ValueError("tangent_rtol must be less than one")
+        if (
+            not math.isfinite(self.first_moment_damping)
+            or self.first_moment_damping < 0
+        ):
+            raise ValueError("first_moment_damping must be finite and nonnegative")
+        object.__setattr__(self, "betas", _validate_betas(self.betas))
+        if self.second_moment not in ("separable", "atom_block", "atom_diag"):
+            raise ValueError("unknown first-order second_moment")
+        if self.atom_grad_mode not in ("auto", "custom", "hooks"):
+            raise ValueError("invalid atom_grad_mode")
+        if not isinstance(self.factored_geometry, bool):
+            raise TypeError("factored_geometry must be a bool")
+        if isinstance(self.row_chunk_size, bool) or not isinstance(
+            self.row_chunk_size, int
+        ):
+            raise TypeError("row_chunk_size must be an integer")
+        if self.row_chunk_size < 1:
+            raise ValueError("row_chunk_size must be positive")
+
+
 def _validate_betas(betas: tuple[float, float]) -> tuple[float, float]:
     if not isinstance(betas, tuple) or len(betas) != 2:
         raise TypeError("betas must be a pair")
@@ -21,7 +67,7 @@ def _validate_betas(betas: tuple[float, float]) -> tuple[float, float]:
 
 
 @dataclass(frozen=True)
-class ImplicitAdamConfig:
+class SecondOrderAdamConfig:
     """Configuration of the compact implicit optimizer for every CST site."""
 
     lr: float = 1e-3

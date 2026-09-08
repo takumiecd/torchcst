@@ -8,7 +8,7 @@ from torchcst import (
     CSTLinear,
     FullQuartic,
     Gaussian,
-    ImplicitAdamConfig,
+    SecondOrderAdamConfig,
     Separable,
 )
 from torchcst._derivatives import AffinePullback
@@ -152,7 +152,7 @@ def test_auto_uses_visible_for_small_problems_and_validates_selection():
             visible.context, visible.moments, learning_rate=0.2, evaluation="bad"
         )
     with pytest.raises(ValueError, match="quartic_evaluation must"):
-        ImplicitAdamConfig(quartic_evaluation="bad")
+        SecondOrderAdamConfig(quartic_evaluation="bad")
 
 
 def test_auto_gram_does_not_materialize_visible_derivatives(monkeypatch):

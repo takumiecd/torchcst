@@ -17,7 +17,7 @@ from unittest.mock import patch
 import torch
 
 from experiments.scaling_benchmark import model_for
-from torchcst import CSTOptimizer, DeviceRay, ImplicitAdamConfig
+from torchcst import CSTSecondOrderAdam, DeviceRay, SecondOrderAdamConfig
 from torchcst._runtime.graphs import CapturedCall
 
 
@@ -126,9 +126,9 @@ def main():
                 model.parameters(), lr=1e-3, betas=(0.9, 0.99), foreach=True
             )
             if args.dense
-            else CSTOptimizer(
+            else CSTSecondOrderAdam(
                 model,
-                cst=ImplicitAdamConfig(
+                cst=SecondOrderAdamConfig(
                     lr=0.05,
                     betas=(0.9, 0.99),
                     quartic=DeviceRay(corrections=1),

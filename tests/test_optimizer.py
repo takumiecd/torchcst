@@ -11,10 +11,10 @@ from torchcst import (
     Amplitude,
     Chart,
     CSTLinear,
-    CSTOptimizer,
+    CSTSecondOrderAdam,
     FullQuartic,
     Gaussian,
-    ImplicitAdamConfig,
+    SecondOrderAdamConfig,
     Separable,
 )
 from torchcst.optim import (
@@ -27,7 +27,7 @@ from torchcst.optim import (
 
 
 def test_implicit_adam_keeps_full_quartic_as_its_default() -> None:
-    assert isinstance(ImplicitAdamConfig().quartic, FullQuartic)
+    assert isinstance(SecondOrderAdamConfig().quartic, FullQuartic)
 
 
 class FixedDirectionSolver(QuarticSolver):
@@ -84,8 +84,8 @@ def make_site() -> CSTLinear:
     )
 
 
-def fixed_config(direction: Tensor) -> ImplicitAdamConfig:
-    return ImplicitAdamConfig(
+def fixed_config(direction: Tensor) -> SecondOrderAdamConfig:
+    return SecondOrderAdamConfig(
         lr=0.05,
         betas=(0.0, 0.0),
         trust_radius=0.2,
@@ -129,7 +129,7 @@ def test_functional_adamw_matches_one_torch_adamw_step_without_mutation() -> Non
 def test_step_commits_full_cst_and_dense_proposals_together() -> None:
     model = MixedModel()
     direction = torch.tensor([[0.02, -0.01, 0.01]], dtype=torch.float64)
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
         cst=fixed_config(direction),
         dense=AdamWConfig(lr=0.02, weight_decay=0.0),
@@ -155,7 +155,7 @@ def test_step_commits_full_cst_and_dense_proposals_together() -> None:
 def test_step_compresses_at_the_full_solver_displacement() -> None:
     model = MixedModel()
     direction = torch.tensor([[0.02, -0.01, 0.01]], dtype=torch.float64)
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
         cst=fixed_config(direction),
         dense=AdamWConfig(lr=0.02, weight_decay=0.0),
@@ -175,7 +175,7 @@ def test_step_compresses_at_the_full_solver_displacement() -> None:
 
 def test_step_requires_zero_grad_to_open_the_observation_scope() -> None:
     model = make_site()
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
         cst=fixed_config(torch.zeros(1, 3, dtype=torch.float64)),
         dense=None,
@@ -187,7 +187,7 @@ def test_step_requires_zero_grad_to_open_the_observation_scope() -> None:
 
 def test_dense_parameters_require_an_explicit_dense_configuration() -> None:
     with pytest.raises(ValueError, match="dense=None"):
-        CSTOptimizer(
+        CSTSecondOrderAdam(
             MixedModel(),
             cst=fixed_config(torch.zeros(1, 3, dtype=torch.float64)),
             dense=None,
@@ -197,7 +197,7 @@ def test_dense_parameters_require_an_explicit_dense_configuration() -> None:
 def test_state_dict_round_trip_restores_compact_and_dense_state() -> None:
     model = MixedModel()
     direction = torch.tensor([[0.01, 0.0, 0.0]], dtype=torch.float64)
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
         cst=fixed_config(direction),
         dense=AdamWConfig(),
@@ -225,7 +225,7 @@ def test_state_dict_round_trip_restores_compact_and_dense_state() -> None:
 
 def test_state_dict_rejects_a_different_ownership_manifest() -> None:
     model = MixedModel()
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
         cst=fixed_config(torch.zeros(1, 3, dtype=torch.float64)),
         dense=AdamWConfig(),
@@ -244,7 +244,7 @@ class _WrongDenseState:
 
 def test_dense_state_validation_rejects_the_wrong_state_type() -> None:
     model = MixedModel()
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
         cst=fixed_config(torch.zeros(1, 3, dtype=torch.float64)),
         dense=AdamWConfig(),

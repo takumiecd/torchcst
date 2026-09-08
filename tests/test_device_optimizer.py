@@ -5,7 +5,13 @@ import torch
 from test_quartic import make_problem
 from test_training_smoke import amplitude_bandwidth
 
-from torchcst import Chart, CSTLinear, CSTOptimizer, DeviceBFGS, ImplicitAdamConfig
+from torchcst import (
+    Chart,
+    CSTLinear,
+    CSTSecondOrderAdam,
+    DeviceBFGS,
+    SecondOrderAdamConfig,
+)
 from torchcst._runtime.validation import deferred, device_checks
 
 
@@ -39,9 +45,9 @@ def make_model_optimizer(device="cpu"):
     )
     model = model.to(device)
     solver = DeviceBFGS(max_iter=12, max_evaluations=40)
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
-        cst=ImplicitAdamConfig(lr=0.03, quartic=solver, device_execution=True),
+        cst=SecondOrderAdamConfig(lr=0.03, quartic=solver, device_execution=True),
         dense=None,
     )
     return model, optimizer
@@ -140,9 +146,9 @@ def test_deferred_failure_suppresses_dense_and_all_cst_commits():
     model = torch.nn.Sequential(
         site(), site(), torch.nn.Linear(2, 2, dtype=torch.float64)
     )
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
-        cst=ImplicitAdamConfig(
+        cst=SecondOrderAdamConfig(
             quartic=DeviceBFGS(max_iter=3, max_evaluations=8), device_execution=True
         ),
         dense=AdamWConfig(),

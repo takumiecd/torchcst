@@ -14,7 +14,7 @@ from unittest.mock import patch
 import torch
 
 from experiments.scaling_benchmark import model_for
-from torchcst import CSTOptimizer, DeviceRay, ImplicitAdamConfig
+from torchcst import CSTSecondOrderAdam, DeviceRay, SecondOrderAdamConfig
 from torchcst._derivatives import factored_taylor as ft
 from torchcst._derivatives._pcg import PCGOptions, solve
 from torchcst._derivatives.factored_frame import FactoredFrameGeometry
@@ -37,9 +37,9 @@ def main():
     torch.set_float32_matmul_precision("highest")
     torch.manual_seed(17)
     model = model_for("cst_ray1", args.width, args.width, args.atoms)
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
-        cst=ImplicitAdamConfig(
+        cst=SecondOrderAdamConfig(
             lr=0.05,
             quartic=DeviceRay(corrections=1),
             device_execution=True,

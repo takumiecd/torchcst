@@ -2,7 +2,7 @@ import pytest
 import torch
 from test_quadratic_feature_gram import make_pair
 
-from torchcst import ImplicitAdamConfig
+from torchcst import SecondOrderAdamConfig
 from torchcst._derivatives import factored_taylor as ft
 from torchcst._derivatives._pcg import PCGOptions, frame_diagonal, solve
 from torchcst._derivatives.factored_frame import FactoredFrameGeometry
@@ -80,14 +80,14 @@ def test_underconvergence_rejected_and_no_full_gram(monkeypatch):
 )
 def test_invalid_config(kwargs):
     with pytest.raises(ValueError):
-        ImplicitAdamConfig(**kwargs)
+        SecondOrderAdamConfig(**kwargs)
 
 
 def test_pcg_optimizer_success_then_failure_freezes_state(monkeypatch):
     from test_device_optimizer import step
     from test_training_smoke import amplitude_bandwidth
 
-    from torchcst import Chart, CSTLinear, CSTOptimizer, DeviceRay
+    from torchcst import Chart, CSTLinear, CSTSecondOrderAdam, DeviceRay
     from torchcst._derivatives import _pcg
 
     model = CSTLinear(
@@ -98,9 +98,9 @@ def test_pcg_optimizer_success_then_failure_freezes_state(monkeypatch):
         backend="factored",
         dtype=torch.float64,
     )
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
-        cst=ImplicitAdamConfig(
+        cst=SecondOrderAdamConfig(
             lr=0.03,
             quartic=DeviceRay(corrections=1),
             device_execution=True,
@@ -157,7 +157,7 @@ def test_cuda_pcg_no_sync_and_matches_reference():
 def test_three_updates_match_cholesky_without_full_gram(monkeypatch):
     from test_training_smoke import amplitude_bandwidth
 
-    from torchcst import Chart, CSTLinear, CSTOptimizer, DeviceRay
+    from torchcst import Chart, CSTLinear, CSTSecondOrderAdam, DeviceRay
 
     torch.manual_seed(13)
     models = [
@@ -173,9 +173,9 @@ def test_three_updates_match_cholesky_without_full_gram(monkeypatch):
     ]
     models[1].load_state_dict(models[0].state_dict())
     optimizers = [
-        CSTOptimizer(
+        CSTSecondOrderAdam(
             model,
-            cst=ImplicitAdamConfig(
+            cst=SecondOrderAdamConfig(
                 lr=0.01,
                 quartic=DeviceRay(corrections=1),
                 device_execution=True,

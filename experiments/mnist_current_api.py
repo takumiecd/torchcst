@@ -28,13 +28,13 @@ from torchcst import (
     BallNewton,
     Chart,
     CSTLinear,
-    CSTOptimizer,
+    CSTSecondOrderAdam,
     DeviceBFGS,
     DeviceRay,
     FullQuartic,
     Gaussian,
-    ImplicitAdamConfig,
     ProjectedLBFGS,
+    SecondOrderAdamConfig,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,7 +145,7 @@ def build_model(config: ExperimentConfig, device: torch.device) -> CSTLinear:
     return model.to(device)
 
 
-def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
+def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTSecondOrderAdam:
     if config.solver == "full":
         quartic = FullQuartic(
             starts=config.solver_starts,
@@ -177,9 +177,9 @@ def build_optimizer(model: CSTLinear, config: ExperimentConfig) -> CSTOptimizer:
         )
     else:
         raise ValueError("unknown solver")
-    return CSTOptimizer(
+    return CSTSecondOrderAdam(
         model,
-        cst=ImplicitAdamConfig(
+        cst=SecondOrderAdamConfig(
             lr=config.learning_rate,
             betas=(config.beta1, config.beta2),
             eps=config.epsilon,

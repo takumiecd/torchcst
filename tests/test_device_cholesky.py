@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from torchcst import ImplicitAdamConfig
+from torchcst import SecondOrderAdamConfig
 from torchcst._derivatives._cholesky import device_solve
 from torchcst._derivatives.frame import GramSystem
 from torchcst._runtime.validation import device_checks
@@ -29,7 +29,7 @@ def test_damped_cholesky_matches_dense_solve(dtype, kind):
 
 def test_cholesky_requires_explicit_damping():
     with pytest.raises(ValueError, match="positive"):
-        ImplicitAdamConfig(gram_solver="cholesky")
+        SecondOrderAdamConfig(gram_solver="cholesky")
     with pytest.raises(ValueError, match="positive"):
         GramSystem(torch.eye(2), (1, 2), device_solver="cholesky")
 
@@ -75,7 +75,7 @@ def test_failed_cholesky_freezes_optimizer_and_latches_error():
     from test_device_optimizer import step
     from test_training_smoke import amplitude_bandwidth
 
-    from torchcst import Chart, CSTLinear, CSTOptimizer, DeviceRay
+    from torchcst import Chart, CSTLinear, CSTSecondOrderAdam, DeviceRay
 
     model = CSTLinear(
         Chart.linspace(2),
@@ -85,9 +85,9 @@ def test_failed_cholesky_freezes_optimizer_and_latches_error():
         backend="factored",
         dtype=torch.float64,
     )
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
-        cst=ImplicitAdamConfig(
+        cst=SecondOrderAdamConfig(
             lr=0.03,
             quartic=DeviceRay(corrections=1),
             device_execution=True,

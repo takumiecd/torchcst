@@ -9,12 +9,13 @@ from .atom_grad import (
     AtomGradRequest,
     ImplicitLinearAtomGrad,
 )
-from .config import AdamWConfig, ImplicitAdamConfig
+from .config import AdamWConfig, FirstOrderAdamConfig, SecondOrderAdamConfig
 from .dense import (
     DenseAdamWProposal,
     DenseAdamWState,
     FunctionalAdamW,
 )
+from .first_order import CSTAdam
 from .moments import (
     AcceptedFrameFirstMoment,
     AcceptedFrameFirstMomentState,
@@ -31,8 +32,9 @@ from .moments import (
     SeparableSecondMomentState,
     VisibleMetric,
 )
-from .optimizer import CSTOptimizer, CSTStepResult
+from .optimizer import CSTStepResult
 from .problem import QuarticProblem
+from .second_order import CSTSecondOrderAdam
 from .solvers import (
     BallNewton,
     DeviceBFGS,
@@ -51,7 +53,8 @@ __all__ = [
     "AtomGradRequest",
     "AtomGradientObservation",
     "BallNewton",
-    "CSTOptimizer",
+    "CSTAdam",
+    "CSTSecondOrderAdam",
     "CSTStepResult",
     "DenseAdamWProposal",
     "DenseAdamWState",
@@ -61,9 +64,9 @@ __all__ = [
     "ExpandedMoments",
     "ExpandedSecondMoment",
     "FirstMomentComponent",
+    "FirstOrderAdamConfig",
     "FullQuartic",
     "FunctionalAdamW",
-    "ImplicitAdamConfig",
     "ImplicitLinearAtomGrad",
     "MomentContext",
     "MomentSystem",
@@ -73,6 +76,7 @@ __all__ = [
     "QuarticSolveResult",
     "QuarticSolver",
     "SecondMomentComponent",
+    "SecondOrderAdamConfig",
     "SeparableDiagonalMetric",
     "SeparableDiagonalSecondMoment",
     "SeparableSecondMomentState",

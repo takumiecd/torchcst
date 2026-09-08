@@ -19,10 +19,10 @@ from torchcst import (
     AmplitudeBandwidthSeparable,
     Chart,
     CSTLinear,
-    CSTOptimizer,
+    CSTSecondOrderAdam,
     DeviceRay,
     Gaussian,
-    ImplicitAdamConfig,
+    SecondOrderAdamConfig,
 )
 
 
@@ -64,9 +64,9 @@ def measure(args):
     model = model_for(args.method, args.inputs, args.outputs, args.atoms)
     if args.method == "cst_ray1":
         cfg = ExperimentConfig()
-        optimizer = CSTOptimizer(
+        optimizer = CSTSecondOrderAdam(
             model,
-            cst=ImplicitAdamConfig(
+            cst=SecondOrderAdamConfig(
                 lr=cfg.learning_rate,
                 betas=(cfg.beta1, cfg.beta2),
                 eps=cfg.epsilon,

@@ -24,6 +24,13 @@ class VisibleMetric(Protocol):
     def inner(self, left: Tensor, right: Tensor) -> Tensor: ...
 
 
+class LocalBlockMetric(Protocol):
+    """Atom-local parameter metric; does not define a global visible action."""
+
+    blocks: Tensor
+    visible_shape: tuple[int, ...]
+
+
 @dataclass(frozen=True)
 class MomentContext:
     """Current site geometry and detached atom point."""
@@ -51,7 +58,7 @@ class ExpandedFirstMoment:
 class ExpandedSecondMoment:
     """Bias-corrected metric plus uncommitted raw second-moment state."""
 
-    metric: VisibleMetric
+    metric: VisibleMetric | LocalBlockMetric
     pending_state: object
 
 

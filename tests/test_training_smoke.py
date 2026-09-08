@@ -9,11 +9,11 @@ from torchcst import (
     BallNewton,
     Chart,
     CSTLinear,
-    CSTOptimizer,
+    CSTSecondOrderAdam,
     FullQuartic,
     Gaussian,
-    ImplicitAdamConfig,
     Kernel,
+    SecondOrderAdamConfig,
     Separable,
     SubspaceQuartic,
 )
@@ -55,9 +55,9 @@ def test_full_optimizer_reduces_loss_for_new_amplitude_kernels(
         backend="factored",
         dtype=torch.float64,
     )
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
-        cst=ImplicitAdamConfig(
+        cst=SecondOrderAdamConfig(
             lr=0.03,
             betas=(0.5, 0.8),
             trust_radius=0.08,

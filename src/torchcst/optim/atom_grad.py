@@ -23,6 +23,7 @@ class AtomGradRequest:
     gh: bool = False
     row_square: bool = False
     column_square: bool = False
+    atom_square: bool = False
 
     def __or__(self, other: AtomGradRequest) -> AtomGradRequest:
         if not isinstance(other, AtomGradRequest):
@@ -32,11 +33,18 @@ class AtomGradRequest:
             gh=self.gh or other.gh,
             row_square=self.row_square or other.row_square,
             column_square=self.column_square or other.column_square,
+            atom_square=self.atom_square or other.atom_square,
         )
 
     @property
     def any(self) -> bool:
-        return self.jg or self.gh or self.row_square or self.column_square
+        return (
+            self.jg
+            or self.gh
+            or self.row_square
+            or self.column_square
+            or self.atom_square
+        )
 
 
 @dataclass(frozen=True)
@@ -48,6 +56,7 @@ class AtomGradientObservation:
     row_square: Tensor | None = None
     column_square: Tensor | None = None
     contributions: int = 0
+    atom_square: Tensor | None = None
 
     def require(self, request: AtomGradRequest) -> None:
         """Validate that all observations requested by a moment are present."""
@@ -61,6 +70,8 @@ class AtomGradientObservation:
             missing.append("row_square")
         if request.column_square and self.column_square is None:
             missing.append("column_square")
+        if request.atom_square and self.atom_square is None:
+            missing.append("atom_square")
         if missing:
             raise ValueError(f"observation is missing: {', '.join(missing)}")
 
@@ -111,6 +122,9 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         self._c: Tensor | None = None
         self._terms: list[tuple[Tensor, Tensor]] = []
         self._contributions = 0
+        self._atom_square = None
+        self._square_geometry = None
+        self._square_point = None
 
     @property
     def supports_custom_autograd(self) -> bool:
@@ -168,6 +182,9 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             row_square=self._r.clone() if self._r is not None else None,
             column_square=self._c.clone() if self._c is not None else None,
             contributions=self._contributions,
+            atom_square=self._atom_square.clone()
+            if self._atom_square is not None
+            else None,
         )
 
     def _clear_values(self) -> None:
@@ -177,6 +194,9 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         self._c = None
         self._terms.clear()
         self._contributions = 0
+        self._atom_square = None
+        self._square_geometry = None
+        self._square_point = None
 
     def _accumulate_linear(
         self,
@@ -202,9 +222,7 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             return (F.linear(flat_inputs, atom) * flat_output_gradient).sum()
 
         contracted_hessian = None
-        if self.factored and (
-            self.request.gh or (self.request.jg and parameter_gradient is None)
-        ):
+        if self.factored and self.request.gh:
             from torchcst._derivatives._captured import call
 
             if not site.kernel.supports_factorization:
@@ -242,8 +260,19 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             self._jg = self._add(self._jg, parameter_gradient)
         if contracted_hessian is not None:
             self._gh = self._add(self._gh, contracted_hessian)
-        if self.request.row_square or self.request.column_square:
+        if (
+            self.request.row_square
+            or self.request.column_square
+            or self.request.atom_square
+        ):
             self._terms.append((flat_inputs.clone(), flat_output_gradient.clone()))
+        if self.request.atom_square and self._square_geometry is None:
+            from torchcst._derivatives.tangent import TangentGeometry
+
+            self._square_geometry = TangentGeometry(
+                site.cst_derivatives(), factored=self.factored
+            )
+            self._square_point = parameter_point.clone()
         self._contributions += 1
 
     def _complete_values(self) -> None:
@@ -253,7 +282,11 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             raise RuntimeError("requested jg was not captured")
         if self.request.gh and self._gh is None:
             raise RuntimeError("requested gh was not captured")
-        if not (self.request.row_square or self.request.column_square):
+        if not (
+            self.request.row_square
+            or self.request.column_square
+            or self.request.atom_square
+        ):
             return
         if not self._terms:
             raise RuntimeError("requested square statistics were not captured")
@@ -267,14 +300,23 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         column_square_sum = (
             reference.new_zeros(in_features) if self.request.column_square else None
         )
+        if self.request.atom_square:
+            k, q = self._square_point.shape
+            self._atom_square = reference.new_zeros(k, q, q)
 
         with torch.no_grad():
             for start in range(0, out_features, self.row_chunk_size):
                 stop = min(start + self.row_chunk_size, out_features)
-                block = self._jg.new_zeros(stop - start, in_features)
+                block = reference.new_zeros(stop - start, in_features)
                 for inputs, output_gradient in self._terms:
                     block.add_(output_gradient[:, start:stop].T @ inputs)
                 squared = block.square()
+                if self.request.atom_square:
+                    self._atom_square.add_(
+                        self._square_geometry.square_observation(
+                            self._square_point, squared, start
+                        )
+                    )
                 if row_square_mean is not None:
                     row_square_mean[start:stop] = squared.mean(dim=1)
                 if column_square_sum is not None:
@@ -285,6 +327,8 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             column_square_sum / out_features if column_square_sum is not None else None
         )
         self._terms.clear()
+        self._square_geometry = None
+        self._square_point = None
 
     @staticmethod
     def _add(current: Tensor | None, contribution: Tensor) -> Tensor:

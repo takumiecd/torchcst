@@ -10,22 +10,18 @@ import torch
 from torch import Tensor, nn
 from torch.optim import Optimizer
 
-from torchcst._derivatives.factored_frame import FactoredFrameGeometry
 from torchcst._runtime.validation import device_checks, require
 from torchcst.nn import CSTLinear
 
 from .atom_grad import ImplicitLinearAtomGrad
-from .config import AdamWConfig, ImplicitAdamConfig
+from .config import AdamWConfig, FirstOrderAdamConfig, SecondOrderAdamConfig
 from .dense import DenseAdamWProposal, FunctionalAdamW
 from .moments import (
-    AcceptedFrameFirstMoment,
     ExpandedMoments,
     MomentContext,
     MomentSystem,
     MomentSystemState,
-    SeparableDiagonalSecondMoment,
 )
-from .problem import QuarticProblem
 from .solvers import QuarticSolveResult
 
 
@@ -54,23 +50,28 @@ class _CSTProposal:
     solve: QuarticSolveResult
 
 
-class CSTOptimizer(Optimizer):
+class _ModelOptimizer(Optimizer):
     """Own and update every trainable parameter in one coordinated step."""
 
-    _STATE_VERSION = 1
+    _STATE_VERSION = 2
 
     def __init__(
         self,
         model: nn.Module,
         *,
-        cst: ImplicitAdamConfig,
+        cst: FirstOrderAdamConfig | SecondOrderAdamConfig | None = None,
         dense: AdamWConfig | None = None,
         strict: bool = True,
+        **options,
     ) -> None:
         if not isinstance(model, nn.Module):
             raise TypeError("model must be a torch.nn.Module")
-        if not isinstance(cst, ImplicitAdamConfig):
-            raise TypeError("cst must be an ImplicitAdamConfig")
+        if cst is not None and options:
+            raise TypeError("pass either cst config or optimizer options, not both")
+        if cst is None:
+            cst = self.config_type(**options)
+        if not isinstance(cst, self.config_type):
+            raise TypeError(f"cst must be a {self.config_type.__name__}")
         if dense is not None and not isinstance(dense, AdamWConfig):
             raise TypeError("dense must be an AdamWConfig or None")
         if not isinstance(strict, bool):
@@ -113,7 +114,7 @@ class CSTOptimizer(Optimizer):
         cst_owner_by_id: dict[int, str] = {}
         for site_name, site in site_modules:
             if site.input_chart.trainable or site.output_chart.trainable:
-                raise ValueError("CSTOptimizer supports frozen charts only")
+                raise ValueError("CST optimizer supports frozen charts only")
             for parameter in site.cst_parameters():
                 if not parameter.requires_grad:
                     raise ValueError(f"CST parameter owned by {site_name} is frozen")
@@ -151,19 +152,8 @@ class CSTOptimizer(Optimizer):
 
         sites: list[_CSTSite] = []
         for site_name, site in site_modules:
-            moments = MomentSystem(
-                first=AcceptedFrameFirstMoment(
-                    cst.betas[0], damping=cst.first_moment_damping
-                ),
-                second=SeparableDiagonalSecondMoment(cst.betas[1], eps=cst.eps),
-            )
-            geometry = (
-                FactoredFrameGeometry(site.cst_derivatives())
-                if cst.factored_geometry
-                else site.cst_frame_geometry()
-            )
-            geometry.device_solver = cst.gram_solver
-            geometry.pcg_options = self._pcg_options(cst)
+            moments = self._make_moments()
+            geometry = self._make_geometry(site)
             context = MomentContext(geometry, geometry.current_point())
             atom_grad = ImplicitLinearAtomGrad(
                 mode=cst.atom_grad_mode,
@@ -188,7 +178,7 @@ class CSTOptimizer(Optimizer):
         """Clear gradients and begin the next CST observation scope."""
 
         if self._stepping:
-            raise RuntimeError("CSTOptimizer.zero_grad cannot run during step")
+            raise RuntimeError("CST optimizer zero_grad cannot run during step")
         self._abort_capture()
         super().zero_grad(set_to_none=set_to_none)
         self._begin_capture()
@@ -197,7 +187,7 @@ class CSTOptimizer(Optimizer):
         """Consume one backward pass and commit its model-wide update."""
 
         if self._stepping:
-            raise RuntimeError("CSTOptimizer.step cannot be called recursively")
+            raise RuntimeError("CST optimizer step cannot be called recursively")
         self._stepping = True
         try:
             if self.cst_config.device_execution:
@@ -317,29 +307,14 @@ class CSTOptimizer(Optimizer):
     def _build_cst_proposals(self) -> tuple[_CSTProposal, ...]:
         proposals = []
         for site in self._sites:
-            geometry = (
-                FactoredFrameGeometry(site.module.cst_derivatives())
-                if self.cst_config.factored_geometry
-                else site.module.cst_frame_geometry()
-            )
-            geometry.device_solver = self.cst_config.gram_solver
-            geometry.pcg_options = self._pcg_options(self.cst_config)
+            geometry = self._make_geometry(site.module)
             context = MomentContext(geometry, geometry.current_point())
             expanded = site.moments.expand(
                 site.state,
                 site.atom_grad.snapshot(),
                 context,
             )
-            problem = QuarticProblem(
-                context,
-                expanded,
-                learning_rate=self.cst_config.lr,
-                evaluation=self.cst_config.quartic_evaluation,
-            )
-            solve = self.cst_config.quartic.solve(
-                problem,
-                trust_radius=self.cst_config.trust_radius,
-            )
+            solve = self._solve(context, expanded)
             self._validate_solve(solve, context)
             proposals.append(_CSTProposal(site, context, expanded, solve))
         return tuple(proposals)
@@ -350,23 +325,23 @@ class CSTOptimizer(Optimizer):
         context: MomentContext,
     ) -> None:
         if not isinstance(solve, QuarticSolveResult):
-            raise TypeError("quartic solver must return a QuarticSolveResult")
+            raise TypeError("CST solver must return a QuarticSolveResult")
         displacement = solve.displacement
         if displacement.shape != context.geometry.point_shape:
-            raise ValueError("quartic displacement has the wrong shape")
+            raise ValueError("CST displacement has the wrong shape")
         point = context.current_point
         if displacement.device != point.device or displacement.dtype != point.dtype:
-            raise ValueError("quartic displacement must match its CST point")
+            raise ValueError("CST displacement must match its CST point")
         require(
             torch.isfinite(displacement).all(),
-            "quartic displacement must be finite",
+            "CST displacement must be finite",
             FloatingPointError,
         )
         norm = torch.linalg.vector_norm(displacement)
         tolerance = 10.0 * torch.finfo(displacement.dtype).eps
         require(
             norm <= self.cst_config.trust_radius * (1.0 + tolerance),
-            "quartic displacement exceeds the trust radius",
+            "CST displacement exceeds the trust radius",
         )
 
     def _build_dense_proposals(self) -> dict[nn.Parameter, DenseAdamWProposal]:
@@ -395,6 +370,29 @@ class CSTOptimizer(Optimizer):
             )
         return tuple(manifest)
 
+    def _moment_contract(self):
+        c = self.cst_config
+        return {
+            "betas": c.betas,
+            "eps": c.eps,
+            "second_moment": c.second_moment,
+            "first_moment_damping": c.first_moment_damping,
+            "tangent_rtol": getattr(c, "tangent_rtol", None),
+        }
+
+    @classmethod
+    def _validate_state_shape(cls, value, template):
+        if type(value) is not type(template):
+            raise TypeError("optimizer state component has the wrong type")
+        if isinstance(value, Tensor):
+            if value.shape != template.shape or not bool(torch.isfinite(value).all()):
+                raise ValueError("optimizer state tensor shape or values are invalid")
+        elif is_dataclass(value):
+            for field in fields(value):
+                cls._validate_state_shape(
+                    getattr(value, field.name), getattr(template, field.name)
+                )
+
     def state_dict(self) -> dict[str, Any]:
         """Return compact optimizer state plus its exact ownership manifest."""
 
@@ -403,6 +401,8 @@ class CSTOptimizer(Optimizer):
         self.check_errors()
         return {
             "version": self._STATE_VERSION,
+            "algorithm": type(self).__name__,
+            "moment_contract": self._moment_contract(),
             "manifest": copy.deepcopy(self._manifest),
             "cst": {
                 site.name: self._map_state(site.state, clone=True)
@@ -420,9 +420,13 @@ class CSTOptimizer(Optimizer):
         if not isinstance(state_dict, dict):
             raise TypeError("optimizer state_dict must be a dictionary")
         if state_dict.get("version") != self._STATE_VERSION:
-            raise ValueError("unsupported CSTOptimizer state version")
+            raise ValueError("unsupported CST optimizer state version")
         if tuple(state_dict.get("manifest", ())) != self._manifest:
             raise ValueError("optimizer state manifest does not match the model")
+        if state_dict.get("algorithm") != type(self).__name__:
+            raise ValueError("optimizer algorithm does not match the checkpoint")
+        if state_dict.get("moment_contract") != self._moment_contract():
+            raise ValueError("optimizer moment contract does not match the checkpoint")
         cst_values = state_dict.get("cst")
         dense_values = state_dict.get("dense")
         if not isinstance(cst_values, dict) or not isinstance(dense_values, dict):
@@ -443,6 +447,7 @@ class CSTOptimizer(Optimizer):
             )
             if not isinstance(value, type(site.state)):
                 raise TypeError("loaded CST moment state has the wrong type")
+            self._validate_state_shape(value, site.state)
             next_cst.append(value)
         next_dense = {}
         by_name = {

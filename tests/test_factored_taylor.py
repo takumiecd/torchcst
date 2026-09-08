@@ -148,7 +148,13 @@ def test_factored_optimizer_updates_without_visible_derivative_cache():
     from test_training_smoke import amplitude_bandwidth
     from torch.nn import functional
 
-    from torchcst import Chart, CSTLinear, CSTOptimizer, DeviceRay, ImplicitAdamConfig
+    from torchcst import (
+        Chart,
+        CSTLinear,
+        CSTSecondOrderAdam,
+        DeviceRay,
+        SecondOrderAdamConfig,
+    )
     from torchcst._derivatives.atoms import AtomDerivatives
 
     torch.manual_seed(99)
@@ -160,9 +166,9 @@ def test_factored_optimizer_updates_without_visible_derivative_cache():
         dtype=torch.float64,
         backend="factored",
     )
-    optimizer = CSTOptimizer(
+    optimizer = CSTSecondOrderAdam(
         model,
-        cst=ImplicitAdamConfig(
+        cst=SecondOrderAdamConfig(
             lr=0.01, quartic=DeviceRay(corrections=1), factored_geometry=True
         ),
         dense=None,
