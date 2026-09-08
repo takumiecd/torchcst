@@ -27,11 +27,12 @@ from torch.utils._python_dispatch import TorchDispatchMode
 from torchcst import Chart, CSTAdam, CSTLinear
 from torchcst._derivatives.tangent import TangentGeometry
 from torchcst._derivatives.tangent_solve import solve_compression
+from torchcst._runtime.validation import device_checks
 from torchcst.kernels import Amplitude, Gaussian, Separable
 from torchcst.optim.moments import SeparableDiagonalMetric
 
 
-def setup(atoms):
+def setup(atoms, device_execution=False):
     torch.manual_seed(17)
     site = CSTLinear(
         Chart.linspace(784),
@@ -46,7 +47,9 @@ def setup(atoms):
     p = site.atoms.p.detach().clone()
     old = p + 0.015 * torch.randn_like(p)
     x = torch.randn_like(p)
-    ops = site.cst_derivatives().tangent_ops(atom_tile=32)
+    ops = site.cst_derivatives().tangent_ops(
+        atom_tile=32, execution="triton" if device_execution else "eager"
+    )
     current, previous = ops.prepare(p), ops.prepare(old)
     geometry = TangentGeometry(ops.derivatives, ops=ops)
     geometry._prepared = [(p, p._version, current), (old, old._version, previous)]
@@ -57,7 +60,11 @@ def setup(atoms):
     rhs = current.gram_matvec(x)
     frame = geometry.frame(p)
     optimizer = CSTAdam(
-        site, recompression="pcg", first_moment_damping=0.01, recompression_max_iter=256
+        site,
+        recompression="pcg",
+        first_moment_damping=0.01,
+        recompression_max_iter=256,
+        device_execution=device_execution,
     )
     inputs = torch.randn(32, 784, device="cuda")
     targets = torch.randn(32, 10, device="cuda")
@@ -67,6 +74,8 @@ def setup(atoms):
         (site(inputs) - targets).square().mean().backward()
         optimizer.step()
         return optimizer.last_step.compression_results[0]
+
+    training_step.check_errors = optimizer.check_errors
 
     operations = {
         "prepare": lambda: ops.prepare(p),
@@ -80,6 +89,19 @@ def setup(atoms):
         ),
         "training_step": training_step,
     }
+    if device_execution:
+
+        def wrap(fn):
+            def run():
+                with device_checks():
+                    return fn()
+
+            return run
+
+        operations = {
+            name: fn if name == "training_step" else wrap(fn)
+            for name, fn in operations.items()
+        }
     return operations
 
 
@@ -220,12 +242,23 @@ def summarize_trace(path, name):
 def diagnostics(value):
     if isinstance(value, tuple):
         value = value[1]
-    return asdict(value) if hasattr(value, "iterations") else None
+    if not hasattr(value, "iterations"):
+        return None
+    return {
+        k: v.item() if isinstance(v, torch.Tensor) else v
+        for k, v in asdict(value).items()
+    }
 
 
 def capture(fn, name, destination):
+    torch.cuda.synchronize()
+    allocated_before = torch.cuda.memory_allocated()
+    cold_start = time.perf_counter()
     fn()
     torch.cuda.synchronize()
+    cold_ms = (time.perf_counter() - cold_start) * 1000
+    allocated_warm = torch.cuda.memory_allocated()
+    torch.cuda.reset_peak_memory_stats()
     timings = []
     for _ in range(3):
         start = time.perf_counter()
@@ -233,6 +266,7 @@ def capture(fn, name, destination):
         torch.cuda.synchronize()
         timings.append((time.perf_counter() - start) * 1000)
         del value
+    peak_bytes = torch.cuda.max_memory_allocated()
     with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
         with record_function("torchcst::" + name):
             value = fn()
@@ -242,6 +276,10 @@ def capture(fn, name, destination):
     prof.export_chrome_trace(str(trace))
     info = summarize_trace(trace, name)
     info["unprofiled_median_ms"] = statistics.median(timings)
+    info["first_call_ms"] = cold_ms
+    info["allocated_before_bytes"] = allocated_before
+    info["allocated_after_warmup_bytes"] = allocated_warm
+    info["steady_peak_allocated_bytes"] = peak_bytes
     info["profiled_diagnostics"] = diagnostics(value)
     with trace.open("rb") as source, gzip.open(str(trace) + ".gz", "wb") as target:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
@@ -256,12 +294,16 @@ def capture(fn, name, destination):
         {"op": op, "location": loc, "count": count}
         for (op, loc), count in audit.sites.items()
     ]
+    if hasattr(fn, "check_errors"):
+        fn.check_errors()  # outside all measured/audited scopes
+        info["optimizer_device_checks_passed"] = True
     return info
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--atoms", type=int, default=85)
+    parser.add_argument("--device-execution", action="store_true")
     parser.add_argument(
         "--operations",
         nargs="+",
@@ -275,18 +317,22 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = False
     fingerprint = hashlib.sha256()
     root = Path(__file__).resolve().parents[1]
-    for path in sorted((root / "src").rglob("*.py")) + [Path(__file__).resolve()]:
+    sources = [
+        p for p in (root / "src").rglob("*") if p.suffix in (".py", ".cpp", ".cu", ".h")
+    ]
+    for path in sorted(sources) + [Path(__file__).resolve()]:
         if not path.name.startswith("._"):
             fingerprint.update(str(path.relative_to(root)).encode())
             fingerprint.update(path.read_bytes())
     result = {
         "atoms": args.atoms,
+        "device_execution": args.device_execution,
         "torch": torch.__version__,
         "gpu": torch.cuda.get_device_name(),
         "source_sha256": fingerprint.hexdigest(),
         "operations": {},
     }
-    operations = setup(args.atoms)
+    operations = setup(args.atoms, args.device_execution)
     for name in args.operations:
         info = capture(operations[name], name, args.output)
         result["operations"][name] = info

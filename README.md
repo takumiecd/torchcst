@@ -645,6 +645,8 @@ For standalone prepared actions, pass `execution="triton"` to `tangent_ops`.
 Standalone `prepare` validates immediately, and standalone PCG reads its final
 success flag once. The optimizer defers these checks to its device error latch.
 
+See [A100 timing, transfer counts, and persistent memory measurements](docs/experiments/tangent-device.ja.md).
+
 Fixed kernel/profile configuration and chart buffers must remain unchanged for
 the lifetime of an optimizer. Checkpoints now include their tangent descriptors;
 first-order checkpoints without descriptors are rejected. Load model state before
