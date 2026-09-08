@@ -178,6 +178,31 @@ def certificate(x, residual, rhs, shift, radius, tolerance):
     return d, relative, comp, valid
 
 
+def rounded(d, dtype, radius):
+    native = d.to(dtype)
+    scale = (radius / native.double().norm().clamp_min(1e-300)).clamp(max=1)
+    return native * scale.to(dtype)
+
+
+def actual_certificate(d, hd, rhs, shift, radius, tolerance):
+    """Check the actual parameter-dtype vector, without virtual reclipping."""
+    residual = hd + shift * d.double() - rhs
+    denominator = dot(rhs, rhs).sqrt().clamp_min(1e-300)
+    relative = dot(residual, residual).sqrt() / denominator
+    length = dot(d, d).sqrt()
+    comp = shift * (radius - length).abs() / denominator
+    valid = (
+        torch.isfinite(d).all()
+        & torch.isfinite(relative)
+        & torch.isfinite(comp)
+        & (relative <= tolerance)
+        & (comp <= tolerance)
+        & (shift >= 0)
+        & (length <= radius * (1 + 10 * torch.finfo(d.dtype).eps))
+    )
+    return relative, comp, valid
+
+
 @torch.no_grad()
 def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
     action = problem.operator
@@ -245,12 +270,19 @@ def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
         return result[:5]
 
     certify = _compiled(certificate) if rhs.is_cuda else certificate
+    actual_check = _compiled(actual_certificate) if rhs.is_cuda else actual_certificate
     x, residual, iterations, ok, evaluations = linear(
         zero, torch.zeros_like(rhs), enabled, True
     )
     d, relative, comp, done = certify(x, residual, rhs, zero, radius, rtol)
     done = done & ok
-    best = torch.where(done, d, 0)
+    native = rounded(d, problem.linear.dtype, radius)
+    _, _, native_ok = actual_check(
+        native, action(native.double(), done), rhs, zero, radius, rtol
+    )
+    done = done & native_ok
+    evaluations = evaluations + 1
+    best = torch.where(done, native.double(), 0)
     best_shift = zero.clone()
     low, high = zero.clone(), norm / radius
     x = torch.where(torch.isfinite(x), x, 0)
@@ -264,8 +296,15 @@ def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
         iterations = iterations + count
         shifts = shifts + (~done).to(shifts.dtype)
         d, relative, comp, valid = certify(x, residual, rhs, shift, radius, rtol)
-        accept = ~done & ok & valid
-        best = torch.where(accept, d, best)
+        proposal_ok = ~done & ok & valid
+        native = rounded(d, problem.linear.dtype, radius)
+        _, _, native_ok = actual_check(
+            native, action(native.double(), proposal_ok), rhs, shift, radius, rtol
+        )
+        evaluations = evaluations + 1
+        accept = proposal_ok & native_ok
+        refine_rounding = proposal_ok & ~native_ok
+        best = torch.where(accept, native.double(), best)
         best_shift = torch.where(accept, shift, best_shift)
         length = dot(x, x).sqrt()
         # H is PSD, so ||x - x_exact|| <= ||residual|| / shift. Even an
@@ -273,11 +312,11 @@ def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
         # solution. An ambiguous interval stays at this shift for more work.
         error_bound = dot(residual, residual).sqrt() / shift.clamp_min(1e-300)
         outside, inside = length - error_bound > radius, length + error_bound < radius
-        low = torch.where(~done & outside, shift, low)
-        high = torch.where(~done & inside, shift, high)
+        low = torch.where(~done & ~refine_rounding & outside, shift, low)
+        high = torch.where(~done & ~refine_rounding & inside, shift, high)
         # A converged inner solve can still be too coarse to determine the
         # radius side. Tighten it rather than returning the same iterate forever.
-        ambiguous = ~done & ok & ~accept & ~outside & ~inside
+        ambiguous = (~done & ok & ~accept & ~outside & ~inside) | refine_rounding
         requested_tolerance = torch.where(
             ambiguous,
             (requested_tolerance * 0.1).clamp_min(32 * torch.finfo(rhs.dtype).eps),
@@ -286,12 +325,9 @@ def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
         done = done | accept
     # Cast first, then independently certify the exact displacement to be committed.
     d = best.to(problem.linear)
-    d = d * (radius / d.double().norm().clamp_min(1e-300)).clamp(max=1).to(d.dtype)
     hd = action(d.double())
-    residual = hd + best_shift * d - rhs
-    _, relative, comp, valid = certify(
-        d.double(), residual, rhs, best_shift, radius, rtol
-    )
+    residual = hd + best_shift * d.double() - rhs
+    relative, comp, valid = actual_check(d, hd, rhs, best_shift, radius, rtol)
     valid = valid & done
     require(
         valid,

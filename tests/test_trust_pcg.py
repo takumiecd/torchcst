@@ -341,3 +341,13 @@ def test_streamed_weighted_action_handles_row_and_feature_tails():
     expected = j.T @ (metric.diagonal().flatten() * (j @ x.flatten())) / 0.3
     torch.testing.assert_close(action(x).flatten(), expected, atol=1e-9, rtol=1e-10)
     assert action(x, torch.tensor(False, device="cuda")).count_nonzero() == 0
+
+
+def test_final_certificate_checks_native_vector_without_virtual_clipping():
+    from torchcst.optim._trust_pcg import actual_certificate
+
+    d = torch.tensor([[1 + 2**-23]], dtype=torch.float32)
+    hd = d.double() * 1e8
+    rhs = torch.tensor([[1e8]], dtype=torch.float64)
+    relative, _, valid = actual_certificate(d, hd, rhs, torch.tensor(0.0), 1.0, 1e-8)
+    assert relative > 1e-8 and not valid

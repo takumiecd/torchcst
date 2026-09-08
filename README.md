@@ -678,7 +678,9 @@ the solution error by `norm(residual) / shift`; the bracket advances only when
 that interval establishes the exact solution is inside or outside the radius.
 Ambiguous rounds continue at the same shift, preserving unfinished CG residuals and
 directions. If an inner solve has converged but its error bound is still too wide,
-the inner tolerance is tightened and CG restarts from that solution. Factor contractions
+the inner tolerance is tightened and CG restarts from that solution. Candidates
+are also checked after conversion to parameter dtype; rounding failures trigger
+further refinement before a candidate is accepted. Factor contractions
 and solver arithmetic use FP64, including for FP32 parameters.
 
 Before commit, the returned parameter-dtype displacement is checked using a fresh
