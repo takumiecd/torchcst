@@ -676,7 +676,9 @@ If it crosses the ball or does not converge, a bracketed positive-shift search
 uses warm-started atom-block PCG. For positive shifts, the true residual bounds
 the solution error by `norm(residual) / shift`; the bracket advances only when
 that interval establishes the exact solution is inside or outside the radius.
-Ambiguous rounds continue at the same shift, preserving CG residual and direction. Factor contractions
+Ambiguous rounds continue at the same shift, preserving unfinished CG residuals and
+directions. If an inner solve has converged but its error bound is still too wide,
+the inner tolerance is tightened and CG restarts from that solution. Factor contractions
 and solver arithmetic use FP64, including for FP32 parameters.
 
 Before commit, the returned parameter-dtype displacement is checked using a fresh
@@ -696,7 +698,10 @@ diagnostics are scalar tensors. Inspect them at explicit logging boundaries.
 With both solvers set to PCG, this path stores factors, vectors and bounded graph
 workspaces, without a full Gram, dense Jacobian, eigenbasis or Krylov basis.
 Workspace scales linearly with atom count for fixed chart sizes, coordinates per
-atom and iteration budgets; arithmetic still includes all atom pairs. Two reusable
+atom and iteration budgets. CUDA applies JVP, D and VJP in tiles of at most 16
+visible output rows, with O(K*q*inputs*outputs) arithmetic and bounded visible
+scratch, instead of explicitly contracting every atom pair. The CPU oracle uses
+the existing atom-pair contraction. Two reusable
 CG graphs handle zero/positive shifts, with fresh factors, metric and RHS supplied
 on replay. GPU control stays on device, although the host schedules a fixed outer
 budget and inactive graph nodes still launch. This can be slower than spectral

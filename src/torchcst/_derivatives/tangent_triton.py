@@ -260,3 +260,169 @@ def spectral_solution(values, coeff, radius):
         enable_fp_fusion=False,
     )
     return out, shift
+
+
+@tr.jit
+def _metric_force(
+    U,
+    V,
+    A,
+    B,
+    ROW,
+    COL,
+    FORCE,
+    ACTIVE,
+    K: tl.constexpr,
+    I: tl.constexpr,
+    O: tl.constexpr,
+    START: tl.constexpr,
+    ROWS: tl.constexpr,
+    EPS: tl.constexpr,
+    RATE: tl.constexpr,
+    CHECK: tl.constexpr,
+    S: tl.constexpr,
+    F: tl.constexpr,
+):
+    i = tl.program_id(0) * F + tl.arange(0, F)
+    r = tl.program_id(1)
+    active = True
+    if CHECK:
+        active = tl.load(ACTIVE)
+    result = tl.full((F,), 0, U.dtype.element_ty)
+    if active:
+        for start in range(tl.cdiv(K, S)):
+            k = start * S + tl.arange(0, S)
+            u = tl.load(
+                U + k[:, None] * I + i[None, :], (k[:, None] < K) & (i[None, :] < I), 0
+            )
+            a = tl.load(
+                A + k[:, None] * I + i[None, :], (k[:, None] < K) & (i[None, :] < I), 0
+            )
+            v = tl.load(V + k * O + START + r, k < K, 0)
+            b = tl.load(B + k * O + START + r, k < K, 0)
+            result += tl.sum(u * b[:, None] + a * v[:, None], 0)
+        weight = tl.load(ROW + START + r) * tl.load(COL + i, i < I, 0)
+        result *= (weight + tl.full((), EPS, U.dtype.element_ty)) / tl.full(
+            (), RATE, U.dtype.element_ty
+        )
+    tl.store(FORCE + r * I + i, result, i < I)
+
+
+@tr.jit
+def _metric_pullback(
+    U,
+    V,
+    DU,
+    DV,
+    FORCE,
+    Y,
+    ACTIVE,
+    I: tl.constexpr,
+    O: tl.constexpr,
+    Q: tl.constexpr,
+    START: tl.constexpr,
+    ROWS: tl.constexpr,
+    CHECK: tl.constexpr,
+    R: tl.constexpr,
+    F: tl.constexpr,
+):
+    k = tl.program_id(0) // Q
+    q = tl.program_id(0) % Q
+    r = tl.arange(0, R)
+    active = True
+    if CHECK:
+        active = tl.load(ACTIVE)
+    result = tl.full((), 0, U.dtype.element_ty)
+    if active:
+        v = tl.load(V + k * O + START + r, r < ROWS, 0)
+        dv = tl.load(DV + (k * O + START + r) * Q + q, r < ROWS, 0)
+        for start in range(tl.cdiv(I, F)):
+            i = start * F + tl.arange(0, F)
+            force = tl.load(
+                FORCE + r[:, None] * I + i[None, :],
+                (r[:, None] < ROWS) & (i[None, :] < I),
+                0,
+            )
+            u = tl.load(U + k * I + i, i < I, 0)
+            du = tl.load(DU + (k * I + i) * Q + q, i < I, 0)
+            result += tl.sum(
+                tl.sum(
+                    force * (v[:, None] * du[None, :] + dv[:, None] * u[None, :]), 1
+                ),
+                0,
+            )
+    if START > 0:
+        result += tl.load(Y + k * Q + q)
+    tl.store(Y + k * Q + q, result)
+
+
+def metric_action(prepared, x, row, column, eps, rate, active=None):
+    """Stream bounded visible row tiles: JVP, diagonal metric, then VJP.
+
+    Arithmetic is O(K*q*I*O), avoiding atom-pair contractions for each Krylov
+    iteration. Scratch is two factor directions plus at most 16 visible rows.
+    """
+    p = prepared
+    k, i = p._u.shape
+    o, q = p._v.shape[1], x.shape[1]
+    a, b, result = torch.empty_like(p._u), torch.empty_like(p._v), torch.empty_like(x)
+    _direction[(tr.cdiv(k * max(i, o), 256),)](
+        p._du,
+        p._dv,
+        x,
+        a,
+        b,
+        active,
+        K=k,
+        I=i,
+        O=o,
+        Q=q,
+        CHECK=active is not None,
+        BLOCK=256,
+        enable_fp_fusion=False,
+    )
+    for start in range(0, o, 16):
+        rows = min(16, o - start)
+        force = torch.empty((rows, i), device=x.device, dtype=x.dtype)
+        _metric_force[(tr.cdiv(i, 64), rows)](
+            p._u,
+            p._v,
+            a,
+            b,
+            row,
+            column,
+            force,
+            active,
+            K=k,
+            I=i,
+            O=o,
+            START=start,
+            ROWS=rows,
+            EPS=eps,
+            RATE=rate,
+            CHECK=active is not None,
+            S=16,
+            F=64,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        _metric_pullback[(k * q,)](
+            p._u,
+            p._v,
+            p._du,
+            p._dv,
+            force,
+            result,
+            active,
+            I=i,
+            O=o,
+            Q=q,
+            START=start,
+            ROWS=rows,
+            CHECK=active is not None,
+            R=tr.next_power_of_2(rows),
+            F=128,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+    return result

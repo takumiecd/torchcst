@@ -129,6 +129,7 @@ def runner(rate, eps, radius, max_iter, tolerance, interior):
         old_p,
         old_rz,
         reuse,
+        requested_tolerance,
     ):
         from torchcst._derivatives.tangent_metric import FactorMetricAction
 
@@ -148,7 +149,7 @@ def runner(rate, eps, radius, max_iter, tolerance, interior):
             reuse,
             radius=radius,
             max_iter=max_iter,
-            tolerance=tolerance,
+            tolerance=requested_tolerance,
             interior=interior,
             compiled=True,
         )
@@ -180,7 +181,7 @@ def certificate(x, residual, rhs, shift, radius, tolerance):
 @torch.no_grad()
 def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
     action = problem.operator
-    rhs = -problem.linear.double()
+    rhs = -problem.linear.double().contiguous()
     blocks = action.blocks()
     require(
         torch.isfinite(rhs).all() & torch.isfinite(blocks).all(),
@@ -191,12 +192,19 @@ def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
     enabled = torch.ones((), device=rhs.device, dtype=torch.bool)
     norm = dot(rhs, rhs).sqrt()
     inner_tolerance = rtol * 0.25
+    requested_tolerance = zero + inner_tolerance
     history = (torch.zeros_like(rhs), torch.zeros_like(rhs), zero.clone())
     previous_shift = zero - 1
+    previous_ok = enabled.clone()
 
     def linear(shift, initial, active, interior=False):
-        nonlocal history, previous_shift
-        reuse = (shift == previous_shift) & (history[2] > 0)
+        nonlocal history, previous_shift, previous_ok
+        reuse = (
+            (shift == previous_shift)
+            & ~previous_ok
+            & (history[2] > 0)
+            & (dot(history[1], history[1]) > 0)
+        )
         if rhs.is_cuda and getattr(action, "triton", False):
             p = action.prepared
             result = runner(
@@ -216,6 +224,7 @@ def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
                 active,
                 *history,
                 reuse,
+                requested_tolerance,
             )
         else:
             result = linear_solve(
@@ -229,10 +238,10 @@ def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
                 reuse,
                 radius=radius,
                 max_iter=max_iter,
-                tolerance=inner_tolerance,
+                tolerance=requested_tolerance,
                 interior=interior,
             )
-        history, previous_shift = result[5:], shift
+        history, previous_shift, previous_ok = result[5:], shift, result[3]
         return result[:5]
 
     certify = _compiled(certificate) if rhs.is_cuda else certificate
@@ -263,8 +272,17 @@ def solve(problem, *, radius, max_iter=512, shift_steps=32, rtol=1e-5):
         # inexact solve can certify which side of the radius contains the exact
         # solution. An ambiguous interval stays at this shift for more work.
         error_bound = dot(residual, residual).sqrt() / shift.clamp_min(1e-300)
-        low = torch.where(~done & (length - error_bound > radius), shift, low)
-        high = torch.where(~done & (length + error_bound < radius), shift, high)
+        outside, inside = length - error_bound > radius, length + error_bound < radius
+        low = torch.where(~done & outside, shift, low)
+        high = torch.where(~done & inside, shift, high)
+        # A converged inner solve can still be too coarse to determine the
+        # radius side. Tighten it rather than returning the same iterate forever.
+        ambiguous = ~done & ok & ~accept & ~outside & ~inside
+        requested_tolerance = torch.where(
+            ambiguous,
+            (requested_tolerance * 0.1).clamp_min(32 * torch.finfo(rhs.dtype).eps),
+            torch.where(outside | inside, zero + inner_tolerance, requested_tolerance),
+        )
         done = done | accept
     # Cast first, then independently certify the exact displacement to be committed.
     d = best.to(problem.linear)

@@ -273,3 +273,71 @@ def test_insufficient_update_budget_suppresses_joint_commit():
         opt.check_errors()
     torch.testing.assert_close(site.atoms.p, p, atol=0, rtol=0)
     torch.testing.assert_close(opt._sites[0].state.first.alpha, alpha, atol=0, rtol=0)
+
+
+def test_near_boundary_refines_ambiguous_inner_tolerance(monkeypatch):
+    import torchcst.optim._trust_pcg as module
+
+    # The first close shift lands just outside the ball. A valid but coarse
+    # inner residual cannot distinguish the radius side until refined.
+    h = torch.diag(torch.tensor([0.0, 100.0], dtype=torch.float64))
+    problem = SimpleNamespace(
+        operator=DenseAction(h), linear=torch.tensor([[-0.000977, -1.0]], dtype=h.dtype)
+    )
+    tolerances = []
+
+    def controlled_inner(
+        action, rhs, blocks, shift, initial, enabled, *history, **kwargs
+    ):
+        tolerance = kwargs["tolerance"]
+        tolerances.append(float(tolerance))
+        if shift == 0:
+            x = rhs.clone()  # inconsistent zero-shift system
+        else:
+            x = torch.linalg.solve(h + shift * torch.eye(2), rhs.flatten())[None]
+            x[:, 1] += 0.9 * tolerance * rhs.norm() / (100 + shift)
+        residual = action(x) + shift * x - rhs
+        count = torch.tensor(1, dtype=torch.int32)
+        ok = residual.norm() <= tolerance * rhs.norm()
+        return x, residual, count, ok, count, -residual, torch.zeros_like(x), shift * 0
+
+    monkeypatch.setattr(module, "linear_solve", controlled_inner)
+    result = solve(problem, radius=1.0, max_iter=64, shift_steps=80, rtol=1e-5)
+    assert result.converged
+    assert min(tolerances) < 0.25e-5
+    expected = reference(h, problem.linear, 1.0)
+    torch.testing.assert_close(
+        result.objective, expected.objective, atol=1e-5, rtol=1e-7
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_streamed_weighted_action_handles_row_and_feature_tails():
+    from torchcst import Chart, CSTLinear
+    from torchcst.kernels import Amplitude, Gaussian, Separable
+
+    torch.manual_seed(14)
+    site = CSTLinear(
+        Chart.linspace(129),
+        Chart.linspace(19),
+        atoms=7,
+        kernel=Amplitude(
+            Separable(input_profile=Gaussian(0.4), output_profile=Gaussian(0.5))
+        ),
+        dtype=torch.float64,
+        device="cuda",
+    )
+    p = site.atoms.p.detach().clone()
+    p[0, 0] = 0
+    ops = site.cst_derivatives().tangent_ops(execution="triton")
+    metric = SeparableDiagonalMetric(
+        torch.rand(19, dtype=p.dtype, device=p.device),
+        torch.rand(129, dtype=p.dtype, device=p.device),
+        eps=0.13,
+    )
+    action = from_prepared(ops.prepare(p), metric, 0.3)
+    x = torch.randn_like(p)
+    j = jacobian(site, p)
+    expected = j.T @ (metric.diagonal().flatten() * (j @ x.flatten())) / 0.3
+    torch.testing.assert_close(action(x).flatten(), expected, atol=1e-9, rtol=1e-10)
+    assert action(x, torch.tensor(False, device="cuda")).count_nonzero() == 0

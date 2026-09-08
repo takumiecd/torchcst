@@ -24,12 +24,11 @@ class FactorMetricAction:
     def __call__(self, x, active=None):
         p = self.prepared
         if self.triton:
-            from .tangent_triton import cross
+            from .tangent_triton import metric_action
 
-            return (
-                cross(p, p, x, row=self.row, column=self.column, active=active)
-                + self.eps * cross(p, p, x, active=active)
-            ) / self.rate
+            return metric_action(
+                p, x, self.row, self.column, self.eps, self.rate, active
+            )
         # CPU oracle contracts factors directly without forming J or a full Gram.
         from .tangent_ops import PreparedFactors
 
