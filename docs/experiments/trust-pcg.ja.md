@@ -159,3 +159,7 @@ pytest -q
 
 両方式のcapture fingerprintとローカルの実装・計測スクリプトが一致することを確認済み。
 監査スクリプトのSHA-256も結果JSONに記録した。
+
+規模拡大の追加試験（256〜2,048 atoms・幅の広い層）は
+[別報](trust-pcg-scaling.ja.md)を参照。メモリ削減に加え、再圧縮・更新の収束限界と
+materialized backendのpeakを記録した。

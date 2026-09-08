@@ -1,0 +1,1944 @@
+{
+  "date": "2026-09-08",
+  "implementation_sha256": {
+    "src/torchcst/__init__.py": "8a2ab2b8e3ff607f9287f626648d1b4368f049c215f7d44a7b8aa763e4e9a324",
+    "src/torchcst/_derivatives/__init__.py": "3f1b18ad7115a8d825d9af9c8b806801c3bc64dbb3edec512d0ecde3ffead6a8",
+    "src/torchcst/_derivatives/_captured.py": "0a6fa975dafc0e75699a99e73bb108328552291c578cde20fd3a53f4edfb1baa",
+    "src/torchcst/_derivatives/_cholesky.py": "c852057aa0475b7bc8a2ae2c1d9ccbb504dd40b2b45b8d0774f54fda8f55fd33",
+    "src/torchcst/_derivatives/_jacobi.py": "13b5a85d32627d6bd3644dcf53d8e6308435c5b8481ad7f403c75c755ad106a3",
+    "src/torchcst/_derivatives/_pcg.py": "734108bbb82c12d3515b0e46fad9d252dddcfc3f15a6822b7025d7a8e37ad678",
+    "src/torchcst/_derivatives/atoms.py": "8aa0787ad5aea00042044e4eeaee07428c74fec3e95d313a988c14bf6689e665",
+    "src/torchcst/_derivatives/dense.py": "2c8598a1e395707c68c48c3f37e0d445c8cf4aa4580cf7a21d25f84c83e0585d",
+    "src/torchcst/_derivatives/factored_frame.py": "97a19168fdbad56e9347bd5fa8121f9013db1b7c42e58d217d81975f65bfa5c4",
+    "src/torchcst/_derivatives/factored_taylor.py": "f106bf3231557e28455aae9eb1a7541e1961d95328c06693e44cf72e0616bd86",
+    "src/torchcst/_derivatives/frame.py": "b05209bd2127011fa546d4321a77e9e77e4715369960475ef89a95e5a56b8fc9",
+    "src/torchcst/_derivatives/protocol.py": "34ef0e173a2353372a073aac04a6aaea5045b94afad47e8c5d6f18880c9e9530",
+    "src/torchcst/_derivatives/quadratic.py": "5790683f3f4723be862adcaf7faa1a9200de5e0e89a6f051effc3b1a5a8648ec",
+    "src/torchcst/_derivatives/tangent.py": "cedcb43a2aa5f9ddde1d5570367f7de4ca4fec8f9869f0241c842d1c5e94bd4d",
+    "src/torchcst/_derivatives/tangent_device.py": "b297b2b5c73034907c67a949f02031a379b38ff7a6c3dd2a8a10f3310445a525",
+    "src/torchcst/_derivatives/tangent_eigh.py": "411a3f00b611325de84c99b3f653c36f235005a23558bb6ef3f0f5deec9e22e0",
+    "src/torchcst/_derivatives/tangent_metric.py": "1f7ff6fea19e43913710cacb255f9b09f261edf8091fc9cf7e5f44a6241e4ff8",
+    "src/torchcst/_derivatives/tangent_ops.py": "a13d5ad14d6d5e97bb3c6732d5fbed1b327bf39f1ece9293fe2a38f6105705cd",
+    "src/torchcst/_derivatives/tangent_solve.py": "9d9fc8326abab42061b41cdf2844a6e69f36aba5d3889790e10b8c69dc073399",
+    "src/torchcst/_derivatives/tangent_triton.py": "e93429b03e4fd09631b06678a205470876834b63f85d208c42b63a38c74496d2",
+    "src/torchcst/_runtime/__init__.py": "c2f3ecd5ca97b643a4c503fa20a7b98b6f7f70ddc2ba202f89fd118e29c81007",
+    "src/torchcst/_runtime/graphs.py": "b922e3f4c664733ae0f4b161e1f6a8874506828b0e314caa98c56d58bd3284d5",
+    "src/torchcst/_runtime/validation.py": "68438c0f1b7d160327effbfad1e4ae429277286f50f90238e6ab632e3caadb71",
+    "src/torchcst/atoms/__init__.py": "e26a0995cad48c8afa55d81bc0e7b258628abf19144cbb920f19e8ee7b4bd14d",
+    "src/torchcst/atoms/atoms.py": "fed067ffdf4875f0bf16b56ee304ea116aba3529ed034bbf523854cc243b056e",
+    "src/torchcst/atoms/grad.py": "4731d6e54790af7be75d2f450d9c2dd116a7211ad5e3c7d28b4e2908a8fba802",
+    "src/torchcst/geometry/__init__.py": "090dc3a94b825df2582451205621c13fe4ba3669570f53ef86b0c03c9377c18c",
+    "src/torchcst/geometry/chart.py": "7f8364d3ea356207eb9e088e0b71ffe9d1a13b10da06fa0c8c882a135b72cdc1",
+    "src/torchcst/kernels/__init__.py": "2b6120e2dcad11c90be61f1c1e8ae71b6788d3b08fee5612dc4c89024638b9bb",
+    "src/torchcst/kernels/_tangent.py": "0ef53240dc963a5f59de6c094cd877e0d583bbdec4bcdfac81be83dda80a9070",
+    "src/torchcst/kernels/amplitude.py": "a394fc3fabf90edea23484a816d466c2a9d54fafce959c0fba119cd120055931",
+    "src/torchcst/kernels/amplitude_bandwidth.py": "d956f19b12a4124bffe574a2d035d614c793e62a2f6b6cf082218d8dac5b89de",
+    "src/torchcst/kernels/base.py": "404ae3efb6b0c53ef91407baf29a433d55d308dd4abf81b88c4c007953e72502",
+    "src/torchcst/kernels/gaussian.py": "8de20f4fee70e6527f44573b4a5be60587298db13aa89c5993354af74fddae95",
+    "src/torchcst/kernels/separable.py": "e3d1c6212e605b362d00546230a8ade1c012e935138086771d8194ea9a7f8695",
+    "src/torchcst/nn/__init__.py": "428c2941cdb625f7e94f57476a0a76af9828599afb78e7c78c5fcb2e552acfa6",
+    "src/torchcst/nn/atom_grad.py": "852c6ba919550ed0c4860e8a5d4aa81f7e36c04c037f46d1c5288f938b6d74f0",
+    "src/torchcst/nn/linear.py": "3306af1e2d3f8de6c9620435f7cf6c0a1c5a733205d559945de78fd0096b318f",
+    "src/torchcst/optim/__init__.py": "c7ee4b780904c9f8c59b4ee94ff1470c3e8302ae045481c47fe3c3d2f5fc10a2",
+    "src/torchcst/optim/_tangent_device.py": "c7e1dab2586ffd1a9ef42d099d5bce54dcc2e8f860c0f9e94ef2a6d97ea07cb0",
+    "src/torchcst/optim/_trust_pcg.py": "03c5d0c8d2dbc9fc4df46561d2eddf9127626080b7360c6d1ce05acb58c2f542",
+    "src/torchcst/optim/atom_grad.py": "be6cc602222f6407af98b56fc4721585cc36795f4beb30061a01c69599012d54",
+    "src/torchcst/optim/config.py": "478b18a79aa206a234967b6dcedf12eb7aac65aba433e308347c03a73f2d2973",
+    "src/torchcst/optim/dense.py": "b5f740d8bb1343b56b7b204db7af624f6f50b563e374151ece207ffc8e64716c",
+    "src/torchcst/optim/first_order.py": "1eef5e840fc12cd6726a6defd49049ed6f43a85dd6f26a66c7cbdf62c907a166",
+    "src/torchcst/optim/moments/__init__.py": "053e301600775b2241766216a4f3901ed898f61d7240f9aba49556ca09ce6ae2",
+    "src/torchcst/optim/moments/atom_rms.py": "3e8087f73e407e175699d02b09a1a60e7a9f01b48fed2e6d3e43cfbdcb86d4b6",
+    "src/torchcst/optim/moments/base.py": "b8682ffd741de0cb48c8930123d5cf409a29f230424971fe34dad47467ddc909",
+    "src/torchcst/optim/moments/first.py": "fa1518615d93cead4a481ec76b955ef966223eaec35d04d1b16771c743d433ca",
+    "src/torchcst/optim/moments/second.py": "bf81e8d34d25ab116de5e511ba376bb9e12471cbc31edc4d180a4368c74ef9fc",
+    "src/torchcst/optim/moments/system.py": "57390af5c3756908adbe42912fc188200da0312c5bf6a33c942115be1f6ee25d",
+    "src/torchcst/optim/moments/tangent.py": "13ba90b765d624374bf5e16818f03f708e6aa9e84db288e99398bdb9676fb7af",
+    "src/torchcst/optim/optimizer.py": "b8f209d624ebe77586d48a262a915c8649566467d0d0559215d84a31ccb1fad9",
+    "src/torchcst/optim/problem.py": "20221cf060fdb6736b52b039e6b4d1bb3748e1ebb1ae3cf9fdde7d42b72dde33",
+    "src/torchcst/optim/quadratic.py": "889d7f7260d93bc08d1a0b7f93d916498e2921a336414ed31db64435ae8db3f0",
+    "src/torchcst/optim/second_order.py": "660858d82750357bc67f769359b7b62dae9785cf22619659184383affdcc1fe3",
+    "src/torchcst/optim/solvers/__init__.py": "530e3b65c5800663afcf4705baff7f7eb5298259a1d3055d22a6ed217d1d4db8",
+    "src/torchcst/optim/solvers/_compiled.py": "b36e4e20fd01c9a1f162fca1e59c3eebafb000259016c89e29e48a20a9cfa27f",
+    "src/torchcst/optim/solvers/_factored_ray.py": "7ea963e492c1565109943c465fd3f8142f6ee5272da058fcf52d7695a3399583",
+    "src/torchcst/optim/solvers/_ray.py": "50b65404502167e8b9f736ca9d4a94a1e47c9c1e7691f951fdb0d61931f61726",
+    "src/torchcst/optim/solvers/base.py": "bbbef4797366114a193265b6cb4c1b49acfab2b341b3a2bed7248e1ef541b77b",
+    "src/torchcst/optim/solvers/device.py": "5e9dc2e11a8db139d6b4fe84c77e301a928861dd6f345190c370c251a1d5fb54",
+    "src/torchcst/optim/solvers/newton.py": "9b5bff144da6fe8b656ae7d9d8c0dced958db1f2107dd075dca371c74ad69b16",
+    "src/torchcst/optim/solvers/projected.py": "82a2a32c76f12cbaacda28c3d98dfde7969fd42affafdc5a018ac97d254ab38b",
+    "src/torchcst/optim/solvers/quartic.py": "f99351a5120b2a4a8c990e69e8f2fd470aea3aa5f282c627c6978c84ad08e1c2",
+    "src/torchcst/optim/solvers/ray.py": "7a6cbe48047bf49909db31e612dd7abb92986a76abbfddd953f1c1db2a67b27f",
+    "src/torchcst/optim/solvers/subspace.py": "ce1d800e4500c6ffb7a57624178464a2c2372e6a3c44abb67ccf1017e4863500",
+    "src/torchcst/_derivatives/tangent_eigh.cpp": "8d15ef9ef488128b5da4cc7f10822e9c29f91e5e3fd384a4728c56cc058e7f3f"
+  },
+  "runner_versions": {
+    "d509300d868d01a9f23f81a3cc7e2918068d1a3c6ac6c0ba1556069bb82fcb94": "current runner with backend selector",
+    "33e4ac01903c3cf08612fc5dbedbbbfb79d5211d1173997f328b1ebbdbb700b1": "af6edb5: runner before backend selector"
+  },
+  "oracle_runner_sha256": "efe41364c981ec25559b348c37c463d92cccf7338dbc9d1af490d767f61b174e",
+  "archive": {
+    "path": "output/scaling-final.tgz",
+    "sha256": "8d7052980ed493f1081b639b13ae6ee1a284dabc0344857c867396594a01f347"
+  },
+  "trials": [
+    {
+      "config": {
+        "atoms": 1024,
+        "input": 784,
+        "output_width": 10,
+        "solver": "pcg",
+        "steps": 5,
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 64,
+        "compression_max_iter": 1024,
+        "output": "output/scaling/extended-k1024-pcg.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 29.818357196170837,
+          "update_ms": 12688.638671875,
+          "memory": {
+            "allocated_mib": 103.48291015625,
+            "reserved_mib": 268.0,
+            "peak_allocated_mib": 159.72265625,
+            "peak_reserved_mib": 268.0
+          },
+          "loss": 0.979291558265686,
+          "compression": {
+            "iterations": 263,
+            "converged": true,
+            "relative_residual": 9.21718992860069e-06
+          },
+          "update": {
+            "iterations": 9452,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.003284572818589482,
+            "relative_residual": 2.7117069570271503e-06,
+            "relative_complementarity": 3.227285179943179e-06,
+            "shift_iterations": 23,
+            "projected_gradient_norm": 2.2110453668227728e-06,
+            "objective": -0.0010494966045930575
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 16.76172598497942,
+          "update_ms": 11374.4365234375,
+          "memory": {
+            "allocated_mib": 103.48291015625,
+            "reserved_mib": 406.0,
+            "peak_allocated_mib": 246.77001953125,
+            "peak_reserved_mib": 406.0
+          },
+          "loss": 0.9774066209793091,
+          "compression": {
+            "iterations": 293,
+            "converged": true,
+            "relative_residual": 7.728247206524736e-06
+          },
+          "update": {
+            "iterations": 18015,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.0010415735919115112,
+            "relative_residual": 3.8047756042908393e-06,
+            "relative_complementarity": 7.144897235786789e-06,
+            "shift_iterations": 40,
+            "projected_gradient_norm": 3.091858806552673e-06,
+            "objective": -0.0006967324758568293
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 16.36881323205307,
+          "update_ms": 10983.474609375,
+          "memory": {
+            "allocated_mib": 103.48291015625,
+            "reserved_mib": 406.0,
+            "peak_allocated_mib": 246.77001953125,
+            "peak_reserved_mib": 406.0
+          },
+          "loss": 0.9756163954734802,
+          "compression": {
+            "iterations": 293,
+            "converged": true,
+            "relative_residual": 8.160257862419663e-06
+          },
+          "update": {
+            "iterations": 17277,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.0004942748802290247,
+            "relative_residual": 3.3884452476817573e-06,
+            "relative_complementarity": 4.479907280100297e-06,
+            "shift_iterations": 37,
+            "projected_gradient_norm": 2.7440306077048967e-06,
+            "objective": -0.0005797475830208562
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 17.054330070037395,
+          "update_ms": 11470.3359375,
+          "memory": {
+            "allocated_mib": 103.48291015625,
+            "reserved_mib": 406.0,
+            "peak_allocated_mib": 246.77001953125,
+            "peak_reserved_mib": 406.0
+          },
+          "loss": 0.9739225506782532,
+          "compression": {
+            "iterations": 304,
+            "converged": true,
+            "relative_residual": 8.907876841753551e-06
+          },
+          "update": {
+            "iterations": 18202,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.00029561761464893995,
+            "relative_residual": 2.4981487177134553e-06,
+            "relative_complementarity": 6.235357546307159e-06,
+            "shift_iterations": 39,
+            "projected_gradient_norm": 2.0165884995413593e-06,
+            "objective": -0.0005215506923906737
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 14.363193854223937,
+          "update_ms": 8759.947265625,
+          "memory": {
+            "allocated_mib": 103.48291015625,
+            "reserved_mib": 406.0,
+            "peak_allocated_mib": 246.77001953125,
+            "peak_reserved_mib": 406.0
+          },
+          "loss": 0.972377598285675,
+          "compression": {
+            "iterations": 305,
+            "converged": true,
+            "relative_residual": 8.939338321878613e-06
+          },
+          "update": {
+            "iterations": 13041,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.00019649347552972584,
+            "relative_residual": 3.2297586178281506e-06,
+            "relative_complementarity": 7.038372730642841e-06,
+            "shift_iterations": 28,
+            "projected_gradient_norm": 2.5994301273667066e-06,
+            "objective": -0.0004863801040155494
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 3072,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.15771484375,
+        "reserved_mib": 22.0,
+        "peak_allocated_mib": 12.28369140625,
+        "peak_reserved_mib": 22.0
+      },
+      "warm_median_ms": 16368.813232053071,
+      "warm_update_median_ms": 10983.474609375,
+      "warm_peak_allocated_mib": 246.77001953125,
+      "warm_peak_reserved_mib": 406.0,
+      "runner_sha256": "d509300d868d01a9f23f81a3cc7e2918068d1a3c6ac6c0ba1556069bb82fcb94",
+      "name": "extended-k1024-pcg"
+    },
+    {
+      "config": {
+        "atoms": 1024,
+        "input": 784,
+        "output_width": 10,
+        "solver": "spectral",
+        "steps": 5,
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 64,
+        "compression_max_iter": 1024,
+        "output": "output/scaling/extended-k1024-spectral.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 19.161140004638582,
+          "update_ms": 1202.925537109375,
+          "memory": {
+            "allocated_mib": 37.02001953125,
+            "reserved_mib": 98.0,
+            "peak_allocated_mib": 501.03125,
+            "peak_reserved_mib": 794.0
+          },
+          "loss": 0.979291558265686,
+          "compression": {
+            "iterations": 263,
+            "converged": true,
+            "relative_residual": 9.21718992860069e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 1.1437738976383116e-05,
+            "objective": -0.001050606369972229
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 5.984304572921246,
+          "update_ms": 216.9600067138672,
+          "memory": {
+            "allocated_mib": 37.02001953125,
+            "reserved_mib": 816.0,
+            "peak_allocated_mib": 534.0341796875,
+            "peak_reserved_mib": 816.0
+          },
+          "loss": 0.9774059653282166,
+          "compression": {
+            "iterations": 301,
+            "converged": true,
+            "relative_residual": 7.528322729685457e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 1.2311086720728781e-05,
+            "objective": -0.0006987093947827816
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 5.797918463591486,
+          "update_ms": 214.15219116210938,
+          "memory": {
+            "allocated_mib": 37.02001953125,
+            "reserved_mib": 816.0,
+            "peak_allocated_mib": 534.0341796875,
+            "peak_reserved_mib": 816.0
+          },
+          "loss": 0.9756040573120117,
+          "compression": {
+            "iterations": 304,
+            "converged": true,
+            "relative_residual": 9.173684000291787e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 1.473180418543052e-05,
+            "objective": -0.0005821213126182556
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 5.796594799961895,
+          "update_ms": 212.82815551757812,
+          "memory": {
+            "allocated_mib": 37.02001953125,
+            "reserved_mib": 816.0,
+            "peak_allocated_mib": 534.0341796875,
+            "peak_reserved_mib": 816.0
+          },
+          "loss": 0.9739052653312683,
+          "compression": {
+            "iterations": 304,
+            "converged": true,
+            "relative_residual": 7.680945362317734e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": false,
+            "on_boundary": true,
+            "projected_gradient_norm": 1.5549019735772163e-05,
+            "objective": -0.0005241514882072806
+          }
+        }
+      ],
+      "status": "failed",
+      "parameters": 3072,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.15771484375,
+        "reserved_mib": 22.0,
+        "peak_allocated_mib": 12.28369140625,
+        "peak_reserved_mib": 22.0
+      },
+      "error": "RuntimeError: update solver reported non-convergence",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/experiments/trust_pcg_scaling.py\", line 163, in main\n    raise RuntimeError(\"update solver reported non-convergence\")\nRuntimeError: update solver reported non-convergence\n",
+      "runner_sha256": "d509300d868d01a9f23f81a3cc7e2918068d1a3c6ac6c0ba1556069bb82fcb94",
+      "name": "extended-k1024-spectral"
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 784,
+        "output_width": 10,
+        "solver": "pcg",
+        "steps": 5,
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 64,
+        "compression_max_iter": 1024,
+        "output": "output/scaling/extended-k256-pcg.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 11.456682390067726,
+          "update_ms": 7622.14794921875,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 152.0,
+            "peak_allocated_mib": 61.16455078125,
+            "peak_reserved_mib": 172.0
+          },
+          "loss": 0.9779031872749329,
+          "compression": {
+            "iterations": 169,
+            "converged": true,
+            "relative_residual": 8.072059948005137e-06
+          },
+          "update": {
+            "iterations": 8649,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.003021331834194876,
+            "relative_residual": 2.4561759656733436e-06,
+            "relative_complementarity": 1.0722491565373015e-06,
+            "shift_iterations": 22,
+            "projected_gradient_norm": 9.72675171676745e-07,
+            "objective": -0.0008614890357126258
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 2.694056578911841,
+          "update_ms": 2444.560302734375,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 216.0,
+            "peak_allocated_mib": 98.63232421875,
+            "peak_reserved_mib": 216.0
+          },
+          "loss": 0.9764148592948914,
+          "compression": {
+            "iterations": 180,
+            "converged": true,
+            "relative_residual": 8.452314343659277e-06
+          },
+          "update": {
+            "iterations": 11313,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.0009167723641228937,
+            "relative_residual": 3.093440933300465e-06,
+            "relative_complementarity": 2.0853502825557123e-06,
+            "shift_iterations": 26,
+            "projected_gradient_norm": 1.2227556654657313e-06,
+            "objective": -0.0005422567223356653
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 3.066800887696445,
+          "update_ms": 2808.489990234375,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 216.0,
+            "peak_allocated_mib": 98.69482421875,
+            "peak_reserved_mib": 216.0
+          },
+          "loss": 0.9749717712402344,
+          "compression": {
+            "iterations": 190,
+            "converged": true,
+            "relative_residual": 9.555571460626784e-06
+          },
+          "update": {
+            "iterations": 14193,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.0004223489585497458,
+            "relative_residual": 3.3779710583496704e-06,
+            "relative_complementarity": 8.997360995964584e-07,
+            "shift_iterations": 32,
+            "projected_gradient_norm": 1.3357009736313504e-06,
+            "objective": -0.00044566423574347587
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 2.9916056212969124,
+          "update_ms": 2730.751953125,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 216.0,
+            "peak_allocated_mib": 98.69482421875,
+            "peak_reserved_mib": 216.0
+          },
+          "loss": 0.9737638831138611,
+          "compression": {
+            "iterations": 192,
+            "converged": true,
+            "relative_residual": 9.204941876258194e-06
+          },
+          "update": {
+            "iterations": 13579,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.0002416054081953634,
+            "relative_residual": 2.455572330195688e-06,
+            "relative_complementarity": 3.114982730360661e-06,
+            "shift_iterations": 30,
+            "projected_gradient_norm": 9.720292232235726e-07,
+            "objective": -0.0004023096279595767
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 3.472444219980389,
+          "update_ms": 3190.98779296875,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 216.0,
+            "peak_allocated_mib": 98.69482421875,
+            "peak_reserved_mib": 216.0
+          },
+          "loss": 0.9725765585899353,
+          "compression": {
+            "iterations": 209,
+            "converged": true,
+            "relative_residual": 4.846653315907398e-06
+          },
+          "update": {
+            "iterations": 17227,
+            "evaluations": 66756,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.00016929495573926335,
+            "relative_residual": 2.420824809928677e-06,
+            "relative_complementarity": 6.0427688053613606e-06,
+            "shift_iterations": 37,
+            "projected_gradient_norm": 9.592444145064487e-07,
+            "objective": -0.0003776008696368575
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 768,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.12255859375,
+        "reserved_mib": 4.0,
+        "peak_allocated_mib": 3.07861328125,
+        "peak_reserved_mib": 4.0
+      },
+      "warm_median_ms": 3066.800887696445,
+      "warm_update_median_ms": 2808.489990234375,
+      "warm_peak_allocated_mib": 98.69482421875,
+      "warm_peak_reserved_mib": 216.0,
+      "runner_sha256": "d509300d868d01a9f23f81a3cc7e2918068d1a3c6ac6c0ba1556069bb82fcb94",
+      "name": "extended-k256-pcg"
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 784,
+        "output_width": 10,
+        "solver": "spectral",
+        "steps": 5,
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 64,
+        "compression_max_iter": 1024,
+        "output": "output/scaling/extended-k256-spectral.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 5.352749221026897,
+          "update_ms": 845.3253173828125,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 68.0,
+            "peak_allocated_mib": 57.7998046875,
+            "peak_reserved_mib": 108.0
+          },
+          "loss": 0.9779031872749329,
+          "compression": {
+            "iterations": 169,
+            "converged": true,
+            "relative_residual": 8.072059948005137e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.652911684388528e-06,
+            "objective": -0.0008621433516964316
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.26848363783210516,
+          "update_ms": 12.617728233337402,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 69.04443359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9764146208763123,
+          "compression": {
+            "iterations": 184,
+            "converged": true,
+            "relative_residual": 9.35464568651696e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.51420555691584e-06,
+            "objective": -0.0005425801500678062
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.2642251579090953,
+          "update_ms": 12.436479568481445,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.41943359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9749695062637329,
+          "compression": {
+            "iterations": 184,
+            "converged": true,
+            "relative_residual": 7.769103747877967e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.9153245527122635e-06,
+            "objective": -0.0004459647461771965
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.27335999719798565,
+          "update_ms": 12.4334077835083,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.41943359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9737834334373474,
+          "compression": {
+            "iterations": 192,
+            "converged": true,
+            "relative_residual": 7.409540417106159e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.735357379104244e-06,
+            "objective": -0.00040272821206599474
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.28531641978770494,
+          "update_ms": 12.418047904968262,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.41943359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9726210832595825,
+          "compression": {
+            "iterations": 201,
+            "converged": true,
+            "relative_residual": 8.112898263552902e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 6.389932877937099e-06,
+            "objective": -0.000378655968233943
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 768,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.12255859375,
+        "reserved_mib": 4.0,
+        "peak_allocated_mib": 3.07861328125,
+        "peak_reserved_mib": 4.0
+      },
+      "warm_median_ms": 273.35999719798565,
+      "warm_update_median_ms": 12.4334077835083,
+      "warm_peak_allocated_mib": 68.41943359375,
+      "warm_peak_reserved_mib": 112.0,
+      "runner_sha256": "d509300d868d01a9f23f81a3cc7e2918068d1a3c6ac6c0ba1556069bb82fcb94",
+      "name": "extended-k256-spectral"
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 1024,
+        "output_width": 256,
+        "solver": "pcg",
+        "steps": 3,
+        "backend": "factored",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/factored-wide-k256-pcg.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 40.223491742275655,
+          "update_ms": 37491.18359375,
+          "memory": {
+            "allocated_mib": 67.0107421875,
+            "reserved_mib": 176.0,
+            "peak_allocated_mib": 74.0859375,
+            "peak_reserved_mib": 176.0
+          },
+          "loss": 1.0013741254806519,
+          "compression": {
+            "iterations": 166,
+            "converged": true,
+            "relative_residual": 8.514335191610748e-06
+          },
+          "update": {
+            "iterations": 6377,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.00014773596588354152,
+            "relative_residual": 2.8476901847021245e-06,
+            "relative_complementarity": 4.97106902439736e-06,
+            "shift_iterations": 18,
+            "projected_gradient_norm": 4.9234652595820503e-08,
+            "objective": -4.1956155805748026e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 26.839798958040774,
+          "update_ms": 26564.904296875,
+          "memory": {
+            "allocated_mib": 67.0107421875,
+            "reserved_mib": 204.0,
+            "peak_allocated_mib": 99.85791015625,
+            "peak_reserved_mib": 204.0
+          },
+          "loss": 1.0013012886047363,
+          "compression": {
+            "iterations": 175,
+            "converged": true,
+            "relative_residual": 9.345505257494993e-06
+          },
+          "update": {
+            "iterations": 8429,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 4.209206118636551e-05,
+            "relative_residual": 3.561639598546977e-06,
+            "relative_complementarity": 4.697942571811007e-06,
+            "shift_iterations": 20,
+            "projected_gradient_norm": 6.140590158062453e-08,
+            "objective": -2.8957754708215438e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 38.98530466808006,
+          "update_ms": 38709.640625,
+          "memory": {
+            "allocated_mib": 67.0107421875,
+            "reserved_mib": 204.0,
+            "peak_allocated_mib": 99.85791015625,
+            "peak_reserved_mib": 204.0
+          },
+          "loss": 1.0012229681015015,
+          "compression": {
+            "iterations": 177,
+            "converged": true,
+            "relative_residual": 8.802053770749814e-06
+          },
+          "update": {
+            "iterations": 12922,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 1.4744842643075535e-05,
+            "relative_residual": 3.033807871820035e-06,
+            "relative_complementarity": 2.976532213069896e-06,
+            "shift_iterations": 29,
+            "projected_gradient_norm": 5.23504138875588e-08,
+            "objective": -2.4393473306103696e-05
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 768,
+      "resolved_backend": "factored",
+      "baseline_memory": {
+        "allocated_mib": 0.1845703125,
+        "reserved_mib": 6.0,
+        "peak_allocated_mib": 4.01806640625,
+        "peak_reserved_mib": 6.0
+      },
+      "warm_median_ms": 38985.30466808006,
+      "warm_update_median_ms": 38709.640625,
+      "warm_peak_allocated_mib": 99.85791015625,
+      "warm_peak_reserved_mib": 204.0,
+      "runner_sha256": "d509300d868d01a9f23f81a3cc7e2918068d1a3c6ac6c0ba1556069bb82fcb94",
+      "name": "factored-wide-k256-pcg"
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 1024,
+        "output_width": 256,
+        "solver": "spectral",
+        "steps": 3,
+        "backend": "factored",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/factored-wide-k256-spectral.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 4.8062939113006,
+          "update_ms": 837.5685424804688,
+          "memory": {
+            "allocated_mib": 29.5888671875,
+            "reserved_mib": 70.0,
+            "peak_allocated_mib": 52.50244140625,
+            "peak_reserved_mib": 94.0
+          },
+          "loss": 1.0013741254806519,
+          "compression": {
+            "iterations": 166,
+            "converged": true,
+            "relative_residual": 8.514335191610748e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 2.1291042173743335e-07,
+            "objective": -4.197702219244093e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.3060296247713268,
+          "update_ms": 13.780991554260254,
+          "memory": {
+            "allocated_mib": 29.5888671875,
+            "reserved_mib": 98.0,
+            "peak_allocated_mib": 71.14892578125,
+            "peak_reserved_mib": 98.0
+          },
+          "loss": 1.0013012886047363,
+          "compression": {
+            "iterations": 185,
+            "converged": true,
+            "relative_residual": 5.735217141104871e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 2.0860241534137458e-07,
+            "objective": -2.8972935979254544e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.3123587383888662,
+          "update_ms": 13.386752128601074,
+          "memory": {
+            "allocated_mib": 29.5888671875,
+            "reserved_mib": 98.0,
+            "peak_allocated_mib": 71.14892578125,
+            "peak_reserved_mib": 98.0
+          },
+          "loss": 1.001222848892212,
+          "compression": {
+            "iterations": 193,
+            "converged": true,
+            "relative_residual": 9.684030672122962e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 2.688583151666535e-07,
+            "objective": -2.4432796635665e-05
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 768,
+      "resolved_backend": "factored",
+      "baseline_memory": {
+        "allocated_mib": 0.1845703125,
+        "reserved_mib": 6.0,
+        "peak_allocated_mib": 4.01806640625,
+        "peak_reserved_mib": 6.0
+      },
+      "warm_median_ms": 312.3587383888662,
+      "warm_update_median_ms": 13.386752128601074,
+      "warm_peak_allocated_mib": 71.14892578125,
+      "warm_peak_reserved_mib": 98.0,
+      "runner_sha256": "d509300d868d01a9f23f81a3cc7e2918068d1a3c6ac6c0ba1556069bb82fcb94",
+      "name": "factored-wide-k256-spectral"
+    },
+    {
+      "config": {
+        "atoms": 1024,
+        "input": 784,
+        "output_width": 10,
+        "solver": "pcg",
+        "steps": 5,
+        "backend": "auto",
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/k1024-pcg.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 27.526328483130783,
+          "update_ms": 11889.1396484375,
+          "memory": {
+            "allocated_mib": 103.48291015625,
+            "reserved_mib": 268.0,
+            "peak_allocated_mib": 159.72265625,
+            "peak_reserved_mib": 268.0
+          },
+          "loss": 0.979291558265686,
+          "compression": {
+            "iterations": 256,
+            "converged": false,
+            "relative_residual": 4.785465207767294e-05
+          },
+          "update": {
+            "iterations": 9452,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.003284572818589482,
+            "relative_residual": 2.7117069570271503e-06,
+            "relative_complementarity": 3.227285179943179e-06,
+            "shift_iterations": 23,
+            "projected_gradient_norm": 2.2110453668227728e-06,
+            "objective": -0.0010494966045930575
+          }
+        }
+      ],
+      "status": "failed",
+      "parameters": 3072,
+      "resolved_backend": "materialized",
+      "baseline_memory": {
+        "allocated_mib": 0.15771484375,
+        "reserved_mib": 22.0,
+        "peak_allocated_mib": 12.28369140625,
+        "peak_reserved_mib": 22.0
+      },
+      "error": "FloatingPointError: deferred CST validation failed; updates are disabled",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/experiments/trust_pcg_scaling.py\", line 161, in main\n    optimizer.check_errors()\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/src/torchcst/optim/optimizer.py\", line 277, in check_errors\n    raise FloatingPointError(\nFloatingPointError: deferred CST validation failed; updates are disabled\n",
+      "runner_sha256": "d509300d868d01a9f23f81a3cc7e2918068d1a3c6ac6c0ba1556069bb82fcb94",
+      "name": "k1024-pcg"
+    },
+    {
+      "config": {
+        "atoms": 1024,
+        "input": 784,
+        "output_width": 10,
+        "solver": "spectral",
+        "steps": 5,
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/k1024-spectral.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 17.637948492076248,
+          "update_ms": 950.4911499023438,
+          "memory": {
+            "allocated_mib": 37.02001953125,
+            "reserved_mib": 98.0,
+            "peak_allocated_mib": 501.03125,
+            "peak_reserved_mib": 794.0
+          },
+          "loss": 0.979291558265686,
+          "compression": {
+            "iterations": 256,
+            "converged": false,
+            "relative_residual": 4.785465207767294e-05
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 1.1437738976383116e-05,
+            "objective": -0.001050606369972229
+          }
+        }
+      ],
+      "status": "failed",
+      "parameters": 3072,
+      "baseline_memory": {
+        "allocated_mib": 0.15771484375,
+        "reserved_mib": 22.0,
+        "peak_allocated_mib": 12.28369140625,
+        "peak_reserved_mib": 22.0
+      },
+      "error": "FloatingPointError: deferred CST validation failed; updates are disabled",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/experiments/trust_pcg_scaling.py\", line 156, in main\n    }\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/src/torchcst/optim/optimizer.py\", line 277, in check_errors\n    raise FloatingPointError(\nFloatingPointError: deferred CST validation failed; updates are disabled\n",
+      "runner_sha256": "33e4ac01903c3cf08612fc5dbedbbbfb79d5211d1173997f328b1ebbdbb700b1",
+      "name": "k1024-spectral"
+    },
+    {
+      "config": {
+        "atoms": 2048,
+        "input": 784,
+        "output_width": 10,
+        "solver": "pcg",
+        "steps": 5,
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/k2048-pcg.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 86.99033117806539,
+          "update_ms": 26862.494140625,
+          "memory": {
+            "allocated_mib": 166.19384765625,
+            "reserved_mib": 616.0,
+            "peak_allocated_mib": 456.552734375,
+            "peak_reserved_mib": 852.0
+          },
+          "loss": 0.9783183336257935,
+          "compression": {
+            "iterations": 256,
+            "converged": false,
+            "relative_residual": 0.00041223222659541377
+          },
+          "update": {
+            "iterations": 11776,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.00356255359325566,
+            "relative_residual": 2.706491890995484e-06,
+            "relative_complementarity": 7.97659868397147e-06,
+            "shift_iterations": 28,
+            "projected_gradient_norm": 2.9806583997758132e-06,
+            "objective": -0.0011218786789386026
+          }
+        }
+      ],
+      "status": "failed",
+      "parameters": 6144,
+      "baseline_memory": {
+        "allocated_mib": 0.20458984375,
+        "reserved_mib": 42.0,
+        "peak_allocated_mib": 24.55712890625,
+        "peak_reserved_mib": 42.0
+      },
+      "error": "FloatingPointError: deferred CST validation failed; updates are disabled",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/experiments/trust_pcg_scaling.py\", line 156, in main\n    optimizer.check_errors()\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/src/torchcst/optim/optimizer.py\", line 277, in check_errors\n    raise FloatingPointError(\nFloatingPointError: deferred CST validation failed; updates are disabled\n",
+      "runner_sha256": "33e4ac01903c3cf08612fc5dbedbbbfb79d5211d1173997f328b1ebbdbb700b1",
+      "name": "k2048-pcg"
+    },
+    {
+      "config": {
+        "atoms": 2048,
+        "input": 784,
+        "output_width": 10,
+        "solver": "spectral",
+        "steps": 5,
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/k2048-spectral.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 67.80614469014108,
+          "update_ms": 3635.89111328125,
+          "memory": {
+            "allocated_mib": 49.54345703125,
+            "reserved_mib": 148.0,
+            "peak_allocated_mib": 1919.888671875,
+            "peak_reserved_mib": 3024.0
+          },
+          "loss": 0.9783183336257935,
+          "compression": {
+            "iterations": 256,
+            "converged": false,
+            "relative_residual": 0.00041223222659541377
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": false,
+            "on_boundary": true,
+            "projected_gradient_norm": 2.4255254174931906e-05,
+            "objective": -0.0011256528086960316
+          }
+        }
+      ],
+      "status": "failed",
+      "parameters": 6144,
+      "baseline_memory": {
+        "allocated_mib": 0.20458984375,
+        "reserved_mib": 42.0,
+        "peak_allocated_mib": 24.55712890625,
+        "peak_reserved_mib": 42.0
+      },
+      "error": "FloatingPointError: deferred CST validation failed; updates are disabled",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/experiments/trust_pcg_scaling.py\", line 156, in main\n    optimizer.check_errors()\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/src/torchcst/optim/optimizer.py\", line 277, in check_errors\n    raise FloatingPointError(\nFloatingPointError: deferred CST validation failed; updates are disabled\n",
+      "runner_sha256": "33e4ac01903c3cf08612fc5dbedbbbfb79d5211d1173997f328b1ebbdbb700b1",
+      "name": "k2048-spectral"
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 784,
+        "output_width": 10,
+        "solver": "pcg",
+        "steps": 5,
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/k256-pcg.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 10.209449992049485,
+          "update_ms": 7451.365234375,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 152.0,
+            "peak_allocated_mib": 61.16455078125,
+            "peak_reserved_mib": 172.0
+          },
+          "loss": 0.9779031872749329,
+          "compression": {
+            "iterations": 169,
+            "converged": true,
+            "relative_residual": 8.072059948005137e-06
+          },
+          "update": {
+            "iterations": 8649,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.003021331834194876,
+            "relative_residual": 2.4561759656733436e-06,
+            "relative_complementarity": 1.0722491565373015e-06,
+            "shift_iterations": 22,
+            "projected_gradient_norm": 9.72675171676745e-07,
+            "objective": -0.0008614890357126258
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 2.18264327198267,
+          "update_ms": 1947.2291259765625,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 216.0,
+            "peak_allocated_mib": 98.63232421875,
+            "peak_reserved_mib": 216.0
+          },
+          "loss": 0.9764148592948914,
+          "compression": {
+            "iterations": 180,
+            "converged": true,
+            "relative_residual": 8.452314343659277e-06
+          },
+          "update": {
+            "iterations": 11313,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.0009167723641228937,
+            "relative_residual": 3.093440933300465e-06,
+            "relative_complementarity": 2.0853502825557123e-06,
+            "shift_iterations": 26,
+            "projected_gradient_norm": 1.2227556654657313e-06,
+            "objective": -0.0005422567223356653
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 2.554995512124151,
+          "update_ms": 2310.96923828125,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 216.0,
+            "peak_allocated_mib": 98.69482421875,
+            "peak_reserved_mib": 216.0
+          },
+          "loss": 0.9749717712402344,
+          "compression": {
+            "iterations": 190,
+            "converged": true,
+            "relative_residual": 9.555571460626784e-06
+          },
+          "update": {
+            "iterations": 14193,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.0004223489585497458,
+            "relative_residual": 3.3779710583496704e-06,
+            "relative_complementarity": 8.997360995964584e-07,
+            "shift_iterations": 32,
+            "projected_gradient_norm": 1.3357009736313504e-06,
+            "objective": -0.00044566423574347587
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 2.4809011607430875,
+          "update_ms": 2233.091064453125,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 216.0,
+            "peak_allocated_mib": 98.69482421875,
+            "peak_reserved_mib": 216.0
+          },
+          "loss": 0.9737638831138611,
+          "compression": {
+            "iterations": 192,
+            "converged": true,
+            "relative_residual": 9.204941876258194e-06
+          },
+          "update": {
+            "iterations": 13579,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.0002416054081953634,
+            "relative_residual": 2.455572330195688e-06,
+            "relative_complementarity": 3.114982730360661e-06,
+            "shift_iterations": 30,
+            "projected_gradient_norm": 9.720292232235726e-07,
+            "objective": -0.0004023096279595767
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 2.665034141857177,
+          "update_ms": 2397.22607421875,
+          "memory": {
+            "allocated_mib": 57.21533203125,
+            "reserved_mib": 216.0,
+            "peak_allocated_mib": 98.69482421875,
+            "peak_reserved_mib": 216.0
+          },
+          "loss": 0.9725765585899353,
+          "compression": {
+            "iterations": 209,
+            "converged": true,
+            "relative_residual": 4.846653315907398e-06
+          },
+          "update": {
+            "iterations": 14883,
+            "evaluations": 33892,
+            "converged": false,
+            "on_boundary": false,
+            "shift": 0.0,
+            "relative_residual": 1.0,
+            "relative_complementarity": 0.0,
+            "shift_iterations": 32,
+            "projected_gradient_norm": 0.3962469364045844,
+            "objective": 0.0
+          }
+        }
+      ],
+      "status": "failed",
+      "parameters": 768,
+      "baseline_memory": {
+        "allocated_mib": 0.12255859375,
+        "reserved_mib": 4.0,
+        "peak_allocated_mib": 3.07861328125,
+        "peak_reserved_mib": 4.0
+      },
+      "error": "FloatingPointError: deferred CST validation failed; updates are disabled",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/experiments/trust_pcg_scaling.py\", line 156, in main\n    optimizer.check_errors()\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/src/torchcst/optim/optimizer.py\", line 277, in check_errors\n    raise FloatingPointError(\nFloatingPointError: deferred CST validation failed; updates are disabled\n",
+      "runner_sha256": "33e4ac01903c3cf08612fc5dbedbbbfb79d5211d1173997f328b1ebbdbb700b1",
+      "name": "k256-pcg"
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 784,
+        "output_width": 10,
+        "solver": "spectral",
+        "steps": 5,
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/k256-spectral.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 3.7702852110378444,
+          "update_ms": 667.0244140625,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 68.0,
+            "peak_allocated_mib": 57.7998046875,
+            "peak_reserved_mib": 108.0
+          },
+          "loss": 0.9779031872749329,
+          "compression": {
+            "iterations": 169,
+            "converged": true,
+            "relative_residual": 8.072059948005137e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.652911684388528e-06,
+            "objective": -0.0008621433516964316
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.2584089390002191,
+          "update_ms": 12.986368179321289,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 69.04443359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9764146208763123,
+          "compression": {
+            "iterations": 184,
+            "converged": true,
+            "relative_residual": 9.35464568651696e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.51420555691584e-06,
+            "objective": -0.0005425801500678062
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.2541544330306351,
+          "update_ms": 13.009920120239258,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.41943359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9749695062637329,
+          "compression": {
+            "iterations": 184,
+            "converged": true,
+            "relative_residual": 7.769103747877967e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.9153245527122635e-06,
+            "objective": -0.0004459647461771965
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.2631557579152286,
+          "update_ms": 12.626943588256836,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.41943359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9737834334373474,
+          "compression": {
+            "iterations": 192,
+            "converged": true,
+            "relative_residual": 7.409540417106159e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 4.735357379104244e-06,
+            "objective": -0.00040272821206599474
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.27319537103176117,
+          "update_ms": 12.616703987121582,
+          "memory": {
+            "allocated_mib": 27.62744140625,
+            "reserved_mib": 112.0,
+            "peak_allocated_mib": 68.41943359375,
+            "peak_reserved_mib": 112.0
+          },
+          "loss": 0.9726210832595825,
+          "compression": {
+            "iterations": 201,
+            "converged": true,
+            "relative_residual": 8.112898263552902e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 6.389932877937099e-06,
+            "objective": -0.000378655968233943
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 768,
+      "baseline_memory": {
+        "allocated_mib": 0.12255859375,
+        "reserved_mib": 4.0,
+        "peak_allocated_mib": 3.07861328125,
+        "peak_reserved_mib": 4.0
+      },
+      "warm_median_ms": 263.1557579152286,
+      "warm_update_median_ms": 12.626943588256836,
+      "warm_peak_allocated_mib": 68.41943359375,
+      "warm_peak_reserved_mib": 112.0,
+      "runner_sha256": "33e4ac01903c3cf08612fc5dbedbbbfb79d5211d1173997f328b1ebbdbb700b1",
+      "name": "k256-spectral"
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 1024,
+        "output_width": 256,
+        "solver": "pcg",
+        "steps": 5,
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/wide-k256-pcg.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 53.205087788868695,
+          "update_ms": 50176.16015625,
+          "memory": {
+            "allocated_mib": 66.5107421875,
+            "reserved_mib": 372.0,
+            "peak_allocated_mib": 831.37548828125,
+            "peak_reserved_mib": 1056.0
+          },
+          "loss": 1.0013741254806519,
+          "compression": {
+            "iterations": 163,
+            "converged": true,
+            "relative_residual": 8.81771749642106e-06
+          },
+          "update": {
+            "iterations": 6347,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 0.00014773596868221492,
+            "relative_residual": 2.617270851515604e-06,
+            "relative_complementarity": 4.943244801570505e-06,
+            "shift_iterations": 18,
+            "projected_gradient_norm": 4.5250857785330326e-08,
+            "objective": -4.1956404293759044e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 27.888077228795737,
+          "update_ms": 27582.384765625,
+          "memory": {
+            "allocated_mib": 66.5107421875,
+            "reserved_mib": 1150.0,
+            "peak_allocated_mib": 881.4404296875,
+            "peak_reserved_mib": 1150.0
+          },
+          "loss": 1.0013012886047363,
+          "compression": {
+            "iterations": 192,
+            "converged": true,
+            "relative_residual": 9.14962002921586e-06
+          },
+          "update": {
+            "iterations": 8807,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 4.20921217429897e-05,
+            "relative_residual": 3.1367459444279843e-06,
+            "relative_complementarity": 4.715133256373165e-06,
+            "shift_iterations": 21,
+            "projected_gradient_norm": 5.4080426872705816e-08,
+            "objective": -2.895759753093093e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 39.64797228015959,
+          "update_ms": 39366.92578125,
+          "memory": {
+            "allocated_mib": 66.5107421875,
+            "reserved_mib": 1150.0,
+            "peak_allocated_mib": 881.4404296875,
+            "peak_reserved_mib": 1150.0
+          },
+          "loss": 1.001222848892212,
+          "compression": {
+            "iterations": 177,
+            "converged": true,
+            "relative_residual": 8.932795710187903e-06
+          },
+          "update": {
+            "iterations": 13168,
+            "evaluations": 33892,
+            "converged": true,
+            "on_boundary": false,
+            "shift": 1.4744935513222397e-05,
+            "relative_residual": 2.7317858704451806e-06,
+            "relative_complementarity": 2.9898042865744965e-06,
+            "shift_iterations": 31,
+            "projected_gradient_norm": 4.713911617319064e-08,
+            "objective": -2.4393504108638454e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 42.65591744892299,
+          "update_ms": 42362.9921875,
+          "memory": {
+            "allocated_mib": 66.5107421875,
+            "reserved_mib": 1150.0,
+            "peak_allocated_mib": 881.4404296875,
+            "peak_reserved_mib": 1150.0
+          },
+          "loss": 1.001157283782959,
+          "compression": {
+            "iterations": 185,
+            "converged": true,
+            "relative_residual": 9.524484739699776e-06
+          },
+          "update": {
+            "iterations": 14276,
+            "evaluations": 33892,
+            "converged": false,
+            "on_boundary": false,
+            "shift": 0.0,
+            "relative_residual": 1.0,
+            "relative_complementarity": 0.0,
+            "shift_iterations": 32,
+            "projected_gradient_norm": 0.01728816045040242,
+            "objective": 0.0
+          }
+        }
+      ],
+      "status": "failed",
+      "parameters": 768,
+      "baseline_memory": {
+        "allocated_mib": 0.1845703125,
+        "reserved_mib": 6.0,
+        "peak_allocated_mib": 4.01806640625,
+        "peak_reserved_mib": 6.0
+      },
+      "error": "FloatingPointError: deferred CST validation failed; updates are disabled",
+      "traceback": "Traceback (most recent call last):\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/experiments/trust_pcg_scaling.py\", line 156, in main\n    optimizer.check_errors()\n  File \"/home/jovyan/work/srv11/cst-lab/trust-pcg-20260908/src/torchcst/optim/optimizer.py\", line 277, in check_errors\n    raise FloatingPointError(\nFloatingPointError: deferred CST validation failed; updates are disabled\n",
+      "runner_sha256": "33e4ac01903c3cf08612fc5dbedbbbfb79d5211d1173997f328b1ebbdbb700b1",
+      "name": "wide-k256-pcg"
+    },
+    {
+      "config": {
+        "atoms": 256,
+        "input": 1024,
+        "output_width": 256,
+        "solver": "spectral",
+        "steps": 5,
+        "update_max_iter": 512,
+        "update_shift_steps": 32,
+        "compression_max_iter": 256,
+        "output": "output/scaling/wide-k256-spectral.json"
+      },
+      "torch": "2.6.0+cu126",
+      "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+      "device_total_mib": 40192.0,
+      "rows": [
+        {
+          "step": 0,
+          "warmup": true,
+          "seconds": 4.88597157318145,
+          "update_ms": 823.1372680664062,
+          "memory": {
+            "allocated_mib": 29.5888671875,
+            "reserved_mib": 286.0,
+            "peak_allocated_mib": 831.37548828125,
+            "peak_reserved_mib": 1056.0
+          },
+          "loss": 1.0013741254806519,
+          "compression": {
+            "iterations": 163,
+            "converged": true,
+            "relative_residual": 8.81771749642106e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 2.0547479095966992e-07,
+            "objective": -4.197708040010184e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 1,
+          "warmup": true,
+          "seconds": 0.53596006706357,
+          "update_ms": 13.503487586975098,
+          "memory": {
+            "allocated_mib": 29.5888671875,
+            "reserved_mib": 1064.0,
+            "peak_allocated_mib": 844.5185546875,
+            "peak_reserved_mib": 1064.0
+          },
+          "loss": 1.0013012886047363,
+          "compression": {
+            "iterations": 185,
+            "converged": true,
+            "relative_residual": 8.99172431371748e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 2.2064823212986084e-07,
+            "objective": -2.8978422051295638e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 2,
+          "warmup": false,
+          "seconds": 0.30955119943246245,
+          "update_ms": 13.255680084228516,
+          "memory": {
+            "allocated_mib": 29.5888671875,
+            "reserved_mib": 1064.0,
+            "peak_allocated_mib": 844.5185546875,
+            "peak_reserved_mib": 1064.0
+          },
+          "loss": 1.001222848892212,
+          "compression": {
+            "iterations": 188,
+            "converged": true,
+            "relative_residual": 7.571412867106617e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 2.6613361114868894e-07,
+            "objective": -2.4420471163466573e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 3,
+          "warmup": false,
+          "seconds": 0.31386990332975984,
+          "update_ms": 13.256704330444336,
+          "memory": {
+            "allocated_mib": 29.5888671875,
+            "reserved_mib": 1064.0,
+            "peak_allocated_mib": 844.5185546875,
+            "peak_reserved_mib": 1064.0
+          },
+          "loss": 1.0011577606201172,
+          "compression": {
+            "iterations": 191,
+            "converged": true,
+            "relative_residual": 8.354453546066992e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 3.7238893924040894e-07,
+            "objective": -2.218532608821988e-05
+          },
+          "accepted": true
+        },
+        {
+          "step": 4,
+          "warmup": false,
+          "seconds": 0.32289255363866687,
+          "update_ms": 13.325311660766602,
+          "memory": {
+            "allocated_mib": 29.5888671875,
+            "reserved_mib": 1064.0,
+            "peak_allocated_mib": 844.5185546875,
+            "peak_reserved_mib": 1064.0
+          },
+          "loss": 1.0011001825332642,
+          "compression": {
+            "iterations": 197,
+            "converged": true,
+            "relative_residual": 9.49904362751855e-06
+          },
+          "update": {
+            "iterations": 1,
+            "evaluations": 1,
+            "converged": true,
+            "on_boundary": true,
+            "projected_gradient_norm": 3.6770782685380254e-07,
+            "objective": -2.0891267922706902e-05
+          },
+          "accepted": true
+        }
+      ],
+      "status": "passed",
+      "parameters": 768,
+      "baseline_memory": {
+        "allocated_mib": 0.1845703125,
+        "reserved_mib": 6.0,
+        "peak_allocated_mib": 4.01806640625,
+        "peak_reserved_mib": 6.0
+      },
+      "warm_median_ms": 313.86990332975984,
+      "warm_update_median_ms": 13.256704330444336,
+      "warm_peak_allocated_mib": 844.5185546875,
+      "warm_peak_reserved_mib": 1064.0,
+      "runner_sha256": "33e4ac01903c3cf08612fc5dbedbbbfb79d5211d1173997f328b1ebbdbb700b1",
+      "name": "wide-k256-spectral"
+    }
+  ],
+  "independent_dense_oracle": {
+    "atoms": 1024,
+    "steps": 1,
+    "compression_max_iter": 1024,
+    "update_shift_steps": 64,
+    "losses": [
+      0.979291558265686
+    ],
+    "torch": "2.6.0+cu126",
+    "gpu": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+    "updates": [
+      {
+        "objective": -0.001049496604602565,
+        "reference_objective": -0.0010501514506033056,
+        "objective_gap": 6.548460007404881e-07,
+        "relative_gap": 0.000623572914520361,
+        "dense_relative_residual": 2.711706932850396e-06,
+        "reference_relative_residual": 4.345754879979422e-13,
+        "relative_complementarity": 3.227285179943179e-06,
+        "displacement_difference_norm": 0.0009209070461152224,
+        "displacement_norm": 0.24919885396957397,
+        "shift": 0.003284572818589482,
+        "cg_iterations": 9452,
+        "shift_iterations": 23
+      }
+    ]
+  }
+}

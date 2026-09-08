@@ -85,6 +85,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--atoms", type=int, default=85)
     parser.add_argument("--steps", type=int, default=3)
+    parser.add_argument("--compression-max-iter", type=int, default=256)
     parser.add_argument("--update-shift-steps", type=int, default=64)
     args = parser.parse_args()
     torch.set_num_threads(1)
@@ -107,7 +108,7 @@ def main():
         update_solver="pcg",
         recompression="pcg",
         first_moment_damping=0.01,
-        recompression_max_iter=256,
+        recompression_max_iter=args.compression_max_iter,
         update_shift_steps=args.update_shift_steps,
     )
     optimizer.audit_rows = []
@@ -125,6 +126,7 @@ def main():
             {
                 "atoms": args.atoms,
                 "steps": args.steps,
+                "compression_max_iter": args.compression_max_iter,
                 "update_shift_steps": args.update_shift_steps,
                 "losses": losses,
                 "torch": torch.__version__,

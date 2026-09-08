@@ -69,6 +69,9 @@ def main():
     parser.add_argument("--output-width", type=int, default=10)
     parser.add_argument("--solver", choices=("spectral", "pcg"), required=True)
     parser.add_argument("--steps", type=int, default=5)
+    parser.add_argument(
+        "--backend", choices=("auto", "factored", "materialized"), default="auto"
+    )
     parser.add_argument("--update-max-iter", type=int, default=512)
     parser.add_argument("--update-shift-steps", type=int, default=32)
     parser.add_argument("--compression-max-iter", type=int, default=256)
@@ -106,6 +109,7 @@ def main():
             Chart.linspace(args.input),
             Chart.linspace(args.output_width),
             atoms=args.atoms,
+            backend=args.backend,
             kernel=Amplitude(
                 Separable(input_profile=Gaussian(0.25), output_profile=Gaussian(0.3))
             ),
@@ -128,6 +132,7 @@ def main():
         x = torch.randn(32, args.input, device="cuda")
         target = torch.randn(32, args.output_width, device="cuda")
         report["parameters"] = site.atoms.p.numel()
+        report["resolved_backend"] = site._resolved_backend()
         report["baseline_memory"] = memory()
         for step in range(args.steps):
             torch.cuda.synchronize()
