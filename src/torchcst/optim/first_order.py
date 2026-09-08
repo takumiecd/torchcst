@@ -29,6 +29,8 @@ class CSTAdam(_ModelOptimizer):
                 else "eager",
             )
         ops = self._tangent_operators[site]
+        if c.update_solver == "pcg" and ops.backend == "reference":
+            raise ValueError("PCG update requires a factorized tangent backend")
         return TangentGeometry(
             ops.derivatives,
             factored=c.factored_geometry,
@@ -101,5 +103,18 @@ class CSTAdam(_ModelOptimizer):
     def _solve(self, context, expanded):
         from .quadratic import TangentProblem, solve_tangent
 
+        if self.cst_config.update_solver == "pcg":
+            from ._trust_pcg import solve
+            from .quadratic import MatrixFreeTangentProblem
+
+            c = self.cst_config
+            problem = MatrixFreeTangentProblem(context, expanded, learning_rate=c.lr)
+            return solve(
+                problem,
+                radius=c.trust_radius,
+                max_iter=c.update_max_iter,
+                shift_steps=c.update_shift_steps,
+                rtol=c.update_rtol,
+            )
         problem = TangentProblem(context, expanded, learning_rate=self.cst_config.lr)
         return solve_tangent(problem, radius=self.cst_config.trust_radius)

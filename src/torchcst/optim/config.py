@@ -34,9 +34,30 @@ class FirstOrderAdamConfig:
     recompression_rtol: float = 1e-5
 
     device_execution: bool = False
+    update_solver: Literal["spectral", "pcg"] = "spectral"
+    update_max_iter: int = 512
+    update_shift_steps: int = 32
+    update_rtol: float = 1e-5
 
     def __post_init__(self) -> None:
         from torchcst._derivatives.tangent_solve import validate_pcg
+
+        if self.update_solver not in ("spectral", "pcg"):
+            raise ValueError("update_solver must be spectral or pcg")
+        for name in ("update_max_iter", "update_shift_steps"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if not math.isfinite(self.update_rtol) or not 0 < self.update_rtol < 1:
+            raise ValueError("update_rtol must be finite and between zero and one")
+        if self.update_solver == "pcg" and (
+            self.second_moment != "separable"
+            or not self.factored_geometry
+            or self.tangent_backend == "reference"
+        ):
+            raise ValueError(
+                "PCG update requires separable moments and factorized tangents"
+            )
 
         if not isinstance(self.device_execution, bool):
             raise TypeError("device_execution must be a bool")

@@ -544,17 +544,18 @@ Neither is claimed to reproduce diagonal Adam or preserve learning accuracy.
 `FirstOrderAdamConfig` contains only first-order controls: learning rate, betas,
 epsilon, trust radius, second-moment backend, first-moment damping, observation
 mode/chunk size, factored geometry, tangent rank cutoff, prepared backend/tile,
-and recompression solver/budget/tolerance. There is no
+and recompression/update solver budgets and tolerances. There is no
 `approximation_order` or `first_moment_frame` switch and no quartic setting.
 The old `CSTOptimizer` and `ImplicitAdamConfig` names have been replaced.
 
-This first-order implementation is eager CPU/CUDA float32/64. It does not
-support MPS or deferred device execution. The direct solver retains a full
+This first-order implementation supports CPU/CUDA float32/64, with optional
+deferred GPU execution. It does not support MPS. The spectral update solver retains a full
 parameter-space Gram for the separable metric. First-moment compression and
 transport use the prepared tangent operator described below; compression is
 matrix-free when `recompression="pcg"` is explicitly selected.
 Atom block/diagonal metric state scales linearly with atom count at fixed
-parameters per atom, but the complete optimizer is not yet linear-memory.
+parameters per atom. Selecting PCG for both recompression and updates avoids
+full parameter-space Grams with the separable metric.
 
 ### Prepared tangent actions and recompression
 
@@ -619,7 +620,7 @@ optimizer.check_errors()  # explicit synchronization, e.g. at a logging boundary
 
 This opt-in path requires factorized tangents and `second_moment="separable"`.
 CUDA float32/float64 execution uses Triton factor contractions, a captured PCG
-loop, and a GPU spectral trust-region search. Same-atom blocks precondition the
+loop, and the selected update solver. Same-atom blocks precondition the
 full cross-atom system; the approximation and damping are unchanged. Convergence
 and true-residual checks stay on the GPU. Inactive iterations skip Gram arithmetic,
 but graph replay still launches the fixed iteration budget. CPU execution provides
@@ -637,9 +638,9 @@ printing them, or `check_errors()` intentionally synchronizes. Numerical failure
 latch a device error and suppress subsequent parameter/moment tensor commits;
 inspect `check_errors()` and restore a valid checkpoint into a fresh optimizer
 before resuming. Python step metadata still advances while the latch is set.
-The update solver still allocates a full weighted Gram and uses cuSOLVER; this
-option does not make the complete optimizer linear-memory or guarantee that
-vendor-library internals never synchronize.
+The default spectral update solver still allocates a full weighted Gram and uses
+cuSOLVER, whose internals can synchronize. Select the PCG update below to avoid
+that full Gram and eigensolve.
 
 For standalone prepared actions, pass `execution="triton"` to `tangent_ops`.
 Standalone `prepare` validates immediately, and standalone PCG reads its final
@@ -647,15 +648,70 @@ success flag once. The optimizer defers these checks to its device error latch.
 
 See [A100 timing, transfer counts, and persistent memory measurements](docs/experiments/tangent-device.ja.md).
 
+### Matrix-free trust-region updates
+
+```python
+optimizer = CSTAdam(
+    model,
+    device_execution=True,
+    recompression="pcg",
+    first_moment_damping=1e-3,
+    update_solver="pcg",      # default: "spectral", retained as a reference
+    update_max_iter=512,      # CG iterations per search round
+    update_shift_steps=32,    # budget for half-interval shift search
+    update_rtol=1e-5,         # final KKT residual / complementarity tolerance
+)
+```
+
+The objective and Euclidean trust ball are unchanged. For `H = J.T D J / lr`,
+the solver applies H from prepared factors and solves `(H + shift I) d = -b`.
+The shift enforces the existing radius; it is separate from first-moment damping.
+Cross-atom terms are preserved. Only the positive-shift PCG preconditioner uses
+same-atom blocks of H; the objective itself is never diagonalized or approximated
+by atom blocks. This mode requires factorized tangents and separable moments.
+
+Zero-shift CG starts from zero without preconditioning to preserve the Euclidean
+minimum-norm solution for consistent singular systems in exact arithmetic.
+If it crosses the ball or does not converge, a bracketed positive-shift search
+uses warm-started atom-block PCG. For positive shifts, the true residual bounds
+the solution error by `norm(residual) / shift`; the bracket advances only when
+that interval establishes the exact solution is inside or outside the radius.
+Ambiguous rounds continue at the same shift, preserving CG residual and direction. Factor contractions
+and solver arithmetic use FP64, including for FP32 parameters.
+
+Before commit, the returned parameter-dtype displacement is checked using a fresh
+H action: `norm((H + shift I)d + b) / norm(b) <= update_rtol`,
+`shift * abs(radius - norm(d)) / norm(b) <= update_rtol`, and the radius constraint.
+Zero b returns zero. Numerical failure or insufficient budgets raise in eager
+mode and latch/suppress updates in deferred mode; there is no dense fallback.
+Near-null directions can produce different displacements within this tolerance,
+even with very similar objective values. The tolerance does not guarantee a
+small displacement error for ill-conditioned H.
+
+`optimizer.last_step.site_results` exposes `shift`, `relative_residual`,
+`relative_complementarity`, `shift_iterations`, and total active CG `iterations`.
+`evaluations` counts scheduled H calls (including device-masked calls). These
+diagnostics are scalar tensors. Inspect them at explicit logging boundaries.
+
+With both solvers set to PCG, this path stores factors, vectors and bounded graph
+workspaces, without a full Gram, dense Jacobian, eigenbasis or Krylov basis.
+Workspace scales linearly with atom count for fixed chart sizes, coordinates per
+atom and iteration budgets; arithmetic still includes all atom pairs. Two reusable
+CG graphs handle zero/positive shifts, with fresh factors, metric and RHS supplied
+on replay. GPU control stays on device, although the host schedules a fixed outer
+budget and inactive graph nodes still launch. This can be slower than spectral
+updates on small problems; it is an explicit memory-oriented option.
+The PCG update does not build or call the native cuSOLVER extension.
+
 Fixed kernel/profile configuration and chart buffers must remain unchanged for
 the lifetime of an optimizer. Checkpoints now include their tangent descriptors;
 first-order checkpoints without descriptors are rejected. Load model state before
 constructing the optimizer. Custom kernels/profiles declare non-buffer settings
 through `tangent_config()` and bump `tangent_layout_version` when layout semantics
 change. Writes through tensor `.data` bypass version checks and are unsupported.
-Prepared caches are step-local and never serialized. The separable **update**
-solver still constructs its full weighted Gram; only transport/recompression
-have moved to the matrix-free path in this implementation.
+Prepared caches are step-local and never serialized. CUDA graph caches are also
+runtime-only. The default spectral update constructs its full weighted Gram;
+the PCG update uses the matrix-free path described above.
 
 Checkpoints use schema version 2 and record the algorithm and moment contract.
 Loading a different algorithm/second-moment definition or incompatible parameter ownership is an

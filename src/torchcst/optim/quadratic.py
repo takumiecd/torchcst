@@ -33,6 +33,26 @@ class TangentProblem:
         return (self.linear * d).sum() + 0.5 * (d * qd).sum(), self.linear + qd
 
 
+class MatrixFreeTangentProblem:
+    """The same quadratic represented by a factor-owned weighted action."""
+
+    def __init__(self, context, moments, *, learning_rate):
+        from torchcst._derivatives.tangent_metric import from_prepared
+
+        if context.current_point.dtype not in (
+            torch.float32,
+            torch.float64,
+        ) or context.current_point.device.type not in ("cpu", "cuda"):
+            raise ValueError("CSTAdam requires CPU/CUDA float32/float64")
+        self.point_shape = context.current_point.shape
+        self.linear = moments.first.corrected.constant.detach()
+        self.operator = from_prepared(
+            context.geometry.prepared(context.current_point),
+            moments.second.metric,
+            learning_rate,
+        )
+
+
 def solve_tangent(problem, *, radius):
     """One (batched for blocks) eigensolve plus one global secular equation.
 
