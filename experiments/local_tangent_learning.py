@@ -14,6 +14,7 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
+from experiments.accuracy_targets import summarize_targets
 from experiments.mnist_current_api import ExperimentConfig, build_model, load_mnist
 from experiments.trust_pcg_scaling import TimedAdam, diagnostics, memory
 
@@ -32,9 +33,16 @@ def main():
     parser.add_argument("--basis-size", type=int, default=128)
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--steps", type=int, default=128)
+    parser.add_argument("--eval-every", type=int, default=0)
+    parser.add_argument("--targets", type=float, nargs="+", default=[0.75, 0.80, 0.85])
+    parser.add_argument("--consecutive", type=int, default=3)
     parser.add_argument("--atoms", type=int, default=64)
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
+    if args.steps < 1 or args.eval_every < 0 or args.consecutive < 1:
+        parser.error("invalid step/evaluation budget")
+    if any(not 0 < target <= 1 for target in args.targets):
+        parser.error("targets must lie in (0, 1]")
     torch.set_num_threads(1)
     torch.set_float32_matmul_precision("highest")
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -79,6 +87,7 @@ def main():
         Path(__file__).resolve(),
         root / "experiments/mnist_current_api.py",
         root / "experiments/trust_pcg_scaling.py",
+        root / "experiments/accuracy_targets.py",
     ]
     report = {
         "config": {
@@ -113,16 +122,53 @@ def main():
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
 
+    # Dataset/model/optimizer setup precedes this clock. First-use graph capture
+    # and compilation remain in the measured updates; no training is discarded.
+    clock_start = time.perf_counter()
+    evaluation_seconds = 0.0
+
     def evaluate(step):
+        nonlocal evaluation_seconds
+        begin = time.perf_counter()
+        torch.cuda.reset_peak_memory_stats()
         with torch.no_grad():
             logits = model(xt)
-            report["evaluations"].append(
-                {
-                    "step": step,
-                    "accuracy": (logits.argmax(-1) == yt).float().mean().item(),
-                    "test_loss": F.cross_entropy(logits, yt).item(),
-                }
-            )
+            correct = (logits.argmax(-1) == yt).sum().item()
+            test_loss = F.cross_entropy(logits, yt).item()
+        evaluation_seconds += time.perf_counter() - begin
+        measured = memory()
+        rows = report["rows"]
+        past = report["evaluations"]
+        peaks = [r["memory"]["peak_allocated_mib"] for r in rows]
+        peaks += [r["evaluation_peak_allocated_mib"] for r in past]
+        peaks.append(measured["peak_allocated_mib"])
+        warm_peaks = [r["memory"]["peak_allocated_mib"] for r in rows[2:]]
+        warm_peaks += [
+            r["evaluation_peak_allocated_mib"] for r in past if r["step"] > 2
+        ]
+        if step > 2:
+            warm_peaks.append(measured["peak_allocated_mib"])
+        report["evaluations"].append(
+            {
+                "step": step,
+                "correct": correct,
+                "examples": yt.numel(),
+                "accuracy": correct / yt.numel(),
+                "test_loss": test_loss,
+                "training_seconds": sum(r["seconds"] for r in rows),
+                "startup_two_updates_seconds": sum(r["seconds"] for r in rows[:2]),
+                "training_seconds_after_two_updates": sum(
+                    r["seconds"] for r in rows[2:]
+                ),
+                "evaluation_seconds": evaluation_seconds,
+                "wall_seconds": time.perf_counter() - clock_start,
+                "evaluation_peak_allocated_mib": measured["peak_allocated_mib"],
+                "cumulative_peak_allocated_mib": max(peaks),
+                "cumulative_warm_peak_allocated_mib": max(warm_peaks)
+                if warm_peaks
+                else None,
+            }
+        )
 
     evaluate(0)
     save()
@@ -153,7 +199,12 @@ def main():
             if not row["update"]["converged"]:
                 raise RuntimeError("update solver reported non-convergence")
             row["passed"] = True
-            if step + 1 in (1, 32, 64, 128) or step + 1 == args.steps:
+            due = (
+                (step + 1) % args.eval_every == 0
+                if args.eval_every
+                else step + 1 in (1, 32, 64, 128)
+            )
+            if due or step + 1 == args.steps:
                 evaluate(step + 1)
                 save()
                 print(json.dumps(report["evaluations"][-1]), flush=True)
@@ -173,6 +224,10 @@ def main():
     except (RuntimeError, ValueError, ArithmeticError) as error:
         report["status"] = "failed"
         report["error"] = f"{type(error).__name__}: {error}"
+    report["target_times"] = summarize_targets(
+        report["evaluations"], args.targets, args.consecutive
+    )
+    report["observation_wall_seconds"] = time.perf_counter() - clock_start
     save()
     print(
         json.dumps(
