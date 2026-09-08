@@ -87,5 +87,13 @@ class Amplitude(Kernel):
             raise ValueError(f"p must have shape [atoms, {expected_dim}]")
         return p[:, :1], p[:, 1:]
 
+    def tangent_backend(self, input_chart: Chart, output_chart: Chart):
+        inner = self.kernel.tangent_backend(input_chart, output_chart)
+        if inner is None:
+            return None
+        from ._tangent import amplitude
+
+        return lambda p: amplitude(self, inner, input_chart, output_chart, p)
+
     def extra_repr(self) -> str:
         return f"supports_factorization={self.supports_factorization}"

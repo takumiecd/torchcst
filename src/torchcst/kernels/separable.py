@@ -25,10 +25,9 @@ class Separable(Kernel):
         self.output_profile = output_profile
 
     def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:
-        return (
-            self.input_profile.parameter_dim(input_chart)
-            + self.output_profile.parameter_dim(output_chart)
-        )
+        return self.input_profile.parameter_dim(
+            input_chart
+        ) + self.output_profile.parameter_dim(output_chart)
 
     def initialize(
         self,
@@ -66,6 +65,15 @@ class Separable(Kernel):
         if phi_input.shape[1] != p.shape[0] or phi_output.shape[1] != p.shape[0]:
             raise ValueError("profiles must preserve the atom dimension")
         return phi_input, phi_output
+
+    def tangent_backend(self, input_chart: Chart, output_chart: Chart):
+        if not (
+            self.input_profile.supports_tangent and self.output_profile.supports_tangent
+        ):
+            return None
+        from ._tangent import separable
+
+        return lambda p: separable(self, input_chart, output_chart, p)
 
     def extra_repr(self) -> str:
         return f"supports_factorization={self.supports_factorization}"

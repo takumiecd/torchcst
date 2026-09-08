@@ -27,6 +27,18 @@ class Profile(nn.Module, ABC):
     def evaluate(self, chart: Chart, p: Tensor) -> Tensor:
         """Return profile values with shape ``[chart.features, atoms]``."""
 
+    @property
+    def supports_tangent(self) -> bool:
+        return False
+
+    def tangent(self, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
+        """Optional values and first coordinate derivatives [features, atoms, q]."""
+        raise NotImplementedError("profile has no specialized tangent")
+
+    def tangent_config(self) -> tuple:
+        """Fixed non-buffer settings affecting evaluation, for custom profiles."""
+        return ()
+
 
 class Kernel(nn.Module, ABC):
     """Interpret each opaque atom row as a complete operator contribution."""
@@ -72,3 +84,19 @@ class Kernel(nn.Module, ABC):
 
     def forward(self, input_chart: Chart, output_chart: Chart, p: Tensor) -> Tensor:
         return self.materialize_atoms(input_chart, output_chart, p)
+
+    tangent_layout_version = 1
+
+    def tangent_config(self) -> tuple:
+        """Fixed non-buffer tangent settings; custom kernels must include them.
+
+        Tensor settings belong in registered buffers. Nested modules/buffers
+        are recorded separately. No optimizer history belongs here.
+        """
+        return ()
+
+    def tangent_backend(self, input_chart: Chart, output_chart: Chart):
+        """Optional point -> (U, V, dU, dV), in atom-major order.
+
+        None selects exact factor-autograd or reference fallback.
+        """

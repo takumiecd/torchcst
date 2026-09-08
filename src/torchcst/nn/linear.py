@@ -121,7 +121,13 @@ class CSTLinear(nn.Module):
         return AtomDerivatives(
             self.atoms,
             self._materialize_atoms,
-            factor_atoms=self._factor_atoms if self.kernel.supports_factorization else None,
+            factor_atoms=self._factor_atoms
+            if self.kernel.supports_factorization
+            else None,
+            tangent_backend=self.kernel.tangent_backend(
+                self.input_chart, self.output_chart
+            ),
+            tangent_modules=(self.kernel, self.input_chart, self.output_chart),
         )
 
     def _factor_atoms(self, p: Tensor) -> tuple[Tensor, Tensor]:

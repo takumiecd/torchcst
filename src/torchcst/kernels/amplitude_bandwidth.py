@@ -120,9 +120,7 @@ class AmplitudeBandwidthSeparable(Kernel):
 
         amplitude, _, _ = self._split(input_chart, output_chart, p)
         magnitude_square = amplitude[:, 0].square() + self.gate_eps.square()
-        logit = (
-            magnitude_square.log() - 2.0 * self.tau.log()
-        ) / self.temperature
+        logit = (magnitude_square.log() - 2.0 * self.tau.log()) / self.temperature
         return torch.sigmoid(logit)
 
     def output_precision(
@@ -175,6 +173,13 @@ class AmplitudeBandwidthSeparable(Kernel):
         if not torch.isfinite(result) or result <= 0:
             raise ValueError(f"{name} must be finite and positive")
         return result
+
+    def tangent_backend(self, input_chart: Chart, output_chart: Chart):
+        if not self.input_profile.supports_tangent:
+            return None
+        from ._tangent import amplitude_bandwidth
+
+        return lambda p: amplitude_bandwidth(self, input_chart, output_chart, p)
 
     def extra_repr(self) -> str:
         return (

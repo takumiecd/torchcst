@@ -85,3 +85,30 @@ class Gaussian(Profile):
 
     def extra_repr(self) -> str:
         return f"sigma={self.sigma.item():g}"
+
+    @property
+    def supports_tangent(self) -> bool:
+        return True
+
+    def tangent(self, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
+        values, centers, _ = self.tangent_with_precision(
+            chart, p, self.sigma.reciprocal().square()
+        )
+        return values, centers
+
+    def tangent_with_precision(self, chart: Chart, p: Tensor, precision: Tensor):
+        """Analytic values, center derivatives and precision derivative.
+
+        Includes the complete L2 normalization, with no amplitude division.
+        """
+        precision = precision.to(p)
+        values = self.evaluate_with_precision(chart, p, precision)
+        offset = chart.coordinates[:, None, :] - p[None, :, :]
+        squared = offset.square().sum(-1)
+        probability = values.square()
+        center_log = 2 * precision.reshape(1, -1, 1) * offset
+        center_mean = (probability[..., None] * center_log).sum(0, keepdim=True)
+        centers = 0.5 * values[..., None] * (center_log - center_mean)
+        precision_mean = (probability * squared).sum(0, keepdim=True)
+        widths = 0.5 * values * (precision_mean - squared)
+        return values, centers, widths

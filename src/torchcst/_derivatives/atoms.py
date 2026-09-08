@@ -24,6 +24,8 @@ class AtomDerivatives:
         materialize_atoms: MaterializeAtoms,
         *,
         factor_atoms: FactorAtoms | None = None,
+        tangent_backend=None,
+        tangent_modules=(),
     ) -> None:
         if not isinstance(atoms, Atoms):
             raise TypeError("atoms must be an Atoms instance")
@@ -34,6 +36,20 @@ class AtomDerivatives:
         self.atoms = atoms
         self._materialize_atoms = materialize_atoms
         self.factor_atoms = factor_atoms
+        self._tangent_backend = tangent_backend
+        self._tangent_modules = tangent_modules
+
+    def tangent_ops(self, *, backend="auto", atom_tile=32):
+        """Bind first-order operations; prepare accepts an ordinary parameter tensor."""
+        from .tangent_ops import TangentOps
+
+        return TangentOps(
+            self,
+            backend=backend,
+            atom_tile=atom_tile,
+            specialized=self._tangent_backend,
+            modules=self._tangent_modules,
+        )
 
     @property
     def parameters(self) -> tuple[nn.Parameter]:
