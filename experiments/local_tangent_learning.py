@@ -21,6 +21,10 @@ from experiments.trust_pcg_scaling import TimedAdam, diagnostics, memory
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--method", choices=("cst", "cst-adam", "dense-adam"), default="cst"
+    )
+    parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -54,31 +58,41 @@ def main():
         8192, generator=torch.Generator().manual_seed(args.seed + 1)
     )
     config = ExperimentConfig(seed=args.seed, atoms=args.atoms)
-    model = build_model(config, device)
+    lr = args.lr if args.lr is not None else (0.05 if args.method == "cst" else 0.001)
+    if args.method == "dense-adam":
+        torch.manual_seed(args.seed)
+        model = torch.nn.Linear(784, 10, bias=False).to(device)
+    else:
+        model = build_model(config, device)
     initial_hash = hashlib.sha256(
-        model.atoms.p.detach().cpu().numpy().tobytes()
+        b"".join(p.detach().cpu().numpy().tobytes() for p in model.parameters())
     ).hexdigest()
     batch_hash = hashlib.sha256(permutation.numpy().tobytes()).hexdigest()
     x, y, xt, yt, permutation = (v.to(device) for v in (x, y, xt, yt, permutation))
-    optimizer = TimedAdam(
-        model,
-        lr=0.05,
-        betas=(0.9, 0.99),
-        trust_radius=0.25,
-        second_moment="separable",
-        device_execution=True,
-        recompression="pcg",
-        recompression_max_iter=1024,
-        recompression_rtol=1e-5,
-        first_moment_damping=0.01,
-        update_approximation=args.approximation,
-        update_solver=args.solver,
-        update_basis_size=args.basis_size,
-        recompression_action=args.recompression_action,
-        update_rtol=1e-5,
-    )
-    optimizer.solve_start = torch.cuda.Event(enable_timing=True)
-    optimizer.solve_end = torch.cuda.Event(enable_timing=True)
+    if args.method == "cst":
+        optimizer = TimedAdam(
+            model,
+            lr=lr,
+            betas=(0.9, 0.99),
+            trust_radius=0.25,
+            second_moment="separable",
+            device_execution=True,
+            recompression="pcg",
+            recompression_max_iter=1024,
+            recompression_rtol=1e-5,
+            first_moment_damping=0.01,
+            update_approximation=args.approximation,
+            update_solver=args.solver,
+            update_basis_size=args.basis_size,
+            recompression_action=args.recompression_action,
+            update_rtol=1e-5,
+        )
+        optimizer.solve_start = torch.cuda.Event(enable_timing=True)
+        optimizer.solve_end = torch.cuda.Event(enable_timing=True)
+    else:
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=lr, betas=(0.9, 0.99), eps=1e-8, foreach=True
+        )
     root = Path(__file__).resolve().parents[1]
     sources = sorted((root / "src").rglob("*.py")) + sorted(
         (root / "src").rglob("*.cpp")
@@ -94,7 +108,7 @@ def main():
             k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()
         },
         "protocol": {
-            "lr": 0.05,
+            "lr": lr,
             "betas": [0.9, 0.99],
             "radius": 0.25,
             "damping": 0.01,
@@ -111,6 +125,7 @@ def main():
             str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sources
         },
+        "parameter_count": sum(p.numel() for p in model.parameters()),
         "torch": torch.__version__,
         "gpu": torch.cuda.get_device_name(),
         "rows": [],
@@ -188,15 +203,24 @@ def main():
             row = {
                 "step": step + 1,
                 "seconds": elapsed,
-                "update_ms": optimizer.solve_start.elapsed_time(optimizer.solve_end),
+                "update_ms": optimizer.solve_start.elapsed_time(optimizer.solve_end)
+                if args.method == "cst"
+                else None,
                 "memory": memory(),
                 "train_loss": loss.item(),
-                "update": diagnostics(optimizer.last_step.site_results[0]),
-                "compression": diagnostics(optimizer.last_step.compression_results[0]),
+                "update": diagnostics(optimizer.last_step.site_results[0])
+                if args.method == "cst"
+                else None,
+                "compression": diagnostics(optimizer.last_step.compression_results[0])
+                if args.method == "cst"
+                else None,
             }
             report["rows"].append(row)
-            optimizer.check_errors()
-            if not row["update"]["converged"]:
+            if args.method == "cst":
+                optimizer.check_errors()
+            if not torch.isfinite(loss).item():
+                raise RuntimeError("non-finite training loss")
+            if args.method == "cst" and not row["update"]["converged"]:
                 raise RuntimeError("update solver reported non-convergence")
             row["passed"] = True
             due = (
@@ -215,8 +239,10 @@ def main():
             report["warm_median_ms"] = (
                 statistics.median(r["seconds"] for r in warm) * 1000
             )
-            report["warm_update_median_ms"] = statistics.median(
-                r["update_ms"] for r in warm
+            report["warm_update_median_ms"] = (
+                statistics.median(r["update_ms"] for r in warm)
+                if args.method == "cst"
+                else None
             )
             report["warm_peak_allocated_mib"] = max(
                 r["memory"]["peak_allocated_mib"] for r in warm
