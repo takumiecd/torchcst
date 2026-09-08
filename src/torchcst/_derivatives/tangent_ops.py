@@ -45,6 +45,7 @@ class TangentOps:
         specialized=None,
         modules=(),
         execution="eager",
+        gram_action="pair",
     ):
         if backend not in ("auto", "specialized", "factor_autograd", "reference"):
             raise ValueError("unknown tangent backend")
@@ -76,6 +77,11 @@ class TangentOps:
             raise ValueError(
                 "Triton execution requires factorized CUDA float32/float64 parameters"
             )
+        if gram_action not in ("pair", "jvp_vjp"):
+            raise ValueError("gram_action must be pair or jvp_vjp")
+        if gram_action == "jvp_vjp" and backend == "reference":
+            raise ValueError("jvp_vjp requires factorized tangents")
+        self.gram_action = gram_action
         self.execution = execution
         self.backend = backend
         self.atom_tile = atom_tile
@@ -251,6 +257,8 @@ class PreparedFactors(_Prepared):
         source._vector(x)
         if not isinstance(source, PreparedFactors):
             raise TypeError("fast cross action requires two factorized preparations")
+        if getattr(self._ops, "gram_action", "pair") == "jvp_vjp":
+            return self._stream_cross(source, x, metric=metric)
         if self._ops.execution == "triton":
             from .tangent_triton import cross
 
@@ -292,7 +300,31 @@ class PreparedFactors(_Prepared):
                 result[sl].add_(value, alpha=scale)
         return result
 
+    def _stream_cross(self, source, x, *, metric=None, active=None):
+        """J_target.T D J_source x with at most 16 visible rows in scratch."""
+        row = self._v.new_ones(self._v.shape[1])
+        column = self._u.new_ones(self._u.shape[1])
+        eps = 0.0
+        if metric is not None:
+            row, column, eps = metric.separable_weights()
+        if self._ops.execution == "triton":
+            from .tangent_triton import metric_action
+
+            return metric_action(self, x, row, column, eps, 1.0, active, source=source)
+        a, b = source.factor_jvp(x)
+        result = torch.zeros_like(x)
+        for start in range(0, self._v.shape[1], 16):
+            sl = slice(start, start + 16)
+            force = b[:, sl].T @ source._u + source._v[:, sl].T @ a
+            force = force * (row[sl, None] * column[None, :] + eps)
+            result += torch.einsum("kiq,ki->kq", self._du, self._v[:, sl] @ force)
+            result += torch.einsum("koq,ko->kq", self._dv[:, sl], self._u @ force.T)
+        return result if active is None else torch.where(active, result, 0)
+
     def _device_gram(self, x, *, damping=0.0, active=None):
+        if getattr(self._ops, "gram_action", "pair") == "jvp_vjp":
+            result = self._stream_cross(self, x, active=active) + damping * x
+            return result if active is None else torch.where(active, result, 0)
         if self._ops.execution == "triton":
             from .tangent_triton import cross
 

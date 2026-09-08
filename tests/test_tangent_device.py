@@ -44,15 +44,16 @@ def test_tensor_secular_matches_reference_with_null_direction(radius):
     assert shift >= 0
 
 
+@pytest.mark.parametrize("action", ["pair", "jvp_vjp"])
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_tensor_pcg_matches_damped_oracle(device, dtype):
+def test_tensor_pcg_matches_damped_oracle(device, dtype, action):
     if device == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA required")
     site = site_for("bandwidth", dtype).to(device)
     p = site.atoms.p.detach().clone()
     ops = site.cst_derivatives().tangent_ops(
-        execution="triton" if device == "cuda" else "eager"
+        execution="triton" if device == "cuda" else "eager", gram_action=action
     )
     prepared = ops.prepare(p)
     rhs = torch.randn_like(p)

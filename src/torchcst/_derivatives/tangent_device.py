@@ -49,6 +49,14 @@ def advance(alpha, residual, direction, ad, rz, active, healthy, count, norm, rt
     return alpha, residual, working, healthy, count + active.to(count.dtype), candidate
 
 
+def precondition(residual, inverse, lowrank=None, weights=None):
+    if lowrank is None:
+        return (inverse @ residual[..., None]).squeeze(-1)
+    from .tangent_nystrom import apply
+
+    return apply(residual, lowrank, weights)
+
+
 def finish_iteration(
     rhs,
     alpha,
@@ -62,11 +70,13 @@ def finish_iteration(
     candidate,
     norm,
     rtol,
+    lowrank=None,
+    weights=None,
 ):
     exact = rhs - aa
     residual = torch.where(candidate, exact, residual)
     converged = candidate & (dot(exact, exact).sqrt() <= rtol * norm)
-    z = (inverse @ residual[..., None]).squeeze(-1)
+    z = precondition(residual, inverse, lowrank, weights)
     rz_next = dot(residual, z)
     active = active & healthy & ~converged
     beta = torch.where(
@@ -81,17 +91,22 @@ def _compiled(function):
     return torch.compile(function, fullgraph=True, dynamic=False)
 
 
-def pcg(prepared, rhs, *, damping, max_iter, rtol, compiled=False):
+def pcg(prepared, rhs, *, damping, max_iter, rtol, compiled=False, nystrom=None):
     inverse_fn = _compiled(block_inverse) if compiled else block_inverse
     step_fn = _compiled(advance) if compiled else advance
     finish_fn = _compiled(finish_iteration) if compiled else finish_iteration
-    inverse, healthy = inverse_fn(prepared.gram_blocks(), damping)
+    lowrank, weights = None, None
+    if nystrom is None:
+        inverse, healthy = inverse_fn(prepared.gram_blocks(), damping)
+    else:
+        lowrank, weights, healthy = nystrom
+        inverse = None
     healthy = healthy & torch.isfinite(rhs).all()
     norm = dot(rhs, rhs).sqrt()
     active = healthy & (norm > 0)
     alpha = torch.zeros_like(rhs)
     residual = rhs.clone()
-    direction = (inverse @ residual[..., None]).squeeze(-1)
+    direction = precondition(residual, inverse, lowrank, weights)
     direction = torch.where(active, direction, 0)
     rz = dot(residual, direction)
     count = torch.zeros((), device=rhs.device, dtype=torch.int32)
@@ -114,6 +129,8 @@ def pcg(prepared, rhs, *, damping, max_iter, rtol, compiled=False):
             candidate,
             norm,
             rtol,
+            lowrank,
+            weights,
         )
     true_residual = rhs - prepared._device_gram(alpha, damping=damping)
     relative = dot(true_residual, true_residual).sqrt() / norm.clamp_min(1e-300)
@@ -127,7 +144,7 @@ def pcg(prepared, rhs, *, damping, max_iter, rtol, compiled=False):
 
 
 @cache
-def _runner(damping, max_iter, rtol):
+def _runner(damping, max_iter, rtol, gram_action):
     # Bind no changing parameter/factor values: every replay receives fresh tensors.
     def run(point, u, v, du, dv, rhs):
         from types import SimpleNamespace
@@ -135,7 +152,9 @@ def _runner(damping, max_iter, rtol):
         from .tangent_ops import PreparedFactors
 
         prepared = PreparedFactors(
-            SimpleNamespace(backend="specialized", execution="triton"),
+            SimpleNamespace(
+                backend="specialized", execution="triton", gram_action=gram_action
+            ),
             point,
             (u, v, du, dv),
         )
@@ -148,7 +167,7 @@ def _runner(damping, max_iter, rtol):
 
 def solve(prepared, rhs, *, damping, max_iter, rtol):
     if rhs.is_cuda:
-        return _runner(damping, max_iter, rtol)(
-            prepared._point, prepared._u, prepared._v, prepared._du, prepared._dv, rhs
-        )
+        return _runner(
+            damping, max_iter, rtol, getattr(prepared._ops, "gram_action", "pair")
+        )(prepared._point, prepared._u, prepared._v, prepared._du, prepared._dv, rhs)
     return pcg(prepared, rhs, damping=damping, max_iter=max_iter, rtol=rtol)

@@ -24,13 +24,14 @@ class CSTAdam(_ModelOptimizer):
             self._tangent_operators[site] = site.cst_derivatives().tangent_ops(
                 backend=c.tangent_backend if c.factored_geometry else "reference",
                 atom_tile=c.tangent_atom_tile,
+                gram_action=c.recompression_action,
                 execution="triton"
                 if c.device_execution and site.atoms.p.is_cuda
                 else "eager",
             )
         ops = self._tangent_operators[site]
-        if c.update_solver == "pcg" and ops.backend == "reference":
-            raise ValueError("PCG update requires a factorized tangent backend")
+        if c.update_solver in ("pcg", "krylov") and ops.backend == "reference":
+            raise ValueError("Matrix-free update requires a factorized tangent backend")
         return TangentGeometry(
             ops.derivatives,
             factored=c.factored_geometry,
@@ -103,6 +104,19 @@ class CSTAdam(_ModelOptimizer):
     def _solve(self, context, expanded):
         from .quadratic import TangentProblem, solve_tangent
 
+        if self.cst_config.update_solver == "krylov":
+            from ._trust_krylov import solve
+            from .quadratic import MatrixFreeTangentProblem
+
+            c = self.cst_config
+            return solve(
+                MatrixFreeTangentProblem(context, expanded, learning_rate=c.lr),
+                radius=c.trust_radius,
+                basis_size=c.update_basis_size,
+                basis_memory_mb=c.update_basis_memory_mb,
+                check_interval=c.update_check_interval,
+                rtol=c.update_rtol,
+            )
         if self.cst_config.update_approximation != "full":
             from ._local_tangent import solve
             from .quadratic import MatrixFreeTangentProblem

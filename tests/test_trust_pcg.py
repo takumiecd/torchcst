@@ -140,8 +140,9 @@ def test_budget_failure_is_explicit_and_deferred():
     assert not result.converged and not torch.stack(checks).all()
 
 
+@pytest.mark.parametrize("solver", ["pcg", "krylov"])
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
-def test_optimizer_matrix_free_and_atomic_failure(device, monkeypatch):
+def test_optimizer_matrix_free_and_atomic_failure(device, monkeypatch, solver):
     if device == "cuda" and not torch.cuda.is_available():
         pytest.skip("CUDA required")
     from torchcst._derivatives.tangent import TangentGeometry
@@ -158,7 +159,7 @@ def test_optimizer_matrix_free_and_atomic_failure(device, monkeypatch):
     opt = CSTAdam(
         site,
         device_execution=True,
-        update_solver="pcg",
+        update_solver=solver,
         update_max_iter=48,
         update_shift_steps=36,
         update_rtol=1e-7,
@@ -249,12 +250,14 @@ def test_pcg_update_checkpoint_resume():
     torch.testing.assert_close(site.atoms.p, restored.atoms.p, atol=0, rtol=0)
 
 
-def test_insufficient_update_budget_suppresses_joint_commit():
+@pytest.mark.parametrize("solver", ["pcg", "krylov"])
+def test_insufficient_update_budget_suppresses_joint_commit(solver):
     site = site_for("amplitude")
     opt = CSTAdam(
         site,
         device_execution=True,
-        update_solver="pcg",
+        update_solver=solver,
+        update_basis_size=1,
         update_max_iter=1,
         update_shift_steps=1,
         update_rtol=1e-12,

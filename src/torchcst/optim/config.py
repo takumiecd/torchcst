@@ -30,21 +30,30 @@ class FirstOrderAdamConfig:
     )
     tangent_atom_tile: int = 32
     recompression: Literal["direct", "pcg"] = "direct"
+    recompression_action: Literal["pair", "jvp_vjp"] = "pair"
     recompression_max_iter: int = 64
     recompression_rtol: float = 1e-5
 
     device_execution: bool = False
-    update_solver: Literal["spectral", "pcg"] = "spectral"
+    update_solver: Literal["spectral", "pcg", "krylov"] = "spectral"
     update_approximation: Literal["full", "diagonal", "atom_block"] = "full"
     update_max_iter: int = 512
     update_shift_steps: int = 32
     update_rtol: float = 1e-5
+    update_basis_size: int = 128
+    update_basis_memory_mb: float = 64.0
+    update_check_interval: int = 32
 
     def __post_init__(self) -> None:
         from torchcst._derivatives.tangent_solve import validate_pcg
 
-        if self.update_solver not in ("spectral", "pcg"):
-            raise ValueError("update_solver must be spectral or pcg")
+        if self.update_solver not in ("spectral", "pcg", "krylov"):
+            raise ValueError("update_solver must be spectral, pcg or krylov")
+        if (
+            not math.isfinite(self.update_basis_memory_mb)
+            or self.update_basis_memory_mb <= 0
+        ):
+            raise ValueError("update_basis_memory_mb must be finite and positive")
         if self.update_approximation not in ("full", "diagonal", "atom_block"):
             raise ValueError(
                 "update_approximation must be full, diagonal or atom_block"
@@ -59,19 +68,24 @@ class FirstOrderAdamConfig:
                 "local update approximations require spectral solver, separable "
                 "moments and factorized tangents"
             )
-        for name in ("update_max_iter", "update_shift_steps"):
+        for name in (
+            "update_max_iter",
+            "update_shift_steps",
+            "update_basis_size",
+            "update_check_interval",
+        ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
         if not math.isfinite(self.update_rtol) or not 0 < self.update_rtol < 1:
             raise ValueError("update_rtol must be finite and between zero and one")
-        if self.update_solver == "pcg" and (
+        if self.update_solver in ("pcg", "krylov") and (
             self.second_moment != "separable"
             or not self.factored_geometry
             or self.tangent_backend == "reference"
         ):
             raise ValueError(
-                "PCG update requires separable moments and factorized tangents"
+                "Matrix-free update requires separable moments and factorized tangents"
             )
 
         if not isinstance(self.device_execution, bool):
@@ -106,6 +120,16 @@ class FirstOrderAdamConfig:
             or self.tangent_atom_tile < 1
         ):
             raise ValueError("tangent_atom_tile must be a positive integer")
+        if self.recompression_action not in ("pair", "jvp_vjp"):
+            raise ValueError("recompression_action must be pair or jvp_vjp")
+        if self.recompression_action == "jvp_vjp" and (
+            self.recompression != "pcg"
+            or not self.factored_geometry
+            or self.tangent_backend == "reference"
+        ):
+            raise ValueError(
+                "jvp_vjp recompression requires PCG and factorized tangents"
+            )
         if self.recompression not in ("direct", "pcg"):
             raise ValueError("recompression must be direct or pcg")
         validate_pcg(

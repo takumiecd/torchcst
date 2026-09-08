@@ -1158,3 +1158,28 @@ tests. Each API segment must remain synchronized with the implementation.
 ## License
 
 See [`LICENSE`](LICENSE).
+
+### Retained-basis update solver
+
+`CSTAdam(..., update_solver="krylov")` restricts the full first-order trust
+problem to a reorthogonalized symmetric Krylov basis. It retains all cross-atom
+terms and the Euclidean trust radius. Shift searches reuse the projected matrix.
+`update_basis_size=128`, `update_check_interval=32` and
+`update_basis_memory_mb=64.0` control the search. The memory limit covers only
+the two persistent FP64 basis/image arrays, not factors, reduced matrices,
+transient tensors or CUDA graph caches. A fresh full-operator KKT check on the
+returned parameter-dtype displacement must pass `update_rtol`; exhausted bases
+fail explicitly and suppress the optimizer commit. There is no dense fallback.
+CUDA uses a fixed schedule with masked actions after convergence; reported
+iterations/evaluations count active work, not scheduled kernel launches.
+The default remains `spectral`, which is faster for small tested problems.
+
+`recompression="pcg", recompression_action="jvp_vjp"` selects streamed
+JVP→VJP products for both recompression and cross-frame momentum transport.
+It computes the complete `J_current.T @ J_previous @ x`, with at most 16
+visible rows in scratch, without atom-pair Gram construction. Factor directions
+still need O(K*(I+O)) storage. The existing `"pair"` action remains the default;
+which contraction is faster depends on atom count and visible dimensions.
+Damping, the full residual criterion and moment definitions are unchanged.
+The bound derivative API exposes the same selection as
+`site.cst_derivatives().tangent_ops(gram_action="jvp_vjp")`.

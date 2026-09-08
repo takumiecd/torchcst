@@ -356,19 +356,20 @@ def _metric_pullback(
     tl.store(Y + k * Q + q, result)
 
 
-def metric_action(prepared, x, row, column, eps, rate, active=None):
+def metric_action(prepared, x, row, column, eps, rate, active=None, *, source=None):
     """Stream bounded visible row tiles: JVP, diagonal metric, then VJP.
 
     Arithmetic is O(K*q*I*O), avoiding atom-pair contractions for each Krylov
     iteration. Scratch is two factor directions plus at most 16 visible rows.
     """
     p = prepared
+    source = p if source is None else source
     k, i = p._u.shape
     o, q = p._v.shape[1], x.shape[1]
     a, b, result = torch.empty_like(p._u), torch.empty_like(p._v), torch.empty_like(x)
     _direction[(tr.cdiv(k * max(i, o), 256),)](
-        p._du,
-        p._dv,
+        source._du,
+        source._dv,
         x,
         a,
         b,
@@ -385,8 +386,8 @@ def metric_action(prepared, x, row, column, eps, rate, active=None):
         rows = min(16, o - start)
         force = torch.empty((rows, i), device=x.device, dtype=x.dtype)
         _metric_force[(tr.cdiv(i, 64), rows)](
-            p._u,
-            p._v,
+            source._u,
+            source._v,
             a,
             b,
             row,

@@ -36,7 +36,7 @@ def rotate(matrix, vectors, partner):
 
 @cache
 def _rotation():
-    return torch.compile(rotate, fullgraph=True, dynamic=False)
+    return torch.compile(rotate, fullgraph=True, dynamic=True)
 
 
 def eigensystems(blocks, schedule):
