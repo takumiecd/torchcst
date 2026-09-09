@@ -272,6 +272,7 @@ class LocalAdamConfig:
     iterative solver, or cross-atom moment coupling is used.
     """
 
+    whitening: Literal["eigen", "cholesky"] = "eigen"
     lr: float = 1e-3
     betas: tuple[float, float] = (0.9, 0.999)
     eps: float = 1e-8
@@ -289,6 +290,8 @@ class LocalAdamConfig:
     device_execution: bool = False
 
     def __post_init__(self):
+        if self.whitening not in ("eigen", "cholesky"):
+            raise ValueError("whitening must be eigen or cholesky")
         # Reuse the common tangent/observation validation without exposing its
         # unrelated solver choices in this configuration.
         FirstOrderAdamConfig(

@@ -10,7 +10,7 @@ from .first_order import _TangentModelOptimizer
 from .moments import MomentSystem
 from .moments.atom_rms import AtomRMSState
 from .moments.tangent import TangentFirstMoment
-from .moments.transported_rms import TransportedParameterRMS
+from .moments.transported_rms import CholeskyParameterRMS, TransportedParameterRMS
 
 
 class CSTLocalAdam(_TangentModelOptimizer):
@@ -44,9 +44,14 @@ class CSTLocalAdam(_TangentModelOptimizer):
 
     def _make_moments(self):
         c = self.cst_config
+        second = (
+            CholeskyParameterRMS(c.betas[1], eps=c.eps, damping=c.first_moment_damping)
+            if c.whitening == "cholesky"
+            else TransportedParameterRMS(c.betas[1], eps=c.eps, rtol=c.tangent_rtol)
+        )
         return MomentSystem(
             first=TangentFirstMoment(c.betas[0], damping=c.first_moment_damping),
-            second=TransportedParameterRMS(c.betas[1], eps=c.eps, rtol=c.tangent_rtol),
+            second=second,
         )
 
     def _solve(self, context, expanded):
@@ -64,7 +69,7 @@ class CSTLocalAdam(_TangentModelOptimizer):
 
     def _moment_contract(self):
         c = self.cst_config
-        return {
+        contract = {
             "betas": c.betas,
             "eps": c.eps,
             "first_moment_damping": c.first_moment_damping,
@@ -72,6 +77,12 @@ class CSTLocalAdam(_TangentModelOptimizer):
             "tangent_rtol": c.tangent_rtol,
             "second_moment": "transported_parameter_outer_product",
         }
+
+        # Keep existing eigen checkpoints compatible. A changed coordinate
+        # convention must never silently reinterpret the stored C and basis.
+        if c.whitening != "eigen":
+            contract["whitening"] = c.whitening
+        return contract
 
     @classmethod
     def _map_state(cls, value, *, clone=False, reference=None):
