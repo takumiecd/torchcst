@@ -98,3 +98,5 @@ python -m experiments.summarize_parameter_rms output/parameter-rms output/dense-
 ```
 
 [各seed・全評価checkpoint・到達時間・ソースhash](parameter-rms-results.json)。
+
+[続く実験：atom内4×4二次履歴の移送](transported-parameter-rms.ja.md)。
