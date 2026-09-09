@@ -61,7 +61,7 @@ class ParameterSquareEMA(SecondMomentComponent):
         return expanded.pending_state
 
 
-def optimizer_class(base, mode):
+def optimizer_class(base, mode, *, no_trust=False, update_damping=0.01):
     class ParameterAdam(base):
         def _make_geometry(self, site):
             geometry = super()._make_geometry(site)
@@ -90,8 +90,38 @@ def optimizer_class(base, mode):
                 second=second,
             )
 
+        def _validate_solve(self, result, context):
+            if not no_trust:
+                return super()._validate_solve(result, context)
+            from torchcst._runtime.validation import require
+
+            d = result.displacement
+            point = context.current_point
+            if (
+                d.shape != point.shape
+                or d.dtype != point.dtype
+                or d.device != point.device
+            ):
+                raise ValueError("update does not match parameter shape/dtype/device")
+            require(
+                torch.isfinite(d).all(),
+                "non-finite unconstrained update",
+                FloatingPointError,
+            )
+
         def _solve(self, context, expanded):
             self.solve_start.record()
+            if no_trust:
+                from experiments.unconstrained_update import solve as direct_update
+
+                result = direct_update(
+                    expanded.second.metric.blocks,
+                    expanded.first.corrected.constant,
+                    self.cst_config.lr,
+                    update_damping,
+                )
+                self.solve_end.record()
+                return result
             if mode in ("transported_block", "local_both"):
                 blocks = expanded.second.metric.blocks / self.cst_config.lr
                 problem = SimpleNamespace(

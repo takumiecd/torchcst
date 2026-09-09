@@ -26,6 +26,8 @@ def main():
     )
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--stage-timing", action="store_true")
+    parser.add_argument("--no-trust", action="store_true")
+    parser.add_argument("--update-damping", type=float, default=0.01)
     parser.add_argument(
         "--parameter-rms",
         choices=("raw", "alpha_diagonal", "transported_block", "local_both"),
@@ -52,6 +54,12 @@ def main():
         parser.error("invalid step/evaluation budget")
     if any(not 0 < target <= 1 for target in args.targets):
         parser.error("targets must lie in (0, 1]")
+    if args.no_trust and (
+        args.parameter_rms != "local_both" or not 0 < args.update_damping < float("inf")
+    ):
+        parser.error(
+            "--no-trust requires local_both and positive finite update damping"
+        )
     torch.set_num_threads(1)
     torch.set_float32_matmul_precision("highest")
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -79,7 +87,12 @@ def main():
         if args.parameter_rms:
             from experiments.parameter_rms import optimizer_class
 
-            optimizer_type = optimizer_class(TimedAdam, args.parameter_rms)
+            optimizer_type = optimizer_class(
+                TimedAdam,
+                args.parameter_rms,
+                no_trust=args.no_trust,
+                update_damping=args.update_damping,
+            )
         optimizer = optimizer_type(
             model,
             lr=lr,
@@ -124,6 +137,7 @@ def main():
         root / "experiments/parameter_rms.py",
         root / "experiments/transported_parameter_rms.py",
         root / "experiments/local_first_moment.py",
+        root / "experiments/unconstrained_update.py",
     ]
     report = {
         "config": {
@@ -236,6 +250,11 @@ def main():
                 else None,
                 "memory": memory(),
                 "train_loss": loss.item(),
+                "displacement_norm": float(
+                    optimizer.last_step.site_results[0].displacement.norm()
+                )
+                if args.method == "cst"
+                else None,
                 "update": diagnostics(optimizer.last_step.site_results[0])
                 if args.method == "cst"
                 else None,
