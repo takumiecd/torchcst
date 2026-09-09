@@ -2,7 +2,10 @@ from types import SimpleNamespace
 
 import torch
 
-from experiments.local_first_moment import pullback, solve_blocks
+from torchcst._derivatives.local_solve import solve_blocks
+from torchcst._derivatives.local_tangent import AtomLocalTangentGeometry
+
+pullback = AtomLocalTangentGeometry.pullback_from_frame
 
 
 def test_batched_direct_solve_matches_block_diagonal_dense_oracle():

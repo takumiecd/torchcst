@@ -14,7 +14,12 @@ from torchcst._runtime.validation import device_checks, require
 from torchcst.nn import CSTLinear
 
 from .atom_grad import ImplicitLinearAtomGrad
-from .config import AdamWConfig, FirstOrderAdamConfig, SecondOrderAdamConfig
+from .config import (
+    AdamWConfig,
+    FirstOrderAdamConfig,
+    LocalAdamConfig,
+    SecondOrderAdamConfig,
+)
 from .dense import DenseAdamWProposal, FunctionalAdamW
 from .moments import (
     ExpandedMoments,
@@ -60,7 +65,10 @@ class _ModelOptimizer(Optimizer):
         self,
         model: nn.Module,
         *,
-        cst: FirstOrderAdamConfig | SecondOrderAdamConfig | None = None,
+        cst: FirstOrderAdamConfig
+        | LocalAdamConfig
+        | SecondOrderAdamConfig
+        | None = None,
         dense: AdamWConfig | None = None,
         strict: bool = True,
         **options,
@@ -329,6 +337,16 @@ class _ModelOptimizer(Optimizer):
         solve: QuarticSolveResult,
         context: MomentContext,
     ) -> None:
+        self._validate_displacement(solve, context)
+        displacement = solve.displacement
+        norm = torch.linalg.vector_norm(displacement)
+        tolerance = 10.0 * torch.finfo(displacement.dtype).eps
+        require(
+            norm <= self.cst_config.trust_radius * (1.0 + tolerance),
+            "CST displacement exceeds the trust radius",
+        )
+
+    def _validate_displacement(self, solve, context):
         if not isinstance(solve, QuarticSolveResult):
             raise TypeError("CST solver must return a QuarticSolveResult")
         displacement = solve.displacement
@@ -341,12 +359,6 @@ class _ModelOptimizer(Optimizer):
             torch.isfinite(displacement).all(),
             "CST displacement must be finite",
             FloatingPointError,
-        )
-        norm = torch.linalg.vector_norm(displacement)
-        tolerance = 10.0 * torch.finfo(displacement.dtype).eps
-        require(
-            norm <= self.cst_config.trust_radius * (1.0 + tolerance),
-            "CST displacement exceeds the trust radius",
         )
 
     def _build_dense_proposals(self) -> dict[nn.Parameter, DenseAdamWProposal]:

@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import torch
 
-from experiments.transported_parameter_rms import TransportedParameterRMS
 from torchcst.optim.atom_grad import AtomGradientObservation
+from torchcst.optim.moments.transported_rms import TransportedParameterRMS
 
 
 def context(index, jacobians):

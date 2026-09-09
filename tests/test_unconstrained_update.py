@@ -1,6 +1,6 @@
 import torch
 
-from experiments.unconstrained_update import solve
+from torchcst.optim._regularized_update import solve
 
 
 def test_direct_update_matches_regularized_oracle_without_clipping():

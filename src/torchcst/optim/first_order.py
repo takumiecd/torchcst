@@ -5,14 +5,8 @@ from .moments import MomentSystem, SeparableDiagonalSecondMoment
 from .optimizer import _ModelOptimizer
 
 
-class CSTAdam(_ModelOptimizer):
-    """First-order CST Adam with current-tangent moment compression/transport.
-
-    Keyword options construct FirstOrderAdamConfig; alternatively pass cst=.
-    Experimental atom_block/atom_diag RMS differ from diagonal Adam.
-    """
-
-    config_type = FirstOrderAdamConfig
+class _TangentModelOptimizer(_ModelOptimizer):
+    """Shared fixed-tangent configuration and checkpoint validation."""
 
     def _make_geometry(self, site):
         from torchcst._derivatives.tangent import TangentGeometry
@@ -80,6 +74,12 @@ class CSTAdam(_ModelOptimizer):
                 "checkpoint tangent descriptors do not match fixed kernel/chart configuration"
             )
         super().load_state_dict(state_dict)
+
+
+class CSTAdam(_TangentModelOptimizer):
+    """First-order CST Adam with tangent moment transport and a trust region."""
+
+    config_type = FirstOrderAdamConfig
 
     def _make_moments(self):
         from .moments.atom_rms import AtomRMS

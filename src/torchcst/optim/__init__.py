@@ -9,13 +9,19 @@ from .atom_grad import (
     AtomGradRequest,
     ImplicitLinearAtomGrad,
 )
-from .config import AdamWConfig, FirstOrderAdamConfig, SecondOrderAdamConfig
+from .config import (
+    AdamWConfig,
+    FirstOrderAdamConfig,
+    LocalAdamConfig,
+    SecondOrderAdamConfig,
+)
 from .dense import (
     DenseAdamWProposal,
     DenseAdamWState,
     FunctionalAdamW,
 )
 from .first_order import CSTAdam
+from .local import CSTLocalAdam
 from .moments import (
     AcceptedFrameFirstMoment,
     AcceptedFrameFirstMomentState,
@@ -54,6 +60,7 @@ __all__ = [
     "AtomGradientObservation",
     "BallNewton",
     "CSTAdam",
+    "CSTLocalAdam",
     "CSTSecondOrderAdam",
     "CSTStepResult",
     "DenseAdamWProposal",
@@ -68,6 +75,7 @@ __all__ = [
     "FullQuartic",
     "FunctionalAdamW",
     "ImplicitLinearAtomGrad",
+    "LocalAdamConfig",
     "MomentContext",
     "MomentSystem",
     "MomentSystemState",
