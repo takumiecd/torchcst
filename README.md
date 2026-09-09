@@ -570,8 +570,10 @@ this differs from pulling back a dense elementwise squared-gradient EMA.
 
 Set `LocalAdamConfig(whitening="cholesky")` to compare regularized Cholesky
 coordinates against the default `whitening="eigen"`. This forms
-`R + first_moment_damping * I = L @ L.T` and obtains `B = L^{-T}` with a
-triangular solve. It removes spectral direction selection from R's whitening;
+`R + lambda_w * I = L @ L.T` and obtains `B = L^{-T}` with a
+triangular solve. `whitening_damping` sets `lambda_w` independently; its default
+`None` reuses `first_moment_damping` for backward compatibility. It must be
+finite and positive when specified. It removes spectral direction selection from R's whitening;
 the PSD square root of C still uses an eigendecomposition. Positive damping
 makes `J @ B` contractive rather than orthonormal, so this changes history
 attenuation and the update metric, not just execution speed. `tangent_rtol`
