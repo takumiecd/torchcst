@@ -65,15 +65,39 @@ def optimizer_class(base, mode):
     class ParameterAdam(base):
         def _make_moments(self):
             c = self.cst_config
+            if mode == "transported_block":
+                from experiments.transported_parameter_rms import (
+                    TransportedParameterRMS,
+                )
+
+                second = TransportedParameterRMS(
+                    c.betas[1], eps=c.eps, rtol=c.tangent_rtol
+                )
+            else:
+                second = ParameterSquareEMA(
+                    c.betas[1], c.eps, mode, c.first_moment_damping
+                )
             return MomentSystem(
                 first=TangentFirstMoment(c.betas[0], damping=c.first_moment_damping),
-                second=ParameterSquareEMA(
-                    c.betas[1], c.eps, mode, c.first_moment_damping
-                ),
+                second=second,
             )
 
         def _solve(self, context, expanded):
             self.solve_start.record()
+            if mode == "transported_block":
+                blocks = expanded.second.metric.blocks / self.cst_config.lr
+                problem = SimpleNamespace(
+                    linear=expanded.first.corrected.constant,
+                    operator=SimpleNamespace(blocks=lambda: blocks),
+                )
+                result = solve(
+                    problem,
+                    approximation="atom_block",
+                    radius=self.cst_config.trust_radius,
+                    rtol=self.cst_config.update_rtol,
+                )
+                self.solve_end.record()
+                return result
             diagonal = (
                 expanded.second.metric.blocks.diagonal(dim1=-2, dim2=-1).double()
                 / self.cst_config.lr

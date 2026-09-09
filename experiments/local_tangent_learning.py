@@ -26,7 +26,9 @@ def main():
     )
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--stage-timing", action="store_true")
-    parser.add_argument("--parameter-rms", choices=("raw", "alpha_diagonal"))
+    parser.add_argument(
+        "--parameter-rms", choices=("raw", "alpha_diagonal", "transported_block")
+    )
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -119,6 +121,7 @@ def main():
         root / "experiments/accuracy_targets.py",
         root / "experiments/stage_timing.py",
         root / "experiments/parameter_rms.py",
+        root / "experiments/transported_parameter_rms.py",
     ]
     report = {
         "config": {

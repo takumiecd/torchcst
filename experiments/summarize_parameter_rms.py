@@ -9,9 +9,12 @@ from pathlib import Path
 from experiments.accuracy_targets import summarize_targets
 
 
-def summarize(directory, baseline):
+def summarize(directory, baseline, transported=None):
     methods = {}
-    for mode in ("baseline", "raw", "alpha_diagonal"):
+    modes = ["baseline", "raw", "alpha_diagonal"]
+    if transported is not None:
+        modes.append("transported_block")
+    for mode in modes:
         runs = []
         for seed in (17, 29, 43):
             path = (
@@ -19,6 +22,8 @@ def summarize(directory, baseline):
                 if mode == "baseline"
                 else directory / f"{mode}-s{seed}.json"
             )
+            if mode == "transported_block":
+                path = transported / f"{mode}-s{seed}.json"
             r = json.loads(path.read_text())
             assert r["status"] in ("passed", "failed")
             assert r["config"]["steps"] == 512 and r["config"]["eval_every"] == 8
@@ -87,9 +92,10 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("directory", type=Path)
     p.add_argument("baseline", type=Path)
+    p.add_argument("--transported", type=Path)
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
-    result = summarize(a.directory, a.baseline)
+    result = summarize(a.directory, a.baseline, a.transported)
     a.output.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
     for mode, r in result.items():
         print(mode, json.dumps(r["aggregate"]))
