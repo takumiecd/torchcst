@@ -500,6 +500,83 @@ parameter or moment update. The solver and its stopping tolerances are unchanged
 The setup-inclusive CPU benchmark and its limitations are described in
 [the structured quartic report](docs/experiments/quartic-gram.md).
 
+
+## Atom-local Adam without a trust region
+
+`CSTLocalAdam` accepts the same whole-model interface as `CSTAdam` and
+`CSTSecondOrderAdam`. It discovers each `CSTLinear` site and updates ordinary
+trainable parameters, including `nn.Linear`, through the optional dense AdamW
+block in the same coordinated step. Pass the model, not `model.parameters()`.
+
+```python
+from torchcst import CSTLocalAdam, LocalAdamConfig, AdamWConfig
+
+optimizer = CSTLocalAdam(
+    model,
+    cst=LocalAdamConfig(
+        lr=0.05,
+        betas=(0.9, 0.99),
+        first_moment_damping=0.01,
+        update_damping=0.01,
+    ),
+    dense=AdamWConfig(lr=1e-3),
+)
+
+optimizer.zero_grad(set_to_none=True)
+loss = loss_fn(model(inputs), targets)
+loss.backward()
+optimizer.step()
+```
+
+For a model with only CST-owned trainable parameters, omit `dense`. A model
+without any `CSTLinear` should use an ordinary PyTorch optimizer. Existing
+frozen-chart, fixed-layout, and strict parameter-ownership constraints apply.
+The default CST learning rate is `1e-3`; `0.05` above is the tested MNIST setting,
+not a general recommendation. `CSTAdam` retains its existing algorithm.
+
+For each atom, let `R = J_t.T @ J_t`, `S = J_t.T @ J_previous` and let `g` be
+its accumulated parameter gradient. First-moment transport and recompression are
+
+```text
+b       = beta1 * S @ alpha_previous + (1 - beta1) * g
+alpha   = solve(R + first_moment_damping * I, b)
+b_hat   = b / (1 - beta1**step)
+```
+
+Let `B` whiten the active eigenspace of `R`, so `Q = J_t @ B` has orthonormal
+active columns. Eigenvalues at or below `tangent_rtol * max_eigenvalue` are
+excluded. With `T = B.T @ S @ B_previous` and `h = B.T @ g`, the second moment is
+
+```text
+C       = beta2 * T @ C_previous @ T.T + (1 - beta2) * outer(h, h)
+C_hat   = C / (1 - beta2**step)
+A       = B.T @ R
+M       = A.T @ (sqrt_psd(C_hat) + eps * I) @ A
+delta   = solve(M + update_damping * I, -lr * b_hat)
+```
+
+All matrices above are per-atom blocks, with storage proportional to `K*q*q`
+for `K` atoms and `q` coordinates per atom. Local solves use batched Cholesky;
+there is no iterative linear solver, global Gram matrix, or trust-radius
+clipping. Both damping values must be positive. The square root and whitening
+still require small eigendecompositions. Cross-atom history and covariance are
+omitted: information lost to one atom is not handed to another atom. `C` uses
+the parameter dtype; basis and small solve/metric calculations use FP64.
+Parameter gradients and `C` are formed from the accumulated batch gradient;
+this differs from pulling back a dense elementwise squared-gradient EMA.
+
+`state_dict()` / `load_state_dict()` support mixed-model checkpoint continuation,
+including the FP64 transport basis. Save/restore the model weights as well.
+`device_execution=True` defers validity checks and requires factored geometry;
+call `optimizer.check_errors()` at a chosen host boundary. It does not promise
+that every PyTorch eigendecomposition or backend operation avoids synchronization.
+The factorized backend avoids a dense Jacobian; the reference backend is an oracle
+and may materialize one. There are no trust-region options on `LocalAdamConfig`.
+
+This is a public research optimizer. The current evidence is a small MNIST sweep,
+not broad convergence or speed superiority; see [the no-trust experiment](docs/experiments/no-trust.ja.md).
+
+
 ## `CSTAdam`: primary first-order optimizer
 
 `CSTAdam` uses only first derivatives of the represented weight map. It stores
