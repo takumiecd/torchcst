@@ -53,8 +53,17 @@ def summarize(directory):
     medians = {}
     for name in dict.fromkeys(t["variant"] for t in trials):
         good = [t for t in trials if t["variant"] == name and t["status"] == "passed"]
+        at128 = [
+            next(e["accuracy"] for e in t["evaluations"] if e["step"] == 128)
+            for t in trials
+            if t["variant"] == name and any(e["step"] == 128 for e in t["evaluations"])
+        ]
         medians[name] = {
+            "accuracy_at_128": statistics.median(at128) if at128 else None,
             "passed": len(good),
+            "mean_accuracy": statistics.mean(t["accuracy"] for t in good)
+            if good
+            else None,
             **{
                 key: statistics.median(t[key] for t in good) if good else None
                 for key in ("accuracy", "step_ms", "whitening_ms", "peak_mib")
