@@ -124,5 +124,6 @@ def test_mixed_checkpoint_continuation(device, dtype, deferred):
 
 
 def test_invalid_mode_rejected():
+    assert LocalAdamConfig(0.05).lr == 0.05
     with pytest.raises(ValueError, match="whitening"):
         LocalAdamConfig(whitening="unknown")
