@@ -63,9 +63,17 @@ class ParameterSquareEMA(SecondMomentComponent):
 
 def optimizer_class(base, mode):
     class ParameterAdam(base):
+        def _make_geometry(self, site):
+            geometry = super()._make_geometry(site)
+            if mode == "local_both":
+                from experiments.local_first_moment import install
+
+                install(geometry)
+            return geometry
+
         def _make_moments(self):
             c = self.cst_config
-            if mode == "transported_block":
+            if mode in ("transported_block", "local_both"):
                 from experiments.transported_parameter_rms import (
                     TransportedParameterRMS,
                 )
@@ -84,7 +92,7 @@ def optimizer_class(base, mode):
 
         def _solve(self, context, expanded):
             self.solve_start.record()
-            if mode == "transported_block":
+            if mode in ("transported_block", "local_both"):
                 blocks = expanded.second.metric.blocks / self.cst_config.lr
                 problem = SimpleNamespace(
                     linear=expanded.first.corrected.constant,
