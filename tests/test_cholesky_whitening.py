@@ -127,3 +127,40 @@ def test_invalid_mode_rejected():
     assert LocalAdamConfig(0.05).lr == 0.05
     with pytest.raises(ValueError, match="whitening"):
         LocalAdamConfig(whitening="unknown")
+
+
+@pytest.mark.parametrize("damping", [0.0, -1.0, float("nan"), float("inf")])
+def test_whitening_damping_validation(damping):
+    with pytest.raises(ValueError, match="whitening_damping"):
+        LocalAdamConfig(whitening="cholesky", whitening_damping=damping)
+
+
+def test_independent_damping_and_checkpoint_compatibility():
+    default = CSTLocalAdam(model(), whitening="cholesky", dense=AdamWConfig())
+    explicit = CSTLocalAdam(
+        model(), whitening="cholesky", whitening_damping=0.01, dense=AdamWConfig()
+    )
+    explicit.load_state_dict(default.state_dict())
+    smaller = CSTLocalAdam(
+        model(), whitening="cholesky", whitening_damping=1e-6, dense=AdamWConfig()
+    )
+    component = smaller._sites[0].moments
+    assert component.first.damping == 0.01
+    assert component.second.damping == 1e-6
+    with pytest.raises(ValueError, match="contract"):
+        smaller.load_state_dict(default.state_dict())
+    for _ in range(3):
+        step(smaller.model, smaller)
+    restored_model = model()
+    restored_model.load_state_dict(smaller.model.state_dict())
+    resumed = CSTLocalAdam(
+        restored_model,
+        whitening="cholesky",
+        whitening_damping=1e-6,
+        dense=AdamWConfig(),
+    )
+    resumed.load_state_dict(smaller.state_dict())
+    step(smaller.model, smaller)
+    step(resumed.model, resumed)
+    for a, b in zip(smaller.model.parameters(), resumed.model.parameters()):
+        torch.testing.assert_close(a, b, atol=0, rtol=0)

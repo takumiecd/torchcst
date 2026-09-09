@@ -42,10 +42,20 @@ class CSTLocalAdam(_TangentModelOptimizer):
             recompression_rtol=c.solve_rtol,
         )
 
+    def _whitening_damping(self):
+        c = self.cst_config
+        return (
+            c.first_moment_damping
+            if c.whitening_damping is None
+            else c.whitening_damping
+        )
+
     def _make_moments(self):
         c = self.cst_config
         second = (
-            CholeskyParameterRMS(c.betas[1], eps=c.eps, damping=c.first_moment_damping)
+            CholeskyParameterRMS(
+                c.betas[1], eps=c.eps, damping=self._whitening_damping()
+            )
             if c.whitening == "cholesky"
             else TransportedParameterRMS(c.betas[1], eps=c.eps, rtol=c.tangent_rtol)
         )
@@ -82,6 +92,9 @@ class CSTLocalAdam(_TangentModelOptimizer):
         # convention must never silently reinterpret the stored C and basis.
         if c.whitening != "eigen":
             contract["whitening"] = c.whitening
+            damping = self._whitening_damping()
+            if damping != c.first_moment_damping:
+                contract["whitening_damping"] = damping
         return contract
 
     @classmethod

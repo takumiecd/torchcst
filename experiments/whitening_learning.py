@@ -27,6 +27,8 @@ class TimedLocalAdam(CSTLocalAdam):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--whitening", choices=("eigen", "cholesky"), required=True)
+    parser.add_argument("--whitening-damping", type=float, default=None)
+    parser.add_argument("--spectrum", action="store_true")
     parser.add_argument("--lr", type=float, default=0.05)
     parser.add_argument("--stage-timing", action="store_true")
     parser.add_argument("--data", type=Path, required=True)
@@ -69,6 +71,7 @@ def main():
         first_moment_damping=0.01,
         update_damping=0.01,
         whitening=args.whitening,
+        whitening_damping=args.whitening_damping,
     )
     optimizer.solve_start = torch.cuda.Event(enable_timing=True)
     optimizer.solve_end = torch.cuda.Event(enable_timing=True)
@@ -111,6 +114,7 @@ def main():
             "first_moment_damping": 0.01,
             "update_damping": 0.01,
             "whitening": args.whitening,
+            "whitening_damping": optimizer._whitening_damping(),
             "compression": "atom_block_direct",
             "rtol": 1e-5,
             "backend": "factored",
@@ -129,6 +133,7 @@ def main():
         "gpu": torch.cuda.get_device_name(),
         "rows": [],
         "evaluations": [],
+        "spectra": [],
         "status": "running",
     }
 
@@ -143,6 +148,42 @@ def main():
 
     def evaluate(step):
         nonlocal evaluation_seconds
+        if args.spectrum:
+            # Diagnostic only, outside every timed training step, at the
+            # current model point. Never reuse this eigendecomposition to train.
+            spectrum_begin = time.perf_counter()
+            with torch.no_grad():
+                for site in optimizer._sites:
+                    geometry = optimizer._make_geometry(site.module)
+                    point = geometry.current_point()
+                    gram = geometry.cross(point, point, local=True).double()
+                    values = torch.linalg.eigvalsh(
+                        0.5 * (gram + gram.transpose(-1, -2))
+                    )
+                    rho = values.flatten()
+                    lam = optimizer._whitening_damping()
+                    contraction = (rho.clamp_min(0) / (rho.clamp_min(0) + lam)).square()
+                    report["spectra"].append(
+                        {
+                            "step": step,
+                            "site": site.name,
+                            "rho_quantiles": torch.quantile(
+                                rho, rho.new_tensor([0, 0.1, 0.5, 0.9, 1])
+                            )
+                            .cpu()
+                            .tolist(),
+                            "negative_count": int((rho < 0).sum()),
+                            "rho_below_lambda_fraction": float(
+                                (rho < lam).double().mean()
+                            ),
+                            "history_factor_quantiles": torch.quantile(
+                                contraction, rho.new_tensor([0, 0.1, 0.5, 0.9, 1])
+                            )
+                            .cpu()
+                            .tolist(),
+                        }
+                    )
+            evaluation_seconds += time.perf_counter() - spectrum_begin
         begin = time.perf_counter()
         torch.cuda.reset_peak_memory_stats()
         with torch.no_grad():

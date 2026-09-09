@@ -289,10 +289,15 @@ class LocalAdamConfig:
     device_execution: bool = False
 
     whitening: Literal["eigen", "cholesky"] = "eigen"
+    whitening_damping: float | None = None
 
     def __post_init__(self):
         if self.whitening not in ("eigen", "cholesky"):
             raise ValueError("whitening must be eigen or cholesky")
+        if self.whitening_damping is not None and (
+            not math.isfinite(self.whitening_damping) or self.whitening_damping <= 0
+        ):
+            raise ValueError("whitening_damping must be finite and positive or None")
         # Reuse the common tangent/observation validation without exposing its
         # unrelated solver choices in this configuration.
         FirstOrderAdamConfig(
