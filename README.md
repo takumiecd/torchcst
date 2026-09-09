@@ -568,6 +568,16 @@ the parameter dtype; basis and small solve/metric calculations use FP64.
 Parameter gradients and `C` are formed from the accumulated batch gradient;
 this differs from pulling back a dense elementwise squared-gradient EMA.
 
+Set `LocalAdamConfig(whitening="cholesky")` to compare regularized Cholesky
+coordinates against the default `whitening="eigen"`. This forms
+`R + first_moment_damping * I = L @ L.T` and obtains `B = L^{-T}` with a
+triangular solve. It removes spectral direction selection from R's whitening;
+the PSD square root of C still uses an eigendecomposition. Positive damping
+makes `J @ B` contractive rather than orthonormal, so this changes history
+attenuation and the update metric, not just execution speed. `tangent_rtol`
+does not select directions in this mode. Checkpoints cannot switch between
+whitening modes. See [the equations](docs/local-adam-math.ja.md).
+
 `state_dict()` / `load_state_dict()` support mixed-model checkpoint continuation,
 including the FP64 transport basis. Save/restore the model weights as well.
 `device_execution=True` defers validity checks and requires factored geometry;

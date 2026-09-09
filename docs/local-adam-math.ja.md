@@ -1,6 +1,7 @@
 # CSTLocalAdam の数式
 
 2026-09-09。公開実装 `CSTLocalAdam` / `LocalAdamConfig` の定式化。
+第1〜8節は既定の `whitening="eigen"`。Cholesky比較版の差分は第9節。
 atom内で一次モーメントαと二次モーメントCを輸送し、小さい正則化行列を
 直接解く。trust regionは使わない。ここでいう「二次モーメント」は勾配の
 外積EMAであり、重み表現の二次Taylor近似や損失Hessianではない。
@@ -218,3 +219,42 @@ model全体を渡す。CSTLinearは上記の式、通常のLinear等はdense Ada
 - [公開optimizer](../src/torchcst/optim/local.py)
 - [API移植時の検証記録](experiments/local-adam-api.ja.md)
 - [trust regionなしの学習実験](experiments/no-trust.ja.md)
+
+## 9. 正則化Cholesky比較版
+
+`LocalAdamConfig(whitening="cholesky")` では、第3節の固有値分解・閾値除外を
+次に置き換える。$\lambda$ は一次再圧縮と共通の `first_moment_damping`。
+
+$$
+R_t+\lambda I=L_tL_t^\top,\qquad B_t=L_t^{-\top}.
+$$
+
+ここでの $L_t$ はCholesky因子（第5節の平方根計量のLとは別）。実装は
+`solve_triangular(L_t.T, I)` で小さいBを得る。全体Jacobianの逆行列は作らない。
+一次再圧縮と正則化値は共通だが、現時点では分解の計算結果自体は再利用しない。
+第4・5節のT、h、C、A、M、更新式は同じ形を用いる。したがって
+
+$$
+h_t=L_t^{-1}g_t,\qquad
+T_t=L_t^{-1}S_tL_{t-1}^{-\top}
+$$
+
+となる。$\lambda=0$ かつRが正定値ならQは正規直交し、閾値で方向を除外しない
+eigen版との違いは直交基底の選択になる。この条件で更新計量の一致をテストしている。
+公開configでは特異なRも扱うため $\lambda>0$ を必要とする。
+
+正則化すると
+
+$$
+Q_t^\top Q_t=B_t^\top R_tB_t
+=I-\lambda B_t^\top B_t\preceq I
+$$
+
+であり、厳密な白色化ではなく収縮する座標になる。Qの特異値の二乗は
+$\rho_i/(\rho_i+\lambda)$。弱い方向を閾値で切る代わりに連続的に弱める。
+前後でJが変わらなくてもTは一般にIではなく、Cの輸送で追加の減衰が入る。
+従って現在版の単なる等価な高速実装とは扱わない。
+
+Rに対する固有値判定はなくなるが、CのPSD平方根では固有値分解と負固有値の
+ゼロへの切り上げが残る。数値的失敗の検査も残る。これは全処理からの分岐除去ではない。
+`tangent_rtol` はこの方式のBに影響しない。方式の異なるcheckpointの読み込みは拒否する。
