@@ -503,6 +503,9 @@ The setup-inclusive CPU benchmark and its limitations are described in
 
 ## Atom-local Adam without a trust region
 
+The [mathematical specification (Japanese)](docs/local-adam-math.ja.md) records
+the transport equations, coordinate systems, state timing, and approximations.
+
 `CSTLocalAdam` accepts the same whole-model interface as `CSTAdam` and
 `CSTSecondOrderAdam`. It discovers each `CSTLinear` site and updates ordinary
 trainable parameters, including `nn.Linear`, through the optional dense AdamW
