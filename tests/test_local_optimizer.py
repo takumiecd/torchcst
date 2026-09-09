@@ -63,7 +63,9 @@ def step(m, o):
 def test_public_matches_experiment_and_resumes_exactly(device, dtype, deferred):
     a = model(dtype, device)
     b = copy.deepcopy(a)
-    cfg = LocalAdamConfig(lr=0.05, betas=(0.9, 0.99), device_execution=deferred)
+    cfg = LocalAdamConfig(
+        lr=0.05, betas=(0.9, 0.99), whitening="eigen", device_execution=deferred
+    )
     new = CSTLocalAdam(a, cst=cfg, dense=AdamWConfig())
     old_type = optimizer_class(CSTAdam, "local_both", no_trust=True)
     old = old_type(

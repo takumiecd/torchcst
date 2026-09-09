@@ -136,7 +136,9 @@ def test_whitening_damping_validation(damping):
 
 
 def test_independent_damping_and_checkpoint_compatibility():
-    default = CSTLocalAdam(model(), whitening="cholesky", dense=AdamWConfig())
+    default = CSTLocalAdam(
+        model(), whitening="cholesky", whitening_damping=None, dense=AdamWConfig()
+    )
     explicit = CSTLocalAdam(
         model(), whitening="cholesky", whitening_damping=0.01, dense=AdamWConfig()
     )
@@ -164,3 +166,28 @@ def test_independent_damping_and_checkpoint_compatibility():
     step(resumed.model, resumed)
     for a, b in zip(smaller.model.parameters(), resumed.model.parameters()):
         torch.testing.assert_close(a, b, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_default_matches_selected_128_step_configuration(device):
+    a = model(device=device)
+    b = model(device=device)
+    automatic = CSTLocalAdam(a, dense=AdamWConfig())
+    explicit = CSTLocalAdam(
+        b,
+        dense=AdamWConfig(),
+        cst=LocalAdamConfig(
+            lr=0.05,
+            betas=(0.9, 0.99),
+            whitening="cholesky",
+            whitening_damping=1e-4,
+            first_moment_damping=0.01,
+            update_damping=0.01,
+        ),
+    )
+    assert automatic.cst_config == explicit.cst_config
+    for _ in range(4):
+        step(a, automatic)
+        step(b, explicit)
+    for actual, expected in zip(a.parameters(), b.parameters()):
+        torch.testing.assert_close(actual, expected, atol=0, rtol=0)

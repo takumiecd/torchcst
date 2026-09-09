@@ -1,7 +1,9 @@
 # CSTLocalAdam の数式
 
 2026-09-09。公開実装 `CSTLocalAdam` / `LocalAdamConfig` の定式化。
-第1〜8節は既定の `whitening="eigen"`。Cholesky比較版の差分は第9節。
+第1〜8節は旧方式 `whitening="eigen"` の定式化。現在の既定は第9節のCholesky方式。
+選定値はlr=0.05、betas=(0.9,0.99)、whitening_damping=1e-4。
+128 step・3 seedの精度中央値77.00%（平均76.25%）を採用基準とする。
 atom内で一次モーメントαと二次モーメントCを輸送し、小さい正則化行列を
 直接解く。trust regionは使わない。ここでいう「二次モーメント」は勾配の
 外積EMAであり、重み表現の二次Taylor近似や損失Hessianではない。
@@ -203,8 +205,8 @@ model全体を渡す。CSTLinearは上記の式、通常のLinear等はdense Ada
 
 | 記号 | config | 既定値 |
 | --- | --- | --- |
-| $\eta$ | `lr` | `1e-3` |
-| $(\beta_1,\beta_2)$ | `betas` | `(0.9, 0.999)` |
+| $\eta$ | `lr` | `0.05` |
+| $(\beta_1,\beta_2)$ | `betas` | `(0.9, 0.99)` |
 | $\lambda$ | `first_moment_damping` | `1e-2` |
 | $\mu$ | `update_damping` | `1e-2` |
 | $\varepsilon$ | `eps` | `1e-8` |
@@ -225,7 +227,7 @@ model全体を渡す。CSTLinearは上記の式、通常のLinear等はdense Ada
 `LocalAdamConfig(whitening="cholesky")` では、第3節の固有値分解・閾値除外を
 次に置き換える。この節の $\lambda$ は白色化用の正則化を表す。
 `whitening_damping` を指定すると一次の `first_moment_damping` と独立に設定できる。
-既定の `None` は従来どおり一次と同じ値を使う。指定値は有限の正数。
+既定は `1e-4`。明示的に `None` を渡すと従来どおり一次と同じ値を使う。指定値は有限の正数。
 
 $$
 R_t+\lambda I=L_tL_t^\top,\qquad B_t=L_t^{-\top}.
@@ -233,7 +235,7 @@ $$
 
 ここでの $L_t$ はCholesky因子。第5節の平方根計量 $D_t^{(Q)}$ とは別。実装は
 `solve_triangular(L_t.T, I)` で小さいBを得る。全体Jacobianの逆行列は作らない。
-既定では一次再圧縮と正則化値が共通だが、分解の計算結果自体は再利用しない。
+`whitening_damping=None` なら一次再圧縮と正則化値が共通だが、分解の計算結果自体は再利用しない。
 `whitening_damping` を別の値にすれば、分解対象の行列も異なる。
 第4・5節のT、h、C、A、M、更新式は同じ形を用いる。したがって
 
@@ -266,8 +268,8 @@ Rに対する固有値判定はなくなるが、CのPSD平方根では固有値
 
 現在のCholesky版は、無正則化のRからLを作っているわけではない。
 **分解前のRの対角に、白色化用の正則化を加えている。**
-既定では一次モーメントと同じ `first_moment_damping` を使い、
-`whitening_damping` を指定した場合はその値を使う。
+現在の既定は `whitening_damping=1e-4`。明示的な `None` の場合だけ
+一次モーメントと同じ `first_moment_damping` を使う。
 この値を白色化用のepsilonと呼ぶなら、$\varepsilon_R=\lambda$ に相当する。
 
 $$
@@ -282,7 +284,7 @@ $$
 一次再圧縮は上から3行目、白色化基底は4行目のsolveに対応する。
 一次側の $\lambda_\alpha$ は `first_moment_damping`。
 $\varepsilon_R=\lambda_\alpha$ の場合だけ同じ行列になり、現実装はその場合も別々に分解する。
-公開configは $\varepsilon_R>0$ を要求する。既定値と最初の比較実験値は0.01。
+公開configは $\varepsilon_R>0$ を要求する。現在の既定値は1e-4、最初の比較実験値は0.01。
 
 厳密演算でRが半正定値なら、$\widetilde R_t$ の最小固有値は
 $\varepsilon_R$ 以上なので、特異なRにもCholeskyを適用できる。また、
@@ -309,7 +311,7 @@ $$
 | 安定化する場所 | config | 既定値 | 式 |
 | --- | --- | --- | --- |
 | 一次再圧縮のR | `first_moment_damping` | `0.01` | $R+\lambda_\alpha I$ |
-| Cholesky白色化のR | `whitening_damping` | `None`（一次と同値） | $R+\varepsilon_R I$ |
+| Cholesky白色化のR | `whitening_damping` | `1e-4` | $R+\varepsilon_R I$ |
 | Q座標のCの平方根の外側 | `eps` | `1e-8` | $\sqrt{\widehat C}+\varepsilon I$ |
 | 最終更新のparameter計量 | `update_damping` | `0.01` | $M+\mu I$ |
 

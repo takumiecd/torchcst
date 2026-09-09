@@ -272,8 +272,8 @@ class LocalAdamConfig:
     iterative solver, or cross-atom moment coupling is used.
     """
 
-    lr: float = 1e-3
-    betas: tuple[float, float] = (0.9, 0.999)
+    lr: float = 0.05
+    betas: tuple[float, float] = (0.9, 0.99)
     eps: float = 1e-8
     first_moment_damping: float = 1e-2
     update_damping: float = 1e-2
@@ -288,8 +288,8 @@ class LocalAdamConfig:
     tangent_atom_tile: int = 32
     device_execution: bool = False
 
-    whitening: Literal["eigen", "cholesky"] = "eigen"
-    whitening_damping: float | None = None
+    whitening: Literal["eigen", "cholesky"] = "cholesky"
+    whitening_damping: float | None = 1e-4
 
     def __post_init__(self):
         if self.whitening not in ("eigen", "cholesky"):

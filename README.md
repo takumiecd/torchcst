@@ -1,7 +1,7 @@
 # torchcst — fixed-shape continuous operators for PyTorch
 
 > [!WARNING]
-> **Research API.** First-order CST Adam is the primary optimizer; the full
+> **Research API.** `CSTLocalAdam` is the primary optimizer; the full
 > second-order algorithm remains an explicit option. There is intentionally no compatibility promise for earlier
 > `SynapseStore`, structural-policy, or Pullback Adam APIs.
 
@@ -20,11 +20,11 @@ The initial scope is deliberately narrow:
 - an implicit projected Adam optimizer;
 - a primary first-order optimizer with current-tangent moment compression and transport;
 - an optional second-order optimizer retaining the full quartic objective;
-- direct commit of a trust-bounded proposal;
+- regularized direct atom-local updates, with trust-region alternatives;
 - no persistent dense represented-weight moments.
 
 The current optimizer design, equations and memory limits are recorded in
-[the first-order rebuild](docs/first-order-rebuild.ja.md). Earlier second-order
+[the local Adam specification](docs/local-adam-math.ja.md). Earlier second-order
 decisions remain in [the historical decision record](docs/implicit-projected-adam-decisions.ja.md).
 
 ## Basic use
@@ -37,13 +37,11 @@ import torch.nn.functional as F
 
 from torchcst import (
     AdamWConfig,
-    Amplitude,
     AmplitudeBandwidthSeparable,
     Chart,
     CSTLinear,
-    CSTAdam,
+    CSTLocalAdam,
     Gaussian,
-    Separable,
 )
 
 input_chart = Chart.grid((28, 28), trainable=False)
@@ -53,24 +51,17 @@ model = CSTLinear(
     input_chart,
     output_chart,
     atoms=64,
-    kernel=Amplitude(
-        Separable(
-            input_profile=Gaussian(sigma=0.25),
-            output_profile=Gaussian(sigma=0.10),
-        )
+    kernel=AmplitudeBandwidthSeparable(
+        input_profile=Gaussian(sigma=0.25),
+        output_profile=Gaussian(sigma=0.10),
+        tau=0.005,
+        temperature=0.25,
     ),
-    atom_init="balanced",
+    atom_init="uniform",
     backend="auto",
 )
 
-optimizer = CSTAdam(
-    model,
-    lr=0.05,
-    betas=(0.9, 0.99),
-    trust_radius=0.25,
-    second_moment="separable",
-    dense=None,
-)
+optimizer = CSTLocalAdam(model)
 
 for images, labels in loader:
     images = images.flatten(1)
@@ -501,7 +492,7 @@ The setup-inclusive CPU benchmark and its limitations are described in
 [the structured quartic report](docs/experiments/quartic-gram.md).
 
 
-## Atom-local Adam without a trust region
+## `CSTLocalAdam`: default atom-local optimizer
 
 The [mathematical specification (Japanese)](docs/local-adam-math.ja.md) records
 the transport equations, coordinate systems, state timing, and approximations.
@@ -534,8 +525,11 @@ optimizer.step()
 For a model with only CST-owned trainable parameters, omit `dense`. A model
 without any `CSTLinear` should use an ordinary PyTorch optimizer. Existing
 frozen-chart, fixed-layout, and strict parameter-ownership constraints apply.
-The default CST learning rate is `1e-3`; `0.05` above is the tested MNIST setting,
-not a general recommendation. `CSTAdam` retains its existing algorithm.
+The selected defaults are `lr=0.05`, `betas=(0.9, 0.99)`,
+`whitening="cholesky"`, `whitening_damping=1e-4`, and first/update damping `0.01`.
+They match the 77.00% median / 76.25% mean at 128 updates in the three-seed
+MNIST experiment, not a guarantee for other models or data. `CSTAdam` retains
+its existing algorithm as an explicit alternative.
 
 For each atom, let `R = J_t.T @ J_t`, `S = J_t.T @ J_previous` and let `g` be
 its accumulated parameter gradient. First-moment transport and recompression are
@@ -546,9 +540,9 @@ alpha   = solve(R + first_moment_damping * I, b)
 b_hat   = b / (1 - beta1**step)
 ```
 
-Let `B` whiten the active eigenspace of `R`, so `Q = J_t @ B` has orthonormal
-active columns. Eigenvalues at or below `tangent_rtol * max_eigenvalue` are
-excluded. With `T = B.T @ S @ B_previous` and `h = B.T @ g`, the second moment is
+By default, factor `R + whitening_damping * I = L @ L.T` and construct
+`B = L^{-T}` using a triangular solve. With `T = B.T @ S @ B_previous` and
+`h = B.T @ g`, the second moment is
 
 ```text
 C       = beta2 * T @ C_previous @ T.T + (1 - beta2) * outer(h, h)
@@ -561,24 +555,27 @@ delta   = solve(M + update_damping * I, -lr * b_hat)
 All matrices above are per-atom blocks, with storage proportional to `K*q*q`
 for `K` atoms and `q` coordinates per atom. Local solves use batched Cholesky;
 there is no iterative linear solver, global Gram matrix, or trust-radius
-clipping. Both damping values must be positive. The square root and whitening
-still require small eigendecompositions. Cross-atom history and covariance are
+clipping. All damping values must be positive. The C square root still requires
+a small eigendecomposition; default whitening does not. Cross-atom history and covariance are
 omitted: information lost to one atom is not handed to another atom. `C` uses
 the parameter dtype; basis and small solve/metric calculations use FP64.
 Parameter gradients and `C` are formed from the accumulated batch gradient;
 this differs from pulling back a dense elementwise squared-gradient EMA.
 
-Set `LocalAdamConfig(whitening="cholesky")` to compare regularized Cholesky
-coordinates against the default `whitening="eigen"`. This forms
-`R + lambda_w * I = L @ L.T` and obtains `B = L^{-T}` with a
-triangular solve. `whitening_damping` sets `lambda_w` independently; its default
-`None` reuses `first_moment_damping` for backward compatibility. It must be
-finite and positive when specified. It removes spectral direction selection from R's whitening;
-the PSD square root of C still uses an eigendecomposition. Positive damping
-makes `J @ B` contractive rather than orthonormal, so this changes history
-attenuation and the update metric, not just execution speed. `tangent_rtol`
-does not select directions in this mode. Checkpoints cannot switch between
-whitening modes. See [the equations](docs/local-adam-math.ja.md).
+`whitening_damping=1e-4` sets the default whitening regularization independently
+of first-moment recompression. Explicit `None` reuses `first_moment_damping`,
+matching the initial Cholesky implementation. Positive damping makes `J @ B`
+contractive rather than orthonormal. `tangent_rtol` does not select directions
+in Cholesky mode.
+
+Set `whitening="eigen"` for the original active-eigenspace method, which excludes
+small directions using `tangent_rtol`. To resume a checkpoint from the original
+public defaults, explicitly set `lr=1e-3`, `betas=(0.9, 0.999)`, and
+`whitening="eigen"`. For an old Cholesky checkpoint with shared damping, also
+set `whitening_damping=None` and restore its original hyperparameters.
+Checkpoint loading rejects mismatched moment settings rather than reinterpreting
+stored histories. The implementation does not change existing `CSTAdam` or
+`CSTSecondOrderAdam` defaults.
 
 `state_dict()` / `load_state_dict()` support mixed-model checkpoint continuation,
 including the FP64 transport basis. Save/restore the model weights as well.
@@ -592,7 +589,7 @@ This is a public research optimizer. The current evidence is a small MNIST sweep
 not broad convergence or speed superiority; see [the no-trust experiment](docs/experiments/no-trust.ja.md).
 
 
-## `CSTAdam`: primary first-order optimizer
+## `CSTAdam`: full-tangent first-order alternative
 
 `CSTAdam` uses only first derivatives of the represented weight map. It stores
 first-moment coefficients in the pre-update tangent, transports that history
