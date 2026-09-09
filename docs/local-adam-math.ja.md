@@ -128,8 +128,8 @@ $h_th_t^{\top}$ は**累積勾配の外積**で、勾配を観測するたびに
 $$
 \begin{aligned}
 A_t&=B_t^{\top}R_t=Q_t^{\top}J_t,\\
-L_t&=\sqrt{\widehat C_t}_{\mathrm{PSD}}+\varepsilon I,\\
-M_t&=A_t^{\top}L_tA_t,\\
+D_t^{(Q)}&=\sqrt{\widehat C_t}_{\mathrm{PSD}}+\varepsilon I,\\
+M_t&=A_t^{\top}D_t^{(Q)}A_t,\\
 (M_t+\mu I)\Delta\theta_t&=-\eta\widehat b_t,\\
 \theta_{t+1}&=\theta_t+\Delta\theta_t.
 \end{aligned}
@@ -229,7 +229,7 @@ $$
 R_t+\lambda I=L_tL_t^\top,\qquad B_t=L_t^{-\top}.
 $$
 
-ここでの $L_t$ はCholesky因子（第5節の平方根計量のLとは別）。実装は
+ここでの $L_t$ はCholesky因子。第5節の平方根計量 $D_t^{(Q)}$ とは別。実装は
 `solve_triangular(L_t.T, I)` で小さいBを得る。全体Jacobianの逆行列は作らない。
 一次再圧縮と正則化値は共通だが、現時点では分解の計算結果自体は再利用しない。
 第4・5節のT、h、C、A、M、更新式は同じ形を用いる。したがって
@@ -258,3 +258,54 @@ $\rho_i/(\rho_i+\lambda)$。弱い方向を閾値で切る代わりに連続的�
 Rに対する固有値判定はなくなるが、CのPSD平方根では固有値分解と負固有値の
 ゼロへの切り上げが残る。数値的失敗の検査も残る。これは全処理からの分岐除去ではない。
 `tangent_rtol` はこの方式のBに影響しない。方式の異なるcheckpointの読み込みは拒否する。
+
+### 9.1. Lの安定化は分解する前のRに加える
+
+現在のCholesky版は、無正則化のRからLを作っているわけではない。
+**一次モーメントと同じ `first_moment_damping` を、分解前のRの対角に加えている。**
+この値を白色化用のepsilonと呼ぶなら、$\varepsilon_R=\lambda$ に相当する。
+
+$$
+\begin{aligned}
+\widetilde R_t&=\tfrac12(R_t+R_t^\top)+\varepsilon_R I,\\
+L_t&=\operatorname{chol}(\widetilde R_t),\\
+L_tL_t^\top\alpha_t&=b_t,\\
+L_t^\top B_t&=I.
+\end{aligned}
+$$
+
+一次再圧縮は上から3行目、白色化基底は4行目のsolveに対応する。
+同じ行列を使う定式化だが、現実装ではそれぞれで分解を計算する。
+公開configは $\varepsilon_R>0$ を要求し、既定値と今回の比較実験値はともに0.01。
+
+厳密演算でRが半正定値なら、$\widetilde R_t$ の最小固有値は
+$\varepsilon_R$ 以上なので、特異なRにもCholeskyを適用できる。また、
+
+$$
+\|L_t^{-1}\|_2=\|B_t\|_2\leq\frac1{\sqrt{\varepsilon_R}}.
+$$
+
+例えば $R=0$、$\varepsilon_R=0.01$ なら $L=0.1I$、$B=10I$ と有限になる。
+このとき $J=0$ なら $Q=JB=0$ であり、見えない方向が復活するわけではない。
+浮動小数点の丸め誤差まで無条件に保証する式ではなく、実装は分解の成功と有限値を検査する。
+
+Lを作った**後**に $L+\epsilon I$ とする操作とは異なる。
+後者では
+
+$$
+(L+\epsilon I)(L+\epsilon I)^\top
+=LL^\top+\epsilon(L+L^\top)+\epsilon^2I
+$$
+
+となり、元のGramへの単純な対角正則化ではなくなる。さらに、無正則化Rの
+分解自体が失敗する場合を防げない。現在は分解前に加える方式で対応している。
+
+| 安定化する場所 | config | 既定値 | 式 |
+| --- | --- | --- | --- |
+| 一次再圧縮とCholesky白色化のR | `first_moment_damping` | `0.01` | $R+\varepsilon_R I$ |
+| Q座標のCの平方根の外側 | `eps` | `1e-8` | $\sqrt{\widehat C}+\varepsilon I$ |
+| 最終更新のparameter計量 | `update_damping` | `0.01` | $M+\mu I$ |
+
+したがって、APIの `eps` を変えてもLの安定化強度は変わらない。
+現在は `first_moment_damping` を変えると、一次再圧縮とCholesky白色化の両方に作用する。
+この追加正則化は既存の比較実験にも含まれており、今回新しく足したものではない。
