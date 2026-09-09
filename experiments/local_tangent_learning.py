@@ -26,6 +26,7 @@ def main():
     )
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--stage-timing", action="store_true")
+    parser.add_argument("--parameter-rms", choices=("raw", "alpha_diagonal"))
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -71,7 +72,12 @@ def main():
     batch_hash = hashlib.sha256(permutation.numpy().tobytes()).hexdigest()
     x, y, xt, yt, permutation = (v.to(device) for v in (x, y, xt, yt, permutation))
     if args.method == "cst":
-        optimizer = TimedAdam(
+        optimizer_type = TimedAdam
+        if args.parameter_rms:
+            from experiments.parameter_rms import optimizer_class
+
+            optimizer_type = optimizer_class(TimedAdam, args.parameter_rms)
+        optimizer = optimizer_type(
             model,
             lr=lr,
             betas=(0.9, 0.99),
@@ -112,6 +118,7 @@ def main():
         root / "experiments/trust_pcg_scaling.py",
         root / "experiments/accuracy_targets.py",
         root / "experiments/stage_timing.py",
+        root / "experiments/parameter_rms.py",
     ]
     report = {
         "config": {
