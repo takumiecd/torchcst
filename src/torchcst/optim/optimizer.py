@@ -18,6 +18,7 @@ from .config import (
     AdamWConfig,
     FirstOrderAdamConfig,
     LocalAdamConfig,
+    LocalVisibleAdamConfig,
     SecondOrderAdamConfig,
 )
 from .dense import DenseAdamWProposal, FunctionalAdamW
@@ -67,6 +68,7 @@ class _ModelOptimizer(Optimizer):
         *,
         cst: FirstOrderAdamConfig
         | LocalAdamConfig
+        | LocalVisibleAdamConfig
         | SecondOrderAdamConfig
         | None = None,
         dense: AdamWConfig | None = None,

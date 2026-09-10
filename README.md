@@ -481,15 +481,14 @@ approximation; floating-point summation order can still change solver trajectori
 Automatic selection currently requires CPU float32/float64, at most 1,024 monomial
 features, at least four visible entries per feature, and at most 16 million
 factor derivative elements. These are conservative size heuristics, not a
-hardware-specific speed guarantee. A100 measurements improved individual
-evaluations but did not improve complete `FullQuartic` solves, so CUDA currently
-keeps the visible backend under `"auto"`. Explicit `"gram"` supports CUDA and
-bypasses the automatic device and size restrictions.
+hardware-specific speed guarantee. CUDA currently keeps the visible backend
+under `"auto"`; explicit `"gram"` supports CUDA and bypasses the automatic device
+and size restrictions.
 Each problem builds a new step-local Gram matrix; it is never reused after a
 parameter or moment update. The solver and its stopping tolerances are unchanged.
 
 The setup-inclusive CPU benchmark and its limitations are described in
-[the structured quartic report](docs/experiments/quartic-gram.md).
+[the structured quartic report](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/quartic-gram.md).
 
 
 ## `CSTLocalAdam`: default atom-local optimizer
@@ -589,7 +588,49 @@ The factorized backend avoids a dense Jacobian; the reference backend is an orac
 and may materialize one. There are no trust-region options on `LocalAdamConfig`.
 
 This is a public research optimizer. The current evidence is a small MNIST sweep,
-not broad convergence or speed superiority; see [the no-trust experiment](docs/experiments/no-trust.ja.md).
+not broad convergence or speed superiority; see [the no-trust experiment](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/no-trust.ja.md).
+
+
+## `CSTLocalVisibleAdam`: projected dense-diagonal alternative
+
+`CSTLocalVisibleAdam` shares `CSTLocalAdam`'s atom-local first-moment transport
+and unconstrained direct update, but gives the second state a different meaning.
+It requests the exact local blocks
+
+```text
+E[a] = J[a].T @ Diag(visible_gradient**2) @ J[a]
+```
+
+from `AtomGrad`, transports the previous visible operator representative as
+`S @ Gamma @ S.T`, and stores `Gamma` with shape `[K, q, q]`. It omits
+cross-atom second-moment blocks and never stores a whitening basis or dense
+visible second moment. The update metric approximates
+`J.T @ Diag(sqrt(v)) @ J` by the matrix geometric mean of `J.T @ J` and the
+transported raw second-moment block. See the
+[mathematical specification](docs/local-visible-adam-math.ja.md) for the exact
+state equations and approximation boundary.
+
+```python
+from torchcst import (
+    AdamWConfig,
+    CSTLocalVisibleAdam,
+    LocalVisibleAdamConfig,
+)
+
+optimizer = CSTLocalVisibleAdam(
+    model,
+    cst=LocalVisibleAdamConfig(
+        lr=0.05,
+        first_moment_damping=0.01,
+        second_moment_damping=1e-4,
+        update_damping=0.01,
+    ),
+    dense=AdamWConfig(),
+)
+```
+
+This optimizer has a separate checkpoint contract from `CSTLocalAdam`; their
+states cannot be loaded into one another.
 
 
 ## `CSTAdam`: full-tangent first-order alternative
@@ -738,7 +779,8 @@ For standalone prepared actions, pass `execution="triton"` to `tangent_ops`.
 Standalone `prepare` validates immediately, and standalone PCG reads its final
 success flag once. The optimizer defers these checks to its device error latch.
 
-See [A100 timing, transfer counts, and persistent memory measurements](docs/experiments/tangent-device.ja.md).
+See the companion repository's
+[CUDA timing, transfer-count, and persistent-memory measurements](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/tangent-device.ja.md).
 
 ### Matrix-free trust-region updates
 
@@ -802,7 +844,8 @@ budget and inactive graph nodes still launch. This can be slower than spectral
 updates on small problems; it is an explicit memory-oriented option.
 The PCG update does not build or call the native cuSOLVER extension.
 
-See [the matrix-free solver's A100 timings, memory costs, and dense accuracy audit](docs/experiments/trust-pcg.ja.md).
+See the companion repository's
+[matrix-free solver timings, memory costs, and dense accuracy audit](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/trust-pcg.ja.md).
 
 ### Optional diagonal and atom-block updates
 
@@ -848,7 +891,7 @@ PCG-only controls and do not affect these options.
 
 These approximations trade cross-atom coupling for lower update cost; their
 learning accuracy is task-dependent. See the [paired accuracy and timing
-experiment](docs/experiments/local-tangent.ja.md).
+experiment](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/local-tangent.ja.md).
 
 Fixed kernel/profile configuration and chart buffers must remain unchanged for
 the lifetime of an optimizer. Checkpoints now include their tangent descriptors;
@@ -865,7 +908,7 @@ Loading a different algorithm/second-moment definition or incompatible parameter
 error; there is no implicit conversion of old checkpoints.
 
 See [the mathematical design and complete memory accounting](docs/first-order-rebuild.ja.md)
-and [the paired pilot](docs/experiments/tangent-rebuild.md).
+and [the paired pilot](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/tangent-rebuild.md).
 
 ## `CSTSecondOrderAdam`
 
@@ -1042,7 +1085,7 @@ metric. The spectral scalar arithmetic remains float64 on the problem device;
 no lower-precision approximation is enabled. Adaptive Python decisions and
 `torch.linalg.eigh` still synchronize with the CPU. First-use compilation adds
 latency; floating-point fusion can change the optimization trajectory.
-See [the compiled Newton measurements](docs/experiments/compiled-newton.md).
+See [the compiled Newton measurements](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/compiled-newton.md).
 
 `DeviceBFGS(max_iter=30, max_evaluations=150)` is an experimental alternative
 for `SecondOrderAdamConfig(quartic=..., device_execution=True)`. It retains the
@@ -1052,7 +1095,7 @@ updates avoid host synchronization in the tested configuration; compilation,
 initialization, and explicit `optimizer.check_errors()` are outside that scope.
 Its iteration/convergence/boundary diagnostics are device tensors. Check errors
 at an explicit reporting boundary; a failed check latches and disables updates.
-See [device execution](docs/experiments/device-execution.md) for restrictions,
+See [device execution](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/device-execution.md) for restrictions,
 accuracy comparisons, and a training loop without per-step diagnostic reads.
 
 
@@ -1076,7 +1119,7 @@ original quartic and cross-atom terms; only the fixed-budget ray search is
 inexact. It requires a factor-capable kernel and uses the existing separable
 metric. Floating-point contraction order changes, so learning trajectories can
 differ even when derivative-oracle tests pass. The default remains unchanged.
-See [compact derivative measurements](docs/experiments/factored-contractions.md).
+See [compact derivative measurements](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/factored-contractions.md).
 
 With explicit positive `first_moment_damping`, `gram_solver="cholesky"` opts
 into a faster device solve for the damped compression system. For example,
@@ -1084,7 +1127,7 @@ add `gram_solver="cholesky", first_moment_damping=1e-4` to the configuration
 above. This changes the previous undamped, rank-truncated pseudoinverse to a
 full-rank damped solve; it can change learning behavior. Cholesky status and
 residual checks feed the same device failure latch. See the
-[damped Gram measurements](docs/experiments/damped-gram.md) for the precision,
+[damped Gram measurements](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/damped-gram.md) for the precision,
 accuracy, and timing tradeoff. The default remains the Jacobi pseudoinverse.
 
 Experimental `gram_solver="pcg"` requires `factored_geometry=True` and
@@ -1097,7 +1140,7 @@ returned solution is checked against the actual operator; failure freezes
 updates through the device latch when `device_execution=True`. No direct-solve
 fallback runs. This eager experimental path avoids the full Gram but is not
 a faster replacement for Cholesky. Its FP64 factor contractions and iterative
-error can change learning trajectories. See [PCG validation](docs/experiments/pcg-gram.md).
+error can change learning trajectories. See [PCG validation](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/pcg-gram.md).
 
 
 
@@ -1112,7 +1155,7 @@ Both new solvers currently require float32/float64 and retain the best finite
 objective reached, with zero among the candidates. Large dense Hessians can be
 expensive; these implementations target the current few-hundred-variable sites.
 
-See [the A100 solver comparison](docs/experiments/quartic-solvers.md) for setup
+See [the external solver comparison](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/quartic-solvers.md) for setup
 costs, stationarity residuals, and limitations. The production default remains
 `FullQuartic` pending broader learning-quality validation.
 
@@ -1178,22 +1221,10 @@ part of optimizer semantics.
 
 ## Evidence behind the selected baseline
 
-The A100 MNIST K=64 experiment used 256 CST parameters, 128 optimizer steps,
-and seeds 17/29/43:
-
-| optimizer | mean test accuracy |
-| --- | ---: |
-| Adam-target quartic | 81.50% |
-| dense moments, exact diagonal implicit | 81.48% |
-| **compact $\alpha$ + separable diagonal $v$** | **81.12%** |
-
-The compact state used 1,050 moment scalars instead of dense Adam's 15,680:
-a 93.3% reduction. The full report is in the sibling `cst` experiment
-repository at
-`docs/experiments/mnist_wgate_compact_diag_ablation_a100.md` and was registered
-in Arctx lane `wgate-compact-adam-diagonal`.
-
-The experiment supports the selected starting point. It does not yet prove:
+Hardware-specific protocols, measurements, raw results, and figures live in the
+companion `cst` experiment repository. The relevant
+[experiment index](https://github.com/takumiecd/cst-experiments/blob/main/docs/INDEX.md)
+supports the selected starting point. It does not yet prove:
 
 - a fully ambient-free production contraction kernel;
 - an exact compact construction of
@@ -1276,13 +1307,13 @@ Damping, the full residual criterion and moment definitions are unchanged.
 The bound derivative API exposes the same selection as
 `site.cst_derivatives().tangent_ops(gram_action="jvp_vjp")`.
 
-[Measured solver, recompression and learning tradeoffs](docs/experiments/krylov-recompression.ja.md)
+[Measured solver, recompression and learning tradeoffs](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/krylov-recompression.ja.md)
 include successful large-atom trials, explicit basis-exhaustion cases and paired
 MNIST results. A passing linear-system residual does not establish equal training
 accuracy; the combined Krylov/streamed path has not established that equivalence.
 
-[Time to accuracy and peak memory](docs/experiments/time-to-accuracy.ja.md)
+[Time to accuracy and peak memory](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/time-to-accuracy.ja.md)
 compares three seeds over 512 updates, recording both first observed targets and
 three consecutive confirmations. Unreached targets remain explicitly censored.
 
-[Dense versus CST: shared timing protocol](docs/experiments/dense-comparison.ja.md)
+[Dense versus CST: shared timing protocol](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/dense-comparison.ja.md)

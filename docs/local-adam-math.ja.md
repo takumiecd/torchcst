@@ -223,8 +223,7 @@ model全体を渡す。CSTLinearは上記の式、通常のLinear等はdense Ada
 - [B・T・C・Mの構成](../src/torchcst/optim/moments/transported_rms.py)
 - [直接更新](../src/torchcst/optim/_regularized_update.py)
 - [公開optimizer](../src/torchcst/optim/local.py)
-- [API移植時の検証記録](experiments/local-adam-api.ja.md)
-- [trust regionなしの学習実験](experiments/no-trust.ja.md)
+- 実験runnerと結果は companion `cst-experiments` repository に置く。
 
 ## 9. 正則化Cholesky比較版
 

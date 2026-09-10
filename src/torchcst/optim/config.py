@@ -325,3 +325,55 @@ class LocalAdamConfig:
             not self.factored_geometry or self.tangent_backend == "reference"
         ):
             raise ValueError("device_execution requires factorized tangents")
+
+
+@dataclass(frozen=True)
+class LocalVisibleAdamConfig:
+    """Atom-local projection of dense diagonal-Adam second-moment evidence."""
+
+    lr: float = 0.05
+    betas: tuple[float, float] = (0.9, 0.99)
+    eps: float = 1e-8
+    first_moment_damping: float = 1e-2
+    second_moment_damping: float = 1e-4
+    update_damping: float = 1e-2
+    solve_rtol: float = 1e-5
+    atom_grad_mode: AtomGradMode = "auto"
+    row_chunk_size: int = 16
+    factored_geometry: bool = True
+    tangent_backend: Literal[
+        "auto", "specialized", "factor_autograd", "reference"
+    ] = "auto"
+    tangent_atom_tile: int = 32
+    device_execution: bool = False
+
+    def __post_init__(self):
+        FirstOrderAdamConfig(
+            lr=self.lr,
+            betas=self.betas,
+            eps=self.eps,
+            first_moment_damping=self.first_moment_damping,
+            atom_grad_mode=self.atom_grad_mode,
+            row_chunk_size=self.row_chunk_size,
+            factored_geometry=self.factored_geometry,
+            tangent_backend=self.tangent_backend,
+            tangent_atom_tile=self.tangent_atom_tile,
+        )
+        object.__setattr__(self, "betas", _validate_betas(self.betas))
+        for name in (
+            "first_moment_damping",
+            "second_moment_damping",
+            "update_damping",
+            "solve_rtol",
+        ):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        if self.solve_rtol >= 1:
+            raise ValueError("solve_rtol must be less than one")
+        if not isinstance(self.device_execution, bool):
+            raise TypeError("device_execution must be a bool")
+        if self.device_execution and (
+            not self.factored_geometry or self.tangent_backend == "reference"
+        ):
+            raise ValueError("device_execution requires factorized tangents")

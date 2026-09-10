@@ -166,7 +166,7 @@ damping、rank cutoff、parameter所有manifestを検証する。
 
 ## 次の判断
 
-`experiments/tangent_metrics.py`で同一初期値・batch列の比較を行う。
+比較実験は companion `cst-experiments` repository で同一初期値・batch列を用いて行う。
 separable、atom_block、atom_diagを比較し、`--second-order`で2次の参照も追加する。
 小規模の数値一致テストと、学習精度・保存量・時間の評価を分ける。
 未調整の短期実験をもって対角版またはblock版を既定にしない。

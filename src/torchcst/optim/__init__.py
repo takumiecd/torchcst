@@ -13,6 +13,7 @@ from .config import (
     AdamWConfig,
     FirstOrderAdamConfig,
     LocalAdamConfig,
+    LocalVisibleAdamConfig,
     SecondOrderAdamConfig,
 )
 from .dense import (
@@ -22,6 +23,7 @@ from .dense import (
 )
 from .first_order import CSTAdam
 from .local import CSTLocalAdam
+from .local_visible import CSTLocalVisibleAdam
 from .moments import (
     AcceptedFrameFirstMoment,
     AcceptedFrameFirstMomentState,
@@ -61,6 +63,7 @@ __all__ = [
     "BallNewton",
     "CSTAdam",
     "CSTLocalAdam",
+    "CSTLocalVisibleAdam",
     "CSTSecondOrderAdam",
     "CSTStepResult",
     "DenseAdamWProposal",
@@ -76,6 +79,7 @@ __all__ = [
     "FunctionalAdamW",
     "ImplicitLinearAtomGrad",
     "LocalAdamConfig",
+    "LocalVisibleAdamConfig",
     "MomentContext",
     "MomentSystem",
     "MomentSystemState",

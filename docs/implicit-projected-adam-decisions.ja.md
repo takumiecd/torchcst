@@ -67,13 +67,9 @@ $$
 
 を評価する。旧 coordinate を現在の coordinate として直接再利用してはいけない。
 
-A100 MNIST 実験では、この accepted-frame $\alpha$ と圧縮された対角 second
-moment を組み合わせても Adam 級の精度を保った。したがって、first moment を
-ambient dense state として保持する必要性は大きく低下した。
-
-これは $\alpha$ 単独の完全な因果分離実験ではない。厳密な寄与分離には
-compact-$m$/dense-$v$ hybrid control が必要だが、少なくとも本命の完全圧縮構成が
-成立するという primary question には肯定的な結果が得られた。
+accepted-frame $\alpha$ を用いた検証結果と、その因果分離上の限界は `cst`
+repository の実験報告に分離している。ここでは、first moment を ambient dense
+state として保持しない設計判断だけを記録する。
 
 ### 2.2 成功した second-moment backend
 
@@ -116,33 +112,16 @@ $$
 
 という ambient rank-one operator とは異なる。
 
-### 2.3 A100 MNIST primary result
+### 2.3 永続状態の規模
 
-K=64、256 CST parameters、128 steps、seeds 17/29/43 で得た test accuracy は
-次の通りである。
-
-| optimizer | mean accuracy |
-| --- | ---: |
-| Adam-target quartic | 81.50% |
-| dense $m,v$ exact-diagonal implicit | 81.48% |
-| **compact $\alpha$ + separable-diagonal $v$** | **81.12%** |
-
-compact 構成と dense exact-diagonal control の差は平均 $-0.37$ point、最大 seed
-deficit は $1.05$ point だった。
-
-永続 moment state は dense Adam の 15,680 scalars に対して、
+この構成の永続 moment state は
 
 $$
 256\;\text{($\alpha$)}+10\;\text{(row)}+784\;\text{(column)}=1,050
 $$
 
-scalars である。これは 93.3% reduction、14.9x smaller に相当する。
-
-この結果の runner、raw result、figure、完全な protocol は `cst` repository の
-commit `73ec524` と
-`docs/experiments/mnist_wgate_compact_diag_ablation_a100.md` にあり、Arctx lane
-`wgate-compact-adam-diagonal` の result step
-`t_ba64d250280b4e678a596149c6c8d9e0` に登録されている。
+scalars である。比較対象、測定結果、runner、raw result、figure、完全な protocol
+は `cst` repository の実験報告に置く。
 
 ## 3. 棄却する解釈
 

@@ -9,6 +9,10 @@ from .base import (
     VisibleMetric,
 )
 from .first import AcceptedFrameFirstMoment, AcceptedFrameFirstMomentState
+from .projected_visible import (
+    ProjectedVisibleSecondMoment,
+    ProjectedVisibleSecondMomentState,
+)
 from .second import (
     SeparableDiagonalMetric,
     SeparableDiagonalSecondMoment,
@@ -26,6 +30,8 @@ __all__ = [
     "MomentContext",
     "MomentSystem",
     "MomentSystemState",
+    "ProjectedVisibleSecondMoment",
+    "ProjectedVisibleSecondMomentState",
     "SecondMomentComponent",
     "SeparableDiagonalMetric",
     "SeparableDiagonalSecondMoment",

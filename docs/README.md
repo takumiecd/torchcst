@@ -1,21 +1,18 @@
 # Design documents
 
 `README.md` is the public API contract. The documents retained here contain the
-mathematical derivation and experimental decisions behind the continuous-only
-rewrite:
+mathematical derivations and implementation design of the continuous-only
+rewrite. Experiment runners and reports live in the companion
+[cst-experiments repository](https://github.com/takumiecd/cst-experiments):
 
 - [local-adam-math.ja.md](local-adam-math.ja.md) — CSTLocalAdam equations: atom-local α/C transport, whitening, regularized direct updates, state and approximation boundaries;
+- [local-visible-adam-math.ja.md](local-visible-adam-math.ja.md) — projected visible diagonal-Adam operator equations, Γ transport, geometric-mean metric, and approximation boundaries;
 - [first-order-rebuild.ja.md](first-order-rebuild.ja.md) — current optimizer API, equations, experimental metrics and memory boundaries;
 - [tangent-operator-design.ja.md](tangent-operator-design.ja.md) — proposed parameter-driven, kernel-aware Gram actions and matrix-free recompression;
-- [experiments/tangent-rebuild.md](experiments/tangent-rebuild.md) — rebuilt first-order learning pilot;
 - `implicit-projected-adam-decisions.ja.md` — historical second-order implementation decisions;
 - `implicit-projected-moment-transport.md` — moment-transport derivation;
 - `implicit-projected-moment-transport.ja.md` — Japanese version;
 - `second-order-pullback-moment-spaces.md` — second-order moment-space analysis.
-- `experiments/mnist-current-api.md` — current public-API MNIST reproduction.
-- `experiments/solver-learning-profile.md` — controlled FullQuartic/Newton learning comparison and A100 profiles.
-- `experiments/device-execution.md` — deferred device execution and whole-update synchronization audit.
-- `experiments/compiled-newton.md` — compiled one-start Newton, GPU secular search, and remaining CPU synchronization.
 
 Historical structural-policy and mutation designs remain available in Git
 history but are not part of the current architecture.

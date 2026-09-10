@@ -2,21 +2,17 @@
 
 import copy
 from dataclasses import replace
-from types import SimpleNamespace
 
 import pytest
 import torch
 from torch import nn
 
-from experiments.parameter_rms import optimizer_class
 from tests.test_training_smoke import amplitude_bandwidth
 from torchcst import (
     AdamWConfig,
     Chart,
-    CSTAdam,
     CSTLinear,
     CSTLocalAdam,
-    FirstOrderAdamConfig,
     LocalAdamConfig,
 )
 
@@ -60,33 +56,15 @@ def step(m, o):
 @pytest.mark.parametrize("device", DEVICES)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("deferred", [False, True])
-def test_public_matches_experiment_and_resumes_exactly(device, dtype, deferred):
+def test_public_resumes_exactly(device, dtype, deferred):
     a = model(dtype, device)
-    b = copy.deepcopy(a)
     cfg = LocalAdamConfig(
         lr=0.05, betas=(0.9, 0.99), whitening="eigen", device_execution=deferred
     )
     new = CSTLocalAdam(a, cst=cfg, dense=AdamWConfig())
-    old_type = optimizer_class(CSTAdam, "local_both", no_trust=True)
-    old = old_type(
-        b,
-        cst=FirstOrderAdamConfig(
-            lr=0.05,
-            betas=(0.9, 0.99),
-            first_moment_damping=0.01,
-            device_execution=deferred,
-            recompression="pcg" if deferred else "direct",
-        ),
-        dense=AdamWConfig(),
-    )
-    old.solve_start = old.solve_end = SimpleNamespace(record=lambda: None)
     for _ in range(3):
         step(a, new)
-        step(b, old)
     new.check_errors()
-    old.check_errors()
-    for actual, expected in zip(a.parameters(), b.parameters()):
-        torch.testing.assert_close(actual, expected, atol=0, rtol=0)
     saved_model, saved_state = copy.deepcopy(a.state_dict()), new.state_dict()
     c = model(dtype, device)
     c.load_state_dict(saved_model)
