@@ -219,8 +219,8 @@ class TangentGeometry(AutogradFrameGeometry):
 
     def pullback(self, cotangent, *, point, displacement=None):
         self._validate_visible(cotangent, name="cotangent")
-        _, action = torch.func.vjp(self.derivatives.represented, point)
-        return action(cotangent)[0].detach()
+        del displacement
+        return self.prepared(point).vjp(cotangent).detach()
 
     def pullback_from_frame(self, *, current_point, source_frame, source_coefficients):
         self._validate_frame(source_frame)
