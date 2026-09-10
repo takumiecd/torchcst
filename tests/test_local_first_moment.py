@@ -21,6 +21,36 @@ def test_batched_direct_solve_matches_block_diagonal_dense_oracle():
     assert bool(valid) and residual < 1e-12
 
 
+def test_batched_direct_solve_uses_solve_ex_without_an_explicit_inverse(monkeypatch):
+    calls = []
+    original = torch.linalg.solve_ex
+
+    def observed(matrix, rhs, *, check_errors):
+        calls.append((matrix.shape, rhs.shape, check_errors))
+        return original(matrix, rhs, check_errors=check_errors)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("the atom-local solve must not form an inverse")
+
+    monkeypatch.setattr(torch.linalg, "solve_ex", observed)
+    monkeypatch.setattr(torch.linalg, "inv", forbidden)
+    monkeypatch.setattr(torch.linalg, "inv_ex", forbidden)
+    gram = torch.eye(4, dtype=torch.float64).expand(3, 4, 4)
+    rhs = torch.ones(3, 4, dtype=torch.float64)
+    solution, residual, valid = solve_blocks(gram, rhs, 0.01)
+    assert calls == [((3, 4, 4), (3, 4, 1), False)]
+    assert bool(valid) and residual < 1e-12 and torch.isfinite(solution).all()
+
+
+def test_batched_direct_solve_rejects_a_singular_local_system():
+    gram = torch.diag_embed(torch.tensor([[-0.01, 1.0]], dtype=torch.float64))
+    solution, residual, valid = solve_blocks(
+        gram, torch.ones(1, 2, dtype=torch.float64), 0.01
+    )
+    assert not bool(valid)
+    assert not torch.isfinite(solution).all() or not torch.isfinite(residual)
+
+
 def test_local_transport_omits_other_atoms_even_when_they_overlap():
     eye = torch.eye(2, dtype=torch.float64)
     # Both atoms have identical visible directions; full transport would sum them.

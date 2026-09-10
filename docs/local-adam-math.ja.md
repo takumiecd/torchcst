@@ -1,6 +1,7 @@
 # CSTLocalAdam の数式
 
 2026-09-09。公開実装 `CSTLocalAdam` / `LocalAdamConfig` の定式化。
+2026-09-10、一次再圧縮と最終更新の直接解をbatched `solve_ex`へ変更。
 第1〜8節は旧方式 `whitening="eigen"` の定式化。現在の既定は第9節のCholesky方式。
 選定値はlr=0.05、betas=(0.9,0.99)、whitening_damping=1e-4。
 128 step・3 seedの精度中央値77.00%（平均76.25%）を採用基準とする。
@@ -171,7 +172,7 @@ Mに加える規約であり、$M_t/\eta+\mu I$ を使う規約とは異なる�
 | C | $K\times q\times q$ | parameter dtype、Q座標の二次履歴 |
 | R、S、T、M | 各 $K\times q\times q$ | step内の作業量、全体Gramではない |
 
-小行列の固有値分解・CholeskyはFP64で行う。局所Gram自体はparameter dtypeで
+小行列の固有値分解・Cholesky白色化・直接solveはFP64で行う。局所Gram自体はparameter dtypeで
 構成してからFP64へ変換するので、その構成時の丸めまでFP64になるわけではない。
 checkpoint復元でもBのFP64を保持する。
 
@@ -181,8 +182,11 @@ checkpoint復元でもBのFP64を保持する。
 局所内積は $O(Kq^2(m+n))$ で構成できる。これはkernelの構造に依存し、
 一般のkernelへの一律の計算量保証ではない。
 
-再圧縮と更新はbatched Choleskyの直接解で、逆行列を明示的に作らず、
-反復線形solverも使わない。ただし小さい固有値分解は残る。
+再圧縮と更新は `torch.linalg.solve_ex` に `K×q×q` と `K×q×1` を渡す
+batched直接解で、逆行列も `K×K×q×q` への展開も行わない。反復線形solverも
+使わない。`solve_ex` は一般行列用だが、入力は対称化したGramに正のdampingを加えた
+行列であり、status・有限性・parameter dtypeへ丸めた解の相対残差を検査する。
+白色化のCholeskyとC平方根の小さい固有値分解は残る。
 factorized経路はdense Jacobianを避けるが、reference経路は検証用に実体化し得る。
 `device_execution=True` も、ライブラリ内部を含む同期ゼロの保証ではない。
 
@@ -235,7 +239,8 @@ $$
 
 ここでの $L_t$ はCholesky因子。第5節の平方根計量 $D_t^{(Q)}$ とは別。実装は
 `solve_triangular(L_t.T, I)` で小さいBを得る。全体Jacobianの逆行列は作らない。
-`whitening_damping=None` なら一次再圧縮と正則化値が共通だが、分解の計算結果自体は再利用しない。
+`whitening_damping=None` なら一次再圧縮と正則化値が共通だが、一次側は
+`solve_ex(R + damping I, b)`、白色化側はCholesky因子を必要とするため計算結果を再利用しない。
 `whitening_damping` を別の値にすれば、分解対象の行列も異なる。
 第4・5節のT、h、C、A、M、更新式は同じ形を用いる。したがって
 
@@ -283,7 +288,8 @@ $$
 
 一次再圧縮は上から3行目、白色化基底は4行目のsolveに対応する。
 一次側の $\lambda_\alpha$ は `first_moment_damping`。
-$\varepsilon_R=\lambda_\alpha$ の場合だけ同じ行列になり、現実装はその場合も別々に分解する。
+$\varepsilon_R=\lambda_\alpha$ の場合だけ係数行列が同じになるが、現実装は一次再圧縮を
+一般直接solve、白色化基底をCholeskyと三角solveで別々に計算する。
 公開configは $\varepsilon_R>0$ を要求する。現在の既定値は1e-4、最初の比較実験値は0.01。
 
 厳密演算でRが半正定値なら、$\widetilde R_t$ の最小固有値は

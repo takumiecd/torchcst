@@ -1,5 +1,9 @@
 # CSTLocalAdam 公開API化（2026-09-09）
 
+> 後続変更: 2026-09-10に、一次再圧縮と最終更新の右辺1本の直接解を
+> batched Choleskyから `torch.linalg.solve_ex` へ変更した。以下の結果と実装説明は
+> 公開API化時点の記録。現在の方式は [数式仕様](../local-adam-math.ja.md)を参照。
+
 実装コミット: `afbbb4f`。既存の全modelを受け取る方式に合わせて
 `CSTLocalAdam(model, cst=LocalAdamConfig(...), dense=AdamWConfig(...))` を追加した。
 `model.parameters()` は受け取らない。CSTLinearと通常のLinearを同一modelに

@@ -14,10 +14,12 @@ def solve_blocks(gram, rhs, damping):
     matrix = matrix + damping * torch.eye(
         matrix.shape[-1], device=matrix.device, dtype=matrix.dtype
     )
-    factor, info = torch.linalg.cholesky_ex(matrix, check_errors=False)
-    solution = (
-        torch.cholesky_solve(rhs.double().unsqueeze(-1), factor).squeeze(-1).to(rhs)
+    solution, info = torch.linalg.solve_ex(
+        matrix,
+        rhs.double().unsqueeze(-1),
+        check_errors=False,
     )
+    solution = solution.squeeze(-1).to(rhs)
     residual = (matrix @ solution.double().unsqueeze(-1)).squeeze(-1) - rhs.double()
     relative = residual.norm(dim=-1) / rhs.double().norm(dim=-1).clamp_min(1e-300)
     valid = (

@@ -553,10 +553,13 @@ delta   = solve(M + update_damping * I, -lr * b_hat)
 ```
 
 All matrices above are per-atom blocks, with storage proportional to `K*q*q`
-for `K` atoms and `q` coordinates per atom. Local solves use batched Cholesky;
-there is no iterative linear solver, global Gram matrix, or trust-radius
-clipping. All damping values must be positive. The C square root still requires
-a small eigendecomposition; default whitening does not. Cross-atom history and covariance are
+for `K` atoms and `q` coordinates per atom. First-moment recompression and the
+final update use one batched `solve_ex` inverse-vector product without forming
+an inverse or expanding the blocks to `K*K*q*q`. There is no iterative linear
+solver, global Gram matrix, or trust-radius clipping. All damping values must be
+positive. Default whitening still uses batched Cholesky because it needs the
+factor `B = L^{-T}`; the C square root still requires a small eigendecomposition.
+Cross-atom history and covariance are
 omitted: information lost to one atom is not handed to another atom. `C` uses
 the parameter dtype; basis and small solve/metric calculations use FP64.
 Parameter gradients and `C` are formed from the accumulated batch gradient;
