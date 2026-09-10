@@ -169,6 +169,50 @@ class TangentGeometry(AutogradFrameGeometry):
             )
         return result
 
+    def local_diagonal_gram(
+        self,
+        point,
+        diagonal,
+        *,
+        row_chunk=64,
+        atom_chunk=8,
+    ):
+        """Return atom blocks of ``J.T @ Diag(diagonal) @ J``.
+
+        Rows and atoms are streamed so a dense visible Jacobian is never
+        materialized. ``diagonal`` may itself be dense in visible space.
+        """
+        self._validate_visible(diagonal, name="diagonal")
+        if (
+            isinstance(row_chunk, bool)
+            or not isinstance(row_chunk, int)
+            or row_chunk < 1
+        ):
+            raise ValueError("row_chunk must be a positive integer")
+        if (
+            isinstance(atom_chunk, bool)
+            or not isinstance(atom_chunk, int)
+            or atom_chunk < 1
+        ):
+            raise ValueError("atom_chunk must be a positive integer")
+        k, q = point.shape
+        rows = diagonal.shape[0]
+        result = point.new_zeros(k, q, q)
+        for start in range(0, rows, row_chunk):
+            stop = min(start + row_chunk, rows)
+            weights = diagonal[start:stop]
+            for atom_start in range(0, k, atom_chunk):
+                atom_stop = min(atom_start + atom_chunk, k)
+                columns = self.row_columns(
+                    point, start, stop, atom_start, atom_stop
+                )
+                result[atom_start:atom_stop].add_(
+                    torch.einsum(
+                        "krip,ri,kriq->kpq", columns, weights, columns
+                    )
+                )
+        return result
+
     def displacement(self, direction, *, point):
         self._validate_local(direction, name="direction")
         return self.derivatives.jvp(direction, parameter_point=point).detach()

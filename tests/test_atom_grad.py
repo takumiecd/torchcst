@@ -4,7 +4,7 @@ import torch
 from torchcst import Amplitude, Atoms, Chart, CSTLinear, Gaussian, Separable
 from torchcst.atoms import AtomGrad
 from torchcst.nn import LinearAtomGrad
-from torchcst.optim import ImplicitLinearAtomGrad
+from torchcst.optim import AtomGradRequest, ImplicitLinearAtomGrad
 
 
 def make_site(*, backend: str = "factored") -> CSTLinear:
@@ -203,6 +203,27 @@ def test_repeated_calls_square_the_aggregate_represented_gradient() -> None:
     torch.testing.assert_close(grad.r, represented_gradient.square().mean(dim=1))
     torch.testing.assert_close(grad.c, represented_gradient.square().mean(dim=0))
     assert grad.contributions == 2
+
+
+def test_visible_gradient_observation_sums_repeated_uses_exactly() -> None:
+    site = make_site()
+    grad = ImplicitLinearAtomGrad(
+        mode="custom", request=AtomGradRequest(visible_gradient=True)
+    )
+    site.atoms.set_grad(grad)
+    x1 = torch.randn(4, site.in_features, dtype=torch.float64)
+    x2 = torch.randn(2, site.in_features, dtype=torch.float64)
+    g1 = torch.randn(4, site.out_features, dtype=torch.float64)
+    g2 = torch.randn(2, site.out_features, dtype=torch.float64)
+
+    grad.begin()
+    ((site(x1) * g1).sum() + (site(x2) * g2).sum()).backward()
+    grad.complete()
+
+    observation = grad.snapshot()
+    assert observation.visible_gradient is not None
+    torch.testing.assert_close(observation.visible_gradient, g1.T @ x1 + g2.T @ x2)
+    assert observation.jg is None and observation.atom_square is None
 
 
 def test_cancelled_scope_ignores_its_stale_hook() -> None:

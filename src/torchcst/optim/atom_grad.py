@@ -24,6 +24,7 @@ class AtomGradRequest:
     row_square: bool = False
     column_square: bool = False
     atom_square: bool = False
+    visible_gradient: bool = False
 
     def __or__(self, other: AtomGradRequest) -> AtomGradRequest:
         if not isinstance(other, AtomGradRequest):
@@ -34,6 +35,7 @@ class AtomGradRequest:
             row_square=self.row_square or other.row_square,
             column_square=self.column_square or other.column_square,
             atom_square=self.atom_square or other.atom_square,
+            visible_gradient=self.visible_gradient or other.visible_gradient,
         )
 
     @property
@@ -44,6 +46,7 @@ class AtomGradRequest:
             or self.row_square
             or self.column_square
             or self.atom_square
+            or self.visible_gradient
         )
 
 
@@ -57,6 +60,7 @@ class AtomGradientObservation:
     column_square: Tensor | None = None
     contributions: int = 0
     atom_square: Tensor | None = None
+    visible_gradient: Tensor | None = None
 
     def require(self, request: AtomGradRequest) -> None:
         """Validate that all observations requested by a moment are present."""
@@ -72,6 +76,8 @@ class AtomGradientObservation:
             missing.append("column_square")
         if request.atom_square and self.atom_square is None:
             missing.append("atom_square")
+        if request.visible_gradient and self.visible_gradient is None:
+            missing.append("visible_gradient")
         if missing:
             raise ValueError(f"observation is missing: {', '.join(missing)}")
 
@@ -123,6 +129,7 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         self._terms: list[tuple[Tensor, Tensor]] = []
         self._contributions = 0
         self._atom_square = None
+        self._visible_gradient = None
         self._square_geometry = None
         self._square_point = None
 
@@ -185,6 +192,9 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             atom_square=self._atom_square.clone()
             if self._atom_square is not None
             else None,
+            visible_gradient=self._visible_gradient.clone()
+            if self._visible_gradient is not None
+            else None,
         )
 
     def _clear_values(self) -> None:
@@ -195,6 +205,7 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         self._terms.clear()
         self._contributions = 0
         self._atom_square = None
+        self._visible_gradient = None
         self._square_geometry = None
         self._square_point = None
 
@@ -216,6 +227,12 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         flat_inputs = inputs.detach().reshape(-1, site.in_features)
         flat_output_gradient = output_gradient.detach().reshape(-1, site.out_features)
         parameter_point = site.atoms.p.detach()
+
+        if self.request.visible_gradient:
+            visible_gradient = flat_output_gradient.T @ flat_inputs
+            self._visible_gradient = self._add(
+                self._visible_gradient, visible_gradient
+            )
 
         def contracted_atom(atom_point: Tensor) -> Tensor:
             atom = site._materialize_atoms(atom_point.unsqueeze(0))[0]
@@ -282,6 +299,8 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             raise RuntimeError("requested jg was not captured")
         if self.request.gh and self._gh is None:
             raise RuntimeError("requested gh was not captured")
+        if self.request.visible_gradient and self._visible_gradient is None:
+            raise RuntimeError("requested visible gradient was not captured")
         if not (
             self.request.row_square
             or self.request.column_square

@@ -11,6 +11,7 @@ from .atom_grad import (
 )
 from .config import (
     AdamWConfig,
+    DenseVisibleAdamConfig,
     FirstOrderAdamConfig,
     LocalAdamConfig,
     LocalVisibleAdamConfig,
@@ -21,6 +22,7 @@ from .dense import (
     DenseAdamWState,
     FunctionalAdamW,
 )
+from .dense_visible import CSTDenseVisibleAdam
 from .first_order import CSTAdam
 from .local import CSTLocalAdam
 from .local_visible import CSTLocalVisibleAdam
@@ -62,12 +64,14 @@ __all__ = [
     "AtomGradientObservation",
     "BallNewton",
     "CSTAdam",
+    "CSTDenseVisibleAdam",
     "CSTLocalAdam",
     "CSTLocalVisibleAdam",
     "CSTSecondOrderAdam",
     "CSTStepResult",
     "DenseAdamWProposal",
     "DenseAdamWState",
+    "DenseVisibleAdamConfig",
     "DeviceBFGS",
     "DeviceRay",
     "ExpandedFirstMoment",

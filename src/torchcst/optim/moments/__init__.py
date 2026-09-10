@@ -8,6 +8,12 @@ from .base import (
     SecondMomentComponent,
     VisibleMetric,
 )
+from .dense_visible import (
+    DenseVisibleFirstMoment,
+    DenseVisibleFirstMomentState,
+    DenseVisibleSecondMoment,
+    DenseVisibleSecondMomentState,
+)
 from .first import AcceptedFrameFirstMoment, AcceptedFrameFirstMomentState
 from .projected_visible import (
     ProjectedVisibleSecondMoment,
@@ -23,6 +29,10 @@ from .system import ExpandedMoments, MomentSystem, MomentSystemState
 __all__ = [
     "AcceptedFrameFirstMoment",
     "AcceptedFrameFirstMomentState",
+    "DenseVisibleFirstMoment",
+    "DenseVisibleFirstMomentState",
+    "DenseVisibleSecondMoment",
+    "DenseVisibleSecondMomentState",
     "ExpandedFirstMoment",
     "ExpandedMoments",
     "ExpandedSecondMoment",

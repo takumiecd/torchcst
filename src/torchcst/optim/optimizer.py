@@ -16,6 +16,7 @@ from torchcst.nn import CSTLinear
 from .atom_grad import ImplicitLinearAtomGrad
 from .config import (
     AdamWConfig,
+    DenseVisibleAdamConfig,
     FirstOrderAdamConfig,
     LocalAdamConfig,
     LocalVisibleAdamConfig,
@@ -67,6 +68,7 @@ class _ModelOptimizer(Optimizer):
         model: nn.Module,
         *,
         cst: FirstOrderAdamConfig
+        | DenseVisibleAdamConfig
         | LocalAdamConfig
         | LocalVisibleAdamConfig
         | SecondOrderAdamConfig

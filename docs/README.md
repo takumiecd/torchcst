@@ -7,6 +7,7 @@ rewrite. Experiment runners and reports live in the companion
 
 - [local-adam-math.ja.md](local-adam-math.ja.md) — CSTLocalAdam equations: atom-local α/C transport, whitening, regularized direct updates, state and approximation boundaries;
 - [local-visible-adam-math.ja.md](local-visible-adam-math.ja.md) — projected visible diagonal-Adam operator equations, Γ transport, geometric-mean metric, and approximation boundaries;
+- [dense-visible-adam-math.ja.md](dense-visible-adam-math.ja.md) — dense visible m/v baseline, exact atom-local metric, state cost, and approximation boundary;
 - [first-order-rebuild.ja.md](first-order-rebuild.ja.md) — current optimizer API, equations, experimental metrics and memory boundaries;
 - [tangent-operator-design.ja.md](tangent-operator-design.ja.md) — proposed parameter-driven, kernel-aware Gram actions and matrix-free recompression;
 - `implicit-projected-adam-decisions.ja.md` — historical second-order implementation decisions;

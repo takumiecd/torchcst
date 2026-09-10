@@ -21,7 +21,8 @@ The initial scope is deliberately narrow:
 - a primary first-order optimizer with current-tangent moment compression and transport;
 - an optional second-order optimizer retaining the full quartic objective;
 - regularized direct atom-local updates, with trust-region alternatives;
-- no persistent dense represented-weight moments.
+- compact optimizers without persistent dense represented-weight moments, plus
+  an explicit dense-moment accuracy baseline.
 
 The current optimizer design, equations and memory limits are recorded in
 [the local Adam specification](docs/local-adam-math.ja.md). Earlier second-order
@@ -631,6 +632,44 @@ optimizer = CSTLocalVisibleAdam(
 
 This optimizer has a separate checkpoint contract from `CSTLocalAdam`; their
 states cannot be loaded into one another.
+
+
+## `CSTDenseVisibleAdam`: dense-moment accuracy alternative
+
+`CSTDenseVisibleAdam` deliberately keeps Adam's first and second EMA in the
+represented weight space. For each `CSTLinear` site it stores two tensors with
+shape `[out_features, in_features]`:
+
+```text
+m = beta1 * m + (1 - beta1) * visible_gradient
+v = beta2 * v + (1 - beta2) * visible_gradient**2
+```
+
+The atom update still remains local. It streams Jacobian rows and atom tiles to
+form the exact blocks
+
+```text
+b[a] = J[a].T @ corrected_m
+M[a] = J[a].T @ Diag(sqrt(corrected_v) + eps) @ J[a]
+(M[a] + update_damping * I) @ delta[a] = -lr * b[a]
+```
+
+It never materializes a dense Jacobian, a `[K, K, q, q]` matrix, or an inverse.
+Unlike `CSTLocalVisibleAdam`, it performs no recursive projection transport and
+uses no geometric-mean reconstruction. The cost is persistent state of
+`2 * out_features * in_features` scalars, so this is an accuracy-oriented
+reference rather than the memory-saving CST default.
+
+```python
+from torchcst import CSTDenseVisibleAdam, DenseVisibleAdamConfig
+
+optimizer = CSTDenseVisibleAdam(
+    model,
+    cst=DenseVisibleAdamConfig(lr=0.05, update_damping=0.01),
+)
+```
+
+See the [mathematical specification](docs/dense-visible-adam-math.ja.md).
 
 
 ## `CSTAdam`: full-tangent first-order alternative
