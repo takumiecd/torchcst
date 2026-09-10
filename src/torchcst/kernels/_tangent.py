@@ -27,16 +27,18 @@ def amplitude(kernel, inner, input_chart, output_chart, p):
 
 def amplitude_bandwidth(kernel, input_chart, output_chart, p):
     a, source, target = kernel._split(input_chart, output_chart, p)
-    u, du = kernel.input_profile.tangent(input_chart, source)
-    precision = kernel.output_precision(input_chart, output_chart, p)
-    v, dv, dk = kernel.output_profile.tangent_with_precision(
+    precision = kernel.bandwidth_precision(input_chart, output_chart, p)
+    u, du, dku = kernel.profile.tangent_with_precision(
+        input_chart, source, precision
+    )
+    v, dv, dkv = kernel.profile.tangent_with_precision(
         output_chart, target, precision
     )
     gate = kernel.amplitude_gate(input_chart, output_chart, p)
-    narrow = kernel.output_profile.sigma.reciprocal().square()
-    explore = kernel.sigma_explore.reciprocal().square()
+    narrow = kernel.sigma_min.reciprocal().square()
+    broad = kernel.sigma_max.reciprocal().square()
     dprecision = (
-        (narrow - explore)
+        (narrow - broad)
         * gate
         * (1 - gate)
         * (
@@ -48,7 +50,8 @@ def amplitude_bandwidth(kernel, input_chart, output_chart, p):
     ni = source.shape[-1]
     ju = p.new_zeros(p.shape[0], input_chart.features, p.shape[1])
     jv = p.new_zeros(p.shape[0], output_chart.features, p.shape[1])
+    ju[:, :, 0] = (dku * dprecision[None]).T
     ju[:, :, 1 : 1 + ni] = du.permute(1, 0, 2)
-    jv[:, :, 0] = (v + a.T * dk * dprecision[None]).T
+    jv[:, :, 0] = (v + a.T * dkv * dprecision[None]).T
     jv[:, :, 1 + ni :] = a[..., None] * dv.permute(1, 0, 2)
     return u.T, a * v.T, ju, jv

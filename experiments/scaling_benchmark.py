@@ -21,7 +21,6 @@ from torchcst import (
     CSTLinear,
     CSTSecondOrderAdam,
     DeviceRay,
-    Gaussian,
     SecondOrderAdamConfig,
 )
 
@@ -38,9 +37,8 @@ def model_for(method, inputs, outputs, atoms):
         Chart.linspace(outputs),
         atoms=atoms,
         kernel=AmplitudeBandwidthSeparable(
-            input_profile=Gaussian(cfg.input_sigma),
-            output_profile=Gaussian(cfg.output_sigma),
-            sigma_explore=cfg.sigma_explore,
+            sigma_min=cfg.sigma_min,
+            sigma_max=cfg.sigma_max,
             tau=cfg.tau,
             temperature=cfg.temperature,
         ),

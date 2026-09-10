@@ -15,7 +15,7 @@ def site_for(kind, dtype=torch.float64):
     kernel = base if kind == "plain" else Amplitude(base)
     if kind == "bandwidth":
         kernel = AmplitudeBandwidthSeparable(
-            input_profile=Gaussian(0.8), output_profile=Gaussian(0.6)
+            sigma_min=0.6, sigma_max=0.8
         )
     torch.manual_seed(17)
     site = CSTLinear(
@@ -99,7 +99,7 @@ def test_descriptor_compatibility_and_fixed_config_guard():
     changed = clone.cst_derivatives().tangent_ops().prepare(p)
     with pytest.raises(ValueError, match="incompatible"):
         prepared.cross_gram_matvec(changed, p)
-    site.kernel.output_profile.sigma.add_(0.1)
+    site.kernel.profile.sigma.add_(0.1)
     with pytest.raises(ValueError, match="configuration changed"):
         ops.prepare(p)
 

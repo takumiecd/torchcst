@@ -1,4 +1,4 @@
-"""Amplitude-dependent Gaussian bandwidth operator kernels."""
+"""Amplitude-dependent shared Gaussian bandwidth operator kernels."""
 
 from __future__ import annotations
 
@@ -9,35 +9,33 @@ from torch import Tensor
 
 from torchcst.geometry import Chart
 
-from .base import AtomInit, Kernel, Profile
+from .base import AtomInit, Kernel
 from .gaussian import Gaussian
 
 
 class AmplitudeBandwidthSeparable(Kernel):
-    r"""A signed rank-one atom whose output width narrows with ``|w|``.
+    r"""A signed rank-one atom whose shared width narrows with ``|w|``.
 
-    The output precision interpolates smoothly between ``sigma_explore`` and
-    ``output_profile.sigma`` using an even amplitude gate. The atom row is
-    ``(w, input_profile_coordinates, output_center)``.
+    One even amplitude gate interpolates the input and output precision between
+    the same finite ``sigma_max`` and ``sigma_min`` bounds. The atom row is
+    ``(w, input_center, output_center)``.
     """
 
     def __init__(
         self,
         *,
-        input_profile: Profile,
-        output_profile: Gaussian,
+        sigma_min: float,
+        sigma_max: float,
         tau: float = 5e-3,
         temperature: float = 0.25,
-        sigma_explore: float = math.inf,
         gate_eps: float = 1e-12,
     ) -> None:
         super().__init__()
-        if not isinstance(input_profile, Profile):
-            raise TypeError("input_profile must be a Profile")
-        if not isinstance(output_profile, Gaussian):
-            raise TypeError("output_profile must be a Gaussian")
-        self.input_profile = input_profile
-        self.output_profile = output_profile
+        self.profile = Gaussian(sigma_min)
+        maximum = self._positive_scalar(sigma_max, name="sigma_max")
+        if maximum < self.profile.sigma:
+            raise ValueError("sigma_max must not be narrower than sigma_min")
+        self.register_buffer("sigma_max", maximum)
         self.register_buffer("tau", self._positive_scalar(tau, name="tau"))
         self.register_buffer(
             "temperature",
@@ -47,21 +45,16 @@ class AmplitudeBandwidthSeparable(Kernel):
             "gate_eps",
             self._positive_scalar(gate_eps, name="gate_eps"),
         )
-        explore = torch.as_tensor(sigma_explore, dtype=torch.get_default_dtype())
-        if explore.numel() != 1:
-            raise ValueError("sigma_explore must be a scalar")
-        explore = explore.detach().clone().reshape(())
-        if torch.isnan(explore) or explore <= 0:
-            raise ValueError("sigma_explore must be positive and not NaN")
-        if explore < output_profile.sigma:
-            raise ValueError("sigma_explore must not be narrower than output sigma")
-        self.register_buffer("sigma_explore", explore)
+
+    @property
+    def sigma_min(self) -> Tensor:
+        return self.profile.sigma
 
     def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:
         return (
             1
-            + self.input_profile.parameter_dim(input_chart)
-            + self.output_profile.parameter_dim(output_chart)
+            + self.profile.parameter_dim(input_chart)
+            + self.profile.parameter_dim(output_chart)
         )
 
     def initialize(
@@ -74,8 +67,8 @@ class AmplitudeBandwidthSeparable(Kernel):
     ) -> Tensor:
         if mode not in ("balanced", "uniform"):
             raise ValueError("mode must be 'balanced' or 'uniform'")
-        input_p = self.input_profile.initialize(input_chart, atoms, mode="uniform")
-        output_p = self.output_profile.initialize(output_chart, atoms, mode=mode)
+        input_p = self.profile.initialize(input_chart, atoms, mode="uniform")
+        output_p = self.profile.initialize(output_chart, atoms, mode=mode)
         amplitude = input_p.new_empty(atoms, 1)
         amplitude.normal_(mean=0.0, std=0.1 / math.sqrt(atoms))
         return torch.cat((amplitude, input_p, output_p), dim=-1)
@@ -100,9 +93,13 @@ class AmplitudeBandwidthSeparable(Kernel):
         p: Tensor,
     ) -> tuple[Tensor, Tensor]:
         amplitude, input_p, output_p = self._split(input_chart, output_chart, p)
-        phi_input = self.input_profile.evaluate(input_chart, input_p)
-        precision = self.output_precision(input_chart, output_chart, p)
-        phi_output = self.output_profile.evaluate_with_precision(
+        precision = self.bandwidth_precision(input_chart, output_chart, p)
+        phi_input = self.profile.evaluate_with_precision(
+            input_chart,
+            input_p,
+            precision,
+        )
+        phi_output = self.profile.evaluate_with_precision(
             output_chart,
             output_p,
             precision,
@@ -123,32 +120,28 @@ class AmplitudeBandwidthSeparable(Kernel):
         logit = (magnitude_square.log() - 2.0 * self.tau.log()) / self.temperature
         return torch.sigmoid(logit)
 
-    def output_precision(
+    def bandwidth_precision(
         self,
         input_chart: Chart,
         output_chart: Chart,
         p: Tensor,
     ) -> Tensor:
-        """Return one amplitude-dependent output precision per atom."""
+        """Return the shared input/output precision for each atom."""
 
         gate = self.amplitude_gate(input_chart, output_chart, p)
-        narrow = self.output_profile.sigma.reciprocal().square()
-        explore = torch.where(
-            torch.isinf(self.sigma_explore),
-            torch.zeros_like(self.sigma_explore),
-            self.sigma_explore.reciprocal().square(),
-        )
-        return explore + (narrow - explore) * gate
+        narrow = self.sigma_min.reciprocal().square()
+        broad = self.sigma_max.reciprocal().square()
+        return broad + (narrow - broad) * gate
 
-    def output_sigma(
+    def bandwidth_sigma(
         self,
         input_chart: Chart,
         output_chart: Chart,
         p: Tensor,
     ) -> Tensor:
-        """Return the effective output sigma for diagnostic use."""
+        """Return the shared effective input/output sigma for diagnostics."""
 
-        precision = self.output_precision(input_chart, output_chart, p)
+        precision = self.bandwidth_precision(input_chart, output_chart, p)
         return precision.clamp_min(torch.finfo(precision.dtype).tiny).rsqrt()
 
     def _split(
@@ -160,7 +153,7 @@ class AmplitudeBandwidthSeparable(Kernel):
         expected_dim = self.parameter_dim(input_chart, output_chart)
         if p.ndim != 2 or p.shape[1] != expected_dim:
             raise ValueError(f"p must have shape [atoms, {expected_dim}]")
-        input_dim = self.input_profile.parameter_dim(input_chart)
+        input_dim = self.profile.parameter_dim(input_chart)
         input_end = 1 + input_dim
         return p[:, :1], p[:, 1:input_end], p[:, input_end:]
 
@@ -175,8 +168,6 @@ class AmplitudeBandwidthSeparable(Kernel):
         return result
 
     def tangent_backend(self, input_chart: Chart, output_chart: Chart):
-        if not self.input_profile.supports_tangent:
-            return None
         from ._tangent import amplitude_bandwidth
 
         return lambda p: amplitude_bandwidth(self, input_chart, output_chart, p)
@@ -184,6 +175,7 @@ class AmplitudeBandwidthSeparable(Kernel):
     def extra_repr(self) -> str:
         return (
             f"tau={self.tau.item():g}, temperature={self.temperature.item():g}, "
-            f"sigma_explore={self.sigma_explore.item():g}, "
+            f"sigma_min={self.sigma_min.item():g}, "
+            f"sigma_max={self.sigma_max.item():g}, "
             f"supports_factorization={self.supports_factorization}"
         )

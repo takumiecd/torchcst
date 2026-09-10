@@ -16,7 +16,6 @@ from torchcst import (
     Chart,
     CSTLinear,
     FullQuartic,
-    Gaussian,
     ProjectedLBFGS,
     SubspaceQuartic,
 )
@@ -65,9 +64,7 @@ def fixture(seed, args):
         Chart.grid((args.grid, args.grid)),
         Chart.linspace(10),
         atoms=args.atoms,
-        kernel=AmplitudeBandwidthSeparable(
-            input_profile=Gaussian(0.25), output_profile=Gaussian(0.1)
-        ),
+        kernel=AmplitudeBandwidthSeparable(sigma_min=0.1, sigma_max=1.0),
         dtype=dtype,
     ).to(device)
     system = MomentSystem(

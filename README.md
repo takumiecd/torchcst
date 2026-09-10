@@ -52,8 +52,8 @@ model = CSTLinear(
     output_chart,
     atoms=64,
     kernel=AmplitudeBandwidthSeparable(
-        input_profile=Gaussian(sigma=0.25),
-        output_profile=Gaussian(sigma=0.10),
+        sigma_min=0.10,
+        sigma_max=1.0,
         tau=0.005,
         temperature=0.25,
     ),
@@ -278,21 +278,20 @@ For `Separable`, $p_a=(s_a,t_a)$. The `Amplitude` wrapper changes this to
 $p_a=(w_a,s_a,t_a)$ and evaluates $w_a\mathcal K(s_a,t_a)$. The wrapped kernel
 still owns the meaning of $(s_a,t_a)$; `Atoms` sees only one opaque row.
 
-The amplitude-dependent output-bandwidth variant is:
+The amplitude-dependent shared-bandwidth variant is:
 
 ```python
 AmplitudeBandwidthSeparable(
-    input_profile=Gaussian(sigma=0.25),
-    output_profile=Gaussian(sigma=0.10),  # narrow/committed width
-    sigma_explore=float("inf"),           # weak-atom width
+    sigma_min=0.10,  # strong-atom width
+    sigma_max=1.0,   # weak-atom width
     tau=0.005,
     temperature=0.25,
 )
 ```
 
-It keeps the same opaque layout $(w_a,s_a,t_a)$, but smoothly interpolates
-output precision between `sigma_explore` and `output_profile.sigma` using the
-even gate
+It keeps the same opaque layout $(w_a,s_a,t_a)$, but smoothly interpolates one
+shared input/output precision between `sigma_max` and `sigma_min` using the even
+gate
 
 $$
 g(w)=\operatorname{sigmoid}\left(
@@ -300,11 +299,12 @@ g(w)=\operatorname{sigmoid}\left(
 \right).
 $$
 
-Thus weak atoms are broad explorers and sufficiently strong atoms approach the
-narrow Gaussian. Fixed positive `gate_eps` makes the map twice differentiable
-at zero amplitude, which is required by the CST Hessian contractions. These
-bandwidth controls are fixed kernel configuration; a future learned threshold
-or bandwidth must live in each opaque atom row.
+Thus weak atoms are broad on both sides and sufficiently strong atoms approach
+the same narrow Gaussian on both sides. Both bounds are finite. Fixed positive
+`gate_eps` makes the map twice differentiable at zero amplitude, which is
+required by the CST Hessian contractions. These bandwidth controls are fixed
+kernel configuration; a future learned threshold or bandwidth must live in
+each opaque atom row.
 
 Both fixed- and variable-width Gaussian columns are L2-normalized. Therefore
 an `Amplitude`-bearing separable atom has Frobenius norm exactly `abs(w)`, so

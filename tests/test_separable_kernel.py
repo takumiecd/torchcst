@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from torchcst import (
@@ -82,8 +83,8 @@ def test_amplitude_kernels_use_the_successful_small_weight_initialization() -> N
             )
         ),
         AmplitudeBandwidthSeparable(
-            input_profile=Gaussian(0.8),
-            output_profile=Gaussian(0.7),
+            sigma_min=0.7,
+            sigma_max=1.2,
         ),
     )
 
@@ -96,15 +97,12 @@ def test_amplitude_kernels_use_the_successful_small_weight_initialization() -> N
     assert tuple(kernel.parameters()) == ()
 
 
-def make_bandwidth_kernel(
-    *, sigma_explore: float = 0.8
-) -> AmplitudeBandwidthSeparable:
+def make_bandwidth_kernel() -> AmplitudeBandwidthSeparable:
     return AmplitudeBandwidthSeparable(
-        input_profile=Gaussian(0.4),
-        output_profile=Gaussian(0.1),
+        sigma_min=0.1,
+        sigma_max=0.8,
         tau=0.5,
         temperature=0.25,
-        sigma_explore=sigma_explore,
         gate_eps=1e-12,
     )
 
@@ -123,8 +121,8 @@ def test_amplitude_bandwidth_interpolates_precision_at_the_threshold() -> None:
     )
 
     gate = kernel.amplitude_gate(input_chart, output_chart, p)
-    precision = kernel.output_precision(input_chart, output_chart, p)
-    sigma = kernel.output_sigma(input_chart, output_chart, p)
+    precision = kernel.bandwidth_precision(input_chart, output_chart, p)
+    sigma = kernel.bandwidth_sigma(input_chart, output_chart, p)
     broad_precision = torch.tensor(1.0 / 0.8**2, dtype=p.dtype)
     narrow_precision = torch.tensor(1.0 / 0.1**2, dtype=p.dtype)
 
@@ -138,22 +136,37 @@ def test_amplitude_bandwidth_interpolates_precision_at_the_threshold() -> None:
     assert gate[0] < gate[1] < gate[2]
 
 
-def test_infinite_explorer_width_approaches_a_uniform_output_profile() -> None:
+def test_weak_atom_uses_the_same_finite_broad_width_on_both_sides() -> None:
     input_chart = Chart.linspace(3)
     output_chart = Chart.linspace(4)
-    kernel = make_bandwidth_kernel(sigma_explore=float("inf"))
+    kernel = make_bandwidth_kernel()
     p = torch.tensor([[1e-10, 0.1, -0.2]], dtype=torch.float64)
 
-    _, phi_output = kernel.factors(input_chart, output_chart, p)
-    precision = kernel.output_precision(input_chart, output_chart, p)
+    phi_input, phi_output = kernel.factors(input_chart, output_chart, p)
+    precision = kernel.bandwidth_precision(input_chart, output_chart, p)
+    broad = torch.tensor(1.0 / 0.8**2, dtype=p.dtype)
 
-    assert precision[0] < 1e-16
+    torch.testing.assert_close(precision[0], broad)
     torch.testing.assert_close(
-        phi_output / p[0, 0],
-        torch.full_like(phi_output, output_chart.features**-0.5),
+        phi_input,
+        kernel.profile.evaluate_with_precision(input_chart, p[:, 1:2], broad),
         atol=1e-12,
         rtol=0,
     )
+    torch.testing.assert_close(
+        phi_output / p[0, 0],
+        kernel.profile.evaluate_with_precision(output_chart, p[:, 2:], broad),
+        atol=1e-12,
+        rtol=0,
+    )
+
+
+def test_bandwidth_bounds_must_be_finite_and_ordered() -> None:
+    for sigma_max in (float("inf"), float("nan"), 0.0):
+        with pytest.raises(ValueError, match="sigma_max"):
+            AmplitudeBandwidthSeparable(sigma_min=0.1, sigma_max=sigma_max)
+    with pytest.raises(ValueError, match="sigma_max"):
+        AmplitudeBandwidthSeparable(sigma_min=0.2, sigma_max=0.1)
 
 
 def test_amplitude_bandwidth_factorization_and_second_derivatives_are_finite() -> None:

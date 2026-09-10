@@ -30,9 +30,8 @@ def independent_amplitude() -> Kernel:
 
 def amplitude_bandwidth() -> Kernel:
     return AmplitudeBandwidthSeparable(
-        input_profile=Gaussian(0.7),
-        output_profile=Gaussian(0.25),
-        sigma_explore=1.0,
+        sigma_min=0.25,
+        sigma_max=1.0,
         tau=0.2,
         temperature=0.5,
     )

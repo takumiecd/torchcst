@@ -39,6 +39,11 @@ def main():
     parser.add_argument("--targets", type=float, nargs="+", default=[0.75, 0.80, 0.85])
     parser.add_argument("--consecutive", type=int, default=3)
     parser.add_argument("--atoms", type=int, default=64)
+    parser.add_argument("--sigma-min", type=float, default=0.10)
+    parser.add_argument("--sigma-max", type=float, default=1.0)
+    parser.add_argument("--tau", type=float, default=0.005)
+    parser.add_argument("--temperature", type=float, default=0.25)
+    parser.add_argument("--zero-amplitude-init", action="store_true")
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
     if args.steps < 1 or args.eval_every < 0 or args.consecutive < 1:
@@ -55,9 +60,19 @@ def main():
     permutation = torch.randperm(
         8192, generator=torch.Generator().manual_seed(args.seed + 1)
     )
-    config = ExperimentConfig(seed=args.seed, atoms=args.atoms)
+    config = ExperimentConfig(
+        seed=args.seed,
+        atoms=args.atoms,
+        sigma_min=args.sigma_min,
+        sigma_max=args.sigma_max,
+        tau=args.tau,
+        temperature=args.temperature,
+    )
     lr = args.lr
     model = build_model(config, device)
+    if args.zero_amplitude_init:
+        with torch.no_grad():
+            model.atoms.p[:, 0].zero_()
     initial_hash = hashlib.sha256(
         b"".join(p.detach().cpu().numpy().tobytes() for p in model.parameters())
     ).hexdigest()
@@ -121,6 +136,10 @@ def main():
             "batch": 128,
             "train_size": 8192,
             "test_size": 2000,
+            "sigma_min": args.sigma_min,
+            "sigma_max": args.sigma_max,
+            "tau": args.tau,
+            "temperature": args.temperature,
         },
         "initial_parameter_sha256": initial_hash,
         "batch_permutation_sha256": batch_hash,

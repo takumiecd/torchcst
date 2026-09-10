@@ -32,11 +32,14 @@ def make_pair(
     device="cpu",
 ):
     torch.manual_seed(402)
-    kwargs = {"input_profile": Gaussian(0.6), "output_profile": Gaussian(0.4)}
     kernel = (
-        AmplitudeBandwidthSeparable(**kwargs, tau=0.15, temperature=0.5)
+        AmplitudeBandwidthSeparable(
+            sigma_min=0.4, sigma_max=0.6, tau=0.15, temperature=0.5
+        )
         if gated
-        else Amplitude(Separable(**kwargs))
+        else Amplitude(
+            Separable(input_profile=Gaussian(0.6), output_profile=Gaussian(0.4))
+        )
     )
     site = CSTLinear(
         Chart.linspace(input_size),

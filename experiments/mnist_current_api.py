@@ -1,10 +1,8 @@
-"""Reproduce the fixed-K MNIST experiment through the public torchcst API.
+"""Run a fixed-K MNIST experiment through the public torchcst API.
 
 This runner deliberately uses the current Euclidean parameter-space trust
-region.  It matches the successful experiment's normalized Gaussian kernels,
-amplitude-dependent output width, small amplitude initialization, data split,
-and compact-moment optimizer settings without importing the historical
-experiment repository.
+region. It uses normalized Gaussian kernels with one amplitude-dependent width
+shared by the input and output sides.
 """
 
 from __future__ import annotations
@@ -32,7 +30,6 @@ from torchcst import (
     DeviceBFGS,
     DeviceRay,
     FullQuartic,
-    Gaussian,
     ProjectedLBFGS,
     SecondOrderAdamConfig,
 )
@@ -48,9 +45,8 @@ class ExperimentConfig:
     batch_size: int = 128
     train_size: int = 8192
     test_size: int = 2000
-    input_sigma: float = 0.25
-    output_sigma: float = 0.10
-    sigma_explore: float = math.inf
+    sigma_min: float = 0.10
+    sigma_max: float = 1.0
     tau: float = 0.005
     temperature: float = 0.25
     learning_rate: float = 0.05
@@ -132,9 +128,8 @@ def build_model(config: ExperimentConfig, device: torch.device) -> CSTLinear:
         Chart.linspace(10),
         atoms=config.atoms,
         kernel=AmplitudeBandwidthSeparable(
-            input_profile=Gaussian(config.input_sigma),
-            output_profile=Gaussian(config.output_sigma),
-            sigma_explore=config.sigma_explore,
+            sigma_min=config.sigma_min,
+            sigma_max=config.sigma_max,
             tau=config.tau,
             temperature=config.temperature,
         ),
