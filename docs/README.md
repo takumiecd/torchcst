@@ -17,3 +17,5 @@ rewrite. Experiment runners and reports live in the companion
 
 Historical structural-policy and mutation designs remain available in Git
 history but are not part of the current architecture.
+
+- [CSTParameterAdam: パラメータ数に比例する状態](parameter-adam.ja.md)

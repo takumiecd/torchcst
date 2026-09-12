@@ -492,6 +492,36 @@ The setup-inclusive CPU benchmark and its limitations are described in
 [the structured quartic report](https://github.com/takumiecd/cst-experiments/blob/main/docs/torchcst-experiments/quartic-gram.md).
 
 
+## `CSTParameterAdam`: parameter-sized state for short training runs
+
+```python
+from torchcst import CSTParameterAdam, ParameterAdamConfig
+
+# Construct every CSTLinear with backend="factored".
+optimizer = CSTParameterAdam(model, cst=ParameterAdamConfig(decay_steps=128))
+```
+
+This opt-in optimizer applies ordinary Adam directly to the atom coordinates,
+with a cosine learning rate from 0.03 to 0.003 over 128 updates and
+`betas=(0.5, 0.99)`. Its only tensor state is two parameter-shaped moment
+buffers and a step scalar: **2,052 bytes for 64 four-coordinate FP32 atoms**.
+No visible weights/moments, Jacobians, Hessians, or Gram matrices are built by
+the optimizer. Forward/backward still use the existing factor tables and batch
+activations. Frozen charts and the explicit factored backend are required.
+
+Pass `dense=AdamWConfig(...)` for ordinary trainable parameters in mixed models;
+that group uses its own unscheduled AdamW settings. The internal schedule and
+moments resume from `state_dict()`. Set `decay_steps=None` to use an external
+learning-rate schedule. See [the equations and memory contract](docs/parameter-adam.ja.md).
+
+In the frozen A100 MNIST protocol (64 atoms, batch 128, 128 updates), six
+seeds reached **80.04% mean accuracy on the existing 2,000-example test prefix**
+and **83.96% on all 10,000 test examples**. Settings were selected using a
+separate validation subset; the three previously unused seeds averaged
+79.48% / 83.42%, respectively. This is a tuned short-run configuration, not
+a guarantee that every seed exceeds 80%.
+
+
 ## `CSTLocalAdam`: default atom-local optimizer
 
 The [mathematical specification (Japanese)](docs/local-adam-math.ja.md) records

@@ -99,3 +99,7 @@ __all__ = [
     "SubspaceQuartic",
     "VisibleMetric",
 ]
+
+from torchcst.optim.parameter import CSTParameterAdam, ParameterAdamConfig
+
+__all__ += ["CSTParameterAdam", "ParameterAdamConfig"]
