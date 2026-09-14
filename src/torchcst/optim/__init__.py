@@ -8,6 +8,7 @@ from .atom_grad import (
     AtomGradientObservation,
     AtomGradRequest,
     ImplicitLinearAtomGrad,
+    LinearJGAtomGrad,
     LinearJGHAtomGrad,
 )
 from .config import (
@@ -114,6 +115,7 @@ __all__ = [
     "FullQuartic",
     "FunctionalAdamW",
     "ImplicitLinearAtomGrad",
+    "LinearJGAtomGrad",
     "LinearJGHAtomGrad",
     "LocalAdamConfig",
     "LocalVisibleAdamConfig",

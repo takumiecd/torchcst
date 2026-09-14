@@ -64,7 +64,7 @@ class ExpandedNumeratorMoment:
 
 
 class NumeratorMoment:
-    """EMA of ``g`` and ``H`` for a reusable affine numerator.
+    """EMA of ``g`` and optionally ``H`` for a reusable affine numerator.
 
     Given the current atom observations ``g:[K,P]`` and ``H:[K,P,P]``, the
     expanded numerator is
@@ -77,18 +77,21 @@ class NumeratorMoment:
     returns the state prepared by ``expand`` unchanged.
     """
 
-    def __init__(self, beta: float) -> None:
+    def __init__(self, beta: float, *, include_curvature: bool = True) -> None:
         if isinstance(beta, bool) or not isinstance(beta, (float, int)):
             raise TypeError("beta must be a real number")
         if not 0.0 <= float(beta) < 1.0:
             raise ValueError("beta must satisfy 0 <= beta < 1")
+        if not isinstance(include_curvature, bool):
+            raise TypeError("include_curvature must be a bool")
         self.beta = float(beta)
+        self.include_curvature = include_curvature
 
     @property
     def observation_request(self) -> AtomGradRequest:
         """Observations required to construct the affine numerator."""
 
-        return AtomGradRequest(jg=True, gh=True)
+        return AtomGradRequest(jg=True, gh=self.include_curvature)
 
     def initialize(self, point: Tensor) -> NumeratorMomentState:
         """Create an all-zero state matching an atom point tensor."""
@@ -130,12 +133,18 @@ class NumeratorMoment:
             raise TypeError("observation must be an AtomGradientObservation")
         observation.require(self.observation_request)
         assert observation.jg is not None
-        assert observation.gh is not None
-        self._validate_observation(state, observation.jg, observation.gh)
-
-        current = AffinePullback(observation.jg, observation.gh)
-        previous = AffinePullback(state.m, state.C)
-        raw = previous.scaled(self.beta) + current.scaled(1.0 - self.beta)
+        if self.include_curvature:
+            assert observation.gh is not None
+            self._validate_observation(state, observation.jg, observation.gh)
+            current = AffinePullback(observation.jg, observation.gh)
+            previous = AffinePullback(state.m, state.C)
+            raw = previous.scaled(self.beta) + current.scaled(1.0 - self.beta)
+        else:
+            self._validate_gradient(state, observation.jg)
+            raw = AffinePullback(
+                self.beta * state.m + (1.0 - self.beta) * observation.jg,
+                torch.zeros_like(state.C),
+            )
 
         beta_power = state.beta_power * self.beta
         corrected = raw.scaled(1.0 / (1.0 - beta_power))
@@ -172,3 +181,12 @@ class NumeratorMoment:
             raise ValueError("observations must match the numerator moment device")
         if g.dtype != state.m.dtype or H.dtype != state.m.dtype:
             raise ValueError("observations must match the numerator moment dtype")
+
+    @staticmethod
+    def _validate_gradient(state: NumeratorMomentState, g: Tensor) -> None:
+        if g.shape != state.m.shape:
+            raise ValueError("jg must match the numerator moment shape")
+        if g.device != state.m.device:
+            raise ValueError("observation must match the numerator moment device")
+        if g.dtype != state.m.dtype:
+            raise ValueError("observation must match the numerator moment dtype")

@@ -101,7 +101,7 @@ class ExpandedDenominatorMoment:
 
 
 class DenominatorMoment:
-    """EMA of ``g²``, ``gH``, and ``HH`` for a component-wise denominator.
+    """EMA of ``g²`` and optionally ``gH``/``HH`` for a denominator.
 
     For ``g:[K,P]`` and ``H:[K,P,P]``, the expanded denominator is
 
@@ -113,7 +113,13 @@ class DenominatorMoment:
     changing the numerator/denominator interface.
     """
 
-    def __init__(self, beta: float, *, eps: float) -> None:
+    def __init__(
+        self,
+        beta: float,
+        *,
+        eps: float,
+        include_curvature: bool = True,
+    ) -> None:
         if isinstance(beta, bool) or not isinstance(beta, (float, int)):
             raise TypeError("beta must be a real number")
         if not 0.0 <= float(beta) < 1.0:
@@ -122,14 +128,17 @@ class DenominatorMoment:
             raise TypeError("eps must be a real number")
         if not math.isfinite(float(eps)) or float(eps) < 0.0:
             raise ValueError("eps must be finite and nonnegative")
+        if not isinstance(include_curvature, bool):
+            raise TypeError("include_curvature must be a bool")
         self.beta = float(beta)
         self.eps = float(eps)
+        self.include_curvature = include_curvature
 
     @property
     def observation_request(self) -> AtomGradRequest:
         """Observations required to construct the quadratic denominator."""
 
-        return AtomGradRequest(jg=True, gh=True)
+        return AtomGradRequest(jg=True, gh=self.include_curvature)
 
     def initialize(self, point: Tensor) -> DenominatorMomentState:
         """Create an all-zero state matching an atom point tensor."""
@@ -172,18 +181,21 @@ class DenominatorMoment:
             raise TypeError("observation must be an AtomGradientObservation")
         observation.require(self.observation_request)
         assert observation.jg is not None
-        assert observation.gh is not None
-        self._validate_observation(state, observation.jg, observation.gh)
-
         g = observation.jg
-        H = observation.gh
         current_x = g.square()
-        current_y = torch.einsum("ki,kip->kip", g, H)
-        current_Z = torch.einsum("kip,kiq->kipq", H, H)
-
         raw_x = self.beta * state.x + (1.0 - self.beta) * current_x
-        raw_y = self.beta * state.y + (1.0 - self.beta) * current_y
-        raw_Z = self.beta * state.Z + (1.0 - self.beta) * current_Z
+        if self.include_curvature:
+            assert observation.gh is not None
+            self._validate_observation(state, g, observation.gh)
+            H = observation.gh
+            current_y = torch.einsum("ki,kip->kip", g, H)
+            current_Z = torch.einsum("kip,kiq->kipq", H, H)
+            raw_y = self.beta * state.y + (1.0 - self.beta) * current_y
+            raw_Z = self.beta * state.Z + (1.0 - self.beta) * current_Z
+        else:
+            self._validate_gradient(state, g)
+            raw_y = torch.zeros_like(state.y)
+            raw_Z = torch.zeros_like(state.Z)
         raw = DenominatorPolynomial(raw_x, raw_y, raw_Z)
 
         beta_power = state.beta_power * self.beta
@@ -233,3 +245,12 @@ class DenominatorMoment:
             raise ValueError("observations must match the denominator moment device")
         if any(t.dtype != state.x.dtype for t in tensors):
             raise ValueError("observations must match the denominator moment dtype")
+
+    @staticmethod
+    def _validate_gradient(state: DenominatorMomentState, g: Tensor) -> None:
+        if g.shape != state.x.shape:
+            raise ValueError("jg must match the denominator moment shape")
+        if g.device != state.x.device:
+            raise ValueError("observation must match the denominator moment device")
+        if g.dtype != state.x.dtype:
+            raise ValueError("observation must match the denominator moment dtype")

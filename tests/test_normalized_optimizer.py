@@ -4,10 +4,13 @@ import torch
 
 from torchcst import Amplitude, Chart, CSTLinear, Gaussian, Separable
 from torchcst.optim import (
+    AtomGradRequest,
     CSTSGD,
     CSTMomentum,
     CSTNormalizedAdam,
     CSTRMSProp,
+    LinearJGAtomGrad,
+    LinearJGHAtomGrad,
     NormalizedBoxFixedPointSolver,
     NormalizedSolver,
     NormalizedSolveResult,
@@ -121,3 +124,34 @@ def test_initial_zero_step_is_used_once_before_implicit_solver() -> None:
     take_step(optimizer, model)
     assert optimizer.last_step is not None
     assert optimizer.last_step.site_results[0].solver_mode == "fixed_point"
+
+
+def test_max_iter_one_uses_first_order_observations_only() -> None:
+    model = make_site()
+    optimizer = CSTNormalizedAdam(
+        model,
+        solver=NormalizedBoxFixedPointSolver(max_iter=1),
+    )
+
+    site = optimizer._sites[0]
+    assert isinstance(site.atom_grad, LinearJGAtomGrad)
+    assert site.atom_grad.observation_request == AtomGradRequest(jg=True)
+    assert site.moments.numerator.observation_request == AtomGradRequest(jg=True)
+    assert site.moments.denominator.observation_request == AtomGradRequest(jg=True)
+    take_step(optimizer, model)
+    assert optimizer.last_step is not None
+    assert optimizer.last_step.site_results[0].iterations == 1
+
+
+def test_max_iter_two_keeps_curvature_observations() -> None:
+    model = make_site()
+    optimizer = CSTNormalizedAdam(
+        model,
+        solver=NormalizedBoxFixedPointSolver(max_iter=2),
+    )
+
+    site = optimizer._sites[0]
+    assert isinstance(site.atom_grad, LinearJGHAtomGrad)
+    assert site.atom_grad.observation_request == AtomGradRequest(jg=True, gh=True)
+    assert site.moments.numerator.observation_request == AtomGradRequest(jg=True, gh=True)
+    assert site.moments.denominator.observation_request == AtomGradRequest(jg=True, gh=True)

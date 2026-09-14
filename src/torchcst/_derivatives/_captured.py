@@ -65,6 +65,16 @@ def factor_observation(factor_atoms, point, inputs, output_gradient):
     return vmap(grad(scalar))(point), vmap(hessian(scalar))(point)
 
 
+def factor_jg_observation(factor_atoms, point, inputs, output_gradient):
+    """Return only current ``jg`` for a factorized CST atom table."""
+
+    def scalar(p):
+        u, v = factor_atoms(p.unsqueeze(0))
+        return ((inputs @ u) * (output_gradient @ v)).sum()
+
+    return vmap(grad(scalar))(point)
+
+
 def factor_jgh_observation(factor_atoms, point, inputs, output_gradient):
     """Return current ``jg`` and local ``gh`` using gradient JVPs."""
 

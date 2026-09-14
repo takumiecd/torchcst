@@ -4,7 +4,12 @@ import torch
 from torchcst import Amplitude, Atoms, Chart, CSTLinear, Gaussian, Separable
 from torchcst.atoms import AtomGrad
 from torchcst.nn import LinearAtomGrad
-from torchcst.optim import AtomGradRequest, ImplicitLinearAtomGrad, LinearJGHAtomGrad
+from torchcst.optim import (
+    AtomGradRequest,
+    ImplicitLinearAtomGrad,
+    LinearJGAtomGrad,
+    LinearJGHAtomGrad,
+)
 
 
 def make_site(*, backend: str = "factored") -> CSTLinear:
@@ -189,6 +194,42 @@ def test_linear_jgh_atom_grad_collects_only_jg_and_gh(backend: str, mode: str) -
     assert observation.column_square is None
     assert observation.atom_square is None
     assert observation.visible_gradient is None
+    assert collector.contributions == 1
+
+
+@pytest.mark.parametrize("backend", ["factored", "materialized"])
+@pytest.mark.parametrize("mode", ["custom", "hooks"])
+def test_linear_jg_atom_grad_skips_curvature(
+    backend: str, mode: str
+) -> None:
+    site = make_site(backend=backend)
+    collector = LinearJGAtomGrad(
+        mode=mode,
+        factored=backend == "factored",
+    )
+    site.atoms.set_grad(collector)
+    inputs = torch.randn(2, 3, site.in_features, dtype=torch.float64)
+    output_gradient = torch.randn(
+        2, 3, site.out_features, dtype=torch.float64
+    )
+    point = site.atoms.p.detach().clone()
+
+    collector.begin()
+    (site(inputs) * output_gradient).sum().backward()
+    collector.complete()
+
+    represented_gradient = output_gradient.reshape(-1, site.out_features).T @ (
+        inputs.reshape(-1, site.in_features)
+    )
+    expected_jg = site.cst_derivatives().pullback(
+        represented_gradient,
+        parameter_point=point,
+    )
+    observation = collector.snapshot()
+
+    torch.testing.assert_close(observation.jg, expected_jg)
+    assert observation.gh is None
+    assert collector.observation_request == AtomGradRequest(jg=True)
     assert collector.contributions == 1
 
 

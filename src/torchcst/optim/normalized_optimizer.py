@@ -7,7 +7,7 @@ import torch
 from torchcst._derivatives.frame import AutogradFrameGeometry
 from torchcst.nn import CSTLinear
 
-from .atom_grad import LinearJGHAtomGrad
+from .atom_grad import LinearJGAtomGrad, LinearJGHAtomGrad
 from .config import NormalizedOptimizerConfig
 from .moments import (
     DenominatorMoment,
@@ -37,15 +37,28 @@ class _NormalizedModelOptimizer(_ModelOptimizer):
             self._normalized_geometries[site] = site.cst_frame_geometry()
         return self._normalized_geometries[site]
 
-    def _make_atom_grad(self, site: CSTLinear, moments) -> LinearJGHAtomGrad:
+    def _make_atom_grad(
+        self, site: CSTLinear, moments
+    ) -> LinearJGAtomGrad | LinearJGHAtomGrad:
         c = self.cst_config
-        return LinearJGHAtomGrad(mode=c.atom_grad_mode, factored=c.factored)
+        atom_grad_type = (
+            LinearJGHAtomGrad if self._uses_curvature else LinearJGAtomGrad
+        )
+        return atom_grad_type(mode=c.atom_grad_mode, factored=c.factored)
 
     def _make_moments(self) -> NormalizedMomentSystem:
         c = self.cst_config
-        numerator = NumeratorMoment(c.betas[0] if self._use_numerator_moment else 0.0)
+        include_curvature = self._uses_curvature
+        numerator = NumeratorMoment(
+            c.betas[0] if self._use_numerator_moment else 0.0,
+            include_curvature=include_curvature,
+        )
         denominator = (
-            DenominatorMoment(c.betas[1], eps=c.eps)
+            DenominatorMoment(
+                c.betas[1],
+                eps=c.eps,
+                include_curvature=include_curvature,
+            )
             if self._use_denominator_moment
             else UnitDenominator()
         )
@@ -53,6 +66,15 @@ class _NormalizedModelOptimizer(_ModelOptimizer):
             numerator=numerator,
             denominator=denominator,
         )
+
+    @property
+    def _uses_curvature(self) -> bool:
+        """Whether the configured solver can evaluate a curvature correction."""
+
+        max_iter = getattr(self.cst_config.solver, "max_iter", None)
+        # Injected solvers without a max_iter contract retain the historical
+        # JGH path; only the explicit max_iter=1 mode selects first order.
+        return max_iter is None or max_iter >= 2
 
     def _solve(self, context, expanded):
         del context

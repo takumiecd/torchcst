@@ -239,22 +239,30 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             return (F.linear(flat_inputs, atom) * flat_output_gradient).sum()
 
         contracted_hessian = None
-        if self.factored and self.request.gh:
+        if self.factored:
             from torchcst._derivatives._captured import call
 
             if not site.kernel.supports_factorization:
                 raise ValueError("factored observations require factor-capable kernels")
-            jg, gh = call(
-                "factor_observation",
-                site._factor_atoms,
-                parameter_point,
-                flat_inputs,
-                flat_output_gradient,
-            )
             if self.request.gh:
+                jg, gh = call(
+                    "factor_observation",
+                    site._factor_atoms,
+                    parameter_point,
+                    flat_inputs,
+                    flat_output_gradient,
+                )
                 contracted_hessian = gh
-            if self.request.jg and parameter_gradient is None:
-                parameter_gradient = jg
+                if self.request.jg and parameter_gradient is None:
+                    parameter_gradient = jg
+            elif self.request.jg and parameter_gradient is None:
+                parameter_gradient = call(
+                    "factor_jg_observation",
+                    site._factor_atoms,
+                    parameter_point,
+                    flat_inputs,
+                    flat_output_gradient,
+                )
         else:
             with torch.enable_grad():
                 if self.request.gh:
@@ -379,6 +387,33 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             or output_gradient.dtype != site.atoms.p.dtype
         ):
             raise ValueError("Linear backward tensors must match atom device and dtype")
+
+
+class LinearJGAtomGrad(ImplicitLinearAtomGrad):
+    """Collect only the atom gradient ``jg`` for first-order updates.
+
+    This is the low-cost observation program used when a normalized solver
+    performs only its zero-displacement update.  It deliberately does not
+    request or calculate local curvature.
+    """
+
+    def __init__(
+        self,
+        *,
+        mode: AtomGradMode = "auto",
+        factored: bool = False,
+    ) -> None:
+        super().__init__(
+            mode=mode,
+            factored=factored,
+            request=AtomGradRequest(jg=True),
+        )
+
+    @property
+    def observation_request(self) -> AtomGradRequest:
+        """Return the single observation produced by this collector."""
+
+        return self.request
 
 
 class LinearJGHAtomGrad(LinearAtomGrad):
