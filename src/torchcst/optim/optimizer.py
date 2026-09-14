@@ -24,10 +24,7 @@ from .config import (
 )
 from .dense import DenseAdamWProposal, FunctionalAdamW
 from .moments import (
-    ExpandedMoments,
     MomentContext,
-    MomentSystem,
-    MomentSystemState,
 )
 from .solvers import QuarticSolveResult
 
@@ -36,7 +33,7 @@ from .solvers import QuarticSolveResult
 class CSTStepResult:
     """Diagnostics from the most recent optimizer step."""
 
-    site_results: tuple[QuarticSolveResult, ...]
+    site_results: tuple[Any, ...]
     device_valid: Tensor | None = None
     compression_results: tuple = ()
 
@@ -45,17 +42,17 @@ class CSTStepResult:
 class _CSTSite:
     name: str
     module: CSTLinear
-    moments: MomentSystem
-    atom_grad: ImplicitLinearAtomGrad
-    state: MomentSystemState
+    moments: Any
+    atom_grad: Any
+    state: Any
 
 
 @dataclass(frozen=True)
 class _CSTProposal:
     site: _CSTSite
     context: MomentContext
-    expanded: ExpandedMoments
-    solve: QuarticSolveResult
+    expanded: Any
+    solve: Any
 
 
 class _ModelOptimizer(Optimizer):
@@ -168,12 +165,7 @@ class _ModelOptimizer(Optimizer):
             moments = self._make_moments()
             geometry = self._make_geometry(site)
             context = MomentContext(geometry, geometry.current_point())
-            atom_grad = ImplicitLinearAtomGrad(
-                mode=cst.atom_grad_mode,
-                row_chunk_size=cst.row_chunk_size,
-                request=moments.observation_request,
-                factored=cst.factored_geometry,
-            )
+            atom_grad = self._make_atom_grad(site, moments)
             site.atoms.set_grad(atom_grad)
             sites.append(
                 _CSTSite(
@@ -186,6 +178,22 @@ class _ModelOptimizer(Optimizer):
             )
         self._sites = tuple(sites)
         self._manifest = self._make_manifest(cst_owner_by_id)
+
+    def _make_atom_grad(self, site: CSTLinear, moments):
+        """Create the observation program for one CST site.
+
+        Existing optimizers keep the historical collector.  New optimizer
+        families can override this hook when their moment system uses a
+        different, reusable observation program.
+        """
+
+        c = self.cst_config
+        return ImplicitLinearAtomGrad(
+            mode=c.atom_grad_mode,
+            row_chunk_size=getattr(c, "row_chunk_size", 64),
+            request=moments.observation_request,
+            factored=getattr(c, "factored_geometry", False),
+        )
 
     def zero_grad(self, set_to_none: bool = True) -> None:
         """Clear gradients and begin the next CST observation scope."""

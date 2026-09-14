@@ -8,19 +8,27 @@ from .base import (
     SecondMomentComponent,
     VisibleMetric,
 )
-from .dense_visible import (
-    DenseVisibleFirstMoment,
-    DenseVisibleFirstMomentState,
-    DenseVisibleSecondMoment,
-    DenseVisibleSecondMomentState,
-)
 from .denominator import (
     DenominatorMoment,
     DenominatorMomentState,
     DenominatorPolynomial,
     ExpandedDenominatorMoment,
 )
+from .dense_visible import (
+    DenseVisibleFirstMoment,
+    DenseVisibleFirstMomentState,
+    DenseVisibleSecondMoment,
+    DenseVisibleSecondMomentState,
+)
 from .first import AcceptedFrameFirstMoment, AcceptedFrameFirstMomentState
+from .normalized import (
+    ExpandedNormalizedMoments,
+    ExpandedUnitDenominator,
+    NormalizedMomentSystem,
+    NormalizedMomentSystemState,
+    UnitDenominator,
+    UnitDenominatorState,
+)
 from .numerator import (
     ExpandedNumeratorMoment,
     NumeratorMoment,
@@ -40,22 +48,26 @@ from .system import ExpandedMoments, MomentSystem, MomentSystemState
 __all__ = [
     "AcceptedFrameFirstMoment",
     "AcceptedFrameFirstMomentState",
+    "DenominatorMoment",
+    "DenominatorMomentState",
+    "DenominatorPolynomial",
     "DenseVisibleFirstMoment",
     "DenseVisibleFirstMomentState",
     "DenseVisibleSecondMoment",
     "DenseVisibleSecondMomentState",
-    "DenominatorMoment",
-    "DenominatorMomentState",
-    "DenominatorPolynomial",
-    "ExpandedFirstMoment",
     "ExpandedDenominatorMoment",
+    "ExpandedFirstMoment",
     "ExpandedMoments",
+    "ExpandedNormalizedMoments",
     "ExpandedNumeratorMoment",
     "ExpandedSecondMoment",
+    "ExpandedUnitDenominator",
     "FirstMomentComponent",
     "MomentContext",
     "MomentSystem",
     "MomentSystemState",
+    "NormalizedMomentSystem",
+    "NormalizedMomentSystemState",
     "NumeratorMoment",
     "NumeratorMomentState",
     "ProjectedVisibleSecondMoment",
@@ -64,5 +76,7 @@ __all__ = [
     "SeparableDiagonalMetric",
     "SeparableDiagonalSecondMoment",
     "SeparableSecondMomentState",
+    "UnitDenominator",
+    "UnitDenominatorState",
     "VisibleMetric",
 ]

@@ -4,13 +4,28 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
 import torch
 from torch import Tensor
 
-from ..moments.denominator import ExpandedDenominatorMoment
-from ..moments.numerator import ExpandedNumeratorMoment
 from .base import NormalizedSolver
+
+
+@runtime_checkable
+class NormalizedEvaluation(Protocol):
+    """Candidate-dependent tensor evaluation used by normalized solvers."""
+
+    @property
+    def point_shape(self) -> tuple[int, int]: ...
+
+    @property
+    def device(self) -> torch.device: ...
+
+    @property
+    def dtype(self) -> torch.dtype: ...
+
+    def at(self, displacement: Tensor) -> Tensor: ...
 
 
 @dataclass(frozen=True)
@@ -38,24 +53,20 @@ class NormalizedUpdateProblem:
 
     def __init__(
         self,
-        numerator: ExpandedNumeratorMoment,
-        denominator: ExpandedDenominatorMoment,
+        numerator: NormalizedEvaluation,
+        denominator: NormalizedEvaluation,
         *,
         learning_rate: float,
     ) -> None:
-        if not isinstance(numerator, ExpandedNumeratorMoment):
-            raise TypeError("numerator must be an ExpandedNumeratorMoment")
-        if not isinstance(denominator, ExpandedDenominatorMoment):
-            raise TypeError("denominator must be an ExpandedDenominatorMoment")
-        if (
-            numerator.corrected.constant.shape
-            != denominator.corrected.x.shape
-        ):
+        if not isinstance(numerator, NormalizedEvaluation):
+            raise TypeError("numerator must implement NormalizedEvaluation")
+        if not isinstance(denominator, NormalizedEvaluation):
+            raise TypeError("denominator must implement NormalizedEvaluation")
+        if numerator.point_shape != denominator.point_shape:
             raise ValueError("numerator and denominator shapes must match")
         if (
-            numerator.corrected.constant.device
-            != denominator.corrected.x.device
-            or numerator.corrected.constant.dtype != denominator.corrected.x.dtype
+            numerator.device != denominator.device
+            or numerator.dtype != denominator.dtype
         ):
             raise ValueError("numerator and denominator must share device and dtype")
         if (
@@ -71,7 +82,15 @@ class NormalizedUpdateProblem:
 
     @property
     def point_shape(self) -> tuple[int, int]:
-        return tuple(self.numerator.corrected.constant.shape)
+        return self.numerator.point_shape
+
+    @property
+    def device(self) -> torch.device:
+        return self.numerator.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.numerator.dtype
 
     def normalized_gradient(self, displacement: Tensor) -> Tensor:
         """Return the component-wise ``N(d) / D(d)``."""
@@ -127,8 +146,8 @@ class NormalizedFixedPointSolver(NormalizedSolver):
         with torch.no_grad():
             displacement = torch.zeros(
                 problem.point_shape,
-                device=problem.numerator.corrected.constant.device,
-                dtype=problem.numerator.corrected.constant.dtype,
+                device=problem.device,
+                dtype=problem.dtype,
             )
             iterations = 0
             for iteration in range(self.max_iter):

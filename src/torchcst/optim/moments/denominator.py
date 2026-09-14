@@ -76,6 +76,18 @@ class ExpandedDenominatorMoment:
     pending_state: DenominatorMomentState
     eps: float
 
+    @property
+    def point_shape(self) -> tuple[int, int]:
+        return tuple(self.corrected.x.shape)
+
+    @property
+    def device(self) -> torch.device:
+        return self.corrected.x.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.corrected.x.dtype
+
     def quadratic_at(self, displacement: Tensor, *, corrected: bool = True) -> Tensor:
         """Evaluate the squared denominator polynomial."""
 

@@ -8,7 +8,12 @@ from typing import Literal
 
 from torchcst.atoms import AtomGradMode
 
-from .solvers import FullQuartic, QuarticSolver
+from .solvers import (
+    FullQuartic,
+    NormalizedFixedPointSolver,
+    NormalizedSolver,
+    QuarticSolver,
+)
 
 
 @dataclass(frozen=True)
@@ -170,6 +175,35 @@ def _validate_betas(betas: tuple[float, float]) -> tuple[float, float]:
     if not 0.0 <= beta1 < 1.0 or not 0.0 <= beta2 < 1.0:
         raise ValueError("betas must satisfy 0 <= beta < 1")
     return float(beta1), float(beta2)
+
+
+@dataclass(frozen=True)
+class NormalizedOptimizerConfig:
+    """Configuration shared by the new composable CST optimizers."""
+
+    lr: float = 1e-3
+    betas: tuple[float, float] = (0.9, 0.999)
+    eps: float = 1e-8
+    trust_radius: float = 0.25
+    solver: NormalizedSolver = field(default_factory=NormalizedFixedPointSolver)
+    atom_grad_mode: AtomGradMode = "auto"
+    factored: bool = False
+    device_execution: bool = False
+
+    def __post_init__(self) -> None:
+        for name in ("lr", "eps", "trust_radius"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        object.__setattr__(self, "betas", _validate_betas(self.betas))
+        if not isinstance(self.solver, NormalizedSolver):
+            raise TypeError("solver must be a NormalizedSolver")
+        if self.atom_grad_mode not in ("auto", "custom", "hooks"):
+            raise ValueError("atom_grad_mode must be 'auto', 'custom', or 'hooks'")
+        if not isinstance(self.factored, bool):
+            raise TypeError("factored must be a bool")
+        if not isinstance(self.device_execution, bool):
+            raise TypeError("device_execution must be a bool")
 
 
 @dataclass(frozen=True)

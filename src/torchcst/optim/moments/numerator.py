@@ -45,6 +45,18 @@ class ExpandedNumeratorMoment:
     corrected: AffinePullback
     pending_state: NumeratorMomentState
 
+    @property
+    def point_shape(self) -> tuple[int, int]:
+        return tuple(self.corrected.constant.shape)
+
+    @property
+    def device(self) -> torch.device:
+        return self.corrected.constant.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.corrected.constant.dtype
+
     def at(self, displacement: Tensor, *, corrected: bool = True) -> Tensor:
         """Evaluate the numerator at one local displacement."""
 
