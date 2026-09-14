@@ -379,3 +379,187 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
             or output_gradient.dtype != site.atoms.p.dtype
         ):
             raise ValueError("Linear backward tensors must match atom device and dtype")
+
+
+class LinearJGHAtomGrad(LinearAtomGrad):
+    """Collect only ``jg`` and local ``gh`` observations for CSTLinear.
+
+    ``jg`` has shape ``[K, P]`` and ``gh`` has shape ``[K, P, P]``. The latter
+    is the Hessian of the scalar output-gradient contraction for each atom,
+    not a dense output-space Hessian. The class is intentionally independent
+    of any optimizer so multiple moment systems can reuse it.
+    """
+
+    def __init__(
+        self,
+        *,
+        mode: AtomGradMode = "auto",
+        factored: bool = False,
+    ) -> None:
+        super().__init__(mode=mode)
+        if not isinstance(factored, bool):
+            raise TypeError("factored must be a bool")
+        self.factored = factored
+        self._jg: Tensor | None = None
+        self._gh: Tensor | None = None
+        self._contributions = 0
+
+    @property
+    def observation_request(self) -> AtomGradRequest:
+        """Return the two observations produced by this collector."""
+
+        return AtomGradRequest(jg=True, gh=True)
+
+    @property
+    def supports_custom_autograd(self) -> bool:
+        return True
+
+    @property
+    def jg(self) -> Tensor:
+        self.require_complete()
+        if self._jg is None:
+            raise RuntimeError("jg was not requested")
+        return self._jg.clone()
+
+    @property
+    def gh(self) -> Tensor:
+        self.require_complete()
+        if self._gh is None:
+            raise RuntimeError("gh was not requested")
+        return self._gh.clone()
+
+    @property
+    def contributions(self) -> int:
+        return self._contributions
+
+    def snapshot(self) -> AtomGradientObservation:
+        """Return an isolated optimizer-facing observation."""
+
+        self.require_complete()
+        return AtomGradientObservation(
+            jg=self.jg,
+            gh=self.gh,
+            contributions=self._contributions,
+        )
+
+    def _clear_values(self) -> None:
+        self._jg = None
+        self._gh = None
+        self._contributions = 0
+
+    def _complete_values(self) -> None:
+        if self._contributions == 0:
+            raise RuntimeError("no Linear backward contribution was captured")
+        if self._jg is None or self._gh is None:
+            raise RuntimeError("requested JGH observations were not captured")
+
+    def _accumulate_linear(
+        self,
+        site: CSTLinear,
+        inputs: Tensor,
+        output_gradient: Tensor,
+        *,
+        parameter_gradient: Tensor | None,
+        generation: int,
+    ) -> None:
+        if not self.accepts(generation=generation):
+            return
+        if site.input_chart.trainable or site.output_chart.trainable:
+            raise ValueError("LinearJGHAtomGrad supports frozen charts only")
+        self._validate_linear_tensors(site, inputs, output_gradient)
+
+        flat_inputs = inputs.detach().reshape(-1, site.in_features)
+        flat_output_gradient = output_gradient.detach().reshape(
+            -1, site.out_features
+        )
+        parameter_point = site.atoms.p.detach()
+
+        if self.factored:
+            from torchcst._derivatives._captured import call
+
+            if not site.kernel.supports_factorization:
+                raise ValueError("factored observations require factor-capable kernels")
+            observed_jg, gh = call(
+                "factor_jgh_observation",
+                site._factor_atoms,
+                parameter_point,
+                flat_inputs,
+                flat_output_gradient,
+            )
+            if parameter_gradient is None:
+                parameter_gradient = observed_jg
+        else:
+            from torchcst._derivatives._hessian import hessian_from_gradient
+
+            with torch.enable_grad():
+
+                def contracted_atom(atom_point: Tensor) -> Tensor:
+                    atom = site._materialize_atoms(atom_point.unsqueeze(0))[0]
+                    return (F.linear(flat_inputs, atom) * flat_output_gradient).sum()
+
+                gradient = functional_grad(contracted_atom)
+                if parameter_gradient is None:
+                    parameter_gradient = vmap(gradient)(parameter_point)
+                directions = torch.eye(
+                    parameter_point.shape[-1],
+                    device=parameter_point.device,
+                    dtype=parameter_point.dtype,
+                )
+                gh = vmap(
+                    lambda parameter: hessian_from_gradient(
+                        gradient,
+                        parameter,
+                        directions=directions,
+                    )
+                )(parameter_point)
+
+        expected_gradient_shape = (site.atom_count, site.atoms.parameter_dim)
+        if parameter_gradient is None:
+            raise RuntimeError("JGH collector did not produce jg")
+        if parameter_gradient.shape != expected_gradient_shape:
+            raise ValueError(
+                "parameter gradient must have shape "
+                f"{list(expected_gradient_shape)}"
+            )
+        expected_hessian_shape = (*expected_gradient_shape, expected_gradient_shape[-1])
+        if gh.shape != expected_hessian_shape:
+            raise ValueError(
+                "contracted Hessian must have shape "
+                f"{list(expected_hessian_shape)}"
+            )
+        self._jg = self._add(self._jg, parameter_gradient)
+        self._gh = self._add(self._gh, gh)
+        self._contributions += 1
+
+    @staticmethod
+    def _add(current: Tensor | None, contribution: Tensor) -> Tensor:
+        contribution = contribution.detach()
+        if current is None:
+            return contribution.clone()
+        if current.shape != contribution.shape:
+            raise ValueError("LinearJGHAtomGrad observations have unstable shapes")
+        if current.device != contribution.device or current.dtype != contribution.dtype:
+            raise ValueError(
+                "LinearJGHAtomGrad observations must share one device and dtype"
+            )
+        current.add_(contribution)
+        return current
+
+    @staticmethod
+    def _validate_linear_tensors(
+        site: CSTLinear, inputs: Tensor, output_gradient: Tensor
+    ) -> None:
+        if inputs.ndim < 1 or inputs.shape[-1] != site.in_features:
+            raise ValueError("inputs do not match the CSTLinear input shape")
+        expected_output_shape = (*inputs.shape[:-1], site.out_features)
+        if output_gradient.shape != expected_output_shape:
+            raise ValueError(
+                f"output gradient must have shape {list(expected_output_shape)}"
+            )
+        if (
+            inputs.device != site.atoms.p.device
+            or output_gradient.device != site.atoms.p.device
+            or inputs.dtype != site.atoms.p.dtype
+            or output_gradient.dtype != site.atoms.p.dtype
+        ):
+            raise ValueError("Linear backward tensors must match atom device and dtype")

@@ -4,7 +4,7 @@ import torch
 from torchcst import Amplitude, Atoms, Chart, CSTLinear, Gaussian, Separable
 from torchcst.atoms import AtomGrad
 from torchcst.nn import LinearAtomGrad
-from torchcst.optim import AtomGradRequest, ImplicitLinearAtomGrad
+from torchcst.optim import AtomGradRequest, ImplicitLinearAtomGrad, LinearJGHAtomGrad
 
 
 def make_site(*, backend: str = "factored") -> CSTLinear:
@@ -152,6 +152,44 @@ def test_custom_and_hook_routes_match_dense_oracles(backend: str) -> None:
     torch.testing.assert_close(hook_grad.gh, custom_grad.gh)
     torch.testing.assert_close(hook_grad.r, custom_grad.r)
     torch.testing.assert_close(hook_grad.c, custom_grad.c)
+
+
+@pytest.mark.parametrize("backend", ["factored", "materialized"])
+@pytest.mark.parametrize("mode", ["custom", "hooks"])
+def test_linear_jgh_atom_grad_collects_only_jg_and_gh(backend: str, mode: str) -> None:
+    site = make_site(backend=backend)
+    collector = LinearJGHAtomGrad(
+        mode=mode,
+        factored=backend == "factored",
+    )
+    site.atoms.set_grad(collector)
+    inputs = torch.randn(2, 3, site.in_features, dtype=torch.float64)
+    output_gradient = torch.randn(
+        2, 3, site.out_features, dtype=torch.float64
+    )
+    point = site.atoms.p.detach().clone()
+
+    collector.begin()
+    (site(inputs) * output_gradient).sum().backward()
+    collector.complete()
+
+    represented_gradient = output_gradient.reshape(-1, site.out_features).T @ (
+        inputs.reshape(-1, site.in_features)
+    )
+    derivatives = site.cst_derivatives()
+    expected_jg = derivatives.pullback(represented_gradient, parameter_point=point)
+    expected_gh = derivatives.contracted_hessian(
+        represented_gradient, parameter_point=point
+    )
+    observation = collector.snapshot()
+
+    torch.testing.assert_close(observation.jg, expected_jg)
+    torch.testing.assert_close(observation.gh, expected_gh)
+    assert observation.row_square is None
+    assert observation.column_square is None
+    assert observation.atom_square is None
+    assert observation.visible_gradient is None
+    assert collector.contributions == 1
 
 
 def test_auto_prefers_custom_autograd() -> None:

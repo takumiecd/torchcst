@@ -8,6 +8,7 @@ from .atom_grad import (
     AtomGradientObservation,
     AtomGradRequest,
     ImplicitLinearAtomGrad,
+    LinearJGHAtomGrad,
 )
 from .config import (
     AdamWConfig,
@@ -84,6 +85,7 @@ __all__ = [
     "ImplicitLinearAtomGrad",
     "LocalAdamConfig",
     "LocalVisibleAdamConfig",
+    "LinearJGHAtomGrad",
     "MomentContext",
     "MomentSystem",
     "MomentSystemState",

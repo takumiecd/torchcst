@@ -3,6 +3,7 @@
 import torch
 from torch.func import grad, hessian, jacfwd, jvp, vmap
 
+from ._hessian import hessian_from_gradient
 from .factored_taylor import factor_derivatives  # noqa: F401
 
 
@@ -62,3 +63,23 @@ def factor_observation(factor_atoms, point, inputs, output_gradient):
         return ((inputs @ u) * (output_gradient @ v)).sum()
 
     return vmap(grad(scalar))(point), vmap(hessian(scalar))(point)
+
+
+def factor_jgh_observation(factor_atoms, point, inputs, output_gradient):
+    """Return current ``jg`` and local ``gh`` using gradient JVPs."""
+
+    def scalar(p):
+        u, v = factor_atoms(p.unsqueeze(0))
+        return ((inputs @ u) * (output_gradient @ v)).sum()
+
+    gradient = grad(scalar)
+    directions = torch.eye(point.shape[-1], device=point.device, dtype=point.dtype)
+
+    def one(parameter_point):
+        return gradient(parameter_point), hessian_from_gradient(
+            gradient,
+            parameter_point,
+            directions=directions,
+        )
+
+    return vmap(one)(point)
