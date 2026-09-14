@@ -15,6 +15,11 @@ from .dense_visible import (
     DenseVisibleSecondMomentState,
 )
 from .first import AcceptedFrameFirstMoment, AcceptedFrameFirstMomentState
+from .numerator import (
+    ExpandedNumeratorMoment,
+    NumeratorMoment,
+    NumeratorMomentState,
+)
 from .projected_visible import (
     ProjectedVisibleSecondMoment,
     ProjectedVisibleSecondMomentState,
@@ -35,11 +40,14 @@ __all__ = [
     "DenseVisibleSecondMomentState",
     "ExpandedFirstMoment",
     "ExpandedMoments",
+    "ExpandedNumeratorMoment",
     "ExpandedSecondMoment",
     "FirstMomentComponent",
     "MomentContext",
     "MomentSystem",
     "MomentSystemState",
+    "NumeratorMoment",
+    "NumeratorMomentState",
     "ProjectedVisibleSecondMoment",
     "ProjectedVisibleSecondMomentState",
     "SecondMomentComponent",

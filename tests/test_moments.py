@@ -6,9 +6,12 @@ from torchcst.optim import (
     AcceptedFrameFirstMomentState,
     AtomGradientObservation,
     AtomGradRequest,
+    ExpandedNumeratorMoment,
     ImplicitLinearAtomGrad,
     MomentContext,
     MomentSystem,
+    NumeratorMoment,
+    NumeratorMomentState,
     SeparableDiagonalSecondMoment,
     SeparableSecondMomentState,
 )
@@ -78,6 +81,70 @@ def test_moment_system_unions_its_autograd_requirements() -> None:
         gh=True,
         row_square=True,
         column_square=True,
+    )
+
+
+def test_numerator_moment_matches_affine_ema_and_bias_correction() -> None:
+    torch.manual_seed(31)
+    beta = 0.8
+    moment = NumeratorMoment(beta)
+    g = torch.randn(2, 3, dtype=torch.float64)
+    H = torch.randn(2, 3, 3, dtype=torch.float64)
+    observation = AtomGradientObservation(jg=g, gh=H, contributions=1)
+    state = moment.initialize(g)
+
+    expanded = moment.expand(state, observation, next_step=1)
+
+    assert isinstance(expanded, ExpandedNumeratorMoment)
+    torch.testing.assert_close(expanded.raw.constant, (1.0 - beta) * g)
+    torch.testing.assert_close(expanded.raw.linear, (1.0 - beta) * H)
+    torch.testing.assert_close(expanded.corrected.constant, g)
+    torch.testing.assert_close(expanded.corrected.linear, H)
+
+    displacement = torch.randn_like(g)
+    torch.testing.assert_close(
+        expanded.at(displacement),
+        g + torch.einsum("kpq,kq->kp", H, displacement),
+    )
+
+
+def test_numerator_moment_compress_does_not_recenter() -> None:
+    torch.manual_seed(37)
+    beta = 0.7
+    moment = NumeratorMoment(beta)
+    g1 = torch.randn(2, 3, dtype=torch.float64)
+    H1 = torch.randn(2, 3, 3, dtype=torch.float64)
+    first = moment.expand(
+        moment.initialize(g1),
+        AtomGradientObservation(jg=g1, gh=H1, contributions=1),
+        next_step=1,
+    )
+    displacement = torch.randn_like(g1)
+    state = moment.compress(first, displacement)
+
+    assert isinstance(state, NumeratorMomentState)
+    torch.testing.assert_close(state.m, first.raw.constant)
+    torch.testing.assert_close(state.C, first.raw.linear)
+
+    g2 = torch.randn_like(g1)
+    H2 = torch.randn_like(H1)
+    second = moment.expand(
+        state,
+        AtomGradientObservation(jg=g2, gh=H2, contributions=1),
+        next_step=2,
+    )
+
+    expected_m = beta * first.raw.constant + (1.0 - beta) * g2
+    expected_C = beta * first.raw.linear + (1.0 - beta) * H2
+    torch.testing.assert_close(second.raw.constant, expected_m)
+    torch.testing.assert_close(second.raw.linear, expected_C)
+    torch.testing.assert_close(
+        second.corrected.constant,
+        expected_m / (1.0 - beta**2),
+    )
+    torch.testing.assert_close(
+        second.corrected.linear,
+        expected_C / (1.0 - beta**2),
     )
 
 
