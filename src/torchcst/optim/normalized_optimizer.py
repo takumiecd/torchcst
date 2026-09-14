@@ -62,6 +62,29 @@ class _NormalizedModelOptimizer(_ModelOptimizer):
             expanded.denominator,
             learning_rate=c.lr,
         )
+        if c.initial_zero_step and expanded.previous_step == 0:
+            zero = torch.zeros(
+                problem.point_shape,
+                device=problem.device,
+                dtype=problem.dtype,
+            )
+            displacement = c.solver.project_displacement(
+                problem.fixed_point(zero),
+                trust_radius=c.trust_radius,
+            )
+            return NormalizedSolveResult(
+                displacement=displacement.detach(),
+                residual_norm=torch.zeros(
+                    (), device=problem.device, dtype=problem.dtype
+                ),
+                iterations=0,
+                converged=True,
+                on_boundary=c.solver.displacement_is_on_boundary(
+                    displacement,
+                    trust_radius=c.trust_radius,
+                ),
+                solver_mode="zero_point",
+            )
         return c.solver.solve(problem, trust_radius=c.trust_radius)
 
     def _validate_solve(self, solve, context) -> None:
@@ -75,9 +98,11 @@ class _NormalizedModelOptimizer(_ModelOptimizer):
             raise ValueError("CST displacement must match its CST point")
         if not bool(torch.isfinite(displacement).all()):
             raise FloatingPointError("CST displacement must be finite")
-        norm = torch.linalg.vector_norm(displacement)
-        if not bool(norm <= self.cst_config.trust_radius * (1.0 + 10.0 * torch.finfo(displacement.dtype).eps)):
-            raise ValueError("CST displacement exceeds the trust radius")
+        if not self.cst_config.solver.displacement_is_valid(
+            displacement,
+            trust_radius=self.cst_config.trust_radius,
+        ):
+            raise ValueError("CST displacement exceeds the solver constraint")
 
     def _moment_contract(self):
         c = self.cst_config
@@ -87,6 +112,7 @@ class _NormalizedModelOptimizer(_ModelOptimizer):
             "eps": c.eps,
             "numerator": "ema" if self._use_numerator_moment else "current",
             "denominator": "ema" if self._use_denominator_moment else "unit",
+            "initial_zero_step": c.initial_zero_step,
             "solver": {
                 "type": type(solver).__name__,
                 "max_iter": getattr(solver, "max_iter", None),
@@ -122,4 +148,3 @@ class CSTNormalizedAdam(_NormalizedModelOptimizer):
 # A descriptive alias for callers who want to emphasize that this is the new
 # composable family while the historical CSTAdam API remains available.
 CSTImplicitAdam = CSTNormalizedAdam
-

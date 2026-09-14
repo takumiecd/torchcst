@@ -4,6 +4,7 @@ from .base import NormalizedSolver, QuarticSolver
 from .device import DeviceBFGS
 from .newton import BallNewton
 from .normalized import (
+    NormalizedBoxFixedPointSolver,
     NormalizedEvaluation,
     NormalizedFixedPointSolver,
     NormalizedSolveResult,
@@ -19,6 +20,7 @@ __all__ = [
     "DeviceBFGS",
     "DeviceRay",
     "FullQuartic",
+    "NormalizedBoxFixedPointSolver",
     "NormalizedEvaluation",
     "NormalizedFixedPointSolver",
     "NormalizedSolveResult",

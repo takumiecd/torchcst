@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 import torch
 from torch import Tensor
@@ -37,6 +37,7 @@ class NormalizedSolveResult:
     iterations: int
     converged: bool
     on_boundary: bool
+    solver_mode: Literal["fixed_point", "zero_point"] = "fixed_point"
 
 
 class NormalizedUpdateProblem:
@@ -187,6 +188,114 @@ class NormalizedFixedPointSolver(NormalizedSolver):
             )
 
 
+class NormalizedBoxFixedPointSolver(NormalizedFixedPointSolver):
+    """Damped fixed-point iteration with an elementwise trust box.
+
+    ``trust_radius`` is retained in the solver contract for compatibility,
+    but is interpreted here as the half-width of the box:
+
+    ``-trust_radius <= d[k, p] <= trust_radius``.
+
+    Unlike :class:`NormalizedFixedPointSolver`, the bound is independent of
+    the number of atoms and parameter coordinates.
+    """
+
+    def solve(
+        self,
+        problem: NormalizedUpdateProblem,
+        *,
+        trust_radius: float,
+    ) -> NormalizedSolveResult:
+        if not isinstance(problem, NormalizedUpdateProblem):
+            raise TypeError("problem must be a NormalizedUpdateProblem")
+        if not math.isfinite(trust_radius) or trust_radius <= 0.0:
+            raise ValueError("trust_radius must be finite and positive")
+
+        with torch.no_grad():
+            displacement = torch.zeros(
+                problem.point_shape,
+                device=problem.device,
+                dtype=problem.dtype,
+            )
+            iterations = 0
+            for iteration in range(self.max_iter):
+                target = _project_box(
+                    problem.fixed_point(displacement), trust_radius
+                )
+                candidate = _project_box(
+                    (1.0 - self.damping) * displacement
+                    + self.damping * target,
+                    trust_radius,
+                )
+                delta = torch.linalg.vector_norm(candidate - displacement)
+                displacement = candidate
+                iterations = iteration + 1
+                scale = torch.maximum(
+                    torch.ones((), device=delta.device, dtype=delta.dtype),
+                    torch.linalg.vector_norm(displacement),
+                )
+                if bool(delta <= self.tolerance * scale):
+                    break
+
+            target = _project_box(problem.fixed_point(displacement), trust_radius)
+            residual = torch.linalg.vector_norm(target - displacement)
+            scale = torch.maximum(
+                torch.ones((), device=residual.device, dtype=residual.dtype),
+                torch.linalg.vector_norm(displacement),
+            )
+            converged = bool(residual <= self.tolerance * scale)
+            on_boundary = bool(
+                torch.any(
+                    torch.abs(displacement) >= trust_radius * (1.0 - 1e-6)
+                )
+            )
+            return NormalizedSolveResult(
+                displacement=displacement.detach(),
+                residual_norm=residual.detach(),
+                iterations=iterations,
+                converged=converged,
+                on_boundary=on_boundary,
+            )
+
+    def project_displacement(
+        self,
+        value: Tensor,
+        *,
+        trust_radius: float,
+    ) -> Tensor:
+        if trust_radius <= 0.0:
+            raise ValueError("trust_radius must be positive")
+        return _project_box(value, trust_radius)
+
+    def displacement_is_valid(
+        self,
+        displacement: Tensor,
+        *,
+        trust_radius: float,
+    ) -> bool:
+        tolerance = 10.0 * torch.finfo(displacement.dtype).eps
+        return bool(
+            torch.abs(displacement).amax()
+            <= trust_radius * (1.0 + tolerance)
+        )
+
+    def displacement_is_on_boundary(
+        self,
+        displacement: Tensor,
+        *,
+        trust_radius: float,
+    ) -> bool:
+        return bool(
+            torch.any(
+                torch.abs(displacement) >= trust_radius * (1.0 - 1e-6)
+            )
+        )
+
+
 def _project_ball(value: Tensor, radius: float) -> Tensor:
     norm = torch.linalg.vector_norm(value)
     return value * (radius / norm.clamp_min(1e-30)).clamp(max=1.0)
+
+
+def _project_box(value: Tensor, radius: float) -> Tensor:
+    return value.clamp(min=-radius, max=radius)

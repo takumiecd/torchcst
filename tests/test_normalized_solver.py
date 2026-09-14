@@ -5,9 +5,10 @@ from torchcst.optim import (
     DenominatorMoment,
     ExpandedDenominatorMoment,
     ExpandedNumeratorMoment,
+    NormalizedBoxFixedPointSolver,
     NormalizedFixedPointSolver,
-    NormalizedSolveResult,
     NormalizedSolver,
+    NormalizedSolveResult,
     NormalizedUpdateProblem,
     NumeratorMoment,
 )
@@ -73,6 +74,30 @@ def test_normalized_solver_projects_to_one_global_trust_ball() -> None:
     torch.testing.assert_close(
         torch.linalg.vector_norm(result.displacement),
         torch.tensor(radius, dtype=result.displacement.dtype),
+    )
+    assert result.on_boundary
+    assert result.converged
+
+
+def test_normalized_box_solver_bounds_each_coordinate_independently() -> None:
+    g = torch.ones(2, 3, dtype=torch.float64)
+    H = torch.zeros(2, 3, 3, dtype=torch.float64)
+    numerator, denominator = make_expanded_moments(g, H)
+    problem = NormalizedUpdateProblem(numerator, denominator, learning_rate=1.0)
+    bound = 0.25
+
+    solver = NormalizedBoxFixedPointSolver(max_iter=8)
+    result = solver.solve(problem, trust_radius=bound)
+
+    torch.testing.assert_close(
+        result.displacement,
+        torch.full_like(g, -bound),
+    )
+    assert torch.linalg.vector_norm(result.displacement) > bound
+    assert solver.displacement_is_valid(result.displacement, trust_radius=bound)
+    assert not solver.displacement_is_valid(
+        result.displacement - 1e-3,
+        trust_radius=bound,
     )
     assert result.on_boundary
     assert result.converged

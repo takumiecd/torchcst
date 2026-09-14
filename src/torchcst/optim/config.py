@@ -186,6 +186,7 @@ class NormalizedOptimizerConfig:
     eps: float = 1e-8
     trust_radius: float = 0.25
     solver: NormalizedSolver = field(default_factory=NormalizedFixedPointSolver)
+    initial_zero_step: bool = False
     atom_grad_mode: AtomGradMode = "auto"
     factored: bool = False
     device_execution: bool = False
@@ -198,6 +199,8 @@ class NormalizedOptimizerConfig:
         object.__setattr__(self, "betas", _validate_betas(self.betas))
         if not isinstance(self.solver, NormalizedSolver):
             raise TypeError("solver must be a NormalizedSolver")
+        if not isinstance(self.initial_zero_step, bool):
+            raise TypeError("initial_zero_step must be a bool")
         if self.atom_grad_mode not in ("auto", "custom", "hooks"):
             raise ValueError("atom_grad_mode must be 'auto', 'custom', or 'hooks'")
         if not isinstance(self.factored, bool):

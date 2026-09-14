@@ -8,6 +8,7 @@ from torchcst.optim import (
     CSTMomentum,
     CSTNormalizedAdam,
     CSTRMSProp,
+    NormalizedBoxFixedPointSolver,
     NormalizedSolver,
     NormalizedSolveResult,
 )
@@ -101,3 +102,22 @@ def test_numerator_and_denominator_states_are_kept_separately() -> None:
     assert state.denominator.beta_power == 0.9
     assert state.numerator.m.shape == model.atoms.p.shape
     assert state.denominator.x.shape == model.atoms.p.shape
+
+
+def test_initial_zero_step_is_used_once_before_implicit_solver() -> None:
+    model = make_site()
+    optimizer = CSTSGD(
+        model,
+        lr=0.01,
+        trust_radius=0.2,
+        solver=NormalizedBoxFixedPointSolver(),
+        initial_zero_step=True,
+    )
+
+    take_step(optimizer, model)
+    assert optimizer.last_step is not None
+    assert optimizer.last_step.site_results[0].solver_mode == "zero_point"
+
+    take_step(optimizer, model)
+    assert optimizer.last_step is not None
+    assert optimizer.last_step.site_results[0].solver_mode == "fixed_point"
