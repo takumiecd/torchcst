@@ -68,12 +68,17 @@ class FactoredFrameGeometry(AutogradFrameGeometry):
             raise ValueError("PCG does not implement a pseudoinverse rank cutoff")
         self._validate_frame(frame)
         self._validate_local(pullback_numerator, name="Gram rhs")
-        solution, valid, _, _ = solve(
+        solution, valid, relative, count = solve(
             self.factor_local_derivatives(frame.point),
             frame.displacement,
             pullback_numerator,
             damping=damping,
             options=getattr(self, "pcg_options", PCGOptions()),
+        )
+        from .tangent_solve import CompressionResult
+
+        self.compression_result = CompressionResult(
+            count, relative, valid, "factored_taylor_pcg"
         )
         require(valid, "PCG Gram solve failed residual validation", FloatingPointError)
         return solution
