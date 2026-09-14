@@ -62,6 +62,11 @@ class ExpandedNumeratorMoment:
 
         return (self.corrected if corrected else self.raw).at(displacement)
 
+    def at_zero(self, *, corrected: bool = True) -> Tensor:
+        """Evaluate the numerator at zero without contracting its linear term."""
+
+        return (self.corrected if corrected else self.raw).constant
+
 
 class NumeratorMoment:
     """EMA of ``g`` and optionally ``H`` for a reusable affine numerator.

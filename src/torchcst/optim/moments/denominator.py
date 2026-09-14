@@ -99,6 +99,12 @@ class ExpandedDenominatorMoment:
         value = self.quadratic_at(displacement, corrected=corrected)
         return value.clamp_min(0).sqrt() + self.eps
 
+    def at_zero(self, *, corrected: bool = True) -> Tensor:
+        """Evaluate the denominator at zero without contracting ``y`` or ``Z``."""
+
+        polynomial = self.corrected if corrected else self.raw
+        return polynomial.x.clamp_min(0).sqrt() + self.eps
+
 
 class DenominatorMoment:
     """EMA of ``g²`` and optionally ``gH``/``HH`` for a denominator.

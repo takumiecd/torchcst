@@ -105,10 +105,41 @@ class NormalizedUpdateProblem:
             raise FloatingPointError("normalized update denominator is not positive")
         return numerator / denominator
 
+    @staticmethod
+    def _at_zero(evaluation: NormalizedEvaluation) -> Tensor:
+        """Evaluate a normalized component at zero without its displacement terms."""
+
+        at_zero = getattr(evaluation, "at_zero", None)
+        if at_zero is not None:
+            return at_zero()
+        zero = torch.zeros(
+            evaluation.point_shape,
+            device=evaluation.device,
+            dtype=evaluation.dtype,
+        )
+        return evaluation.at(zero)
+
+    def normalized_gradient_at_zero(self) -> Tensor:
+        """Return ``N(0) / D(0)`` using the zero-point fast path when available."""
+
+        numerator = self._at_zero(self.numerator)
+        denominator = self._at_zero(self.denominator)
+        finite = torch.isfinite(numerator).all() & torch.isfinite(denominator).all()
+        if not bool(finite):
+            raise FloatingPointError("normalized update became non-finite")
+        if not bool((denominator > 0).all()):
+            raise FloatingPointError("normalized update denominator is not positive")
+        return numerator / denominator
+
     def fixed_point(self, displacement: Tensor) -> Tensor:
         """Evaluate ``-learning_rate * N(d) / D(d)``."""
 
         return -self.learning_rate * self.normalized_gradient(displacement)
+
+    def fixed_point_at_zero(self) -> Tensor:
+        """Evaluate ``-learning_rate * N(0) / D(0)`` without curvature contractions."""
+
+        return -self.learning_rate * self.normalized_gradient_at_zero()
 
 
 class NormalizedFixedPointSolver(NormalizedSolver):
@@ -153,7 +184,12 @@ class NormalizedFixedPointSolver(NormalizedSolver):
             iterations = 0
             for iteration in range(self.max_iter):
                 target = _project_ball(
-                    problem.fixed_point(displacement), trust_radius
+                    (
+                        problem.fixed_point_at_zero()
+                        if iteration == 0
+                        else problem.fixed_point(displacement)
+                    ),
+                    trust_radius,
                 )
                 candidate = _project_ball(
                     (1.0 - self.damping) * displacement
@@ -220,7 +256,12 @@ class NormalizedBoxFixedPointSolver(NormalizedFixedPointSolver):
             iterations = 0
             for iteration in range(self.max_iter):
                 target = _project_box(
-                    problem.fixed_point(displacement), trust_radius
+                    (
+                        problem.fixed_point_at_zero()
+                        if iteration == 0
+                        else problem.fixed_point(displacement)
+                    ),
+                    trust_radius,
                 )
                 candidate = _project_box(
                     (1.0 - self.damping) * displacement

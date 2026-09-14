@@ -14,6 +14,35 @@ from torchcst.optim import (
 )
 
 
+class CountingEvaluation:
+    def __init__(self, zero_value: float, displaced_value: float) -> None:
+        self.zero = torch.tensor([[zero_value]], dtype=torch.float64)
+        self.displaced = torch.tensor([[displaced_value]], dtype=torch.float64)
+        self.zero_calls = 0
+        self.displaced_calls = 0
+
+    @property
+    def point_shape(self) -> tuple[int, int]:
+        return (1, 1)
+
+    @property
+    def device(self) -> torch.device:
+        return self.zero.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.zero.dtype
+
+    def at(self, displacement: torch.Tensor) -> torch.Tensor:
+        del displacement
+        self.displaced_calls += 1
+        return self.displaced
+
+    def at_zero(self) -> torch.Tensor:
+        self.zero_calls += 1
+        return self.zero
+
+
 def make_expanded_moments(
     g: torch.Tensor,
     H: torch.Tensor,
@@ -57,6 +86,30 @@ def test_normalized_solver_reduces_to_one_rmsprop_step_when_h_is_zero() -> None:
 
 def test_fixed_point_solver_implements_replaceable_solver_contract() -> None:
     assert isinstance(NormalizedFixedPointSolver(), NormalizedSolver)
+
+
+def test_first_solver_iteration_uses_zero_point_evaluation() -> None:
+    numerator = CountingEvaluation(1.0, 3.0)
+    denominator = CountingEvaluation(1.0, 1.0)
+    problem = NormalizedUpdateProblem(
+        numerator,
+        denominator,
+        learning_rate=1.0,
+    )
+
+    result = NormalizedFixedPointSolver(max_iter=2).solve(
+        problem,
+        trust_radius=10.0,
+    )
+
+    torch.testing.assert_close(
+        result.displacement,
+        torch.tensor([[-3.0]], dtype=torch.float64),
+    )
+    assert numerator.zero_calls == 1
+    assert denominator.zero_calls == 1
+    assert numerator.displaced_calls == 2
+    assert denominator.displaced_calls == 2
 
 
 def test_normalized_solver_projects_to_one_global_trust_ball() -> None:

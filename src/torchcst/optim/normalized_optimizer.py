@@ -85,13 +85,8 @@ class _NormalizedModelOptimizer(_ModelOptimizer):
             learning_rate=c.lr,
         )
         if c.initial_zero_step and expanded.previous_step == 0:
-            zero = torch.zeros(
-                problem.point_shape,
-                device=problem.device,
-                dtype=problem.dtype,
-            )
             displacement = c.solver.project_displacement(
-                problem.fixed_point(zero),
+                problem.fixed_point_at_zero(),
                 trust_radius=c.trust_radius,
             )
             return NormalizedSolveResult(

@@ -40,6 +40,15 @@ class ExpandedUnitDenominator:
             raise ValueError("displacement must match denominator device and dtype")
         return torch.ones_like(displacement)
 
+    def at_zero(self) -> Tensor:
+        """Evaluate the unit denominator at zero without creating a displacement."""
+
+        return torch.ones(
+            self.point_shape,
+            device=self.device,
+            dtype=self.dtype,
+        )
+
 
 class UnitDenominator:
     """Stateless denominator used by SGD and Momentum wrappers."""
