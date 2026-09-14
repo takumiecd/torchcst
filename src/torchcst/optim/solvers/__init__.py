@@ -1,8 +1,13 @@
 """Numerical solvers for CST local objectives."""
 
-from .base import QuarticSolver
+from .base import NormalizedSolver, QuarticSolver
 from .device import DeviceBFGS
 from .newton import BallNewton
+from .normalized import (
+    NormalizedFixedPointSolver,
+    NormalizedSolveResult,
+    NormalizedUpdateProblem,
+)
 from .projected import ProjectedLBFGS
 from .quartic import FullQuartic, QuarticSolveResult
 from .ray import DeviceRay
@@ -13,6 +18,10 @@ __all__ = [
     "DeviceBFGS",
     "DeviceRay",
     "FullQuartic",
+    "NormalizedFixedPointSolver",
+    "NormalizedSolveResult",
+    "NormalizedSolver",
+    "NormalizedUpdateProblem",
     "ProjectedLBFGS",
     "QuarticSolveResult",
     "QuarticSolver",
