@@ -18,6 +18,8 @@ The initial scope is deliberately narrow:
 - fixed-cardinality input and output charts whose coordinates are frozen by
   default;
 - an implicit projected Adam optimizer;
+- a composable normalized optimizer family with independent numerator,
+  denominator, and solver components;
 - a primary first-order optimizer with current-tangent moment compression and transport;
 - an optional second-order optimizer retaining the full quartic objective;
 - regularized direct atom-local updates, with trust-region alternatives;
@@ -459,6 +461,73 @@ cross-frame pullbacks and Gram solves. The initial `AutogradFrameGeometry` is a
 correctness implementation. Future Linear, Conv, or kernel-specific
 implementations may fuse those contractions without changing moment or solver
 interfaces.
+
+### Composable normalized optimizers
+
+The new normalized optimizer family works directly with the candidate-dependent
+atom-coordinate update
+
+$$
+d=-\eta\frac{N(d)}{D(d)}.
+$$
+
+The numerator and denominator are separate components, and their persistent
+states remain in fixed atom coordinates. Expansion prepares the step-local
+values; compression only commits the pending states and does not recenter or
+transform them using the accepted displacement.
+
+The four public wrappers select only the two components:
+
+| optimizer | numerator `N(d)` | denominator `D(d)` |
+| --- | --- | --- |
+| `CSTSGD` | current `g + H d` | `1` |
+| `CSTMomentum` | EMA of `g` and `H` | `1` |
+| `CSTRMSProp` | current `g + H d` | component-wise EMA of `(g + H d)^2` |
+| `CSTNormalizedAdam` | EMA of `g` and `H` | component-wise EMA of `(g + H d)^2` |
+
+`CSTImplicitAdam` is an alias for `CSTNormalizedAdam`. The historical
+`CSTAdam` remains available with its existing tangent-moment behavior while the
+new family is being evaluated.
+
+Use the same whole-model interface as the other model-level optimizers:
+
+```python
+from torchcst import CSTNormalizedAdam
+
+optimizer = CSTNormalizedAdam(
+    model,
+    lr=1e-3,
+    betas=(0.9, 0.999),
+    eps=1e-8,
+    trust_radius=0.25,
+)
+
+for inputs, targets in loader:
+    optimizer.zero_grad(set_to_none=True)
+    loss = loss_fn(model(inputs), targets)
+    loss.backward()
+    optimizer.step()
+```
+
+The common configuration is `NormalizedOptimizerConfig`. `CSTSGD`,
+`CSTMomentum`, `CSTRMSProp`, and `CSTNormalizedAdam` accept its fields directly
+or through `cst=NormalizedOptimizerConfig(...)`.
+
+The update solver is injected independently of the optimizer wrapper. The
+default is `NormalizedFixedPointSolver`; another solver only needs to implement
+the `NormalizedSolver` contract and return a `NormalizedSolveResult`:
+
+```python
+from torchcst import CSTNormalizedAdam
+from torchcst.optim import NormalizedFixedPointSolver
+
+solver = NormalizedFixedPointSolver(max_iter=64, tolerance=1e-7, damping=0.8)
+optimizer = CSTNormalizedAdam(model, solver=solver)
+```
+
+The atom-gradient program used by this family is `LinearJGHAtomGrad`, which
+collects `jg:[K, P]` and the local contracted Hessian `gh:[K, P, P]`. These
+observations are reused by both the numerator and denominator components.
 
 ### Exact structured quartic evaluation
 
