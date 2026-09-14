@@ -14,6 +14,12 @@ from .dense_visible import (
     DenseVisibleSecondMoment,
     DenseVisibleSecondMomentState,
 )
+from .denominator import (
+    DenominatorMoment,
+    DenominatorMomentState,
+    DenominatorPolynomial,
+    ExpandedDenominatorMoment,
+)
 from .first import AcceptedFrameFirstMoment, AcceptedFrameFirstMomentState
 from .numerator import (
     ExpandedNumeratorMoment,
@@ -38,7 +44,11 @@ __all__ = [
     "DenseVisibleFirstMomentState",
     "DenseVisibleSecondMoment",
     "DenseVisibleSecondMomentState",
+    "DenominatorMoment",
+    "DenominatorMomentState",
+    "DenominatorPolynomial",
     "ExpandedFirstMoment",
+    "ExpandedDenominatorMoment",
     "ExpandedMoments",
     "ExpandedNumeratorMoment",
     "ExpandedSecondMoment",

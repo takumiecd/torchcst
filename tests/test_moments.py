@@ -6,6 +6,10 @@ from torchcst.optim import (
     AcceptedFrameFirstMomentState,
     AtomGradientObservation,
     AtomGradRequest,
+    DenominatorMoment,
+    DenominatorMomentState,
+    DenominatorPolynomial,
+    ExpandedDenominatorMoment,
     ExpandedNumeratorMoment,
     ImplicitLinearAtomGrad,
     MomentContext,
@@ -106,6 +110,81 @@ def test_numerator_moment_matches_affine_ema_and_bias_correction() -> None:
         expanded.at(displacement),
         g + torch.einsum("kpq,kq->kp", H, displacement),
     )
+
+
+def test_denominator_moment_matches_componentwise_squared_affine_gradient() -> None:
+    torch.manual_seed(41)
+    beta = 0.8
+    eps = 1e-6
+    moment = DenominatorMoment(beta, eps=eps)
+    g = torch.randn(2, 3, dtype=torch.float64)
+    H = torch.randn(2, 3, 3, dtype=torch.float64)
+    observation = AtomGradientObservation(jg=g, gh=H, contributions=1)
+    state = moment.initialize(g)
+
+    expanded = moment.expand(state, observation, next_step=1)
+
+    assert isinstance(expanded, ExpandedDenominatorMoment)
+    assert isinstance(expanded.pending_state, DenominatorMomentState)
+    assert isinstance(expanded.corrected, DenominatorPolynomial)
+    current_Z = torch.einsum("kip,kiq->kipq", H, H)
+    torch.testing.assert_close(expanded.raw.x, (1.0 - beta) * g.square())
+    torch.testing.assert_close(
+        expanded.raw.y,
+        (1.0 - beta) * torch.einsum("ki,kip->kip", g, H),
+    )
+    torch.testing.assert_close(expanded.raw.Z, (1.0 - beta) * current_Z)
+    torch.testing.assert_close(expanded.corrected.x, g.square())
+    probe = torch.randn_like(g)
+    torch.testing.assert_close(
+        expanded.corrected.quadratic_at(probe),
+        (g + torch.einsum("kip,kp->ki", H, probe)) ** 2,
+    )
+
+    displacement = torch.randn_like(g)
+    predicted_gradient = g + torch.einsum("kip,kp->ki", H, displacement)
+    torch.testing.assert_close(
+        expanded.quadratic_at(displacement), predicted_gradient.square()
+    )
+    torch.testing.assert_close(
+        expanded.at(displacement), predicted_gradient.abs() + eps
+    )
+
+
+def test_denominator_moment_compress_does_not_transform_state() -> None:
+    torch.manual_seed(43)
+    beta = 0.7
+    moment = DenominatorMoment(beta, eps=1e-8)
+    g = torch.randn(2, 3, dtype=torch.float64)
+    H = torch.randn(2, 3, 3, dtype=torch.float64)
+    first = moment.expand(
+        moment.initialize(g),
+        AtomGradientObservation(jg=g, gh=H, contributions=1),
+        next_step=1,
+    )
+    state = moment.compress(first, torch.randn_like(g))
+
+    assert isinstance(state, DenominatorMomentState)
+    torch.testing.assert_close(state.x, first.raw.x)
+    torch.testing.assert_close(state.y, first.raw.y)
+    torch.testing.assert_close(state.Z, first.raw.Z)
+
+    g2 = torch.randn_like(g)
+    H2 = torch.randn_like(H)
+    second = moment.expand(
+        state,
+        AtomGradientObservation(jg=g2, gh=H2, contributions=1),
+        next_step=2,
+    )
+    current_x = g2.square()
+    current_y = torch.einsum("ki,kip->kip", g2, H2)
+    current_Z = torch.einsum("kip,kiq->kipq", H2, H2)
+    expected_x = beta * first.raw.x + (1.0 - beta) * current_x
+    expected_y = beta * first.raw.y + (1.0 - beta) * current_y
+    expected_Z = beta * first.raw.Z + (1.0 - beta) * current_Z
+    torch.testing.assert_close(second.raw.x, expected_x)
+    torch.testing.assert_close(second.raw.y, expected_y)
+    torch.testing.assert_close(second.raw.Z, expected_Z)
 
 
 def test_numerator_moment_compress_does_not_recenter() -> None:
