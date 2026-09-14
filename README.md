@@ -467,6 +467,9 @@ interfaces.
 The new normalized optimizer family works directly with the candidate-dependent
 atom-coordinate update
 
+The design details, tensor shapes, moment state, and solver geometry are in
+[the normalized optimizer design document](docs/normalized-optimizer.ja.md).
+
 $$
 d=-\eta\frac{N(d)}{D(d)}.
 $$
