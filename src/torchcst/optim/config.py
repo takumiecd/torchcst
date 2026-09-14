@@ -184,7 +184,7 @@ class NormalizedOptimizerConfig:
     lr: float = 1e-3
     betas: tuple[float, float] = (0.9, 0.999)
     eps: float = 1e-8
-    trust_radius: float = 0.25
+    trust_radius: float = 1.0
     solver: NormalizedSolver = field(default_factory=NormalizedFixedPointSolver)
     initial_zero_step: bool = False
     atom_grad_mode: AtomGradMode = "auto"
