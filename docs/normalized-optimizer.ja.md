@@ -329,7 +329,7 @@ CST engineを複製しない。moment componentとsolverを交換することで
         lr=0.05,
         betas=(0.9, 0.99),
         eps=1e-8,
-        trust_radius=1.0,
+        trust_radius=0.1,
         solver=solver,
         initial_zero_step=True,
         factored=True,
@@ -413,4 +413,3 @@ CSTNormalizedAdam が最も安定した結果を示している。この比較�
 
 実験側の詳細な結果とraw JSONは、companion cst repositoryの
 torchcst-normalized-optimizer-a100 laneに保存している。
-

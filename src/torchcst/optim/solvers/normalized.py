@@ -191,11 +191,14 @@ class NormalizedFixedPointSolver(NormalizedSolver):
                     ),
                     trust_radius,
                 )
-                candidate = _project_ball(
-                    (1.0 - self.damping) * displacement
-                    + self.damping * target,
-                    trust_radius,
-                )
+                if self.damping == 1.0:
+                    candidate = target
+                else:
+                    candidate = _project_ball(
+                        (1.0 - self.damping) * displacement
+                        + self.damping * target,
+                        trust_radius,
+                    )
                 delta = torch.linalg.vector_norm(candidate - displacement)
                 displacement = candidate
                 iterations = iteration + 1
@@ -263,11 +266,14 @@ class NormalizedBoxFixedPointSolver(NormalizedFixedPointSolver):
                     ),
                     trust_radius,
                 )
-                candidate = _project_box(
-                    (1.0 - self.damping) * displacement
-                    + self.damping * target,
-                    trust_radius,
-                )
+                if self.damping == 1.0:
+                    candidate = target
+                else:
+                    candidate = _project_box(
+                        (1.0 - self.damping) * displacement
+                        + self.damping * target,
+                        trust_radius,
+                    )
                 delta = torch.linalg.vector_norm(candidate - displacement)
                 displacement = candidate
                 iterations = iteration + 1
