@@ -163,12 +163,13 @@ class CSTLinear(CSTModule):
         Both are accumulated from the same materialized atoms, so the energy
         ``||S||_F^2 - κ`` equals the off-diagonal pair sum without an
         ``O(K^2)`` Gram matrix. ``kind="raw"`` uses the realized atoms;
-        ``kind="cosine"`` uses Frobenius-normalized atoms. Zero-norm atoms
-        are omitted from the cosine sum.
+        ``kind="cosine"`` uses Frobenius-normalized atoms; ``kind="abs"``
+        uses the elementwise absolute atoms. Zero-norm atoms are omitted
+        from the cosine sum. For ``abs``, ``κ`` matches raw.
         """
 
-        if kind not in ("cosine", "raw"):
-            raise ValueError("kind must be 'cosine' or 'raw'")
+        if kind not in ("cosine", "raw", "abs"):
+            raise ValueError("kind must be 'cosine', 'raw', or 'abs'")
         atoms = self.materialized_atoms()
         if kind == "cosine":
             norms = torch.linalg.vector_norm(atoms, dim=(1, 2), keepdim=True)
@@ -176,6 +177,8 @@ class CSTLinear(CSTModule):
                 norms > 0, norms.reciprocal(), torch.zeros_like(norms)
             )
             atoms = atoms * scale
+        elif kind == "abs":
+            atoms = atoms.abs()
         summed = atoms.sum(dim=0)
         kappa = atoms.square().sum()
         return summed, kappa

@@ -214,7 +214,7 @@ class AdamRConfig(NormalizedOptimizerConfig):
     """Normalized Adam plus decoupled atom-operator repulsion."""
 
     repulsion: float = 0.0
-    kind: Literal["cosine", "raw"] = "cosine"
+    kind: Literal["cosine", "raw", "abs"] = "cosine"
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -224,8 +224,8 @@ class AdamRConfig(NormalizedOptimizerConfig):
             or self.repulsion < 0
         ):
             raise ValueError("repulsion must be finite and nonnegative")
-        if self.kind not in ("cosine", "raw"):
-            raise ValueError("kind must be 'cosine' or 'raw'")
+        if self.kind not in ("cosine", "raw", "abs"):
+            raise ValueError("kind must be 'cosine', 'raw', or 'abs'")
 
 
 @dataclass(frozen=True)

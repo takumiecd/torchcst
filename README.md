@@ -643,7 +643,10 @@ optimizer.step()
 Do not add the energy to the training loss. Mixed models still require
 `dense=AdamWConfig(...)` for ordinary parameters; that block remains AdamW.
 `kind="cosine"` uses Frobenius-normalized atoms; `kind="raw"` uses the
-realized atoms. Pass `cst=AdamRConfig(...)` for the full normalized config.
+realized atoms; `kind="abs"` uses the elementwise absolute atoms so
+`L = Σ_{i≠j} ⟨|W_i|, |W_j|⟩`. For the current nonnegative Gaussian
+profiles that equals `Σ_{i≠j} |⟨W_i, W_j⟩|`, and `κ` matches raw.
+Pass `cst=AdamRConfig(...)` for the full normalized config.
 
 
 ## `CSTLocalAdam`: default atom-local optimizer

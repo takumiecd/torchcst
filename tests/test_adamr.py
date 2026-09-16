@@ -66,12 +66,16 @@ def pairwise_energy(atoms: Tensor, *, kind: str) -> Tensor:
         norms = torch.linalg.vector_norm(atoms, dim=(1, 2), keepdim=True)
         scale = torch.where(norms > 0, norms.reciprocal(), torch.zeros_like(norms))
         atoms = atoms * scale
+    elif kind == "abs":
+        atoms = atoms.abs()
+    elif kind != "raw":
+        raise ValueError("kind must be 'cosine', 'raw', or 'abs'")
     flat = atoms.flatten(1)
     gram = flat @ flat.transpose(-2, -1)
     return gram.sum() - gram.diagonal().sum()
 
 
-@pytest.mark.parametrize("kind", ["cosine", "raw"])
+@pytest.mark.parametrize("kind", ["cosine", "raw", "abs"])
 @pytest.mark.parametrize("backend", ["factored", "materialized"])
 def test_repulsion_terms_match_the_pairwise_identity(kind, backend):
     site = make_site(backend=backend)
@@ -95,6 +99,16 @@ def test_raw_sum_is_the_dense_weight():
     )
 
 
+def test_abs_sum_is_the_elementwise_absolute_atoms():
+    site = make_site()
+    atoms = site.materialized_atoms()
+    summed, kappa = site.repulsion_terms(kind="abs")
+
+    torch.testing.assert_close(summed, atoms.abs().sum(dim=0))
+    torch.testing.assert_close(kappa, atoms.square().sum())
+    torch.testing.assert_close(kappa, site.repulsion_terms(kind="raw")[1])
+
+
 def test_one_atom_has_zero_repulsion_energy():
     site = make_site(atoms=1)
 
@@ -104,6 +118,10 @@ def test_one_atom_has_zero_repulsion_energy():
     )
     torch.testing.assert_close(
         site.repulsion_energy(kind="raw"),
+        torch.zeros((), dtype=torch.float64),
+    )
+    torch.testing.assert_close(
+        site.repulsion_energy(kind="abs"),
         torch.zeros((), dtype=torch.float64),
     )
 
@@ -140,12 +158,13 @@ def test_zero_norm_cosine_atom_is_omitted():
     )
 
 
-def test_repulsion_energy_gradients_match_the_pairwise_formula():
+@pytest.mark.parametrize("kind", ["cosine", "raw", "abs"])
+def test_repulsion_energy_gradients_match_the_pairwise_formula(kind):
     site = make_site()
     oracle = copy.deepcopy(site)
 
-    site.repulsion_energy(kind="cosine").backward()
-    pairwise_energy(oracle.materialized_atoms(), kind="cosine").backward()
+    site.repulsion_energy(kind=kind).backward()
+    pairwise_energy(oracle.materialized_atoms(), kind=kind).backward()
 
     torch.testing.assert_close(site.atoms.p.grad, oracle.atoms.p.grad)
 
@@ -164,13 +183,37 @@ def test_amplitude_bandwidth_kernel_uses_the_same_oracle():
         dtype=torch.float64,
     )
 
-    torch.testing.assert_close(
-        site.repulsion_energy(kind="cosine"),
-        pairwise_energy(site.materialized_atoms(), kind="cosine"),
+    for kind in ("cosine", "raw", "abs"):
+        torch.testing.assert_close(
+            site.repulsion_energy(kind=kind),
+            pairwise_energy(site.materialized_atoms(), kind=kind),
+        )
+
+
+def test_opposite_sign_copies_keep_positive_abs_energy():
+    site = CSTLinear(
+        Chart.linspace(6),
+        Chart.linspace(4),
+        atoms=2,
+        kernel=AmplitudeBandwidthSeparable(
+            sigma_min=0.10,
+            sigma_max=1.0,
+            tau=0.005,
+            temperature=0.25,
+        ),
+        dtype=torch.float64,
     )
+    site.atoms.p.data[1] = site.atoms.p.data[0]
+    site.atoms.p.data[0, 0] = 0.4
+    site.atoms.p.data[1, 0] = -0.4
+
+    raw = site.repulsion_energy(kind="raw")
+    absolute = site.repulsion_energy(kind="abs")
+    assert raw < 0
+    torch.testing.assert_close(absolute, -raw)
     torch.testing.assert_close(
-        site.repulsion_energy(kind="raw"),
-        pairwise_energy(site.materialized_atoms(), kind="raw"),
+        absolute,
+        pairwise_energy(site.materialized_atoms(), kind="abs"),
     )
 
 

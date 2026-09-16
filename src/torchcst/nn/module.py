@@ -9,7 +9,7 @@ from torch import Tensor, nn
 from torchcst.atoms import Atoms
 from torchcst.geometry import Chart
 
-RepulsionKind = Literal["cosine", "raw"]
+RepulsionKind = Literal["cosine", "raw", "abs"]
 
 
 class CSTModule(nn.Module):
