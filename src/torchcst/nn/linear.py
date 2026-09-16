@@ -14,11 +14,12 @@ from torchcst.geometry import Chart
 from torchcst.kernels import AtomInit, Kernel
 
 from .atom_grad import LinearAtomGrad
+from .module import CSTModule, RepulsionKind
 
 Backend = Literal["auto", "factored", "materialized"]
 
 
-class CSTLinear(nn.Module):
+class CSTLinear(CSTModule):
     r"""Represent a linear map as ``sum(kernel(p[a]))``."""
 
     def __init__(
@@ -138,10 +139,15 @@ class CSTLinear(nn.Module):
 
         return AutogradFrameGeometry(self.cst_derivatives())
 
-    def cst_parameters(self) -> tuple[nn.Parameter]:
+    def cst_parameters(self) -> tuple[nn.Parameter, ...]:
         """Return the fixed-shape parameters owned by this CST site."""
 
         return (self.atoms.p,)
+
+    def cst_charts(self) -> tuple[Chart, ...]:
+        """Return the input and output charts observed by this site."""
+
+        return (self.input_chart, self.output_chart)
 
     def dense_weight(self) -> Tensor:
         """Materialize the canonical sum of complete kernel atoms."""
@@ -149,7 +155,7 @@ class CSTLinear(nn.Module):
         return self.materialized_atoms().sum(dim=0)
 
     def repulsion_terms(
-        self, *, kind: Literal["cosine", "raw"] = "cosine"
+        self, *, kind: RepulsionKind = "cosine"
     ) -> tuple[Tensor, Tensor]:
         """Return ``(S, κ)`` for the atom-operator repulsion identity.
 
@@ -173,12 +179,6 @@ class CSTLinear(nn.Module):
         summed = atoms.sum(dim=0)
         kappa = atoms.square().sum()
         return summed, kappa
-
-    def repulsion_energy(self, *, kind: Literal["cosine", "raw"] = "cosine") -> Tensor:
-        """Return the scalar pair-repulsion energy ``||S||_F^2 - κ``."""
-
-        summed, kappa = self.repulsion_terms(kind=kind)
-        return summed.square().sum() - kappa
 
     def _resolved_backend(self) -> Literal["factored", "materialized"]:
         if self.backend != "auto":

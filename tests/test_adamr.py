@@ -9,9 +9,11 @@ from torchcst import (
     AdamWConfig,
     Amplitude,
     AmplitudeBandwidthSeparable,
+    Atoms,
     Chart,
     CSTAdamR,
     CSTLinear,
+    CSTModule,
     Gaussian,
     Kernel,
     Separable,
@@ -171,6 +173,43 @@ def test_amplitude_bandwidth_kernel_uses_the_same_oracle():
     )
 
 
+def test_linear_is_a_cst_module_site():
+    site = make_site()
+
+    assert isinstance(site, CSTModule)
+    assert site.cst_charts() == (site.input_chart, site.output_chart)
+    assert site.cst_parameters() == (site.atoms.p,)
+
+
+class FakeSite(CSTModule):
+    def __init__(self) -> None:
+        super().__init__()
+        self.atoms = Atoms(torch.tensor([[1.0], [-0.5]], dtype=torch.float64))
+        self._charts = (Chart.linspace(2),)
+
+    def cst_parameters(self):
+        return (self.atoms.p,)
+
+    def cst_charts(self):
+        return self._charts
+
+    def repulsion_terms(self, *, kind="cosine"):
+        atoms = self.atoms.p.unsqueeze(-1)
+        if kind == "cosine":
+            norms = torch.linalg.vector_norm(atoms, dim=(1, 2), keepdim=True)
+            scale = torch.where(norms > 0, norms.reciprocal(), torch.zeros_like(norms))
+            atoms = atoms * scale
+        return atoms.sum(dim=0), atoms.square().sum()
+
+
+def test_adamr_discovers_cstmodule_sites_that_are_not_linear():
+    site = FakeSite()
+    opt = CSTAdamR(site, repulsion=0.1)
+
+    assert opt._sites == [site]
+    assert not isinstance(site, CSTLinear)
+
+
 def test_unknown_repulsion_kind_is_rejected():
     site = make_site()
 
@@ -182,7 +221,7 @@ def test_coupled_step_matches_adamw_on_task_plus_repulsion():
     torch.manual_seed(7)
     site = make_site()
     oracle = copy.deepcopy(site)
-    opt = CSTAdamR(site, lr=0.05, repulsion=0.1, kind="cosine")
+    opt = CSTAdamR(site, lr=0.05, repulsion=0.1, kind="cosine", coupled=True)
     ref = torch.optim.AdamW(
         oracle.parameters(), lr=0.05, weight_decay=0.0, foreach=False
     )
@@ -191,15 +230,56 @@ def test_coupled_step_matches_adamw_on_task_plus_repulsion():
 
     opt.zero_grad(set_to_none=True)
     ref.zero_grad(set_to_none=True)
-    loss = F.mse_loss(site(inputs), targets) + opt.repulsion_loss()
-    loss.backward()
+    F.mse_loss(site(inputs), targets).backward()
+    opt.step()
     task = F.mse_loss(oracle(inputs), targets)
     energy = pairwise_energy(oracle.materialized_atoms(), kind="cosine")
     (task + 0.1 * energy).backward()
-    opt.step()
     ref.step()
 
     torch.testing.assert_close(site.atoms.p, oracle.atoms.p)
+
+
+def _task_and_repulsion_grads(module, inputs, targets, *, kind):
+    module.zero_grad(set_to_none=True)
+    F.mse_loss(module(inputs), targets).backward()
+    task_grad = module.atoms.p.grad.detach().clone()
+    with torch.enable_grad():
+        repulsion_grad = torch.autograd.grad(
+            module.repulsion_energy(kind=kind), module.atoms.p
+        )[0]
+    return task_grad, repulsion_grad.detach()
+
+
+def test_decoupled_step_keeps_repulsion_out_of_adam_moments():
+    torch.manual_seed(7)
+    site = make_site()
+    oracle = copy.deepcopy(site)
+    opt = CSTAdamR(site, lr=0.05, repulsion=0.1, kind="cosine")
+    ref = torch.optim.AdamW(
+        oracle.parameters(), lr=0.05, weight_decay=0.0, foreach=False
+    )
+    inputs = torch.randn(8, site.in_features, dtype=torch.float64)
+    targets = torch.randn(8, site.out_features, dtype=torch.float64)
+
+    task_grad, repulsion_grad = _task_and_repulsion_grads(
+        site, inputs, targets, kind="cosine"
+    )
+    opt.step()
+
+    expected_moment = (1 - 0.9) * task_grad
+    oracle.atoms.p.grad = task_grad.clone()
+    ref.step()
+    task_only = oracle.atoms.p.detach().clone()
+    with torch.no_grad():
+        oracle.atoms.p.add_(repulsion_grad, alpha=-0.05 * 0.1)
+
+    torch.testing.assert_close(opt.state[site.atoms.p]["exp_avg"], expected_moment)
+    torch.testing.assert_close(
+        ref.state[oracle.atoms.p]["exp_avg"], expected_moment
+    )
+    torch.testing.assert_close(site.atoms.p, oracle.atoms.p)
+    assert not torch.equal(site.atoms.p, task_only)
 
 
 def test_mixed_model_requires_dense_config_and_sums_site_energies():
@@ -223,5 +303,5 @@ def test_mixed_model_requires_dense_config_and_sums_site_energies():
 
 
 def test_rejects_models_without_cst_sites():
-    with pytest.raises(ValueError, match="must contain a CSTLinear"):
+    with pytest.raises(ValueError, match="must contain a CSTModule"):
         CSTAdamR(nn.Linear(3, 2), repulsion=0.1)

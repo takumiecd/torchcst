@@ -79,7 +79,7 @@ This API makes seven ownership decisions explicit:
 1. a `Chart` owns fixed-cardinality observation coordinates;
 2. `Atoms` owns one fixed-shape opaque parameter table;
 3. a `Kernel` interprets complete atom rows but owns no trainable state;
-4. a `CSTLinear` composes charts, atoms, and one kernel;
+4. a `CSTModule` such as `CSTLinear` composes charts, atoms, and one kernel;
 5. a CST optimizer partitions and exclusively owns every trainable parameter;
 6. the CST engine attaches its concrete transient `AtomGrad` to each atom table;
 7. its implicit CST engine owns compressed moment and accepted-frame state;
@@ -154,6 +154,16 @@ shared trainable parameters.
 concrete `AtomGrad` program before the base-point backward pass. `Atoms` neither
 defines nor interprets its contents, and the object is not serialized in the
 model `state_dict()`.
+
+## `CSTModule`
+
+`CSTLinear` and a future convolution module are CST sites. The shared contract
+is one `Atoms` table, frozen charts, `cst_parameters()`, and
+`repulsion_terms()`. `S` has the realized operator shape of that family; `κ`
+is a scalar. Backward programs stay family-specific: `LinearAtomGrad` now,
+`ConvAtomGrad` later. Optimizers that only need the site, such as `CSTAdamR`,
+discover `isinstance(..., CSTModule)` rather than `CSTLinear`.
+
 
 ## `CSTLinear`
 
@@ -397,7 +407,8 @@ optimizer-specific values travel through the attached `AtomGrad` object.
 Operation contracts are separate. `LinearAtomGrad` describes what a
 `CSTLinear` backward may invoke, while a future `ConvAtomGrad` can retain the
 spatial structure needed by convolution without forcing both through one
-matrix-specific interface. Concrete implementations belong to the optimizer
+matrix-specific interface. Site discovery uses `CSTModule`; those backward
+programs stay off that type. Concrete implementations belong to the optimizer
 layer.
 
 Each concrete program selects one execution route:
@@ -603,29 +614,37 @@ separate validation subset; the three previously unused seeds averaged
 a guarantee that every seed exceeds 80%.
 
 
-## `CSTAdamR`: coupled atom-operator repulsion
+## `CSTAdamR`: decoupled atom-operator repulsion
 
 `R` is repulsion of realized atom operators, not parameter-coordinate decay.
-Each `CSTLinear` supplies `(S, κ)` from one materialization of its atoms.
-`S` has the realized weight shape; `κ` is a scalar. The energy
+Each `CSTModule` supplies `(S, κ)` from one materialization of its atoms.
+`S` has the realized operator shape; `κ` is a scalar. The energy
 `||S||_F^2 - κ` equals the off-diagonal pair inner-product sum in `O(K · d)`,
-not `O(K^2 d)`. The optimizer owns `λ` and does not modify `CSTAdam`,
-`CSTLocalAdam`, or the SGD family.
+not `O(K^2 d)`. The optimizer owns `λ` and applies it in `step()`, like
+AdamW weight decay: Adam moments see the task gradient only, then
+
+```text
+p <- p - lr * mhat / (sqrt(vhat) + eps) - lr * λ * ∇_p L
+```
+
+Do not add the energy to the training loss. This optimizer does not modify
+`CSTAdam`, `CSTLocalAdam`, or the SGD family.
 
 ```python
 from torchcst import CSTAdamR
 
 optimizer = CSTAdamR(model, repulsion=0.01)  # kind="cosine" by default
-loss = F.cross_entropy(model(images), labels) + optimizer.repulsion_loss()
+loss = F.cross_entropy(model(images), labels)
 loss.backward()
 optimizer.step()
 ```
 
-Add `repulsion_loss()` to the task loss before backward. This is the coupled
-autograd path. `kind="cosine"` uses Frobenius-normalized atoms; `kind="raw"`
-uses the realized atoms. Mixed models still require `dense=AdamWConfig(...)`.
-Coordinate `weight_decay` is a separate argument on this class, defaulting to
-`0`; do not introduce a `CSTAdamRW` optimizer.
+`kind="cosine"` uses Frobenius-normalized atoms; `kind="raw"` uses the
+realized atoms. `coupled=True` is the CE+λL oracle that folds `λ ∇L` into
+the Adam gradient instead of applying it after the moment update. Mixed
+models still require `dense=AdamWConfig(...)`. Coordinate `weight_decay` is
+a separate argument on this class, defaulting to `0`; do not introduce a
+`CSTAdamRW` optimizer.
 
 
 ## `CSTLocalAdam`: default atom-local optimizer

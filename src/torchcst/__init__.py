@@ -10,7 +10,7 @@ from .kernels import (
     Profile,
     Separable,
 )
-from .nn import CSTLinear
+from .nn import CSTLinear, CSTModule
 from .optim import (
     CSTSGD,
     AdamWConfig,
@@ -52,6 +52,7 @@ __all__ = [
     "CSTLinear",
     "CSTLocalAdam",
     "CSTLocalVisibleAdam",
+    "CSTModule",
     "CSTMomentum",
     "CSTNormalizedAdam",
     "CSTRMSProp",

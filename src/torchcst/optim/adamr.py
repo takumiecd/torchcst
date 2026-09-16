@@ -1,33 +1,31 @@
 """Coordinate Adam plus atom-operator repulsion.
 
 R is repulsion of realized atom operators, not parameter-coordinate decay.
-The coupled path adds ``optimizer.repulsion_loss()`` to the task loss before
-backward. Existing CST Adam and SGD classes are left unchanged.
+The default path is decoupled: Adam moments see the task gradient only, and
+``step()`` then applies ``-lr λ ∇L``. ``coupled=True`` is the CE+λL oracle
+that folds the repulsion gradient into those moments. Existing CST Adam and
+SGD classes are left unchanged.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Literal
+from collections.abc import Iterable
 
 import torch
 from torch import Tensor, nn
 
-from torchcst.nn import CSTLinear
+from torchcst.nn import CSTModule, RepulsionKind
 
 from .config import AdamWConfig, _validate_betas
 
-RepulsionKind = Literal["cosine", "raw"]
-
 
 class CSTAdamR(torch.optim.AdamW):
-    """Whole-model Adam with a coupled atom-operator repulsion term.
+    """Whole-model Adam with atom-operator repulsion applied in ``step()``.
 
-    Discover each ``CSTLinear`` site, read ``(S, κ)`` from that site, and
-    expose ``λ (‖S‖_F² - κ)`` as ``repulsion_loss()``. The Adam update itself
-    is ordinary coordinate AdamW with CST ``weight_decay=0`` by default.
-    Future parameter decay stays an argument on this class; it is not a
-    separate ``CSTAdamRW`` optimizer.
+    Discover each ``CSTModule`` site and read ``(S, κ)`` from that site.
+    ``R`` is not mixed into the task loss. Coordinate ``weight_decay`` stays
+    a separate argument; it is not a ``CSTAdamRW`` optimizer.
     """
 
     def __init__(
@@ -40,6 +38,7 @@ class CSTAdamR(torch.optim.AdamW):
         repulsion: float = 0.0,
         kind: RepulsionKind = "cosine",
         weight_decay: float = 0.0,
+        coupled: bool = False,
         dense: AdamWConfig | None = None,
     ) -> None:
         if not isinstance(model, nn.Module):
@@ -63,21 +62,24 @@ class CSTAdamR(torch.optim.AdamW):
             or weight_decay < 0
         ):
             raise ValueError("weight_decay must be finite and nonnegative")
+        if not isinstance(coupled, bool):
+            raise TypeError("coupled must be a bool")
         if dense is not None and not isinstance(dense, AdamWConfig):
             raise TypeError("dense must be an AdamWConfig or None")
 
-        sites = [module for module in model.modules() if isinstance(module, CSTLinear)]
+        sites = [module for module in model.modules() if isinstance(module, CSTModule)]
         if not sites:
-            raise ValueError("model must contain a CSTLinear")
+            raise ValueError("model must contain a CSTModule")
         owners = set()
         for site in sites:
-            if site.input_chart.trainable or site.output_chart.trainable:
+            if any(chart.trainable for chart in site.cst_charts()):
                 raise ValueError("CSTAdamR requires frozen charts")
             if site.atoms.grad is not None:
                 raise ValueError("CST site already has an attached AtomGrad program")
-            if id(site.atoms.p) in owners:
-                raise ValueError("CST parameters cannot be shared between sites")
-            owners.add(id(site.atoms.p))
+            for parameter in site.cst_parameters():
+                if id(parameter) in owners:
+                    raise ValueError("CST parameters cannot be shared between sites")
+                owners.add(id(parameter))
 
         named = [(name, p) for name, p in model.named_parameters() if p.requires_grad]
         atom = [(name, p) for name, p in named if id(p) in owners]
@@ -115,6 +117,7 @@ class CSTAdamR(torch.optim.AdamW):
         self._sites = sites
         self.repulsion = float(repulsion)
         self.kind: RepulsionKind = kind
+        self.coupled = coupled
 
     def repulsion_energy(self) -> Tensor:
         """Return the sum of site energies ``‖S‖_F² - κ``."""
@@ -124,10 +127,74 @@ class CSTAdamR(torch.optim.AdamW):
             energy = site.repulsion_energy(kind=self.kind)
             total = energy if total is None else total + energy
         if total is None:
-            raise RuntimeError("CSTAdamR has no CSTLinear sites")
+            raise RuntimeError("CSTAdamR has no CSTModule sites")
         return total
 
     def repulsion_loss(self) -> Tensor:
-        """Return ``λ (‖S‖_F² - κ)`` for coupled autograd with the task loss."""
+        """Return ``λ (‖S‖_F² - κ)`` for diagnostics and the coupled oracle."""
 
         return self.repulsion * self.repulsion_energy()
+
+    def step(self, closure=None):
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        repulsion_grads = None
+        if self.repulsion > 0.0:
+            repulsion_grads = self._atom_repulsion_grads()
+            if self.coupled:
+                self._accumulate_grads(self._atom_parameters(), repulsion_grads)
+
+        self._validate_gradients()
+        super().step()
+
+        if repulsion_grads is not None and not self.coupled:
+            lr = self.param_groups[0]["lr"]
+            scale = -lr * self.repulsion
+            with torch.no_grad():
+                for parameter, grad in zip(self._atom_parameters(), repulsion_grads):
+                    if grad is not None:
+                        parameter.add_(grad, alpha=scale)
+        return loss
+
+    def _atom_parameters(self) -> list[nn.Parameter]:
+        return self.param_groups[0]["params"]
+
+    def _atom_repulsion_grads(self) -> tuple[Tensor | None, ...]:
+        parameters = self._atom_parameters()
+        with torch.enable_grad():
+            grads = torch.autograd.grad(
+                self.repulsion_energy(),
+                parameters,
+                allow_unused=True,
+            )
+        for grad in grads:
+            if grad is not None and not bool(torch.isfinite(grad).all()):
+                raise FloatingPointError("non-finite repulsion gradient")
+        return grads
+
+    def _accumulate_grads(
+        self, parameters: Iterable[nn.Parameter], grads: Iterable[Tensor | None]
+    ) -> None:
+        scale = self.repulsion
+        for parameter, grad in zip(parameters, grads):
+            if grad is None:
+                continue
+            update = grad * scale
+            if parameter.grad is None:
+                parameter.grad = update
+            else:
+                parameter.grad.add_(update)
+
+    def _validate_gradients(self) -> None:
+        for group in self.param_groups:
+            for parameter in group["params"]:
+                grad = parameter.grad
+                if grad is None:
+                    continue
+                if grad.is_sparse:
+                    raise RuntimeError("CSTAdamR requires strided gradients")
+                if not bool(torch.isfinite(grad).all()):
+                    raise FloatingPointError("non-finite parameter gradient")
