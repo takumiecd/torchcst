@@ -161,8 +161,10 @@ model `state_dict()`.
 is one `Atoms` table, frozen charts, `cst_parameters()`, and
 `repulsion_terms()`. `S` has the realized operator shape of that family; `κ`
 is a scalar. Backward programs stay family-specific: `LinearAtomGrad` now,
-`ConvAtomGrad` later. Optimizers that only need the site, such as `CSTAdamR`,
-discover `isinstance(..., CSTModule)` rather than `CSTLinear`.
+`ConvAtomGrad` later. The normalized optimizer family currently still
+discovers `CSTLinear` so it can attach `LinearAtomGrad`. `repulsion_terms()`
+is already on this contract so a future Conv site can supply `(S, κ)` without
+changing `CSTAdamR`.
 
 
 ## `CSTLinear`
@@ -407,8 +409,10 @@ optimizer-specific values travel through the attached `AtomGrad` object.
 Operation contracts are separate. `LinearAtomGrad` describes what a
 `CSTLinear` backward may invoke, while a future `ConvAtomGrad` can retain the
 spatial structure needed by convolution without forcing both through one
-matrix-specific interface. Site discovery uses `CSTModule`; those backward
-programs stay off that type. Concrete implementations belong to the optimizer
+matrix-specific interface. Site discovery for the normalized family is still
+`CSTLinear` because those programs attach `LinearAtomGrad`. `CSTModule` is the
+shared site contract for charts, atoms, and `(S, κ)`; those backward programs
+stay off that type. Concrete implementations belong to the optimizer
 layer.
 
 Each concrete program selects one execution route:
@@ -507,6 +511,7 @@ The four public wrappers select only the two components:
 | `CSTMomentum` | EMA of `g` and `H` | `1` |
 | `CSTRMSProp` | current `g + H d` | component-wise EMA of `(g + H d)^2` |
 | `CSTNormalizedAdam` | EMA of `g` and `H` | component-wise EMA of `(g + H d)^2` |
+| `CSTAdamR` | same as `CSTNormalizedAdam` | same as `CSTNormalizedAdam`, plus decoupled `-lr λ ∇L` |
 
 `CSTImplicitAdam` is an alias for `CSTNormalizedAdam`. The historical
 `CSTAdam` remains available with its existing tangent-moment behavior while the
@@ -614,37 +619,31 @@ separate validation subset; the three previously unused seeds averaged
 a guarantee that every seed exceeds 80%.
 
 
-## `CSTAdamR`: decoupled atom-operator repulsion
+## `CSTAdamR`: normalized Adam plus decoupled repulsion
 
-`R` is repulsion of realized atom operators, not parameter-coordinate decay.
+`CSTAdamR` is a `_NormalizedModelOptimizer` wrapper. It uses the same
+numerator and denominator as `CSTNormalizedAdam`. `R` is repulsion of realized
+atom operators, not parameter-coordinate decay, and not the dense AdamW block.
 Each `CSTModule` supplies `(S, κ)` from one materialization of its atoms.
-`S` has the realized operator shape; `κ` is a scalar. The energy
-`||S||_F^2 - κ` equals the off-diagonal pair inner-product sum in `O(K · d)`,
-not `O(K^2 d)`. The optimizer owns `λ` and applies it in `step()`, like
-AdamW weight decay: Adam moments see the task gradient only, then
-
-```text
-p <- p - lr * mhat / (sqrt(vhat) + eps) - lr * λ * ∇_p L
-```
-
-Do not add the energy to the training loss. This optimizer does not modify
-`CSTAdam`, `CSTLocalAdam`, or the SGD family.
+The energy `||S||_F^2 - κ` equals the off-diagonal pair inner-product sum in
+`O(K · d)`. The optimizer owns `λ`. Adam moments and the normalized solver see
+only the task AtomGrad; `step()` then adds `-lr λ ∇_p L` to the CST
+displacement.
 
 ```python
-from torchcst import CSTAdamR
+from torchcst import CSTAdamR, AdamWConfig
 
 optimizer = CSTAdamR(model, repulsion=0.01)  # kind="cosine" by default
+optimizer.zero_grad(set_to_none=True)
 loss = F.cross_entropy(model(images), labels)
 loss.backward()
 optimizer.step()
 ```
 
+Do not add the energy to the training loss. Mixed models still require
+`dense=AdamWConfig(...)` for ordinary parameters; that block remains AdamW.
 `kind="cosine"` uses Frobenius-normalized atoms; `kind="raw"` uses the
-realized atoms. `coupled=True` is the CE+λL oracle that folds `λ ∇L` into
-the Adam gradient instead of applying it after the moment update. Mixed
-models still require `dense=AdamWConfig(...)`. Coordinate `weight_decay` is
-a separate argument on this class, defaulting to `0`; do not introduce a
-`CSTAdamRW` optimizer.
+realized atoms. Pass `cst=AdamRConfig(...)` for the full normalized config.
 
 
 ## `CSTLocalAdam`: default atom-local optimizer

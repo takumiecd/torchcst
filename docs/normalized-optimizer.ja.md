@@ -306,6 +306,7 @@ solverへ戻る。
 | CSTMomentum | g と H のEMA | 1 |
 | CSTRMSProp | 現在の g + H d | (g + H d)^2 のcomponent-wise EMA |
 | CSTNormalizedAdam | g と H のEMA | (g + H d)^2 のcomponent-wise EMA |
+| CSTAdamR | CSTNormalizedAdam と同じ | 同じ。CST変位に decoupled な `-lr λ ∇L` を後から足す |
 
 これらは同じmodel-level coordinatorを使う薄いwrapperであり、optimizerごとに別の
 CST engineを複製しない。moment componentとsolverを交換することで、組み合わせを
@@ -395,6 +396,7 @@ atom coordinateに閉じたstateである一方、P が大きい場合には無�
 ## 11. 既存optimizerとの関係と現在の境界
 
 - CSTNormalizedAdam は新しいcomposable normalized familyのAdamである。
+- CSTAdamR はそのAdam wrapperに、タスクmomentsの外でatom演算子斥力を足したものである。
 - 歴史的な CSTAdam は別のtangent-moment behaviorを持ち、同じ名前の実装ではない。
 - CSTImplicitAdam は CSTNormalizedAdam のaliasである。
 - 現在のoptimizerは固定shape・frozen chartを前提とする。

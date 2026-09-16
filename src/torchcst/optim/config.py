@@ -210,6 +210,25 @@ class NormalizedOptimizerConfig:
 
 
 @dataclass(frozen=True)
+class AdamRConfig(NormalizedOptimizerConfig):
+    """Normalized Adam plus decoupled atom-operator repulsion."""
+
+    repulsion: float = 0.0
+    kind: Literal["cosine", "raw"] = "cosine"
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if (
+            isinstance(self.repulsion, bool)
+            or not math.isfinite(self.repulsion)
+            or self.repulsion < 0
+        ):
+            raise ValueError("repulsion must be finite and nonnegative")
+        if self.kind not in ("cosine", "raw"):
+            raise ValueError("kind must be 'cosine' or 'raw'")
+
+
+@dataclass(frozen=True)
 class SecondOrderAdamConfig:
     """Configuration of the compact implicit optimizer for every CST site."""
 

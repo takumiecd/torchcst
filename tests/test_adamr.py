@@ -14,6 +14,7 @@ from torchcst import (
     CSTAdamR,
     CSTLinear,
     CSTModule,
+    CSTNormalizedAdam,
     Gaussian,
     Kernel,
     Separable,
@@ -202,12 +203,9 @@ class FakeSite(CSTModule):
         return atoms.sum(dim=0), atoms.square().sum()
 
 
-def test_adamr_discovers_cstmodule_sites_that_are_not_linear():
-    site = FakeSite()
-    opt = CSTAdamR(site, repulsion=0.1)
-
-    assert opt._sites == [site]
-    assert not isinstance(site, CSTLinear)
+def test_normalized_adamr_still_requires_linear_sites():
+    with pytest.raises(ValueError, match="CSTLinear"):
+        CSTAdamR(FakeSite(), repulsion=0.1)
 
 
 def test_unknown_repulsion_kind_is_rejected():
@@ -217,69 +215,60 @@ def test_unknown_repulsion_kind_is_rejected():
         site.repulsion_terms(kind="l2")
 
 
-def test_coupled_step_matches_adamw_on_task_plus_repulsion():
+def _take_task_step(optimizer, model, inputs, targets) -> None:
+    optimizer.zero_grad(set_to_none=True)
+    F.mse_loss(model(inputs), targets).backward()
+    optimizer.step()
+
+
+def test_zero_repulsion_matches_normalized_adam():
     torch.manual_seed(7)
     site = make_site()
-    oracle = copy.deepcopy(site)
-    opt = CSTAdamR(site, lr=0.05, repulsion=0.1, kind="cosine", coupled=True)
-    ref = torch.optim.AdamW(
-        oracle.parameters(), lr=0.05, weight_decay=0.0, foreach=False
+    reference = copy.deepcopy(site)
+    opt = CSTAdamR(site, lr=0.01, repulsion=0.0, trust_radius=0.25)
+    ref = CSTNormalizedAdam(reference, lr=0.01, trust_radius=0.25)
+    inputs = torch.randn(8, site.in_features, dtype=torch.float64)
+    targets = torch.randn(8, site.out_features, dtype=torch.float64)
+
+    _take_task_step(opt, site, inputs, targets)
+    _take_task_step(ref, reference, inputs, targets)
+
+    torch.testing.assert_close(site.atoms.p, reference.atoms.p)
+    torch.testing.assert_close(
+        opt.state_dict()["cst"]["<root>"].numerator.m,
+        ref.state_dict()["cst"]["<root>"].numerator.m,
     )
+
+
+def test_decoupled_repulsion_leaves_normalized_moments_unchanged():
+    torch.manual_seed(7)
+    site = make_site()
+    reference = copy.deepcopy(site)
+    opt = CSTAdamR(site, lr=0.01, repulsion=0.1, kind="cosine", trust_radius=0.25)
+    ref = CSTNormalizedAdam(reference, lr=0.01, trust_radius=0.25)
     inputs = torch.randn(8, site.in_features, dtype=torch.float64)
     targets = torch.randn(8, site.out_features, dtype=torch.float64)
 
     opt.zero_grad(set_to_none=True)
     ref.zero_grad(set_to_none=True)
     F.mse_loss(site(inputs), targets).backward()
-    opt.step()
-    task = F.mse_loss(oracle(inputs), targets)
-    energy = pairwise_energy(oracle.materialized_atoms(), kind="cosine")
-    (task + 0.1 * energy).backward()
-    ref.step()
-
-    torch.testing.assert_close(site.atoms.p, oracle.atoms.p)
-
-
-def _task_and_repulsion_grads(module, inputs, targets, *, kind):
-    module.zero_grad(set_to_none=True)
-    F.mse_loss(module(inputs), targets).backward()
-    task_grad = module.atoms.p.grad.detach().clone()
+    F.mse_loss(reference(inputs), targets).backward()
     with torch.enable_grad():
         repulsion_grad = torch.autograd.grad(
-            module.repulsion_energy(kind=kind), module.atoms.p
-        )[0]
-    return task_grad, repulsion_grad.detach()
-
-
-def test_decoupled_step_keeps_repulsion_out_of_adam_moments():
-    torch.manual_seed(7)
-    site = make_site()
-    oracle = copy.deepcopy(site)
-    opt = CSTAdamR(site, lr=0.05, repulsion=0.1, kind="cosine")
-    ref = torch.optim.AdamW(
-        oracle.parameters(), lr=0.05, weight_decay=0.0, foreach=False
-    )
-    inputs = torch.randn(8, site.in_features, dtype=torch.float64)
-    targets = torch.randn(8, site.out_features, dtype=torch.float64)
-
-    task_grad, repulsion_grad = _task_and_repulsion_grads(
-        site, inputs, targets, kind="cosine"
-    )
+            site.repulsion_energy(kind="cosine"), site.atoms.p
+        )[0].detach()
     opt.step()
-
-    expected_moment = (1 - 0.9) * task_grad
-    oracle.atoms.p.grad = task_grad.clone()
     ref.step()
-    task_only = oracle.atoms.p.detach().clone()
-    with torch.no_grad():
-        oracle.atoms.p.add_(repulsion_grad, alpha=-0.05 * 0.1)
 
-    torch.testing.assert_close(opt.state[site.atoms.p]["exp_avg"], expected_moment)
     torch.testing.assert_close(
-        ref.state[oracle.atoms.p]["exp_avg"], expected_moment
+        opt.state_dict()["cst"]["<root>"].numerator.m,
+        ref.state_dict()["cst"]["<root>"].numerator.m,
     )
-    torch.testing.assert_close(site.atoms.p, oracle.atoms.p)
-    assert not torch.equal(site.atoms.p, task_only)
+    torch.testing.assert_close(
+        site.atoms.p,
+        reference.atoms.p - 0.01 * 0.1 * repulsion_grad,
+    )
+    assert not torch.equal(site.atoms.p, reference.atoms.p)
 
 
 def test_mixed_model_requires_dense_config_and_sums_site_energies():
@@ -287,7 +276,7 @@ def test_mixed_model_requires_dense_config_and_sums_site_energies():
     second = make_site(atoms=3, inputs=4, outputs=2)
     mixed = nn.Sequential(first, second, nn.Linear(2, 1, dtype=torch.float64))
 
-    with pytest.raises(ValueError, match="dense=AdamWConfig"):
+    with pytest.raises(ValueError, match="dense=None cannot own"):
         CSTAdamR(mixed, repulsion=0.2)
 
     opt = CSTAdamR(
@@ -299,9 +288,8 @@ def test_mixed_model_requires_dense_config_and_sums_site_energies():
     expected = first.repulsion_energy(kind="raw") + second.repulsion_energy(kind="raw")
 
     torch.testing.assert_close(opt.repulsion_energy(), expected)
-    torch.testing.assert_close(opt.repulsion_loss(), 0.2 * expected)
 
 
 def test_rejects_models_without_cst_sites():
-    with pytest.raises(ValueError, match="must contain a CSTModule"):
+    with pytest.raises(ValueError, match="does not contain a CSTLinear"):
         CSTAdamR(nn.Linear(3, 2), repulsion=0.1)

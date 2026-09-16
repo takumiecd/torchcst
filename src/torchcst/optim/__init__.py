@@ -13,6 +13,7 @@ from .atom_grad import (
     LinearJGHAtomGrad,
 )
 from .config import (
+    AdamRConfig,
     AdamWConfig,
     DenseVisibleAdamConfig,
     FirstOrderAdamConfig,
@@ -84,6 +85,7 @@ __all__ = [
     "CSTSGD",
     "AcceptedFrameFirstMoment",
     "AcceptedFrameFirstMomentState",
+    "AdamRConfig",
     "AdamWConfig",
     "AtomGradRequest",
     "AtomGradientObservation",

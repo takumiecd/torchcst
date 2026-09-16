@@ -13,6 +13,7 @@ from .kernels import (
 from .nn import CSTLinear, CSTModule
 from .optim import (
     CSTSGD,
+    AdamRConfig,
     AdamWConfig,
     BallNewton,
     CSTAdam,
@@ -40,6 +41,7 @@ from .optim import (
 
 __all__ = [
     "CSTSGD",
+    "AdamRConfig",
     "AdamWConfig",
     "Amplitude",
     "AmplitudeBandwidthSeparable",
