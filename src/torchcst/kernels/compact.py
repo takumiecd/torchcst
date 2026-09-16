@@ -148,18 +148,18 @@ class WendlandC2(_CompactRadialProfile):
 
     def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
         radial = _radial_from_squared(squared, precision)
-        gap = _supported(1.0 - radial)
+        gap = (1.0 - radial).clamp_min(0.0)
         return gap.pow(4) * (4.0 * radial + 1.0)
 
     def _d_raw_d_center(
         self, offset: Tensor, squared: Tensor, precision: Tensor
     ) -> Tensor:
         prec = precision.reshape(1, -1)
-        gap = _supported(1.0 - _radial_from_squared(squared, precision))
+        gap = (1.0 - _radial_from_squared(squared, precision)).clamp_min(0.0)
         return (20.0 * gap.pow(3) * prec).unsqueeze(-1) * offset
 
     def _d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
-        gap = _supported(1.0 - _radial_from_squared(squared, precision))
+        gap = (1.0 - _radial_from_squared(squared, precision)).clamp_min(0.0)
         return -10.0 * squared * gap.pow(3)
 
 
@@ -167,36 +167,30 @@ class Triweight(_CompactRadialProfile):
     r"""The triweight profile \((1-r^2)_+^3\), L2-normalized on the chart."""
 
     def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
-        return _supported(1.0 - squared * precision.reshape(1, -1)).pow(3)
+        return (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0).pow(3)
 
     def _d_raw_d_center(
         self, offset: Tensor, squared: Tensor, precision: Tensor
     ) -> Tensor:
         prec = precision.reshape(1, -1)
-        inside = _supported(1.0 - squared * prec)
+        inside = (1.0 - squared * prec).clamp_min(0.0)
         return (6.0 * inside.square() * prec).unsqueeze(-1) * offset
 
     def _d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
-        inside = _supported(1.0 - squared * precision.reshape(1, -1))
+        inside = (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0)
         return -3.0 * squared * inside.square()
 
 
 _L2_FLOOR = 1e-6
 
 
-def _supported(base: Tensor) -> Tensor:
-    """Zero the compact tail without putting ``clamp`` on the Hessian graph."""
-
-    return base * (base > 0).to(dtype=base.dtype).detach()
-
-
 def _l2_column_scale(values: Tensor) -> tuple[Tensor, Tensor]:
-    """L2-normalize live columns; keep empty columns exactly zero."""
+    """L2-normalize live columns; empty columns stay zero.
 
-    norms = torch.linalg.vector_norm(values, dim=0)
-    floor = values.new_tensor(_L2_FLOOR)
-    alive = (norms > floor).detach()
-    scale = torch.where(
-        alive, norms.clamp_min(floor).reciprocal(), torch.zeros_like(norms)
-    )
+    The floor keeps ``1/||u||`` inside float32 when a compact atom is
+    barely on the chart, without ``detach`` (CUDA graphs cannot capture it).
+    Exact zeros remain exact because ``0 / floor = 0``.
+    """
+
+    scale = torch.linalg.vector_norm(values, dim=0).clamp_min(_L2_FLOOR).reciprocal()
     return values * scale, scale
