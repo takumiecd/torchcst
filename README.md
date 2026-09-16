@@ -183,6 +183,7 @@ The primary inspection surface is intentionally small:
 model.atoms.p
 model.kernel
 model.dense_weight()       # diagnostic materialization only
+model.repulsion_terms()    # (S, κ); S is the summed operator, κ is a scalar
 model.extra_repr()
 ```
 
@@ -600,6 +601,31 @@ and **83.96% on all 10,000 test examples**. Settings were selected using a
 separate validation subset; the three previously unused seeds averaged
 79.48% / 83.42%, respectively. This is a tuned short-run configuration, not
 a guarantee that every seed exceeds 80%.
+
+
+## `CSTAdamR`: coupled atom-operator repulsion
+
+`R` is repulsion of realized atom operators, not parameter-coordinate decay.
+Each `CSTLinear` supplies `(S, κ)` from one materialization of its atoms.
+`S` has the realized weight shape; `κ` is a scalar. The energy
+`||S||_F^2 - κ` equals the off-diagonal pair inner-product sum in `O(K · d)`,
+not `O(K^2 d)`. The optimizer owns `λ` and does not modify `CSTAdam`,
+`CSTLocalAdam`, or the SGD family.
+
+```python
+from torchcst import CSTAdamR
+
+optimizer = CSTAdamR(model, repulsion=0.01)  # kind="cosine" by default
+loss = F.cross_entropy(model(images), labels) + optimizer.repulsion_loss()
+loss.backward()
+optimizer.step()
+```
+
+Add `repulsion_loss()` to the task loss before backward. This is the coupled
+autograd path. `kind="cosine"` uses Frobenius-normalized atoms; `kind="raw"`
+uses the realized atoms. Mixed models still require `dense=AdamWConfig(...)`.
+Coordinate `weight_decay` is a separate argument on this class, defaulting to
+`0`; do not introduce a `CSTAdamRW` optimizer.
 
 
 ## `CSTLocalAdam`: default atom-local optimizer

@@ -4,6 +4,7 @@ The public optimizer is introduced after the derivative operator contract is
 validated against dense autograd oracles.
 """
 
+from .adamr import CSTAdamR
 from .atom_grad import (
     AtomGradientObservation,
     AtomGradRequest,
@@ -88,6 +89,7 @@ __all__ = [
     "AtomGradientObservation",
     "BallNewton",
     "CSTAdam",
+    "CSTAdamR",
     "CSTDenseVisibleAdam",
     "CSTImplicitAdam",
     "CSTLocalAdam",

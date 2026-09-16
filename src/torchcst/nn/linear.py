@@ -148,6 +148,38 @@ class CSTLinear(nn.Module):
 
         return self.materialized_atoms().sum(dim=0)
 
+    def repulsion_terms(
+        self, *, kind: Literal["cosine", "raw"] = "cosine"
+    ) -> tuple[Tensor, Tensor]:
+        """Return ``(S, κ)`` for the atom-operator repulsion identity.
+
+        ``S`` has the realized operator shape ``[out, in]``. ``κ`` is a scalar.
+        Both are accumulated from the same materialized atoms, so the energy
+        ``||S||_F^2 - κ`` equals the off-diagonal pair sum without an
+        ``O(K^2)`` Gram matrix. ``kind="raw"`` uses the realized atoms;
+        ``kind="cosine"`` uses Frobenius-normalized atoms. Zero-norm atoms
+        are omitted from the cosine sum.
+        """
+
+        if kind not in ("cosine", "raw"):
+            raise ValueError("kind must be 'cosine' or 'raw'")
+        atoms = self.materialized_atoms()
+        if kind == "cosine":
+            norms = torch.linalg.vector_norm(atoms, dim=(1, 2), keepdim=True)
+            scale = torch.where(
+                norms > 0, norms.reciprocal(), torch.zeros_like(norms)
+            )
+            atoms = atoms * scale
+        summed = atoms.sum(dim=0)
+        kappa = atoms.square().sum()
+        return summed, kappa
+
+    def repulsion_energy(self, *, kind: Literal["cosine", "raw"] = "cosine") -> Tensor:
+        """Return the scalar pair-repulsion energy ``||S||_F^2 - κ``."""
+
+        summed, kappa = self.repulsion_terms(kind=kind)
+        return summed.square().sum() - kappa
+
     def _resolved_backend(self) -> Literal["factored", "materialized"]:
         if self.backend != "auto":
             return self.backend

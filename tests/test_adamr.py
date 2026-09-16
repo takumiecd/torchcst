@@ -1,0 +1,227 @@
+import copy
+
+import pytest
+import torch
+from torch import Tensor, nn
+from torch.nn import functional as F
+
+from torchcst import (
+    AdamWConfig,
+    Amplitude,
+    AmplitudeBandwidthSeparable,
+    Chart,
+    CSTAdamR,
+    CSTLinear,
+    Gaussian,
+    Kernel,
+    Separable,
+)
+
+
+def make_site(*, atoms=3, inputs=5, outputs=4, backend="factored"):
+    return CSTLinear(
+        Chart.linspace(inputs),
+        Chart.linspace(outputs),
+        atoms=atoms,
+        kernel=Amplitude(
+            Separable(input_profile=Gaussian(0.4), output_profile=Gaussian(0.3))
+        ),
+        backend=backend,
+        dtype=torch.float64,
+    )
+
+
+class ExpandingKernel(Kernel):
+    def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:
+        return 1
+
+    def initialize(
+        self,
+        input_chart: Chart,
+        output_chart: Chart,
+        atoms: int,
+        *,
+        mode: str,
+    ) -> Tensor:
+        return torch.linspace(
+            0.5,
+            1.5,
+            atoms,
+            device=input_chart.coordinates.device,
+            dtype=input_chart.coordinates.dtype,
+        ).unsqueeze(-1)
+
+    def materialize_atoms(
+        self, input_chart: Chart, output_chart: Chart, p: Tensor
+    ) -> Tensor:
+        shape = (p.shape[0], output_chart.features, input_chart.features)
+        return p[:, :1, None].square().expand(shape)
+
+
+def pairwise_energy(atoms: Tensor, *, kind: str) -> Tensor:
+    if kind == "cosine":
+        norms = torch.linalg.vector_norm(atoms, dim=(1, 2), keepdim=True)
+        scale = torch.where(norms > 0, norms.reciprocal(), torch.zeros_like(norms))
+        atoms = atoms * scale
+    flat = atoms.flatten(1)
+    gram = flat @ flat.transpose(-2, -1)
+    return gram.sum() - gram.diagonal().sum()
+
+
+@pytest.mark.parametrize("kind", ["cosine", "raw"])
+@pytest.mark.parametrize("backend", ["factored", "materialized"])
+def test_repulsion_terms_match_the_pairwise_identity(kind, backend):
+    site = make_site(backend=backend)
+    summed, kappa = site.repulsion_terms(kind=kind)
+
+    assert summed.shape == (site.out_features, site.in_features)
+    assert kappa.shape == ()
+    torch.testing.assert_close(
+        site.repulsion_energy(kind=kind),
+        pairwise_energy(site.materialized_atoms(), kind=kind),
+    )
+
+
+def test_raw_sum_is_the_dense_weight():
+    site = make_site()
+    summed, kappa = site.repulsion_terms(kind="raw")
+
+    torch.testing.assert_close(summed, site.dense_weight())
+    torch.testing.assert_close(
+        kappa, site.materialized_atoms().square().sum()
+    )
+
+
+def test_one_atom_has_zero_repulsion_energy():
+    site = make_site(atoms=1)
+
+    torch.testing.assert_close(
+        site.repulsion_energy(kind="cosine"),
+        torch.zeros((), dtype=torch.float64),
+    )
+    torch.testing.assert_close(
+        site.repulsion_energy(kind="raw"),
+        torch.zeros((), dtype=torch.float64),
+    )
+
+
+def test_identical_cosine_atoms_have_known_pair_energy():
+    site = CSTLinear(
+        Chart.linspace(3),
+        Chart.linspace(2),
+        atoms=3,
+        kernel=ExpandingKernel(),
+        dtype=torch.float64,
+    )
+    site.atoms.p.data.copy_(site.atoms.p.data[:1].expand_as(site.atoms.p))
+
+    torch.testing.assert_close(
+        site.repulsion_energy(kind="cosine"),
+        torch.tensor(6.0, dtype=torch.float64),
+    )
+
+
+def test_zero_norm_cosine_atom_is_omitted():
+    site = CSTLinear(
+        Chart.linspace(3),
+        Chart.linspace(2),
+        atoms=2,
+        kernel=ExpandingKernel(),
+        dtype=torch.float64,
+    )
+    site.atoms.p.data[1] = 0
+
+    torch.testing.assert_close(
+        site.repulsion_energy(kind="cosine"),
+        torch.zeros((), dtype=torch.float64),
+    )
+
+
+def test_repulsion_energy_gradients_match_the_pairwise_formula():
+    site = make_site()
+    oracle = copy.deepcopy(site)
+
+    site.repulsion_energy(kind="cosine").backward()
+    pairwise_energy(oracle.materialized_atoms(), kind="cosine").backward()
+
+    torch.testing.assert_close(site.atoms.p.grad, oracle.atoms.p.grad)
+
+
+def test_amplitude_bandwidth_kernel_uses_the_same_oracle():
+    site = CSTLinear(
+        Chart.linspace(6),
+        Chart.linspace(4),
+        atoms=5,
+        kernel=AmplitudeBandwidthSeparable(
+            sigma_min=0.10,
+            sigma_max=1.0,
+            tau=0.005,
+            temperature=0.25,
+        ),
+        dtype=torch.float64,
+    )
+
+    torch.testing.assert_close(
+        site.repulsion_energy(kind="cosine"),
+        pairwise_energy(site.materialized_atoms(), kind="cosine"),
+    )
+    torch.testing.assert_close(
+        site.repulsion_energy(kind="raw"),
+        pairwise_energy(site.materialized_atoms(), kind="raw"),
+    )
+
+
+def test_unknown_repulsion_kind_is_rejected():
+    site = make_site()
+
+    with pytest.raises(ValueError, match="kind must be"):
+        site.repulsion_terms(kind="l2")
+
+
+def test_coupled_step_matches_adamw_on_task_plus_repulsion():
+    torch.manual_seed(7)
+    site = make_site()
+    oracle = copy.deepcopy(site)
+    opt = CSTAdamR(site, lr=0.05, repulsion=0.1, kind="cosine")
+    ref = torch.optim.AdamW(
+        oracle.parameters(), lr=0.05, weight_decay=0.0, foreach=False
+    )
+    inputs = torch.randn(8, site.in_features, dtype=torch.float64)
+    targets = torch.randn(8, site.out_features, dtype=torch.float64)
+
+    opt.zero_grad(set_to_none=True)
+    ref.zero_grad(set_to_none=True)
+    loss = F.mse_loss(site(inputs), targets) + opt.repulsion_loss()
+    loss.backward()
+    task = F.mse_loss(oracle(inputs), targets)
+    energy = pairwise_energy(oracle.materialized_atoms(), kind="cosine")
+    (task + 0.1 * energy).backward()
+    opt.step()
+    ref.step()
+
+    torch.testing.assert_close(site.atoms.p, oracle.atoms.p)
+
+
+def test_mixed_model_requires_dense_config_and_sums_site_energies():
+    first = make_site(atoms=2, inputs=5, outputs=4)
+    second = make_site(atoms=3, inputs=4, outputs=2)
+    mixed = nn.Sequential(first, second, nn.Linear(2, 1, dtype=torch.float64))
+
+    with pytest.raises(ValueError, match="dense=AdamWConfig"):
+        CSTAdamR(mixed, repulsion=0.2)
+
+    opt = CSTAdamR(
+        mixed,
+        repulsion=0.2,
+        kind="raw",
+        dense=AdamWConfig(lr=0.002, weight_decay=0.0),
+    )
+    expected = first.repulsion_energy(kind="raw") + second.repulsion_energy(kind="raw")
+
+    torch.testing.assert_close(opt.repulsion_energy(), expected)
+    torch.testing.assert_close(opt.repulsion_loss(), 0.2 * expected)
+
+
+def test_rejects_models_without_cst_sites():
+    with pytest.raises(ValueError, match="must contain a CSTLinear"):
+        CSTAdamR(nn.Linear(3, 2), repulsion=0.1)
