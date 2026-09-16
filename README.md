@@ -290,6 +290,19 @@ $$
 }.
 $$
 
+Compactly supported alternatives keep the same L2 gauge and the same
+precision convention \(R=\mathrm{precision}^{-1/2}\), but vanish for
+\(r=\lVert u-v\rVert_2/R\ge 1\):
+
+```python
+WendlandC2(sigma=0.10)   # (1-r)_+^4 (4r+1)
+Triweight(sigma=0.10)    # (1-r^2)_+^3
+```
+
+Pass either as `profile=` to `AmplitudeBandwidthSeparable`, or as
+`input_profile` / `output_profile` to `Separable`. `sigma` is the support
+radius. Two atoms farther than \(R_i+R_j\) have inner product exactly 0.
+
 For `Separable`, $p_a=(s_a,t_a)$. The `Amplitude` wrapper changes this to
 $p_a=(w_a,s_a,t_a)$ and evaluates $w_a\mathcal K(s_a,t_a)$. The wrapped kernel
 still owns the meaning of $(s_a,t_a)$; `Atoms` sees only one opaque row.
@@ -302,6 +315,7 @@ AmplitudeBandwidthSeparable(
     sigma_max=1.0,   # weak-atom width
     tau=0.005,
     temperature=0.25,
+    profile=WendlandC2(0.10),  # default is Gaussian(sigma_min)
 )
 ```
 

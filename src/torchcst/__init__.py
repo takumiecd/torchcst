@@ -9,6 +9,8 @@ from .kernels import (
     Kernel,
     Profile,
     Separable,
+    Triweight,
+    WendlandC2,
 )
 from .nn import CSTLinear, CSTModule
 from .optim import (
@@ -75,6 +77,8 @@ __all__ = [
     "SecondOrderAdamConfig",
     "Separable",
     "SubspaceQuartic",
+    "Triweight",
+    "WendlandC2",
 ]
 
 from torchcst.optim.parameter import CSTParameterAdam, ParameterAdamConfig

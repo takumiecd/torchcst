@@ -10,7 +10,7 @@ from torch.nn import functional as F
 
 from torchcst.geometry import Chart
 
-from .base import AtomInit, Kernel
+from .base import AtomInit, Kernel, Profile
 from .gaussian import Gaussian
 
 _LAWS = ("interpolating", "inverse")
@@ -23,7 +23,9 @@ class AmplitudeBandwidthSeparable(Kernel):
     shared input and output precision between finite ``sigma_max`` and
     ``sigma_min``. ``law="inverse"`` uses the smooth map ``σ ≈ τ / |w|``,
     softly clamped to the same bounds in log-precision. The atom row is
-    ``(w, input_center, output_center)``.
+    ``(w, input_center, output_center)``. The default profile is ``Gaussian``;
+    compact profiles such as ``WendlandC2`` and ``Triweight`` use the same
+    precision convention, with ``sigma`` as the support radius.
     """
 
     def __init__(
@@ -35,12 +37,32 @@ class AmplitudeBandwidthSeparable(Kernel):
         temperature: float = 0.25,
         gate_eps: float = 1e-12,
         law: str = "interpolating",
+        profile: Profile | None = None,
     ) -> None:
         super().__init__()
         if law not in _LAWS:
             raise ValueError("law must be 'interpolating' or 'inverse'")
         self.law = law
-        self.profile = Gaussian(sigma_min)
+        if profile is None:
+            profile = Gaussian(sigma_min)
+        elif not isinstance(profile, Profile):
+            raise TypeError("profile must implement the Profile contract")
+        if not hasattr(profile, "evaluate_with_precision") or not hasattr(
+            profile, "tangent_with_precision"
+        ):
+            raise TypeError(
+                "bandwidth profile must implement evaluate_with_precision "
+                "and tangent_with_precision"
+            )
+        if not hasattr(profile, "sigma"):
+            raise TypeError("bandwidth profile must expose a sigma buffer")
+        minimum = self._positive_scalar(sigma_min, name="sigma_min")
+        if not torch.allclose(
+            profile.sigma.detach().to(dtype=minimum.dtype).reshape(()),
+            minimum,
+        ):
+            raise ValueError("profile.sigma must match sigma_min")
+        self.profile = profile
         maximum = self._positive_scalar(sigma_max, name="sigma_max")
         if maximum < self.profile.sigma:
             raise ValueError("sigma_max must not be narrower than sigma_min")
@@ -233,6 +255,7 @@ class AmplitudeBandwidthSeparable(Kernel):
         return (
             f"law={self.law}, "
             f"tau={self.tau.item():g}, temperature={self.temperature.item():g}, "
+            f"profile={type(self.profile).__name__}, "
             f"sigma_min={self.sigma_min.item():g}, "
             f"sigma_max={self.sigma_max.item():g}, "
             f"supports_factorization={self.supports_factorization}"
