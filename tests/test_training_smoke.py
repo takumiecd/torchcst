@@ -37,7 +37,20 @@ def amplitude_bandwidth() -> Kernel:
     )
 
 
-@pytest.mark.parametrize("kernel_factory", [independent_amplitude, amplitude_bandwidth])
+def inverse_amplitude_bandwidth() -> Kernel:
+    return AmplitudeBandwidthSeparable(
+        sigma_min=0.25,
+        sigma_max=1.0,
+        tau=0.2,
+        temperature=0.5,
+        law="inverse",
+    )
+
+
+@pytest.mark.parametrize(
+    "kernel_factory",
+    [independent_amplitude, amplitude_bandwidth, inverse_amplitude_bandwidth],
+)
 @pytest.mark.parametrize("evaluation", ["visible", "gram"])
 @pytest.mark.parametrize("solver_name", ["full", "newton", "subspace"])
 def test_full_optimizer_reduces_loss_for_new_amplitude_kernels(

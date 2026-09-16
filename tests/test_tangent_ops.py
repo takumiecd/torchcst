@@ -17,6 +17,14 @@ def site_for(kind, dtype=torch.float64):
         kernel = AmplitudeBandwidthSeparable(
             sigma_min=0.6, sigma_max=0.8
         )
+    if kind == "bandwidth_inverse":
+        kernel = AmplitudeBandwidthSeparable(
+            sigma_min=0.05,
+            sigma_max=8.0,
+            tau=0.005,
+            temperature=0.25,
+            law="inverse",
+        )
     torch.manual_seed(17)
     site = CSTLinear(
         Chart.grid((2, 3)), Chart.linspace(4), atoms=5, kernel=kernel, dtype=dtype
@@ -27,7 +35,7 @@ def site_for(kind, dtype=torch.float64):
             site.atoms.p[:, 0].copy_(
                 torch.tensor([0.0, 1e-10, -0.2, 0.5, -1.0], dtype=dtype)
             )
-        if kind == "bandwidth":
+        if kind in ("bandwidth", "bandwidth_inverse"):
             site.atoms.p[:, 0].copy_(
                 torch.tensor([0.0, 1e-10, -0.003, 0.005, -0.02], dtype=dtype)
             )
@@ -40,7 +48,9 @@ def jacobian(site, point):
     ).reshape(-1, point.numel())
 
 
-@pytest.mark.parametrize("kind", ["plain", "amplitude", "bandwidth"])
+@pytest.mark.parametrize(
+    "kind", ["plain", "amplitude", "bandwidth", "bandwidth_inverse"]
+)
 @pytest.mark.parametrize("backend", ["specialized", "factor_autograd", "reference"])
 @pytest.mark.parametrize("tile", [1, 3, 32])
 def test_actions_match_autograd(kind, backend, tile):

@@ -27,25 +27,12 @@ def amplitude(kernel, inner, input_chart, output_chart, p):
 
 def amplitude_bandwidth(kernel, input_chart, output_chart, p):
     a, source, target = kernel._split(input_chart, output_chart, p)
-    precision = kernel.bandwidth_precision(input_chart, output_chart, p)
+    precision, dprecision = kernel._precision_and_jacobian(a)
     u, du, dku = kernel.profile.tangent_with_precision(
         input_chart, source, precision
     )
     v, dv, dkv = kernel.profile.tangent_with_precision(
         output_chart, target, precision
-    )
-    gate = kernel.amplitude_gate(input_chart, output_chart, p)
-    narrow = kernel.sigma_min.reciprocal().square()
-    broad = kernel.sigma_max.reciprocal().square()
-    dprecision = (
-        (narrow - broad)
-        * gate
-        * (1 - gate)
-        * (
-            2
-            * a[:, 0]
-            / (kernel.temperature * (a[:, 0].square() + kernel.gate_eps.square()))
-        )
     )
     ni = source.shape[-1]
     ju = p.new_zeros(p.shape[0], input_chart.features, p.shape[1])

@@ -6,18 +6,23 @@ import math
 
 import torch
 from torch import Tensor
+from torch.nn import functional as F
 
 from torchcst.geometry import Chart
 
 from .base import AtomInit, Kernel
 from .gaussian import Gaussian
 
+_LAWS = ("interpolating", "inverse")
+
 
 class AmplitudeBandwidthSeparable(Kernel):
     r"""A signed rank-one atom whose shared width narrows with ``|w|``.
 
-    One even amplitude gate interpolates the input and output precision between
-    the same finite ``sigma_max`` and ``sigma_min`` bounds. The atom row is
+    ``law="interpolating"`` uses one even amplitude gate to interpolate the
+    shared input and output precision between finite ``sigma_max`` and
+    ``sigma_min``. ``law="inverse"`` uses the smooth map ``σ ≈ τ / |w|``,
+    softly clamped to the same bounds in log-precision. The atom row is
     ``(w, input_center, output_center)``.
     """
 
@@ -29,8 +34,12 @@ class AmplitudeBandwidthSeparable(Kernel):
         tau: float = 5e-3,
         temperature: float = 0.25,
         gate_eps: float = 1e-12,
+        law: str = "interpolating",
     ) -> None:
         super().__init__()
+        if law not in _LAWS:
+            raise ValueError("law must be 'interpolating' or 'inverse'")
+        self.law = law
         self.profile = Gaussian(sigma_min)
         maximum = self._positive_scalar(sigma_max, name="sigma_max")
         if maximum < self.profile.sigma:
@@ -93,7 +102,7 @@ class AmplitudeBandwidthSeparable(Kernel):
         p: Tensor,
     ) -> tuple[Tensor, Tensor]:
         amplitude, input_p, output_p = self._split(input_chart, output_chart, p)
-        precision = self.bandwidth_precision(input_chart, output_chart, p)
+        precision, _ = self._precision_and_jacobian(amplitude)
         phi_input = self.profile.evaluate_with_precision(
             input_chart,
             input_p,
@@ -113,12 +122,10 @@ class AmplitudeBandwidthSeparable(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> Tensor:
-        """Return the smooth commitment gate for diagnostic use."""
+        """Return the interpolating commitment gate for diagnostic use."""
 
         amplitude, _, _ = self._split(input_chart, output_chart, p)
-        magnitude_square = amplitude[:, 0].square() + self.gate_eps.square()
-        logit = (magnitude_square.log() - 2.0 * self.tau.log()) / self.temperature
-        return torch.sigmoid(logit)
+        return self._interpolating_gate(amplitude)
 
     def bandwidth_precision(
         self,
@@ -128,10 +135,9 @@ class AmplitudeBandwidthSeparable(Kernel):
     ) -> Tensor:
         """Return the shared input/output precision for each atom."""
 
-        gate = self.amplitude_gate(input_chart, output_chart, p)
-        narrow = self.sigma_min.reciprocal().square()
-        broad = self.sigma_max.reciprocal().square()
-        return broad + (narrow - broad) * gate
+        amplitude, _, _ = self._split(input_chart, output_chart, p)
+        precision, _ = self._precision_and_jacobian(amplitude)
+        return precision
 
     def bandwidth_sigma(
         self,
@@ -157,6 +163,57 @@ class AmplitudeBandwidthSeparable(Kernel):
         input_end = 1 + input_dim
         return p[:, :1], p[:, 1:input_end], p[:, input_end:]
 
+    def _precision_and_jacobian(self, amplitude: Tensor) -> tuple[Tensor, Tensor]:
+        if self.law == "inverse":
+            return self._inverse_precision_and_jacobian(amplitude)
+        return self._interpolating_precision_and_jacobian(amplitude)
+
+    def _magnitude_square(self, amplitude: Tensor) -> Tensor:
+        return amplitude[:, 0].square() + self.gate_eps.square()
+
+    def _interpolating_gate(self, amplitude: Tensor) -> Tensor:
+        logit = (
+            self._magnitude_square(amplitude).log() - 2.0 * self.tau.log()
+        ) / self.temperature
+        return torch.sigmoid(logit)
+
+    def _interpolating_precision_and_jacobian(
+        self,
+        amplitude: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        gate = self._interpolating_gate(amplitude)
+        narrow = self.sigma_min.reciprocal().square()
+        broad = self.sigma_max.reciprocal().square()
+        precision = broad + (narrow - broad) * gate
+        dprecision = (
+            (narrow - broad)
+            * gate
+            * (1 - gate)
+            * (2 * amplitude[:, 0] / (self.temperature * self._magnitude_square(amplitude)))
+        )
+        return precision, dprecision
+
+    def _inverse_precision_and_jacobian(
+        self,
+        amplitude: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        log_raw = self._magnitude_square(amplitude).log() - 2.0 * self.tau.log()
+        log_lo = -2.0 * self.sigma_max.log()
+        log_hi = -2.0 * self.sigma_min.log()
+        inv_temperature = self.temperature.reciprocal()
+        z_lo = (log_raw - log_lo) * inv_temperature
+        z_hi = (log_raw - log_hi) * inv_temperature
+        log_precision = log_lo + self.temperature * (
+            F.softplus(z_lo) - F.softplus(z_hi)
+        )
+        precision = log_precision.exp()
+        dprecision = (
+            precision
+            * (torch.sigmoid(z_lo) - torch.sigmoid(z_hi))
+            * (2 * amplitude[:, 0] / self._magnitude_square(amplitude))
+        )
+        return precision, dprecision
+
     @staticmethod
     def _positive_scalar(value: float, *, name: str) -> Tensor:
         result = torch.as_tensor(value, dtype=torch.get_default_dtype())
@@ -174,6 +231,7 @@ class AmplitudeBandwidthSeparable(Kernel):
 
     def extra_repr(self) -> str:
         return (
+            f"law={self.law}, "
             f"tau={self.tau.item():g}, temperature={self.temperature.item():g}, "
             f"sigma_min={self.sigma_min.item():g}, "
             f"sigma_max={self.sigma_max.item():g}, "

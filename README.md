@@ -309,6 +309,14 @@ required by the CST Hessian contractions. These bandwidth controls are fixed
 kernel configuration; a future learned threshold or bandwidth must live in
 each opaque atom row.
 
+`law="inverse"` keeps the same opaque layout and the same finite clamps, but
+replaces the interpolating gate with the even inverse-width map
+$\sigma_{\mathrm{raw}}(w)=\tau/\sqrt{w^2+\epsilon_g^2}$. Log-precision is
+soft-clamped onto $[\sigma_{\max}^{-2},\sigma_{\min}^{-2}]$ with scale
+`temperature`, so $\sigma\to\sigma_{\max}$ as $|w|\to 0$ and
+$\sigma\to\sigma_{\min}$ as $|w|$ grows, while the interior tracks $1/|w|$.
+The default remains `law="interpolating"`.
+
 Both fixed- and variable-width Gaussian columns are L2-normalized. Therefore
 an `Amplitude`-bearing separable atom has Frobenius norm exactly `abs(w)`, so
 bandwidth changes do not silently rescale the meaning of its amplitude.

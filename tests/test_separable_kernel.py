@@ -167,12 +167,92 @@ def test_bandwidth_bounds_must_be_finite_and_ordered() -> None:
             AmplitudeBandwidthSeparable(sigma_min=0.1, sigma_max=sigma_max)
     with pytest.raises(ValueError, match="sigma_max"):
         AmplitudeBandwidthSeparable(sigma_min=0.2, sigma_max=0.1)
+    with pytest.raises(ValueError, match="law"):
+        AmplitudeBandwidthSeparable(sigma_min=0.1, sigma_max=1.0, law="step")
 
 
-def test_amplitude_bandwidth_factorization_and_second_derivatives_are_finite() -> None:
+def make_inverse_bandwidth_kernel() -> AmplitudeBandwidthSeparable:
+    return AmplitudeBandwidthSeparable(
+        sigma_min=0.01,
+        sigma_max=100.0,
+        tau=0.5,
+        temperature=0.25,
+        gate_eps=1e-12,
+        law="inverse",
+    )
+
+
+def test_inverse_bandwidth_tracks_reciprocal_amplitude_in_the_interior() -> None:
     input_chart = Chart.linspace(3)
     output_chart = Chart.linspace(4)
-    kernel = make_bandwidth_kernel()
+    kernel = make_inverse_bandwidth_kernel()
+    amplitude = torch.tensor([0.25, 0.5, 1.0], dtype=torch.float64)
+    p = torch.stack((amplitude, torch.zeros_like(amplitude), torch.zeros_like(amplitude)), dim=1)
+
+    sigma = kernel.bandwidth_sigma(input_chart, output_chart, p)
+    expected = kernel.tau.to(dtype=p.dtype) / amplitude.abs()
+    torch.testing.assert_close(sigma, expected, rtol=1e-5, atol=1e-8)
+    assert torch.all(sigma[:-1] > sigma[1:])
+
+
+def test_inverse_bandwidth_is_even_and_clamped() -> None:
+    input_chart = Chart.linspace(3)
+    output_chart = Chart.linspace(4)
+    kernel = make_inverse_bandwidth_kernel()
+    p = torch.tensor(
+        [
+            [0.0, 0.0, 0.0],
+            [1e-12, 0.0, 0.0],
+            [-0.5, 0.0, 0.0],
+            [0.5, 0.0, 0.0],
+            [1.0e4, 0.0, 0.0],
+        ],
+        dtype=torch.float64,
+    )
+    sigma = kernel.bandwidth_sigma(input_chart, output_chart, p)
+    torch.testing.assert_close(
+        sigma[0],
+        torch.tensor(100.0, dtype=p.dtype),
+        rtol=1e-5,
+        atol=1e-8,
+    )
+    torch.testing.assert_close(
+        sigma[1],
+        torch.tensor(100.0, dtype=p.dtype),
+        rtol=1e-4,
+        atol=1e-6,
+    )
+    torch.testing.assert_close(sigma[2], sigma[3], rtol=0, atol=0)
+    torch.testing.assert_close(
+        sigma[4],
+        torch.tensor(0.01, dtype=p.dtype),
+        rtol=1e-5,
+        atol=1e-8,
+    )
+
+
+def test_inverse_bandwidth_precision_jacobian_matches_autograd() -> None:
+    kernel = make_inverse_bandwidth_kernel()
+    amplitude = torch.tensor([[0.0], [1e-10], [0.25], [0.5], [2.0]], dtype=torch.float64)
+    _, dprecision = kernel._precision_and_jacobian(amplitude)
+    autograd = torch.func.grad(
+        lambda value: kernel._precision_and_jacobian(value)[0].sum()
+    )(amplitude)
+    torch.testing.assert_close(dprecision, autograd[:, 0])
+    assert dprecision[0].abs() < 1e-18
+    assert dprecision[2] > 0
+
+
+@pytest.mark.parametrize(
+    "kernel_factory",
+    [make_bandwidth_kernel, make_inverse_bandwidth_kernel],
+)
+def test_amplitude_bandwidth_factorization_and_second_derivatives_are_finite(
+    kernel_factory,
+) -> None:
+    input_chart = Chart.linspace(3)
+    output_chart = Chart.linspace(4)
+    kernel = kernel_factory()
     p = torch.tensor([[0.0, 0.1, -0.2]], dtype=torch.float64)
 
     represented = kernel.materialize_atoms(input_chart, output_chart, p)
