@@ -95,20 +95,19 @@ class _CompactRadialProfile(Profile):
 
         offset, squared, precision = self._geometry(chart, p, precision)
         raw = self._unnormalized_from_squared(squared, precision)
-        values = _l2_normalize_columns(raw)
-        du_dc = self._d_raw_d_center(offset, squared, precision)
-        du_dprec = self._d_raw_d_precision(squared, precision)
-        positive = raw > 0
-        safe = torch.where(positive, raw, raw.new_ones(()))
-        dlogu2_dc = torch.where(
-            positive.unsqueeze(-1), 2.0 * du_dc / safe.unsqueeze(-1), 0.0
-        )
-        dlogu2_dprec = torch.where(positive, 2.0 * du_dprec / safe, 0.0)
-        probability = values.square()
-        center_mean = (probability.unsqueeze(-1) * dlogu2_dc).sum(0, keepdim=True)
-        centers = 0.5 * values.unsqueeze(-1) * (dlogu2_dc - center_mean)
-        precision_mean = (probability * dlogu2_dprec).sum(0, keepdim=True)
-        widths = 0.5 * values * (dlogu2_dprec - precision_mean)
+        # Project ∂u in the L2 gauge using 1/||u||, never 1/u. Compact
+        # profiles vanish at r=1, so du/u ~ 1/gap diverges while
+        # (u/||u||)(du/u) = du/||u|| stays finite.
+        norms = torch.linalg.vector_norm(raw, dim=0)
+        scale = torch.where(norms > 0, norms.reciprocal(), torch.zeros_like(norms))
+        values = raw * scale
+        scale = scale.reshape(1, -1)
+        dpsi_dc = self._d_raw_d_center(offset, squared, precision) * scale.unsqueeze(-1)
+        dpsi_dprec = self._d_raw_d_precision(squared, precision) * scale
+        center_mean = (values.unsqueeze(-1) * dpsi_dc).sum(0, keepdim=True)
+        centers = dpsi_dc - values.unsqueeze(-1) * center_mean
+        precision_mean = (values * dpsi_dprec).sum(0, keepdim=True)
+        widths = dpsi_dprec - values * precision_mean
         return values, centers, widths
 
     def _geometry(

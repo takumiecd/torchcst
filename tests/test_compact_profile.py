@@ -72,6 +72,36 @@ def test_separated_compact_atoms_have_zero_inner_product(factory) -> None:
 
 
 @pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+def test_compact_tangent_is_finite_on_the_support_boundary(factory) -> None:
+    chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
+    profile = _double_profile(factory, 0.5)
+    p = torch.tensor([[0.5], [-0.5]], dtype=torch.float64)
+
+    values, centers, widths = profile.tangent_with_precision(
+        chart, p, profile.sigma.reciprocal().square()
+    )
+
+    assert torch.isfinite(values).all()
+    assert torch.isfinite(centers).all()
+    assert torch.isfinite(widths).all()
+
+
+def test_wendland_mnist_grid_tangent_is_finite_float32() -> None:
+    chart = Chart.grid((28, 28))
+    profile = WendlandC2(0.10)
+    torch.manual_seed(17)
+    p = profile.initialize(chart, 256, mode="uniform")
+
+    values, centers, widths = profile.tangent_with_precision(
+        chart, p, profile.sigma.reciprocal().square()
+    )
+
+    assert torch.isfinite(values).all()
+    assert torch.isfinite(centers).all()
+    assert torch.isfinite(widths).all()
+
+
+@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
 def test_compact_tangent_matches_autograd(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 11).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
