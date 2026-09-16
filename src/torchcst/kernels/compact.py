@@ -75,7 +75,8 @@ class _CompactRadialProfile(Profile):
     ) -> Tensor:
         _, squared, precision = self._geometry(chart, p, precision)
         raw = self._unnormalized_from_squared(squared, precision)
-        return _l2_normalize_columns(raw)
+        values, _ = _l2_column_scale(raw)
+        return values
 
     def extra_repr(self) -> str:
         return f"sigma={self.sigma.item():g}"
@@ -97,10 +98,9 @@ class _CompactRadialProfile(Profile):
         raw = self._unnormalized_from_squared(squared, precision)
         # Project ∂u in the L2 gauge using 1/||u||, never 1/u. Compact
         # profiles vanish at r=1, so du/u ~ 1/gap diverges while
-        # (u/||u||)(du/u) = du/||u|| stays finite.
-        norms = torch.linalg.vector_norm(raw, dim=0)
-        scale = torch.where(norms > 0, norms.reciprocal(), torch.zeros_like(norms))
-        values = raw * scale
+        # (u/||u||)(du/u) = du/||u|| stays finite. Empty columns stay
+        # exactly zero; barely-supported ones use a floor so GH is finite.
+        values, scale = _l2_column_scale(raw)
         scale = scale.reshape(1, -1)
         dpsi_dc = self._d_raw_d_center(offset, squared, precision) * scale.unsqueeze(-1)
         dpsi_dprec = self._d_raw_d_precision(squared, precision) * scale
@@ -148,18 +148,18 @@ class WendlandC2(_CompactRadialProfile):
 
     def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
         radial = _radial_from_squared(squared, precision)
-        gap = (1.0 - radial).clamp_min(0.0)
+        gap = _supported(1.0 - radial)
         return gap.pow(4) * (4.0 * radial + 1.0)
 
     def _d_raw_d_center(
         self, offset: Tensor, squared: Tensor, precision: Tensor
     ) -> Tensor:
         prec = precision.reshape(1, -1)
-        gap = (1.0 - _radial_from_squared(squared, precision)).clamp_min(0.0)
+        gap = _supported(1.0 - _radial_from_squared(squared, precision))
         return (20.0 * gap.pow(3) * prec).unsqueeze(-1) * offset
 
     def _d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
-        gap = (1.0 - _radial_from_squared(squared, precision)).clamp_min(0.0)
+        gap = _supported(1.0 - _radial_from_squared(squared, precision))
         return -10.0 * squared * gap.pow(3)
 
 
@@ -167,21 +167,36 @@ class Triweight(_CompactRadialProfile):
     r"""The triweight profile \((1-r^2)_+^3\), L2-normalized on the chart."""
 
     def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
-        return (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0).pow(3)
+        return _supported(1.0 - squared * precision.reshape(1, -1)).pow(3)
 
     def _d_raw_d_center(
         self, offset: Tensor, squared: Tensor, precision: Tensor
     ) -> Tensor:
         prec = precision.reshape(1, -1)
-        inside = (1.0 - squared * prec).clamp_min(0.0)
+        inside = _supported(1.0 - squared * prec)
         return (6.0 * inside.square() * prec).unsqueeze(-1) * offset
 
     def _d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
-        inside = (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0)
+        inside = _supported(1.0 - squared * precision.reshape(1, -1))
         return -3.0 * squared * inside.square()
 
 
-def _l2_normalize_columns(values: Tensor) -> Tensor:
+_L2_FLOOR = 1e-6
+
+
+def _supported(base: Tensor) -> Tensor:
+    """Zero the compact tail without putting ``clamp`` on the Hessian graph."""
+
+    return base * (base > 0).to(dtype=base.dtype).detach()
+
+
+def _l2_column_scale(values: Tensor) -> tuple[Tensor, Tensor]:
+    """L2-normalize live columns; keep empty columns exactly zero."""
+
     norms = torch.linalg.vector_norm(values, dim=0)
-    scale = torch.where(norms > 0, norms.reciprocal(), torch.zeros_like(norms))
-    return values * scale
+    floor = values.new_tensor(_L2_FLOOR)
+    alive = (norms > floor).detach()
+    scale = torch.where(
+        alive, norms.clamp_min(floor).reciprocal(), torch.zeros_like(norms)
+    )
+    return values * scale, scale

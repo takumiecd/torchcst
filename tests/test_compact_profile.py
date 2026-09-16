@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torch.func import hessian, vmap
 
 from torchcst import (
     AmplitudeBandwidthSeparable,
@@ -99,6 +100,50 @@ def test_wendland_mnist_grid_tangent_is_finite_float32() -> None:
     assert torch.isfinite(values).all()
     assert torch.isfinite(centers).all()
     assert torch.isfinite(widths).all()
+
+
+@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+def test_compact_autograd_hessian_is_finite_inside_boundary_and_outside(
+    factory,
+) -> None:
+    chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
+    profile = _double_profile(factory, 0.5)
+    p = torch.tensor([[0.0], [0.5], [3.0]], dtype=torch.float64)
+
+    def scalar(coords):
+        return profile.evaluate(chart, coords.unsqueeze(0)).sum()
+
+    blocks = vmap(hessian(scalar))(p)
+    assert torch.isfinite(blocks).all()
+    torch.testing.assert_close(
+        blocks[2], torch.zeros(1, 1, dtype=torch.float64), atol=0, rtol=0
+    )
+
+
+def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
+    kernel = AmplitudeBandwidthSeparable(
+        sigma_min=0.10,
+        sigma_max=10.0,
+        profile=Triweight(0.10),
+    )
+    input_chart = Chart.grid((28, 28))
+    output_chart = Chart.linspace(64)
+    p = kernel.initialize(input_chart, output_chart, 3, mode="uniform")
+    p = p.clone()
+    p[:, 0] = 1.0
+    p[1, 1:3] = 8.0
+    p[2, 1:3] = input_chart.coordinates[0]
+    inputs = torch.randn(8, 784)
+    output_gradient = torch.randn(8, 64)
+
+    def scalar(atom):
+        phi_in, phi_out = kernel.factors(
+            input_chart, output_chart, atom.unsqueeze(0)
+        )
+        return ((inputs @ phi_in) * (output_gradient @ phi_out)).sum()
+
+    blocks = vmap(hessian(scalar))(p)
+    assert torch.isfinite(blocks).all()
 
 
 @pytest.mark.parametrize("factory", [WendlandC2, Triweight])
