@@ -19,8 +19,8 @@ from torchcst import (
 
 def model(atoms=3, inputs=5, outputs=4):
     return CSTLinear(
-        Chart.linspace(inputs),
-        Chart.linspace(outputs),
+        Chart.linspace(inputs, low=-1.0, high=1.0),
+        Chart.linspace(outputs, low=-1.0, high=1.0),
         atoms=atoms,
         kernel=Amplitude(
             Separable(input_profile=Gaussian(0.4), output_profile=Gaussian(0.3))

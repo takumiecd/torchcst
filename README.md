@@ -47,8 +47,8 @@ from torchcst import (
     Gaussian,
 )
 
-input_chart = Chart.grid((28, 28), trainable=False)
-output_chart = Chart.linspace(10, trainable=False)
+input_chart = Chart.grid((28, 28), spacing=2 / 27)
+output_chart = Chart.linspace(10, spacing=2 / 9)
 
 model = CSTLinear(
     input_chart,
@@ -92,9 +92,14 @@ A chart is a fixed-cardinality set of observation points. It has no
 live/dormant state, gate, lineage, allocator, or structural version. Its
 coordinates are frozen by default and should normally remain frozen.
 
+Cartesian charts are specified by a grid step ``spacing`` in the same units
+as kernel bandwidth. Points are centered at ``center`` (default 0). There is
+no implicit ``[-1, 1]`` box: pass ``spacing`` or inclusive ``low``/``high``,
+not both. ``linspace`` is the one-dimensional case of ``grid``.
+
 ```python
-pixels = Chart.grid((28, 28), trainable=False)
-classes = Chart.linspace(10, trainable=False)
+pixels = Chart.grid((28, 28), spacing=2 / 27)
+classes = Chart.linspace(10, spacing=2 / 9)
 custom = Chart.points(
     torch.tensor([[0.0, 0.0], [1.0, 0.0]]),
     trainable=False,
@@ -105,8 +110,10 @@ Target constructors:
 
 ```python
 Chart.points(coordinates, *, trainable=False)
-Chart.linspace(size, *, low=-1.0, high=1.0, trainable=False)
-Chart.grid(shape, *, low=-1.0, high=1.0, trainable=False)
+Chart.linspace(size, *, spacing, center=0.0, trainable=False)
+Chart.linspace(size, *, low, high, trainable=False)
+Chart.grid(shape, *, spacing, center=0.0, trainable=False)
+Chart.grid(shape, *, low, high, trainable=False)
 ```
 
 The coordinate tensor has shape `[features, dimensions]`. With

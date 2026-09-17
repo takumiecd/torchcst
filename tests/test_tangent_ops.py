@@ -27,7 +27,7 @@ def site_for(kind, dtype=torch.float64):
         )
     torch.manual_seed(17)
     site = CSTLinear(
-        Chart.grid((2, 3)), Chart.linspace(4), atoms=5, kernel=kernel, dtype=dtype
+        Chart.grid((2, 3), low=-1.0, high=1.0), Chart.linspace(4, low=-1.0, high=1.0), atoms=5, kernel=kernel, dtype=dtype
     )
     with torch.no_grad():
         site.atoms.p.add_(0.15 * torch.randn_like(site.atoms.p))

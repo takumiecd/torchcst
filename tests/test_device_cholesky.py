@@ -78,8 +78,8 @@ def test_failed_cholesky_freezes_optimizer_and_latches_error():
     from torchcst import Chart, CSTLinear, CSTSecondOrderAdam, DeviceRay
 
     model = CSTLinear(
-        Chart.linspace(2),
-        Chart.linspace(2),
+        Chart.linspace(2, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=amplitude_bandwidth(),
         backend="factored",

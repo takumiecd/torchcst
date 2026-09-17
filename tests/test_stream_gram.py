@@ -16,8 +16,8 @@ def test_streamed_cross_dense_oracle(device, dtype):
         pytest.skip("CUDA required")
     torch.manual_seed(21)
     site = CSTLinear(
-        Chart.linspace(9),
-        Chart.linspace(19),
+        Chart.linspace(9, low=-1.0, high=1.0),
+        Chart.linspace(19, low=-1.0, high=1.0),
         atoms=7,
         kernel=AmplitudeBandwidthSeparable(
             sigma_min=0.6, sigma_max=0.8

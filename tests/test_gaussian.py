@@ -22,7 +22,7 @@ def test_gaussian_evaluates_chart_against_opaque_profile_coordinates() -> None:
 
 
 def test_gaussian_initialization_is_profile_owned() -> None:
-    chart = Chart.linspace(3)
+    chart = Chart.linspace(3, low=-1.0, high=1.0)
     profile = Gaussian(0.5)
 
     balanced = profile.initialize(chart, 2, mode="balanced")

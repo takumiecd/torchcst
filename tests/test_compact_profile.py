@@ -88,7 +88,7 @@ def test_compact_tangent_is_finite_on_the_support_boundary(factory) -> None:
 
 
 def test_wendland_mnist_grid_tangent_is_finite_float32() -> None:
-    chart = Chart.grid((28, 28))
+    chart = Chart.grid((28, 28), low=-1.0, high=1.0)
     profile = WendlandC2(0.10)
     torch.manual_seed(17)
     p = profile.initialize(chart, 256, mode="uniform")
@@ -126,8 +126,8 @@ def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
         sigma_max=10.0,
         profile=Triweight(0.10),
     )
-    input_chart = Chart.grid((28, 28))
-    output_chart = Chart.linspace(64)
+    input_chart = Chart.grid((28, 28), low=-1.0, high=1.0)
+    output_chart = Chart.linspace(64, low=-1.0, high=1.0)
     p = kernel.initialize(input_chart, output_chart, 3, mode="uniform")
     p = p.clone()
     p[:, 0] = 1.0
@@ -226,8 +226,8 @@ def test_separable_accepts_compact_profiles() -> None:
         input_profile=WendlandC2(0.4),
         output_profile=Triweight(0.3),
     )
-    input_chart = Chart.linspace(4)
-    output_chart = Chart.linspace(3)
+    input_chart = Chart.linspace(4, low=-1.0, high=1.0)
+    output_chart = Chart.linspace(3, low=-1.0, high=1.0)
     p = kernel.initialize(input_chart, output_chart, 2, mode="balanced")
     phi_input, phi_output = kernel.factors(input_chart, output_chart, p)
     assert phi_input.shape == (4, 2)

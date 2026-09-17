@@ -159,8 +159,8 @@ def test_factored_optimizer_updates_without_visible_derivative_cache():
 
     torch.manual_seed(99)
     model = CSTLinear(
-        Chart.linspace(5),
-        Chart.linspace(3),
+        Chart.linspace(5, low=-1.0, high=1.0),
+        Chart.linspace(3, low=-1.0, high=1.0),
         atoms=3,
         kernel=amplitude_bandwidth(),
         dtype=torch.float64,

@@ -7,8 +7,8 @@ from torchcst._derivatives import AutogradFrameGeometry
 def make_geometry() -> tuple[CSTLinear, AutogradFrameGeometry]:
     torch.manual_seed(23)
     site = CSTLinear(
-        Chart.linspace(4),
-        Chart.linspace(3),
+        Chart.linspace(4, low=-1.0, high=1.0),
+        Chart.linspace(3, low=-1.0, high=1.0),
         atoms=2,
         kernel=Amplitude(
             Separable(

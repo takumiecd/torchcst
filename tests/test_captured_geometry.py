@@ -22,8 +22,8 @@ from torchcst._runtime.validation import device_checks
 def test_captured_geometry_matches_original_derivative_contract(device):
     torch.manual_seed(71)
     model = CSTLinear(
-        Chart.linspace(3),
-        Chart.linspace(2),
+        Chart.linspace(3, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=3,
         kernel=amplitude_bandwidth(),
         dtype=torch.float64,
@@ -75,8 +75,8 @@ def test_captured_geometry_matches_original_derivative_contract(device):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 def test_capture_invalidates_when_kernel_buffer_changes():
     model = CSTLinear(
-        Chart.linspace(3),
-        Chart.linspace(2),
+        Chart.linspace(3, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=3,
         kernel=amplitude_bandwidth(),
         dtype=torch.float64,

@@ -42,8 +42,8 @@ def make_pair(
         )
     )
     site = CSTLinear(
-        Chart.linspace(input_size),
-        Chart.linspace(output_size),
+        Chart.linspace(input_size, low=-1.0, high=1.0),
+        Chart.linspace(output_size, low=-1.0, high=1.0),
         atoms=3,
         kernel=kernel,
         dtype=dtype,

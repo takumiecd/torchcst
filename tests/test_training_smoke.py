@@ -60,8 +60,8 @@ def test_full_optimizer_reduces_loss_for_new_amplitude_kernels(
 ) -> None:
     torch.manual_seed(9)
     model = CSTLinear(
-        Chart.linspace(2),
-        Chart.linspace(2),
+        Chart.linspace(2, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=kernel_factory(),
         backend="factored",

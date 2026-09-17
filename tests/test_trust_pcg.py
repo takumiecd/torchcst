@@ -321,8 +321,8 @@ def test_streamed_weighted_action_handles_row_and_feature_tails():
 
     torch.manual_seed(14)
     site = CSTLinear(
-        Chart.linspace(129),
-        Chart.linspace(19),
+        Chart.linspace(129, low=-1.0, high=1.0),
+        Chart.linspace(19, low=-1.0, high=1.0),
         atoms=7,
         kernel=Amplitude(
             Separable(input_profile=Gaussian(0.4), output_profile=Gaussian(0.5))

@@ -23,8 +23,8 @@ def model(dtype=torch.float32, device="cpu"):
     torch.manual_seed(13)
     return nn.Sequential(
         CSTLinear(
-            Chart.linspace(3),
-            Chart.linspace(2),
+            Chart.linspace(3, low=-1.0, high=1.0),
+            Chart.linspace(2, low=-1.0, high=1.0),
             atoms=2,
             kernel=amplitude_bandwidth(),
             backend="factored",
@@ -33,8 +33,8 @@ def model(dtype=torch.float32, device="cpu"):
         nn.Tanh(),
         nn.Linear(2, 2, dtype=dtype),
         CSTLinear(
-            Chart.linspace(2),
-            Chart.linspace(2),
+            Chart.linspace(2, low=-1.0, high=1.0),
+            Chart.linspace(2, low=-1.0, high=1.0),
             atoms=2,
             kernel=amplitude_bandwidth(),
             backend="factored",

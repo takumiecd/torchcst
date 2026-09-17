@@ -19,8 +19,8 @@ from torchcst.optim import (
 
 def make_site() -> CSTLinear:
     return CSTLinear(
-        Chart.linspace(2),
-        Chart.linspace(1),
+        Chart.linspace(2, low=-1.0, high=1.0),
+        Chart.linspace(1, low=-1.0, high=1.0),
         atoms=1,
         kernel=Amplitude(
             Separable(

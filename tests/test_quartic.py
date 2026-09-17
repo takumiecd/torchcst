@@ -26,8 +26,8 @@ from torchcst.optim import (
 def make_nonlinear_site() -> CSTLinear:
     torch.manual_seed(31)
     return CSTLinear(
-        Chart.linspace(4),
-        Chart.linspace(3),
+        Chart.linspace(4, low=-1.0, high=1.0),
+        Chart.linspace(3, low=-1.0, high=1.0),
         atoms=2,
         kernel=Amplitude(
             Separable(
@@ -134,8 +134,8 @@ class LinearAmplitudeKernel(Kernel):
 
 def make_convex_quadratic_problem() -> tuple[QuarticProblem, float]:
     site = CSTLinear(
-        Chart.linspace(2),
-        Chart.linspace(2),
+        Chart.linspace(2, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=1,
         kernel=LinearAmplitudeKernel(),
         dtype=torch.float64,

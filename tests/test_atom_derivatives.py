@@ -7,8 +7,8 @@ from torchcst._derivatives import DenseDerivativeOracle
 def make_site() -> CSTLinear:
     torch.manual_seed(11)
     return CSTLinear(
-        Chart.linspace(3),
-        Chart.linspace(2),
+        Chart.linspace(3, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=Amplitude(
             Separable(
@@ -173,8 +173,8 @@ def test_zero_displacement_pullback_matches_parameter_autograd() -> None:
 
 def test_derivatives_reject_trainable_charts_for_now() -> None:
     site = CSTLinear(
-        Chart.linspace(3, trainable=True),
-        Chart.linspace(2),
+        Chart.linspace(3, trainable=True, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=Separable(
             input_profile=Gaussian(0.5),

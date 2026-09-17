@@ -91,8 +91,8 @@ def test_pcg_optimizer_success_then_failure_freezes_state(monkeypatch):
     from torchcst._derivatives import _pcg
 
     model = CSTLinear(
-        Chart.linspace(2),
-        Chart.linspace(2),
+        Chart.linspace(2, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=amplitude_bandwidth(),
         backend="factored",
@@ -162,8 +162,8 @@ def test_three_updates_match_cholesky_without_full_gram(monkeypatch):
     torch.manual_seed(13)
     models = [
         CSTLinear(
-            Chart.linspace(3),
-            Chart.linspace(2),
+            Chart.linspace(3, low=-1.0, high=1.0),
+            Chart.linspace(2, low=-1.0, high=1.0),
             atoms=2,
             kernel=amplitude_bandwidth(),
             backend="factored",

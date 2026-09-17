@@ -15,8 +15,8 @@ from torchcst.optim import (
 def make_site(*, backend: str = "factored") -> CSTLinear:
     torch.manual_seed(17)
     return CSTLinear(
-        Chart.linspace(4),
-        Chart.linspace(3),
+        Chart.linspace(4, low=-1.0, high=1.0),
+        Chart.linspace(3, low=-1.0, high=1.0),
         atoms=2,
         kernel=Amplitude(
             Separable(
@@ -340,8 +340,8 @@ def test_linear_rejects_an_active_operation_incompatible_grad() -> None:
 
 def test_implicit_linear_grad_rejects_trainable_charts() -> None:
     site = CSTLinear(
-        Chart.linspace(4, trainable=True),
-        Chart.linspace(3),
+        Chart.linspace(4, trainable=True, low=-1.0, high=1.0),
+        Chart.linspace(3, low=-1.0, high=1.0),
         atoms=2,
         kernel=Separable(
             input_profile=Gaussian(0.8),

@@ -36,8 +36,8 @@ def test_device_solver_has_exact_objective_and_feasible_monotone_result():
 def make_model_optimizer(device="cpu"):
     torch.manual_seed(9)
     model = CSTLinear(
-        Chart.linspace(2),
-        Chart.linspace(2),
+        Chart.linspace(2, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=amplitude_bandwidth(),
         backend="factored",
@@ -135,8 +135,8 @@ def test_deferred_failure_suppresses_dense_and_all_cst_commits():
 
     def site():
         return CSTLinear(
-            Chart.linspace(2),
-            Chart.linspace(2),
+            Chart.linspace(2, low=-1.0, high=1.0),
+            Chart.linspace(2, low=-1.0, high=1.0),
             atoms=2,
             kernel=amplitude_bandwidth(),
             backend="factored",

@@ -23,8 +23,8 @@ from torchcst import (
 
 def make_site(*, atoms=3, inputs=5, outputs=4, backend="factored"):
     return CSTLinear(
-        Chart.linspace(inputs),
-        Chart.linspace(outputs),
+        Chart.linspace(inputs, low=-1.0, high=1.0),
+        Chart.linspace(outputs, low=-1.0, high=1.0),
         atoms=atoms,
         kernel=Amplitude(
             Separable(input_profile=Gaussian(0.4), output_profile=Gaussian(0.3))
@@ -128,8 +128,8 @@ def test_one_atom_has_zero_repulsion_energy():
 
 def test_identical_cosine_atoms_have_known_pair_energy():
     site = CSTLinear(
-        Chart.linspace(3),
-        Chart.linspace(2),
+        Chart.linspace(3, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=3,
         kernel=ExpandingKernel(),
         dtype=torch.float64,
@@ -144,8 +144,8 @@ def test_identical_cosine_atoms_have_known_pair_energy():
 
 def test_zero_norm_cosine_atom_is_omitted():
     site = CSTLinear(
-        Chart.linspace(3),
-        Chart.linspace(2),
+        Chart.linspace(3, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=ExpandingKernel(),
         dtype=torch.float64,
@@ -171,8 +171,8 @@ def test_repulsion_energy_gradients_match_the_pairwise_formula(kind):
 
 def test_amplitude_bandwidth_kernel_uses_the_same_oracle():
     site = CSTLinear(
-        Chart.linspace(6),
-        Chart.linspace(4),
+        Chart.linspace(6, low=-1.0, high=1.0),
+        Chart.linspace(4, low=-1.0, high=1.0),
         atoms=5,
         kernel=AmplitudeBandwidthSeparable(
             sigma_min=0.10,
@@ -192,8 +192,8 @@ def test_amplitude_bandwidth_kernel_uses_the_same_oracle():
 
 def test_opposite_sign_copies_keep_positive_abs_energy():
     site = CSTLinear(
-        Chart.linspace(6),
-        Chart.linspace(4),
+        Chart.linspace(6, low=-1.0, high=1.0),
+        Chart.linspace(4, low=-1.0, high=1.0),
         atoms=2,
         kernel=AmplitudeBandwidthSeparable(
             sigma_min=0.10,
@@ -229,7 +229,7 @@ class FakeSite(CSTModule):
     def __init__(self) -> None:
         super().__init__()
         self.atoms = Atoms(torch.tensor([[1.0], [-0.5]], dtype=torch.float64))
-        self._charts = (Chart.linspace(2),)
+        self._charts = (Chart.linspace(2, low=-1.0, high=1.0),)
 
     def cst_parameters(self):
         return (self.atoms.p,)

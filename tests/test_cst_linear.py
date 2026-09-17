@@ -16,8 +16,8 @@ def make_kernel() -> Amplitude:
 
 def make_model(*, backend: str = "factored") -> CSTLinear:
     return CSTLinear(
-        Chart.linspace(5),
-        Chart.grid((2, 2)),
+        Chart.linspace(5, low=-1.0, high=1.0),
+        Chart.grid((2, 2), low=-1.0, high=1.0),
         atoms=3,
         kernel=make_kernel(),
         backend=backend,
@@ -96,8 +96,8 @@ def test_forward_gradients_reach_the_opaque_atom_parameters() -> None:
 
 def test_nonfactorized_kernel_uses_the_same_kernel_sum_semantics() -> None:
     model = CSTLinear(
-        Chart.linspace(3),
-        Chart.linspace(2),
+        Chart.linspace(3, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=NonFactorizedKernel(),
         backend="auto",
@@ -116,8 +116,8 @@ def test_nonfactorized_kernel_uses_the_same_kernel_sum_semantics() -> None:
 def test_factored_backend_rejects_a_kernel_without_that_capability() -> None:
     with pytest.raises(ValueError, match="does not support factorized"):
         CSTLinear(
-            Chart.linspace(3),
-            Chart.linspace(2),
+            Chart.linspace(3, low=-1.0, high=1.0),
+            Chart.linspace(2, low=-1.0, high=1.0),
             atoms=2,
             kernel=NonFactorizedKernel(),
             backend="factored",
@@ -126,8 +126,8 @@ def test_factored_backend_rejects_a_kernel_without_that_capability() -> None:
 
 def test_constructor_dtype_covers_charts_kernel_and_atoms() -> None:
     model = CSTLinear(
-        Chart.linspace(3),
-        Chart.linspace(2),
+        Chart.linspace(3, low=-1.0, high=1.0),
+        Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=make_kernel(),
         dtype=torch.float64,
