@@ -224,7 +224,7 @@ weighted作用を実装しても、現在の固有分解型更新solverが自動
 ## 7. 既存kernelで必要な微分
 
 `Separable`はinput/output profileのsliceを担当し、`Amplitude`は自分の振幅sliceと
-内部kernelへのchain ruleを担当する。`AmplitudeBandwidthSeparable`では振幅がoutput幅を
+内部kernelへのchain ruleを担当する。`AmpWidth`では振幅がoutput幅を
 変えるため、その微分を落とさない。
 
 例えば$v(a,s)=a\phi(s,\kappa(a))$なら、

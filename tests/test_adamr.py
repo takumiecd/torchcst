@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from torchcst import (
     AdamWConfig,
     Amplitude,
-    AmplitudeBandwidthSeparable,
+    AmpWidth,
     Atoms,
     Chart,
     CSTAdamR,
@@ -174,7 +174,7 @@ def test_amplitude_bandwidth_kernel_uses_the_same_oracle():
         Chart.linspace(6, low=-1.0, high=1.0),
         Chart.linspace(4, low=-1.0, high=1.0),
         atoms=5,
-        kernel=AmplitudeBandwidthSeparable(
+        kernel=AmpWidth(
             sigma_min=0.10,
             sigma_max=1.0,
             tau=0.005,
@@ -195,7 +195,7 @@ def test_opposite_sign_copies_keep_positive_abs_energy():
         Chart.linspace(6, low=-1.0, high=1.0),
         Chart.linspace(4, low=-1.0, high=1.0),
         atoms=2,
-        kernel=AmplitudeBandwidthSeparable(
+        kernel=AmpWidth(
             sigma_min=0.10,
             sigma_max=1.0,
             tau=0.005,

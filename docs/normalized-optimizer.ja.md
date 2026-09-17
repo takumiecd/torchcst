@@ -87,7 +87,7 @@ dense Hessianを作るのではなく、必要な [K, P, P] だけを作る。
 
 factored=True を指定すると、factorizationを提供するkernelでは、同じ観測値を
 factorized contraction経路から得られる。これは観測値の意味を変えるものではなく、
-AmplitudeBandwidthSeparable のようなfactor-capable kernelでの実行方法を変える
+AmpWidth のようなfactor-capable kernelでの実行方法を変える
 だけである。
 
 ## 3. 分子 N(d)
@@ -343,7 +343,7 @@ CST engineを複製しない。moment componentとsolverを交換することで
         optimizer.step()
 
 factored=True は、kernelがfactorizationを提供するときだけ使用できる。
-AmplitudeBandwidthSeparable はこの経路を提供する。
+AmpWidth はこの経路を提供する。
 
 ### 明示的なconfig
 
@@ -407,7 +407,7 @@ atom coordinateに閉じたstateである一方、P が大きい場合には無�
 
 ## 12. 関連する実験
 
-AmplitudeBandwidthSeparable kernel上でのMNIST比較では、elementwise box [-1,1]、
+AmpWidth kernel上でのMNIST比較では、elementwise box [-1,1]、
 1 step目の d=0 評価、K=64、3 seedの条件で、現時点では
 CSTNormalizedAdam が最も安定した結果を示している。この比較はoptimizerの設計を
 確定する証明ではなく、次のhyperparameter調整（learning rate、moment係数、solver

@@ -40,7 +40,7 @@ import torch.nn.functional as F
 
 from torchcst import (
     AdamWConfig,
-    AmplitudeBandwidthSeparable,
+    AmpWidth,
     Chart,
     CSTLinear,
     CSTLocalAdam,
@@ -54,7 +54,7 @@ model = CSTLinear(
     input_chart,
     output_chart,
     atoms=64,
-    kernel=AmplitudeBandwidthSeparable(
+    kernel=AmpWidth(
         sigma_min=0.10,
         sigma_max=1.0,
         tau=0.005,
@@ -306,7 +306,7 @@ WendlandC2(sigma=0.10)   # (1-r)_+^4 (4r+1)
 Triweight(sigma=0.10)    # (1-r^2)_+^3
 ```
 
-Pass either as `profile=` to `AmplitudeBandwidthSeparable`, or as
+Pass either as `profile=` to `AmpWidth`, or as
 `input_profile` / `output_profile` to `Separable`. `sigma` is the support
 radius. Two atoms farther than \(R_i+R_j\) have inner product exactly 0.
 
@@ -317,7 +317,7 @@ still owns the meaning of $(s_a,t_a)$; `Atoms` sees only one opaque row.
 The amplitude-dependent shared-bandwidth variant is:
 
 ```python
-AmplitudeBandwidthSeparable(
+AmpWidth(
     sigma_min=0.10,  # strong-atom width
     sigma_max=1.0,   # weak-atom width
     tau=0.005,
@@ -325,6 +325,8 @@ AmplitudeBandwidthSeparable(
     profile=WendlandC2(0.10),  # default is Gaussian(sigma_min)
 )
 ```
+
+`AmplitudeBandwidthSeparable` is a compatibility alias for `AmpWidth`.
 
 It keeps the same opaque layout $(w_a,s_a,t_a)$, but smoothly interpolates one
 shared input/output precision between `sigma_max` and `sigma_min` using the even
@@ -934,7 +936,7 @@ diagnostics = optimizer.last_step.compression_results
 ```
 
 `auto` selects kernel-owned analytic first factor derivatives when available
-(Gaussian Separable, Amplitude, AmplitudeBandwidthSeparable), then exact
+(Gaussian Separable, Amplitude, AmpWidth), then exact
 `factor_autograd`, then `reference`. The selected name is `ops.backend`.
 `specialized` fails explicitly if unsupported. `factored_geometry=False` forces
 the reference path. Prepared objects own detached parameter/factor snapshots;

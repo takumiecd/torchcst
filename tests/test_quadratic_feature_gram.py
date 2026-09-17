@@ -3,7 +3,7 @@ import torch
 
 from torchcst import (
     Amplitude,
-    AmplitudeBandwidthSeparable,
+    AmpWidth,
     Chart,
     CSTLinear,
     FullQuartic,
@@ -33,7 +33,7 @@ def make_pair(
 ):
     torch.manual_seed(402)
     kernel = (
-        AmplitudeBandwidthSeparable(
+        AmpWidth(
             sigma_min=0.4, sigma_max=0.6, tau=0.15, temperature=0.5
         )
         if gated

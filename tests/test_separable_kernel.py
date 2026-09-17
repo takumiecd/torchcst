@@ -3,7 +3,7 @@ import torch
 
 from torchcst import (
     Amplitude,
-    AmplitudeBandwidthSeparable,
+    AmpWidth,
     Chart,
     Gaussian,
     Separable,
@@ -82,7 +82,7 @@ def test_amplitude_kernels_use_the_successful_small_weight_initialization() -> N
                 output_profile=Gaussian(0.7),
             )
         ),
-        AmplitudeBandwidthSeparable(
+        AmpWidth(
             sigma_min=0.7,
             sigma_max=1.2,
         ),
@@ -97,8 +97,8 @@ def test_amplitude_kernels_use_the_successful_small_weight_initialization() -> N
     assert tuple(kernel.parameters()) == ()
 
 
-def make_bandwidth_kernel() -> AmplitudeBandwidthSeparable:
-    return AmplitudeBandwidthSeparable(
+def make_bandwidth_kernel() -> AmpWidth:
+    return AmpWidth(
         sigma_min=0.1,
         sigma_max=0.8,
         tau=0.5,
@@ -164,15 +164,15 @@ def test_weak_atom_uses_the_same_finite_broad_width_on_both_sides() -> None:
 def test_bandwidth_bounds_must_be_finite_and_ordered() -> None:
     for sigma_max in (float("inf"), float("nan"), 0.0):
         with pytest.raises(ValueError, match="sigma_max"):
-            AmplitudeBandwidthSeparable(sigma_min=0.1, sigma_max=sigma_max)
+            AmpWidth(sigma_min=0.1, sigma_max=sigma_max)
     with pytest.raises(ValueError, match="sigma_max"):
-        AmplitudeBandwidthSeparable(sigma_min=0.2, sigma_max=0.1)
+        AmpWidth(sigma_min=0.2, sigma_max=0.1)
     with pytest.raises(ValueError, match="law"):
-        AmplitudeBandwidthSeparable(sigma_min=0.1, sigma_max=1.0, law="step")
+        AmpWidth(sigma_min=0.1, sigma_max=1.0, law="step")
 
 
-def make_inverse_bandwidth_kernel() -> AmplitudeBandwidthSeparable:
-    return AmplitudeBandwidthSeparable(
+def make_inverse_bandwidth_kernel() -> AmpWidth:
+    return AmpWidth(
         sigma_min=0.01,
         sigma_max=100.0,
         tau=0.5,
@@ -279,13 +279,13 @@ def test_amplitude_bandwidth_factorization_and_second_derivatives_are_finite(
 
 
 def test_decoupled_bandwidth_keeps_forward_sigma_and_zeros_amplitude_width_grad() -> None:
-    coupled = AmplitudeBandwidthSeparable(
+    coupled = AmpWidth(
         sigma_min=0.1,
         sigma_max=0.8,
         tau=0.5,
         temperature=0.25,
     )
-    detached = AmplitudeBandwidthSeparable(
+    detached = AmpWidth(
         sigma_min=0.1,
         sigma_max=0.8,
         tau=0.5,
@@ -315,3 +315,10 @@ def test_decoupled_bandwidth_keeps_forward_sigma_and_zeros_amplitude_width_grad(
         atol=0,
         rtol=0,
     )
+
+
+def test_amp_width_keeps_legacy_name() -> None:
+    from torchcst import AmplitudeBandwidthSeparable
+
+    assert AmplitudeBandwidthSeparable is AmpWidth
+

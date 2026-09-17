@@ -5,7 +5,7 @@ import torch
 
 from torchcst import (
     Amplitude,
-    AmplitudeBandwidthSeparable,
+    AmpWidth,
     BallNewton,
     Chart,
     CSTLinear,
@@ -29,7 +29,7 @@ def independent_amplitude() -> Kernel:
 
 
 def amplitude_bandwidth() -> Kernel:
-    return AmplitudeBandwidthSeparable(
+    return AmpWidth(
         sigma_min=0.25,
         sigma_max=1.0,
         tau=0.2,
@@ -38,7 +38,7 @@ def amplitude_bandwidth() -> Kernel:
 
 
 def inverse_amplitude_bandwidth() -> Kernel:
-    return AmplitudeBandwidthSeparable(
+    return AmpWidth(
         sigma_min=0.25,
         sigma_max=1.0,
         tau=0.2,

@@ -1,4 +1,4 @@
-"""Amplitude-dependent shared Gaussian bandwidth operator kernels."""
+"""Amplitude-dependent shared-width operator kernels."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from .gaussian import Gaussian
 _LAWS = ("interpolating", "inverse")
 
 
-class AmplitudeBandwidthSeparable(Kernel):
+class AmpWidth(Kernel):
     r"""A signed rank-one atom whose shared width narrows with ``|w|``.
 
     ``law="interpolating"`` uses one even amplitude gate to interpolate the
@@ -269,3 +269,6 @@ class AmplitudeBandwidthSeparable(Kernel):
             f"couple_bandwidth={self.couple_bandwidth}, "
             f"supports_factorization={self.supports_factorization}"
         )
+
+
+AmplitudeBandwidthSeparable = AmpWidth

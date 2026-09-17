@@ -5,7 +5,7 @@ import torch
 
 from tests.test_tangent_ops import jacobian
 from torchcst import Chart, CSTLinear, FirstOrderAdamConfig
-from torchcst.kernels import AmplitudeBandwidthSeparable
+from torchcst.kernels import AmpWidth
 from torchcst.optim.moments import SeparableDiagonalMetric
 
 
@@ -19,7 +19,7 @@ def test_streamed_cross_dense_oracle(device, dtype):
         Chart.linspace(9, low=-1.0, high=1.0),
         Chart.linspace(19, low=-1.0, high=1.0),
         atoms=7,
-        kernel=AmplitudeBandwidthSeparable(
+        kernel=AmpWidth(
             sigma_min=0.6, sigma_max=0.8
         ),
         dtype=dtype,

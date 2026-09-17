@@ -3,7 +3,7 @@ import torch
 from torch.func import hessian, vmap
 
 from torchcst import (
-    AmplitudeBandwidthSeparable,
+    AmpWidth,
     Chart,
     Gaussian,
     Separable,
@@ -121,7 +121,7 @@ def test_compact_autograd_hessian_is_finite_inside_boundary_and_outside(
 
 
 def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
-    kernel = AmplitudeBandwidthSeparable(
+    kernel = AmpWidth(
         sigma_min=0.10,
         sigma_max=10.0,
         profile=Triweight(0.10),
@@ -180,7 +180,7 @@ def test_compact_sigma_must_be_finite_and_positive(factory) -> None:
 
 @pytest.mark.parametrize("factory", [WendlandC2, Triweight])
 def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
-    kernel = AmplitudeBandwidthSeparable(
+    kernel = AmpWidth(
         sigma_min=0.80,
         sigma_max=2.0,
         profile=factory(0.80),
@@ -214,7 +214,7 @@ def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
 
 def test_bandwidth_profile_sigma_must_match_sigma_min() -> None:
     with pytest.raises(ValueError, match="profile.sigma must match sigma_min"):
-        AmplitudeBandwidthSeparable(
+        AmpWidth(
             sigma_min=0.10,
             sigma_max=1.0,
             profile=WendlandC2(0.20),

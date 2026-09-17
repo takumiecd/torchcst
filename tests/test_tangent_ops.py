@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from torchcst import Chart, CSTLinear
-from torchcst.kernels import Amplitude, AmplitudeBandwidthSeparable, Gaussian, Separable
+from torchcst.kernels import Amplitude, AmpWidth, Gaussian, Separable
 from torchcst.optim.moments import SeparableDiagonalMetric
 
 
@@ -14,11 +14,11 @@ def site_for(kind, dtype=torch.float64):
     base = Separable(input_profile=Gaussian(0.8), output_profile=Gaussian(0.6))
     kernel = base if kind == "plain" else Amplitude(base)
     if kind == "bandwidth":
-        kernel = AmplitudeBandwidthSeparable(
+        kernel = AmpWidth(
             sigma_min=0.6, sigma_max=0.8
         )
     if kind == "bandwidth_inverse":
-        kernel = AmplitudeBandwidthSeparable(
+        kernel = AmpWidth(
             sigma_min=0.05,
             sigma_max=8.0,
             tau=0.005,

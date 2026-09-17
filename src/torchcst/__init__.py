@@ -3,6 +3,7 @@
 from .atoms import Atoms
 from .geometry import Chart
 from .kernels import (
+    AmpWidth,
     Amplitude,
     AmplitudeBandwidthSeparable,
     Gaussian,
@@ -45,6 +46,7 @@ __all__ = [
     "CSTSGD",
     "AdamRConfig",
     "AdamWConfig",
+    "AmpWidth",
     "Amplitude",
     "AmplitudeBandwidthSeparable",
     "Atoms",
