@@ -332,9 +332,12 @@ $$
 Thus weak atoms are broad on both sides and sufficiently strong atoms approach
 the same narrow Gaussian on both sides. Both bounds are finite. Fixed positive
 `gate_eps` makes the map twice differentiable at zero amplitude, which is
-required by the CST Hessian contractions. These bandwidth controls are fixed
-kernel configuration; a future learned threshold or bandwidth must live in
-each opaque atom row.
+required by the CST Hessian contractions. By default the width map is in the
+amplitude computation graph, so $\partial\sigma/\partial w$ mixes into the
+normalized update. `couple_bandwidth=False` keeps the same forward $\sigma(|w|)$
+but stops that path (the interpolating law becomes a schedule). These bandwidth
+controls are fixed kernel configuration; a future learned threshold or bandwidth
+must live in each opaque atom row.
 
 `law="inverse"` keeps the same opaque layout and the same finite clamps, but
 replaces the interpolating gate with the even inverse-width map

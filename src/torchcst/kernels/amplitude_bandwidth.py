@@ -38,6 +38,7 @@ class AmplitudeBandwidthSeparable(Kernel):
         gate_eps: float = 1e-12,
         law: str = "interpolating",
         profile: Profile | None = None,
+        couple_bandwidth: bool = True,
     ) -> None:
         super().__init__()
         if law not in _LAWS:
@@ -76,6 +77,7 @@ class AmplitudeBandwidthSeparable(Kernel):
             "gate_eps",
             self._positive_scalar(gate_eps, name="gate_eps"),
         )
+        self.couple_bandwidth = bool(couple_bandwidth)
 
     @property
     def sigma_min(self) -> Tensor:
@@ -187,8 +189,14 @@ class AmplitudeBandwidthSeparable(Kernel):
 
     def _precision_and_jacobian(self, amplitude: Tensor) -> tuple[Tensor, Tensor]:
         if self.law == "inverse":
-            return self._inverse_precision_and_jacobian(amplitude)
-        return self._interpolating_precision_and_jacobian(amplitude)
+            precision, dprecision = self._inverse_precision_and_jacobian(amplitude)
+        else:
+            precision, dprecision = self._interpolating_precision_and_jacobian(
+                amplitude
+            )
+        if self.couple_bandwidth:
+            return precision, dprecision
+        return precision.detach(), torch.zeros_like(dprecision)
 
     def _magnitude_square(self, amplitude: Tensor) -> Tensor:
         return amplitude[:, 0].square() + self.gate_eps.square()
@@ -258,5 +266,6 @@ class AmplitudeBandwidthSeparable(Kernel):
             f"profile={type(self.profile).__name__}, "
             f"sigma_min={self.sigma_min.item():g}, "
             f"sigma_max={self.sigma_max.item():g}, "
+            f"couple_bandwidth={self.couple_bandwidth}, "
             f"supports_factorization={self.supports_factorization}"
         )

@@ -276,3 +276,42 @@ def test_amplitude_bandwidth_factorization_and_second_derivatives_are_finite(
     assert torch.isfinite(hessian).all()
     assert torch.linalg.vector_norm(hessian[0, 1:]) > 0
     assert tuple(kernel.parameters()) == ()
+
+
+def test_decoupled_bandwidth_keeps_forward_sigma_and_zeros_amplitude_width_grad() -> None:
+    coupled = AmplitudeBandwidthSeparable(
+        sigma_min=0.1,
+        sigma_max=0.8,
+        tau=0.5,
+        temperature=0.25,
+    )
+    detached = AmplitudeBandwidthSeparable(
+        sigma_min=0.1,
+        sigma_max=0.8,
+        tau=0.5,
+        temperature=0.25,
+        couple_bandwidth=False,
+    )
+    amplitude = torch.tensor([[0.5]], dtype=torch.float64)
+    _, coupled_jac = coupled._precision_and_jacobian(amplitude)
+    _, detached_jac = detached._precision_and_jacobian(amplitude)
+    assert coupled_jac.abs() > 1e-6
+    torch.testing.assert_close(
+        detached_jac, torch.zeros_like(detached_jac), atol=0, rtol=0
+    )
+
+    input_chart = Chart.linspace(3)
+    output_chart = Chart.linspace(4)
+    p = torch.tensor([[0.5, 0.0, 0.0]], dtype=torch.float64)
+    torch.testing.assert_close(
+        coupled.bandwidth_sigma(input_chart, output_chart, p),
+        detached.bandwidth_sigma(input_chart, output_chart, p),
+        atol=0,
+        rtol=0,
+    )
+    torch.testing.assert_close(
+        coupled.materialize_atoms(input_chart, output_chart, p),
+        detached.materialize_atoms(input_chart, output_chart, p),
+        atol=0,
+        rtol=0,
+    )
