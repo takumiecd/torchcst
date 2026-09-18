@@ -20,6 +20,7 @@ from .config import (
     LocalAdamConfig,
     LocalVisibleAdamConfig,
     NormalizedOptimizerConfig,
+    QuadraticOptimizerConfig,
     SecondOrderAdamConfig,
 )
 from .dense import (
@@ -59,10 +60,19 @@ from .normalized_optimizer import (
     CSTImplicitAdam,
     CSTMomentum,
     CSTNormalizedAdam,
+    CSTNormalizedMomentum,
+    CSTNormalizedRMSProp,
+    CSTNormalizedSGD,
     CSTRMSProp,
 )
 from .optimizer import CSTStepResult
 from .problem import QuarticProblem
+from .quadratic_optimizer import (
+    CSTQuadraticAdam,
+    CSTQuadraticMomentum,
+    CSTQuadraticRMSProp,
+    CSTQuadraticSGD,
+)
 from .second_order import CSTSecondOrderAdam
 from .solvers import (
     BallNewton,
@@ -76,6 +86,9 @@ from .solvers import (
     NormalizedSolveResult,
     NormalizedUpdateProblem,
     ProjectedLBFGS,
+    QuadraticBoxGradientSolver,
+    QuadraticGradientSolver,
+    QuadraticTrustSolver,
     QuarticSolver,
     QuarticSolveResult,
     SubspaceQuartic,
@@ -98,6 +111,13 @@ __all__ = [
     "CSTLocalVisibleAdam",
     "CSTMomentum",
     "CSTNormalizedAdam",
+    "CSTNormalizedMomentum",
+    "CSTNormalizedRMSProp",
+    "CSTNormalizedSGD",
+    "CSTQuadraticAdam",
+    "CSTQuadraticMomentum",
+    "CSTQuadraticRMSProp",
+    "CSTQuadraticSGD",
     "CSTRMSProp",
     "CSTSecondOrderAdam",
     "CSTStepResult",
@@ -136,6 +156,10 @@ __all__ = [
     "NumeratorMoment",
     "NumeratorMomentState",
     "ProjectedLBFGS",
+    "QuadraticBoxGradientSolver",
+    "QuadraticGradientSolver",
+    "QuadraticOptimizerConfig",
+    "QuadraticTrustSolver",
     "QuarticProblem",
     "QuarticSolveResult",
     "QuarticSolver",

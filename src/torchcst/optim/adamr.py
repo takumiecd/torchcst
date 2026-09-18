@@ -1,9 +1,9 @@
 """Normalized Adam plus decoupled atom-operator repulsion.
 
-``CSTAdamR`` is a ``_NormalizedModelOptimizer`` wrapper with the same
-numerator and denominator as ``CSTNormalizedAdam``. ``R`` is applied to CST
-sites after the task solve, outside those moments. Dense parameters still use
-the shared ``AdamWConfig`` block.
+``CSTAdamR`` is an N/D coordinator wrapper with the same numerator and
+denominator as ``CSTNormalizedAdam``. ``R`` is applied to CST sites after
+the task solve, outside those moments. Dense parameters still use the
+shared ``AdamWConfig`` block.
 """
 
 from __future__ import annotations
@@ -16,11 +16,11 @@ from torch import Tensor
 from torchcst.nn import CSTModule
 
 from .config import AdamRConfig
-from .normalized_optimizer import _NormalizedModelOptimizer
+from .nd_optimizer import _NDModelOptimizer
 from .optimizer import _CSTProposal
 
 
-class CSTAdamR(_NormalizedModelOptimizer):
+class CSTAdamR(_NDModelOptimizer):
     """CSTNormalizedAdam plus decoupled atom-operator repulsion.
 
     Task moments and the normalized solver see only the CST AtomGrad from the

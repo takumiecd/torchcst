@@ -1,9 +1,14 @@
 # torchcst 正規化 optimizer の設計
 
-この文書は、CSTSGD、CSTMomentum、CSTRMSProp、CSTNormalizedAdam からなる
-正規化 optimizer family の設計を説明する。これは従来の CSTAdam を置き換える
-互換層ではなく、分子 N、分母 D、更新 solver を独立に差し替えられる新しい
-optimizer 経路である。
+この文書は、CSTNormalizedSGD、CSTNormalizedMomentum、CSTNormalizedRMSProp、
+CSTNormalizedAdam からなる正規化 optimizer family の設計を説明する。これは
+従来の CSTAdam を置き換える互換層ではなく、分子 N、分母 D、更新 solver を
+独立に差し替えられる新しい optimizer 経路である。CSTSGD、CSTMomentum、
+CSTRMSProp は対応する CSTNormalized* wrapper の別名である。
+
+N と D の評価、trust 制約（全体球 / 成分 box）、反復ループは Quadratic
+family と共有する。Normalized は `d ← Π(-η N/D)`、Quadratic は
+`d ← Π(d - η N/D)` であり、解いている方程式だけが違う。
 
 実装の中心は次の三つである。
 
@@ -107,7 +112,7 @@ $$
 
 ### SGD
 
-CSTSGD はmomentを持たず、現在の観測値をそのまま使う。
+CSTNormalizedSGD はmomentを持たず、現在の観測値をそのまま使う。
 
 $$
 N_{\mathrm{SGD}}(d)=g+Hd,
@@ -117,7 +122,7 @@ $$
 
 ### Momentum
 
-CSTMomentum は g と H の両方を同じ一次moment clockでEMAする。
+CSTNormalizedMomentum は g と H の両方を同じ一次moment clockでEMAする。
 
 $$
 \begin{aligned}
@@ -189,7 +194,7 @@ eps は分母に直接加える。理想的には q(d) は二乗平均なので�
 
 ### RMSProp
 
-CSTRMSProp は分子を現在のaffine gradient、分母を二乗EMAにする。
+CSTNormalizedRMSProp は分子を現在のaffine gradient、分母を二乗EMAにする。
 
 $$
 N_{\mathrm{RMSProp}}(d)=g+Hd,
@@ -302,9 +307,9 @@ solverへ戻る。
 
 | optimizer | 分子 N(d) | 分母 D(d) |
 |---|---|---|
-| CSTSGD | 現在の g + H d | 1 |
-| CSTMomentum | g と H のEMA | 1 |
-| CSTRMSProp | 現在の g + H d | (g + H d)^2 のcomponent-wise EMA |
+| CSTNormalizedSGD | 現在の g + H d | 1 |
+| CSTNormalizedMomentum | g と H のEMA | 1 |
+| CSTNormalizedRMSProp | 現在の g + H d | (g + H d)^2 のcomponent-wise EMA |
 | CSTNormalizedAdam | g と H のEMA | (g + H d)^2 のcomponent-wise EMA |
 | CSTAdamR | CSTNormalizedAdam と同じ | 同じ。CST変位に decoupled な `-lr λ ∇L` を後から足す |
 
@@ -396,6 +401,8 @@ atom coordinateに閉じたstateである一方、P が大きい場合には無�
 ## 11. 既存optimizerとの関係と現在の境界
 
 - CSTNormalizedAdam は新しいcomposable normalized familyのAdamである。
+- CSTNormalizedSGD、CSTNormalizedMomentum、CSTNormalizedRMSProp は同じ family の
+  残りの wrapper である。CSTSGD、CSTMomentum、CSTRMSProp はその別名である。
 - CSTAdamR はそのAdam wrapperに、タスクmomentsの外でatom演算子斥力を足したものである。
 - 歴史的な CSTAdam は別のtangent-moment behaviorを持ち、同じ名前の実装ではない。
 - CSTImplicitAdam は CSTNormalizedAdam のaliasである。

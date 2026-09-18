@@ -12,6 +12,7 @@ from .solvers import (
     FullQuartic,
     NormalizedFixedPointSolver,
     NormalizedSolver,
+    QuadraticGradientSolver,
     QuarticSolver,
 )
 
@@ -177,9 +178,27 @@ def _validate_betas(betas: tuple[float, float]) -> tuple[float, float]:
     return float(beta1), float(beta2)
 
 
+def _validate_nd_config(config) -> None:
+    for name in ("lr", "eps", "trust_radius"):
+        value = getattr(config, name)
+        if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f"{name} must be finite and positive")
+    object.__setattr__(config, "betas", _validate_betas(config.betas))
+    if not isinstance(config.solver, NormalizedSolver):
+        raise TypeError("solver must be a NormalizedSolver")
+    if not isinstance(config.initial_zero_step, bool):
+        raise TypeError("initial_zero_step must be a bool")
+    if config.atom_grad_mode not in ("auto", "custom", "hooks"):
+        raise ValueError("atom_grad_mode must be 'auto', 'custom', or 'hooks'")
+    if not isinstance(config.factored, bool):
+        raise TypeError("factored must be a bool")
+    if not isinstance(config.device_execution, bool):
+        raise TypeError("device_execution must be a bool")
+
+
 @dataclass(frozen=True)
-class NormalizedOptimizerConfig:
-    """Configuration shared by the new composable CST optimizers."""
+class _NDOptimizerConfig:
+    """Shared fields for composable N/D optimizer families."""
 
     lr: float = 1e-3
     betas: tuple[float, float] = (0.9, 0.999)
@@ -192,21 +211,19 @@ class NormalizedOptimizerConfig:
     device_execution: bool = False
 
     def __post_init__(self) -> None:
-        for name in ("lr", "eps", "trust_radius"):
-            value = getattr(self, name)
-            if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
-                raise ValueError(f"{name} must be finite and positive")
-        object.__setattr__(self, "betas", _validate_betas(self.betas))
-        if not isinstance(self.solver, NormalizedSolver):
-            raise TypeError("solver must be a NormalizedSolver")
-        if not isinstance(self.initial_zero_step, bool):
-            raise TypeError("initial_zero_step must be a bool")
-        if self.atom_grad_mode not in ("auto", "custom", "hooks"):
-            raise ValueError("atom_grad_mode must be 'auto', 'custom', or 'hooks'")
-        if not isinstance(self.factored, bool):
-            raise TypeError("factored must be a bool")
-        if not isinstance(self.device_execution, bool):
-            raise TypeError("device_execution must be a bool")
+        _validate_nd_config(self)
+
+
+@dataclass(frozen=True)
+class NormalizedOptimizerConfig(_NDOptimizerConfig):
+    """Implicit family: ``d ← Π(-η N(d)/D(d))``."""
+
+
+@dataclass(frozen=True)
+class QuadraticOptimizerConfig(_NDOptimizerConfig):
+    """Gradient family: ``d ← Π(d - η N(d)/D(d))``."""
+
+    solver: NormalizedSolver = field(default_factory=QuadraticGradientSolver)
 
 
 @dataclass(frozen=True)

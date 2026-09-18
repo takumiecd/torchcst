@@ -11,6 +11,8 @@ from torchcst.optim import (
     NormalizedSolveResult,
     NormalizedUpdateProblem,
     NumeratorMoment,
+    QuadraticBoxGradientSolver,
+    QuadraticGradientSolver,
 )
 
 
@@ -154,3 +156,37 @@ def test_normalized_box_solver_bounds_each_coordinate_independently() -> None:
     )
     assert result.on_boundary
     assert result.converged
+
+
+def test_step_rule_and_constraint_are_independent() -> None:
+    displacement = torch.tensor([[0.2, -0.1]], dtype=torch.float64)
+    step = torch.tensor([[-0.8, 0.4]], dtype=torch.float64)
+    radius = 0.25
+
+    replaced_ball = NormalizedFixedPointSolver()._apply_step(
+        displacement, step, trust_radius=radius
+    )
+    added_ball = QuadraticGradientSolver()._apply_step(
+        displacement, step, trust_radius=radius
+    )
+    replaced_box = NormalizedBoxFixedPointSolver()._apply_step(
+        displacement, step, trust_radius=radius
+    )
+    added_box = QuadraticBoxGradientSolver()._apply_step(
+        displacement, step, trust_radius=radius
+    )
+
+    torch.testing.assert_close(
+        replaced_ball,
+        step * (radius / torch.linalg.vector_norm(step)),
+    )
+    torch.testing.assert_close(
+        added_ball,
+        (displacement + step)
+        * (radius / torch.linalg.vector_norm(displacement + step)),
+    )
+    torch.testing.assert_close(replaced_box, step.clamp(min=-radius, max=radius))
+    torch.testing.assert_close(
+        added_box,
+        (displacement + step).clamp(min=-radius, max=radius),
+    )

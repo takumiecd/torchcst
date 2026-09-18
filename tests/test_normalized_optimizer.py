@@ -4,10 +4,13 @@ import torch
 
 from torchcst import Amplitude, Chart, CSTLinear, Gaussian, Separable
 from torchcst.optim import (
-    AtomGradRequest,
     CSTSGD,
+    AtomGradRequest,
     CSTMomentum,
     CSTNormalizedAdam,
+    CSTNormalizedMomentum,
+    CSTNormalizedRMSProp,
+    CSTNormalizedSGD,
     CSTRMSProp,
     LinearJGAtomGrad,
     LinearJGHAtomGrad,
@@ -60,8 +63,19 @@ class FixedNormalizedSolver(NormalizedSolver):
         )
 
 
+def test_normalized_short_names_are_aliases() -> None:
+    assert CSTSGD is CSTNormalizedSGD
+    assert CSTMomentum is CSTNormalizedMomentum
+    assert CSTRMSProp is CSTNormalizedRMSProp
+
+
 def test_all_wrappers_run_with_the_shared_normalized_coordinator() -> None:
-    for optimizer_type in (CSTSGD, CSTMomentum, CSTRMSProp, CSTNormalizedAdam):
+    for optimizer_type in (
+        CSTNormalizedSGD,
+        CSTNormalizedMomentum,
+        CSTNormalizedRMSProp,
+        CSTNormalizedAdam,
+    ):
         model = make_site()
         optimizer = optimizer_type(
             model,
@@ -109,7 +123,7 @@ def test_numerator_and_denominator_states_are_kept_separately() -> None:
 
 def test_initial_zero_step_is_used_once_before_implicit_solver() -> None:
     model = make_site()
-    optimizer = CSTSGD(
+    optimizer = CSTNormalizedSGD(
         model,
         lr=0.01,
         trust_radius=0.2,

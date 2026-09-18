@@ -512,36 +512,35 @@ correctness implementation. Future Linear, Conv, or kernel-specific
 implementations may fuse those contractions without changing moment or solver
 interfaces.
 
-### Composable normalized optimizers
+### Composable N/D optimizers
 
-The new normalized optimizer family works directly with the candidate-dependent
-atom-coordinate update
-
-The design details, tensor shapes, moment state, and solver geometry are in
+The Normalized and Quadratic families share one coordinator, the same
+`N(d)` / `D(d)` moments, and the same trust constraints. They differ only
+in the solver step. Design details are in
 [the normalized optimizer design document](docs/normalized-optimizer.ja.md).
 
-$$
-d=-\eta\frac{N(d)}{D(d)}.
-$$
-
-The numerator and denominator are separate components, and their persistent
-states remain in fixed atom coordinates. Expansion prepares the step-local
-values; compression only commits the pending states and does not recenter or
-transform them using the accepted displacement.
-
-The four public wrappers select only the two components:
+The four public wrappers select only the two moment components:
 
 | optimizer | numerator `N(d)` | denominator `D(d)` |
 | --- | --- | --- |
-| `CSTSGD` | current `g + H d` | `1` |
-| `CSTMomentum` | EMA of `g` and `H` | `1` |
-| `CSTRMSProp` | current `g + H d` | component-wise EMA of `(g + H d)^2` |
-| `CSTNormalizedAdam` | EMA of `g` and `H` | component-wise EMA of `(g + H d)^2` |
+| `CSTNormalizedSGD` / `CSTQuadraticSGD` | current `g + H d` | `1` |
+| `CSTNormalizedMomentum` / `CSTQuadraticMomentum` | EMA of `g` and `H` | `1` |
+| `CSTNormalizedRMSProp` / `CSTQuadraticRMSProp` | current `g + H d` | component-wise EMA of `(g + H d)^2` |
+| `CSTNormalizedAdam` / `CSTQuadraticAdam` | EMA of `g` and `H` | component-wise EMA of `(g + H d)^2` |
 | `CSTAdamR` | same as `CSTNormalizedAdam` | same as `CSTNormalizedAdam`, plus decoupled `-lr λ ∇L` |
 
-`CSTImplicitAdam` is an alias for `CSTNormalizedAdam`. The historical
-`CSTAdam` remains available with its existing tangent-moment behavior while the
-new family is being evaluated.
+`CSTSGD`, `CSTMomentum`, and `CSTRMSProp` are aliases for the corresponding
+`CSTNormalized*` wrappers. `CSTImplicitAdam` is an alias for
+`CSTNormalizedAdam`. The historical `CSTAdam` remains available with its
+existing tangent-moment behavior while the new family is being evaluated.
+
+#### Normalized family
+
+The Normalized solvers replace the candidate with the scaled vector
+
+$$
+d\leftarrow\Pi\bigl(-\eta N(d)/D(d)\bigr).
+$$
 
 Use the same whole-model interface as the other model-level optimizers:
 
@@ -563,25 +562,73 @@ for inputs, targets in loader:
     optimizer.step()
 ```
 
-The common configuration is `NormalizedOptimizerConfig`. `CSTSGD`,
-`CSTMomentum`, `CSTRMSProp`, and `CSTNormalizedAdam` accept its fields directly
-or through `cst=NormalizedOptimizerConfig(...)`.
-
-The update solver is injected independently of the optimizer wrapper. The
-default is `NormalizedFixedPointSolver`; another solver only needs to implement
-the `NormalizedSolver` contract and return a `NormalizedSolveResult`:
+The configuration is `NormalizedOptimizerConfig`. The default solver is
+`NormalizedFixedPointSolver` (global Euclidean ball).
+`NormalizedBoxFixedPointSolver` is the same implicit map with an
+elementwise box. Another solver only needs to implement the
+`NormalizedSolver` contract and return a `NormalizedSolveResult`:
 
 ```python
 from torchcst import CSTNormalizedAdam
-from torchcst.optim import NormalizedFixedPointSolver
+from torchcst.optim import NormalizedBoxFixedPointSolver, NormalizedFixedPointSolver
 
 solver = NormalizedFixedPointSolver(max_iter=64, tolerance=1e-7, damping=0.8)
 optimizer = CSTNormalizedAdam(model, solver=solver)
+optimizer = CSTNormalizedAdam(model, solver=NormalizedBoxFixedPointSolver())
 ```
 
 The atom-gradient program used by this family is `LinearJGHAtomGrad`, which
 collects `jg:[K, P]` and the local contracted Hessian `gh:[K, P, P]`. These
 observations are reused by both the numerator and denominator components.
+
+#### Quadratic family
+
+The Quadratic solvers add the same scaled vector to the current
+displacement, which is projected gradient descent on
+
+$$
+m(d)=\langle g, d\rangle+\tfrac12\langle d, H d\rangle
+$$
+
+$$
+d\leftarrow\Pi\bigl(d-\eta N(d)/D(d)\bigr).
+$$
+
+An interior stationary point satisfies `N(d)=0`, a critical point of `m`.
+The two families differ only in whether `d` is replaced by `-η N/D` or
+incremented by it. Trust geometry is independent of that choice: ball or
+box. Inject `QuadraticTrustSolver` if you want the closed-form
+trust-region minimum of `m` instead of the gradient loop.
+
+| optimizer | default solver |
+| --- | --- |
+| `CSTQuadraticSGD` | `QuadraticGradientSolver` (ball) |
+| `CSTQuadraticMomentum` | `QuadraticGradientSolver` (ball) |
+| `CSTQuadraticRMSProp` | `QuadraticGradientSolver` (ball) |
+| `CSTQuadraticAdam` | `QuadraticGradientSolver` (ball) |
+
+```python
+from torchcst import CSTQuadraticSGD, CSTQuadraticAdam
+from torchcst.optim import QuadraticBoxGradientSolver
+
+optimizer = CSTQuadraticSGD(
+    model,
+    lr=1e-3,
+    betas=(0.9, 0.999),
+    trust_radius=0.25,
+)
+optimizer = CSTQuadraticAdam(
+    model,
+    lr=1e-3,
+    betas=(0.9, 0.999),
+    eps=1e-8,
+    trust_radius=0.25,
+    solver=QuadraticBoxGradientSolver(),
+)
+```
+
+The configuration is `QuadraticOptimizerConfig`. `QuadraticBoxGradientSolver`
+is the same gradient step with the elementwise box.
 
 ### Exact structured quartic evaluation
 
@@ -647,7 +694,7 @@ a guarantee that every seed exceeds 80%.
 
 ## `CSTAdamR`: normalized Adam plus decoupled repulsion
 
-`CSTAdamR` is a `_NormalizedModelOptimizer` wrapper. It uses the same
+`CSTAdamR` uses the shared N/D coordinator. It uses the same
 numerator and denominator as `CSTNormalizedAdam`. `R` is repulsion of realized
 atom operators, not parameter-coordinate decay, and not the dense AdamW block.
 Each `CSTModule` supplies `(S, κ)` from one materialization of its atoms.

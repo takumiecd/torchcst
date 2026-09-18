@@ -2,18 +2,21 @@
 
 from .base import NormalizedSolver, QuarticSolver
 from .device import DeviceBFGS
-from .newton import BallNewton
-from .normalized import (
+from .nd import (
     NormalizedBoxFixedPointSolver,
     NormalizedEvaluation,
     NormalizedFixedPointSolver,
     NormalizedSolveResult,
     NormalizedUpdateProblem,
+    QuadraticBoxGradientSolver,
+    QuadraticGradientSolver,
 )
+from .newton import BallNewton
 from .projected import ProjectedLBFGS
 from .quartic import FullQuartic, QuarticSolveResult
 from .ray import DeviceRay
 from .subspace import SubspaceQuartic
+from .taylor import QuadraticTrustSolver
 
 __all__ = [
     "BallNewton",
@@ -27,6 +30,9 @@ __all__ = [
     "NormalizedSolver",
     "NormalizedUpdateProblem",
     "ProjectedLBFGS",
+    "QuadraticBoxGradientSolver",
+    "QuadraticGradientSolver",
+    "QuadraticTrustSolver",
     "QuarticSolveResult",
     "QuarticSolver",
     "SubspaceQuartic",

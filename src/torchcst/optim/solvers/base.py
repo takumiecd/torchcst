@@ -11,7 +11,7 @@ from torch import Tensor
 from ..problem import QuarticProblem
 
 if TYPE_CHECKING:
-    from .normalized import NormalizedSolveResult, NormalizedUpdateProblem
+    from .nd import NormalizedSolveResult, NormalizedUpdateProblem
     from .quartic import QuarticSolveResult
 
 
@@ -28,7 +28,7 @@ class QuarticSolver(ABC):
 
 
 class NormalizedSolver(ABC):
-    """Solve a candidate-dependent normalized update without owning state."""
+    """Solve a candidate-dependent N/D update without owning state."""
 
     def project_displacement(
         self,
