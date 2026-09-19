@@ -120,6 +120,7 @@ class CSTParameterAdam(torch.optim.AdamW):
         # One tensor at a time keeps optimizer temporaries proportional to the
         # parameter table and avoids foreach/compiled workspace caches.
         super().__init__(groups, foreach=False)
+        self._cst_sites = tuple(sites)
 
     @staticmethod
     def _rate_scale(group):
@@ -151,6 +152,10 @@ class CSTParameterAdam(torch.optim.AdamW):
                     if not bool(torch.isfinite(grad).all()):
                         raise FloatingPointError("non-finite parameter gradient")
         base_rates = [group["lr"] for group in self.param_groups]
+        old_points = {
+            site: site.atoms.p.detach().clone() for site in self._cst_sites
+        }
+        scheduled_cst_rate = base_rates[0] * self._rate_scale(self.param_groups[0])
         try:
             for group, rate in zip(self.param_groups, base_rates):
                 group["lr"] = rate * self._rate_scale(group)
@@ -158,6 +163,22 @@ class CSTParameterAdam(torch.optim.AdamW):
         finally:
             for group, rate in zip(self.param_groups, base_rates):
                 group["lr"] = rate
+        with torch.no_grad():
+            for site in self._cst_sites:
+                point = site.atoms.p
+                if point.grad is None:
+                    continue
+                old = old_points[site]
+                updated = site.kernel.apply_parameter_update(
+                    site.input_chart,
+                    site.output_chart,
+                    old,
+                    point - old,
+                    step_size=scheduled_cst_rate,
+                )
+                if not bool(torch.isfinite(updated).all()):
+                    raise FloatingPointError("kernel parameter update must be finite")
+                point.copy_(updated)
         for group, used in zip(self.param_groups, active):
             group["schedule_step"] += int(used)
         return loss

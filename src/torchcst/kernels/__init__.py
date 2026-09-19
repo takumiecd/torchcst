@@ -5,6 +5,7 @@ from .amplitude_bandwidth import AmpWidth, AmplitudeBandwidthSeparable
 from .base import AtomInit, Kernel, Profile
 from .compact import Triweight, WendlandC2
 from .gaussian import Gaussian
+from .polar_amplitude_bandwidth import PolarAmpWidth
 from .separable import Separable
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "AtomInit",
     "Gaussian",
     "Kernel",
+    "PolarAmpWidth",
     "Profile",
     "Separable",
     "Triweight",

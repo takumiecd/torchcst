@@ -13,6 +13,7 @@ from torchcst import (
     FullQuartic,
     Gaussian,
     Kernel,
+    PolarAmpWidth,
     SecondOrderAdamConfig,
     Separable,
     SubspaceQuartic,
@@ -47,9 +48,25 @@ def inverse_amplitude_bandwidth() -> Kernel:
     )
 
 
+def polar_amplitude_bandwidth() -> Kernel:
+    return PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.25,
+        sigma_max=1.0,
+        w_c=0.2,
+        kappa=3.0,
+        radial_regularization=0.1,
+    )
+
+
 @pytest.mark.parametrize(
     "kernel_factory",
-    [independent_amplitude, amplitude_bandwidth, inverse_amplitude_bandwidth],
+    [
+        independent_amplitude,
+        amplitude_bandwidth,
+        inverse_amplitude_bandwidth,
+        polar_amplitude_bandwidth,
+    ],
 )
 @pytest.mark.parametrize("evaluation", ["visible", "gram"])
 @pytest.mark.parametrize("solver_name", ["full", "newton", "subspace"])

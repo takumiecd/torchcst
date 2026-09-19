@@ -229,13 +229,18 @@ class _ModelOptimizer(Optimizer):
         try:
             cst_proposals = self._build_cst_proposals()
             dense_proposals = self._build_dense_proposals()
+            cst_updates = tuple(
+                self._apply_kernel_update(proposal) for proposal in cst_proposals
+            )
             next_cst_states = tuple(
                 proposal.site.moments.compress(
                     proposal.expanded,
-                    proposal.solve.displacement,
+                    actual_displacement,
                     proposal.context,
                 )
-                for proposal in cst_proposals
+                for proposal, (_, actual_displacement) in zip(
+                    cst_proposals, cst_updates
+                )
             )
         except BaseException:
             self._abort_capture()
@@ -258,10 +263,10 @@ class _ModelOptimizer(Optimizer):
                 for proposal, new in zip(cst_proposals, next_cst_states)
             )
         with torch.no_grad():
-            for proposal in cst_proposals:
-                delta = proposal.solve.displacement
-                proposal.site.module.atoms.p.add_(
-                    delta if valid is None else torch.where(valid, delta, 0)
+            for proposal, (updated, _) in zip(cst_proposals, cst_updates):
+                point = proposal.site.module.atoms.p
+                point.copy_(
+                    updated if valid is None else torch.where(valid, updated, point)
                 )
             for parameter, proposal in dense_proposals.items():
                 delta = proposal.displacement
@@ -285,6 +290,25 @@ class _ModelOptimizer(Optimizer):
                 for proposal in cst_proposals
             ),
         )
+
+    def _apply_kernel_update(self, proposal: _CSTProposal) -> tuple[Tensor, Tensor]:
+        module = proposal.site.module
+        point = proposal.context.current_point
+        updated = module.kernel.apply_parameter_update(
+            module.input_chart,
+            module.output_chart,
+            point,
+            proposal.solve.displacement,
+            step_size=self.cst_config.lr,
+        )
+        if updated.shape != point.shape:
+            raise ValueError("kernel parameter update has the wrong shape")
+        require(
+            torch.isfinite(updated).all(),
+            "kernel parameter update must be finite",
+            FloatingPointError,
+        )
+        return updated, updated - point
 
     def check_errors(self) -> None:
         """Explicit synchronization boundary for deferred errors.

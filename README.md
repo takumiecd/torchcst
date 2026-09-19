@@ -45,6 +45,7 @@ from torchcst import (
     CSTLinear,
     CSTLocalAdam,
     Gaussian,
+    PolarAmpWidth,
 )
 
 input_chart = Chart.grid((28, 28), spacing=2 / 27)
@@ -362,6 +363,39 @@ bandwidth changes do not silently rescale the meaning of its amplitude.
 Amplitude-bearing kernels initialize
 $w_a\sim\mathcal N(0,(0.1/\sqrt K)^2)$, matching the successful fixed-$K$
 MNIST protocol.
+
+For an explicitly decoupled amplitude/width coordinate system, use:
+
+```python
+PolarAmpWidth(
+    amplitude_max=2.0,
+    sigma_min=0.10,
+    sigma_max=1.0,
+    w_c=0.5,
+    kappa=3.0,
+    activity_gain=1.0,
+    radial_regularization=0.1,
+)
+```
+
+Its atom layout is $(s_a,t_a,x_a,y_a)$. The polar pair encodes
+$w=W s/\sqrt{s^2+t^2}$ and
+$\alpha=(s^2+t^2-1)/3$ on the constrained annulus $1\le s^2+t^2\le4$.
+The effective shared width
+is $(1-\alpha)L(w)+\alpha U(w)$ with
+$L=\sigma_{\min}+\Delta_\sigma/(1+\kappa(w/w_c)^2)$ and
+$U=\sigma_{\min}+\Delta_\sigma\kappa/(\kappa+(w/w_c)^2)$.
+Initialization lies on the unit circle, so $\alpha=0$. Task-loss gradients do
+not flow through the bandwidth. Instead, every CST optimizer asks the kernel
+to project its proposed polar displacement onto the circle tangent. The
+angular proposal is preserved while the radial history clock advances as
+$q' = \operatorname{clamp}(q+\gamma\lVert d_{\rm tan}\rVert^2,1,4)$, with
+`activity_gain` as $\gamma$. The default $\gamma=1$ is the unscaled finite
+chord rule. The kernel then applies the exact gradient flow of
+$R(q)=\tfrac{\lambda}{2}(q-1)^2$, with
+`radial_regularization` as $\lambda$, and projects back to the annulus. Thus
+task motion increases $\alpha$, regularization decreases it without changing
+$w$, and optimizer-specific coordinate scaling cannot mix the two effects.
 
 Kernel values must remain differentiable with respect to `p`; the internal
 derivative layer supplies the second-order displacement contractions. A later

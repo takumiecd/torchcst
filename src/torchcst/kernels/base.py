@@ -85,6 +85,29 @@ class Kernel(nn.Module, ABC):
     def forward(self, input_chart: Chart, output_chart: Chart, p: Tensor) -> Tensor:
         return self.materialize_atoms(input_chart, output_chart, p)
 
+    def apply_parameter_update(
+        self,
+        input_chart: Chart,
+        output_chart: Chart,
+        p: Tensor,
+        displacement: Tensor,
+        *,
+        step_size: float,
+    ) -> Tensor:
+        """Apply one optimizer proposal in this kernel's coordinate geometry.
+
+        Ordinary kernels use Euclidean addition. Kernels with redundant or
+        constrained coordinates may project the task displacement, apply a
+        decoupled regularizer, and retract onto their feasible set here. The
+        optimizer deliberately does not interpret columns of the opaque atom
+        table.
+        """
+
+        del input_chart, output_chart, step_size
+        if displacement.shape != p.shape:
+            raise ValueError("displacement must match the atom parameter shape")
+        return p + displacement
+
     tangent_layout_version = 1
 
     def tangent_config(self) -> tuple:
