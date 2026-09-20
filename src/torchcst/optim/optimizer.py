@@ -294,12 +294,15 @@ class _ModelOptimizer(Optimizer):
     def _apply_kernel_update(self, proposal: _CSTProposal) -> tuple[Tensor, Tensor]:
         module = proposal.site.module
         point = proposal.context.current_point
+        kernel_step_size = getattr(self.cst_config, "kernel_step_size", None)
+        if kernel_step_size is None:
+            kernel_step_size = self.cst_config.lr
         updated = module.kernel.apply_parameter_update(
             module.input_chart,
             module.output_chart,
             point,
             proposal.solve.displacement,
-            step_size=self.cst_config.lr,
+            step_size=kernel_step_size,
         )
         if updated.shape != point.shape:
             raise ValueError("kernel parameter update has the wrong shape")

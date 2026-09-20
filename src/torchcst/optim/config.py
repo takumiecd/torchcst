@@ -194,6 +194,12 @@ def _validate_nd_config(config) -> None:
         raise TypeError("factored must be a bool")
     if not isinstance(config.device_execution, bool):
         raise TypeError("device_execution must be a bool")
+    if config.kernel_step_size is not None and (
+        isinstance(config.kernel_step_size, bool)
+        or not math.isfinite(config.kernel_step_size)
+        or config.kernel_step_size <= 0
+    ):
+        raise ValueError("kernel_step_size must be finite and positive or None")
 
 
 @dataclass(frozen=True)
@@ -209,6 +215,7 @@ class _NDOptimizerConfig:
     atom_grad_mode: AtomGradMode = "auto"
     factored: bool = False
     device_execution: bool = False
+    kernel_step_size: float | None = None
 
     def __post_init__(self) -> None:
         _validate_nd_config(self)

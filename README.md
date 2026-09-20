@@ -1,8 +1,10 @@
 # torchcst — fixed-shape continuous operators for PyTorch
 
 > [!WARNING]
-> **Research API.** `CSTLocalAdam` is the primary optimizer; the full
-> second-order algorithm remains an explicit option. There is intentionally no compatibility promise for earlier
+> **Research API.** `CSTQuadraticAdam` is the current experiment-backed
+> recommendation. `CSTNormalizedAdam` and `CSTParameterAdam` are retained as
+> comparison paths; the other optimizer families are legacy removal candidates.
+> There is intentionally no compatibility promise for earlier
 > `SynapseStore`, structural-policy, or Pullback Adam APIs.
 
 `torchcst` represents an operator as a sum of a fixed number of kernel-defined
@@ -17,18 +19,15 @@ The initial scope is deliberately narrow:
 - continuous opaque atom-local parameters;
 - fixed-cardinality input and output charts whose coordinates are frozen by
   default;
-- an implicit projected Adam optimizer;
-- a composable normalized optimizer family with independent numerator,
+- a composable Quadratic/Normalized optimizer core with independent numerator,
   denominator, and solver components;
-- a primary first-order optimizer with current-tangent moment compression and transport;
-- an optional second-order optimizer retaining the full quartic objective;
 - regularized direct atom-local updates, with trust-region alternatives;
 - compact optimizers without persistent dense represented-weight moments, plus
   an explicit dense-moment accuracy baseline.
 
-The current optimizer design, equations and memory limits are recorded in
-[the local Adam specification](docs/local-adam-math.ja.md). Earlier second-order
-decisions remain in [the historical decision record](docs/implicit-projected-adam-decisions.ja.md).
+The current recommendation and retained optimizer surface are recorded in
+[the optimizer selection note](docs/optimizer-selection.ja.md). Earlier
+optimizer equations remain under `docs/` as design and historical records.
 
 ## Basic use
 
@@ -39,14 +38,13 @@ import torch
 import torch.nn.functional as F
 
 from torchcst import (
-    AdamWConfig,
-    AmpWidth,
     Chart,
     CSTLinear,
-    CSTLocalAdam,
-    Gaussian,
+    CSTQuadraticAdam,
     PolarAmpWidth,
+    Triweight,
 )
+from torchcst.optim import QuadraticGradientSolver
 
 input_chart = Chart.grid((28, 28), spacing=2 / 27)
 output_chart = Chart.linspace(10, spacing=2 / 9)
@@ -55,17 +53,36 @@ model = CSTLinear(
     input_chart,
     output_chart,
     atoms=64,
-    kernel=AmpWidth(
+    kernel=PolarAmpWidth(
+        amplitude_max=1.0,
         sigma_min=0.10,
-        sigma_max=1.0,
-        tau=0.005,
-        temperature=0.25,
+        sigma_max=10.0,
+        w_c=0.0025,
+        kappa=30.0,
+        activity_gain=27.0,
+        activity_mode="time_energy",
+        radial_regularization=0.5,
+        profile=Triweight(0.10),
     ),
     atom_init="uniform",
-    backend="auto",
+    backend="factored",
 )
 
-optimizer = CSTLocalAdam(model)
+optimizer = CSTQuadraticAdam(
+    model,
+    lr=0.00025,
+    betas=(0.9, 0.999),
+    eps=1e-8,
+    trust_radius=2.0,
+    solver=QuadraticGradientSolver(
+        max_iter=8,
+        tolerance=1e-7,
+        damping=1.0,
+    ),
+    initial_zero_step=True,
+    factored=True,
+    kernel_step_size=0.002,
+)
 
 for images, labels in loader:
     images = images.flatten(1)
@@ -74,6 +91,25 @@ for images, labels in loader:
     loss.backward()
     optimizer.step()
 ```
+
+The example uses the selected schedule-free Polar/Quadratic settings. Here
+`lr=0.00025` is the inner Quadratic step and eight iterations give the nominal
+outer horizon `0.002`; `kernel_step_size=0.002` passes that outer time step to
+the Polar activity and radial clocks. Do not add an optimizer learning-rate or
+kernel-temperature schedule to this recipe. The exact five-epoch MNIST model
+used 2,560 atoms in `CSTLinear(784, 64)` followed by ReLU and a dense 64-to-10
+head whose ordinary AdamW learning rate was fixed at `0.005`.
+
+Across seeds 17/29/43 that A100 protocol reached 97.07%, 96.48%, and 96.88%
+(96.81% mean). It was only 0.08 percentage points below the earlier scheduled
+non-Polar mean, so the schedule-free Triweight + Polar configuration is now the
+project recommendation. This is evidence for the configuration, not a general
+accuracy guarantee. Solver convergence diagnostics must still be inspected:
+the experiment executed the finite eight-iteration update and did not establish
+an exact local quadratic solve.
+
+The retained optimizer surface, tuning guidance, and staged deletion candidates
+are recorded in [the optimizer selection note](docs/optimizer-selection.ja.md).
 
 This API makes seven ownership decisions explicit:
 
@@ -391,7 +427,11 @@ to project its proposed polar displacement onto the circle tangent. The
 angular proposal is preserved while the radial history clock advances as
 $q' = \operatorname{clamp}(q+\gamma\lVert d_{\rm tan}\rVert^2,1,4)$, with
 `activity_gain` as $\gamma$. The default $\gamma=1$ is the unscaled finite
-chord rule. The kernel then applies the exact gradient flow of
+chord rule. Set `activity_mode="time_energy"` to use
+$q'=\operatorname{clamp}(q+\gamma\lVert d_{\rm tan}\rVert^2/\Delta t,1,4)$.
+For a multi-iteration Quadratic solver, pass the outer horizon as
+`kernel_step_size`; otherwise the optimizer's `lr` is used as $\Delta t$.
+The kernel then applies the exact gradient flow of
 $R(q)=\tfrac{\lambda}{2}(q-1)^2$, with
 `radial_regularization` as $\lambda$, and projects back to the annulus. Thus
 task motion increases $\alpha$, regularization decreases it without changing

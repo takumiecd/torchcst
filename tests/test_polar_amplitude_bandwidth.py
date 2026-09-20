@@ -2,10 +2,10 @@ import pytest
 import torch
 
 from torchcst import (
+    Chart,
     CSTLinear,
     CSTNormalizedSGD,
     CSTParameterAdam,
-    Chart,
     NormalizedOptimizerConfig,
     ParameterAdamConfig,
     PolarAmpWidth,
@@ -218,6 +218,32 @@ def test_activity_gain_changes_radius_without_changing_amplitude() -> None:
     torch.testing.assert_close(q[1], torch.tensor([1.9], dtype=p.dtype))
 
 
+def test_time_energy_activity_uses_outer_step_size() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        activity_gain=27.0,
+        activity_mode="time_energy",
+        radial_regularization=0.0,
+    ).to(dtype=torch.float64)
+    p = torch.tensor([[0.0, 1.0, 0.1, -0.2]], dtype=torch.float64)
+    displacement = torch.tensor([[0.01, -0.8, 0.0, 0.0]], dtype=torch.float64)
+
+    updated = value.apply_parameter_update(
+        input_chart,
+        output_chart,
+        p,
+        displacement,
+        step_size=0.002,
+    )
+
+    q = updated[:, :2].square().sum(dim=-1)
+    torch.testing.assert_close(q, torch.tensor([2.35], dtype=p.dtype))
+
+
 def test_radial_regularizer_preserves_amplitude_and_converges_to_unit_radius() -> None:
     input_chart, output_chart = charts()
     value = kernel().to(dtype=torch.float64)
@@ -315,6 +341,7 @@ def test_model_optimizer_uses_kernel_update_geometry() -> None:
             lr=0.1,
             trust_radius=0.2,
             initial_zero_step=True,
+            kernel_step_size=0.5,
         ),
         dense=None,
     )
@@ -330,9 +357,10 @@ def test_model_optimizer_uses_kernel_update_geometry() -> None:
 
     after = value.amplitude(input_chart, output_chart, model.atoms.p).detach()
     after_q = model.atoms.p[:, :2].square().sum(dim=-1).detach()
+    decay = torch.exp(torch.tensor(-4 * 0.2 * 0.5, dtype=after_q.dtype))
+    expected_q = 1 / (1 - ((before_q - 1) / before_q) * decay)
     torch.testing.assert_close(after, before)
-    assert torch.all(after_q < before_q)
-    assert torch.all(after_q >= 1)
+    torch.testing.assert_close(after_q, expected_q)
 
 
 @pytest.mark.parametrize(
@@ -342,19 +370,20 @@ def test_model_optimizer_uses_kernel_update_geometry() -> None:
         ({"w_c": 0.0}, "w_c"),
         ({"kappa": 1.0}, "kappa"),
         ({"activity_gain": 0.0}, "activity_gain"),
+        ({"activity_mode": "unknown"}, "activity_mode"),
         ({"radial_regularization": -1.0}, "radial_regularization"),
         ({"sigma_min": 2.0, "sigma_max": 1.0}, "sigma_max"),
     ],
 )
-def test_configuration_validation(kwargs: dict[str, float], message: str) -> None:
-    options = dict(
-        amplitude_max=2.0,
-        sigma_min=0.1,
-        sigma_max=1.0,
-        w_c=0.5,
-        kappa=3.0,
-        radial_regularization=0.2,
-    )
+def test_configuration_validation(kwargs: dict[str, object], message: str) -> None:
+    options = {
+        "amplitude_max": 2.0,
+        "sigma_min": 0.1,
+        "sigma_max": 1.0,
+        "w_c": 0.5,
+        "kappa": 3.0,
+        "radial_regularization": 0.2,
+    }
     options.update(kwargs)
     with pytest.raises(ValueError, match=message):
         PolarAmpWidth(**options)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Literal
 
 import torch
 from torch import Tensor
@@ -43,6 +44,7 @@ class PolarAmpWidth(Kernel):
         w_c: float,
         kappa: float = 3.0,
         activity_gain: float = 1.0,
+        activity_mode: Literal["finite_chord", "time_energy"] = "finite_chord",
         radial_regularization: float = 0.1,
         profile: Profile | None = None,
     ) -> None:
@@ -53,6 +55,8 @@ class PolarAmpWidth(Kernel):
         crossover = self._positive_scalar(w_c, name="w_c")
         separation = self._positive_scalar(kappa, name="kappa")
         gain = self._positive_scalar(activity_gain, name="activity_gain")
+        if activity_mode not in ("finite_chord", "time_energy"):
+            raise ValueError("activity_mode must be 'finite_chord' or 'time_energy'")
         regularization = self._nonnegative_scalar(
             radial_regularization, name="radial_regularization"
         )
@@ -86,6 +90,7 @@ class PolarAmpWidth(Kernel):
         self.register_buffer("w_c", crossover)
         self.register_buffer("kappa", separation)
         self.register_buffer("activity_gain", gain)
+        self.activity_mode = activity_mode
         self.register_buffer("radial_regularization", regularization)
 
     @property
@@ -220,14 +225,19 @@ class PolarAmpWidth(Kernel):
         tangent = raw - radial_coefficient * polar
 
         # Preserve the optimizer's angular proposal while allowing the radial
-        # history clock to be calibrated independently. activity_gain=1 is
-        # the original finite-chord rule q' = q + ||tangent||^2.
+        # history clock to be calibrated independently. ``finite_chord`` is
+        # the original q' = q + gamma ||tangent||^2 rule. ``time_energy``
+        # interprets gamma as an activity rate and divides the squared motion
+        # by the optimizer's outer time step.
         chord = polar + tangent
         chord_q = chord.square().sum(dim=-1, keepdim=True)
         direction = chord / chord_q.sqrt()
+        energy = tangent.square().sum(dim=-1, keepdim=True)
+        if self.activity_mode == "time_energy":
+            energy = energy / step_size
         task_q = (
             radius_square
-            + self.activity_gain.to(p) * tangent.square().sum(dim=-1, keepdim=True)
+            + self.activity_gain.to(p) * energy
         ).clamp(1.0, 4.0)
         task_polar = direction * task_q.sqrt()
 
@@ -313,6 +323,7 @@ class PolarAmpWidth(Kernel):
             f"sigma_max={self.sigma_max.item():g}, "
             f"w_c={self.w_c.item():g}, kappa={self.kappa.item():g}, "
             f"activity_gain={self.activity_gain.item():g}, "
+            f"activity_mode={self.activity_mode!r}, "
             f"radial_regularization={self.radial_regularization.item():g}, "
             f"profile={type(self.profile).__name__}, "
             f"supports_factorization={self.supports_factorization}"

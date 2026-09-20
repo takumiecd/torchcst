@@ -105,3 +105,17 @@ def test_quadratic_and_normalized_families_share_the_nd_coordinator() -> None:
 
     assert issubclass(CSTQuadraticSGD, _NDModelOptimizer)
     assert issubclass(CSTNormalizedSGD, _NDModelOptimizer)
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0, float("inf")])
+def test_kernel_step_size_must_be_positive(value) -> None:
+    with pytest.raises(ValueError, match="kernel_step_size"):
+        QuadraticOptimizerConfig(kernel_step_size=value)
+
+
+def test_kernel_step_size_is_independent_of_inner_learning_rate() -> None:
+    config = QuadraticOptimizerConfig(lr=0.00025, kernel_step_size=0.002)
+    optimizer = CSTQuadraticAdam(make_site(), cst=config)
+
+    assert optimizer.cst_config.lr == 0.00025
+    assert optimizer.cst_config.kernel_step_size == 0.002
