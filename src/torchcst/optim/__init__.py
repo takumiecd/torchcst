@@ -1,25 +1,114 @@
-"""Optimizer-side machinery: state following, the coordinate metric, grouping.
+"""Public CST optimizer families and their reusable N/D components."""
 
-Split the way the rest of the package is: ``metric`` is the pure-function world
-(tensors in, tensors out, no store and no module), ``precond`` owns the state
-and the update rule, ``follower`` keeps slot-indexed optimizer state aligned
-with a mutating store, and ``groups`` decides which knobs may share a rate.
-"""
-
-from .chart import ChartPullbackAdam, ChartRepulsion
-from .follower import OptimizerStateFollower
-from .forces import PairRepulsion, SmoothRent
-from .groups import parameter_groups
-from .precond import CoordPreconditioner
-from .pullback import PullbackAdam
+from .adamr import CSTAdamR
+from .atom_grad import (
+    AtomGradientObservation,
+    AtomGradRequest,
+    LinearJGAtomGrad,
+    LinearJGHAtomGrad,
+)
+from .config import (
+    AdamRConfig,
+    AdamWConfig,
+    NormalizedOptimizerConfig,
+    QuadraticOptimizerConfig,
+)
+from .dense import DenseAdamWProposal, DenseAdamWState, FunctionalAdamW
+from .moments import (
+    DenominatorMoment,
+    DenominatorMomentState,
+    DenominatorPolynomial,
+    ExpandedDenominatorMoment,
+    ExpandedNormalizedMoments,
+    ExpandedNumeratorMoment,
+    ExpandedUnitDenominator,
+    MomentContext,
+    NormalizedMomentSystem,
+    NormalizedMomentSystemState,
+    NumeratorMoment,
+    NumeratorMomentState,
+    UnitDenominator,
+    UnitDenominatorState,
+)
+from .normalized_optimizer import (
+    CSTSGD,
+    CSTImplicitAdam,
+    CSTMomentum,
+    CSTNormalizedAdam,
+    CSTNormalizedMomentum,
+    CSTNormalizedRMSProp,
+    CSTNormalizedSGD,
+    CSTRMSProp,
+)
+from .optimizer import CSTStepResult
+from .parameter import CSTParameterAdam, ParameterAdamConfig
+from .quadratic_optimizer import (
+    CSTQuadraticAdam,
+    CSTQuadraticMomentum,
+    CSTQuadraticRMSProp,
+    CSTQuadraticSGD,
+)
+from .solvers import (
+    NormalizedBoxFixedPointSolver,
+    NormalizedEvaluation,
+    NormalizedFixedPointSolver,
+    NormalizedSolver,
+    NormalizedSolveResult,
+    NormalizedUpdateProblem,
+    QuadraticBoxGradientSolver,
+    QuadraticGradientSolver,
+    QuadraticTrustSolver,
+)
 
 __all__ = [
-    "ChartPullbackAdam",
-    "ChartRepulsion",
-    "CoordPreconditioner",
-    "OptimizerStateFollower",
-    "PairRepulsion",
-    "PullbackAdam",
-    "SmoothRent",
-    "parameter_groups",
+    "AdamRConfig",
+    "AdamWConfig",
+    "AtomGradRequest",
+    "AtomGradientObservation",
+    "CSTAdamR",
+    "CSTImplicitAdam",
+    "CSTMomentum",
+    "CSTNormalizedAdam",
+    "CSTNormalizedMomentum",
+    "CSTNormalizedRMSProp",
+    "CSTNormalizedSGD",
+    "CSTParameterAdam",
+    "CSTQuadraticAdam",
+    "CSTQuadraticMomentum",
+    "CSTQuadraticRMSProp",
+    "CSTQuadraticSGD",
+    "CSTRMSProp",
+    "CSTSGD",
+    "CSTStepResult",
+    "DenominatorMoment",
+    "DenominatorMomentState",
+    "DenominatorPolynomial",
+    "DenseAdamWProposal",
+    "DenseAdamWState",
+    "ExpandedDenominatorMoment",
+    "ExpandedNormalizedMoments",
+    "ExpandedNumeratorMoment",
+    "ExpandedUnitDenominator",
+    "FunctionalAdamW",
+    "LinearJGAtomGrad",
+    "LinearJGHAtomGrad",
+    "MomentContext",
+    "NormalizedBoxFixedPointSolver",
+    "NormalizedEvaluation",
+    "NormalizedFixedPointSolver",
+    "NormalizedMomentSystem",
+    "NormalizedMomentSystemState",
+    "NormalizedOptimizerConfig",
+    "NormalizedSolveResult",
+    "NormalizedSolver",
+    "NormalizedUpdateProblem",
+    "NumeratorMoment",
+    "NumeratorMomentState",
+    "ParameterAdamConfig",
+    "QuadraticBoxGradientSolver",
+    "QuadraticGradientSolver",
+    "QuadraticOptimizerConfig",
+    "QuadraticTrustSolver",
+    "UnitDenominator",
+    "UnitDenominatorState",
 ]
