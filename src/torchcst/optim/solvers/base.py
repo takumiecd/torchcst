@@ -1,4 +1,4 @@
-"""Contract for replaceable quartic-problem solvers."""
+"""Contract for replaceable normalized-update solvers."""
 
 from __future__ import annotations
 
@@ -8,23 +8,8 @@ from typing import TYPE_CHECKING, Literal
 import torch
 from torch import Tensor
 
-from ..problem import QuarticProblem
-
 if TYPE_CHECKING:
     from .nd import NormalizedSolveResult, NormalizedUpdateProblem
-    from .quartic import QuarticSolveResult
-
-
-class QuarticSolver(ABC):
-    """Solve a pure local quartic without owning optimizer state."""
-
-    @abstractmethod
-    def solve(
-        self,
-        problem: QuarticProblem,
-        *,
-        trust_radius: float,
-    ) -> QuarticSolveResult: ...
 
 
 class NormalizedSolver(ABC):

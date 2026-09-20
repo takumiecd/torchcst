@@ -1,4 +1,4 @@
-"""Atom-gradient programs used by implicit CST optimizers."""
+"""Atom-gradient observations used by the retained N/D optimizers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.func import grad as functional_grad
-from torch.func import hessian as functional_hessian
 from torch.func import vmap
 
 from torchcst.atoms import AtomGradMode
@@ -17,197 +16,88 @@ from torchcst.nn import CSTLinear, LinearAtomGrad
 
 @dataclass(frozen=True)
 class AtomGradRequest:
-    """Unionable implicit-optimizer observations requested by its moments."""
+    """Unionable observations requested by N/D moments."""
 
     jg: bool = False
     gh: bool = False
-    row_square: bool = False
-    column_square: bool = False
-    atom_square: bool = False
-    visible_gradient: bool = False
 
     def __or__(self, other: AtomGradRequest) -> AtomGradRequest:
         if not isinstance(other, AtomGradRequest):
             return NotImplemented
-        return AtomGradRequest(
-            jg=self.jg or other.jg,
-            gh=self.gh or other.gh,
-            row_square=self.row_square or other.row_square,
-            column_square=self.column_square or other.column_square,
-            atom_square=self.atom_square or other.atom_square,
-            visible_gradient=self.visible_gradient or other.visible_gradient,
-        )
+        return AtomGradRequest(jg=self.jg or other.jg, gh=self.gh or other.gh)
 
     @property
     def any(self) -> bool:
-        return (
-            self.jg
-            or self.gh
-            or self.row_square
-            or self.column_square
-            or self.atom_square
-            or self.visible_gradient
-        )
+        return self.jg or self.gh
 
 
 @dataclass(frozen=True)
 class AtomGradientObservation:
-    """Detached immutable snapshot produced for the implicit moment system."""
+    """Detached snapshot of the local gradient and optional curvature."""
 
     jg: Tensor | None = None
     gh: Tensor | None = None
-    row_square: Tensor | None = None
-    column_square: Tensor | None = None
     contributions: int = 0
-    atom_square: Tensor | None = None
-    visible_gradient: Tensor | None = None
 
     def require(self, request: AtomGradRequest) -> None:
-        """Validate that all observations requested by a moment are present."""
-
         missing = []
         if request.jg and self.jg is None:
             missing.append("jg")
         if request.gh and self.gh is None:
             missing.append("gh")
-        if request.row_square and self.row_square is None:
-            missing.append("row_square")
-        if request.column_square and self.column_square is None:
-            missing.append("column_square")
-        if request.atom_square and self.atom_square is None:
-            missing.append("atom_square")
-        if request.visible_gradient and self.visible_gradient is None:
-            missing.append("visible_gradient")
         if missing:
             raise ValueError(f"observation is missing: {', '.join(missing)}")
 
 
-class ImplicitLinearAtomGrad(LinearAtomGrad):
-    r"""Collect the local signals required by the implicit Linear optimizer.
+class _LinearNDAtomGrad(LinearAtomGrad):
+    """Shared backward collector for JG and JGH observations."""
 
-    A completed scope exposes
-
-    - ``jg`` with shape ``[K, P]``;
-    - ``gh`` with shape ``[K, P, P]``;
-    - ``r`` with shape ``[out_features]``;
-    - ``c`` with shape ``[in_features]``.
-
-    The first two quantities are accumulated during backward. Row and column
-    square means are finalized afterward so repeated uses include their exact
-    cross terms.
-    """
+    include_curvature = False
 
     def __init__(
         self,
         *,
         mode: AtomGradMode = "auto",
-        row_chunk_size: int = 64,
-        request: AtomGradRequest | None = None,
         factored: bool = False,
     ) -> None:
         super().__init__(mode=mode)
         if not isinstance(factored, bool):
             raise TypeError("factored must be a bool")
         self.factored = factored
-        if isinstance(row_chunk_size, bool) or not isinstance(row_chunk_size, int):
-            raise TypeError("row_chunk_size must be an integer")
-        if row_chunk_size < 1:
-            raise ValueError("row_chunk_size must be positive")
-        if request is not None and not isinstance(request, AtomGradRequest):
-            raise TypeError("request must be an AtomGradRequest")
-        self.row_chunk_size = row_chunk_size
-        self.request = request or AtomGradRequest(
-            jg=True,
-            gh=True,
-            row_square=True,
-            column_square=True,
-        )
         self._jg: Tensor | None = None
         self._gh: Tensor | None = None
-        self._r: Tensor | None = None
-        self._c: Tensor | None = None
-        self._terms: list[tuple[Tensor, Tensor]] = []
         self._contributions = 0
-        self._atom_square = None
-        self._visible_gradient = None
-        self._square_geometry = None
-        self._square_point = None
 
     @property
     def supports_custom_autograd(self) -> bool:
         return True
 
     @property
-    def jg(self) -> Tensor:
-        """Return the accumulated parameter pullback ``J.T g``."""
-
-        self.require_complete()
-        if self._jg is None:
-            raise RuntimeError("jg was not requested")
-        return self._jg.clone()
-
-    @property
-    def gh(self) -> Tensor:
-        """Return the atom blocks of ``g contracted with H``."""
-
-        self.require_complete()
-        if self._gh is None:
-            raise RuntimeError("gh was not requested")
-        return self._gh.clone()
-
-    @property
-    def r(self) -> Tensor:
-        """Return output-row means of the squared aggregate represented gradient."""
-
-        self.require_complete()
-        if self._r is None:
-            raise RuntimeError("row_square was not requested")
-        return self._r.clone()
-
-    @property
-    def c(self) -> Tensor:
-        """Return input-column means of the squared aggregate represented gradient."""
-
-        self.require_complete()
-        if self._c is None:
-            raise RuntimeError("column_square was not requested")
-        return self._c.clone()
+    def observation_request(self) -> AtomGradRequest:
+        return AtomGradRequest(jg=True, gh=self.include_curvature)
 
     @property
     def contributions(self) -> int:
-        """Number of Linear backward callbacks accumulated in this scope."""
-
         return self._contributions
 
     def snapshot(self) -> AtomGradientObservation:
-        """Return an isolated optimizer-facing observation."""
-
         self.require_complete()
         return AtomGradientObservation(
             jg=self._jg.clone() if self._jg is not None else None,
             gh=self._gh.clone() if self._gh is not None else None,
-            row_square=self._r.clone() if self._r is not None else None,
-            column_square=self._c.clone() if self._c is not None else None,
             contributions=self._contributions,
-            atom_square=self._atom_square.clone()
-            if self._atom_square is not None
-            else None,
-            visible_gradient=self._visible_gradient.clone()
-            if self._visible_gradient is not None
-            else None,
         )
 
     def _clear_values(self) -> None:
         self._jg = None
         self._gh = None
-        self._r = None
-        self._c = None
-        self._terms.clear()
         self._contributions = 0
-        self._atom_square = None
-        self._visible_gradient = None
-        self._square_geometry = None
-        self._square_point = None
+
+    def _complete_values(self) -> None:
+        if self._contributions == 0:
+            raise RuntimeError("no Linear backward contribution was captured")
+        if self._jg is None or (self.include_curvature and self._gh is None):
+            raise RuntimeError("requested N/D observations were not captured")
 
     def _accumulate_linear(
         self,
@@ -221,306 +111,34 @@ class ImplicitLinearAtomGrad(LinearAtomGrad):
         if not self.accepts(generation=generation):
             return
         if site.input_chart.trainable or site.output_chart.trainable:
-            raise ValueError("ImplicitLinearAtomGrad supports frozen charts only")
-        self._validate_linear_tensors(site, inputs, output_gradient)
-
-        flat_inputs = inputs.detach().reshape(-1, site.in_features)
-        flat_output_gradient = output_gradient.detach().reshape(-1, site.out_features)
-        parameter_point = site.atoms.p.detach()
-
-        if self.request.visible_gradient:
-            visible_gradient = flat_output_gradient.T @ flat_inputs
-            self._visible_gradient = self._add(
-                self._visible_gradient, visible_gradient
-            )
-
-        def contracted_atom(atom_point: Tensor) -> Tensor:
-            atom = site._materialize_atoms(atom_point.unsqueeze(0))[0]
-            return (F.linear(flat_inputs, atom) * flat_output_gradient).sum()
-
-        contracted_hessian = None
-        if self.factored:
-            from torchcst._derivatives._captured import call
-
-            if not site.kernel.supports_factorization:
-                raise ValueError("factored observations require factor-capable kernels")
-            if self.request.gh:
-                jg, gh = call(
-                    "factor_observation",
-                    site._factor_atoms,
-                    parameter_point,
-                    flat_inputs,
-                    flat_output_gradient,
-                )
-                contracted_hessian = gh
-                if self.request.jg and parameter_gradient is None:
-                    parameter_gradient = jg
-            elif self.request.jg and parameter_gradient is None:
-                parameter_gradient = call(
-                    "factor_jg_observation",
-                    site._factor_atoms,
-                    parameter_point,
-                    flat_inputs,
-                    flat_output_gradient,
-                )
-        else:
-            with torch.enable_grad():
-                if self.request.gh:
-                    contracted_hessian = vmap(functional_hessian(contracted_atom))(
-                        parameter_point
-                    )
-                if self.request.jg and parameter_gradient is None:
-                    parameter_gradient = vmap(functional_grad(contracted_atom))(
-                        parameter_point
-                    )
-
-        if self.request.jg:
-            assert parameter_gradient is not None
-            expected_parameter_shape = (site.atom_count, site.atoms.parameter_dim)
-            if parameter_gradient.shape != expected_parameter_shape:
-                raise ValueError(
-                    "parameter gradient must have shape "
-                    f"{list(expected_parameter_shape)}"
-                )
-            self._jg = self._add(self._jg, parameter_gradient)
-        if contracted_hessian is not None:
-            self._gh = self._add(self._gh, contracted_hessian)
-        if (
-            self.request.row_square
-            or self.request.column_square
-            or self.request.atom_square
-        ):
-            self._terms.append((flat_inputs.clone(), flat_output_gradient.clone()))
-        if self.request.atom_square and self._square_geometry is None:
-            from torchcst._derivatives.tangent import TangentGeometry
-
-            self._square_geometry = TangentGeometry(
-                site.cst_derivatives(), factored=self.factored
-            )
-            self._square_point = parameter_point.clone()
-        self._contributions += 1
-
-    def _complete_values(self) -> None:
-        if self._contributions == 0:
-            raise RuntimeError("no Linear backward contribution was captured")
-        if self.request.jg and self._jg is None:
-            raise RuntimeError("requested jg was not captured")
-        if self.request.gh and self._gh is None:
-            raise RuntimeError("requested gh was not captured")
-        if self.request.visible_gradient and self._visible_gradient is None:
-            raise RuntimeError("requested visible gradient was not captured")
-        if not (
-            self.request.row_square
-            or self.request.column_square
-            or self.request.atom_square
-        ):
-            return
-        if not self._terms:
-            raise RuntimeError("requested square statistics were not captured")
-
-        in_features = self._terms[0][0].shape[1]
-        out_features = self._terms[0][1].shape[1]
-        reference = self._terms[0][0]
-        row_square_mean = (
-            reference.new_empty(out_features) if self.request.row_square else None
-        )
-        column_square_sum = (
-            reference.new_zeros(in_features) if self.request.column_square else None
-        )
-        if self.request.atom_square:
-            k, q = self._square_point.shape
-            self._atom_square = reference.new_zeros(k, q, q)
-
-        with torch.no_grad():
-            for start in range(0, out_features, self.row_chunk_size):
-                stop = min(start + self.row_chunk_size, out_features)
-                block = reference.new_zeros(stop - start, in_features)
-                for inputs, output_gradient in self._terms:
-                    block.add_(output_gradient[:, start:stop].T @ inputs)
-                squared = block.square()
-                if self.request.atom_square:
-                    self._atom_square.add_(
-                        self._square_geometry.square_observation(
-                            self._square_point, squared, start
-                        )
-                    )
-                if row_square_mean is not None:
-                    row_square_mean[start:stop] = squared.mean(dim=1)
-                if column_square_sum is not None:
-                    column_square_sum.add_(squared.sum(dim=0))
-
-        self._r = row_square_mean
-        self._c = (
-            column_square_sum / out_features if column_square_sum is not None else None
-        )
-        self._terms.clear()
-        self._square_geometry = None
-        self._square_point = None
-
-    @staticmethod
-    def _add(current: Tensor | None, contribution: Tensor) -> Tensor:
-        contribution = contribution.detach()
-        if current is None:
-            return contribution.clone()
-        if current.shape != contribution.shape:
-            raise ValueError("AtomGrad contributions must have stable shapes")
-        if current.device != contribution.device or current.dtype != contribution.dtype:
-            raise ValueError("AtomGrad contributions must share one device and dtype")
-        current.add_(contribution)
-        return current
-
-    @staticmethod
-    def _validate_linear_tensors(
-        site: CSTLinear, inputs: Tensor, output_gradient: Tensor
-    ) -> None:
-        if inputs.ndim < 1 or inputs.shape[-1] != site.in_features:
-            raise ValueError("inputs do not match the CSTLinear input shape")
-        expected_output_shape = (*inputs.shape[:-1], site.out_features)
-        if output_gradient.shape != expected_output_shape:
-            raise ValueError(
-                f"output gradient must have shape {list(expected_output_shape)}"
-            )
-        if (
-            inputs.device != site.atoms.p.device
-            or output_gradient.device != site.atoms.p.device
-            or inputs.dtype != site.atoms.p.dtype
-            or output_gradient.dtype != site.atoms.p.dtype
-        ):
-            raise ValueError("Linear backward tensors must match atom device and dtype")
-
-
-class LinearJGAtomGrad(ImplicitLinearAtomGrad):
-    """Collect only the atom gradient ``jg`` for first-order updates.
-
-    This is the low-cost observation program used when a normalized solver
-    performs only its zero-displacement update.  It deliberately does not
-    request or calculate local curvature.
-    """
-
-    def __init__(
-        self,
-        *,
-        mode: AtomGradMode = "auto",
-        factored: bool = False,
-    ) -> None:
-        super().__init__(
-            mode=mode,
-            factored=factored,
-            request=AtomGradRequest(jg=True),
-        )
-
-    @property
-    def observation_request(self) -> AtomGradRequest:
-        """Return the single observation produced by this collector."""
-
-        return self.request
-
-
-class LinearJGHAtomGrad(LinearAtomGrad):
-    """Collect only ``jg`` and local ``gh`` observations for CSTLinear.
-
-    ``jg`` has shape ``[K, P]`` and ``gh`` has shape ``[K, P, P]``. The latter
-    is the Hessian of the scalar output-gradient contraction for each atom,
-    not a dense output-space Hessian. The class is intentionally independent
-    of any optimizer so multiple moment systems can reuse it.
-    """
-
-    def __init__(
-        self,
-        *,
-        mode: AtomGradMode = "auto",
-        factored: bool = False,
-    ) -> None:
-        super().__init__(mode=mode)
-        if not isinstance(factored, bool):
-            raise TypeError("factored must be a bool")
-        self.factored = factored
-        self._jg: Tensor | None = None
-        self._gh: Tensor | None = None
-        self._contributions = 0
-
-    @property
-    def observation_request(self) -> AtomGradRequest:
-        """Return the two observations produced by this collector."""
-
-        return AtomGradRequest(jg=True, gh=True)
-
-    @property
-    def supports_custom_autograd(self) -> bool:
-        return True
-
-    @property
-    def jg(self) -> Tensor:
-        self.require_complete()
-        if self._jg is None:
-            raise RuntimeError("jg was not requested")
-        return self._jg.clone()
-
-    @property
-    def gh(self) -> Tensor:
-        self.require_complete()
-        if self._gh is None:
-            raise RuntimeError("gh was not requested")
-        return self._gh.clone()
-
-    @property
-    def contributions(self) -> int:
-        return self._contributions
-
-    def snapshot(self) -> AtomGradientObservation:
-        """Return an isolated optimizer-facing observation."""
-
-        self.require_complete()
-        return AtomGradientObservation(
-            jg=self.jg,
-            gh=self.gh,
-            contributions=self._contributions,
-        )
-
-    def _clear_values(self) -> None:
-        self._jg = None
-        self._gh = None
-        self._contributions = 0
-
-    def _complete_values(self) -> None:
-        if self._contributions == 0:
-            raise RuntimeError("no Linear backward contribution was captured")
-        if self._jg is None or self._gh is None:
-            raise RuntimeError("requested JGH observations were not captured")
-
-    def _accumulate_linear(
-        self,
-        site: CSTLinear,
-        inputs: Tensor,
-        output_gradient: Tensor,
-        *,
-        parameter_gradient: Tensor | None,
-        generation: int,
-    ) -> None:
-        if not self.accepts(generation=generation):
-            return
-        if site.input_chart.trainable or site.output_chart.trainable:
-            raise ValueError("LinearJGHAtomGrad supports frozen charts only")
+            raise ValueError("N/D atom gradients require frozen charts")
         self._validate_linear_tensors(site, inputs, output_gradient)
 
         flat_inputs = inputs.detach().reshape(-1, site.in_features)
         flat_output_gradient = output_gradient.detach().reshape(
             -1, site.out_features
         )
-        parameter_point = site.atoms.p.detach()
+        point = site.atoms.p.detach()
+        gh = None
 
         if self.factored:
             from torchcst._derivatives._captured import call
 
             if not site.kernel.supports_factorization:
                 raise ValueError("factored observations require factor-capable kernels")
-            observed_jg, gh = call(
-                "factor_jgh_observation",
+            operation = (
+                "factor_jgh_observation"
+                if self.include_curvature
+                else "factor_jg_observation"
+            )
+            observed = call(
+                operation,
                 site._factor_atoms,
-                parameter_point,
+                point,
                 flat_inputs,
                 flat_output_gradient,
             )
+            observed_jg, gh = observed if self.include_curvature else (observed, None)
             if parameter_gradient is None:
                 parameter_gradient = observed_jg
         else:
@@ -534,36 +152,30 @@ class LinearJGHAtomGrad(LinearAtomGrad):
 
                 gradient = functional_grad(contracted_atom)
                 if parameter_gradient is None:
-                    parameter_gradient = vmap(gradient)(parameter_point)
-                directions = torch.eye(
-                    parameter_point.shape[-1],
-                    device=parameter_point.device,
-                    dtype=parameter_point.dtype,
-                )
-                gh = vmap(
-                    lambda parameter: hessian_from_gradient(
-                        gradient,
-                        parameter,
-                        directions=directions,
+                    parameter_gradient = vmap(gradient)(point)
+                if self.include_curvature:
+                    directions = torch.eye(
+                        point.shape[-1], device=point.device, dtype=point.dtype
                     )
-                )(parameter_point)
+                    gh = vmap(
+                        lambda parameter: hessian_from_gradient(
+                            gradient,
+                            parameter,
+                            directions=directions,
+                        )
+                    )(point)
 
-        expected_gradient_shape = (site.atom_count, site.atoms.parameter_dim)
-        if parameter_gradient is None:
-            raise RuntimeError("JGH collector did not produce jg")
-        if parameter_gradient.shape != expected_gradient_shape:
-            raise ValueError(
-                "parameter gradient must have shape "
-                f"{list(expected_gradient_shape)}"
-            )
-        expected_hessian_shape = (*expected_gradient_shape, expected_gradient_shape[-1])
-        if gh.shape != expected_hessian_shape:
-            raise ValueError(
-                "contracted Hessian must have shape "
-                f"{list(expected_hessian_shape)}"
-            )
+        expected = (site.atom_count, site.atoms.parameter_dim)
+        if parameter_gradient is None or parameter_gradient.shape != expected:
+            raise ValueError(f"parameter gradient must have shape {list(expected)}")
         self._jg = self._add(self._jg, parameter_gradient)
-        self._gh = self._add(self._gh, gh)
+        if self.include_curvature:
+            expected_hessian = (*expected, expected[-1])
+            if gh is None or gh.shape != expected_hessian:
+                raise ValueError(
+                    f"contracted Hessian must have shape {list(expected_hessian)}"
+                )
+            self._gh = self._add(self._gh, gh)
         self._contributions += 1
 
     @staticmethod
@@ -572,11 +184,9 @@ class LinearJGHAtomGrad(LinearAtomGrad):
         if current is None:
             return contribution.clone()
         if current.shape != contribution.shape:
-            raise ValueError("LinearJGHAtomGrad observations have unstable shapes")
+            raise ValueError("atom-gradient observations have unstable shapes")
         if current.device != contribution.device or current.dtype != contribution.dtype:
-            raise ValueError(
-                "LinearJGHAtomGrad observations must share one device and dtype"
-            )
+            raise ValueError("atom-gradient observations must share device and dtype")
         current.add_(contribution)
         return current
 
@@ -586,15 +196,23 @@ class LinearJGHAtomGrad(LinearAtomGrad):
     ) -> None:
         if inputs.ndim < 1 or inputs.shape[-1] != site.in_features:
             raise ValueError("inputs do not match the CSTLinear input shape")
-        expected_output_shape = (*inputs.shape[:-1], site.out_features)
-        if output_gradient.shape != expected_output_shape:
+        expected_output = (*inputs.shape[:-1], site.out_features)
+        if output_gradient.shape != expected_output:
             raise ValueError(
-                f"output gradient must have shape {list(expected_output_shape)}"
+                f"output gradient must have shape {list(expected_output)}"
             )
-        if (
-            inputs.device != site.atoms.p.device
-            or output_gradient.device != site.atoms.p.device
-            or inputs.dtype != site.atoms.p.dtype
-            or output_gradient.dtype != site.atoms.p.dtype
+        tensors = (inputs, output_gradient)
+        if any(value.device != site.atoms.p.device for value in tensors) or any(
+            value.dtype != site.atoms.p.dtype for value in tensors
         ):
             raise ValueError("Linear backward tensors must match atom device and dtype")
+
+
+class LinearJGAtomGrad(_LinearNDAtomGrad):
+    """Collect only the local atom gradient ``jg``."""
+
+
+class LinearJGHAtomGrad(_LinearNDAtomGrad):
+    """Collect the local atom gradient ``jg`` and Hessian blocks ``gh``."""
+
+    include_curvature = True

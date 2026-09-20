@@ -1,10 +1,18 @@
 import pytest
 import torch
-from test_training_smoke import amplitude_bandwidth
 
-from torchcst import Chart, CSTLinear
+from torchcst import AmpWidth, Chart, CSTLinear
 from torchcst._derivatives._captured import call, frame_transport, local_derivatives
 from torchcst._runtime.validation import device_checks
+
+
+def amplitude_bandwidth() -> AmpWidth:
+    return AmpWidth(
+        sigma_min=0.25,
+        sigma_max=1.0,
+        tau=0.2,
+        temperature=0.5,
+    )
 
 
 @pytest.mark.parametrize(

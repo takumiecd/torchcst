@@ -14,7 +14,7 @@ from torchcst.optim import (
     QuadraticTrustSolver,
 )
 from torchcst.optim.moments import UnitDenominator
-from torchcst.optim.solvers.newton import _spectral_ball_minimum
+from torchcst.optim.solvers.taylor import _batched_spectral_ball_minimum
 
 
 def make_numerator(g: torch.Tensor, H: torch.Tensor) -> ExpandedNumeratorMoment:
@@ -92,7 +92,9 @@ def test_quadratic_solver_matches_the_single_system_spectral_minimum() -> None:
 
     result = QuadraticTrustSolver().solve(problem, trust_radius=radius)
     values, vectors = torch.linalg.eigh(0.5 * (H[0] + H[0].T))
-    expected = _spectral_ball_minimum(values, vectors, -g[0], radius)
+    expected = _batched_spectral_ball_minimum(
+        values.unsqueeze(0), vectors.unsqueeze(0), -g, radius
+    )[0]
 
     torch.testing.assert_close(result.displacement[0], expected)
 

@@ -1,7 +1,6 @@
-"""Numerical solvers for CST local objectives."""
+"""Solvers for normalized and quadratic CST updates."""
 
-from .base import NormalizedSolver, QuarticSolver
-from .device import DeviceBFGS
+from .base import NormalizedSolver
 from .nd import (
     NormalizedBoxFixedPointSolver,
     NormalizedEvaluation,
@@ -11,29 +10,16 @@ from .nd import (
     QuadraticBoxGradientSolver,
     QuadraticGradientSolver,
 )
-from .newton import BallNewton
-from .projected import ProjectedLBFGS
-from .quartic import FullQuartic, QuarticSolveResult
-from .ray import DeviceRay
-from .subspace import SubspaceQuartic
 from .taylor import QuadraticTrustSolver
 
 __all__ = [
-    "BallNewton",
-    "DeviceBFGS",
-    "DeviceRay",
-    "FullQuartic",
     "NormalizedBoxFixedPointSolver",
     "NormalizedEvaluation",
     "NormalizedFixedPointSolver",
     "NormalizedSolveResult",
     "NormalizedSolver",
     "NormalizedUpdateProblem",
-    "ProjectedLBFGS",
     "QuadraticBoxGradientSolver",
     "QuadraticGradientSolver",
     "QuadraticTrustSolver",
-    "QuarticSolveResult",
-    "QuarticSolver",
-    "SubspaceQuartic",
 ]

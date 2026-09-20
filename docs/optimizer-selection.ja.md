@@ -104,10 +104,7 @@ scheduleを外せる簡潔さを優先して本構成を採用する。
   と呼ばない。
 - 単一seedの97%だけで判断せず、少なくとも3 seedsの平均と分散を併記する。
 
-## 削除候補
-
-まだこの文書追加と同時には削除しない。PRを分け、公開import、checkpoint、tests、docsを
-まとめて落とす。
+## 公開optimizer surface
 
 ### 保持するN/D family surface
 
@@ -120,7 +117,7 @@ scheduleを外せる簡潔さを優先して本構成を採用する。
 これらは同じcoordinator/solver上でmoment構成や更新則を比較するfamilyなので削除しない。
 内部の再利用可能なN/D componentsとsolverも残す。
 
-### 削除候補: 独立した旧実験optimizer
+### 削除済み: 独立した旧実験optimizer
 
 - `CSTLocalAdam` / `LocalAdamConfig`
 - `CSTLocalVisibleAdam` / `LocalVisibleAdamConfig`
@@ -128,9 +125,9 @@ scheduleを外せる簡潔さを優先して本構成を採用する。
 - 旧tangent経路の `CSTAdam` / `FirstOrderAdamConfig`
 - full-quartic経路の `CSTSecondOrderAdam` / `SecondOrderAdamConfig`
 
-これらは実装・状態形式・数式文書が独立しているため、別PRで削除する。
-削除前に、Quadratic/Normalizedが利用するderivative、moment、dense AdamW、solverまで
-誤って消さないようimport graphを確認する。
+これらは実装・状態形式・数式文書を含めて公開面から削除した。Git履歴からは参照できるが、
+import互換性とcheckpoint互換性は提供しない。Quadratic/Normalizedが利用するderivative、
+N/D moments、dense AdamW、solverは維持する。
 
 ## 残すもの
 
@@ -143,5 +140,5 @@ scheduleを外せる簡潔さを優先して本構成を採用する。
 - Polarのtime-energy rule、radial regularization、Triweight profileと関連tests
 - N/D coordinator、numerator/denominator moments、ball/box trust constraint
 
-この選定はMNISTだけで全用途の優劣を証明するものではない。削除PRでは履歴をGitに残し、
-必要なら旧実装をrelease tagから参照できる状態にする。
+この選定はMNISTだけで全用途の優劣を証明するものではない。旧実装が必要な場合は
+削除前のGit履歴を参照する。

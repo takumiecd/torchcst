@@ -1,59 +1,34 @@
-"""Model-level CST optimization.
-
-The public optimizer is introduced after the derivative operator contract is
-validated against dense autograd oracles.
-"""
+"""Public CST optimizer families and their reusable N/D components."""
 
 from .adamr import CSTAdamR
 from .atom_grad import (
     AtomGradientObservation,
     AtomGradRequest,
-    ImplicitLinearAtomGrad,
     LinearJGAtomGrad,
     LinearJGHAtomGrad,
 )
 from .config import (
     AdamRConfig,
     AdamWConfig,
-    DenseVisibleAdamConfig,
-    FirstOrderAdamConfig,
-    LocalAdamConfig,
-    LocalVisibleAdamConfig,
     NormalizedOptimizerConfig,
     QuadraticOptimizerConfig,
-    SecondOrderAdamConfig,
 )
-from .dense import (
-    DenseAdamWProposal,
-    DenseAdamWState,
-    FunctionalAdamW,
-)
-from .dense_visible import CSTDenseVisibleAdam
-from .first_order import CSTAdam
-from .local import CSTLocalAdam
-from .local_visible import CSTLocalVisibleAdam
+from .dense import DenseAdamWProposal, DenseAdamWState, FunctionalAdamW
 from .moments import (
-    AcceptedFrameFirstMoment,
-    AcceptedFrameFirstMomentState,
     DenominatorMoment,
     DenominatorMomentState,
     DenominatorPolynomial,
     ExpandedDenominatorMoment,
-    ExpandedFirstMoment,
-    ExpandedMoments,
+    ExpandedNormalizedMoments,
     ExpandedNumeratorMoment,
-    ExpandedSecondMoment,
-    FirstMomentComponent,
+    ExpandedUnitDenominator,
     MomentContext,
-    MomentSystem,
-    MomentSystemState,
+    NormalizedMomentSystem,
+    NormalizedMomentSystemState,
     NumeratorMoment,
     NumeratorMomentState,
-    SecondMomentComponent,
-    SeparableDiagonalMetric,
-    SeparableDiagonalSecondMoment,
-    SeparableSecondMomentState,
-    VisibleMetric,
+    UnitDenominator,
+    UnitDenominatorState,
 )
 from .normalized_optimizer import (
     CSTSGD,
@@ -66,112 +41,74 @@ from .normalized_optimizer import (
     CSTRMSProp,
 )
 from .optimizer import CSTStepResult
-from .problem import QuarticProblem
+from .parameter import CSTParameterAdam, ParameterAdamConfig
 from .quadratic_optimizer import (
     CSTQuadraticAdam,
     CSTQuadraticMomentum,
     CSTQuadraticRMSProp,
     CSTQuadraticSGD,
 )
-from .second_order import CSTSecondOrderAdam
 from .solvers import (
-    BallNewton,
-    DeviceBFGS,
-    DeviceRay,
-    FullQuartic,
     NormalizedBoxFixedPointSolver,
     NormalizedEvaluation,
     NormalizedFixedPointSolver,
     NormalizedSolver,
     NormalizedSolveResult,
     NormalizedUpdateProblem,
-    ProjectedLBFGS,
     QuadraticBoxGradientSolver,
     QuadraticGradientSolver,
     QuadraticTrustSolver,
-    QuarticSolver,
-    QuarticSolveResult,
-    SubspaceQuartic,
 )
 
 __all__ = [
-    "CSTSGD",
-    "AcceptedFrameFirstMoment",
-    "AcceptedFrameFirstMomentState",
     "AdamRConfig",
     "AdamWConfig",
     "AtomGradRequest",
     "AtomGradientObservation",
-    "BallNewton",
-    "CSTAdam",
     "CSTAdamR",
-    "CSTDenseVisibleAdam",
     "CSTImplicitAdam",
-    "CSTLocalAdam",
-    "CSTLocalVisibleAdam",
     "CSTMomentum",
     "CSTNormalizedAdam",
     "CSTNormalizedMomentum",
     "CSTNormalizedRMSProp",
     "CSTNormalizedSGD",
+    "CSTParameterAdam",
     "CSTQuadraticAdam",
     "CSTQuadraticMomentum",
     "CSTQuadraticRMSProp",
     "CSTQuadraticSGD",
     "CSTRMSProp",
-    "CSTSecondOrderAdam",
+    "CSTSGD",
     "CSTStepResult",
     "DenominatorMoment",
     "DenominatorMomentState",
     "DenominatorPolynomial",
     "DenseAdamWProposal",
     "DenseAdamWState",
-    "DenseVisibleAdamConfig",
-    "DeviceBFGS",
-    "DeviceRay",
     "ExpandedDenominatorMoment",
-    "ExpandedFirstMoment",
-    "ExpandedMoments",
+    "ExpandedNormalizedMoments",
     "ExpandedNumeratorMoment",
-    "ExpandedSecondMoment",
-    "FirstMomentComponent",
-    "FirstOrderAdamConfig",
-    "FullQuartic",
+    "ExpandedUnitDenominator",
     "FunctionalAdamW",
-    "ImplicitLinearAtomGrad",
     "LinearJGAtomGrad",
     "LinearJGHAtomGrad",
-    "LocalAdamConfig",
-    "LocalVisibleAdamConfig",
     "MomentContext",
-    "MomentSystem",
-    "MomentSystemState",
     "NormalizedBoxFixedPointSolver",
     "NormalizedEvaluation",
     "NormalizedFixedPointSolver",
+    "NormalizedMomentSystem",
+    "NormalizedMomentSystemState",
     "NormalizedOptimizerConfig",
     "NormalizedSolveResult",
     "NormalizedSolver",
     "NormalizedUpdateProblem",
     "NumeratorMoment",
     "NumeratorMomentState",
-    "ProjectedLBFGS",
+    "ParameterAdamConfig",
     "QuadraticBoxGradientSolver",
     "QuadraticGradientSolver",
     "QuadraticOptimizerConfig",
     "QuadraticTrustSolver",
-    "QuarticProblem",
-    "QuarticSolveResult",
-    "QuarticSolver",
-    "SecondMomentComponent",
-    "SecondOrderAdamConfig",
-    "SeparableDiagonalMetric",
-    "SeparableDiagonalSecondMoment",
-    "SeparableSecondMomentState",
-    "SubspaceQuartic",
-    "VisibleMetric",
+    "UnitDenominator",
+    "UnitDenominatorState",
 ]
-
-from torchcst.optim.parameter import CSTParameterAdam, ParameterAdamConfig
-
-__all__ += ["CSTParameterAdam", "ParameterAdamConfig"]

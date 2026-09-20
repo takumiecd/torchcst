@@ -2,7 +2,7 @@
 
 この文書は、CSTNormalizedSGD、CSTNormalizedMomentum、CSTNormalizedRMSProp、
 CSTNormalizedAdam からなる正規化 optimizer family の設計を説明する。これは
-従来の CSTAdam を置き換える互換層ではなく、分子 N、分母 D、更新 solver を
+旧optimizerとの互換層ではなく、分子 N、分母 D、更新 solver を
 独立に差し替えられる新しい optimizer 経路である。CSTSGD、CSTMomentum、
 CSTRMSProp は対応する CSTNormalized* wrapper の別名である。
 
@@ -406,7 +406,7 @@ atom coordinateに閉じたstateである一方、P が大きい場合には無�
 - CSTAdamR は同じAdam momentsに対してNormalized/Quadratic更新則を選択し、
   タスクmomentsの外でatom演算子斥力を足すものである。合成変位は選択solverの
   trust geometryへ再projectする。
-- 歴史的な CSTAdam は別のtangent-moment behaviorを持ち、同じ名前の実装ではない。
+- 削除済みの旧tangent optimizerとはstate/checkpoint互換性を持たない。
 - CSTImplicitAdam は CSTNormalizedAdam のaliasである。
 - 現在のoptimizerは固定shape・frozen chartを前提とする。
 - LinearJGHAtomGrad は現在のLinear経路を実装している。Convなど他のmodule familyへ

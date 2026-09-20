@@ -1,26 +1,12 @@
-"""Replaceable compact moment components."""
+"""Moment components for normalized and quadratic CST updates."""
 
-from .base import (
-    ExpandedFirstMoment,
-    ExpandedSecondMoment,
-    FirstMomentComponent,
-    MomentContext,
-    SecondMomentComponent,
-    VisibleMetric,
-)
+from .base import MomentContext
 from .denominator import (
     DenominatorMoment,
     DenominatorMomentState,
     DenominatorPolynomial,
     ExpandedDenominatorMoment,
 )
-from .dense_visible import (
-    DenseVisibleFirstMoment,
-    DenseVisibleFirstMomentState,
-    DenseVisibleSecondMoment,
-    DenseVisibleSecondMomentState,
-)
-from .first import AcceptedFrameFirstMoment, AcceptedFrameFirstMomentState
 from .normalized import (
     ExpandedNormalizedMoments,
     ExpandedUnitDenominator,
@@ -29,54 +15,21 @@ from .normalized import (
     UnitDenominator,
     UnitDenominatorState,
 )
-from .numerator import (
-    ExpandedNumeratorMoment,
-    NumeratorMoment,
-    NumeratorMomentState,
-)
-from .projected_visible import (
-    ProjectedVisibleSecondMoment,
-    ProjectedVisibleSecondMomentState,
-)
-from .second import (
-    SeparableDiagonalMetric,
-    SeparableDiagonalSecondMoment,
-    SeparableSecondMomentState,
-)
-from .system import ExpandedMoments, MomentSystem, MomentSystemState
+from .numerator import ExpandedNumeratorMoment, NumeratorMoment, NumeratorMomentState
 
 __all__ = [
-    "AcceptedFrameFirstMoment",
-    "AcceptedFrameFirstMomentState",
     "DenominatorMoment",
     "DenominatorMomentState",
     "DenominatorPolynomial",
-    "DenseVisibleFirstMoment",
-    "DenseVisibleFirstMomentState",
-    "DenseVisibleSecondMoment",
-    "DenseVisibleSecondMomentState",
     "ExpandedDenominatorMoment",
-    "ExpandedFirstMoment",
-    "ExpandedMoments",
     "ExpandedNormalizedMoments",
     "ExpandedNumeratorMoment",
-    "ExpandedSecondMoment",
     "ExpandedUnitDenominator",
-    "FirstMomentComponent",
     "MomentContext",
-    "MomentSystem",
-    "MomentSystemState",
     "NormalizedMomentSystem",
     "NormalizedMomentSystemState",
     "NumeratorMoment",
     "NumeratorMomentState",
-    "ProjectedVisibleSecondMoment",
-    "ProjectedVisibleSecondMomentState",
-    "SecondMomentComponent",
-    "SeparableDiagonalMetric",
-    "SeparableDiagonalSecondMoment",
-    "SeparableSecondMomentState",
     "UnitDenominator",
     "UnitDenominatorState",
-    "VisibleMetric",
 ]

@@ -13,20 +13,11 @@ from torch.optim import Optimizer
 from torchcst._runtime.validation import device_checks, require
 from torchcst.nn import CSTLinear
 
-from .atom_grad import ImplicitLinearAtomGrad
-from .config import (
-    AdamWConfig,
-    DenseVisibleAdamConfig,
-    FirstOrderAdamConfig,
-    LocalAdamConfig,
-    LocalVisibleAdamConfig,
-    SecondOrderAdamConfig,
-)
+from .config import AdamWConfig
 from .dense import DenseAdamWProposal, FunctionalAdamW
 from .moments import (
     MomentContext,
 )
-from .solvers import QuarticSolveResult
 
 
 @dataclass(frozen=True)
@@ -64,12 +55,7 @@ class _ModelOptimizer(Optimizer):
         self,
         model: nn.Module,
         *,
-        cst: FirstOrderAdamConfig
-        | DenseVisibleAdamConfig
-        | LocalAdamConfig
-        | LocalVisibleAdamConfig
-        | SecondOrderAdamConfig
-        | None = None,
+        cst: Any | None = None,
         dense: AdamWConfig | None = None,
         strict: bool = True,
         **options,
@@ -180,20 +166,9 @@ class _ModelOptimizer(Optimizer):
         self._manifest = self._make_manifest(cst_owner_by_id)
 
     def _make_atom_grad(self, site: CSTLinear, moments):
-        """Create the observation program for one CST site.
+        """Create the observation program for one CST site."""
 
-        Existing optimizers keep the historical collector.  New optimizer
-        families can override this hook when their moment system uses a
-        different, reusable observation program.
-        """
-
-        c = self.cst_config
-        return ImplicitLinearAtomGrad(
-            mode=c.atom_grad_mode,
-            row_chunk_size=getattr(c, "row_chunk_size", 64),
-            request=moments.observation_request,
-            factored=getattr(c, "factored_geometry", False),
-        )
+        raise NotImplementedError
 
     def zero_grad(self, set_to_none: bool = True) -> None:
         """Clear gradients and begin the next CST observation scope."""
@@ -348,14 +323,6 @@ class _ModelOptimizer(Optimizer):
             else:
                 site.atom_grad.clear()
 
-    @staticmethod
-    def _pcg_options(config):
-        from torchcst._derivatives._pcg import PCGOptions
-
-        return PCGOptions(
-            config.gram_iterations, config.gram_rtol, config.gram_block_size
-        )
-
     def _build_cst_proposals(self) -> tuple[_CSTProposal, ...]:
         proposals = []
         for site in self._sites:
@@ -373,32 +340,10 @@ class _ModelOptimizer(Optimizer):
 
     def _validate_solve(
         self,
-        solve: QuarticSolveResult,
+        solve: Any,
         context: MomentContext,
     ) -> None:
-        self._validate_displacement(solve, context)
-        displacement = solve.displacement
-        norm = torch.linalg.vector_norm(displacement)
-        tolerance = 10.0 * torch.finfo(displacement.dtype).eps
-        require(
-            norm <= self.cst_config.trust_radius * (1.0 + tolerance),
-            "CST displacement exceeds the trust radius",
-        )
-
-    def _validate_displacement(self, solve, context):
-        if not isinstance(solve, QuarticSolveResult):
-            raise TypeError("CST solver must return a QuarticSolveResult")
-        displacement = solve.displacement
-        if displacement.shape != context.geometry.point_shape:
-            raise ValueError("CST displacement has the wrong shape")
-        point = context.current_point
-        if displacement.device != point.device or displacement.dtype != point.dtype:
-            raise ValueError("CST displacement must match its CST point")
-        require(
-            torch.isfinite(displacement).all(),
-            "CST displacement must be finite",
-            FloatingPointError,
-        )
+        raise NotImplementedError
 
     def _build_dense_proposals(self) -> dict[nn.Parameter, DenseAdamWProposal]:
         if self._dense_engine is None:
