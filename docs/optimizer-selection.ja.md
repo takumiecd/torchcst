@@ -6,17 +6,24 @@
 
 現在の推奨構成は `Triweight + PolarAmpWidth + CSTQuadraticAdam` である。
 optimizer LR、kernel temperatureともにscheduleを使わない。公開面として残す中心は
-次の3経路とする。
+次のfamilyと拡張とする。
 
 | 経路 | 位置づけ |
 | --- | --- |
-| `CSTQuadraticAdam` | 主経路。有限回の局所二次更新を累積する |
-| `CSTNormalizedAdam` | 同じN/D momentsを使う比較・代替経路 |
+| `CSTQuadratic*` family | 主経路。有限回の局所二次更新を累積する |
+| `CSTNormalized*` family | 同じN/D momentsを使う比較・代替経路 |
+| `CSTAdamR` | Normalized Adamへdecoupledなatom-operator斥力を加える拡張 |
 | `CSTParameterAdam` | 通常のparameter-coordinate Adamによる軽量baseline |
 
-通常parameterを含むmixed modelでは、この3経路から所有される
+通常parameterを含むmixed modelでは、これらの経路から所有される
 `AdamWConfig` も維持する。`CSTParameterAdam` の既定cosine scheduleは今回の推奨設定では
 使わず、`decay_steps=None` とする。
+
+`CSTAdamR` は独立したoptimizer familyではない。実装は
+`CSTNormalizedAdam` と同じ `_NDModelOptimizer`、EMA numerator、EMA denominator、
+Normalized solverを使い、task solve後の変位へ `-lr * repulsion * grad(R)` を加える。
+`AdamRConfig` も `NormalizedOptimizerConfig` を継承する。このため今後の斥力実験用に
+Normalized familyと一緒に保持する。
 
 ## A100で選択した設定
 
@@ -101,25 +108,26 @@ scheduleを外せる簡潔さを優先して本構成を採用する。
 まだこの文書追加と同時には削除しない。PRを分け、公開import、checkpoint、tests、docsを
 まとめて落とす。
 
-### 第1候補: 薄いwrapperと旧alias
+### 保持するN/D family surface
 
 - `CSTNormalizedSGD`, `CSTNormalizedMomentum`, `CSTNormalizedRMSProp`
 - `CSTQuadraticSGD`, `CSTQuadraticMomentum`, `CSTQuadraticRMSProp`
 - aliasの `CSTSGD`, `CSTMomentum`, `CSTRMSProp`, `CSTImplicitAdam`
-
-これらはAdamと同じcoordinator/solverのmoment選択違いで、今回の採用面には不要。
-内部の再利用可能なN/D componentsとsolverは残す。
-
-### 第2候補: 独立した実験optimizer
-
+- `CSTNormalizedAdam`, `CSTQuadraticAdam`
 - `CSTAdamR` / `AdamRConfig`
+
+これらは同じcoordinator/solver上でmoment構成や更新則を比較するfamilyなので削除しない。
+内部の再利用可能なN/D componentsとsolverも残す。
+
+### 削除候補: 独立した旧実験optimizer
+
 - `CSTLocalAdam` / `LocalAdamConfig`
 - `CSTLocalVisibleAdam` / `LocalVisibleAdamConfig`
 - `CSTDenseVisibleAdam` / `DenseVisibleAdamConfig`
 - 旧tangent経路の `CSTAdam` / `FirstOrderAdamConfig`
 - full-quartic経路の `CSTSecondOrderAdam` / `SecondOrderAdamConfig`
 
-これらは実装・状態形式・数式文書が独立しているため、第1候補とは別PRで削除する。
+これらは実装・状態形式・数式文書が独立しているため、別PRで削除する。
 削除前に、Quadratic/Normalizedが利用するderivative、moment、dense AdamW、solverまで
 誤って消さないようimport graphを確認する。
 
@@ -127,6 +135,8 @@ scheduleを外せる簡潔さを優先して本構成を採用する。
 
 - `CSTQuadraticAdam`, `QuadraticOptimizerConfig`, `QuadraticGradientSolver`
 - `CSTNormalizedAdam`, `NormalizedOptimizerConfig`, `NormalizedFixedPointSolver`
+- Quadratic/NormalizedのSGD、Momentum、RMSProp wrapperと既存alias
+- `CSTAdamR`, `AdamRConfig` とatom-operator repulsion実装
 - `CSTParameterAdam`, `ParameterAdamConfig`
 - mixed model用 `AdamWConfig` とfunctional dense AdamW
 - Polarのtime-energy rule、radial regularization、Triweight profileと関連tests

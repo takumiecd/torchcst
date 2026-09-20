@@ -2,8 +2,9 @@
 
 > [!WARNING]
 > **Research API.** `CSTQuadraticAdam` is the current experiment-backed
-> recommendation. `CSTNormalizedAdam` and `CSTParameterAdam` are retained as
-> comparison paths; the other optimizer families are legacy removal candidates.
+> recommendation. The complete `CSTQuadratic*` and `CSTNormalized*` families,
+> their `CSTAdamR` repulsion extension, and `CSTParameterAdam` are retained.
+> The older tangent/local/full-quartic optimizer paths are removal candidates.
 > There is intentionally no compatibility promise for earlier
 > `SynapseStore`, structural-policy, or Pullback Adam APIs.
 
