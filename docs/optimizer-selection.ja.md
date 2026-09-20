@@ -12,18 +12,19 @@ optimizer LR、kernel temperatureともにscheduleを使わない。公開面と
 | --- | --- |
 | `CSTQuadratic*` family | 主経路。有限回の局所二次更新を累積する |
 | `CSTNormalized*` family | 同じN/D momentsを使う比較・代替経路 |
-| `CSTAdamR` | Normalized Adamへdecoupledなatom-operator斥力を加える拡張 |
+| `CSTAdamR` | Normalized/Quadraticを切替可能なN/D Adamへ斥力を加える拡張 |
 | `CSTParameterAdam` | 通常のparameter-coordinate Adamによる軽量baseline |
 
 通常parameterを含むmixed modelでは、これらの経路から所有される
 `AdamWConfig` も維持する。`CSTParameterAdam` の既定cosine scheduleは今回の推奨設定では
 使わず、`decay_steps=None` とする。
 
-`CSTAdamR` は独立したoptimizer familyではない。実装は
-`CSTNormalizedAdam` と同じ `_NDModelOptimizer`、EMA numerator、EMA denominator、
-Normalized solverを使い、task solve後の変位へ `-lr * repulsion * grad(R)` を加える。
-`AdamRConfig` も `NormalizedOptimizerConfig` を継承する。このため今後の斥力実験用に
-Normalized familyと一緒に保持する。
+`CSTAdamR` は独立したmoment familyではない。実装は `_NDModelOptimizer`、EMA
+numerator、EMA denominatorを共有し、`update_rule="normalized"` または
+`update_rule="quadratic"` でtask solverの更新則を選ぶ。task solve後の変位へ
+`-lr * repulsion * grad(R)` を加え、合成後に同じtrust geometryへ再projectする。
+既定は後方互換のNormalized。斥力ゼロなら選択した通常Adamと同じ更新になる。
+このため今後の斥力実験用にN/D familyと一緒に保持する。
 
 ## A100で選択した設定
 

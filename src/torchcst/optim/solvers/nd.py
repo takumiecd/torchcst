@@ -366,6 +366,7 @@ class NormalizedBoxFixedPointSolver(_IterativeNDSolver):
 class QuadraticGradientSolver(_IterativeNDSolver):
     """Add ``-η N/D`` to ``d`` on the global Euclidean ball."""
 
+    update_rule = "quadratic"
     solver_mode = "gradient"
     _accumulate = True
 
@@ -373,6 +374,7 @@ class QuadraticGradientSolver(_IterativeNDSolver):
 class QuadraticBoxGradientSolver(_IterativeNDSolver):
     """Add ``-η N/D`` to ``d`` inside an elementwise box."""
 
+    update_rule = "quadratic"
     solver_mode = "gradient"
     _accumulate = True
     _constraint_type = _CoordinateBoxConstraint

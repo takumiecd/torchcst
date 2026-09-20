@@ -602,7 +602,7 @@ The four public wrappers select only the two moment components:
 | `CSTNormalizedMomentum` / `CSTQuadraticMomentum` | EMA of `g` and `H` | `1` |
 | `CSTNormalizedRMSProp` / `CSTQuadraticRMSProp` | current `g + H d` | component-wise EMA of `(g + H d)^2` |
 | `CSTNormalizedAdam` / `CSTQuadraticAdam` | EMA of `g` and `H` | component-wise EMA of `(g + H d)^2` |
-| `CSTAdamR` | same as `CSTNormalizedAdam` | same as `CSTNormalizedAdam`, plus decoupled `-lr λ ∇L` |
+| `CSTAdamR` | EMA of `g` and `H` | component-wise EMA of `(g + H d)^2`, plus decoupled `-lr λ ∇R` |
 
 `CSTSGD`, `CSTMomentum`, and `CSTRMSProp` are aliases for the corresponding
 `CSTNormalized*` wrappers. `CSTImplicitAdam` is an alias for
@@ -767,21 +767,29 @@ separate validation subset; the three previously unused seeds averaged
 a guarantee that every seed exceeds 80%.
 
 
-## `CSTAdamR`: normalized Adam plus decoupled repulsion
+## `CSTAdamR`: selectable N/D Adam plus decoupled repulsion
 
-`CSTAdamR` uses the shared N/D coordinator. It uses the same
-numerator and denominator as `CSTNormalizedAdam`. `R` is repulsion of realized
+`CSTAdamR` uses the shared N/D coordinator and the Adam numerator and
+denominator moments. `update_rule="normalized"` uses the Normalized fixed-point
+solver and remains the default; `update_rule="quadratic"` uses the Quadratic
+gradient solver. `R` is repulsion of realized
 atom operators, not parameter-coordinate decay, and not the dense AdamW block.
 Each `CSTModule` supplies `(S, κ)` from one materialization of its atoms.
 The energy `||S||_F^2 - κ` equals the off-diagonal pair inner-product sum in
-`O(K · d)`. The optimizer owns `λ`. Adam moments and the normalized solver see
-only the task AtomGrad; `step()` then adds `-lr λ ∇_p L` to the CST
-displacement.
+`O(K · d)`. The optimizer owns `λ`. Adam moments and the selected task solver
+see only the task AtomGrad; `step()` then adds `-lr λ ∇_p R` and projects the
+combined displacement through the solver's trust geometry.
 
 ```python
 from torchcst import CSTAdamR, AdamWConfig
 
-optimizer = CSTAdamR(model, repulsion=0.01)  # kind="cosine" by default
+normalized = CSTAdamR(model, repulsion=0.01)  # backward-compatible default
+quadratic = CSTAdamR(
+    model,
+    update_rule="quadratic",
+    repulsion=0.01,
+)
+optimizer = quadratic
 optimizer.zero_grad(set_to_none=True)
 loss = F.cross_entropy(model(images), labels)
 loss.backward()
@@ -794,7 +802,10 @@ Do not add the energy to the training loss. Mixed models still require
 realized atoms; `kind="abs"` uses the elementwise absolute atoms so
 `L = Σ_{i≠j} ⟨|W_i|, |W_j|⟩`. For the current nonnegative Gaussian
 profiles that equals `Σ_{i≠j} |⟨W_i, W_j⟩|`, and `κ` matches raw.
-Pass `cst=AdamRConfig(...)` for the full normalized config.
+Pass `cst=AdamRConfig(...)` for the full configuration. An explicitly injected
+solver must match `update_rule`; mismatched Normalized and Quadratic solvers are
+rejected. Checkpoints also record the selected rule and cannot be loaded under
+the other rule.
 
 
 ## `CSTLocalAdam`: default atom-local optimizer

@@ -24,6 +24,8 @@ class QuadraticTrustSolver(NormalizedSolver):
     point is the Newton step.  This is not ``d = -η (g + H d)``.
     """
 
+    update_rule = "quadratic"
+
     def solve(
         self,
         problem: NormalizedUpdateProblem,

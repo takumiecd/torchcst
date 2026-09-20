@@ -6,6 +6,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 
 from torchcst import (
+    AdamRConfig,
     AdamWConfig,
     Amplitude,
     AmpWidth,
@@ -15,10 +16,12 @@ from torchcst import (
     CSTLinear,
     CSTModule,
     CSTNormalizedAdam,
+    CSTQuadraticAdam,
     Gaussian,
     Kernel,
     Separable,
 )
+from torchcst.optim import NormalizedFixedPointSolver, QuadraticGradientSolver
 
 
 def make_site(*, atoms=3, inputs=5, outputs=4, backend="factored"):
@@ -283,12 +286,54 @@ def test_zero_repulsion_matches_normalized_adam():
     )
 
 
+def test_zero_repulsion_matches_quadratic_adam():
+    torch.manual_seed(7)
+    site = make_site()
+    reference = copy.deepcopy(site)
+    opt = CSTAdamR(
+        site,
+        update_rule="quadratic",
+        lr=0.01,
+        repulsion=0.0,
+        trust_radius=0.25,
+    )
+    ref = CSTQuadraticAdam(reference, lr=0.01, trust_radius=0.25)
+    inputs = torch.randn(8, site.in_features, dtype=torch.float64)
+    targets = torch.randn(8, site.out_features, dtype=torch.float64)
+
+    _take_task_step(opt, site, inputs, targets)
+    _take_task_step(ref, reference, inputs, targets)
+
+    torch.testing.assert_close(site.atoms.p, reference.atoms.p)
+    assert opt.last_step.site_results[0].solver_mode == "gradient"
+
+
+def test_update_rule_selects_and_validates_solver():
+    normalized = AdamRConfig(update_rule="normalized")
+    quadratic = AdamRConfig(update_rule="quadratic")
+
+    assert isinstance(normalized.solver, NormalizedFixedPointSolver)
+    assert isinstance(quadratic.solver, QuadraticGradientSolver)
+    with pytest.raises(ValueError, match="update_rule"):
+        AdamRConfig(update_rule="unknown")
+    with pytest.raises(ValueError, match="solver update rule"):
+        AdamRConfig(
+            update_rule="quadratic",
+            solver=NormalizedFixedPointSolver(),
+        )
+    with pytest.raises(ValueError, match="solver update rule"):
+        AdamRConfig(
+            update_rule="normalized",
+            solver=QuadraticGradientSolver(),
+        )
+
+
 def test_decoupled_repulsion_leaves_normalized_moments_unchanged():
     torch.manual_seed(7)
     site = make_site()
     reference = copy.deepcopy(site)
-    opt = CSTAdamR(site, lr=0.01, repulsion=0.1, kind="cosine", trust_radius=0.25)
-    ref = CSTNormalizedAdam(reference, lr=0.01, trust_radius=0.25)
+    opt = CSTAdamR(site, lr=0.01, repulsion=0.1, kind="cosine", trust_radius=100.0)
+    ref = CSTNormalizedAdam(reference, lr=0.01, trust_radius=100.0)
     inputs = torch.randn(8, site.in_features, dtype=torch.float64)
     targets = torch.randn(8, site.out_features, dtype=torch.float64)
 
@@ -312,6 +357,36 @@ def test_decoupled_repulsion_leaves_normalized_moments_unchanged():
         reference.atoms.p - 0.01 * 0.1 * repulsion_grad,
     )
     assert not torch.equal(site.atoms.p, reference.atoms.p)
+
+
+def test_combined_task_and_repulsion_displacement_is_projected():
+    torch.manual_seed(11)
+    site = make_site()
+    optimizer = CSTAdamR(
+        site,
+        update_rule="quadratic",
+        lr=0.1,
+        repulsion=100.0,
+        kind="raw",
+        trust_radius=0.01,
+    )
+    inputs = torch.randn(8, site.in_features, dtype=torch.float64)
+    targets = torch.randn(8, site.out_features, dtype=torch.float64)
+
+    _take_task_step(optimizer, site, inputs, targets)
+
+    result = optimizer.last_step.site_results[0]
+    assert torch.linalg.vector_norm(result.displacement) <= 0.01 * (1 + 1e-12)
+    assert result.on_boundary
+
+
+def test_checkpoint_rejects_a_different_update_rule():
+    normalized = CSTAdamR(make_site(), update_rule="normalized")
+    state = normalized.state_dict()
+    quadratic = CSTAdamR(make_site(), update_rule="quadratic")
+
+    with pytest.raises(ValueError, match="moment contract"):
+        quadratic.load_state_dict(state)
 
 
 def test_mixed_model_requires_dense_config_and_sums_site_energies():

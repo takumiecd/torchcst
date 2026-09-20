@@ -1,9 +1,9 @@
-"""Normalized Adam plus decoupled atom-operator repulsion.
+"""Normalized or Quadratic N/D Adam plus decoupled atom-operator repulsion.
 
-``CSTAdamR`` is an N/D coordinator wrapper with the same numerator and
-denominator as ``CSTNormalizedAdam``. ``R`` is applied to CST sites after
-the task solve, outside those moments. Dense parameters still use the
-shared ``AdamWConfig`` block.
+``CSTAdamR`` uses Adam numerator and denominator moments. ``update_rule``
+selects whether the task solver replaces or accumulates its displacement.
+``R`` is applied to CST sites after the task solve, outside those moments.
+Dense parameters still use the shared ``AdamWConfig`` block.
 """
 
 from __future__ import annotations
@@ -21,11 +21,11 @@ from .optimizer import _CSTProposal
 
 
 class CSTAdamR(_NDModelOptimizer):
-    """CSTNormalizedAdam plus decoupled atom-operator repulsion.
+    """Normalized or Quadratic Adam plus decoupled atom-operator repulsion.
 
-    Task moments and the normalized solver see only the CST AtomGrad from the
-    training loss. ``step()`` then adds ``-lr λ ∇_p L`` to the CST
-    displacement. ``R`` is repulsion of realized atom operators, not
+    Task moments and the selected solver see only the CST AtomGrad from the
+    training loss. ``step()`` then adds ``-lr λ ∇_p R`` to the CST
+    displacement and reprojects it. ``R`` is repulsion of realized atom operators, not
     parameter-coordinate decay, and not dense AdamW.
     """
 
@@ -61,12 +61,25 @@ class CSTAdamR(_NDModelOptimizer):
         if not isinstance(module, CSTModule):
             raise TypeError("CSTAdamR repulsion requires a CSTModule site")
         grad = self._repulsion_grad(module)
-        displacement = proposal.solve.displacement - scale * grad
+        solver = self.cst_config.solver
+        displacement = solver.project_displacement(
+            proposal.solve.displacement - scale * grad,
+            trust_radius=self.cst_config.trust_radius,
+        )
+        solve = replace(
+            proposal.solve,
+            displacement=displacement,
+            on_boundary=solver.displacement_is_on_boundary(
+                displacement,
+                trust_radius=self.cst_config.trust_radius,
+            ),
+        )
+        self._validate_solve(solve, proposal.context)
         return _CSTProposal(
             proposal.site,
             proposal.context,
             proposal.expanded,
-            replace(proposal.solve, displacement=displacement),
+            solve,
         )
 
     def _repulsion_grad(self, module: CSTModule) -> Tensor:
@@ -80,6 +93,7 @@ class CSTAdamR(_NDModelOptimizer):
 
     def _moment_contract(self):
         contract = super()._moment_contract()
+        contract["update_rule"] = self.cst_config.update_rule
         contract["repulsion"] = self.cst_config.repulsion
         contract["kind"] = self.cst_config.kind
         return contract

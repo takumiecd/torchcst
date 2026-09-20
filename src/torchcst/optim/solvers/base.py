@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import torch
 from torch import Tensor
@@ -29,6 +29,8 @@ class QuarticSolver(ABC):
 
 class NormalizedSolver(ABC):
     """Solve a candidate-dependent N/D update without owning state."""
+
+    update_rule: Literal["normalized", "quadratic"] = "normalized"
 
     def project_displacement(
         self,

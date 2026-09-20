@@ -234,14 +234,27 @@ class QuadraticOptimizerConfig(_NDOptimizerConfig):
 
 
 @dataclass(frozen=True)
-class AdamRConfig(NormalizedOptimizerConfig):
-    """Normalized Adam plus decoupled atom-operator repulsion."""
+class AdamRConfig(_NDOptimizerConfig):
+    """Normalized or Quadratic N/D Adam plus decoupled repulsion."""
 
+    solver: NormalizedSolver | None = None
+    update_rule: Literal["normalized", "quadratic"] = "normalized"
     repulsion: float = 0.0
     kind: Literal["cosine", "raw", "abs"] = "cosine"
 
     def __post_init__(self) -> None:
+        if self.update_rule not in ("normalized", "quadratic"):
+            raise ValueError("update_rule must be 'normalized' or 'quadratic'")
+        if self.solver is None:
+            solver = (
+                NormalizedFixedPointSolver()
+                if self.update_rule == "normalized"
+                else QuadraticGradientSolver()
+            )
+            object.__setattr__(self, "solver", solver)
         super().__post_init__()
+        if self.solver.update_rule != self.update_rule:
+            raise ValueError("solver update rule does not match update_rule")
         if (
             isinstance(self.repulsion, bool)
             or not math.isfinite(self.repulsion)
