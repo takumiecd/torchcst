@@ -5,11 +5,13 @@ import torch
 
 from torchcst import Amplitude, Chart, CSTLinear, Gaussian, Separable
 from torchcst.optim import (
+    AtomGradRequest,
     CSTNormalizedSGD,
     CSTQuadraticAdam,
     CSTQuadraticMomentum,
     CSTQuadraticRMSProp,
     CSTQuadraticSGD,
+    LinearJGAtomGrad,
     NormalizedOptimizerConfig,
     QuadraticGradientSolver,
     QuadraticOptimizerConfig,
@@ -69,6 +71,22 @@ def test_quadratic_wrappers_use_the_normalized_gradient_solver() -> None:
         assert isinstance(
             optimizer_type(make_site()).cst_config.solver, QuadraticGradientSolver
         )
+
+
+def test_quadratic_adam_max_iter_one_uses_first_order_observations_only() -> None:
+    model = make_site()
+    optimizer = CSTQuadraticAdam(
+        model,
+        solver=QuadraticGradientSolver(max_iter=1),
+    )
+
+    site = optimizer._sites[0]
+    assert isinstance(site.atom_grad, LinearJGAtomGrad)
+    assert site.atom_grad.observation_request == AtomGradRequest(jg=True)
+
+    take_step(optimizer, model)
+    assert optimizer.last_step is not None
+    assert optimizer.last_step.site_results[0].iterations == 1
 
 
 def test_quadratic_rmsprop_and_adam_keep_denominator_state() -> None:

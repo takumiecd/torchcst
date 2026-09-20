@@ -1,66 +1,164 @@
 # torchcst — fixed-shape continuous operators for PyTorch
 
 > [!WARNING]
-> **Research API.** `CSTQuadraticAdam` is the current experiment-backed
-> recommendation. The supported optimizer surface is the `CSTQuadratic*` and
-> `CSTNormalized*` families, `CSTAdamR`, `CSTParameterAdam`, and dense AdamW for
-> mixed models. Older local, tangent, dense-visible, and full-quartic optimizer
-> experiments have been removed.
+> **Research API.** `torchcst` is experimental software. The examples and
+> accuracy numbers below are evidence from the current MNIST experiments, not
+> guarantees for every model or task.
 
-`torchcst` represents an operator as a sum of a fixed number of kernel-defined
-atoms. Each atom owns one opaque parameter row that moves continuously, and only
-its kernel interprets that row. Training never changes which atoms exist: there
-is no birth, death, merge, slot reuse, or optimizer-state remapping.
+`torchcst` represents a neural-network operator as a sum of continuous,
+kernel-defined atoms. Instead of learning every entry of a dense weight matrix
+independently, it learns a fixed table of atom coordinates and lets a kernel
+map those coordinates to operator contributions.
 
-The current scope is deliberately narrow:
+For a weight operator, the basic representation is
 
-- fixed atom count and tensor shapes for the lifetime of a module;
-- fixed-cardinality charts, frozen for optimizer-backed training;
-- continuous atom-local parameters interpreted by a kernel;
-- composable normalized and quadratic optimizers with independent numerator,
-  denominator, and solver components;
-- compact persistent optimizer state, with ordinary AdamW for non-CST
-  parameters in mixed models.
+```text
+W = sum_k Kernel(p[k])
+```
 
-## Recommended schedule-free recipe
+The atom count and kernel determine how many trainable coordinates are used to
+represent the operator. Atom count and tensor shapes stay fixed during
+training: there is no birth, death, merge, slot reuse, or optimizer-state
+remapping.
 
-The selected MNIST configuration is `Triweight + PolarAmpWidth +
-CSTQuadraticAdam` with fixed learning rates:
+## Choosing an optimizer
+
+The two practical starting points are:
+
+| Goal | Start with | Positioning |
+| --- | --- | --- |
+| Use the CST representation with small optimizer state and simple first-order updates | `CSTParameterAdam` | Standard parameter-coordinate AdamW path |
+| Spend additional memory and compute to pursue higher task accuracy | `CSTQuadraticAdam` | Iterative local-quadratic update |
+
+The choice is about optimization, not the number of model coordinates. With the
+same atom count and kernel, both optimizers train the same CST parameter table.
+The main differences are the persistent optimizer state, temporary work, and
+update rule.
+
+`CSTParameterAdam` is a thin CST-aware wrapper around PyTorch's `AdamW`. The
+standard AdamW state and update are reused; the wrapper partitions CST and dense
+parameters, enforces the CST ownership contract, and applies the kernel's
+coordinate update after the Adam proposal. It keeps only two parameter-shaped
+moment buffers for each CST parameter.
+
+`CSTQuadraticAdam` uses candidate-dependent numerator and denominator moments
+and an iterative local update. It can improve accuracy at the cost of larger
+state and more computation. In the current five-epoch MNIST comparison, the
+same Polar configuration reached 96.81% mean accuracy with `CSTQuadraticAdam`
+and 96.29% with `CSTParameterAdam` over three seeds. This is configuration
+evidence, not a general optimizer ranking.
+
+## Installation
+
+```bash
+python -m pip install -e .
+```
+
+For development:
+
+```bash
+python -m pip install -e '.[dev]'
+```
+
+The package requires Python 3.10+ and PyTorch 2.0+.
+
+## Quick start: parameter Adam
+
+This is the low-memory starting point. The CST chart is fixed, the CST site
+uses the factorized backend, and ordinary trainable parameters are explicitly
+owned by the dense AdamW block.
+
+This example assumes a `DataLoader` named `loader` that yields MNIST image
+batches with shape `[B, 1, 28, 28]` and integer labels with shape `[B]`.
 
 ```python
+import torch
 import torch.nn.functional as F
+from torch import nn
 
 from torchcst import (
     AdamWConfig,
     Chart,
     CSTLinear,
-    CSTQuadraticAdam,
+    CSTParameterAdam,
+    ParameterAdamConfig,
     PolarAmpWidth,
     Triweight,
 )
-from torchcst.optim import QuadraticGradientSolver
 
-model = CSTLinear(
-    Chart.grid((28, 28), spacing=2 / 27),
-    Chart.linspace(64, spacing=2 / 63),
-    atoms=2560,
-    kernel=PolarAmpWidth(
-        amplitude_max=1.0,
-        sigma_min=0.1,
-        sigma_max=10.0,
-        w_c=0.0025,
-        kappa=30.0,
-        activity_gain=27.0,
-        activity_mode="time_energy",
-        radial_regularization=0.5,
-        profile=Triweight(0.1),
+
+class MNISTCST(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.cst = CSTLinear(
+            Chart.grid((28, 28), spacing=2 / 27),
+            Chart.linspace(64, spacing=2 / 63),
+            atoms=2560,
+            kernel=PolarAmpWidth(
+                amplitude_max=1.0,
+                sigma_min=0.1,
+                sigma_max=10.0,
+                w_c=0.0025,
+                kappa=30.0,
+                activity_gain=27.0,
+                activity_mode="time_energy",
+                radial_regularization=0.5,
+                profile=Triweight(0.1),
+            ),
+            backend="factored",
+        )
+        self.bias = nn.Parameter(torch.zeros(64))
+        self.head = nn.Linear(64, 10)
+
+    def forward(self, images):
+        hidden = self.cst(images.flatten(1)) + self.bias
+        return self.head(F.relu(hidden))
+
+
+model = MNISTCST()
+optimizer = CSTParameterAdam(
+    model,
+    cst=ParameterAdamConfig(
+        lr=0.03,
+        betas=(0.5, 0.99),
+        decay_steps=None,  # fixed CST learning rate
     ),
-    backend="factored",
+    dense=AdamWConfig(
+        lr=0.005,
+        betas=(0.9, 0.999),
+        weight_decay=0.0,
+    ),
 )
 
+for images, targets in loader:
+    optimizer.zero_grad(set_to_none=True)
+    loss = F.cross_entropy(model(images), targets)
+    loss.backward()
+    optimizer.step()
+```
+
+`CSTParameterAdam` uses ordinary autograd to obtain `atoms.p.grad` and applies
+AdamW moments with the same shape as the atom table. It does not attach the
+transient `AtomGrad` observation program used by the N/D optimizer family.
+
+If raw Euclidean updates to `model.parameters()` are intentional,
+`torch.optim.AdamW` can also be used directly. `CSTParameterAdam` is the
+library wrapper to use when the CST ownership checks, mixed-model partition,
+and kernel-specific coordinate update should be retained.
+
+## Accuracy-oriented training: Quadratic Adam
+
+Use the same model definition with a fresh model instance and replace the
+optimizer with the iterative Quadratic path:
+
+```python
+from torchcst import AdamWConfig, CSTQuadraticAdam
+from torchcst.optim import QuadraticGradientSolver
+
+model = MNISTCST()
 optimizer = CSTQuadraticAdam(
     model,
-    lr=0.00025,
+    lr=0.00025,                 # one inner quadratic step
     betas=(0.9, 0.999),
     eps=1e-8,
     trust_radius=2.0,
@@ -71,175 +169,166 @@ optimizer = CSTQuadraticAdam(
     ),
     initial_zero_step=True,
     factored=True,
-    kernel_step_size=0.002,
+    kernel_step_size=0.002,    # outer horizon passed to Polar
+    dense=AdamWConfig(lr=0.005, weight_decay=0.0),
 )
-
-for inputs, targets in loader:
-    optimizer.zero_grad(set_to_none=True)
-    loss = F.cross_entropy(model(inputs.flatten(1)), targets)
-    loss.backward()
-    optimizer.step()
 ```
 
-Here `lr=0.00025` is one inner quadratic step and eight iterations give the
-nominal outer horizon `0.002`. `kernel_step_size=0.002` passes that outer time
-step to Polar activity and radial regularization. Do not add an optimizer LR or
-kernel-temperature schedule to this recipe.
+Here the nominal outer horizon is `0.00025 * 8 = 0.002`. The inner learning
+rate and `kernel_step_size` have different roles. For a new experiment, keep
+the outer horizon fixed while changing the iteration count:
 
-The full five-epoch A100 comparison used a 2,560-atom `CSTLinear(784, 64)`,
-ReLU, and a dense 64-to-10 head with fixed AdamW LR `0.005`. Seeds 17/29/43
-reached 97.07%, 96.48%, and 96.88% (mean 96.81%). This is configuration
-evidence, not a general accuracy guarantee. See
-[the optimizer selection note](docs/optimizer-selection.ja.md) for the protocol,
-tuning guidance, and interpretation.
+```text
+inner_lr = desired_outer_horizon / iterations
+```
 
-## Core objects
+Do not treat this recipe as a universal schedule rule. It is the current
+fixed-learning-rate MNIST configuration.
+
+## Current MNIST evidence
+
+The reported comparison used full MNIST (60,000 training / 10,000 test
+examples), batch size 128, five epochs, FP32, TF32 off, three seeds (17, 29,
+43), a 2,560-atom `CSTLinear(784, 64)`, a learnable 64-dimensional bias, ReLU,
+and a dense 64-to-10 head.
+
+| Optimizer | Seed accuracies | Mean | Sample SD |
+| --- | --- | ---: | ---: |
+| `CSTParameterAdam` | not recorded in this repository's selection note | 96.29% | — |
+| `CSTQuadraticAdam` | 97.07%, 96.48%, 96.88% | 96.81% | 0.301pp |
+
+The Quadratic result is 0.52 percentage points above the reported
+`CSTParameterAdam` mean under that experiment. The comparison supports using
+Quadratic when accuracy is the priority; it does not establish dominance on
+other tasks or under other hyperparameters. The full protocol and tuning notes
+are in [docs/optimizer-selection.ja.md](docs/optimizer-selection.ja.md).
+
+## Parameter count and optimizer memory
+
+These quantities should be kept separate:
+
+- **Trainable parameter count** describes the representation.
+- **Persistent optimizer state** describes the history retained between steps.
+- **Peak training memory** also includes gradients, activations, factor tables,
+  temporary tensors, and dataset/batch storage.
+
+For a dense weight with `N = N_in * N_out`, `K` atoms, and `P` coordinates per
+atom, the main persistent state is approximately:
+
+| Representation | Trainable coordinates | Moment elements (scalars) |
+| --- | ---: | ---: |
+| Dense + Adam | `N` | `2N` |
+| CST + `CSTParameterAdam` | `KP` | `2KP` |
+| CST + `CSTQuadraticAdam` | `KP` | `2KP + 2KP² + KP³` |
+
+The Quadratic expression corresponds to the current `m, C, x, y, Z` state
+representation. Small step counters and scalar configuration are omitted. In
+the current MNIST Polar layer, `P=5`, so `K=2560` gives `KP=12,800` CST
+coordinates versus `784*64=50,176` dense coordinates for that layer alone:
+
+```text
+KP / N = 2560*5 / (784*64) ≈ 25.5%
+```
+
+This is a layer-level representation ratio, not a GPU memory ratio and not a
+nonzero-density claim. The dense head, bias, gradients, activations, factorized
+execution, and optimizer-specific temporary work must be counted separately.
+Parameter reduction therefore does not automatically imply the same percentage
+reduction in peak training memory. Depending on `K` and `P`,
+`CSTQuadraticAdam` can require more optimizer memory than dense Adam even when
+the CST layer has fewer trainable parameters. For the MNIST layer above, the
+listed moment-element counts are `100,352` for dense Adam and `473,600` for
+Quadratic Adam, about 4.72 times larger; this is a state-count calculation, not
+an observed peak-memory measurement.
+
+## How the main objects fit together
 
 ### `Chart`
 
-A chart is a fixed-cardinality set of observation coordinates. Coordinates are
-frozen by default and optimizers currently require frozen charts.
+`Chart` stores the fixed observation coordinates used by a CST site. Charts are
+currently required to be frozen for optimizer-backed training.
 
 ```python
 pixels = Chart.grid((28, 28), spacing=2 / 27)
-classes = Chart.linspace(10, low=-1.0, high=1.0)
-custom = Chart.points(coordinates, trainable=False)
+channels = Chart.linspace(64, spacing=2 / 63)
 ```
-
-Pass either `spacing` or inclusive `low`/`high` bounds. Chart size never changes
-during training.
 
 ### `Atoms`
 
-For `K` atoms and kernel-coordinate width `P`, `Atoms` owns one parameter table
-`p` with shape `[K, P]`. The table has fixed shape and row ordering. `Atoms`
-does not know which coordinates are amplitude, position, bandwidth, or another
-kernel parameter.
+`Atoms` owns the opaque parameter table `p` with shape `[K, P]`. It does not
+interpret whether a coordinate represents amplitude, position, bandwidth, or
+another kernel-specific quantity. The table shape and row ordering remain
+fixed.
 
-`Atoms.grad` is a transient optimizer-owned observation program. It is not part
-of the model `state_dict()`.
+### `Kernel`
+
+A kernel maps each atom coordinate row to an operator contribution. Kernels may
+also define factorized execution and a kernel-specific parameter update. For
+example, `PolarAmpWidth` separates angular amplitude motion from radial
+bandwidth activity.
 
 ### `CSTLinear`
 
-`CSTLinear` composes input/output charts, an atom table, and one kernel. Its
-represented dense weight is the sum of complete operator atoms. The `factored`
-backend avoids retaining that dense representation where the kernel supports
-factorization.
+`CSTLinear` combines input/output charts, an atom table, and one kernel. Its
+`backend="factored"` path avoids retaining the full dense weight when the
+kernel supports exact factorization.
 
-```python
-layer = CSTLinear(
-    input_chart,
-    output_chart,
-    atoms=128,
-    kernel=PolarAmpWidth(profile=Triweight(0.1)),
-    backend="factored",
-)
-```
+## Other optimizer families
 
-## Supported optimizers
+The Adam paths above are the intended first choices. The package also retains
+the following research surfaces:
 
-| Family | Update meaning | Persistent CST moments |
-| --- | --- | --- |
-| `CSTNormalizedSGD` | `d ← Π(-η N(d) / D(d))` | current numerator, unit denominator |
-| `CSTNormalizedMomentum` | normalized implicit update | EMA numerator |
-| `CSTNormalizedRMSProp` | normalized implicit update | EMA denominator |
-| `CSTNormalizedAdam` | normalized implicit update | EMA numerator and denominator |
-| `CSTQuadraticSGD` | `d ← Π(d - η N(d) / D(d))` | current numerator, unit denominator |
-| `CSTQuadraticMomentum` | finite local-model descent | EMA numerator |
-| `CSTQuadraticRMSProp` | finite local-model descent | EMA denominator |
-| `CSTQuadraticAdam` | finite local-model descent | EMA numerator and denominator |
+| Family | Update idea |
+| --- | --- |
+| `CSTNormalizedSGD`, `CSTNormalizedMomentum`, `CSTNormalizedRMSProp`, `CSTNormalizedAdam` | Replace the displacement with a normalized candidate |
+| `CSTQuadraticSGD`, `CSTQuadraticMomentum`, `CSTQuadraticRMSProp`, `CSTQuadraticAdam` | Accumulate finite local-model steps |
+| `CSTAdamR` | Add atom-operator repulsion to a normalized or Quadratic N/D Adam |
 
-Short aliases `CSTSGD`, `CSTMomentum`, `CSTRMSProp`, and `CSTImplicitAdam`
-refer to the normalized family. All model-level optimizers own every trainable
-parameter. A mixed model must explicitly configure its ordinary parameters:
+`CSTSGD`, `CSTMomentum`, `CSTRMSProp`, and `CSTImplicitAdam` are aliases for
+the normalized family. `QuadraticTrustSolver` is a separate atom-local Taylor
+trust-region solver; the `max_iter=1` statement above applies to the iterative
+`QuadraticGradientSolver`, not to every possible solver.
 
-```python
-optimizer = CSTQuadraticAdam(
-    model,
-    lr=0.00025,
-    dense=AdamWConfig(lr=0.005, weight_decay=0.0),
-)
-```
+The N/D family uses optimizer-owned `AtomGrad` observations. With
+`max_iter=1`, the N/D coordinator selects `LinearJGAtomGrad` and requests only
+the first-order atom gradient. With two or more iterations it selects
+`LinearJGHAtomGrad` and may retain local curvature terms.
 
-The numerator and denominator are independent components:
-
-```text
-N(d) = m + C d
-D(d) = sqrt(x + 2 y[d] + Z[d,d]) + eps
-```
-
-`NormalizedFixedPointSolver` replaces the displacement with `-η N(d)/D(d)`;
-`QuadraticGradientSolver` adds that vector to the current displacement. Box
-variants enforce a coordinate-wise bound, while default constraints use the
-solver's ball geometry. `QuadraticTrustSolver` minimizes an atom-local Taylor
-quadratic directly.
-
-Setting a gradient solver to `max_iter=1` gives the ordinary zero-point Adam
-step. When increasing iterations, begin with
-`inner_lr = desired_outer_horizon / iterations`.
-
-## `CSTAdamR`
-
-`CSTAdamR` is the retained repulsion extension of N/D Adam. It switches between
-the normalized and quadratic update rules without introducing another moment
-family:
-
-```python
-from torchcst import CSTAdamR
-
-optimizer = CSTAdamR(
-    model,
-    update_rule="quadratic",
-    repulsion=1e-3,
-    kind="cosine",
-    lr=0.00025,
-)
-```
-
-The task displacement and `-lr * repulsion * grad(R)` are combined and then
-projected through the selected solver's trust geometry. With `repulsion=0`, the
-step matches the corresponding `CSTNormalizedAdam` or `CSTQuadraticAdam`.
-
-## `CSTParameterAdam`
-
-`CSTParameterAdam` is ordinary parameter-coordinate AdamW with exactly two
-parameter-sized moment buffers. It does not construct representation moments,
-Gram matrices, or transport frames. It requires factorized CST sites.
-
-```python
-from torchcst import CSTParameterAdam, ParameterAdamConfig
-
-optimizer = CSTParameterAdam(
-    model,
-    cst=ParameterAdamConfig(lr=0.03, decay_steps=None),
-    dense=AdamWConfig(lr=0.005, weight_decay=0.0),
-)
-```
-
-`decay_steps=None` disables its optional cosine schedule and is the comparison
-setting used by the current fixed-LR policy.
+Setting `QuadraticGradientSolver(max_iter=1)` selects the first-order,
+zero-point observation path. It performs one Adam-style N/D step and avoids
+curvature observations. This has the same first-order update structure as a
+Quadratic Adam baseline, but it is not bit-for-bit identical to
+`CSTParameterAdam` or `torch.optim.AdamW`: CST coordinate geometry, trust
+projection, kernel postprocessing, and checkpoint state still differ.
 
 ## Training and checkpoint contract
 
-Use the ordinary PyTorch order:
+The usual training order is:
 
 ```python
 optimizer.zero_grad(set_to_none=True)
+loss = loss_fn(model(inputs), targets)
 loss.backward()
 optimizer.step()
 ```
 
-Calling `zero_grad()` begins the CST observation scope; `step()` completes it,
-builds all proposals, validates them, and then commits the model-wide update.
-The optimizer rejects shared CST ownership, trainable charts, incompatible
-solvers/configs, and unconfigured ordinary parameters.
+`CSTParameterAdam` follows the regular PyTorch gradient lifecycle. The N/D
+optimizers open an optimizer-owned observation scope at `zero_grad()`, collect
+atom observations during backward, and commit CST and dense proposals together
+at `step()`.
 
-Model-level optimizer checkpoints record the algorithm, parameter ownership
-manifest, and moment/solver contract. Loading rejects a different model shape,
-owner, optimizer family, update rule, or state type. `last_step.site_results`
-contains solver diagnostics for inspection.
+All CST optimizers currently require frozen charts and fixed parameter shapes.
+Mixed models must explicitly configure their ordinary trainable parameters with
+`AdamWConfig`. Shared CST ownership and incompatible checkpoint manifests are
+rejected.
 
-## Development
+`CSTParameterAdam` checkpoints contain standard AdamW moments for each owned
+parameter, together with parameter names, shapes, and its optional schedule
+counter. N/D optimizer checkpoints additionally record their moment and solver
+contracts. Solver diagnostics for the N/D family are available through
+`last_step.site_results`.
+
+## Development and documentation
 
 ```bash
 python -m pip install -e '.[dev]'
@@ -248,5 +337,8 @@ pytest -q
 python -m build
 ```
 
-The package requires Python 3.10+ and PyTorch 2.0+. Mathematical notes and the
-current optimizer decision record are indexed in [docs/README.md](docs/README.md).
+Design and experiment notes are indexed in [docs/README.md](docs/README.md).
+The optimizer comparison and selected MNIST configuration are documented in
+[docs/optimizer-selection.ja.md](docs/optimizer-selection.ja.md), while the
+parameter-coordinate Adam details are in
+[docs/parameter-adam.ja.md](docs/parameter-adam.ja.md).
