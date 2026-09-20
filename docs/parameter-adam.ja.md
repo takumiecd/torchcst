@@ -1,8 +1,10 @@
 # CSTParameterAdam: パラメータ数に比例する状態のoptimizer
 
-`CSTParameterAdam(model)` は、CSTのパラメータ表そのものに通常のAdamを適用する。
-重み空間のAdamの近似や新しいmoment transport方式ではない。短い学習予算に合わせた
-学習率減衰と、CST用の低メモリ実行条件をまとめた公開APIである。
+`CSTParameterAdam(model)` は、PyTorchの `AdamW` を再利用するCST-aware wrapperである。
+Adamのmomentとparameter-coordinate updateをCST側で再実装していない。CSTとdenseの
+parameter partition、CSTのownership検証、任意のCST learning-rate schedule、および
+kernel固有のcoordinate updateをまとめた公開APIである。重み空間のAdamの近似や新しい
+moment transport方式ではない。
 
 ## 更新と既定値
 
@@ -25,8 +27,9 @@ PyTorch Adamのstep tensorを含めて2052 bytes。学習率scheduleの整数cou
 parameter groupに保存し、checkpointから再開できる。
 
 全CST siteでfrozen chartsおよび `backend="factored"` を要求する。
-optimizerは `W`、visible-space m/v、Jacobian、Hessian、Gram、小行列block、過去frameを
-生成・保存しない。forward/backwardは既存の因子表 `Phi_in[I,K]`, `Phi_out[O,K]` と
+optimizer wrapperは `W`、visible-space m/v、Jacobian、Hessian、Gram、小行列block、過去frameを
+生成・保存しない。forward/backwardは通常のautogradを使い、既存の因子表
+`Phi_in[I,K]`, `Phi_out[O,K]` と
 batch activationを一時的に使う。この作業領域やデータセットのメモリはmoment容量とは別であり、
 学習全体のメモリが2 KiBという意味ではない。
 

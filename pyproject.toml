@@ -12,7 +12,7 @@ authors = [{ name = "takumiecd" }]
 dependencies = ["torch>=2.0"]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["build", "pytest", "ruff"]
 cuda = ["torch>=2.6", "triton>=3.2; sys_platform == 'linux'", "ninja"]
 
 [tool.hatch.build.targets.wheel]

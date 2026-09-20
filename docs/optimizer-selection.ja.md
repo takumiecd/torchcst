@@ -4,16 +4,26 @@
 
 ## 結論
 
-現在の推奨構成は `Triweight + PolarAmpWidth + CSTQuadraticAdam` である。
-optimizer LR、kernel temperatureともにscheduleを使わない。公開面として残す中心は
+CSTのoptimizerは目的で選ぶ。CST表現そのものは同じでも、保持するoptimizer状態と
+更新計算量が異なる。
+
+| 目的 | 推奨経路 | 位置づけ |
+| --- | --- | --- |
+| optimizer状態と計算量を小さくする | `CSTParameterAdam` | PyTorch `AdamW` を使うparameter-coordinate経路 |
+| 追加コストを許容して精度を追う | `CSTQuadraticAdam` | 局所二次モデルの反復更新 |
+
+現在のMNIST比較では、同じPolar構成で `CSTQuadraticAdam` が平均96.81%、
+`CSTParameterAdam` が平均96.29%だった。これはこの実験条件での結果であり、
+すべてのタスクでの優位性を示すものではない。optimizer LR、kernel temperatureともに
+scheduleを使わない設定を今回のQuadraticレシピとして採用した。公開面として残す中心は
 次のfamilyと拡張とする。
 
 | 経路 | 位置づけ |
 | --- | --- |
-| `CSTQuadratic*` family | 主経路。有限回の局所二次更新を累積する |
+| `CSTQuadratic*` family | 精度重視。有限回の局所二次更新を累積する |
 | `CSTNormalized*` family | 同じN/D momentsを使う比較・代替経路 |
 | `CSTAdamR` | Normalized/Quadraticを切替可能なN/D Adamへ斥力を加える拡張 |
-| `CSTParameterAdam` | 通常のparameter-coordinate Adamによる軽量baseline |
+| `CSTParameterAdam` | 省メモリ・低計算量を重視する正式な経路 |
 
 通常parameterを含むmixed modelでは、これらの経路から所有される
 `AdamWConfig` も維持する。`CSTParameterAdam` の既定cosine scheduleは今回の推奨設定では
