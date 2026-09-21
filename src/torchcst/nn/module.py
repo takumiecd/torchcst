@@ -25,6 +25,19 @@ class CSTModule(nn.Module):
 
     atoms: Atoms
 
+    @property
+    def atom_parameter_dof(self) -> int:
+        """Intrinsic degrees of freedom in one stored atom row."""
+
+        input_chart, output_chart = self.cst_charts()
+        return self.kernel.parameter_dof(input_chart, output_chart)
+
+    @property
+    def cst_degrees_of_freedom(self) -> int:
+        """Intrinsic degrees of freedom across this site's atom table."""
+
+        return self.atoms.count * self.atom_parameter_dof
+
     def cst_parameters(self) -> tuple[nn.Parameter, ...]:
         """Return the fixed-shape parameters owned by this CST site."""
 

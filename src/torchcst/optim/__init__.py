@@ -61,6 +61,7 @@ from .solvers import (
 )
 
 __all__ = [
+    "CSTSGD",
     "AdamRConfig",
     "AdamWConfig",
     "AtomGradRequest",
@@ -78,7 +79,6 @@ __all__ = [
     "CSTQuadraticRMSProp",
     "CSTQuadraticSGD",
     "CSTRMSProp",
-    "CSTSGD",
     "CSTStepResult",
     "DenominatorMoment",
     "DenominatorMomentState",

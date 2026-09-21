@@ -104,6 +104,13 @@ class PolarAmpWidth(Kernel):
             + self.profile.parameter_dim(output_chart)
         )
 
+    def parameter_dof(self, input_chart: Chart, output_chart: Chart) -> int:
+        return (
+            2
+            + self.profile.parameter_dof(input_chart)
+            + self.profile.parameter_dof(output_chart)
+        )
+
     def initialize(
         self,
         input_chart: Chart,
@@ -235,10 +242,7 @@ class PolarAmpWidth(Kernel):
         energy = tangent.square().sum(dim=-1, keepdim=True)
         if self.activity_mode == "time_energy":
             energy = energy / step_size
-        task_q = (
-            radius_square
-            + self.activity_gain.to(p) * energy
-        ).clamp(1.0, 4.0)
+        task_q = (radius_square + self.activity_gain.to(p) * energy).clamp(1.0, 4.0)
         task_polar = direction * task_q.sqrt()
 
         # Exact gradient flow for R(q)=lambda/2*(q-1)^2 over time step_size:
@@ -250,8 +254,65 @@ class PolarAmpWidth(Kernel):
         regularized_q = 1.0 / (1.0 - activity * decay)
         regularized_polar = task_polar * (regularized_q / task_q).sqrt()
 
-        result = p + displacement
-        return torch.cat((regularized_polar, result[:, 2:]), dim=-1)
+        _, input_p, output_p = self._split(input_chart, output_chart, p)
+        _, input_d, output_d = self._split(
+            input_chart,
+            output_chart,
+            displacement,
+        )
+        updated_input = self.profile.apply_parameter_update(
+            input_chart,
+            input_p,
+            input_d,
+        )
+        updated_output = self.profile.apply_parameter_update(
+            output_chart,
+            output_p,
+            output_d,
+        )
+        return torch.cat((regularized_polar, updated_input, updated_output), dim=-1)
+
+    def project_parameter_gradient(
+        self,
+        input_chart: Chart,
+        output_chart: Chart,
+        p: Tensor,
+        gradient: Tensor,
+    ) -> Tensor:
+        _, input_p, output_p = self._split(input_chart, output_chart, p)
+        polar_g, input_g, output_g = self._split(
+            input_chart,
+            output_chart,
+            gradient,
+        )
+        return torch.cat(
+            (
+                polar_g,
+                self.profile.project_gradient(input_chart, input_p, input_g),
+                self.profile.project_gradient(output_chart, output_p, output_g),
+            ),
+            dim=-1,
+        )
+
+    def transport_parameter_state(
+        self,
+        input_chart: Chart,
+        output_chart: Chart,
+        old: Tensor,
+        new: Tensor,
+        state: Tensor,
+    ) -> Tensor:
+        _, old_i, old_o = self._split(input_chart, output_chart, old)
+        _, new_i, new_o = self._split(input_chart, output_chart, new)
+        polar_s, state_i, state_o = self._split(input_chart, output_chart, state)
+        return torch.cat(
+            (
+                polar_s,
+                self.profile.transport_state(input_chart, old_i, new_i, state_i),
+                self.profile.transport_state(output_chart, old_o, new_o, state_o),
+            ),
+            dim=-1,
+        )
 
     def _split(
         self,

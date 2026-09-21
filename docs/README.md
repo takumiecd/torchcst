@@ -5,6 +5,7 @@ the supported continuous-only optimizer surface. Experiment runners and reports 
 [cst-experiments repository](https://github.com/takumiecd/cst-experiments):
 
 - [normalized-optimizer.ja.md](normalized-optimizer.ja.md) — composable normalized optimizers: LinearJGHAtomGrad, independent numerator/denominator moments, replaceable solvers, and elementwise box updates;
+- [chart-geometry.ja.md](chart-geometry.ja.md) — Chart/Geometry/Profile/Kernel/optimizerの責務分割、球面retraction、storage幅とintrinsic自由度;
 - [optimizer-selection.ja.md](optimizer-selection.ja.md) — purpose-based optimizer choice, the Triweight + Polar MNIST comparison, fixed-LR best practices, and retained optimizer API;
 - [parameter-adam.ja.md](parameter-adam.ja.md) — parameter-coordinate AdamW path and its bounded state.
 

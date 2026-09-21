@@ -1,7 +1,7 @@
 """Stateless interpretations of opaque atom coordinates."""
 
 from .amplitude import Amplitude
-from .amplitude_bandwidth import AmpWidth, AmplitudeBandwidthSeparable
+from .amplitude_bandwidth import AmplitudeBandwidthSeparable, AmpWidth
 from .base import AtomInit, Kernel, Profile
 from .compact import Triweight, WendlandC2
 from .gaussian import Gaussian

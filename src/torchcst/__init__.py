@@ -1,7 +1,7 @@
 """Fixed-shape continuous operators for PyTorch."""
 
 from .atoms import Atoms
-from .geometry import Chart
+from .geometry import Chart, EuclideanGeometry, Geometry, SphereGeometry
 from .kernels import (
     Amplitude,
     AmplitudeBandwidthSeparable,
@@ -59,13 +59,16 @@ __all__ = [
     "CSTQuadraticSGD",
     "CSTRMSProp",
     "Chart",
+    "EuclideanGeometry",
     "Gaussian",
+    "Geometry",
     "Kernel",
     "NormalizedOptimizerConfig",
     "PolarAmpWidth",
     "Profile",
     "QuadraticOptimizerConfig",
     "Separable",
+    "SphereGeometry",
     "Triweight",
     "WendlandC2",
 ]

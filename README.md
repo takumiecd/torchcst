@@ -245,13 +245,23 @@ an observed peak-memory measurement.
 
 ### `Chart`
 
-`Chart` stores the fixed observation coordinates used by a CST site. Charts are
-currently required to be frozen for optimizer-backed training.
+`Chart` stores fixed observation sites together with the geometry in which
+those sites and atom centers live. Euclidean geometry remains the default;
+embedded geometries distinguish their stored coordinate width from their true
+degrees of freedom. Charts are currently required to be frozen for
+optimizer-backed training.
 
 ```python
 pixels = Chart.grid((28, 28), spacing=2 / 27)
 channels = Chart.linspace(64, spacing=2 / 63)
+spherical = Chart.sphere(64, intrinsic_dim=2)  # S^2 stored in R^3
 ```
+
+`chart.embedding_dim` is the width stored in an atom row and
+`chart.intrinsic_dim` is the number of geometric degrees of freedom. A
+`SphereGeometry(d)` therefore stores `d + 1` coordinates while contributing
+`d` degrees of freedom. Geometry owns distance, tangent projection, retraction,
+and vector transport; it does not own kernel bandwidth or normalization.
 
 ### `Atoms`
 
@@ -265,7 +275,10 @@ fixed.
 A kernel maps each atom coordinate row to an operator contribution. Kernels may
 also define factorized execution and a kernel-specific parameter update. For
 example, `PolarAmpWidth` separates angular amplitude motion from radial
-bandwidth activity.
+bandwidth activity. Profiles ask each Chart for distances and center updates,
+while the kernel owns the layout of the complete opaque `p` row. Consequently,
+`kernel.parameter_dim(...)` reports stored width and
+`kernel.parameter_dof(...)` reports intrinsic degrees of freedom.
 
 ### `CSTLinear`
 

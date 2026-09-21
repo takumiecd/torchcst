@@ -31,37 +31,13 @@ class _CompactRadialProfile(Profile):
         self.register_buffer("sigma", value)
 
     def parameter_dim(self, chart: Chart) -> int:
-        return chart.dim
+        return chart.embedding_dim
+
+    def parameter_dof(self, chart: Chart) -> int:
+        return chart.intrinsic_dim
 
     def initialize(self, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
-        if isinstance(atoms, bool) or not isinstance(atoms, int):
-            raise TypeError("atoms must be an integer")
-        if atoms < 1:
-            raise ValueError("atoms must be positive")
-        if mode == "balanced":
-            indices = (
-                torch.linspace(
-                    0,
-                    chart.features - 1,
-                    atoms,
-                    device=chart.coordinates.device,
-                )
-                .round()
-                .to(dtype=torch.long)
-            )
-            return chart.coordinates.index_select(0, indices)
-        if mode != "uniform":
-            raise ValueError("mode must be 'balanced' or 'uniform'")
-
-        low = chart.coordinates.amin(dim=0)
-        high = chart.coordinates.amax(dim=0)
-        unit = torch.rand(
-            atoms,
-            chart.dim,
-            device=chart.coordinates.device,
-            dtype=chart.coordinates.dtype,
-        )
-        return low + unit * (high - low)
+        return chart.initialize_centers(atoms, mode=mode)
 
     def evaluate(self, chart: Chart, p: Tensor) -> Tensor:
         precision = self.sigma.reciprocal().square()
@@ -120,9 +96,29 @@ class _CompactRadialProfile(Profile):
         if precision.ndim == 1 and precision.shape != (p.shape[0],):
             raise ValueError("precision must be scalar or have shape [atoms]")
         precision = precision.to(device=p.device, dtype=p.dtype)
-        offset = chart.coordinates.unsqueeze(-2) - p.unsqueeze(-3)
-        squared = offset.square().sum(dim=-1)
+        offset = chart.center_offsets(p)
+        squared = chart.squared_distance(p)
         return offset, squared, precision
+
+    def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
+        return chart.geometry.project_tangent(p, gradient)
+
+    def apply_parameter_update(
+        self,
+        chart: Chart,
+        p: Tensor,
+        displacement: Tensor,
+    ) -> Tensor:
+        return chart.geometry.retract(p, displacement)
+
+    def transport_state(
+        self,
+        chart: Chart,
+        old: Tensor,
+        new: Tensor,
+        state: Tensor,
+    ) -> Tensor:
+        return chart.geometry.transport(old, new, state)
 
     def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
         raise NotImplementedError

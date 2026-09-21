@@ -1,7 +1,9 @@
 """Parameter-coordinate AdamW with an optional finite-horizon cosine schedule.
 
-CST moments have exactly the atom-table shape. No representation derivatives,
-visible moments, Gram matrices, or transport frames are constructed.
+CST moments have exactly the atom-table shape. Kernels may project gradients,
+retract updates, and transport the vector first moment for constrained chart
+geometries. No representation derivatives, visible moments, or Gram matrices
+are constructed.
 """
 
 from __future__ import annotations
@@ -139,6 +141,19 @@ class CSTParameterAdam(torch.optim.AdamW):
         active = [
             any(p.grad is not None for p in g["params"]) for g in self.param_groups
         ]
+        with torch.no_grad():
+            for site in self._cst_sites:
+                point = site.atoms.p
+                if point.grad is None:
+                    continue
+                projected = site.kernel.project_parameter_gradient(
+                    *site.cst_charts(),
+                    point,
+                    point.grad,
+                )
+                if projected.shape != point.shape:
+                    raise ValueError("kernel projected gradient has the wrong shape")
+                point.grad.copy_(projected)
         # Validate all gradients before Adam mutates any group. No dense visible
         # observation scope or derivative program is installed by this optimizer.
         for group in self.param_groups:
@@ -152,9 +167,7 @@ class CSTParameterAdam(torch.optim.AdamW):
                     if not bool(torch.isfinite(grad).all()):
                         raise FloatingPointError("non-finite parameter gradient")
         base_rates = [group["lr"] for group in self.param_groups]
-        old_points = {
-            site: site.atoms.p.detach().clone() for site in self._cst_sites
-        }
+        old_points = {site: site.atoms.p.detach().clone() for site in self._cst_sites}
         scheduled_cst_rate = base_rates[0] * self._rate_scale(self.param_groups[0])
         try:
             for group, rate in zip(self.param_groups, base_rates):
@@ -177,6 +190,17 @@ class CSTParameterAdam(torch.optim.AdamW):
                 )
                 if not bool(torch.isfinite(updated).all()):
                     raise FloatingPointError("kernel parameter update must be finite")
+                first_moment = self.state[point].get("exp_avg")
+                if first_moment is not None:
+                    transported = site.kernel.transport_parameter_state(
+                        *site.cst_charts(),
+                        old,
+                        updated,
+                        first_moment,
+                    )
+                    if transported.shape != first_moment.shape:
+                        raise ValueError("kernel transported state has the wrong shape")
+                    first_moment.copy_(transported)
                 point.copy_(updated)
         for group, used in zip(self.param_groups, active):
             group["schedule_step"] += int(used)
