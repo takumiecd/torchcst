@@ -16,10 +16,9 @@ def _double_profile(factory, sigma: float):
     return factory(sigma).to(dtype=torch.float64)
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
-def test_compact_columns_are_l2_normalized_or_zero(factory) -> None:
+def test_wendland_columns_are_l2_normalized_or_zero() -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1).double())
-    profile = _double_profile(factory, 0.5)
+    profile = _double_profile(WendlandC2, 0.5)
     p = torch.tensor([[0.0], [8.0]], dtype=torch.float64)
 
     values = profile.evaluate(chart, p)
@@ -47,8 +46,24 @@ def test_triweight_matches_the_unnormalized_polynomial() -> None:
     p = torch.tensor([[0.0]], dtype=torch.float64)
 
     raw = torch.tensor([1.0, 0.75**3, 0.0], dtype=torch.float64)
-    expected = raw / torch.linalg.vector_norm(raw)
-    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
+    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], raw)
+
+
+def test_raw_triweight_retains_one_site_center_and_width_derivatives() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [2.0]], dtype=torch.float64))
+    profile = Triweight(1.0).double()
+    center = torch.tensor([[0.25]], dtype=torch.float64)
+    precision = torch.ones(1, dtype=torch.float64)
+
+    values, centers, widths = profile.tangent_with_precision(
+        chart, center, precision
+    )
+
+    assert torch.count_nonzero(values[:, 0]) == 1
+    assert centers[0, 0, 0] != 0
+    assert widths[0, 0] != 0
+    torch.testing.assert_close(centers[1], torch.zeros_like(centers[1]))
+    torch.testing.assert_close(widths[1], torch.zeros_like(widths[1]))
 
 
 @pytest.mark.parametrize("factory", [WendlandC2, Triweight])
@@ -198,10 +213,11 @@ def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
         represented,
         torch.einsum("oa,ia->aoi", phi_output, phi_input),
     )
-    torch.testing.assert_close(
-        torch.linalg.vector_norm(represented.flatten(1), dim=1),
-        p[:, 0].abs(),
-    )
+    if factory is WendlandC2:
+        torch.testing.assert_close(
+            torch.linalg.vector_norm(represented.flatten(1), dim=1),
+            p[:, 0].abs(),
+        )
     hessian = torch.func.hessian(
         lambda atom: kernel.materialize_atoms(
             input_chart,

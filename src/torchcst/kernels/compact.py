@@ -11,12 +11,15 @@ from .base import AtomInit, Profile
 
 
 class _CompactRadialProfile(Profile):
-    """L2-normalized compact radial profile with support radius ``sigma``.
+    """Compact radial profile with support radius ``sigma``.
 
     ``evaluate_with_precision`` uses the same convention as ``Gaussian``:
     the support radius is ``R = precision^{-1/2}``. Outside ``r = d/R >= 1``
-    the unnormalized value is identically zero.
+    the raw value is identically zero. Subclasses may retain the legacy
+    discrete column normalization when it is part of their profile semantics.
     """
+
+    normalize_columns = True
 
     def __init__(self, sigma: float | Tensor) -> None:
         super().__init__()
@@ -51,11 +54,19 @@ class _CompactRadialProfile(Profile):
     ) -> Tensor:
         _, squared, precision = self._geometry(chart, p, precision)
         raw = self._unnormalized_from_squared(squared, precision)
+        if not self.normalize_columns:
+            return raw
         values, _ = _l2_column_scale(raw)
         return values
 
     def extra_repr(self) -> str:
-        return f"sigma={self.sigma.item():g}"
+        return (
+            f"sigma={self.sigma.item():g}, "
+            f"normalize_columns={self.normalize_columns}"
+        )
+
+    def tangent_config(self) -> tuple:
+        return (self.normalize_columns,)
 
     @property
     def supports_tangent(self) -> bool:
@@ -72,14 +83,18 @@ class _CompactRadialProfile(Profile):
 
         offset, squared, precision = self._geometry(chart, p, precision)
         raw = self._unnormalized_from_squared(squared, precision)
+        raw_centers = self._d_raw_d_center(offset, squared, precision)
+        raw_widths = self._d_raw_d_precision(squared, precision)
+        if not self.normalize_columns:
+            return raw, raw_centers, raw_widths
         # Project ∂u in the L2 gauge using 1/||u||, never 1/u. Compact
         # profiles vanish at r=1, so du/u ~ 1/gap diverges while
         # (u/||u||)(du/u) = du/||u|| stays finite. Empty columns stay
         # exactly zero; barely-supported ones use a floor so GH is finite.
         values, scale = _l2_column_scale(raw)
         scale = scale.reshape(1, -1)
-        dpsi_dc = self._d_raw_d_center(offset, squared, precision) * scale.unsqueeze(-1)
-        dpsi_dprec = self._d_raw_d_precision(squared, precision) * scale
+        dpsi_dc = raw_centers * scale.unsqueeze(-1)
+        dpsi_dprec = raw_widths * scale
         center_mean = (values.unsqueeze(-1) * dpsi_dc).sum(0, keepdim=True)
         centers = dpsi_dc - values.unsqueeze(-1) * center_mean
         precision_mean = (values * dpsi_dprec).sum(0, keepdim=True)
@@ -160,7 +175,14 @@ class WendlandC2(_CompactRadialProfile):
 
 
 class Triweight(_CompactRadialProfile):
-    r"""The triweight profile \((1-r^2)_+^3\), L2-normalized on the chart."""
+    r"""The raw triweight profile \((1-r^2)_+^3\).
+
+    Unlike the legacy discrete L2-normalized form, a column supported by one
+    site retains its distance and bandwidth derivatives instead of collapsing
+    to a constant one-hot vector.
+    """
+
+    normalize_columns = False
 
     def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
         return (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0).pow(3)
