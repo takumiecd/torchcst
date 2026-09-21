@@ -43,6 +43,7 @@ class PolarAmpWidth(Kernel):
         sigma_max: float,
         w_c: float,
         kappa: float = 3.0,
+        lower_kappa: float | None = None,
         alpha_init: float = 0.0,
         activity_gain: float = 1.0,
         activity_mode: Literal["finite_chord", "time_energy"] = "finite_chord",
@@ -55,6 +56,11 @@ class PolarAmpWidth(Kernel):
         maximum = self._positive_scalar(sigma_max, name="sigma_max")
         crossover = self._positive_scalar(w_c, name="w_c")
         separation = self._positive_scalar(kappa, name="kappa")
+        lower_separation = (
+            separation.detach().clone()
+            if lower_kappa is None
+            else self._positive_scalar(lower_kappa, name="lower_kappa")
+        )
         initial_alpha = self._unit_interval_scalar(alpha_init, name="alpha_init")
         gain = self._positive_scalar(activity_gain, name="activity_gain")
         if activity_mode not in ("finite_chord", "time_energy"):
@@ -91,6 +97,7 @@ class PolarAmpWidth(Kernel):
         self.register_buffer("sigma_max", maximum)
         self.register_buffer("w_c", crossover)
         self.register_buffer("kappa", separation)
+        self.register_buffer("lower_kappa", lower_separation)
         self.register_buffer("alpha_init", initial_alpha)
         self.register_buffer("activity_gain", gain)
         self.activity_mode = activity_mode
@@ -360,7 +367,9 @@ class PolarAmpWidth(Kernel):
         delta = self.sigma_max.to(amplitude) - self.sigma_min.to(amplitude)
         kappa = self.kappa.to(amplitude)
         upper = self.sigma_min.to(amplitude) + delta * kappa / (kappa + x)
-        lower = self.sigma_min.to(amplitude) + delta / (1.0 + kappa * x)
+        lower = self.sigma_min.to(amplitude) + delta / (
+            1.0 + self.lower_kappa.to(amplitude) * x
+        )
         sigma = lower + alpha * (upper - lower)
         return sigma, lower, upper
 
@@ -400,6 +409,7 @@ class PolarAmpWidth(Kernel):
             f"sigma_min={self.sigma_min.item():g}, "
             f"sigma_max={self.sigma_max.item():g}, "
             f"w_c={self.w_c.item():g}, kappa={self.kappa.item():g}, "
+            f"lower_kappa={self.lower_kappa.item():g}, "
             f"alpha_init={self.alpha_init.item():g}, "
             f"activity_gain={self.activity_gain.item():g}, "
             f"activity_mode={self.activity_mode!r}, "

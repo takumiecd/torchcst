@@ -132,6 +132,32 @@ def test_bandwidth_interpolates_between_rational_bounds() -> None:
     )
 
 
+def test_lower_kappa_widens_only_lower_bandwidth_bound() -> None:
+    input_chart, output_chart = charts()
+    baseline = kernel().to(dtype=torch.float64)
+    widened = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        lower_kappa=1.0,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    polar = torch.tensor([[0.25, 3**0.5 / 2]], dtype=torch.float64)
+    p = torch.cat((polar, torch.zeros(1, 2, dtype=torch.float64)), dim=-1)
+
+    baseline_lower, baseline_upper = baseline.bandwidth_bounds(
+        input_chart, output_chart, p
+    )
+    widened_lower, widened_upper = widened.bandwidth_bounds(
+        input_chart, output_chart, p
+    )
+
+    assert torch.all(widened_lower > baseline_lower)
+    torch.testing.assert_close(widened_upper, baseline_upper)
+
+
 def test_alpha_clamp_keeps_sigma_inside_bounds_for_arbitrary_radius() -> None:
     input_chart, output_chart = charts()
     value = kernel().to(dtype=torch.float64)
@@ -404,6 +430,7 @@ def test_model_optimizer_uses_kernel_update_geometry() -> None:
         ({"amplitude_max": 0.0}, "amplitude_max"),
         ({"w_c": 0.0}, "w_c"),
         ({"kappa": 1.0}, "kappa"),
+        ({"lower_kappa": 0.0}, "lower_kappa"),
         ({"activity_gain": 0.0}, "activity_gain"),
         ({"alpha_init": -0.1}, "alpha_init"),
         ({"alpha_init": 1.1}, "alpha_init"),
