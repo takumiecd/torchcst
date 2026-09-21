@@ -174,6 +174,64 @@ class WendlandC2(_CompactRadialProfile):
         return -10.0 * squared * gap.pow(3)
 
 
+class Triangle(_CompactRadialProfile):
+    r"""The raw radial triangle profile :math:`(1-r)_+`.
+
+    This is the lowest-order compact radial profile.  Its center derivative
+    uses the finite zero subgradient at ``r = 0`` and is discontinuous at the
+    support boundary, so it is intended for first-order optimization only.
+    """
+
+    normalize_columns = False
+
+    def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
+        radial = _radial_from_squared(squared, precision)
+        return (1.0 - radial).clamp_min(0.0)
+
+    def _d_raw_d_center(
+        self, offset: Tensor, squared: Tensor, precision: Tensor
+    ) -> Tensor:
+        prec = precision.reshape(1, -1)
+        radial = _radial_from_squared(squared, precision)
+        active = radial < 1.0
+        slope = torch.where(active, prec / radial, torch.zeros_like(radial))
+        return slope.unsqueeze(-1) * offset
+
+    def _d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
+        radial = _radial_from_squared(squared, precision)
+        active = radial < 1.0
+        return torch.where(
+            active,
+            -0.5 * squared / radial,
+            torch.zeros_like(radial),
+        )
+
+
+class Biweight(_CompactRadialProfile):
+    r"""The raw biweight profile :math:`(1-r^2)_+^2`.
+
+    The value and first derivative vanish continuously at the support
+    boundary.  This is the minimum polynomial order in ``r^2`` suited to a
+    first-order optimizer without Triangle's boundary-gradient jump.
+    """
+
+    normalize_columns = False
+
+    def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
+        return (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0).square()
+
+    def _d_raw_d_center(
+        self, offset: Tensor, squared: Tensor, precision: Tensor
+    ) -> Tensor:
+        prec = precision.reshape(1, -1)
+        inside = (1.0 - squared * prec).clamp_min(0.0)
+        return (4.0 * inside * prec).unsqueeze(-1) * offset
+
+    def _d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
+        inside = (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0)
+        return -2.0 * squared * inside
+
+
 class Triweight(_CompactRadialProfile):
     r"""The raw triweight profile \((1-r^2)_+^3\).
 

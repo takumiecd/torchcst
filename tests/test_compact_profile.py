@@ -4,9 +4,11 @@ from torch.func import hessian, vmap
 
 from torchcst import (
     AmpWidth,
+    Biweight,
     Chart,
     Gaussian,
     Separable,
+    Triangle,
     Triweight,
     WendlandC2,
 )
@@ -49,9 +51,33 @@ def test_triweight_matches_the_unnormalized_polynomial() -> None:
     torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], raw)
 
 
-def test_raw_triweight_retains_one_site_center_and_width_derivatives() -> None:
+def test_triangle_matches_the_radial_hat() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    profile = _double_profile(Triangle, 1.0)
+    p = torch.tensor([[0.0]], dtype=torch.float64)
+
+    expected = torch.tensor(
+        [1.0 - torch.finfo(torch.float64).eps**0.5, 0.5, 0.0],
+        dtype=torch.float64,
+    )
+    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
+
+
+def test_biweight_matches_the_unnormalized_polynomial() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    profile = _double_profile(Biweight, 1.0)
+    p = torch.tensor([[0.0]], dtype=torch.float64)
+
+    expected = torch.tensor([1.0, 0.75**2, 0.0], dtype=torch.float64)
+    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
+
+
+@pytest.mark.parametrize("factory", [Triangle, Biweight, Triweight])
+def test_raw_compact_profile_retains_one_site_center_and_width_derivatives(
+    factory,
+) -> None:
     chart = Chart.points(torch.tensor([[0.0], [2.0]], dtype=torch.float64))
-    profile = Triweight(1.0).double()
+    profile = factory(1.0).double()
     center = torch.tensor([[0.25]], dtype=torch.float64)
     precision = torch.ones(1, dtype=torch.float64)
 
@@ -66,7 +92,7 @@ def test_raw_triweight_retains_one_site_center_and_width_derivatives() -> None:
     torch.testing.assert_close(widths[1], torch.zeros_like(widths[1]))
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_separated_compact_atoms_have_zero_inner_product(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
     compact = _double_profile(factory, 0.35)
@@ -87,7 +113,7 @@ def test_separated_compact_atoms_have_zero_inner_product(factory) -> None:
     assert gaussian_gram[0, 1].abs() > 1e-6
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_compact_tangent_is_finite_on_the_support_boundary(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
@@ -117,7 +143,7 @@ def test_wendland_mnist_grid_tangent_is_finite_float32() -> None:
     assert torch.isfinite(widths).all()
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Biweight, Triweight])
 def test_compact_autograd_hessian_is_finite_inside_boundary_and_outside(
     factory,
 ) -> None:
@@ -161,7 +187,7 @@ def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
     assert torch.isfinite(blocks).all()
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_compact_tangent_matches_autograd(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 11).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
@@ -186,14 +212,14 @@ def test_compact_tangent_matches_autograd(factory) -> None:
         torch.testing.assert_close(widths[:, atom], jacobian_prec[:, atom, atom])
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_compact_sigma_must_be_finite_and_positive(factory) -> None:
     for sigma in (0.0, -1.0, float("inf")):
         with pytest.raises(ValueError, match="finite and positive"):
             factory(sigma)
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
     kernel = AmpWidth(
         sigma_min=0.80,
