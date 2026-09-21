@@ -72,6 +72,22 @@ def test_biweight_matches_the_unnormalized_polynomial() -> None:
     torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
 
 
+def test_biweight_can_opt_into_discrete_column_normalization() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    profile = Biweight(1.0, normalize_columns=True).double()
+    p = torch.tensor([[0.0]], dtype=torch.float64)
+
+    raw = torch.tensor([1.0, 0.75**2, 0.0], dtype=torch.float64)
+    expected = raw / torch.linalg.vector_norm(raw)
+    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
+    assert "normalize_columns=True" in repr(profile)
+
+
+def test_compact_normalization_override_must_be_boolean() -> None:
+    with pytest.raises(TypeError, match="bool or None"):
+        Biweight(1.0, normalize_columns=1)
+
+
 @pytest.mark.parametrize("factory", [Triangle, Biweight, Triweight])
 def test_raw_compact_profile_retains_one_site_center_and_width_derivatives(
     factory,

@@ -21,8 +21,17 @@ class _CompactRadialProfile(Profile):
 
     normalize_columns = True
 
-    def __init__(self, sigma: float | Tensor) -> None:
+    def __init__(
+        self,
+        sigma: float | Tensor,
+        *,
+        normalize_columns: bool | None = None,
+    ) -> None:
         super().__init__()
+        if normalize_columns is not None and not isinstance(normalize_columns, bool):
+            raise TypeError("normalize_columns must be a bool or None")
+        if normalize_columns is not None:
+            self.normalize_columns = normalize_columns
         value = torch.as_tensor(sigma)
         if value.numel() != 1:
             raise ValueError("sigma must be a scalar")
