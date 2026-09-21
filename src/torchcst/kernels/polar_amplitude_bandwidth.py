@@ -44,6 +44,7 @@ class PolarAmpWidth(Kernel):
         w_c: float,
         kappa: float = 3.0,
         lower_kappa: float | None = None,
+        upper_floor: float | None = None,
         alpha_init: float = 0.0,
         activity_gain: float = 1.0,
         activity_mode: Literal["finite_chord", "time_energy"] = "finite_chord",
@@ -61,6 +62,11 @@ class PolarAmpWidth(Kernel):
             if lower_kappa is None
             else self._positive_scalar(lower_kappa, name="lower_kappa")
         )
+        exploration_floor = (
+            minimum.detach().clone()
+            if upper_floor is None
+            else self._positive_scalar(upper_floor, name="upper_floor")
+        )
         initial_alpha = self._unit_interval_scalar(alpha_init, name="alpha_init")
         gain = self._positive_scalar(activity_gain, name="activity_gain")
         if activity_mode not in ("finite_chord", "time_energy"):
@@ -70,6 +76,8 @@ class PolarAmpWidth(Kernel):
         )
         if maximum < minimum:
             raise ValueError("sigma_max must not be smaller than sigma_min")
+        if exploration_floor < minimum or exploration_floor > maximum:
+            raise ValueError("upper_floor must be in [sigma_min, sigma_max]")
         if separation <= 1:
             raise ValueError("kappa must be greater than 1")
 
@@ -98,6 +106,7 @@ class PolarAmpWidth(Kernel):
         self.register_buffer("w_c", crossover)
         self.register_buffer("kappa", separation)
         self.register_buffer("lower_kappa", lower_separation)
+        self.register_buffer("upper_floor", exploration_floor)
         self.register_buffer("alpha_init", initial_alpha)
         self.register_buffer("activity_gain", gain)
         self.activity_mode = activity_mode
@@ -367,6 +376,10 @@ class PolarAmpWidth(Kernel):
         delta = self.sigma_max.to(amplitude) - self.sigma_min.to(amplitude)
         kappa = self.kappa.to(amplitude)
         upper = self.sigma_min.to(amplitude) + delta * kappa / (kappa + x)
+        # Keep radial activity meaningful for high-amplitude atoms.  Without
+        # this floor U(w) converges to sigma_min, so alpha loses all authority
+        # precisely when a strong atom becomes trapped on a single site.
+        upper = torch.maximum(upper, self.upper_floor.to(amplitude))
         lower = self.sigma_min.to(amplitude) + delta / (
             1.0 + self.lower_kappa.to(amplitude) * x
         )
@@ -410,6 +423,7 @@ class PolarAmpWidth(Kernel):
             f"sigma_max={self.sigma_max.item():g}, "
             f"w_c={self.w_c.item():g}, kappa={self.kappa.item():g}, "
             f"lower_kappa={self.lower_kappa.item():g}, "
+            f"upper_floor={self.upper_floor.item():g}, "
             f"alpha_init={self.alpha_init.item():g}, "
             f"activity_gain={self.activity_gain.item():g}, "
             f"activity_mode={self.activity_mode!r}, "

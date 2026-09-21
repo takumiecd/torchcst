@@ -158,6 +158,31 @@ def test_lower_kappa_widens_only_lower_bandwidth_bound() -> None:
     torch.testing.assert_close(widened_upper, baseline_upper)
 
 
+def test_upper_floor_preserves_alpha_authority_at_high_amplitude() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.01,
+        kappa=3.0,
+        upper_floor=0.2,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    # Maximum angular amplitude with alpha = 0, 0.5, and 1.
+    radii = torch.tensor([1.0, 2.5**0.5, 2.0], dtype=torch.float64)
+    polar = torch.stack((radii, torch.zeros_like(radii)), dim=-1)
+    p = torch.cat((polar, torch.zeros(3, 2, dtype=torch.float64)), dim=-1)
+
+    lower, upper = value.bandwidth_bounds(input_chart, output_chart, p)
+    sigma = value.bandwidth_sigma(input_chart, output_chart, p)
+
+    torch.testing.assert_close(upper, torch.full_like(upper, 0.2))
+    torch.testing.assert_close(sigma[0], lower[0])
+    torch.testing.assert_close(sigma[1], (lower[1] + upper[1]) / 2)
+    torch.testing.assert_close(sigma[2], upper[2])
+
+
 def test_alpha_clamp_keeps_sigma_inside_bounds_for_arbitrary_radius() -> None:
     input_chart, output_chart = charts()
     value = kernel().to(dtype=torch.float64)
