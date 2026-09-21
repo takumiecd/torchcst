@@ -183,6 +183,32 @@ def test_upper_floor_preserves_alpha_authority_at_high_amplitude() -> None:
     torch.testing.assert_close(sigma[2], upper[2])
 
 
+def test_smaller_upper_decay_power_delays_only_upper_collapse() -> None:
+    input_chart, output_chart = charts()
+    baseline = kernel().to(dtype=torch.float64)
+    delayed = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        upper_decay_power=0.75,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    polar = torch.tensor([[0.75, (1 - 0.75**2) ** 0.5]], dtype=torch.float64)
+    p = torch.cat((polar, torch.zeros(1, 2, dtype=torch.float64)), dim=-1)
+
+    baseline_lower, baseline_upper = baseline.bandwidth_bounds(
+        input_chart, output_chart, p
+    )
+    delayed_lower, delayed_upper = delayed.bandwidth_bounds(
+        input_chart, output_chart, p
+    )
+
+    torch.testing.assert_close(delayed_lower, baseline_lower)
+    assert torch.all(delayed_upper > baseline_upper)
+
+
 def test_alpha_clamp_keeps_sigma_inside_bounds_for_arbitrary_radius() -> None:
     input_chart, output_chart = charts()
     value = kernel().to(dtype=torch.float64)
@@ -456,6 +482,8 @@ def test_model_optimizer_uses_kernel_update_geometry() -> None:
         ({"w_c": 0.0}, "w_c"),
         ({"kappa": 1.0}, "kappa"),
         ({"lower_kappa": 0.0}, "lower_kappa"),
+        ({"upper_decay_power": 0.0}, "upper_decay_power"),
+        ({"upper_decay_power": 1.1}, "upper_decay_power"),
         ({"activity_gain": 0.0}, "activity_gain"),
         ({"alpha_init": -0.1}, "alpha_init"),
         ({"alpha_init": 1.1}, "alpha_init"),

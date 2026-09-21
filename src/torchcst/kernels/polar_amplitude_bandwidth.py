@@ -44,6 +44,7 @@ class PolarAmpWidth(Kernel):
         w_c: float,
         kappa: float = 3.0,
         lower_kappa: float | None = None,
+        upper_decay_power: float = 1.0,
         upper_floor: float | None = None,
         alpha_init: float = 0.0,
         activity_gain: float = 1.0,
@@ -61,6 +62,9 @@ class PolarAmpWidth(Kernel):
             separation.detach().clone()
             if lower_kappa is None
             else self._positive_scalar(lower_kappa, name="lower_kappa")
+        )
+        upper_power = self._positive_scalar(
+            upper_decay_power, name="upper_decay_power"
         )
         exploration_floor = (
             minimum.detach().clone()
@@ -80,6 +84,8 @@ class PolarAmpWidth(Kernel):
             raise ValueError("upper_floor must be in [sigma_min, sigma_max]")
         if separation <= 1:
             raise ValueError("kappa must be greater than 1")
+        if upper_power > 1:
+            raise ValueError("upper_decay_power must not be greater than 1")
 
         if profile is None:
             profile = Gaussian(minimum)
@@ -106,6 +112,7 @@ class PolarAmpWidth(Kernel):
         self.register_buffer("w_c", crossover)
         self.register_buffer("kappa", separation)
         self.register_buffer("lower_kappa", lower_separation)
+        self.register_buffer("upper_decay_power", upper_power)
         self.register_buffer("upper_floor", exploration_floor)
         self.register_buffer("alpha_init", initial_alpha)
         self.register_buffer("activity_gain", gain)
@@ -375,7 +382,8 @@ class PolarAmpWidth(Kernel):
         x = (amplitude / self.w_c.to(amplitude)).square()
         delta = self.sigma_max.to(amplitude) - self.sigma_min.to(amplitude)
         kappa = self.kappa.to(amplitude)
-        upper = self.sigma_min.to(amplitude) + delta * kappa / (kappa + x)
+        upper_x = x.pow(self.upper_decay_power.to(amplitude))
+        upper = self.sigma_min.to(amplitude) + delta * kappa / (kappa + upper_x)
         # Keep radial activity meaningful for high-amplitude atoms.  Without
         # this floor U(w) converges to sigma_min, so alpha loses all authority
         # precisely when a strong atom becomes trapped on a single site.
@@ -423,6 +431,7 @@ class PolarAmpWidth(Kernel):
             f"sigma_max={self.sigma_max.item():g}, "
             f"w_c={self.w_c.item():g}, kappa={self.kappa.item():g}, "
             f"lower_kappa={self.lower_kappa.item():g}, "
+            f"upper_decay_power={self.upper_decay_power.item():g}, "
             f"upper_floor={self.upper_floor.item():g}, "
             f"alpha_init={self.alpha_init.item():g}, "
             f"activity_gain={self.activity_gain.item():g}, "
