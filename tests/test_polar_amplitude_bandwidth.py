@@ -128,8 +128,76 @@ def test_bandwidth_interpolates_between_rational_bounds() -> None:
     torch.testing.assert_close(lower, torch.full_like(lower, 0.325))
     torch.testing.assert_close(upper, torch.full_like(upper, 0.775))
     torch.testing.assert_close(
-        sigma, torch.tensor([0.325, 0.55, 0.775], dtype=torch.float64)
+        sigma,
+        torch.tensor([0.325, (0.325 * 0.775) ** 0.5, 0.775], dtype=torch.float64),
     )
+
+
+def test_birth_width_separates_zero_amplitude_lower_and_upper_bounds() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_birth=0.25,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    radii = torch.tensor([1.0, 2.5**0.5, 2.0], dtype=torch.float64)
+    polar = torch.stack((torch.zeros_like(radii), radii), dim=-1)
+    p = torch.cat((polar, torch.zeros(3, 2, dtype=torch.float64)), dim=-1)
+
+    lower, upper = value.bandwidth_bounds(input_chart, output_chart, p)
+    sigma = value.bandwidth_sigma(input_chart, output_chart, p)
+
+    torch.testing.assert_close(lower, torch.full_like(lower, 0.25))
+    torch.testing.assert_close(upper, torch.ones_like(upper))
+    torch.testing.assert_close(
+        sigma,
+        torch.tensor([0.25, 0.5, 1.0], dtype=torch.float64),
+    )
+
+
+def test_input_and_output_bandwidths_can_be_configured_independently() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        input_sigma_min=0.1,
+        input_sigma_birth=0.2,
+        input_sigma_max=0.8,
+        output_sigma_min=0.15,
+        output_sigma_birth=0.3,
+        output_sigma_max=1.2,
+        w_c=0.5,
+        kappa=3.0,
+        radial_regularization=0.2,
+        profile=None,
+    ).to(dtype=torch.float64)
+    polar = torch.tensor([[0.0, 2.5**0.5]], dtype=torch.float64)
+    p = torch.cat((polar, torch.zeros(1, 2, dtype=torch.float64)), dim=-1)
+
+    sigma_input, sigma_output = value.bandwidth_sigmas(input_chart, output_chart, p)
+    input_bounds, output_bounds = value.bandwidth_bounds_by_side(
+        input_chart, output_chart, p
+    )
+
+    torch.testing.assert_close(sigma_input, torch.tensor([0.4], dtype=torch.float64))
+    torch.testing.assert_close(sigma_output, torch.tensor([0.6], dtype=torch.float64))
+    torch.testing.assert_close(
+        input_bounds[0], torch.tensor([0.2], dtype=torch.float64)
+    )
+    torch.testing.assert_close(
+        input_bounds[1], torch.tensor([0.8], dtype=torch.float64)
+    )
+    torch.testing.assert_close(
+        output_bounds[0], torch.tensor([0.3], dtype=torch.float64)
+    )
+    torch.testing.assert_close(
+        output_bounds[1], torch.tensor([1.2], dtype=torch.float64)
+    )
+    with pytest.raises(ValueError, match="by-side"):
+        value.bandwidth_sigma(input_chart, output_chart, p)
 
 
 def test_lower_kappa_widens_only_lower_bandwidth_bound() -> None:
@@ -236,7 +304,7 @@ def test_upper_floor_preserves_alpha_authority_at_high_amplitude() -> None:
 
     torch.testing.assert_close(upper, torch.full_like(upper, 0.2))
     torch.testing.assert_close(sigma[0], lower[0])
-    torch.testing.assert_close(sigma[1], (lower[1] + upper[1]) / 2)
+    torch.testing.assert_close(sigma[1], (lower[1] * upper[1]).sqrt())
     torch.testing.assert_close(sigma[2], upper[2])
 
 

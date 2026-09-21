@@ -26,9 +26,11 @@ class PolarAmpWidth(Kernel):
 
     Consequently ``w`` is invariant to radial rescaling while ``alpha`` is
     invariant to angular motion.  The shared input/output bandwidth is
-    ``(1-alpha) L(w) + alpha U(w)``, where ``L`` and ``U`` meet at
-    ``sigma_max`` for zero amplitude and approach ``sigma_min`` as the
-    amplitude scale grows.
+    the geometric interpolation ``L(w) ** (1-alpha) * U(w) ** alpha``.
+    At zero amplitude, ``L`` starts at ``sigma_birth`` while ``U`` starts at
+    ``sigma_max``.  Both approach ``sigma_min`` as the amplitude scale grows.
+    Input and output charts may use independent bandwidth limits while sharing
+    the same amplitude and exploration clock.
 
     The hard clamp keeps every forward bandwidth inside its configured
     bounds under arbitrary optimizers.  Coordinates are initialized on the
@@ -39,8 +41,15 @@ class PolarAmpWidth(Kernel):
         self,
         *,
         amplitude_max: float,
-        sigma_min: float,
-        sigma_max: float,
+        sigma_min: float | None = None,
+        sigma_max: float | None = None,
+        sigma_birth: float | None = None,
+        input_sigma_min: float | None = None,
+        input_sigma_birth: float | None = None,
+        input_sigma_max: float | None = None,
+        output_sigma_min: float | None = None,
+        output_sigma_birth: float | None = None,
+        output_sigma_max: float | None = None,
         w_c: float,
         kappa: float = 3.0,
         lower_kappa: float | None = None,
@@ -55,8 +64,32 @@ class PolarAmpWidth(Kernel):
     ) -> None:
         super().__init__()
         maximum_amplitude = self._positive_scalar(amplitude_max, name="amplitude_max")
-        minimum = self._positive_scalar(sigma_min, name="sigma_min")
-        maximum = self._positive_scalar(sigma_max, name="sigma_max")
+        minimum_input, minimum_output = self._bandwidth_pair(
+            sigma_min,
+            input_sigma_min,
+            output_sigma_min,
+            name="sigma_min",
+        )
+        maximum_input, maximum_output = self._bandwidth_pair(
+            sigma_max,
+            input_sigma_max,
+            output_sigma_max,
+            name="sigma_max",
+        )
+        if (
+            sigma_birth is None
+            and input_sigma_birth is None
+            and output_sigma_birth is None
+        ):
+            birth_input = maximum_input.detach().clone()
+            birth_output = maximum_output.detach().clone()
+        else:
+            birth_input, birth_output = self._bandwidth_pair(
+                sigma_birth,
+                input_sigma_birth,
+                output_sigma_birth,
+                name="sigma_birth",
+            )
         crossover = self._positive_scalar(w_c, name="w_c")
         separation = self._positive_scalar(kappa, name="kappa")
         if lower_kappa is not None and lower_half_amplitude is not None:
@@ -75,13 +108,16 @@ class PolarAmpWidth(Kernel):
                 if lower_kappa is None
                 else self._positive_scalar(lower_kappa, name="lower_kappa")
             )
-        upper_power = self._positive_scalar(
-            upper_decay_power, name="upper_decay_power"
-        )
-        exploration_floor = (
-            minimum.detach().clone()
+        upper_power = self._positive_scalar(upper_decay_power, name="upper_decay_power")
+        exploration_floor_input = (
+            minimum_input.detach().clone()
             if upper_floor is None
             else self._positive_scalar(upper_floor, name="upper_floor")
+        )
+        exploration_floor_output = (
+            minimum_output.detach().clone()
+            if upper_floor is None
+            else exploration_floor_input.detach().clone()
         )
         initial_alpha = self._unit_interval_scalar(alpha_init, name="alpha_init")
         gain = self._positive_scalar(activity_gain, name="activity_gain")
@@ -90,17 +126,39 @@ class PolarAmpWidth(Kernel):
         regularization = self._nonnegative_scalar(
             radial_regularization, name="radial_regularization"
         )
-        if maximum < minimum:
-            raise ValueError("sigma_max must not be smaller than sigma_min")
-        if exploration_floor < minimum or exploration_floor > maximum:
-            raise ValueError("upper_floor must be in [sigma_min, sigma_max]")
+        for side, minimum, birth, maximum, floor in (
+            (
+                "input",
+                minimum_input,
+                birth_input,
+                maximum_input,
+                exploration_floor_input,
+            ),
+            (
+                "output",
+                minimum_output,
+                birth_output,
+                maximum_output,
+                exploration_floor_output,
+            ),
+        ):
+            if maximum < minimum:
+                raise ValueError(f"{side} sigma_max must not be smaller than sigma_min")
+            if birth < minimum or birth > maximum:
+                raise ValueError(
+                    f"{side} sigma_birth must be in [sigma_min, sigma_max]"
+                )
+            if floor < minimum or floor > maximum:
+                raise ValueError(
+                    f"{side} upper_floor must be in [sigma_min, sigma_max]"
+                )
         if separation <= 1:
             raise ValueError("kappa must be greater than 1")
         if upper_power > 1:
             raise ValueError("upper_decay_power must not be greater than 1")
 
         if profile is None:
-            profile = Gaussian(minimum)
+            profile = Gaussian(minimum_input)
         elif not isinstance(profile, Profile):
             raise TypeError("profile must implement the Profile contract")
         if not hasattr(profile, "evaluate_with_precision") or not hasattr(
@@ -113,19 +171,25 @@ class PolarAmpWidth(Kernel):
         if not hasattr(profile, "sigma"):
             raise TypeError("bandwidth profile must expose a sigma buffer")
         if not torch.allclose(
-            profile.sigma.detach().to(dtype=minimum.dtype).reshape(()),
-            minimum,
+            profile.sigma.detach().to(dtype=minimum_input.dtype).reshape(()),
+            minimum_input,
         ):
-            raise ValueError("profile.sigma must match sigma_min")
+            raise ValueError("profile.sigma must match input sigma_min")
 
         self.profile = profile
         self.register_buffer("amplitude_max", maximum_amplitude)
-        self.register_buffer("sigma_max", maximum)
+        self.register_buffer("sigma_min_input", minimum_input)
+        self.register_buffer("sigma_birth_input", birth_input)
+        self.register_buffer("sigma_max_input", maximum_input)
+        self.register_buffer("sigma_min_output", minimum_output)
+        self.register_buffer("sigma_birth_output", birth_output)
+        self.register_buffer("sigma_max_output", maximum_output)
         self.register_buffer("w_c", crossover)
         self.register_buffer("kappa", separation)
         self.register_buffer("lower_kappa", lower_separation)
         self.register_buffer("upper_decay_power", upper_power)
-        self.register_buffer("upper_floor", exploration_floor)
+        self.register_buffer("upper_floor_input", exploration_floor_input)
+        self.register_buffer("upper_floor_output", exploration_floor_output)
         self.register_buffer("alpha_init", initial_alpha)
         self.register_buffer("activity_gain", gain)
         self.activity_mode = activity_mode
@@ -133,7 +197,27 @@ class PolarAmpWidth(Kernel):
 
     @property
     def sigma_min(self) -> Tensor:
-        return self.profile.sigma
+        """Input-side minimum; use ``sigma_min_output`` for split limits."""
+
+        return self.sigma_min_input
+
+    @property
+    def sigma_birth(self) -> Tensor:
+        """Input-side birth width; use ``sigma_birth_output`` for output."""
+
+        return self.sigma_birth_input
+
+    @property
+    def sigma_max(self) -> Tensor:
+        """Input-side maximum; use ``sigma_max_output`` for split limits."""
+
+        return self.sigma_max_input
+
+    @property
+    def upper_floor(self) -> Tensor:
+        """Input-side upper floor retained as a compatibility alias."""
+
+        return self.upper_floor_input
 
     @property
     def lower_half_amplitude(self) -> Tensor:
@@ -201,15 +285,16 @@ class PolarAmpWidth(Kernel):
     ) -> tuple[Tensor, Tensor]:
         polar, input_p, output_p = self._split(input_chart, output_chart, p)
         amplitude, alpha = self._amplitude_and_alpha(polar)
-        sigma, _, _ = self._sigma_bounds(amplitude, alpha)
+        sigma_input, sigma_output = self._bandwidth_sigmas(amplitude, alpha)
         # Width is a state derived from update history, not a task-loss degree
         # of freedom. Only the explicit radial regularizer may decrease alpha.
-        precision = sigma.reciprocal().square().detach()
+        precision_input = sigma_input.reciprocal().square().detach()
+        precision_output = sigma_output.reciprocal().square().detach()
         phi_input = self.profile.evaluate_with_precision(
-            input_chart, input_p, precision
+            input_chart, input_p, precision_input
         )
         phi_output = self.profile.evaluate_with_precision(
-            output_chart, output_p, precision
+            output_chart, output_p, precision_output
         )
         return phi_input, phi_output * amplitude.unsqueeze(0)
 
@@ -234,27 +319,57 @@ class PolarAmpWidth(Kernel):
     ) -> tuple[Tensor, Tensor]:
         """Return ``(L(w), U(w))`` for diagnostic use."""
 
+        (input_bounds, output_bounds) = self.bandwidth_bounds_by_side(
+            input_chart, output_chart, p
+        )
+        self._require_shared_bandwidths()
+        del output_bounds
+        return input_bounds
+
+    def bandwidth_bounds_by_side(
+        self, input_chart: Chart, output_chart: Chart, p: Tensor
+    ) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor]]:
+        """Return ``((L_in, U_in), (L_out, U_out))``."""
+
         polar, _, _ = self._split(input_chart, output_chart, p)
-        amplitude, alpha = self._amplitude_and_alpha(polar)
-        _, lower, upper = self._sigma_bounds(amplitude, alpha)
-        return lower, upper
+        amplitude, _ = self._amplitude_and_alpha(polar)
+        _, lower_input, upper_input = self._sigma_bounds(amplitude, side="input")
+        _, lower_output, upper_output = self._sigma_bounds(amplitude, side="output")
+        return (lower_input, upper_input), (lower_output, upper_output)
 
     def bandwidth_sigma(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> Tensor:
         """Return the shared effective input/output sigma for each atom."""
 
+        sigma_input, _ = self.bandwidth_sigmas(input_chart, output_chart, p)
+        self._require_shared_bandwidths()
+        return sigma_input
+
+    def bandwidth_sigmas(
+        self, input_chart: Chart, output_chart: Chart, p: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        """Return effective ``(sigma_input, sigma_output)`` for each atom."""
+
         polar, _, _ = self._split(input_chart, output_chart, p)
         amplitude, alpha = self._amplitude_and_alpha(polar)
-        sigma, _, _ = self._sigma_bounds(amplitude, alpha)
-        return sigma
+        return self._bandwidth_sigmas(amplitude, alpha)
 
     def bandwidth_precision(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> Tensor:
         """Return the shared input/output precision for each atom."""
 
-        return self.bandwidth_sigma(input_chart, output_chart, p).reciprocal().square()
+        sigma = self.bandwidth_sigma(input_chart, output_chart, p)
+        return sigma.reciprocal().square()
+
+    def bandwidth_precisions(
+        self, input_chart: Chart, output_chart: Chart, p: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        """Return input and output precisions for split bandwidths."""
+
+        sigma_input, sigma_output = self.bandwidth_sigmas(input_chart, output_chart, p)
+        return sigma_input.reciprocal().square(), sigma_output.reciprocal().square()
 
     def apply_parameter_update(
         self,
@@ -394,23 +509,85 @@ class PolarAmpWidth(Kernel):
         radius = safe_radius.clamp(1.0, 2.0)
         return unit * radius
 
-    def _sigma_bounds(
+    def _bandwidth_sigmas(
         self, amplitude: Tensor, alpha: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        sigma_input, _, _ = self._sigma_bounds(amplitude, alpha, side="input")
+        sigma_output, _, _ = self._sigma_bounds(amplitude, alpha, side="output")
+        return sigma_input, sigma_output
+
+    def _sigma_bounds(
+        self,
+        amplitude: Tensor,
+        alpha: Tensor | None = None,
+        *,
+        side: Literal["input", "output"] = "input",
     ) -> tuple[Tensor, Tensor, Tensor]:
+        if side == "input":
+            minimum = self.sigma_min_input
+            birth = self.sigma_birth_input
+            maximum = self.sigma_max_input
+            floor = self.upper_floor_input
+        elif side == "output":
+            minimum = self.sigma_min_output
+            birth = self.sigma_birth_output
+            maximum = self.sigma_max_output
+            floor = self.upper_floor_output
+        else:
+            raise ValueError("side must be 'input' or 'output'")
         x = (amplitude / self.w_c.to(amplitude)).square()
-        delta = self.sigma_max.to(amplitude) - self.sigma_min.to(amplitude)
+        lower_delta = birth.to(amplitude) - minimum.to(amplitude)
+        upper_delta = maximum.to(amplitude) - minimum.to(amplitude)
         kappa = self.kappa.to(amplitude)
         upper_x = x.pow(self.upper_decay_power.to(amplitude))
-        upper = self.sigma_min.to(amplitude) + delta * kappa / (kappa + upper_x)
+        upper = minimum.to(amplitude) + upper_delta * kappa / (kappa + upper_x)
         # Keep radial activity meaningful for high-amplitude atoms.  Without
         # this floor U(w) converges to sigma_min, so alpha loses all authority
         # precisely when a strong atom becomes trapped on a single site.
-        upper = torch.maximum(upper, self.upper_floor.to(amplitude))
-        lower = self.sigma_min.to(amplitude) + delta / (
+        upper = torch.maximum(upper, floor.to(amplitude))
+        lower = minimum.to(amplitude) + lower_delta / (
             1.0 + self.lower_kappa.to(amplitude) * x
         )
-        sigma = lower + alpha * (upper - lower)
+        if alpha is None:
+            sigma = lower
+        else:
+            # Width is a scale, so alpha advances a constant fraction of the
+            # multiplicative range rather than a constant absolute distance.
+            sigma = torch.exp((1.0 - alpha) * lower.log() + alpha * upper.log())
         return sigma, lower, upper
+
+    def _require_shared_bandwidths(self) -> None:
+        pairs = (
+            (self.sigma_min_input, self.sigma_min_output),
+            (self.sigma_birth_input, self.sigma_birth_output),
+            (self.sigma_max_input, self.sigma_max_output),
+            (self.upper_floor_input, self.upper_floor_output),
+        )
+        if not all(bool(torch.equal(left, right)) for left, right in pairs):
+            raise ValueError("input and output bandwidths differ; use the by-side API")
+
+    @classmethod
+    def _bandwidth_pair(
+        cls,
+        shared: float | None,
+        input_value: float | None,
+        output_value: float | None,
+        *,
+        name: str,
+    ) -> tuple[Tensor, Tensor]:
+        if shared is not None:
+            if input_value is not None or output_value is not None:
+                raise ValueError(
+                    f"{name} and side-specific {name} values are mutually exclusive"
+                )
+            value = cls._positive_scalar(shared, name=name)
+            return value, value.detach().clone()
+        if input_value is None or output_value is None:
+            raise ValueError(f"provide {name} or both input_{name} and output_{name}")
+        return (
+            cls._positive_scalar(input_value, name=f"input_{name}"),
+            cls._positive_scalar(output_value, name=f"output_{name}"),
+        )
 
     @staticmethod
     def _positive_scalar(value: float, *, name: str) -> Tensor:
@@ -445,13 +622,18 @@ class PolarAmpWidth(Kernel):
     def extra_repr(self) -> str:
         return (
             f"amplitude_max={self.amplitude_max.item():g}, "
-            f"sigma_min={self.sigma_min.item():g}, "
-            f"sigma_max={self.sigma_max.item():g}, "
+            f"sigma_min=({self.sigma_min_input.item():g}, "
+            f"{self.sigma_min_output.item():g}), "
+            f"sigma_birth=({self.sigma_birth_input.item():g}, "
+            f"{self.sigma_birth_output.item():g}), "
+            f"sigma_max=({self.sigma_max_input.item():g}, "
+            f"{self.sigma_max_output.item():g}), "
             f"w_c={self.w_c.item():g}, kappa={self.kappa.item():g}, "
             f"lower_kappa={self.lower_kappa.item():g}, "
             f"lower_half_amplitude={self.lower_half_amplitude.item():g}, "
             f"upper_decay_power={self.upper_decay_power.item():g}, "
-            f"upper_floor={self.upper_floor.item():g}, "
+            f"upper_floor=({self.upper_floor_input.item():g}, "
+            f"{self.upper_floor_output.item():g}), "
             f"alpha_init={self.alpha_init.item():g}, "
             f"activity_gain={self.activity_gain.item():g}, "
             f"activity_mode={self.activity_mode!r}, "
