@@ -8,7 +8,7 @@
 
 ### Geometry
 
-- intrinsic dimensionとembedding dimension
+- intrinsic dimension、site embedding dimension、center parameter dimension
 - site/center間の距離
 - centerの初期化
 - tangent projection
@@ -17,7 +17,9 @@
 
 `EuclideanGeometry(d)`では両dimensionが`d`であり、更新は加算である。
 `SphereGeometry(d)`は`S^d`を`R^(d+1)`へ埋め込み、chord距離を使う。
-更新proposalは接空間へ射影され、球面へnormalizeされる。
+ambient表現では更新proposalは接空間へ射影され、球面へnormalizeされる。
+intrinsic表現では中心だけをnorth poleまわりのnormal coordinates `R^d`で
+保存し、距離計算時にexponential mapで`R^(d+1)`へ復号する。
 
 ### Chart
 
@@ -61,9 +63,15 @@ optimizerはatom rowの列を直接解釈しない。
 
 ## Storageと自由度
 
-`S^3`上のcenterは`R^4`の単位vectorとして保存する。したがってstorage
-widthは4だがintrinsic degrees of freedomは3である。モデル予算の比較には
-storage tensorの要素数ではなく`kernel.parameter_dof(...)`を使う。
+`S^3`上のcenterには二つの保存方式がある。
+
+- `representation="ambient"`（既定）: `R^4`の単位vectorとして4個保存。
+  冗長だがglobalで安定する。
+- `representation="intrinsic"`: normal coordinatesとして3個保存。
+  north poleの反対側にあるantipode近傍だけをchartから除外する。
+
+どちらもintrinsic degrees of freedomは3である。モデル予算の比較には
+`kernel.parameter_dof(...)`、実際の保存量には`kernel.parameter_dim(...)`を使う。
 
 `CSTModule.atom_parameter_dof`はatom一個の自由度、
 `CSTModule.cst_degrees_of_freedom`はsite全体の自由度を返す。
@@ -77,7 +85,30 @@ chart = Chart.sphere(features=64, intrinsic_dim=3)
 assert chart.coordinates.shape == (64, 4)
 assert chart.intrinsic_dim == 3
 assert chart.embedding_dim == 4
+assert chart.center_parameter_dim == 4
+
+compact = Chart.sphere(
+    features=64,
+    intrinsic_dim=3,
+    representation="intrinsic",
+)
+assert compact.coordinates.shape == (64, 4)
+assert compact.center_parameter_dim == 3
 ```
+
+siteは両方式とも球面上の`d+1`次元座標である。intrinsic版で`p`に保存する
+centerだけが`d`次元になり、`Geometry.decode_centers`を通して球面上へ戻される。
+したがって同じ球面上の点なら、ambient版とintrinsic版のKernel距離は一致する。
+
+intrinsic版の有効範囲は
+
+```text
+||p_center|| <= radius * (pi - chart_margin)
+```
+
+であり、更新時にこの範囲へretractされる。既定の`chart_margin=0.05`は
+exponential mapが退化するantipodeを避けるための角度marginである。この方式は
+1 scalar/centerを削減する代わりに、小さなantipodal capを中心の到達領域から除く。
 
 `Chart.sphere`は球面上のsiteを生成する。これは領域外へのcenter escapeを
 防ぐが、有限site集合のcoveringを自動保証するものではない。compact

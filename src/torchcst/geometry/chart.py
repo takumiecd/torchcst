@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from typing import Literal
 
 import torch
 from torch import Tensor, nn
@@ -77,15 +78,20 @@ class Chart(nn.Module):
         *,
         intrinsic_dim: int,
         radius: float = 1.0,
+        representation: Literal["ambient", "intrinsic"] = "ambient",
+        chart_margin: float = 0.05,
         trainable: bool = False,
     ) -> Chart:
         """Construct points sampled uniformly on the intrinsic sphere ``S^d``."""
 
         cls._validate_size(features, name="features")
-        geometry = SphereGeometry(intrinsic_dim, radius=radius)
-        probe = torch.zeros(features, geometry.embedding_dim)
-        probe[:, 0] = geometry.radius
-        coordinates = geometry.initialize_centers(probe, features, mode="uniform")
+        geometry = SphereGeometry(
+            intrinsic_dim,
+            radius=radius,
+            representation=representation,
+            chart_margin=chart_margin,
+        )
+        coordinates = geometry.sample_sites(features)
         return cls(coordinates, geometry=geometry, trainable=trainable)
 
     @classmethod
@@ -290,6 +296,12 @@ class Chart(nn.Module):
 
         return self.geometry.intrinsic_dim
 
+    @property
+    def center_parameter_dim(self) -> int:
+        """Stored coordinate width of one atom center."""
+
+        return self.geometry.center_parameter_dim
+
     def squared_distance(self, centers: Tensor) -> Tensor:
         """Pairwise site-center squared distance in this chart's geometry."""
 
@@ -322,6 +334,7 @@ class Chart(nn.Module):
             f"features={self.features}",
             f"intrinsic_dim={self.intrinsic_dim}",
             f"embedding_dim={self.embedding_dim}",
+            f"center_parameter_dim={self.center_parameter_dim}",
             f"trainable={self.trainable}",
         ]
         spacing = self.spacing

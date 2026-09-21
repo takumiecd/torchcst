@@ -255,12 +255,18 @@ optimizer-backed training.
 pixels = Chart.grid((28, 28), spacing=2 / 27)
 channels = Chart.linspace(64, spacing=2 / 63)
 spherical = Chart.sphere(64, intrinsic_dim=2)  # S^2 stored in R^3
+compact_spherical = Chart.sphere(
+    64, intrinsic_dim=2, representation="intrinsic"
+)  # sites in R^3, atom centers stored with 2 scalars
 ```
 
-`chart.embedding_dim` is the width stored in an atom row and
-`chart.intrinsic_dim` is the number of geometric degrees of freedom. A
-`SphereGeometry(d)` therefore stores `d + 1` coordinates while contributing
-`d` degrees of freedom. Geometry owns distance, tangent projection, retraction,
+`chart.embedding_dim` is the observation-site coordinate width,
+`chart.center_parameter_dim` is the center width stored in an atom row, and
+`chart.intrinsic_dim` is the number of geometric degrees of freedom. By default,
+`SphereGeometry(d)` uses the robust ambient representation and stores `d + 1`
+center coordinates. With `representation="intrinsic"`, it stores exactly `d`
+normal coordinates and decodes them onto `S^d` before measuring distance.
+Geometry owns decoding, distance, tangent/coordinate projection, retraction,
 and vector transport; it does not own kernel bandwidth or normalization.
 
 ### `Atoms`

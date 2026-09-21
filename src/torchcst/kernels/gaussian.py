@@ -26,7 +26,7 @@ class Gaussian(Profile):
         self.register_buffer("sigma", value)
 
     def parameter_dim(self, chart: Chart) -> int:
-        return chart.embedding_dim
+        return chart.center_parameter_dim
 
     def parameter_dof(self, chart: Chart) -> int:
         return chart.intrinsic_dim
