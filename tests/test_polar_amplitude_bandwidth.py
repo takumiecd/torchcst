@@ -158,6 +158,63 @@ def test_lower_kappa_widens_only_lower_bandwidth_bound() -> None:
     torch.testing.assert_close(widened_upper, baseline_upper)
 
 
+def test_lower_half_amplitude_directly_sets_lower_midpoint() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        lower_half_amplitude=0.25,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    polar = torch.tensor([[0.125, (1 - 0.125**2) ** 0.5]], dtype=torch.float64)
+    p = torch.cat((polar, torch.zeros(1, 2, dtype=torch.float64)), dim=-1)
+
+    lower, _ = value.bandwidth_bounds(input_chart, output_chart, p)
+
+    torch.testing.assert_close(lower, torch.tensor([0.55], dtype=torch.float64))
+    torch.testing.assert_close(
+        value.lower_half_amplitude,
+        torch.tensor(0.25, dtype=torch.float64),
+    )
+
+
+def test_lower_half_amplitude_preserves_legacy_lower_curve() -> None:
+    input_chart, output_chart = charts()
+    legacy = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        lower_kappa=12.0,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    direct = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        lower_half_amplitude=0.5 / 12**0.5,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    amplitudes = torch.tensor([0.0, 0.1, 0.5, 1.0], dtype=torch.float64)
+    polar = torch.stack(
+        (amplitudes / 2.0, (1 - (amplitudes / 2.0).square()).sqrt()),
+        dim=-1,
+    )
+    p = torch.cat((polar, torch.zeros(4, 2, dtype=torch.float64)), dim=-1)
+
+    legacy_lower, legacy_upper = legacy.bandwidth_bounds(input_chart, output_chart, p)
+    direct_lower, direct_upper = direct.bandwidth_bounds(input_chart, output_chart, p)
+
+    torch.testing.assert_close(direct_lower, legacy_lower)
+    torch.testing.assert_close(direct_upper, legacy_upper)
+
+
 def test_upper_floor_preserves_alpha_authority_at_high_amplitude() -> None:
     input_chart, output_chart = charts()
     value = PolarAmpWidth(
@@ -482,6 +539,7 @@ def test_model_optimizer_uses_kernel_update_geometry() -> None:
         ({"w_c": 0.0}, "w_c"),
         ({"kappa": 1.0}, "kappa"),
         ({"lower_kappa": 0.0}, "lower_kappa"),
+        ({"lower_half_amplitude": 0.0}, "lower_half_amplitude"),
         ({"upper_decay_power": 0.0}, "upper_decay_power"),
         ({"upper_decay_power": 1.1}, "upper_decay_power"),
         ({"activity_gain": 0.0}, "activity_gain"),
@@ -504,3 +562,17 @@ def test_configuration_validation(kwargs: dict[str, object], message: str) -> No
     options.update(kwargs)
     with pytest.raises(ValueError, match=message):
         PolarAmpWidth(**options)
+
+
+def test_lower_shape_parameters_are_mutually_exclusive() -> None:
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        PolarAmpWidth(
+            amplitude_max=2.0,
+            sigma_min=0.1,
+            sigma_max=1.0,
+            w_c=0.5,
+            kappa=3.0,
+            lower_kappa=3.0,
+            lower_half_amplitude=0.25,
+            radial_regularization=0.2,
+        )

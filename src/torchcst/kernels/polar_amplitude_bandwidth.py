@@ -44,6 +44,7 @@ class PolarAmpWidth(Kernel):
         w_c: float,
         kappa: float = 3.0,
         lower_kappa: float | None = None,
+        lower_half_amplitude: float | None = None,
         upper_decay_power: float = 1.0,
         upper_floor: float | None = None,
         alpha_init: float = 0.0,
@@ -58,11 +59,22 @@ class PolarAmpWidth(Kernel):
         maximum = self._positive_scalar(sigma_max, name="sigma_max")
         crossover = self._positive_scalar(w_c, name="w_c")
         separation = self._positive_scalar(kappa, name="kappa")
-        lower_separation = (
-            separation.detach().clone()
-            if lower_kappa is None
-            else self._positive_scalar(lower_kappa, name="lower_kappa")
-        )
+        if lower_kappa is not None and lower_half_amplitude is not None:
+            raise ValueError(
+                "lower_kappa and lower_half_amplitude are mutually exclusive"
+            )
+        if lower_half_amplitude is not None:
+            lower_half = self._positive_scalar(
+                lower_half_amplitude,
+                name="lower_half_amplitude",
+            )
+            lower_separation = (crossover / lower_half).square()
+        else:
+            lower_separation = (
+                separation.detach().clone()
+                if lower_kappa is None
+                else self._positive_scalar(lower_kappa, name="lower_kappa")
+            )
         upper_power = self._positive_scalar(
             upper_decay_power, name="upper_decay_power"
         )
@@ -122,6 +134,12 @@ class PolarAmpWidth(Kernel):
     @property
     def sigma_min(self) -> Tensor:
         return self.profile.sigma
+
+    @property
+    def lower_half_amplitude(self) -> Tensor:
+        """Absolute amplitude where ``L(w)`` is halfway between its limits."""
+
+        return self.w_c / self.lower_kappa.sqrt()
 
     def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:
         return (
@@ -431,6 +449,7 @@ class PolarAmpWidth(Kernel):
             f"sigma_max={self.sigma_max.item():g}, "
             f"w_c={self.w_c.item():g}, kappa={self.kappa.item():g}, "
             f"lower_kappa={self.lower_kappa.item():g}, "
+            f"lower_half_amplitude={self.lower_half_amplitude.item():g}, "
             f"upper_decay_power={self.upper_decay_power.item():g}, "
             f"upper_floor={self.upper_floor.item():g}, "
             f"alpha_init={self.alpha_init.item():g}, "
