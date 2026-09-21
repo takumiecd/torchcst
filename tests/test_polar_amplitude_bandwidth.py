@@ -481,6 +481,64 @@ def test_time_energy_activity_uses_outer_step_size() -> None:
     torch.testing.assert_close(q, torch.tensor([2.35], dtype=p.dtype))
 
 
+def test_dormant_expansion_advances_alpha_without_task_motion() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        dormant_expansion_rate=1.0,
+        radial_regularization=0.0,
+    ).to(dtype=torch.float64)
+    p = torch.tensor([[0.0, 1.0, 0.1, -0.2]], dtype=torch.float64)
+
+    updated = value.apply_parameter_update(
+        input_chart,
+        output_chart,
+        p,
+        torch.zeros_like(p),
+        step_size=0.5,
+    )
+
+    torch.testing.assert_close(
+        value.amplitude(input_chart, output_chart, updated),
+        torch.zeros(1, dtype=p.dtype),
+    )
+    torch.testing.assert_close(
+        value.bandwidth_alpha(input_chart, output_chart, updated),
+        torch.tensor([0.5], dtype=p.dtype),
+    )
+    torch.testing.assert_close(updated[:, 2:], p[:, 2:])
+
+
+def test_dormant_expansion_is_suppressed_by_large_amplitude() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        dormant_expansion_rate=1.0,
+        radial_regularization=0.0,
+    ).to(dtype=torch.float64)
+    p = torch.tensor([[1.0, 0.0, 0.1, -0.2]], dtype=torch.float64)
+
+    updated = value.apply_parameter_update(
+        input_chart,
+        output_chart,
+        p,
+        torch.zeros_like(p),
+        step_size=0.5,
+    )
+
+    expected_alpha = torch.tensor([0.5 / 17.0], dtype=p.dtype)
+    torch.testing.assert_close(
+        value.bandwidth_alpha(input_chart, output_chart, updated),
+        expected_alpha,
+    )
+
+
 def test_radial_regularizer_preserves_amplitude_and_converges_to_unit_radius() -> None:
     input_chart, output_chart = charts()
     value = kernel().to(dtype=torch.float64)
@@ -614,6 +672,7 @@ def test_model_optimizer_uses_kernel_update_geometry() -> None:
         ({"alpha_init": -0.1}, "alpha_init"),
         ({"alpha_init": 1.1}, "alpha_init"),
         ({"activity_mode": "unknown"}, "activity_mode"),
+        ({"dormant_expansion_rate": -1.0}, "dormant_expansion_rate"),
         ({"radial_regularization": -1.0}, "radial_regularization"),
         ({"sigma_min": 2.0, "sigma_max": 1.0}, "sigma_max"),
     ],

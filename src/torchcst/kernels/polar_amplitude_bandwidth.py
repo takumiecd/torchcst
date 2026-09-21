@@ -59,6 +59,7 @@ class PolarAmpWidth(Kernel):
         alpha_init: float = 0.0,
         activity_gain: float = 1.0,
         activity_mode: Literal["finite_chord", "time_energy"] = "finite_chord",
+        dormant_expansion_rate: float = 0.0,
         radial_regularization: float = 0.1,
         profile: Profile | None = None,
     ) -> None:
@@ -123,6 +124,9 @@ class PolarAmpWidth(Kernel):
         gain = self._positive_scalar(activity_gain, name="activity_gain")
         if activity_mode not in ("finite_chord", "time_energy"):
             raise ValueError("activity_mode must be 'finite_chord' or 'time_energy'")
+        dormant_rate = self._nonnegative_scalar(
+            dormant_expansion_rate, name="dormant_expansion_rate"
+        )
         regularization = self._nonnegative_scalar(
             radial_regularization, name="radial_regularization"
         )
@@ -193,6 +197,7 @@ class PolarAmpWidth(Kernel):
         self.register_buffer("alpha_init", initial_alpha)
         self.register_buffer("activity_gain", gain)
         self.activity_mode = activity_mode
+        self.register_buffer("dormant_expansion_rate", dormant_rate)
         self.register_buffer("radial_regularization", regularization)
 
     @property
@@ -405,7 +410,17 @@ class PolarAmpWidth(Kernel):
         energy = tangent.square().sum(dim=-1, keepdim=True)
         if self.activity_mode == "time_energy":
             energy = energy / step_size
-        task_q = (radius_square + self.activity_gain.to(p) * energy).clamp(1.0, 4.0)
+        proposed_amplitude, _ = self._amplitude_and_alpha(direction)
+        dormant_weight = 1.0 / (1.0 + (proposed_amplitude / self.w_c.to(p)).square())
+        dormant_q = (
+            3.0
+            * self.dormant_expansion_rate.to(p)
+            * p.new_tensor(step_size)
+            * dormant_weight.unsqueeze(-1)
+        )
+        task_q = (radius_square + self.activity_gain.to(p) * energy + dormant_q).clamp(
+            1.0, 4.0
+        )
         task_polar = direction * task_q.sqrt()
 
         # Exact gradient flow for R(q)=lambda/2*(q-1)^2 over time step_size:
@@ -637,6 +652,7 @@ class PolarAmpWidth(Kernel):
             f"alpha_init={self.alpha_init.item():g}, "
             f"activity_gain={self.activity_gain.item():g}, "
             f"activity_mode={self.activity_mode!r}, "
+            f"dormant_expansion_rate={self.dormant_expansion_rate.item():g}, "
             f"radial_regularization={self.radial_regularization.item():g}, "
             f"profile={type(self.profile).__name__}, "
             f"supports_factorization={self.supports_factorization}"
