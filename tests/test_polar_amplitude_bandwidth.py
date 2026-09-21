@@ -45,6 +45,41 @@ def test_initialization_uses_unit_radius_and_small_bounded_amplitudes() -> None:
     assert abs(float(amplitude.std()) - 0.1 / atoms**0.5) < 0.05 * (0.1 / atoms**0.5)
 
 
+def test_alpha_initialization_preserves_amplitude_and_sets_radius() -> None:
+    torch.manual_seed(12)
+    input_chart, output_chart = charts()
+    baseline = kernel()
+    initialized = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        alpha_init=0.03,
+        radial_regularization=0.2,
+    )
+    p_baseline = baseline.initialize(input_chart, output_chart, 32, mode="uniform")
+    torch.manual_seed(12)
+    p_initialized = initialized.initialize(
+        input_chart, output_chart, 32, mode="uniform"
+    )
+
+    torch.testing.assert_close(
+        initialized.amplitude(input_chart, output_chart, p_initialized),
+        baseline.amplitude(input_chart, output_chart, p_baseline),
+    )
+    torch.testing.assert_close(
+        initialized.bandwidth_alpha(input_chart, output_chart, p_initialized),
+        torch.full((32,), 0.03),
+        atol=1e-6,
+        rtol=0,
+    )
+    torch.testing.assert_close(
+        p_initialized[:, :2].square().sum(dim=-1),
+        torch.full((32,), 1.09),
+    )
+
+
 def test_polar_map_decouples_angular_amplitude_and_radial_alpha() -> None:
     value = kernel()
     polar = torch.tensor([[0.6, 0.8]], dtype=torch.float64, requires_grad=True)
@@ -370,6 +405,8 @@ def test_model_optimizer_uses_kernel_update_geometry() -> None:
         ({"w_c": 0.0}, "w_c"),
         ({"kappa": 1.0}, "kappa"),
         ({"activity_gain": 0.0}, "activity_gain"),
+        ({"alpha_init": -0.1}, "alpha_init"),
+        ({"alpha_init": 1.1}, "alpha_init"),
         ({"activity_mode": "unknown"}, "activity_mode"),
         ({"radial_regularization": -1.0}, "radial_regularization"),
         ({"sigma_min": 2.0, "sigma_max": 1.0}, "sigma_max"),

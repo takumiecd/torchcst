@@ -43,6 +43,7 @@ class PolarAmpWidth(Kernel):
         sigma_max: float,
         w_c: float,
         kappa: float = 3.0,
+        alpha_init: float = 0.0,
         activity_gain: float = 1.0,
         activity_mode: Literal["finite_chord", "time_energy"] = "finite_chord",
         radial_regularization: float = 0.1,
@@ -54,6 +55,7 @@ class PolarAmpWidth(Kernel):
         maximum = self._positive_scalar(sigma_max, name="sigma_max")
         crossover = self._positive_scalar(w_c, name="w_c")
         separation = self._positive_scalar(kappa, name="kappa")
+        initial_alpha = self._unit_interval_scalar(alpha_init, name="alpha_init")
         gain = self._positive_scalar(activity_gain, name="activity_gain")
         if activity_mode not in ("finite_chord", "time_energy"):
             raise ValueError("activity_mode must be 'finite_chord' or 'time_energy'")
@@ -89,6 +91,7 @@ class PolarAmpWidth(Kernel):
         self.register_buffer("sigma_max", maximum)
         self.register_buffer("w_c", crossover)
         self.register_buffer("kappa", separation)
+        self.register_buffer("alpha_init", initial_alpha)
         self.register_buffer("activity_gain", gain)
         self.activity_mode = activity_mode
         self.register_buffer("radial_regularization", regularization)
@@ -130,6 +133,10 @@ class PolarAmpWidth(Kernel):
         # Keep initialization away from the angular critical points w = +/- W.
         ratio = (amplitude / maximum).clamp(-1 + 1e-6, 1 - 1e-6)
         polar = torch.stack((ratio, (1 - ratio.square()).sqrt()), dim=-1)
+        # Preserve the initialized angular amplitude while giving the
+        # bandwidth clock an optional, regularized exploration reserve.
+        initial_radius = (1.0 + 3.0 * self.alpha_init.to(polar)).sqrt()
+        polar = polar * initial_radius
         return torch.cat((polar, input_p, output_p), dim=-1)
 
     def materialize_atoms(
@@ -377,12 +384,23 @@ class PolarAmpWidth(Kernel):
             raise ValueError(f"{name} must be finite and nonnegative")
         return result
 
+    @staticmethod
+    def _unit_interval_scalar(value: float, *, name: str) -> Tensor:
+        result = torch.as_tensor(value, dtype=torch.get_default_dtype())
+        if result.numel() != 1:
+            raise ValueError(f"{name} must be a scalar")
+        result = result.detach().clone().reshape(())
+        if not torch.isfinite(result) or result < 0 or result > 1:
+            raise ValueError(f"{name} must be finite and in [0, 1]")
+        return result
+
     def extra_repr(self) -> str:
         return (
             f"amplitude_max={self.amplitude_max.item():g}, "
             f"sigma_min={self.sigma_min.item():g}, "
             f"sigma_max={self.sigma_max.item():g}, "
             f"w_c={self.w_c.item():g}, kappa={self.kappa.item():g}, "
+            f"alpha_init={self.alpha_init.item():g}, "
             f"activity_gain={self.activity_gain.item():g}, "
             f"activity_mode={self.activity_mode!r}, "
             f"radial_regularization={self.radial_regularization.item():g}, "
