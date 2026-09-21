@@ -273,6 +273,20 @@ bandwidth activity.
 `backend="factored"` path avoids retaining the full dense weight when the
 kernel supports exact factorization.
 
+### `CSTConv2d`
+
+`CSTConv2d` interprets the input chart as one flattened local image patch. If
+the convolution has `Cin` input channels, `groups=G`, and kernel size
+`(Kh, Kw)`, the input chart contains `(Cin / G) * Kh * Kw` features and the
+output chart contains `Cout` features. The kernel therefore continues to
+represent a matrix-valued local operator; `CSTConv2d` reshapes its sum to the
+standard `[Cout, Cin / G, Kh, Kw]` weight only when applying the convolution.
+
+The materialized backend supports grouped convolution. Exact factorized
+execution currently requires `groups=1`; `backend="auto"` falls back to the
+materialized path for grouped convolutions. Bias is deliberately kept outside
+the CST operator and can be added as an ordinary model parameter.
+
 ## Other optimizer families
 
 The Adam paths above are the intended first choices. The package also retains

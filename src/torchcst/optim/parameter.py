@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
-from torchcst.nn import CSTLinear
+from torchcst.nn import CSTModule
 
 from .config import AdamWConfig, _validate_betas
 
@@ -67,12 +67,12 @@ class CSTParameterAdam(torch.optim.AdamW):
             raise TypeError("cst must be a ParameterAdamConfig")
         if dense is not None and not isinstance(dense, AdamWConfig):
             raise TypeError("dense must be an AdamWConfig or None")
-        sites = [module for module in model.modules() if isinstance(module, CSTLinear)]
+        sites = [module for module in model.modules() if isinstance(module, CSTModule)]
         if not sites:
-            raise ValueError("model must contain a CSTLinear")
+            raise ValueError("model must contain a CSTModule site")
         owners = set()
         for site in sites:
-            if site.input_chart.trainable or site.output_chart.trainable:
+            if any(chart.trainable for chart in site.cst_charts()):
                 raise ValueError("CSTParameterAdam requires frozen charts")
             if site.backend != "factored" or not site.kernel.supports_factorization:
                 raise ValueError("CSTParameterAdam requires backend='factored'")
@@ -170,8 +170,7 @@ class CSTParameterAdam(torch.optim.AdamW):
                     continue
                 old = old_points[site]
                 updated = site.kernel.apply_parameter_update(
-                    site.input_chart,
-                    site.output_chart,
+                    *site.cst_charts(),
                     old,
                     point - old,
                     step_size=scheduled_cst_rate,

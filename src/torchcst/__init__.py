@@ -14,7 +14,7 @@ from .kernels import (
     Triweight,
     WendlandC2,
 )
-from .nn import CSTLinear, CSTModule
+from .nn import CSTConv2d, CSTLinear, CSTModule
 from .optim import (
     CSTSGD,
     AdamRConfig,
@@ -44,6 +44,7 @@ __all__ = [
     "AmplitudeBandwidthSeparable",
     "Atoms",
     "CSTAdamR",
+    "CSTConv2d",
     "CSTImplicitAdam",
     "CSTLinear",
     "CSTModule",
@@ -60,8 +61,8 @@ __all__ = [
     "Chart",
     "Gaussian",
     "Kernel",
-    "PolarAmpWidth",
     "NormalizedOptimizerConfig",
+    "PolarAmpWidth",
     "Profile",
     "QuadraticOptimizerConfig",
     "Separable",
