@@ -146,6 +146,37 @@ If raw Euclidean updates to `model.parameters()` are intentional,
 library wrapper to use when the CST ownership checks, mixed-model partition,
 and kernel-specific coordinate update should be retained.
 
+### Direct amplitude and activity coordinates
+
+`DirectAmpWidth` is the direct-coordinate alternative to `PolarAmpWidth`.
+Its first two atom coordinates are `(w, q)`, where `w` is the bounded signed
+amplitude and `q = 1 + 3 * alpha` is the persistent bandwidth-activity state.
+Consequently parameter-coordinate Adam accumulates its first and second
+moments directly on `w`; the task gradient of `q` is zero. After an accepted
+amplitude proposal, the kernel converts its angular change to the equivalent
+Polar chord energy `q * tan(delta_theta) ** 2`, advances `q`, and applies the
+same radial regularization used by `PolarAmpWidth`.
+
+The two kernels intentionally remain separate because their parameter rows and
+checkpoints have different meanings. They share the same constructor settings,
+so a configuration can be compared by changing only the kernel class:
+
+```python
+from torchcst import DirectAmpWidth
+
+kernel = DirectAmpWidth(
+    amplitude_max=1.0,
+    sigma_min=0.1,
+    sigma_max=10.0,
+    w_c=0.0025,
+    kappa=30.0,
+    activity_gain=27.0,
+    activity_mode="time_energy",
+    radial_regularization=0.5,
+    profile=Triweight(0.1),
+)
+```
+
 ## Accuracy-oriented training: Quadratic Adam
 
 Use the same model definition with a fresh model instance and replace the
@@ -281,9 +312,10 @@ fixed.
 A kernel maps each atom coordinate row to an operator contribution. Kernels may
 also define factorized execution and a kernel-specific parameter update. For
 example, `PolarAmpWidth` separates angular amplitude motion from radial
-bandwidth activity. Profiles ask each Chart for distances and center updates,
-while the kernel owns the layout of the complete opaque `p` row. Consequently,
-`kernel.parameter_dim(...)` reports stored width and
+bandwidth activity in `(s, t)`, while `DirectAmpWidth` stores the same logical
+quantities explicitly as `(w, q)`. Profiles ask each Chart for distances and
+center updates, while the kernel owns the layout of the complete opaque `p`
+row. Consequently, `kernel.parameter_dim(...)` reports stored width and
 `kernel.parameter_dof(...)` reports intrinsic degrees of freedom.
 
 ### `CSTLinear`
