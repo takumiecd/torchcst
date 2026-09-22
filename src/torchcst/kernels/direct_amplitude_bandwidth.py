@@ -25,16 +25,16 @@ class DirectAmpWidth(PolarAmpWidth):
 
     ``w`` is the task-loss degree of freedom and therefore receives Adam
     moments directly. ``q`` is a persistent activity state rather than a
-    task-loss degree of freedom.  An accepted amplitude update is converted
-    to the equivalent Polar chord length
+    task-loss degree of freedom. An accepted physical amplitude displacement
+    grows the state by
 
     .. math::
 
-        \lVert h\rVert^2 = q\tan^2(\Delta\theta), \qquad
-        \theta = \arcsin(w/W),
+        \delta^2 = q(\Delta w/W)^2, \qquad q_{\rm geom}=q+\delta^2.
 
-    before applying the same activity growth and exact radial regularization
-    used by :class:`PolarAmpWidth`.
+    The kernel then takes an ordinary gradient step on
+    :math:`R(q)=\lambda(q-1)^2/2`. Polar activity gain, time-energy scaling,
+    and dormant expansion do not act on this direct state.
     """
 
     def initialize(
@@ -78,42 +78,20 @@ class DirectAmpWidth(PolarAmpWidth):
         maximum = self.amplitude_max.to(p)
         old_w = direct[:, 0].clamp(-maximum, maximum)
         old_q = direct[:, 1].clamp(1.0, 4.0)
-        proposed_w = (old_w + displacement[:, 0]).clamp(-maximum, maximum)
+        accepted_w = (old_w + displacement[:, 0]).clamp(-maximum, maximum)
 
-        # A finite Polar chord can turn by strictly less than pi/2. Limit an
-        # unusually large optimizer proposal to that same geometric domain,
-        # then recompute the accepted amplitude from the accepted angle.
-        old_theta = torch.asin((old_w / maximum).clamp(-1.0, 1.0))
-        proposed_theta = torch.asin((proposed_w / maximum).clamp(-1.0, 1.0))
-        angle_margin = math.sqrt(torch.finfo(p.dtype).eps)
-        angle_limit = p.new_tensor(math.pi / 2.0 - angle_margin)
-        delta_theta = (proposed_theta - old_theta).clamp(-angle_limit, angle_limit)
-        accepted_theta = old_theta + delta_theta
-        accepted_w = maximum * accepted_theta.sin()
+        accepted_delta = (accepted_w - old_w) / maximum
+        delta_square = old_q * accepted_delta.square()
+        geometric_q = (old_q + delta_square).clamp(1.0, 4.0)
 
-        tangent_square = old_q * delta_theta.tan().square()
-        energy = tangent_square
-        if self.activity_mode == "time_energy":
-            energy = energy / step_size
-        dormant_weight = 1.0 / (
-            1.0 + (accepted_w / self.w_c.to(p)).square()
-        )
-        dormant_q = (
-            3.0
-            * self.dormant_expansion_rate.to(p)
+        # One ordinary gradient step for R(q)=lambda/2*(q-1)^2. The clamp
+        # retains the state contract even for an unusually large step size.
+        regularized_q = (
+            geometric_q
+            - self.radial_regularization.to(p)
             * p.new_tensor(step_size)
-            * dormant_weight
-        )
-        task_q = (
-            old_q + self.activity_gain.to(p) * energy + dormant_q
+            * (geometric_q - 1.0)
         ).clamp(1.0, 4.0)
-
-        # Exact gradient flow for R(q)=lambda/2*(q-1)^2 over step_size.
-        decay = torch.exp(
-            -4.0 * self.radial_regularization.to(p) * p.new_tensor(step_size)
-        )
-        activity = (task_q - 1.0) / task_q
-        regularized_q = 1.0 / (1.0 - activity * decay)
 
         _, input_d, output_d = self._split(
             input_chart,

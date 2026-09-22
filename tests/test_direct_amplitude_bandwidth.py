@@ -89,7 +89,7 @@ def test_task_gradient_is_direct_w_gradient_and_q_has_no_gradient() -> None:
     torch.testing.assert_close(gradient[:, 1], torch.zeros_like(gradient[:, 1]))
 
 
-def test_update_uses_exact_equivalent_chord_energy() -> None:
+def test_update_uses_accepted_physical_amplitude_displacement() -> None:
     input_chart, output_chart = charts()
     value = kernel(radial_regularization=0.0).to(dtype=torch.float64)
     p = torch.tensor([[0.6, 1.5, 0.1, -0.2]], dtype=torch.float64)
@@ -103,19 +103,19 @@ def test_update_uses_exact_equivalent_chord_energy() -> None:
         step_size=0.5,
     )
 
-    old_theta = torch.asin(p[:, 0] / value.amplitude_max)
-    new_theta = torch.asin(updated[:, 0] / value.amplitude_max)
-    expected_q = p[:, 1] + p[:, 1] * torch.tan(new_theta - old_theta).square()
+    accepted_delta = (updated[:, 0] - p[:, 0]) / value.amplitude_max
+    expected_q = p[:, 1] + p[:, 1] * accepted_delta.square()
     torch.testing.assert_close(updated[:, 0], torch.tensor([0.8], dtype=p.dtype))
     torch.testing.assert_close(updated[:, 1], expected_q)
     torch.testing.assert_close(updated[:, 2:], p[:, 2:] + displacement[:, 2:])
 
 
-def test_time_energy_and_radial_regularization_match_closed_form() -> None:
+def test_activity_controls_are_ignored_and_q_regularization_is_euclidean() -> None:
     input_chart, output_chart = charts()
     value = kernel(
         activity_gain=2.0,
         activity_mode="time_energy",
+        dormant_expansion_rate=10.0,
         radial_regularization=0.3,
     ).to(dtype=torch.float64)
     p = torch.tensor([[0.2, 1.4, 0.0, 0.0]], dtype=torch.float64)
@@ -130,13 +130,9 @@ def test_time_energy_and_radial_regularization_match_closed_form() -> None:
         step_size=step_size,
     )
 
-    delta_theta = torch.asin(updated[:, 0] / value.amplitude_max) - torch.asin(
-        p[:, 0] / value.amplitude_max
-    )
-    energy = p[:, 1] * delta_theta.tan().square() / step_size
-    task_q = (p[:, 1] + 2.0 * energy).clamp(1.0, 4.0)
-    decay = torch.exp(torch.tensor(-4.0 * 0.3 * step_size, dtype=p.dtype))
-    expected_q = 1.0 / (1.0 - ((task_q - 1.0) / task_q) * decay)
+    accepted_delta = (updated[:, 0] - p[:, 0]) / value.amplitude_max
+    geometric_q = p[:, 1] + p[:, 1] * accepted_delta.square()
+    expected_q = geometric_q - step_size * 0.3 * (geometric_q - 1.0)
     torch.testing.assert_close(updated[:, 1], expected_q)
 
 

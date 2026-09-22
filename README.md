@@ -153,13 +153,15 @@ Its first two atom coordinates are `(w, q)`, where `w` is the bounded signed
 amplitude and `q = 1 + 3 * alpha` is the persistent bandwidth-activity state.
 Consequently parameter-coordinate Adam accumulates its first and second
 moments directly on `w`; the task gradient of `q` is zero. After an accepted
-amplitude proposal, the kernel converts its angular change to the equivalent
-Polar chord energy `q * tan(delta_theta) ** 2`, advances `q`, and applies the
-same radial regularization used by `PolarAmpWidth`.
+amplitude proposal, the kernel uses the physical displacement
+`delta_square = q * ((new_w - old_w) / amplitude_max) ** 2`, advances `q` by
+that amount, and takes an ordinary gradient step on
+`radial_regularization / 2 * (q - 1) ** 2`. Polar activity gain, time-energy
+scaling, and dormant expansion do not act on `DirectAmpWidth`.
 
 The two kernels intentionally remain separate because their parameter rows and
-checkpoints have different meanings. They share the same constructor settings,
-so a configuration can be compared by changing only the kernel class:
+checkpoints have different meanings. They share the same bandwidth settings,
+while their activity dynamics are intentionally different:
 
 ```python
 from torchcst import DirectAmpWidth
@@ -170,8 +172,6 @@ kernel = DirectAmpWidth(
     sigma_max=10.0,
     w_c=0.0025,
     kappa=30.0,
-    activity_gain=27.0,
-    activity_mode="time_energy",
     radial_regularization=0.5,
     profile=Triweight(0.1),
 )
