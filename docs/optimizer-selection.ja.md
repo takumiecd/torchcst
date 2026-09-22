@@ -1,6 +1,6 @@
 # Optimizer選定と推奨設定
 
-更新日: 2026-09-20
+更新日: 2026-09-22
 
 ## 結論
 
@@ -28,6 +28,19 @@ scheduleを使わない設定を今回のQuadraticレシピとして採用した
 通常parameterを含むmixed modelでは、これらの経路から所有される
 `AdamWConfig` も維持する。`CSTParameterAdam` の既定cosine scheduleは今回の推奨設定では
 使わず、`decay_steps=None` とする。
+
+### ParameterAdamの推奨kernel
+
+振幅・帯域可変kernelを `CSTParameterAdam` で学習する場合は、現在
+`DirectAmpWidth` を第一候補とする。Adam momentを回転するPolar `(s,t)` ではなく
+物理振幅 `w` に保持し、`q` はaccepted `delta_w` と
+`R(q)=lambda/2*(q-1)^2` だけで更新する。同一初期operator・同一minibatch順の
+full MNIST 3-seed比較ではDirect 95.9467%、Polar 94.8367%で、全seed正、平均
++1.11 ppだった。詳細は
+[direct-amplitude-bandwidth.ja.md](direct-amplitude-bandwidth.ja.md)を参照。
+
+これはfirst-order parameter-coordinate経路内のkernel比較であり、下記の
+Polar `CSTQuadraticAdam` 選定を置き換える比較ではない。
 
 `CSTAdamR` は独立したmoment familyではない。実装は `_NDModelOptimizer`、EMA
 numerator、EMA denominatorを共有し、`update_rule="normalized"` または

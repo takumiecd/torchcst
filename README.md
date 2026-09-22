@@ -81,8 +81,8 @@ from torchcst import (
     Chart,
     CSTLinear,
     CSTParameterAdam,
+    DirectAmpWidth,
     ParameterAdamConfig,
-    PolarAmpWidth,
     Triweight,
 )
 
@@ -92,16 +92,14 @@ class MNISTCST(nn.Module):
         super().__init__()
         self.cst = CSTLinear(
             Chart.grid((28, 28), spacing=2 / 27),
-            Chart.linspace(64, spacing=2 / 63),
+            Chart.linspace(64, spacing=0.1),
             atoms=2560,
-            kernel=PolarAmpWidth(
+            kernel=DirectAmpWidth(
                 amplitude_max=1.0,
                 sigma_min=0.1,
                 sigma_max=10.0,
                 w_c=0.0025,
                 kappa=30.0,
-                activity_gain=27.0,
-                activity_mode="time_energy",
                 radial_regularization=0.5,
                 profile=Triweight(0.1),
             ),
@@ -119,8 +117,8 @@ model = MNISTCST()
 optimizer = CSTParameterAdam(
     model,
     cst=ParameterAdamConfig(
-        lr=0.03,
-        betas=(0.5, 0.99),
+        lr=0.005,
+        betas=(0.9, 0.999),
         decay_steps=None,  # fixed CST learning rate
     ),
     dense=AdamWConfig(
@@ -157,7 +155,10 @@ amplitude proposal, the kernel uses the physical displacement
 `delta_square = q * ((new_w - old_w) / amplitude_max) ** 2`, advances `q` by
 that amount, and takes an ordinary gradient step on
 `radial_regularization / 2 * (q - 1) ** 2`. Polar activity gain, time-energy
-scaling, and dormant expansion do not act on `DirectAmpWidth`.
+scaling, and dormant expansion do not act on `DirectAmpWidth`. The full update
+equations, optimizer-state contract, checkpoint migration notes, and paired A100
+results are in
+[docs/direct-amplitude-bandwidth.ja.md](docs/direct-amplitude-bandwidth.ja.md).
 
 The two kernels intentionally remain separate because their parameter rows and
 checkpoints have different meanings. They share the same bandwidth settings,
@@ -200,7 +201,7 @@ optimizer = CSTQuadraticAdam(
     ),
     initial_zero_step=True,
     factored=True,
-    kernel_step_size=0.002,    # outer horizon passed to Polar
+    kernel_step_size=0.002,    # outer horizon passed to the kernel
     dense=AdamWConfig(lr=0.005, weight_decay=0.0),
 )
 ```
@@ -214,14 +215,37 @@ inner_lr = desired_outer_horizon / iterations
 ```
 
 Do not treat this recipe as a universal schedule rule. It is the current
-fixed-learning-rate MNIST configuration.
+fixed-learning-rate MNIST configuration. The selected optimizer-family evidence
+below used a Polar model; the example above only illustrates that the same
+optimizer API can drive a model constructed with `DirectAmpWidth`.
 
 ## Current MNIST evidence
 
-The reported comparison used full MNIST (60,000 training / 10,000 test
-examples), batch size 128, five epochs, FP32, TF32 off, three seeds (17, 29,
-43), a 2,560-atom `CSTLinear(784, 64)`, a learnable 64-dimensional bias, ReLU,
-and a dense 64-to-10 head.
+### ParameterAdam kernel comparison
+
+With `CSTParameterAdam`, the paired Direct-versus-Polar experiment used full
+MNIST (60,000 training / 10,000 test examples), batch size 128, five epochs,
+FP32, TF32 off, and three seeds. Each pair shared the initial realized operator
+and minibatch order.
+
+| Kernel | Seed accuracies | Mean | Sample SD |
+| --- | --- | ---: | ---: |
+| `PolarAmpWidth` | 96.17%, 95.46%, 92.88% | 94.8367% | 1.731pp |
+| `DirectAmpWidth` | 96.28%, 96.46%, 95.10% | 95.9467% | 0.739pp |
+
+Direct improved all three paired seeds, by +1.11 percentage points on average.
+This supports Direct as the current first choice for parameter-coordinate Adam;
+it is not yet evidence for other datasets, long runs, or the Quadratic family.
+The equations and full diagnostics are in
+[docs/direct-amplitude-bandwidth.ja.md](docs/direct-amplitude-bandwidth.ja.md).
+
+### Optimizer-family comparison
+
+The separate reported optimizer comparison used full MNIST (60,000 training /
+10,000 test examples), batch size 128, five epochs, FP32, TF32 off, three seeds
+(17, 29, 43), a 2,560-atom `CSTLinear(784, 64)`, a learnable 64-dimensional
+bias, ReLU, and a dense 64-to-10 head. Both arms used the selected Polar
+configuration.
 
 | Optimizer | Seed accuracies | Mean | Sample SD |
 | --- | --- | ---: | ---: |
@@ -403,7 +427,9 @@ python -m build
 ```
 
 Design and experiment notes are indexed in [docs/README.md](docs/README.md).
-The optimizer comparison and selected MNIST configuration are documented in
-[docs/optimizer-selection.ja.md](docs/optimizer-selection.ja.md), while the
+The Direct coordinate design and paired kernel comparison are documented in
+[docs/direct-amplitude-bandwidth.ja.md](docs/direct-amplitude-bandwidth.ja.md).
+The optimizer comparison and selected MNIST configuration are in
+[docs/optimizer-selection.ja.md](docs/optimizer-selection.ja.md), and the
 parameter-coordinate Adam details are in
 [docs/parameter-adam.ja.md](docs/parameter-adam.ja.md).
