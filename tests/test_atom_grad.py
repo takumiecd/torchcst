@@ -3,7 +3,13 @@ import torch
 
 from torchcst import Amplitude, Atoms, Chart, CSTLinear, Gaussian, Separable
 from torchcst.atoms import AtomGrad
-from torchcst.optim import AtomGradRequest, LinearJGAtomGrad, LinearJGHAtomGrad
+from torchcst.optim import (
+    AtomGradientObservation,
+    AtomGradRequest,
+    CurvatureBlockMask,
+    LinearJGAtomGrad,
+    LinearJGHAtomGrad,
+)
 
 
 def make_site(*, backend: str = "factored") -> CSTLinear:
@@ -90,9 +96,7 @@ def test_nd_collectors_match_dense_derivative_oracles(
     if collector_type is LinearJGHAtomGrad:
         torch.testing.assert_close(
             observation.gh,
-            derivatives.contracted_hessian(
-                represented_gradient, parameter_point=point
-            ),
+            derivatives.contracted_hessian(represented_gradient, parameter_point=point),
         )
         assert collector.observation_request == AtomGradRequest(jg=True, gh=True)
     else:
@@ -137,3 +141,48 @@ def test_collector_rejects_trainable_charts() -> None:
     collector.begin()
     with pytest.raises(ValueError, match="frozen charts"):
         site(torch.randn(2, site.in_features, dtype=torch.float64)).sum().backward()
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        ("full", [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]),
+        ("no_m", [[1.0, 0.0, 0.0], [0.0, 5.0, 6.0], [0.0, 8.0, 9.0]]),
+        ("m_only", [[0.0, 2.0, 3.0], [4.0, 0.0, 0.0], [7.0, 0.0, 0.0]]),
+        ("none", [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]),
+    ],
+)
+def test_curvature_block_mask_selects_requested_hessian_blocks(
+    mode: str, expected: list[list[float]]
+) -> None:
+    gradient = torch.tensor([[10.0, 11.0, 12.0]])
+    hessian = torch.arange(1.0, 10.0).reshape(1, 3, 3)
+    observation = AtomGradientObservation(
+        jg=gradient,
+        gh=hessian,
+        contributions=2,
+    )
+
+    masked = CurvatureBlockMask(split=1, mode=mode).apply(observation)
+
+    assert masked.jg is gradient
+    assert masked.contributions == 2
+    torch.testing.assert_close(masked.gh, torch.tensor([expected]))
+    if mode != "full":
+        assert masked.gh is not hessian
+
+
+def test_curvature_block_mask_rejects_invalid_split_for_observation() -> None:
+    observation = AtomGradientObservation(
+        jg=torch.ones(1, 2),
+        gh=torch.ones(1, 2, 2),
+    )
+    with pytest.raises(ValueError, match="smaller than P"):
+        CurvatureBlockMask(split=2, mode="no_m").apply(observation)
+
+
+@pytest.mark.parametrize("split", [True, 0, -1, 1.5])
+def test_curvature_block_mask_rejects_invalid_constructor_split(split) -> None:
+    error = TypeError if split in (True, 1.5) else ValueError
+    with pytest.raises(error, match="split"):
+        CurvatureBlockMask(split=split)

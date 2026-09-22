@@ -11,6 +11,7 @@ from torchcst.optim import (
     CSTQuadraticMomentum,
     CSTQuadraticRMSProp,
     CSTQuadraticSGD,
+    CurvatureBlockMask,
     LinearJGAtomGrad,
     NormalizedOptimizerConfig,
     QuadraticGradientSolver,
@@ -137,3 +138,52 @@ def test_kernel_step_size_is_independent_of_inner_learning_rate() -> None:
 
     assert optimizer.cst_config.lr == 0.00025
     assert optimizer.cst_config.kernel_step_size == 0.002
+
+
+@pytest.mark.parametrize("mode", ["full", "no_m", "m_only", "none"])
+def test_curvature_mask_is_applied_before_both_adam_moments(mode: str) -> None:
+    model = make_site()
+    mask = CurvatureBlockMask(split=1, mode=mode)
+    optimizer = CSTQuadraticAdam(
+        model,
+        betas=(0.0, 0.0),
+        curvature_mask=mask,
+    )
+
+    take_step(optimizer, model)
+
+    observation = optimizer._sites[0].atom_grad.snapshot()
+    assert observation.jg is not None
+    assert observation.gh is not None
+    expected_hessian = mask.apply(observation).gh
+    assert expected_hessian is not None
+    state = optimizer._sites[0].state
+    torch.testing.assert_close(state.numerator.C, expected_hessian)
+    torch.testing.assert_close(
+        state.denominator.y,
+        torch.einsum("ki,kip->kip", observation.jg, expected_hessian),
+    )
+    torch.testing.assert_close(
+        state.denominator.Z,
+        torch.einsum("kip,kiq->kipq", expected_hessian, expected_hessian),
+    )
+
+
+def test_curvature_mask_is_part_of_optimizer_state_contract() -> None:
+    full = CSTQuadraticAdam(
+        make_site(),
+        curvature_mask=CurvatureBlockMask(split=1, mode="full"),
+    )
+    no_m = CSTQuadraticAdam(
+        make_site(),
+        curvature_mask=CurvatureBlockMask(split=1, mode="no_m"),
+    )
+    state = full.state_dict()
+
+    with pytest.raises(ValueError, match="moment contract"):
+        no_m.load_state_dict(state)
+
+
+def test_quadratic_config_rejects_non_mask_curvature_mask() -> None:
+    with pytest.raises(TypeError, match="curvature_mask"):
+        QuadraticOptimizerConfig(curvature_mask="no_m")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 import torch
 import torch.nn.functional as F
@@ -47,6 +48,68 @@ class AtomGradientObservation:
             missing.append("gh")
         if missing:
             raise ValueError(f"observation is missing: {', '.join(missing)}")
+
+
+CurvatureBlockMode = Literal["full", "no_m", "m_only", "none"]
+
+
+@dataclass(frozen=True)
+class CurvatureBlockMask:
+    """Select blocks of an atom-local curvature observation.
+
+    ``split`` partitions the final two axes into ``[:split]`` and
+    ``[split:]``. ``no_m`` retains the two diagonal blocks, ``m_only`` retains
+    the off-diagonal mixed blocks, and ``none`` removes all curvature. The
+    mask is applied before numerator or denominator moments are expanded.
+    """
+
+    split: int
+    mode: CurvatureBlockMode = "full"
+
+    def __post_init__(self) -> None:
+        if isinstance(self.split, bool) or not isinstance(self.split, int):
+            raise TypeError("curvature block split must be an integer")
+        if self.split < 1:
+            raise ValueError("curvature block split must be positive")
+        if self.mode not in ("full", "no_m", "m_only", "none"):
+            raise ValueError(
+                "curvature block mode must be 'full', 'no_m', 'm_only', or 'none'"
+            )
+
+    def apply(self, observation: AtomGradientObservation) -> AtomGradientObservation:
+        """Return an observation whose ``gh`` has the selected block mask."""
+
+        if not isinstance(observation, AtomGradientObservation):
+            raise TypeError("observation must be an AtomGradientObservation")
+        hessian = observation.gh
+        if hessian is None or self.mode == "full":
+            return observation
+        if hessian.ndim != 3 or hessian.shape[-1] != hessian.shape[-2]:
+            raise ValueError("gh must have shape [K, P, P]")
+        parameters = hessian.shape[-1]
+        if self.split >= parameters:
+            raise ValueError("curvature block split must be smaller than P")
+
+        masked = torch.zeros_like(hessian)
+        if self.mode == "no_m":
+            masked[:, : self.split, : self.split] = hessian[
+                :, : self.split, : self.split
+            ]
+            masked[:, self.split :, self.split :] = hessian[
+                :, self.split :, self.split :
+            ]
+        elif self.mode == "m_only":
+            masked[:, : self.split, self.split :] = hessian[
+                :, : self.split, self.split :
+            ]
+            masked[:, self.split :, : self.split] = hessian[
+                :, self.split :, : self.split
+            ]
+        return AtomGradientObservation(
+            jg=observation.jg,
+            gh=masked,
+            contributions=observation.contributions,
+        )
 
 
 class _LinearNDAtomGrad(LinearAtomGrad):
@@ -115,9 +178,7 @@ class _LinearNDAtomGrad(LinearAtomGrad):
         self._validate_linear_tensors(site, inputs, output_gradient)
 
         flat_inputs = inputs.detach().reshape(-1, site.in_features)
-        flat_output_gradient = output_gradient.detach().reshape(
-            -1, site.out_features
-        )
+        flat_output_gradient = output_gradient.detach().reshape(-1, site.out_features)
         point = site.atoms.p.detach()
         gh = None
 
@@ -198,9 +259,7 @@ class _LinearNDAtomGrad(LinearAtomGrad):
             raise ValueError("inputs do not match the CSTLinear input shape")
         expected_output = (*inputs.shape[:-1], site.out_features)
         if output_gradient.shape != expected_output:
-            raise ValueError(
-                f"output gradient must have shape {list(expected_output)}"
-            )
+            raise ValueError(f"output gradient must have shape {list(expected_output)}")
         tensors = (inputs, output_gradient)
         if any(value.device != site.atoms.p.device for value in tensors) or any(
             value.dtype != site.atoms.p.dtype for value in tensors

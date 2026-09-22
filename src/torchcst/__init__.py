@@ -33,6 +33,8 @@ from .optim import (
     CSTQuadraticRMSProp,
     CSTQuadraticSGD,
     CSTRMSProp,
+    CurvatureBlockMask,
+    CurvatureBlockMode,
     NormalizedOptimizerConfig,
     QuadraticOptimizerConfig,
 )
@@ -61,6 +63,8 @@ __all__ = [
     "CSTQuadraticRMSProp",
     "CSTQuadraticSGD",
     "CSTRMSProp",
+    "CurvatureBlockMask",
+    "CurvatureBlockMode",
     "Chart",
     "EuclideanGeometry",
     "Gaussian",

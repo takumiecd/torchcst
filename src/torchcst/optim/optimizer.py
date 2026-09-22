@@ -328,15 +328,25 @@ class _ModelOptimizer(Optimizer):
         for site in self._sites:
             geometry = self._make_geometry(site.module)
             context = MomentContext(geometry, geometry.current_point())
+            observation = self._prepare_observation(
+                site,
+                site.atom_grad.snapshot(),
+            )
             expanded = site.moments.expand(
                 site.state,
-                site.atom_grad.snapshot(),
+                observation,
                 context,
             )
             solve = self._solve(context, expanded)
             self._validate_solve(solve, context)
             proposals.append(_CSTProposal(site, context, expanded, solve))
         return tuple(proposals)
+
+    def _prepare_observation(self, site: _CSTSite, observation):
+        """Transform a completed step-local observation before moment expansion."""
+
+        del site
+        return observation
 
     def _validate_solve(
         self,

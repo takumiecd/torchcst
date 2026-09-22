@@ -89,6 +89,28 @@ optimizer = CSTQuadraticAdam(
 `0.00025 * 8 = 0.002`。`kernel_step_size=0.002` はPolarのtime-energy activityと
 radial regularizationへ外側horizonを渡す。これは厳密な連続時間積分を意味しない。
 
+### 曲率ブロックのablation
+
+`CurvatureBlockMask` は、原子ごとの曲率 `H:[K,P,P]` を先頭 `split` 座標と残りの
+座標に分割し、N/D momentへ渡す前にブロックを選択する。したがってnumeratorの
+`C` だけでなく、denominatorの `y=gH` と `Z=H⊗H` にも同じマスクが反映される。
+Polarでは先頭2座標が `(s,t)` なので、振幅・幅と中心座標のmixed block `M` を
+調べるablationは次のように指定できる。
+
+```python
+from torchcst import CurvatureBlockMask
+
+optimizer = CSTQuadraticAdam(
+    model,
+    # ...上記と同じ設定...
+    curvature_mask=CurvatureBlockMask(split=2, mode="no_m"),
+)
+```
+
+`mode` は、全曲率の `"full"`、対角2ブロックだけを残す `"no_m"`、mixed block
+だけを残す `"m_only"`、全曲率を0にする `"none"` の4種類。これは機構分離用の
+実験面であり、`split` はkernelの座標順序に合わせて明示する。
+
 結果はseed 17/29/43で97.07/96.48/96.88%、平均96.81%、sample SD 0.301pp。
 同じPolar上の `CSTParameterAdam` 平均96.29%より0.52pp高かった。従来の
 kernel-temperature scheduleを使うnon-Polar Quadratic平均96.89%との差は0.08ppで、

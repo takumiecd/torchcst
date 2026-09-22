@@ -8,6 +8,7 @@ from typing import Literal
 
 from torchcst.atoms import AtomGradMode
 
+from .atom_grad import CurvatureBlockMask
 from .solvers import (
     NormalizedFixedPointSolver,
     NormalizedSolver,
@@ -40,6 +41,10 @@ def _validate_nd_config(config) -> None:
         raise TypeError("factored must be a bool")
     if not isinstance(config.device_execution, bool):
         raise TypeError("device_execution must be a bool")
+    if config.curvature_mask is not None and not isinstance(
+        config.curvature_mask, CurvatureBlockMask
+    ):
+        raise TypeError("curvature_mask must be a CurvatureBlockMask or None")
     if config.kernel_step_size is not None and (
         isinstance(config.kernel_step_size, bool)
         or not math.isfinite(config.kernel_step_size)
@@ -62,6 +67,7 @@ class _NDOptimizerConfig:
     factored: bool = False
     device_execution: bool = False
     kernel_step_size: float | None = None
+    curvature_mask: CurvatureBlockMask | None = None
 
     def __post_init__(self) -> None:
         _validate_nd_config(self)

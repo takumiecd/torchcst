@@ -4,6 +4,8 @@ from .adamr import CSTAdamR
 from .atom_grad import (
     AtomGradientObservation,
     AtomGradRequest,
+    CurvatureBlockMask,
+    CurvatureBlockMode,
     LinearJGAtomGrad,
     LinearJGHAtomGrad,
 )
@@ -66,6 +68,8 @@ __all__ = [
     "AdamWConfig",
     "AtomGradRequest",
     "AtomGradientObservation",
+    "CurvatureBlockMask",
+    "CurvatureBlockMode",
     "CSTAdamR",
     "CSTImplicitAdam",
     "CSTMomentum",
