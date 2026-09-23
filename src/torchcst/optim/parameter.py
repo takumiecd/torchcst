@@ -53,7 +53,7 @@ class CSTParameterAdam(torch.optim.AdamW):
     """Whole-model parameter Adam with two parameter-sized moment buffers.
 
     This is ordinary coordinate Adam, not an approximation of visible-space
-    Adam. All CST sites must explicitly use the factored backend and frozen
+    Adam. All CST sites must resolve to the factored backend and use frozen
     charts. Ordinary parameters require an explicit ``dense=AdamWConfig(...)``.
     The cosine schedule applies only to the CST group. ``param_groups[i]['lr']``
     remains the unscheduled base rate; the completed-update count is serialized
@@ -76,8 +76,11 @@ class CSTParameterAdam(torch.optim.AdamW):
         for site in sites:
             if any(chart.trainable for chart in site.cst_charts()):
                 raise ValueError("CSTParameterAdam requires frozen charts")
-            if site.backend != "factored" or not site.kernel.supports_factorization:
-                raise ValueError("CSTParameterAdam requires backend='factored'")
+            if (
+                not site.kernel.supports_factorization
+                or site._resolved_backend() != "factored"
+            ):
+                raise ValueError("CSTParameterAdam requires factored execution")
             if site.atoms.grad is not None:
                 raise ValueError("CST site already has an attached AtomGrad program")
             if id(site.atoms.p) in owners:

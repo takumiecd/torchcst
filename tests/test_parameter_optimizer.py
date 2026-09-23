@@ -159,9 +159,10 @@ def test_invalid_config(kwargs):
         ParameterAdamConfig(**kwargs)
 
 
-def test_rejects_dense_backend_and_unconfigured_dense_parameters():
+def test_rejects_auto_resolving_to_materialized_and_unconfigured_dense_parameters():
     site = model()
     site.backend = "auto"
+    assert site._resolved_backend() == "materialized"
     with pytest.raises(ValueError, match="factored"):
         CSTParameterAdam(site)
     site.backend = "factored"

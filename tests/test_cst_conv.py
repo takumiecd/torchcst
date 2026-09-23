@@ -192,6 +192,13 @@ def test_parameter_adam_owns_factored_conv_atom_coordinates() -> None:
     assert optimizer.param_groups[0]["schedule_step"] == 1
 
 
+def test_parameter_adam_accepts_auto_when_conv_resolves_to_factored() -> None:
+    model = make_model(backend="auto")
+
+    assert model._resolved_backend() == "factored"
+    CSTParameterAdam(model)
+
+
 def test_nd_optimizer_rejects_conv_instead_of_treating_atoms_as_dense() -> None:
     class MixedModel(torch.nn.Module):
         def __init__(self):
