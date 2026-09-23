@@ -124,8 +124,10 @@ class _CompactRadialProfile(Profile):
         if precision.ndim == 1 and precision.shape != (p.shape[0],):
             raise ValueError("precision must be scalar or have shape [atoms]")
         precision = precision.to(device=p.device, dtype=p.dtype)
-        offset = chart.center_offsets(p)
-        squared = chart.squared_distance(p)
+        with cst_span("cst.profile.center_offsets"):
+            offset = chart.center_offsets(p)
+        with cst_span("cst.profile.squared_distance"):
+            squared = chart.squared_distance(p)
         return offset, squared, precision
 
     def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
