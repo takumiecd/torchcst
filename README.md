@@ -101,7 +101,7 @@ class MNISTCST(nn.Module):
                 w_c=0.0025,
                 kappa=30.0,
                 radial_regularization=0.5,
-                profile=Triweight(0.1),
+                profile=Triweight(0.1, normalize_columns=False),
             ),
             backend="factored",
         )
@@ -174,7 +174,7 @@ kernel = DirectAmpWidth(
     w_c=0.0025,
     kappa=30.0,
     radial_regularization=0.5,
-    profile=Triweight(0.1),
+    profile=Triweight(0.1, normalize_columns=False),
 )
 ```
 
@@ -236,6 +236,9 @@ and minibatch order.
 Direct improved all three paired seeds, by +1.11 percentage points on average.
 This supports Direct as the current first choice for parameter-coordinate Adam;
 it is not yet evidence for other datasets, long runs, or the Quadratic family.
+These paired runs used the raw profile explicitly shown above. `Triweight`
+defaults to L2-normalized columns, as it did on `main`; set
+`normalize_columns=False` to reproduce this raw-profile comparison.
 The equations and full diagnostics are in
 [docs/direct-amplitude-bandwidth.ja.md](docs/direct-amplitude-bandwidth.ja.md).
 
@@ -416,6 +419,12 @@ parameter, together with parameter names, shapes, and its optional schedule
 counter. N/D optimizer checkpoints additionally record their moment and solver
 contracts. Solver diagnostics for the N/D family are available through
 `last_step.site_results`.
+
+Polar and Direct kernel checkpoints now record their coordinate system, profile
+type, and column-normalization setting. A `main`-era Polar checkpoint with one
+shared `sigma_max` is migrated when loaded into a matching Polar model. An
+untagged checkpoint using the newer split-bandwidth buffers is rejected because
+its atom rows cannot be identified as Polar or Direct from tensor shapes alone.
 
 ## Development and documentation
 

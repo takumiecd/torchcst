@@ -242,14 +242,13 @@ class Biweight(_CompactRadialProfile):
 
 
 class Triweight(_CompactRadialProfile):
-    r"""The raw triweight profile \((1-r^2)_+^3\).
+    r"""The triweight profile \((1-r^2)_+^3\), L2-normalized by default.
 
-    Unlike the legacy discrete L2-normalized form, a column supported by one
-    site retains its distance and bandwidth derivatives instead of collapsing
-    to a constant one-hot vector.
+    Set ``normalize_columns=False`` to retain distance and bandwidth
+    derivatives when a column is supported by only one site.
     """
 
-    normalize_columns = False
+    normalize_columns = True
 
     def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
         return (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0).pow(3)

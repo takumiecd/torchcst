@@ -200,6 +200,86 @@ class PolarAmpWidth(Kernel):
         self.register_buffer("dormant_expansion_rate", dormant_rate)
         self.register_buffer("radial_regularization", regularization)
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record the meaning of the first two atom coordinates in checkpoints."""
+
+        return {
+            "format_version": 1,
+            "coordinate_system": "polar",
+            "profile": f"{type(self.profile).__module__}.{type(self.profile).__qualname__}",
+            "normalize_columns": getattr(self.profile, "normalize_columns", None),
+            "activity_mode": self.activity_mode,
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError(
+                f"{type(self).__name__} checkpoint contract differs from this kernel"
+            )
+
+    def _load_from_state_dict(
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
+    ) -> None:
+        marker = prefix + "_extra_state"
+        legacy_maximum = prefix + "sigma_max"
+        if marker not in state_dict:
+            if (
+                legacy_maximum not in state_dict
+                or prefix + "sigma_max_input" in state_dict
+                or prefix + "profile.sigma" not in state_dict
+                or getattr(self.profile, "normalize_columns", True) is not True
+            ):
+                error_msgs.append(
+                    f"{prefix[:-1]}: untagged amplitude-bandwidth checkpoint "
+                    "has ambiguous atom coordinates; identify and migrate its "
+                    "Polar or Direct format explicitly"
+                )
+                return
+            # Before split bandwidths, Polar stored one sigma_max and used
+            # profile.sigma as the shared sigma_min. All added controls had
+            # values equivalent to these legacy bounds by default.
+            minimum = state_dict[prefix + "profile.sigma"]
+            maximum = state_dict.pop(legacy_maximum)
+            defaults = {
+                "sigma_min_input": minimum,
+                "sigma_min_output": minimum,
+                "sigma_birth_input": maximum,
+                "sigma_birth_output": maximum,
+                "sigma_max_input": maximum,
+                "sigma_max_output": maximum,
+                "lower_kappa": state_dict[prefix + "kappa"],
+                "upper_decay_power": minimum.new_tensor(1.0),
+                "upper_floor_input": minimum,
+                "upper_floor_output": minimum,
+                "alpha_init": minimum.new_tensor(0.0),
+                "dormant_expansion_rate": minimum.new_tensor(0.0),
+            }
+            for name, value in defaults.items():
+                state_dict[prefix + name] = value.detach().clone()
+            state_dict[marker] = self.get_extra_state()
+        elif state_dict[marker] != self.get_extra_state():
+            error_msgs.append(
+                f"{prefix[:-1]}: checkpoint contract "
+                f"{state_dict[marker]!r} does not match {self.get_extra_state()!r}"
+            )
+            return
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
+
     @property
     def sigma_min(self) -> Tensor:
         """Input-side minimum; use ``sigma_min_output`` for split limits."""

@@ -44,11 +44,22 @@ def test_wendland_matches_the_unnormalized_polynomial() -> None:
 
 def test_triweight_matches_the_unnormalized_polynomial() -> None:
     chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
-    profile = _double_profile(Triweight, 1.0)
+    profile = Triweight(1.0, normalize_columns=False).double()
     p = torch.tensor([[0.0]], dtype=torch.float64)
 
     raw = torch.tensor([1.0, 0.75**3, 0.0], dtype=torch.float64)
     torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], raw)
+
+
+def test_triweight_defaults_to_legacy_l2_column_normalization() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    profile = Triweight(1.0).double()
+    p = torch.tensor([[0.0]], dtype=torch.float64)
+
+    raw = torch.tensor([1.0, 0.75**3, 0.0], dtype=torch.float64)
+    torch.testing.assert_close(
+        profile.evaluate(chart, p)[:, 0], raw / torch.linalg.vector_norm(raw)
+    )
 
 
 def test_triangle_matches_the_radial_hat() -> None:
@@ -93,7 +104,7 @@ def test_raw_compact_profile_retains_one_site_center_and_width_derivatives(
     factory,
 ) -> None:
     chart = Chart.points(torch.tensor([[0.0], [2.0]], dtype=torch.float64))
-    profile = factory(1.0).double()
+    profile = factory(1.0, normalize_columns=False).double()
     center = torch.tensor([[0.25]], dtype=torch.float64)
     precision = torch.ones(1, dtype=torch.float64)
 

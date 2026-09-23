@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from torchcst import (
@@ -110,14 +111,19 @@ def test_update_uses_accepted_physical_amplitude_displacement() -> None:
     torch.testing.assert_close(updated[:, 2:], p[:, 2:] + displacement[:, 2:])
 
 
-def test_activity_controls_are_ignored_and_q_regularization_is_euclidean() -> None:
+def test_direct_rejects_polar_only_activity_controls() -> None:
+    for option in (
+        {"activity_gain": 2.0},
+        {"activity_mode": "time_energy"},
+        {"dormant_expansion_rate": 10.0},
+    ):
+        with pytest.raises(TypeError, match="unexpected keyword"):
+            kernel(**option)
+
+
+def test_q_regularization_is_euclidean() -> None:
     input_chart, output_chart = charts()
-    value = kernel(
-        activity_gain=2.0,
-        activity_mode="time_energy",
-        dormant_expansion_rate=10.0,
-        radial_regularization=0.3,
-    ).to(dtype=torch.float64)
+    value = kernel(radial_regularization=0.3).to(dtype=torch.float64)
     p = torch.tensor([[0.2, 1.4, 0.0, 0.0]], dtype=torch.float64)
     displacement = torch.tensor([[0.1, -7.0, 0.0, 0.0]], dtype=torch.float64)
     step_size = 0.25

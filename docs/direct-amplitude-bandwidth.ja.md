@@ -9,6 +9,8 @@
 物理量 `(w, q)` として保存し、Adamの一次・二次momentを振幅 `w` に直接保持する。
 `q` はtask-lossの最適化変数ではなく、実際に受理された振幅移動から更新する
 帯域activity stateである。
+以下のpaired MNIST比較は `normalize_columns=False` のraw Triweightを使用した。
+`Triweight` の既定は旧 `main` と同じL2列正規化である。
 
 full MNISTの同一初期operator・同一minibatch順による3-seed paired比較では、
 `DirectAmpWidth` が既存 `PolarAmpWidth` を全seedで上回った。
@@ -139,7 +141,7 @@ kernel = DirectAmpWidth(
     w_c=0.0025,
     kappa=30.0,
     radial_regularization=0.5,
-    profile=Triweight(0.1),
+    profile=Triweight(0.1, normalize_columns=False),
 )
 
 optimizer = CSTParameterAdam(
@@ -159,14 +161,20 @@ optimizer = CSTParameterAdam(
 )
 ```
 
-`DirectAmpWidth` は実装再利用のため `PolarAmpWidth` のconstructor surfaceを継承する。
-ただし `activity_gain`、`activity_mode`、`dormant_expansion_rate` はDirectの `q` 更新に
-作用しない。新規設定では指定しない。
+`DirectAmpWidth` は `PolarAmpWidth` を継承せず、独立したkernelとして振幅とactivityを
+処理する。両者の帯域上限・下限の数式と設定項目は似ているが、atom rowの座標、更新則、
+checkpoint contractは別である。`activity_gain`、`activity_mode`、
+`dormant_expansion_rate` はPolar専用であり、Directへ指定するとエラーになる。
 
 ## Polarとの互換性
 
 `PolarAmpWidth` と `DirectAmpWidth` は同じoperatorを表現できるが、parameter rowと
 checkpointの意味は異なる。Polar checkpointをDirect modelへそのままloadしてはならない。
+新しく保存するcheckpointにはkernel座標系、profile型、列正規化設定を記録し、
+異なる設定への `load_state_dict` は拒否する。`main` 時代の単一帯域Polar checkpointは
+旧 `sigma_max` と `profile.sigma` から識別できるため、現在の入出力別bufferへ自動移行する。
+一方、このfeature branchで作った識別情報なしの新帯域checkpointは、Polar/Directが
+同じbuffer名とatom shapeを持つため自動判別できず、明示的に識別するまで拒否する。
 atomごとの表現値だけを変換する場合は、Polarの先頭2列から
 
 ```text

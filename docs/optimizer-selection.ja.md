@@ -53,6 +53,8 @@ numerator、EMA denominatorを共有し、`update_rule="normalized"` または
 
 full MNIST 60,000/10,000、batch 128、5 epoch、FP32、TF32 offで比較した。
 モデルは2,560 atomsの `CSTLinear(784, 64)`、bias、ReLU、dense 64-to-10 head。
+このoptimizer比較はraw Triweightを使うため、下の例では
+`normalize_columns=False` を明示する。
 
 ```python
 from torchcst import (
@@ -72,7 +74,7 @@ kernel = PolarAmpWidth(
     activity_gain=27.0,
     activity_mode="time_energy",
     radial_regularization=0.5,
-    profile=Triweight(0.1),
+    profile=Triweight(0.1, normalize_columns=False),
 )
 
 optimizer = CSTQuadraticAdam(
@@ -136,7 +138,7 @@ scheduleを外せる簡潔さを優先して本構成を採用する。
   固定する。
 - 今回のincumbentはhorizon 0.002、8 iterations。確認した0.0015/0.0020/0.0025では
   0.0020が最良だった。
-- Polarは `Triweight(0.1)` とsigma `[0.1, 10]` を組み合わせる。Gaussian Polarより
+- Polarは `Triweight(0.1, normalize_columns=False)` とsigma `[0.1, 10]` を組み合わせる。Gaussian Polarより
   seed17で95.96%から96.70%へ改善した。
 - `w_c=0.0025` を使う。Quadratic側で0.0015/0.0020/0.0025/0.0035を比較しても
   96.91/96.90/97.07/97.02%で中央が最良だった。
