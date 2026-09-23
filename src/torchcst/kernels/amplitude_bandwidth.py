@@ -79,6 +79,20 @@ class AmpWidth(Kernel):
         )
         self.couple_bandwidth = bool(couple_bandwidth)
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record non-buffer settings that select the amplitude-width law."""
+
+        return {
+            "format_version": 1,
+            "kernel_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "law": self.law,
+            "couple_bandwidth": self.couple_bandwidth,
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("AmpWidth checkpoint contract differs from this kernel")
+
     @property
     def sigma_min(self) -> Tensor:
         return self.profile.sigma

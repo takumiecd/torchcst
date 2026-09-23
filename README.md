@@ -425,11 +425,14 @@ counter. N/D optimizer checkpoints additionally record their moment and solver
 contracts. Solver diagnostics for the N/D family are available through
 `last_step.site_results`.
 
-Polar and Direct kernel checkpoints now record their coordinate system, profile
-type, and column-normalization setting. A `main`-era Polar checkpoint with one
-shared `sigma_max` is migrated when loaded into a matching Polar model. An
-untagged checkpoint using the newer split-bandwidth buffers is rejected because
-its atom rows cannot be identified as Polar or Direct from tensor shapes alone.
+New model checkpoints record the CST site layout, chart and geometry contracts,
+kernel type, profile type, and non-tensor settings such as column normalization
+and amplitude-width law. Loading into a model with a different contract is
+rejected; equivalent factored and materialized execution backends remain
+interchangeable. Untagged older checkpoints cannot prove these settings and
+must be identified explicitly before migration. A Polar checkpoint with the
+older shared `sigma_max` layout can be migrated only when its nested contracts
+are present; untagged split-bandwidth atom rows remain ambiguous.
 
 ## Development and documentation
 

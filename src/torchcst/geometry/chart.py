@@ -59,6 +59,21 @@ class Chart(nn.Module):
         else:
             self.register_buffer("coordinates", owned)
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record fixed chart properties outside the coordinate tensor."""
+
+        return {
+            "format_version": 1,
+            "chart_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "features": self.features,
+            "embedding_dim": self.embedding_dim,
+            "trainable": self.trainable,
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("chart checkpoint contract differs from this chart")
+
     @classmethod
     def points(
         cls,

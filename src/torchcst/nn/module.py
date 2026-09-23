@@ -25,6 +25,24 @@ class CSTModule(nn.Module):
 
     atoms: Atoms
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record the CST site family and its operator layout."""
+
+        return {
+            "format_version": 1,
+            "site_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "layout": self._checkpoint_layout(),
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("CST site checkpoint contract differs from this site")
+
+    def _checkpoint_layout(self) -> dict[str, object]:
+        """Family-specific non-tensor settings that change the operator."""
+
+        return {}
+
     @property
     def atom_parameter_dof(self) -> int:
         """Intrinsic degrees of freedom in one stored atom row."""

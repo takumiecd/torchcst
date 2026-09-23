@@ -149,6 +149,17 @@ class CSTConv2d(CSTModule):
             raise ValueError("kernel.initialize must match the module device and dtype")
         self.atoms = Atoms(p)
 
+    def _checkpoint_layout(self) -> dict[str, object]:
+        return {
+            "in_channels": self.in_channels,
+            "out_channels": self.out_channels,
+            "kernel_size": self.kernel_size,
+            "stride": self.stride,
+            "padding": self.padding,
+            "dilation": self.dilation,
+            "groups": self.groups,
+        }
+
     @property
     def patch_features(self) -> int:
         return self.input_chart.features

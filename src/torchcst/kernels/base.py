@@ -15,6 +15,19 @@ AtomInit = Literal["balanced", "uniform"]
 class Profile(nn.Module, ABC):
     """A fixed scalar profile that interprets one slice of an atom coordinate."""
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record the profile type and non-buffer evaluation settings."""
+
+        return {
+            "format_version": 1,
+            "profile_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "tangent_config": self.tangent_config(),
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("profile checkpoint contract differs from this profile")
+
     @abstractmethod
     def parameter_dim(self, chart: Chart) -> int:
         """Return the number of opaque coordinates consumed for one atom."""
@@ -82,6 +95,19 @@ class Profile(nn.Module, ABC):
 
 class Kernel(nn.Module, ABC):
     """Interpret each opaque atom row as a complete operator contribution."""
+
+    def get_extra_state(self) -> dict[str, object]:
+        """Record the kernel type and fixed non-buffer settings."""
+
+        return {
+            "format_version": 1,
+            "kernel_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "tangent_config": self.tangent_config(),
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("kernel checkpoint contract differs from this kernel")
 
     @abstractmethod
     def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:

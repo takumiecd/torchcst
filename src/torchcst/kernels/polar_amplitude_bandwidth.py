@@ -234,12 +234,13 @@ class PolarAmpWidth(Kernel):
                 legacy_maximum not in state_dict
                 or prefix + "sigma_max_input" in state_dict
                 or prefix + "profile.sigma" not in state_dict
+                or prefix + "profile._extra_state" not in state_dict
                 or getattr(self.profile, "normalize_columns", True) is not True
             ):
                 error_msgs.append(
                     f"{prefix[:-1]}: untagged amplitude-bandwidth checkpoint "
-                    "has ambiguous atom coordinates; identify and migrate its "
-                    "Polar or Direct format explicitly"
+                    "has unverifiable coordinates or profile settings; "
+                    "identify and migrate its format explicitly"
                 )
                 return
             # Before split bandwidths, Polar stored one sigma_max and used

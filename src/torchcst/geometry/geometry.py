@@ -38,6 +38,27 @@ class Geometry(nn.Module, ABC):
         self.embedding_dim = embedding_dim
         self.center_parameter_dim = center_parameter_dim
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record non-tensor settings that define center-coordinate meaning."""
+
+        return {
+            "format_version": 1,
+            "geometry_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "intrinsic_dim": self.intrinsic_dim,
+            "embedding_dim": self.embedding_dim,
+            "center_parameter_dim": self.center_parameter_dim,
+            "config": self._checkpoint_config(),
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("geometry checkpoint contract differs from this geometry")
+
+    def _checkpoint_config(self) -> dict[str, object]:
+        """Subclass-specific non-tensor settings; scalar buffers load separately."""
+
+        return {}
+
     def validate_points(self, points: Tensor, *, name: str = "points") -> None:
         """Validate an arbitrary table whose final axis stores one point."""
 
@@ -203,6 +224,9 @@ class SphereGeometry(Geometry):
         self.representation = representation
         self.register_buffer("radius", value.detach().clone().reshape(()))
         self.register_buffer("chart_margin", margin.detach().clone().reshape(()))
+
+    def _checkpoint_config(self) -> dict[str, object]:
+        return {"representation": self.representation}
 
     def validate_points(self, points: Tensor, *, name: str = "points") -> None:
         super().validate_points(points, name=name)

@@ -170,9 +170,11 @@ checkpoint contractは別である。`activity_gain`、`activity_mode`、
 
 `PolarAmpWidth` と `DirectAmpWidth` は同じoperatorを表現できるが、parameter rowと
 checkpointの意味は異なる。Polar checkpointをDirect modelへそのままloadしてはならない。
-新しく保存するcheckpointにはkernel座標系、profile型、列正規化設定を記録し、
-異なる設定への `load_state_dict` は拒否する。`main` 時代の単一帯域Polar checkpointは
-旧 `sigma_max` と `profile.sigma` から識別できるため、現在の入出力別bufferへ自動移行する。
+新しく保存するcheckpointにはkernel座標系、profile型、列正規化設定に加えて
+Chart/GeometryとCST siteの構成を記録し、異なる設定への `load_state_dict` は拒否する。
+`main` 時代の未タグcheckpointはprofile型やgeometry表現を検証できないため、
+自動読込しない。旧 `sigma_max` から入出力別bufferへの移行は、他の構成を識別する
+metadataがある場合だけ行う。
 一方、このfeature branchで作った識別情報なしの新帯域checkpointは、Polar/Directが
 同じbuffer名とatom shapeを持つため自動判別できず、明示的に識別するまで拒否する。
 atomごとの表現値だけを変換する場合は、Polarの先頭2列から

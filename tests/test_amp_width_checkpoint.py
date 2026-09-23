@@ -78,7 +78,7 @@ def test_direct_loads_its_earlier_tagged_checkpoint_without_unused_polar_buffers
     torch.testing.assert_close(restored.dense_weight(), source.dense_weight())
 
 
-def test_old_shared_bandwidth_polar_checkpoint_loads_without_changing_operator() -> None:
+def test_shared_bandwidth_polar_migration_with_nested_contract() -> None:
     source = make_model(PolarAmpWidth)
     with torch.no_grad():
         source.atoms.p[0, :2] = torch.tensor([1.2, 1.6])
@@ -107,14 +107,14 @@ def test_old_shared_bandwidth_polar_checkpoint_loads_without_changing_operator()
     torch.testing.assert_close(restored.dense_weight(), expected)
 
 
-def test_old_polar_checkpoint_rejects_raw_triweight_target() -> None:
+def test_shared_bandwidth_polar_checkpoint_rejects_raw_triweight_target() -> None:
     source = make_model(PolarAmpWidth)
     legacy = copy.deepcopy(source.state_dict())
     del legacy["kernel._extra_state"]
     legacy["kernel.sigma_max"] = legacy.pop("kernel.sigma_max_input")
     del legacy["kernel.sigma_max_output"]
 
-    with pytest.raises(RuntimeError, match="ambiguous atom coordinates"):
+    with pytest.raises(RuntimeError, match="checkpoint contract"):
         make_model(PolarAmpWidth, normalize_columns=False).load_state_dict(
             legacy, strict=True
         )
