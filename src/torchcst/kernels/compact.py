@@ -6,6 +6,7 @@ import torch
 from torch import Tensor
 
 from torchcst.geometry import Chart
+from torchcst.profiling import cst_span
 
 from .base import AtomInit, Profile
 
@@ -61,11 +62,16 @@ class _CompactRadialProfile(Profile):
         p: Tensor,
         precision: Tensor,
     ) -> Tensor:
-        _, squared, precision = self._geometry(chart, p, precision)
-        raw = self._unnormalized_from_squared(squared, precision)
+        with cst_span("cst.profile.geometry"):
+            _, squared, precision = self._geometry(
+                chart, p, precision, need_offsets=False
+            )
+        with cst_span("cst.profile.radial"):
+            raw = self._unnormalized_from_squared(squared, precision)
         if not self.normalize_columns:
             return raw
-        values, _ = _l2_column_scale(raw)
+        with cst_span("cst.profile.normalize"):
+            values, _ = _l2_column_scale(raw)
         return values
 
     def extra_repr(self) -> str:
@@ -111,8 +117,8 @@ class _CompactRadialProfile(Profile):
         return values, centers, widths
 
     def _geometry(
-        self, chart: Chart, p: Tensor, precision: Tensor
-    ) -> tuple[Tensor, Tensor, Tensor]:
+        self, chart: Chart, p: Tensor, precision: Tensor, *, need_offsets: bool = True
+    ) -> tuple[Tensor | None, Tensor, Tensor]:
         if p.ndim != 2 or p.shape[1] != self.parameter_dim(chart):
             raise ValueError(f"p must have shape [atoms, {self.parameter_dim(chart)}]")
         if precision.ndim not in (0, 1):
@@ -120,8 +126,12 @@ class _CompactRadialProfile(Profile):
         if precision.ndim == 1 and precision.shape != (p.shape[0],):
             raise ValueError("precision must be scalar or have shape [atoms]")
         precision = precision.to(device=p.device, dtype=p.dtype)
-        offset = chart.center_offsets(p)
-        squared = chart.squared_distance(p)
+        offset = None
+        if need_offsets:
+            with cst_span("cst.profile.center_offsets"):
+                offset = chart.center_offsets(p)
+        with cst_span("cst.profile.squared_distance"):
+            squared = chart.squared_distance(p)
         return offset, squared, precision
 
     def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
