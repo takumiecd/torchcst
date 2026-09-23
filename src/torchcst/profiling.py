@@ -15,6 +15,10 @@ _enabled: ContextVar[bool] = ContextVar("torchcst_profiling_enabled", default=Fa
 def cst_span(name: str):
     """Record a CST range only while a CSTProfiler is active."""
 
+    # Profiling annotations are not part of the model. Dynamo cannot trace a
+    # ContextVar lookup, so omit ranges while it captures a compiled graph.
+    if torch.compiler.is_compiling():
+        return nullcontext()
     return record_function(name) if _enabled.get() else nullcontext()
 
 

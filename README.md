@@ -464,6 +464,8 @@ profile geometry/radial/normalization, and `CSTParameterAdam` update phases.
 Use it around a training step, then inspect `key_averages()` or export a Chrome
 trace. Outside the context, these ranges are disabled. Benchmark setup and
 timing policy belong to the calling experiment.
+The named ranges are omitted while `torch.compile` captures a graph; compiled
+CUDA kernels remain visible to the standard PyTorch profiler.
 
 ```python
 from torchcst.profiling import CSTProfiler
