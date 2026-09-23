@@ -6,6 +6,7 @@ import torch
 from torch import Tensor
 
 from torchcst.geometry import Chart
+from torchcst.profiling import cst_span
 
 from .base import AtomInit, Profile
 
@@ -61,11 +62,14 @@ class _CompactRadialProfile(Profile):
         p: Tensor,
         precision: Tensor,
     ) -> Tensor:
-        _, squared, precision = self._geometry(chart, p, precision)
-        raw = self._unnormalized_from_squared(squared, precision)
+        with cst_span("cst.profile.geometry"):
+            _, squared, precision = self._geometry(chart, p, precision)
+        with cst_span("cst.profile.radial"):
+            raw = self._unnormalized_from_squared(squared, precision)
         if not self.normalize_columns:
             return raw
-        values, _ = _l2_column_scale(raw)
+        with cst_span("cst.profile.normalize"):
+            values, _ = _l2_column_scale(raw)
         return values
 
     def extra_repr(self) -> str:

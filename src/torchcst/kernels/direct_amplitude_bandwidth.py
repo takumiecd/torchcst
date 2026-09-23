@@ -9,6 +9,7 @@ import torch
 from torch import Tensor
 
 from torchcst.geometry import Chart
+from torchcst.profiling import cst_span
 
 from .base import AtomInit, Kernel, Profile
 from .gaussian import Gaussian
@@ -329,20 +330,23 @@ class DirectAmpWidth(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> tuple[Tensor, Tensor]:
-        direct, input_p, output_p = self._split(input_chart, output_chart, p)
-        amplitude, alpha = self._amplitude_and_alpha(direct)
-        sigma_input, sigma_output = self._bandwidth_sigmas(amplitude, alpha)
-        # Width is a state derived from update history, not a task-loss degree
-        # of freedom. Only the explicit radial regularizer may decrease alpha.
-        precision_input = sigma_input.reciprocal().square().detach()
-        precision_output = sigma_output.reciprocal().square().detach()
-        phi_input = self.profile.evaluate_with_precision(
-            input_chart, input_p, precision_input
-        )
-        phi_output = self.profile.evaluate_with_precision(
-            output_chart, output_p, precision_output
-        )
-        return phi_input, phi_output * amplitude.unsqueeze(0)
+        with cst_span("cst.kernel.bandwidth"):
+            direct, input_p, output_p = self._split(input_chart, output_chart, p)
+            amplitude, alpha = self._amplitude_and_alpha(direct)
+            sigma_input, sigma_output = self._bandwidth_sigmas(amplitude, alpha)
+            # Width is derived from update history, not task-loss gradients.
+            precision_input = sigma_input.reciprocal().square().detach()
+            precision_output = sigma_output.reciprocal().square().detach()
+        with cst_span("cst.kernel.input_profile"):
+            phi_input = self.profile.evaluate_with_precision(
+                input_chart, input_p, precision_input
+            )
+        with cst_span("cst.kernel.output_profile"):
+            phi_output = self.profile.evaluate_with_precision(
+                output_chart, output_p, precision_output
+            )
+        with cst_span("cst.kernel.amplitude_scale"):
+            return phi_input, phi_output * amplitude.unsqueeze(0)
 
     def amplitude(self, input_chart: Chart, output_chart: Chart, p: Tensor) -> Tensor:
         """Return the bounded signed amplitude represented by each atom."""

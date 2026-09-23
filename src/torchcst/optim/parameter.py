@@ -15,6 +15,7 @@ import torch
 from torch import nn
 
 from torchcst.nn import CSTModule
+from torchcst.profiling import cst_span
 
 from .config import AdamWConfig, _validate_betas
 
@@ -144,7 +145,7 @@ class CSTParameterAdam(torch.optim.AdamW):
         active = [
             any(p.grad is not None for p in g["params"]) for g in self.param_groups
         ]
-        with torch.no_grad():
+        with cst_span("cst.optim.project_gradient"), torch.no_grad():
             for site in self._cst_sites:
                 point = site.atoms.p
                 if point.grad is None:
@@ -159,23 +160,26 @@ class CSTParameterAdam(torch.optim.AdamW):
                 point.grad.copy_(projected)
         # Validate all gradients before Adam mutates any group. No dense visible
         # observation scope or derivative program is installed by this optimizer.
-        for group in self.param_groups:
-            for parameter in group["params"]:
-                grad = parameter.grad
-                if grad is not None:
-                    if grad.is_sparse:
-                        raise RuntimeError(
-                            "CSTParameterAdam requires strided gradients"
-                        )
-                    if not bool(torch.isfinite(grad).all()):
-                        raise FloatingPointError("non-finite parameter gradient")
+        with cst_span("cst.optim.validate_gradient"):
+            for group in self.param_groups:
+                for parameter in group["params"]:
+                    grad = parameter.grad
+                    if grad is not None:
+                        if grad.is_sparse:
+                            raise RuntimeError(
+                                "CSTParameterAdam requires strided gradients"
+                            )
+                        if not bool(torch.isfinite(grad).all()):
+                            raise FloatingPointError("non-finite parameter gradient")
         base_rates = [group["lr"] for group in self.param_groups]
-        old_points = {site: site.atoms.p.detach().clone() for site in self._cst_sites}
+        with cst_span("cst.optim.snapshot"):
+            old_points = {site: site.atoms.p.detach().clone() for site in self._cst_sites}
         scheduled_cst_rate = base_rates[0] * self._rate_scale(self.param_groups[0])
         try:
             for group, rate in zip(self.param_groups, base_rates):
                 group["lr"] = rate * self._rate_scale(group)
-            super().step()
+            with cst_span("cst.optim.adamw"):
+                super().step()
         finally:
             for group, rate in zip(self.param_groups, base_rates):
                 group["lr"] = rate
@@ -185,25 +189,27 @@ class CSTParameterAdam(torch.optim.AdamW):
                 if point.grad is None:
                     continue
                 old = old_points[site]
-                updated = site.kernel.apply_parameter_update(
-                    *site.cst_charts(),
-                    old,
-                    point - old,
-                    step_size=scheduled_cst_rate,
-                )
-                if not bool(torch.isfinite(updated).all()):
-                    raise FloatingPointError("kernel parameter update must be finite")
-                first_moment = self.state[point].get("exp_avg")
-                if first_moment is not None:
-                    transported = site.kernel.transport_parameter_state(
+                with cst_span("cst.optim.apply_update"):
+                    updated = site.kernel.apply_parameter_update(
                         *site.cst_charts(),
                         old,
-                        updated,
-                        first_moment,
+                        point - old,
+                        step_size=scheduled_cst_rate,
                     )
-                    if transported.shape != first_moment.shape:
-                        raise ValueError("kernel transported state has the wrong shape")
-                    first_moment.copy_(transported)
+                    if not bool(torch.isfinite(updated).all()):
+                        raise FloatingPointError("kernel parameter update must be finite")
+                first_moment = self.state[point].get("exp_avg")
+                if first_moment is not None:
+                    with cst_span("cst.optim.transport_state"):
+                        transported = site.kernel.transport_parameter_state(
+                            *site.cst_charts(),
+                            old,
+                            updated,
+                            first_moment,
+                        )
+                        if transported.shape != first_moment.shape:
+                            raise ValueError("kernel transported state has the wrong shape")
+                        first_moment.copy_(transported)
                 point.copy_(updated)
         for group, used in zip(self.param_groups, active):
             group["schedule_step"] += int(used)

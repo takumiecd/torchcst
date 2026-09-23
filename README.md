@@ -455,3 +455,24 @@ The optimizer comparison and selected MNIST configuration are in
 [docs/optimizer-selection.ja.md](docs/optimizer-selection.ja.md), and the
 parameter-coordinate Adam details are in
 [docs/parameter-adam.ja.md](docs/parameter-adam.ja.md).
+
+# Profiling CST internals
+
+`torchcst.profiling.CSTProfiler` wraps the PyTorch profiler and enables named
+ranges for CST Linear factor construction, the two matrix multiplies, compact
+profile geometry/radial/normalization, and `CSTParameterAdam` update phases.
+Use it around a training step, then inspect `key_averages()` or export a Chrome
+trace. Outside the context, these ranges are disabled. Benchmark setup and
+timing policy belong to the calling experiment.
+
+```python
+from torchcst.profiling import CSTProfiler
+
+with CSTProfiler(record_shapes=True) as prof:
+    loss = model(inputs).square().mean()
+    loss.backward()
+    optimizer.step()
+
+print(prof.key_averages().table(sort_by="self_device_time_total"))
+prof.export_chrome_trace("trace.json")
+```

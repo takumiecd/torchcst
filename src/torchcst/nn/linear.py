@@ -12,6 +12,7 @@ from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.geometry import Chart
 from torchcst.kernels import AtomInit, Kernel
+from torchcst.profiling import cst_span
 
 from .atom_grad import LinearAtomGrad
 from .module import CSTModule, RepulsionKind
@@ -199,13 +200,19 @@ class CSTLinear(CSTModule):
         backend: Literal["factored", "materialized"],
     ) -> Tensor:
         if backend == "materialized":
-            return F.linear(inputs, self._materialize_atoms(p).sum(dim=0))
+            with cst_span("cst.linear.materialize"):
+                weight = self._materialize_atoms(p).sum(dim=0)
+            with cst_span("cst.linear.dense_matmul"):
+                return F.linear(inputs, weight)
 
-        phi_input, phi_output = self.kernel.factors(
-            self.input_chart, self.output_chart, p
-        )
-        atom_values = inputs @ phi_input
-        return atom_values @ phi_output.transpose(-2, -1)
+        with cst_span("cst.linear.factors"):
+            phi_input, phi_output = self.kernel.factors(
+                self.input_chart, self.output_chart, p
+            )
+        with cst_span("cst.linear.input_matmul"):
+            atom_values = inputs @ phi_input
+        with cst_span("cst.linear.output_matmul"):
+            return atom_values @ phi_output.transpose(-2, -1)
 
     def forward(self, inputs: Tensor) -> Tensor:
         if inputs.ndim < 1 or inputs.shape[-1] != self.in_features:
