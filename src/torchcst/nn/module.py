@@ -18,11 +18,43 @@ class CSTModule(nn.Module):
     Family-specific backward stays on ``LinearAtomGrad`` or a future
     ``ConvAtomGrad``. This type does not unify those programs. Subclasses own
     one ``Atoms`` table, frozen charts, and the ``(S, κ)`` repulsion terms.
-    The normalized optimizer family currently still discovers ``CSTLinear``
-    so it can attach ``LinearAtomGrad``; Conv will join through this contract.
+    ``CSTParameterAdam`` discovers every site through this contract. The N/D
+    optimizer family supports ``CSTLinear`` through ``LinearAtomGrad`` and
+    rejects other site families until they have observation programs.
     """
 
     atoms: Atoms
+
+    def get_extra_state(self) -> dict[str, object]:
+        """Record the CST site family and its operator layout."""
+
+        return {
+            "format_version": 1,
+            "site_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "layout": self._checkpoint_layout(),
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("CST site checkpoint contract differs from this site")
+
+    def _checkpoint_layout(self) -> dict[str, object]:
+        """Family-specific non-tensor settings that change the operator."""
+
+        return {}
+
+    @property
+    def atom_parameter_dof(self) -> int:
+        """Intrinsic degrees of freedom in one stored atom row."""
+
+        input_chart, output_chart = self.cst_charts()
+        return self.kernel.parameter_dof(input_chart, output_chart)
+
+    @property
+    def cst_degrees_of_freedom(self) -> int:
+        """Intrinsic degrees of freedom across this site's atom table."""
+
+        return self.atoms.count * self.atom_parameter_dof
 
     def cst_parameters(self) -> tuple[nn.Parameter, ...]:
         """Return the fixed-shape parameters owned by this CST site."""

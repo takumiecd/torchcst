@@ -45,9 +45,7 @@ class _NDModelOptimizer(_ModelOptimizer):
         self, site: CSTLinear, moments
     ) -> LinearJGAtomGrad | LinearJGHAtomGrad:
         c = self.cst_config
-        atom_grad_type = (
-            LinearJGHAtomGrad if self._uses_curvature else LinearJGAtomGrad
-        )
+        atom_grad_type = LinearJGHAtomGrad if self._uses_curvature else LinearJGAtomGrad
         return atom_grad_type(mode=c.atom_grad_mode, factored=c.factored)
 
     def _make_moments(self) -> NormalizedMomentSystem:
@@ -70,6 +68,11 @@ class _NDModelOptimizer(_ModelOptimizer):
             numerator=numerator,
             denominator=denominator,
         )
+
+    def _prepare_observation(self, site, observation):
+        del site
+        mask = self.cst_config.curvature_mask
+        return observation if mask is None else mask.apply(observation)
 
     @property
     def _uses_curvature(self) -> bool:
@@ -134,6 +137,14 @@ class _NDModelOptimizer(_ModelOptimizer):
             "numerator": "ema" if self._use_numerator_moment else "current",
             "denominator": "ema" if self._use_denominator_moment else "unit",
             "initial_zero_step": c.initial_zero_step,
+            "curvature_mask": (
+                None
+                if c.curvature_mask is None
+                else {
+                    "split": c.curvature_mask.split,
+                    "mode": c.curvature_mask.mode,
+                }
+            ),
             "solver": {
                 "type": type(solver).__name__,
                 "max_iter": getattr(solver, "max_iter", None),

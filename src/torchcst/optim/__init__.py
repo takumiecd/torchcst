@@ -4,6 +4,8 @@ from .adamr import CSTAdamR
 from .atom_grad import (
     AtomGradientObservation,
     AtomGradRequest,
+    CurvatureBlockMask,
+    CurvatureBlockMode,
     LinearJGAtomGrad,
     LinearJGHAtomGrad,
 )
@@ -61,6 +63,7 @@ from .solvers import (
 )
 
 __all__ = [
+    "CSTSGD",
     "AdamRConfig",
     "AdamWConfig",
     "AtomGradRequest",
@@ -78,8 +81,9 @@ __all__ = [
     "CSTQuadraticRMSProp",
     "CSTQuadraticSGD",
     "CSTRMSProp",
-    "CSTSGD",
     "CSTStepResult",
+    "CurvatureBlockMask",
+    "CurvatureBlockMode",
     "DenominatorMoment",
     "DenominatorMomentState",
     "DenominatorPolynomial",

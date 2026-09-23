@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from typing import Literal
 
 import torch
 from torch import Tensor, nn
+
+from .geometry import EuclideanGeometry, Geometry, SphereGeometry
 
 
 class Chart(nn.Module):
@@ -19,7 +22,13 @@ class Chart(nn.Module):
     with ``spacing``. There is no implicit ``[-1, 1]`` domain.
     """
 
-    def __init__(self, coordinates: Tensor, *, trainable: bool = False) -> None:
+    def __init__(
+        self,
+        coordinates: Tensor,
+        *,
+        geometry: Geometry | None = None,
+        trainable: bool = False,
+    ) -> None:
         super().__init__()
         if not isinstance(coordinates, Tensor):
             raise TypeError("coordinates must be a torch.Tensor")
@@ -32,17 +41,73 @@ class Chart(nn.Module):
         if not torch.isfinite(coordinates).all():
             raise ValueError("chart coordinates must be finite")
 
+        if geometry is None:
+            geometry = EuclideanGeometry(coordinates.shape[1])
+        elif not isinstance(geometry, Geometry):
+            raise TypeError("geometry must be a Geometry")
+        if coordinates.shape[1] != geometry.embedding_dim:
+            raise ValueError(
+                "coordinate width must match geometry.embedding_dim "
+                f"({geometry.embedding_dim})"
+            )
+        geometry.validate_points(coordinates, name="coordinates")
+        self.geometry = geometry
+
         owned = coordinates.detach().clone()
         if trainable:
             self.coordinates = nn.Parameter(owned)
         else:
             self.register_buffer("coordinates", owned)
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record fixed chart properties outside the coordinate tensor."""
+
+        return {
+            "format_version": 1,
+            "chart_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "features": self.features,
+            "embedding_dim": self.embedding_dim,
+            "trainable": self.trainable,
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("chart checkpoint contract differs from this chart")
+
     @classmethod
-    def points(cls, coordinates: Tensor, *, trainable: bool = False) -> Chart:
+    def points(
+        cls,
+        coordinates: Tensor,
+        *,
+        geometry: Geometry | None = None,
+        trainable: bool = False,
+    ) -> Chart:
         """Construct a chart from an explicit ``[features, dimensions]`` tensor."""
 
-        return cls(coordinates, trainable=trainable)
+        return cls(coordinates, geometry=geometry, trainable=trainable)
+
+    @classmethod
+    def sphere(
+        cls,
+        features: int,
+        *,
+        intrinsic_dim: int,
+        radius: float = 1.0,
+        representation: Literal["ambient", "intrinsic"] = "ambient",
+        chart_margin: float = 0.05,
+        trainable: bool = False,
+    ) -> Chart:
+        """Construct points sampled uniformly on the intrinsic sphere ``S^d``."""
+
+        cls._validate_size(features, name="features")
+        geometry = SphereGeometry(
+            intrinsic_dim,
+            radius=radius,
+            representation=representation,
+            chart_margin=chart_margin,
+        )
+        coordinates = geometry.sample_sites(features)
+        return cls(coordinates, geometry=geometry, trainable=trainable)
 
     @classmethod
     def linspace(
@@ -166,8 +231,14 @@ class Chart(nn.Module):
             if len(value) != dim:
                 raise ValueError(f"{name} must have one entry per axis")
             if name == "spacing":
-                return tuple(cls._positive_float(item, name=f"{name}[{i}]") for i, item in enumerate(value))
-            return tuple(cls._finite_float(item, name=f"{name}[{i}]") for i, item in enumerate(value))
+                return tuple(
+                    cls._positive_float(item, name=f"{name}[{i}]")
+                    for i, item in enumerate(value)
+                )
+            return tuple(
+                cls._finite_float(item, name=f"{name}[{i}]")
+                for i, item in enumerate(value)
+            )
         if name == "spacing":
             number = cls._positive_float(value, name=name)
         else:
@@ -224,9 +295,42 @@ class Chart(nn.Module):
 
     @property
     def dim(self) -> int:
-        """Coordinate dimension of each observation point."""
+        """Stored coordinate width; retained as an alias for ``embedding_dim``."""
 
         return self.coordinates.shape[1]
+
+    @property
+    def embedding_dim(self) -> int:
+        """Stored coordinate width of each observation point."""
+
+        return self.geometry.embedding_dim
+
+    @property
+    def intrinsic_dim(self) -> int:
+        """Geometric degrees of freedom of one point."""
+
+        return self.geometry.intrinsic_dim
+
+    @property
+    def center_parameter_dim(self) -> int:
+        """Stored coordinate width of one atom center."""
+
+        return self.geometry.center_parameter_dim
+
+    def squared_distance(self, centers: Tensor) -> Tensor:
+        """Pairwise site-center squared distance in this chart's geometry."""
+
+        return self.geometry.squared_distance(self.coordinates, centers)
+
+    def center_offsets(self, centers: Tensor) -> Tensor:
+        """Site-center offsets in each center's tangent space."""
+
+        return self.geometry.center_offsets(self.coordinates, centers)
+
+    def initialize_centers(self, atoms: int, *, mode: str) -> Tensor:
+        """Initialize atom centers in the chart's geometry."""
+
+        return self.geometry.initialize_centers(self.coordinates, atoms, mode=mode)
 
     @property
     def spacing(self) -> Tensor | None:
@@ -243,7 +347,9 @@ class Chart(nn.Module):
     def extra_repr(self) -> str:
         parts = [
             f"features={self.features}",
-            f"dim={self.dim}",
+            f"intrinsic_dim={self.intrinsic_dim}",
+            f"embedding_dim={self.embedding_dim}",
+            f"center_parameter_dim={self.center_parameter_dim}",
             f"trainable={self.trainable}",
         ]
         spacing = self.spacing

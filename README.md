@@ -81,8 +81,8 @@ from torchcst import (
     Chart,
     CSTLinear,
     CSTParameterAdam,
+    DirectAmpWidth,
     ParameterAdamConfig,
-    PolarAmpWidth,
     Triweight,
 )
 
@@ -92,18 +92,16 @@ class MNISTCST(nn.Module):
         super().__init__()
         self.cst = CSTLinear(
             Chart.grid((28, 28), spacing=2 / 27),
-            Chart.linspace(64, spacing=2 / 63),
+            Chart.linspace(64, spacing=0.1),
             atoms=2560,
-            kernel=PolarAmpWidth(
+            kernel=DirectAmpWidth(
                 amplitude_max=1.0,
                 sigma_min=0.1,
                 sigma_max=10.0,
                 w_c=0.0025,
                 kappa=30.0,
-                activity_gain=27.0,
-                activity_mode="time_energy",
                 radial_regularization=0.5,
-                profile=Triweight(0.1),
+                profile=Triweight(0.1, normalize_columns=False),
             ),
             backend="factored",
         )
@@ -119,8 +117,8 @@ model = MNISTCST()
 optimizer = CSTParameterAdam(
     model,
     cst=ParameterAdamConfig(
-        lr=0.03,
-        betas=(0.5, 0.99),
+        lr=0.005,
+        betas=(0.9, 0.999),
         decay_steps=None,  # fixed CST learning rate
     ),
     dense=AdamWConfig(
@@ -146,6 +144,40 @@ If raw Euclidean updates to `model.parameters()` are intentional,
 library wrapper to use when the CST ownership checks, mixed-model partition,
 and kernel-specific coordinate update should be retained.
 
+### Direct amplitude and activity coordinates
+
+`DirectAmpWidth` is the direct-coordinate alternative to `PolarAmpWidth`.
+Its first two atom coordinates are `(w, q)`, where `w` is the bounded signed
+amplitude and `q = 1 + 3 * alpha` is the persistent bandwidth-activity state.
+Consequently parameter-coordinate Adam accumulates its first and second
+moments directly on `w`; the task gradient of `q` is zero. After an accepted
+amplitude proposal, the kernel uses the physical displacement
+`delta_square = q * ((new_w - old_w) / amplitude_max) ** 2`, advances `q` by
+that amount, and takes an ordinary gradient step on
+`radial_regularization / 2 * (q - 1) ** 2`. Polar activity gain, time-energy
+scaling, and dormant expansion do not act on `DirectAmpWidth`. The full update
+equations, optimizer-state contract, checkpoint migration notes, and paired A100
+results are in
+[docs/direct-amplitude-bandwidth.ja.md](docs/direct-amplitude-bandwidth.ja.md).
+
+The two kernels intentionally remain separate because their parameter rows and
+checkpoints have different meanings. They share the same bandwidth settings,
+while their activity dynamics are intentionally different:
+
+```python
+from torchcst import DirectAmpWidth
+
+kernel = DirectAmpWidth(
+    amplitude_max=1.0,
+    sigma_min=0.1,
+    sigma_max=10.0,
+    w_c=0.0025,
+    kappa=30.0,
+    radial_regularization=0.5,
+    profile=Triweight(0.1, normalize_columns=False),
+)
+```
+
 ## Accuracy-oriented training: Quadratic Adam
 
 Use the same model definition with a fresh model instance and replace the
@@ -169,7 +201,7 @@ optimizer = CSTQuadraticAdam(
     ),
     initial_zero_step=True,
     factored=True,
-    kernel_step_size=0.002,    # outer horizon passed to Polar
+    kernel_step_size=0.002,    # outer horizon passed to the kernel
     dense=AdamWConfig(lr=0.005, weight_decay=0.0),
 )
 ```
@@ -183,14 +215,40 @@ inner_lr = desired_outer_horizon / iterations
 ```
 
 Do not treat this recipe as a universal schedule rule. It is the current
-fixed-learning-rate MNIST configuration.
+fixed-learning-rate MNIST configuration. The selected optimizer-family evidence
+below used a Polar model; the example above only illustrates that the same
+optimizer API can drive a model constructed with `DirectAmpWidth`.
 
 ## Current MNIST evidence
 
-The reported comparison used full MNIST (60,000 training / 10,000 test
-examples), batch size 128, five epochs, FP32, TF32 off, three seeds (17, 29,
-43), a 2,560-atom `CSTLinear(784, 64)`, a learnable 64-dimensional bias, ReLU,
-and a dense 64-to-10 head.
+### ParameterAdam kernel comparison
+
+With `CSTParameterAdam`, the paired Direct-versus-Polar experiment used full
+MNIST (60,000 training / 10,000 test examples), batch size 128, five epochs,
+FP32, TF32 off, and three seeds. Each pair shared the initial realized operator
+and minibatch order.
+
+| Kernel | Seed accuracies | Mean | Sample SD |
+| --- | --- | ---: | ---: |
+| `PolarAmpWidth` | 96.17%, 95.46%, 92.88% | 94.8367% | 1.731pp |
+| `DirectAmpWidth` | 96.28%, 96.46%, 95.10% | 95.9467% | 0.739pp |
+
+Direct improved all three paired seeds, by +1.11 percentage points on average.
+This supports Direct as the current first choice for parameter-coordinate Adam;
+it is not yet evidence for other datasets, long runs, or the Quadratic family.
+These paired runs used the raw profile explicitly shown above. `Triweight`
+defaults to L2-normalized columns, as it did on `main`; set
+`normalize_columns=False` to reproduce this raw-profile comparison.
+The equations and full diagnostics are in
+[docs/direct-amplitude-bandwidth.ja.md](docs/direct-amplitude-bandwidth.ja.md).
+
+### Optimizer-family comparison
+
+The separate reported optimizer comparison used full MNIST (60,000 training /
+10,000 test examples), batch size 128, five epochs, FP32, TF32 off, three seeds
+(17, 29, 43), a 2,560-atom `CSTLinear(784, 64)`, a learnable 64-dimensional
+bias, ReLU, and a dense 64-to-10 head. Both arms used the selected Polar
+configuration.
 
 | Optimizer | Seed accuracies | Mean | Sample SD |
 | --- | --- | ---: | ---: |
@@ -245,13 +303,29 @@ an observed peak-memory measurement.
 
 ### `Chart`
 
-`Chart` stores the fixed observation coordinates used by a CST site. Charts are
-currently required to be frozen for optimizer-backed training.
+`Chart` stores fixed observation sites together with the geometry in which
+those sites and atom centers live. Euclidean geometry remains the default;
+embedded geometries distinguish their stored coordinate width from their true
+degrees of freedom. Charts are currently required to be frozen for
+optimizer-backed training.
 
 ```python
 pixels = Chart.grid((28, 28), spacing=2 / 27)
 channels = Chart.linspace(64, spacing=2 / 63)
+spherical = Chart.sphere(64, intrinsic_dim=2)  # S^2 stored in R^3
+compact_spherical = Chart.sphere(
+    64, intrinsic_dim=2, representation="intrinsic"
+)  # sites in R^3, atom centers stored with 2 scalars
 ```
+
+`chart.embedding_dim` is the observation-site coordinate width,
+`chart.center_parameter_dim` is the center width stored in an atom row, and
+`chart.intrinsic_dim` is the number of geometric degrees of freedom. By default,
+`SphereGeometry(d)` uses the robust ambient representation and stores `d + 1`
+center coordinates. With `representation="intrinsic"`, it stores exactly `d`
+normal coordinates and decodes them onto `S^d` before measuring distance.
+Geometry owns decoding, distance, tangent/coordinate projection, retraction,
+and vector transport; it does not own kernel bandwidth or normalization.
 
 ### `Atoms`
 
@@ -265,13 +339,41 @@ fixed.
 A kernel maps each atom coordinate row to an operator contribution. Kernels may
 also define factorized execution and a kernel-specific parameter update. For
 example, `PolarAmpWidth` separates angular amplitude motion from radial
-bandwidth activity.
+bandwidth activity in `(s, t)`, while `DirectAmpWidth` stores the same logical
+quantities explicitly as `(w, q)`. Profiles ask each Chart for distances and
+center updates, while the kernel owns the layout of the complete opaque `p`
+row. Consequently, `kernel.parameter_dim(...)` reports stored width and
+`kernel.parameter_dof(...)` reports intrinsic degrees of freedom.
+
+For both amplitude-width kernels, the effective upper bandwidth bound is the
+maximum of its raw upper curve, configured floor, and lower curve. This keeps
+`lower <= upper` even when independent decay settings would make the curves
+cross; activity has no bandwidth effect where the two bounds coincide.
 
 ### `CSTLinear`
 
 `CSTLinear` combines input/output charts, an atom table, and one kernel. Its
 `backend="factored"` path avoids retaining the full dense weight when the
 kernel supports exact factorization.
+
+### `CSTConv2d`
+
+`CSTConv2d` interprets the input chart as one flattened local image patch. If
+the convolution has `Cin` input channels, `groups=G`, and kernel size
+`(Kh, Kw)`, the input chart contains `(Cin / G) * Kh * Kw` features and the
+output chart contains `Cout` features. The kernel therefore continues to
+represent a matrix-valued local operator; `CSTConv2d` reshapes its sum to the
+standard `[Cout, Cin / G, Kh, Kw]` weight only when applying the convolution.
+
+The materialized backend supports grouped convolution. Exact factorized
+execution currently requires `groups=1`; `backend="auto"` falls back to the
+materialized path for grouped convolutions. Bias is deliberately kept outside
+the CST operator and can be added as an ordinary model parameter.
+
+`CSTParameterAdam` supports `CSTConv2d` when its backend resolves to factored
+execution. The N/D optimizer families currently support `CSTLinear` sites
+only; they reject models containing `CSTConv2d` at construction, including
+mixed Linear/Conv models with `dense=AdamWConfig(...)`.
 
 ## Other optimizer families
 
@@ -328,6 +430,15 @@ counter. N/D optimizer checkpoints additionally record their moment and solver
 contracts. Solver diagnostics for the N/D family are available through
 `last_step.site_results`.
 
+New model checkpoints record the CST site layout, chart and geometry contracts,
+kernel type, profile type, and non-tensor settings such as column normalization
+and amplitude-width law. Loading into a model with a different contract is
+rejected; equivalent factored and materialized execution backends remain
+interchangeable. Untagged older checkpoints cannot prove these settings and
+must be identified explicitly before migration. A Polar checkpoint with the
+older shared `sigma_max` layout can be migrated only when its nested contracts
+are present; untagged split-bandwidth atom rows remain ambiguous.
+
 ## Development and documentation
 
 ```bash
@@ -338,7 +449,9 @@ python -m build
 ```
 
 Design and experiment notes are indexed in [docs/README.md](docs/README.md).
-The optimizer comparison and selected MNIST configuration are documented in
-[docs/optimizer-selection.ja.md](docs/optimizer-selection.ja.md), while the
+The Direct coordinate design and paired kernel comparison are documented in
+[docs/direct-amplitude-bandwidth.ja.md](docs/direct-amplitude-bandwidth.ja.md).
+The optimizer comparison and selected MNIST configuration are in
+[docs/optimizer-selection.ja.md](docs/optimizer-selection.ja.md), and the
 parameter-coordinate Adam details are in
 [docs/parameter-adam.ja.md](docs/parameter-adam.ja.md).

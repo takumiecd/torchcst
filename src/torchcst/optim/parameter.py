@@ -1,7 +1,9 @@
 """Parameter-coordinate AdamW with an optional finite-horizon cosine schedule.
 
-CST moments have exactly the atom-table shape. No representation derivatives,
-visible moments, Gram matrices, or transport frames are constructed.
+CST moments have exactly the atom-table shape. Kernels may project gradients,
+retract updates, and transport the vector first moment for constrained chart
+geometries. No representation derivatives, visible moments, or Gram matrices
+are constructed.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
-from torchcst.nn import CSTLinear
+from torchcst.nn import CSTModule
 
 from .config import AdamWConfig, _validate_betas
 
@@ -51,7 +53,7 @@ class CSTParameterAdam(torch.optim.AdamW):
     """Whole-model parameter Adam with two parameter-sized moment buffers.
 
     This is ordinary coordinate Adam, not an approximation of visible-space
-    Adam. All CST sites must explicitly use the factored backend and frozen
+    Adam. All CST sites must resolve to the factored backend and use frozen
     charts. Ordinary parameters require an explicit ``dense=AdamWConfig(...)``.
     The cosine schedule applies only to the CST group. ``param_groups[i]['lr']``
     remains the unscheduled base rate; the completed-update count is serialized
@@ -67,15 +69,18 @@ class CSTParameterAdam(torch.optim.AdamW):
             raise TypeError("cst must be a ParameterAdamConfig")
         if dense is not None and not isinstance(dense, AdamWConfig):
             raise TypeError("dense must be an AdamWConfig or None")
-        sites = [module for module in model.modules() if isinstance(module, CSTLinear)]
+        sites = [module for module in model.modules() if isinstance(module, CSTModule)]
         if not sites:
-            raise ValueError("model must contain a CSTLinear")
+            raise ValueError("model must contain a CSTModule site")
         owners = set()
         for site in sites:
-            if site.input_chart.trainable or site.output_chart.trainable:
+            if any(chart.trainable for chart in site.cst_charts()):
                 raise ValueError("CSTParameterAdam requires frozen charts")
-            if site.backend != "factored" or not site.kernel.supports_factorization:
-                raise ValueError("CSTParameterAdam requires backend='factored'")
+            if (
+                not site.kernel.supports_factorization
+                or site._resolved_backend() != "factored"
+            ):
+                raise ValueError("CSTParameterAdam requires factored execution")
             if site.atoms.grad is not None:
                 raise ValueError("CST site already has an attached AtomGrad program")
             if id(site.atoms.p) in owners:
@@ -139,6 +144,19 @@ class CSTParameterAdam(torch.optim.AdamW):
         active = [
             any(p.grad is not None for p in g["params"]) for g in self.param_groups
         ]
+        with torch.no_grad():
+            for site in self._cst_sites:
+                point = site.atoms.p
+                if point.grad is None:
+                    continue
+                projected = site.kernel.project_parameter_gradient(
+                    *site.cst_charts(),
+                    point,
+                    point.grad,
+                )
+                if projected.shape != point.shape:
+                    raise ValueError("kernel projected gradient has the wrong shape")
+                point.grad.copy_(projected)
         # Validate all gradients before Adam mutates any group. No dense visible
         # observation scope or derivative program is installed by this optimizer.
         for group in self.param_groups:
@@ -152,9 +170,7 @@ class CSTParameterAdam(torch.optim.AdamW):
                     if not bool(torch.isfinite(grad).all()):
                         raise FloatingPointError("non-finite parameter gradient")
         base_rates = [group["lr"] for group in self.param_groups]
-        old_points = {
-            site: site.atoms.p.detach().clone() for site in self._cst_sites
-        }
+        old_points = {site: site.atoms.p.detach().clone() for site in self._cst_sites}
         scheduled_cst_rate = base_rates[0] * self._rate_scale(self.param_groups[0])
         try:
             for group, rate in zip(self.param_groups, base_rates):
@@ -170,14 +186,24 @@ class CSTParameterAdam(torch.optim.AdamW):
                     continue
                 old = old_points[site]
                 updated = site.kernel.apply_parameter_update(
-                    site.input_chart,
-                    site.output_chart,
+                    *site.cst_charts(),
                     old,
                     point - old,
                     step_size=scheduled_cst_rate,
                 )
                 if not bool(torch.isfinite(updated).all()):
                     raise FloatingPointError("kernel parameter update must be finite")
+                first_moment = self.state[point].get("exp_avg")
+                if first_moment is not None:
+                    transported = site.kernel.transport_parameter_state(
+                        *site.cst_charts(),
+                        old,
+                        updated,
+                        first_moment,
+                    )
+                    if transported.shape != first_moment.shape:
+                        raise ValueError("kernel transported state has the wrong shape")
+                    first_moment.copy_(transported)
                 point.copy_(updated)
         for group, used in zip(self.param_groups, active):
             group["schedule_step"] += int(used)

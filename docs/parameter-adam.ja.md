@@ -6,6 +6,12 @@ parameter partition、CSTのownership検証、任意のCST learning-rate schedul
 kernel固有のcoordinate updateをまとめた公開APIである。重み空間のAdamの近似や新しい
 moment transport方式ではない。
 
+振幅可変kernelでは、回転する `(s,t)` 座標に対角Adam momentを蓄積し続けない
+`DirectAmpWidth` を第一候補とする。物理振幅 `w` にmomentを直接保持し、帯域state
+`q` のtask momentは0のまま、accepted `delta_w` からkernelが更新する。設計、数式、
+checkpoint非互換性、paired A100結果は
+[direct-amplitude-bandwidth.ja.md](direct-amplitude-bandwidth.ja.md)を参照。
+
 ## 更新と既定値
 
 勾配 `g_t = ∂loss/∂p` に対して、

@@ -11,15 +11,27 @@ from .base import AtomInit, Profile
 
 
 class _CompactRadialProfile(Profile):
-    """L2-normalized compact radial profile with support radius ``sigma``.
+    """Compact radial profile with support radius ``sigma``.
 
     ``evaluate_with_precision`` uses the same convention as ``Gaussian``:
     the support radius is ``R = precision^{-1/2}``. Outside ``r = d/R >= 1``
-    the unnormalized value is identically zero.
+    the raw value is identically zero. Subclasses may retain the legacy
+    discrete column normalization when it is part of their profile semantics.
     """
 
-    def __init__(self, sigma: float | Tensor) -> None:
+    normalize_columns = True
+
+    def __init__(
+        self,
+        sigma: float | Tensor,
+        *,
+        normalize_columns: bool | None = None,
+    ) -> None:
         super().__init__()
+        if normalize_columns is not None and not isinstance(normalize_columns, bool):
+            raise TypeError("normalize_columns must be a bool or None")
+        if normalize_columns is not None:
+            self.normalize_columns = normalize_columns
         value = torch.as_tensor(sigma)
         if value.numel() != 1:
             raise ValueError("sigma must be a scalar")
@@ -31,37 +43,13 @@ class _CompactRadialProfile(Profile):
         self.register_buffer("sigma", value)
 
     def parameter_dim(self, chart: Chart) -> int:
-        return chart.dim
+        return chart.center_parameter_dim
+
+    def parameter_dof(self, chart: Chart) -> int:
+        return chart.intrinsic_dim
 
     def initialize(self, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
-        if isinstance(atoms, bool) or not isinstance(atoms, int):
-            raise TypeError("atoms must be an integer")
-        if atoms < 1:
-            raise ValueError("atoms must be positive")
-        if mode == "balanced":
-            indices = (
-                torch.linspace(
-                    0,
-                    chart.features - 1,
-                    atoms,
-                    device=chart.coordinates.device,
-                )
-                .round()
-                .to(dtype=torch.long)
-            )
-            return chart.coordinates.index_select(0, indices)
-        if mode != "uniform":
-            raise ValueError("mode must be 'balanced' or 'uniform'")
-
-        low = chart.coordinates.amin(dim=0)
-        high = chart.coordinates.amax(dim=0)
-        unit = torch.rand(
-            atoms,
-            chart.dim,
-            device=chart.coordinates.device,
-            dtype=chart.coordinates.dtype,
-        )
-        return low + unit * (high - low)
+        return chart.initialize_centers(atoms, mode=mode)
 
     def evaluate(self, chart: Chart, p: Tensor) -> Tensor:
         precision = self.sigma.reciprocal().square()
@@ -75,11 +63,19 @@ class _CompactRadialProfile(Profile):
     ) -> Tensor:
         _, squared, precision = self._geometry(chart, p, precision)
         raw = self._unnormalized_from_squared(squared, precision)
+        if not self.normalize_columns:
+            return raw
         values, _ = _l2_column_scale(raw)
         return values
 
     def extra_repr(self) -> str:
-        return f"sigma={self.sigma.item():g}"
+        return (
+            f"sigma={self.sigma.item():g}, "
+            f"normalize_columns={self.normalize_columns}"
+        )
+
+    def tangent_config(self) -> tuple:
+        return (self.normalize_columns,)
 
     @property
     def supports_tangent(self) -> bool:
@@ -96,14 +92,18 @@ class _CompactRadialProfile(Profile):
 
         offset, squared, precision = self._geometry(chart, p, precision)
         raw = self._unnormalized_from_squared(squared, precision)
+        raw_centers = self._d_raw_d_center(offset, squared, precision)
+        raw_widths = self._d_raw_d_precision(squared, precision)
+        if not self.normalize_columns:
+            return raw, raw_centers, raw_widths
         # Project ∂u in the L2 gauge using 1/||u||, never 1/u. Compact
         # profiles vanish at r=1, so du/u ~ 1/gap diverges while
         # (u/||u||)(du/u) = du/||u|| stays finite. Empty columns stay
         # exactly zero; barely-supported ones use a floor so GH is finite.
         values, scale = _l2_column_scale(raw)
         scale = scale.reshape(1, -1)
-        dpsi_dc = self._d_raw_d_center(offset, squared, precision) * scale.unsqueeze(-1)
-        dpsi_dprec = self._d_raw_d_precision(squared, precision) * scale
+        dpsi_dc = raw_centers * scale.unsqueeze(-1)
+        dpsi_dprec = raw_widths * scale
         center_mean = (values.unsqueeze(-1) * dpsi_dc).sum(0, keepdim=True)
         centers = dpsi_dc - values.unsqueeze(-1) * center_mean
         precision_mean = (values * dpsi_dprec).sum(0, keepdim=True)
@@ -120,9 +120,29 @@ class _CompactRadialProfile(Profile):
         if precision.ndim == 1 and precision.shape != (p.shape[0],):
             raise ValueError("precision must be scalar or have shape [atoms]")
         precision = precision.to(device=p.device, dtype=p.dtype)
-        offset = chart.coordinates.unsqueeze(-2) - p.unsqueeze(-3)
-        squared = offset.square().sum(dim=-1)
+        offset = chart.center_offsets(p)
+        squared = chart.squared_distance(p)
         return offset, squared, precision
+
+    def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
+        return chart.geometry.project_tangent(p, gradient)
+
+    def apply_parameter_update(
+        self,
+        chart: Chart,
+        p: Tensor,
+        displacement: Tensor,
+    ) -> Tensor:
+        return chart.geometry.retract(p, displacement)
+
+    def transport_state(
+        self,
+        chart: Chart,
+        old: Tensor,
+        new: Tensor,
+        state: Tensor,
+    ) -> Tensor:
+        return chart.geometry.transport(old, new, state)
 
     def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
         raise NotImplementedError
@@ -163,8 +183,72 @@ class WendlandC2(_CompactRadialProfile):
         return -10.0 * squared * gap.pow(3)
 
 
+class Triangle(_CompactRadialProfile):
+    r"""The raw radial triangle profile :math:`(1-r)_+`.
+
+    This is the lowest-order compact radial profile.  Its center derivative
+    uses the finite zero subgradient at ``r = 0`` and is discontinuous at the
+    support boundary, so it is intended for first-order optimization only.
+    """
+
+    normalize_columns = False
+
+    def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
+        radial = _radial_from_squared(squared, precision)
+        return (1.0 - radial).clamp_min(0.0)
+
+    def _d_raw_d_center(
+        self, offset: Tensor, squared: Tensor, precision: Tensor
+    ) -> Tensor:
+        prec = precision.reshape(1, -1)
+        radial = _radial_from_squared(squared, precision)
+        active = radial < 1.0
+        slope = torch.where(active, prec / radial, torch.zeros_like(radial))
+        return slope.unsqueeze(-1) * offset
+
+    def _d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
+        radial = _radial_from_squared(squared, precision)
+        active = radial < 1.0
+        return torch.where(
+            active,
+            -0.5 * squared / radial,
+            torch.zeros_like(radial),
+        )
+
+
+class Biweight(_CompactRadialProfile):
+    r"""The raw biweight profile :math:`(1-r^2)_+^2`.
+
+    The value and first derivative vanish continuously at the support
+    boundary.  This is the minimum polynomial order in ``r^2`` suited to a
+    first-order optimizer without Triangle's boundary-gradient jump.
+    """
+
+    normalize_columns = False
+
+    def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
+        return (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0).square()
+
+    def _d_raw_d_center(
+        self, offset: Tensor, squared: Tensor, precision: Tensor
+    ) -> Tensor:
+        prec = precision.reshape(1, -1)
+        inside = (1.0 - squared * prec).clamp_min(0.0)
+        return (4.0 * inside * prec).unsqueeze(-1) * offset
+
+    def _d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
+        inside = (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0)
+        return -2.0 * squared * inside
+
+
 class Triweight(_CompactRadialProfile):
-    r"""The triweight profile \((1-r^2)_+^3\), L2-normalized on the chart."""
+    r"""The triweight profile \((1-r^2)_+^3\), L2-normalized by default.
+
+    Set ``normalize_columns=False`` to retain distance and bandwidth
+    derivatives when a column is supported by only one site.
+    """
+
+    normalize_columns = True
 
     def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
         return (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0).pow(3)

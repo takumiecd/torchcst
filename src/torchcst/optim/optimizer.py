@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.optim import Optimizer
 
 from torchcst._runtime.validation import device_checks, require
-from torchcst.nn import CSTLinear
+from torchcst.nn import CSTLinear, CSTModule
 
 from .config import AdamWConfig
 from .dense import DenseAdamWProposal, FunctionalAdamW
@@ -80,11 +80,22 @@ class _ModelOptimizer(Optimizer):
         self.last_step: CSTStepResult | None = None
         self._device_valid: Tensor | None = None
 
-        site_modules = [
+        all_cst_modules = [
             (name or "<root>", module)
             for name, module in model.named_modules()
-            if isinstance(module, CSTLinear)
+            if isinstance(module, CSTModule)
         ]
+        unsupported = [
+            f"{name} ({type(module).__name__})"
+            for name, module in all_cst_modules
+            if not isinstance(module, CSTLinear)
+        ]
+        if unsupported:
+            raise ValueError(
+                "this N/D optimizer supports only CSTLinear; unsupported CST sites: "
+                + ", ".join(unsupported)
+            )
+        site_modules = all_cst_modules
         if not site_modules:
             raise ValueError("model does not contain a CSTLinear site")
 
@@ -328,15 +339,25 @@ class _ModelOptimizer(Optimizer):
         for site in self._sites:
             geometry = self._make_geometry(site.module)
             context = MomentContext(geometry, geometry.current_point())
+            observation = self._prepare_observation(
+                site,
+                site.atom_grad.snapshot(),
+            )
             expanded = site.moments.expand(
                 site.state,
-                site.atom_grad.snapshot(),
+                observation,
                 context,
             )
             solve = self._solve(context, expanded)
             self._validate_solve(solve, context)
             proposals.append(_CSTProposal(site, context, expanded, solve))
         return tuple(proposals)
+
+    def _prepare_observation(self, site: _CSTSite, observation):
+        """Transform a completed step-local observation before moment expansion."""
+
+        del site
+        return observation
 
     def _validate_solve(
         self,

@@ -133,7 +133,11 @@ def test_constructor_dtype_covers_charts_kernel_and_atoms() -> None:
         dtype=torch.float64,
     )
 
-    assert all(value.dtype == torch.float64 for value in model.state_dict().values())
+    assert all(
+        value.dtype == torch.float64
+        for value in model.state_dict().values()
+        if isinstance(value, torch.Tensor)
+    )
     assert model(torch.ones(1, 3, dtype=torch.float64)).dtype == torch.float64
 
 

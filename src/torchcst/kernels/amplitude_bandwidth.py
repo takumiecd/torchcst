@@ -79,6 +79,20 @@ class AmpWidth(Kernel):
         )
         self.couple_bandwidth = bool(couple_bandwidth)
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record non-buffer settings that select the amplitude-width law."""
+
+        return {
+            "format_version": 1,
+            "kernel_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "law": self.law,
+            "couple_bandwidth": self.couple_bandwidth,
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("AmpWidth checkpoint contract differs from this kernel")
+
     @property
     def sigma_min(self) -> Tensor:
         return self.profile.sigma
@@ -88,6 +102,13 @@ class AmpWidth(Kernel):
             1
             + self.profile.parameter_dim(input_chart)
             + self.profile.parameter_dim(output_chart)
+        )
+
+    def parameter_dof(self, input_chart: Chart, output_chart: Chart) -> int:
+        return (
+            1
+            + self.profile.parameter_dof(input_chart)
+            + self.profile.parameter_dof(output_chart)
         )
 
     def initialize(
@@ -219,7 +240,11 @@ class AmpWidth(Kernel):
             (narrow - broad)
             * gate
             * (1 - gate)
-            * (2 * amplitude[:, 0] / (self.temperature * self._magnitude_square(amplitude)))
+            * (
+                2
+                * amplitude[:, 0]
+                / (self.temperature * self._magnitude_square(amplitude))
+            )
         )
         return precision, dprecision
 
@@ -258,6 +283,69 @@ class AmpWidth(Kernel):
         from ._tangent import amplitude_bandwidth
 
         return lambda p: amplitude_bandwidth(self, input_chart, output_chart, p)
+
+    def project_parameter_gradient(
+        self,
+        input_chart: Chart,
+        output_chart: Chart,
+        p: Tensor,
+        gradient: Tensor,
+    ) -> Tensor:
+        _, input_p, output_p = self._split(input_chart, output_chart, p)
+        amplitude_g, input_g, output_g = self._split(
+            input_chart, output_chart, gradient
+        )
+        return torch.cat(
+            (
+                amplitude_g,
+                self.profile.project_gradient(input_chart, input_p, input_g),
+                self.profile.project_gradient(output_chart, output_p, output_g),
+            ),
+            dim=-1,
+        )
+
+    def apply_parameter_update(
+        self,
+        input_chart: Chart,
+        output_chart: Chart,
+        p: Tensor,
+        displacement: Tensor,
+        *,
+        step_size: float,
+    ) -> Tensor:
+        del step_size
+        amplitude, input_p, output_p = self._split(input_chart, output_chart, p)
+        amplitude_d, input_d, output_d = self._split(
+            input_chart, output_chart, displacement
+        )
+        return torch.cat(
+            (
+                amplitude + amplitude_d,
+                self.profile.apply_parameter_update(input_chart, input_p, input_d),
+                self.profile.apply_parameter_update(output_chart, output_p, output_d),
+            ),
+            dim=-1,
+        )
+
+    def transport_parameter_state(
+        self,
+        input_chart: Chart,
+        output_chart: Chart,
+        old: Tensor,
+        new: Tensor,
+        state: Tensor,
+    ) -> Tensor:
+        _, old_i, old_o = self._split(input_chart, output_chart, old)
+        _, new_i, new_o = self._split(input_chart, output_chart, new)
+        amplitude_s, state_i, state_o = self._split(input_chart, output_chart, state)
+        return torch.cat(
+            (
+                amplitude_s,
+                self.profile.transport_state(input_chart, old_i, new_i, state_i),
+                self.profile.transport_state(output_chart, old_o, new_o, state_o),
+            ),
+            dim=-1,
+        )
 
     def extra_repr(self) -> str:
         return (

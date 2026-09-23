@@ -45,6 +45,41 @@ def test_initialization_uses_unit_radius_and_small_bounded_amplitudes() -> None:
     assert abs(float(amplitude.std()) - 0.1 / atoms**0.5) < 0.05 * (0.1 / atoms**0.5)
 
 
+def test_alpha_initialization_preserves_amplitude_and_sets_radius() -> None:
+    torch.manual_seed(12)
+    input_chart, output_chart = charts()
+    baseline = kernel()
+    initialized = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        alpha_init=0.03,
+        radial_regularization=0.2,
+    )
+    p_baseline = baseline.initialize(input_chart, output_chart, 32, mode="uniform")
+    torch.manual_seed(12)
+    p_initialized = initialized.initialize(
+        input_chart, output_chart, 32, mode="uniform"
+    )
+
+    torch.testing.assert_close(
+        initialized.amplitude(input_chart, output_chart, p_initialized),
+        baseline.amplitude(input_chart, output_chart, p_baseline),
+    )
+    torch.testing.assert_close(
+        initialized.bandwidth_alpha(input_chart, output_chart, p_initialized),
+        torch.full((32,), 0.03),
+        atol=1e-6,
+        rtol=0,
+    )
+    torch.testing.assert_close(
+        p_initialized[:, :2].square().sum(dim=-1),
+        torch.full((32,), 1.09),
+    )
+
+
 def test_polar_map_decouples_angular_amplitude_and_radial_alpha() -> None:
     value = kernel()
     polar = torch.tensor([[0.6, 0.8]], dtype=torch.float64, requires_grad=True)
@@ -93,8 +128,210 @@ def test_bandwidth_interpolates_between_rational_bounds() -> None:
     torch.testing.assert_close(lower, torch.full_like(lower, 0.325))
     torch.testing.assert_close(upper, torch.full_like(upper, 0.775))
     torch.testing.assert_close(
-        sigma, torch.tensor([0.325, 0.55, 0.775], dtype=torch.float64)
+        sigma,
+        torch.tensor([0.325, (0.325 * 0.775) ** 0.5, 0.775], dtype=torch.float64),
     )
+
+
+def test_birth_width_separates_zero_amplitude_lower_and_upper_bounds() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_birth=0.25,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    radii = torch.tensor([1.0, 2.5**0.5, 2.0], dtype=torch.float64)
+    polar = torch.stack((torch.zeros_like(radii), radii), dim=-1)
+    p = torch.cat((polar, torch.zeros(3, 2, dtype=torch.float64)), dim=-1)
+
+    lower, upper = value.bandwidth_bounds(input_chart, output_chart, p)
+    sigma = value.bandwidth_sigma(input_chart, output_chart, p)
+
+    torch.testing.assert_close(lower, torch.full_like(lower, 0.25))
+    torch.testing.assert_close(upper, torch.ones_like(upper))
+    torch.testing.assert_close(
+        sigma,
+        torch.tensor([0.25, 0.5, 1.0], dtype=torch.float64),
+    )
+
+
+def test_input_and_output_bandwidths_can_be_configured_independently() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        input_sigma_min=0.1,
+        input_sigma_birth=0.2,
+        input_sigma_max=0.8,
+        output_sigma_min=0.15,
+        output_sigma_birth=0.3,
+        output_sigma_max=1.2,
+        w_c=0.5,
+        kappa=3.0,
+        radial_regularization=0.2,
+        profile=None,
+    ).to(dtype=torch.float64)
+    polar = torch.tensor([[0.0, 2.5**0.5]], dtype=torch.float64)
+    p = torch.cat((polar, torch.zeros(1, 2, dtype=torch.float64)), dim=-1)
+
+    sigma_input, sigma_output = value.bandwidth_sigmas(input_chart, output_chart, p)
+    input_bounds, output_bounds = value.bandwidth_bounds_by_side(
+        input_chart, output_chart, p
+    )
+
+    torch.testing.assert_close(sigma_input, torch.tensor([0.4], dtype=torch.float64))
+    torch.testing.assert_close(sigma_output, torch.tensor([0.6], dtype=torch.float64))
+    torch.testing.assert_close(
+        input_bounds[0], torch.tensor([0.2], dtype=torch.float64)
+    )
+    torch.testing.assert_close(
+        input_bounds[1], torch.tensor([0.8], dtype=torch.float64)
+    )
+    torch.testing.assert_close(
+        output_bounds[0], torch.tensor([0.3], dtype=torch.float64)
+    )
+    torch.testing.assert_close(
+        output_bounds[1], torch.tensor([1.2], dtype=torch.float64)
+    )
+    with pytest.raises(ValueError, match="by-side"):
+        value.bandwidth_sigma(input_chart, output_chart, p)
+
+
+def test_lower_kappa_widens_only_lower_bandwidth_bound() -> None:
+    input_chart, output_chart = charts()
+    baseline = kernel().to(dtype=torch.float64)
+    widened = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        lower_kappa=1.0,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    polar = torch.tensor([[0.25, 3**0.5 / 2]], dtype=torch.float64)
+    p = torch.cat((polar, torch.zeros(1, 2, dtype=torch.float64)), dim=-1)
+
+    baseline_lower, baseline_upper = baseline.bandwidth_bounds(
+        input_chart, output_chart, p
+    )
+    widened_lower, widened_upper = widened.bandwidth_bounds(
+        input_chart, output_chart, p
+    )
+
+    assert torch.all(widened_lower > baseline_lower)
+    torch.testing.assert_close(widened_upper, baseline_upper)
+
+
+def test_lower_half_amplitude_directly_sets_lower_midpoint() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        lower_half_amplitude=0.25,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    polar = torch.tensor([[0.125, (1 - 0.125**2) ** 0.5]], dtype=torch.float64)
+    p = torch.cat((polar, torch.zeros(1, 2, dtype=torch.float64)), dim=-1)
+
+    lower, _ = value.bandwidth_bounds(input_chart, output_chart, p)
+
+    torch.testing.assert_close(lower, torch.tensor([0.55], dtype=torch.float64))
+    torch.testing.assert_close(
+        value.lower_half_amplitude,
+        torch.tensor(0.25, dtype=torch.float64),
+    )
+
+
+def test_lower_half_amplitude_preserves_legacy_lower_curve() -> None:
+    input_chart, output_chart = charts()
+    legacy = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        lower_kappa=12.0,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    direct = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        lower_half_amplitude=0.5 / 12**0.5,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    amplitudes = torch.tensor([0.0, 0.1, 0.5, 1.0], dtype=torch.float64)
+    polar = torch.stack(
+        (amplitudes / 2.0, (1 - (amplitudes / 2.0).square()).sqrt()),
+        dim=-1,
+    )
+    p = torch.cat((polar, torch.zeros(4, 2, dtype=torch.float64)), dim=-1)
+
+    legacy_lower, legacy_upper = legacy.bandwidth_bounds(input_chart, output_chart, p)
+    direct_lower, direct_upper = direct.bandwidth_bounds(input_chart, output_chart, p)
+
+    torch.testing.assert_close(direct_lower, legacy_lower)
+    torch.testing.assert_close(direct_upper, legacy_upper)
+
+
+def test_upper_floor_preserves_alpha_authority_at_high_amplitude() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.01,
+        kappa=3.0,
+        upper_floor=0.2,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    # Maximum angular amplitude with alpha = 0, 0.5, and 1.
+    radii = torch.tensor([1.0, 2.5**0.5, 2.0], dtype=torch.float64)
+    polar = torch.stack((radii, torch.zeros_like(radii)), dim=-1)
+    p = torch.cat((polar, torch.zeros(3, 2, dtype=torch.float64)), dim=-1)
+
+    lower, upper = value.bandwidth_bounds(input_chart, output_chart, p)
+    sigma = value.bandwidth_sigma(input_chart, output_chart, p)
+
+    torch.testing.assert_close(upper, torch.full_like(upper, 0.2))
+    torch.testing.assert_close(sigma[0], lower[0])
+    torch.testing.assert_close(sigma[1], (lower[1] * upper[1]).sqrt())
+    torch.testing.assert_close(sigma[2], upper[2])
+
+
+def test_smaller_upper_decay_power_delays_only_upper_collapse() -> None:
+    input_chart, output_chart = charts()
+    baseline = kernel().to(dtype=torch.float64)
+    delayed = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        kappa=3.0,
+        upper_decay_power=0.75,
+        radial_regularization=0.2,
+    ).to(dtype=torch.float64)
+    polar = torch.tensor([[0.75, (1 - 0.75**2) ** 0.5]], dtype=torch.float64)
+    p = torch.cat((polar, torch.zeros(1, 2, dtype=torch.float64)), dim=-1)
+
+    baseline_lower, baseline_upper = baseline.bandwidth_bounds(
+        input_chart, output_chart, p
+    )
+    delayed_lower, delayed_upper = delayed.bandwidth_bounds(
+        input_chart, output_chart, p
+    )
+
+    torch.testing.assert_close(delayed_lower, baseline_lower)
+    assert torch.all(delayed_upper > baseline_upper)
 
 
 def test_alpha_clamp_keeps_sigma_inside_bounds_for_arbitrary_radius() -> None:
@@ -244,6 +481,64 @@ def test_time_energy_activity_uses_outer_step_size() -> None:
     torch.testing.assert_close(q, torch.tensor([2.35], dtype=p.dtype))
 
 
+def test_dormant_expansion_advances_alpha_without_task_motion() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        dormant_expansion_rate=1.0,
+        radial_regularization=0.0,
+    ).to(dtype=torch.float64)
+    p = torch.tensor([[0.0, 1.0, 0.1, -0.2]], dtype=torch.float64)
+
+    updated = value.apply_parameter_update(
+        input_chart,
+        output_chart,
+        p,
+        torch.zeros_like(p),
+        step_size=0.5,
+    )
+
+    torch.testing.assert_close(
+        value.amplitude(input_chart, output_chart, updated),
+        torch.zeros(1, dtype=p.dtype),
+    )
+    torch.testing.assert_close(
+        value.bandwidth_alpha(input_chart, output_chart, updated),
+        torch.tensor([0.5], dtype=p.dtype),
+    )
+    torch.testing.assert_close(updated[:, 2:], p[:, 2:])
+
+
+def test_dormant_expansion_is_suppressed_by_large_amplitude() -> None:
+    input_chart, output_chart = charts()
+    value = PolarAmpWidth(
+        amplitude_max=2.0,
+        sigma_min=0.1,
+        sigma_max=1.0,
+        w_c=0.5,
+        dormant_expansion_rate=1.0,
+        radial_regularization=0.0,
+    ).to(dtype=torch.float64)
+    p = torch.tensor([[1.0, 0.0, 0.1, -0.2]], dtype=torch.float64)
+
+    updated = value.apply_parameter_update(
+        input_chart,
+        output_chart,
+        p,
+        torch.zeros_like(p),
+        step_size=0.5,
+    )
+
+    expected_alpha = torch.tensor([0.5 / 17.0], dtype=p.dtype)
+    torch.testing.assert_close(
+        value.bandwidth_alpha(input_chart, output_chart, updated),
+        expected_alpha,
+    )
+
+
 def test_radial_regularizer_preserves_amplitude_and_converges_to_unit_radius() -> None:
     input_chart, output_chart = charts()
     value = kernel().to(dtype=torch.float64)
@@ -369,8 +664,15 @@ def test_model_optimizer_uses_kernel_update_geometry() -> None:
         ({"amplitude_max": 0.0}, "amplitude_max"),
         ({"w_c": 0.0}, "w_c"),
         ({"kappa": 1.0}, "kappa"),
+        ({"lower_kappa": 0.0}, "lower_kappa"),
+        ({"lower_half_amplitude": 0.0}, "lower_half_amplitude"),
+        ({"upper_decay_power": 0.0}, "upper_decay_power"),
+        ({"upper_decay_power": 1.1}, "upper_decay_power"),
         ({"activity_gain": 0.0}, "activity_gain"),
+        ({"alpha_init": -0.1}, "alpha_init"),
+        ({"alpha_init": 1.1}, "alpha_init"),
         ({"activity_mode": "unknown"}, "activity_mode"),
+        ({"dormant_expansion_rate": -1.0}, "dormant_expansion_rate"),
         ({"radial_regularization": -1.0}, "radial_regularization"),
         ({"sigma_min": 2.0, "sigma_max": 1.0}, "sigma_max"),
     ],
@@ -387,3 +689,17 @@ def test_configuration_validation(kwargs: dict[str, object], message: str) -> No
     options.update(kwargs)
     with pytest.raises(ValueError, match=message):
         PolarAmpWidth(**options)
+
+
+def test_lower_shape_parameters_are_mutually_exclusive() -> None:
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        PolarAmpWidth(
+            amplitude_max=2.0,
+            sigma_min=0.1,
+            sigma_max=1.0,
+            w_c=0.5,
+            kappa=3.0,
+            lower_kappa=3.0,
+            lower_half_amplitude=0.25,
+            radial_regularization=0.2,
+        )

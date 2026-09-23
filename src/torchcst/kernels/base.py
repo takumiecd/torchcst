@@ -15,9 +15,27 @@ AtomInit = Literal["balanced", "uniform"]
 class Profile(nn.Module, ABC):
     """A fixed scalar profile that interprets one slice of an atom coordinate."""
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record the profile type and non-buffer evaluation settings."""
+
+        return {
+            "format_version": 1,
+            "profile_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "tangent_config": self.tangent_config(),
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("profile checkpoint contract differs from this profile")
+
     @abstractmethod
     def parameter_dim(self, chart: Chart) -> int:
         """Return the number of opaque coordinates consumed for one atom."""
+
+    def parameter_dof(self, chart: Chart) -> int:
+        """Return the geometric degrees of freedom consumed for one atom."""
+
+        return self.parameter_dim(chart)
 
     @abstractmethod
     def initialize(self, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
@@ -35,6 +53,41 @@ class Profile(nn.Module, ABC):
         """Optional values and first coordinate derivatives [features, atoms, q]."""
         raise NotImplementedError("profile has no specialized tangent")
 
+    def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
+        """Project a coordinate gradient into the profile's tangent space."""
+
+        del chart, p
+        if gradient.ndim != 2:
+            raise ValueError("profile gradient must have shape [atoms, parameters]")
+        return gradient
+
+    def apply_parameter_update(
+        self,
+        chart: Chart,
+        p: Tensor,
+        displacement: Tensor,
+    ) -> Tensor:
+        """Apply one proposal in the profile coordinate geometry."""
+
+        del chart
+        if p.shape != displacement.shape:
+            raise ValueError("p and displacement must have matching shapes")
+        return p + displacement
+
+    def transport_state(
+        self,
+        chart: Chart,
+        old: Tensor,
+        new: Tensor,
+        state: Tensor,
+    ) -> Tensor:
+        """Transport a vector-like optimizer state between profile points."""
+
+        del chart
+        if old.shape != new.shape or old.shape != state.shape:
+            raise ValueError("old, new, and state must have matching shapes")
+        return state
+
     def tangent_config(self) -> tuple:
         """Fixed non-buffer settings affecting evaluation, for custom profiles."""
         return ()
@@ -43,9 +96,27 @@ class Profile(nn.Module, ABC):
 class Kernel(nn.Module, ABC):
     """Interpret each opaque atom row as a complete operator contribution."""
 
+    def get_extra_state(self) -> dict[str, object]:
+        """Record the kernel type and fixed non-buffer settings."""
+
+        return {
+            "format_version": 1,
+            "kernel_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "tangent_config": self.tangent_config(),
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("kernel checkpoint contract differs from this kernel")
+
     @abstractmethod
     def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:
         """Return the opaque coordinate width ``P`` for one atom."""
+
+    def parameter_dof(self, input_chart: Chart, output_chart: Chart) -> int:
+        """Return the geometric degrees of freedom in one atom row."""
+
+        return self.parameter_dim(input_chart, output_chart)
 
     @abstractmethod
     def initialize(
@@ -82,6 +153,20 @@ class Kernel(nn.Module, ABC):
 
         raise NotImplementedError("this kernel does not provide a factorized backend")
 
+    def project_parameter_gradient(
+        self,
+        input_chart: Chart,
+        output_chart: Chart,
+        p: Tensor,
+        gradient: Tensor,
+    ) -> Tensor:
+        """Project a parameter gradient into the kernel parameter tangent space."""
+
+        del input_chart, output_chart, p
+        if gradient.ndim != 2:
+            raise ValueError("kernel gradient must have shape [atoms, parameters]")
+        return gradient
+
     def forward(self, input_chart: Chart, output_chart: Chart, p: Tensor) -> Tensor:
         return self.materialize_atoms(input_chart, output_chart, p)
 
@@ -107,6 +192,21 @@ class Kernel(nn.Module, ABC):
         if displacement.shape != p.shape:
             raise ValueError("displacement must match the atom parameter shape")
         return p + displacement
+
+    def transport_parameter_state(
+        self,
+        input_chart: Chart,
+        output_chart: Chart,
+        old: Tensor,
+        new: Tensor,
+        state: Tensor,
+    ) -> Tensor:
+        """Transport vector-like optimizer state after a constrained update."""
+
+        del input_chart, output_chart
+        if old.shape != new.shape or old.shape != state.shape:
+            raise ValueError("old, new, and state must have matching shapes")
+        return state
 
     tangent_layout_version = 1
 

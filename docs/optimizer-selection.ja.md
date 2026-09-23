@@ -1,6 +1,6 @@
 # Optimizer選定と推奨設定
 
-更新日: 2026-09-20
+更新日: 2026-09-22
 
 ## 結論
 
@@ -29,6 +29,19 @@ scheduleを使わない設定を今回のQuadraticレシピとして採用した
 `AdamWConfig` も維持する。`CSTParameterAdam` の既定cosine scheduleは今回の推奨設定では
 使わず、`decay_steps=None` とする。
 
+### ParameterAdamの推奨kernel
+
+振幅・帯域可変kernelを `CSTParameterAdam` で学習する場合は、現在
+`DirectAmpWidth` を第一候補とする。Adam momentを回転するPolar `(s,t)` ではなく
+物理振幅 `w` に保持し、`q` はaccepted `delta_w` と
+`R(q)=lambda/2*(q-1)^2` だけで更新する。同一初期operator・同一minibatch順の
+full MNIST 3-seed比較ではDirect 95.9467%、Polar 94.8367%で、全seed正、平均
++1.11 ppだった。詳細は
+[direct-amplitude-bandwidth.ja.md](direct-amplitude-bandwidth.ja.md)を参照。
+
+これはfirst-order parameter-coordinate経路内のkernel比較であり、下記の
+Polar `CSTQuadraticAdam` 選定を置き換える比較ではない。
+
 `CSTAdamR` は独立したmoment familyではない。実装は `_NDModelOptimizer`、EMA
 numerator、EMA denominatorを共有し、`update_rule="normalized"` または
 `update_rule="quadratic"` でtask solverの更新則を選ぶ。task solve後の変位へ
@@ -40,6 +53,8 @@ numerator、EMA denominatorを共有し、`update_rule="normalized"` または
 
 full MNIST 60,000/10,000、batch 128、5 epoch、FP32、TF32 offで比較した。
 モデルは2,560 atomsの `CSTLinear(784, 64)`、bias、ReLU、dense 64-to-10 head。
+このoptimizer比較はraw Triweightを使うため、下の例では
+`normalize_columns=False` を明示する。
 
 ```python
 from torchcst import (
@@ -59,7 +74,7 @@ kernel = PolarAmpWidth(
     activity_gain=27.0,
     activity_mode="time_energy",
     radial_regularization=0.5,
-    profile=Triweight(0.1),
+    profile=Triweight(0.1, normalize_columns=False),
 )
 
 optimizer = CSTQuadraticAdam(
@@ -89,6 +104,28 @@ optimizer = CSTQuadraticAdam(
 `0.00025 * 8 = 0.002`。`kernel_step_size=0.002` はPolarのtime-energy activityと
 radial regularizationへ外側horizonを渡す。これは厳密な連続時間積分を意味しない。
 
+### 曲率ブロックのablation
+
+`CurvatureBlockMask` は、原子ごとの曲率 `H:[K,P,P]` を先頭 `split` 座標と残りの
+座標に分割し、N/D momentへ渡す前にブロックを選択する。したがってnumeratorの
+`C` だけでなく、denominatorの `y=gH` と `Z=H⊗H` にも同じマスクが反映される。
+Polarでは先頭2座標が `(s,t)` なので、振幅・幅と中心座標のmixed block `M` を
+調べるablationは次のように指定できる。
+
+```python
+from torchcst import CurvatureBlockMask
+
+optimizer = CSTQuadraticAdam(
+    model,
+    # ...上記と同じ設定...
+    curvature_mask=CurvatureBlockMask(split=2, mode="no_m"),
+)
+```
+
+`mode` は、全曲率の `"full"`、対角2ブロックだけを残す `"no_m"`、mixed block
+だけを残す `"m_only"`、全曲率を0にする `"none"` の4種類。これは機構分離用の
+実験面であり、`split` はkernelの座標順序に合わせて明示する。
+
 結果はseed 17/29/43で97.07/96.48/96.88%、平均96.81%、sample SD 0.301pp。
 同じPolar上の `CSTParameterAdam` 平均96.29%より0.52pp高かった。従来の
 kernel-temperature scheduleを使うnon-Polar Quadratic平均96.89%との差は0.08ppで、
@@ -101,7 +138,7 @@ scheduleを外せる簡潔さを優先して本構成を採用する。
   固定する。
 - 今回のincumbentはhorizon 0.002、8 iterations。確認した0.0015/0.0020/0.0025では
   0.0020が最良だった。
-- Polarは `Triweight(0.1)` とsigma `[0.1, 10]` を組み合わせる。Gaussian Polarより
+- Polarは `Triweight(0.1, normalize_columns=False)` とsigma `[0.1, 10]` を組み合わせる。Gaussian Polarより
   seed17で95.96%から96.70%へ改善した。
 - `w_c=0.0025` を使う。Quadratic側で0.0015/0.0020/0.0025/0.0035を比較しても
   96.91/96.90/97.07/97.02%で中央が最良だった。

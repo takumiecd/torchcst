@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch import nn
 
-from torchcst import Chart
+from torchcst import Chart, EuclideanGeometry, SphereGeometry
 
 
 def test_points_owns_a_fixed_shape_copy() -> None:
@@ -18,6 +18,8 @@ def test_points_owns_a_fixed_shape_copy() -> None:
     assert dict(chart.named_parameters()) == {}
     assert "coordinates" in dict(chart.named_buffers())
     assert chart.spacing is None
+    assert isinstance(chart.geometry, EuclideanGeometry)
+    assert chart.intrinsic_dim == chart.embedding_dim == 2
 
 
 def test_trainable_chart_registers_coordinates_as_a_parameter() -> None:
@@ -36,7 +38,9 @@ def test_linspace_spacing_is_centered() -> None:
     assert torch.allclose(chart.spacing, torch.tensor([0.10]))
     assert torch.allclose(chart.coordinates[0], torch.tensor([-3.15]))
     assert torch.allclose(chart.coordinates[-1], torch.tensor([3.15]))
-    assert torch.allclose(chart.coordinates[1] - chart.coordinates[0], torch.tensor([0.10]))
+    assert torch.allclose(
+        chart.coordinates[1] - chart.coordinates[0], torch.tensor([0.10])
+    )
 
 
 def test_linspace_low_high_stores_derived_spacing() -> None:
@@ -103,3 +107,11 @@ def test_linspace_rejects_center_with_endpoints() -> None:
 def test_spacing_must_be_positive() -> None:
     with pytest.raises(ValueError, match="positive"):
         Chart.linspace(4, spacing=0.0)
+
+
+def test_chart_rejects_coordinates_outside_its_geometry() -> None:
+    with pytest.raises(ValueError, match="must lie on"):
+        Chart.points(
+            torch.tensor([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]]),
+            geometry=SphereGeometry(2),
+        )

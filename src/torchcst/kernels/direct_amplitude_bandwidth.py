@@ -1,4 +1,4 @@
-"""Polar amplitude/width coordinates with radial-angular decoupling."""
+"""Direct amplitude coordinates with an explicit bandwidth activity state."""
 
 from __future__ import annotations
 
@@ -14,27 +14,28 @@ from .base import AtomInit, Kernel, Profile
 from .gaussian import Gaussian
 
 
-class PolarAmpWidth(Kernel):
-    r"""A rank-one atom with angular amplitude and radial width control.
+class DirectAmpWidth(Kernel):
+    r"""A rank-one atom with direct amplitude and activity coordinates.
 
-    The first two coordinates of each atom are ``(s, t)``.  They encode
+    The first two coordinates of each atom are ``(w, q)``.  They encode
 
     .. math::
 
-        w = W s / \sqrt{s^2+t^2}, \qquad
-        \alpha = \operatorname{clamp}((s^2+t^2-1)/3, 0, 1).
+        w \in [-W, W], \qquad
+        \alpha = \operatorname{clamp}((q-1)/3, 0, 1).
 
-    Consequently ``w`` is invariant to radial rescaling while ``alpha`` is
-    invariant to angular motion.  The shared input/output bandwidth is
-    the geometric interpolation ``L(w) ** (1-alpha) * U(w) ** alpha``.
-    At zero amplitude, ``L`` starts at ``sigma_birth`` while ``U`` starts at
-    ``sigma_max``.  Both approach ``sigma_min`` as the amplitude scale grows.
-    Input and output charts may use independent bandwidth limits while sharing
-    the same amplitude and exploration clock.
+    ``w`` is the task-loss degree of freedom and therefore receives Adam
+    moments directly. ``q`` is a persistent activity state rather than a
+    task-loss degree of freedom. An accepted physical amplitude displacement
+    grows the state by
 
-    The hard clamp keeps every forward bandwidth inside its configured
-    bounds under arbitrary optimizers.  Coordinates are initialized on the
-    unit circle, so ``alpha == 0`` initially.
+    .. math::
+
+        \delta^2 = q(\Delta w/W)^2, \qquad q_{\rm geom}=q+\delta^2.
+
+    The kernel then takes an ordinary gradient step on
+    :math:`R(q)=\lambda(q-1)^2/2`. Polar activity gain, time-energy scaling,
+    and dormant expansion are not part of this kernel.
     """
 
     def __init__(
@@ -57,9 +58,6 @@ class PolarAmpWidth(Kernel):
         upper_decay_power: float = 1.0,
         upper_floor: float | None = None,
         alpha_init: float = 0.0,
-        activity_gain: float = 1.0,
-        activity_mode: Literal["finite_chord", "time_energy"] = "finite_chord",
-        dormant_expansion_rate: float = 0.0,
         radial_regularization: float = 0.1,
         profile: Profile | None = None,
     ) -> None:
@@ -121,12 +119,6 @@ class PolarAmpWidth(Kernel):
             else exploration_floor_input.detach().clone()
         )
         initial_alpha = self._unit_interval_scalar(alpha_init, name="alpha_init")
-        gain = self._positive_scalar(activity_gain, name="activity_gain")
-        if activity_mode not in ("finite_chord", "time_energy"):
-            raise ValueError("activity_mode must be 'finite_chord' or 'time_energy'")
-        dormant_rate = self._nonnegative_scalar(
-            dormant_expansion_rate, name="dormant_expansion_rate"
-        )
         regularization = self._nonnegative_scalar(
             radial_regularization, name="radial_regularization"
         )
@@ -195,27 +187,21 @@ class PolarAmpWidth(Kernel):
         self.register_buffer("upper_floor_input", exploration_floor_input)
         self.register_buffer("upper_floor_output", exploration_floor_output)
         self.register_buffer("alpha_init", initial_alpha)
-        self.register_buffer("activity_gain", gain)
-        self.activity_mode = activity_mode
-        self.register_buffer("dormant_expansion_rate", dormant_rate)
         self.register_buffer("radial_regularization", regularization)
 
     def get_extra_state(self) -> dict[str, object]:
-        """Record the meaning of the first two atom coordinates in checkpoints."""
+        """Record the direct atom layout and profile settings in checkpoints."""
 
         return {
-            "format_version": 1,
-            "coordinate_system": "polar",
+            "format_version": 2,
+            "coordinate_system": "direct",
             "profile": f"{type(self.profile).__module__}.{type(self.profile).__qualname__}",
             "normalize_columns": getattr(self.profile, "normalize_columns", None),
-            "activity_mode": self.activity_mode,
         }
 
     def set_extra_state(self, state: object) -> None:
         if state != self.get_extra_state():
-            raise RuntimeError(
-                f"{type(self).__name__} checkpoint contract differs from this kernel"
-            )
+            raise RuntimeError("DirectAmpWidth checkpoint contract differs from this kernel")
 
     def _load_from_state_dict(
         self,
@@ -228,49 +214,27 @@ class PolarAmpWidth(Kernel):
         error_msgs,
     ) -> None:
         marker = prefix + "_extra_state"
-        legacy_maximum = prefix + "sigma_max"
         if marker not in state_dict:
-            if (
-                legacy_maximum not in state_dict
-                or prefix + "sigma_max_input" in state_dict
-                or prefix + "profile.sigma" not in state_dict
-                or prefix + "profile._extra_state" not in state_dict
-                or getattr(self.profile, "normalize_columns", True) is not True
-            ):
-                error_msgs.append(
-                    f"{prefix[:-1]}: untagged amplitude-bandwidth checkpoint "
-                    "has unverifiable coordinates or profile settings; "
-                    "identify and migrate its format explicitly"
-                )
-                return
-            # Before split bandwidths, Polar stored one sigma_max and used
-            # profile.sigma as the shared sigma_min. All added controls had
-            # values equivalent to these legacy bounds by default.
-            minimum = state_dict[prefix + "profile.sigma"]
-            maximum = state_dict.pop(legacy_maximum)
-            defaults = {
-                "sigma_min_input": minimum,
-                "sigma_min_output": minimum,
-                "sigma_birth_input": maximum,
-                "sigma_birth_output": maximum,
-                "sigma_max_input": maximum,
-                "sigma_max_output": maximum,
-                "lower_kappa": state_dict[prefix + "kappa"],
-                "upper_decay_power": minimum.new_tensor(1.0),
-                "upper_floor_input": minimum,
-                "upper_floor_output": minimum,
-                "alpha_init": minimum.new_tensor(0.0),
-                "dormant_expansion_rate": minimum.new_tensor(0.0),
-            }
-            for name, value in defaults.items():
-                state_dict[prefix + name] = value.detach().clone()
-            state_dict[marker] = self.get_extra_state()
-        elif state_dict[marker] != self.get_extra_state():
             error_msgs.append(
-                f"{prefix[:-1]}: checkpoint contract "
-                f"{state_dict[marker]!r} does not match {self.get_extra_state()!r}"
+                f"{prefix[:-1]}: untagged amplitude-bandwidth checkpoint "
+                "has ambiguous atom coordinates; identify and migrate its "
+                "Polar or Direct format explicitly"
             )
             return
+        expected = self.get_extra_state()
+        previous = {**expected, "format_version": 1, "activity_mode": None}
+        if state_dict[marker] not in (expected, previous):
+            error_msgs.append(
+                f"{prefix[:-1]}: checkpoint contract "
+                f"{state_dict[marker]!r} does not match {expected!r}"
+            )
+            return
+        if state_dict[marker] == previous:
+            # The previous Direct implementation inherited these unused Polar
+            # buffers. Their values never influenced a Direct update.
+            state_dict.pop(prefix + "activity_gain", None)
+            state_dict.pop(prefix + "dormant_expansion_rate", None)
+            state_dict[marker] = expected
         super()._load_from_state_dict(
             state_dict,
             prefix,
@@ -341,14 +305,10 @@ class PolarAmpWidth(Kernel):
         amplitude = input_p.new_empty(atoms)
         amplitude.normal_(mean=0.0, std=0.1 / math.sqrt(atoms))
         maximum = self.amplitude_max.to(amplitude)
-        # Keep initialization away from the angular critical points w = +/- W.
-        ratio = (amplitude / maximum).clamp(-1 + 1e-6, 1 - 1e-6)
-        polar = torch.stack((ratio, (1 - ratio.square()).sqrt()), dim=-1)
-        # Preserve the initialized angular amplitude while giving the
-        # bandwidth clock an optional, regularized exploration reserve.
-        initial_radius = (1.0 + 3.0 * self.alpha_init.to(polar)).sqrt()
-        polar = polar * initial_radius
-        return torch.cat((polar, input_p, output_p), dim=-1)
+        amplitude = amplitude.clamp(-maximum, maximum)
+        q = torch.ones_like(amplitude) + 3.0 * self.alpha_init.to(amplitude)
+        direct = torch.stack((amplitude, q), dim=-1)
+        return torch.cat((direct, input_p, output_p), dim=-1)
 
     def materialize_atoms(
         self,
@@ -369,8 +329,8 @@ class PolarAmpWidth(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> tuple[Tensor, Tensor]:
-        polar, input_p, output_p = self._split(input_chart, output_chart, p)
-        amplitude, alpha = self._amplitude_and_alpha(polar)
+        direct, input_p, output_p = self._split(input_chart, output_chart, p)
+        amplitude, alpha = self._amplitude_and_alpha(direct)
         sigma_input, sigma_output = self._bandwidth_sigmas(amplitude, alpha)
         # Width is a state derived from update history, not a task-loss degree
         # of freedom. Only the explicit radial regularizer may decrease alpha.
@@ -387,17 +347,17 @@ class PolarAmpWidth(Kernel):
     def amplitude(self, input_chart: Chart, output_chart: Chart, p: Tensor) -> Tensor:
         """Return the bounded signed amplitude represented by each atom."""
 
-        polar, _, _ = self._split(input_chart, output_chart, p)
-        amplitude, _ = self._amplitude_and_alpha(polar)
+        direct, _, _ = self._split(input_chart, output_chart, p)
+        amplitude, _ = self._amplitude_and_alpha(direct)
         return amplitude
 
     def bandwidth_alpha(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> Tensor:
-        """Return the radial interpolation coordinate in ``[0, 1]``."""
+        """Return the activity interpolation coordinate in ``[0, 1]``."""
 
-        polar, _, _ = self._split(input_chart, output_chart, p)
-        _, alpha = self._amplitude_and_alpha(polar)
+        direct, _, _ = self._split(input_chart, output_chart, p)
+        _, alpha = self._amplitude_and_alpha(direct)
         return alpha
 
     def bandwidth_bounds(
@@ -417,8 +377,8 @@ class PolarAmpWidth(Kernel):
     ) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor]]:
         """Return ``((L_in, U_in), (L_out, U_out))``."""
 
-        polar, _, _ = self._split(input_chart, output_chart, p)
-        amplitude, _ = self._amplitude_and_alpha(polar)
+        direct, _, _ = self._split(input_chart, output_chart, p)
+        amplitude, _ = self._amplitude_and_alpha(direct)
         _, lower_input, upper_input = self._sigma_bounds(amplitude, side="input")
         _, lower_output, upper_output = self._sigma_bounds(amplitude, side="output")
         return (lower_input, upper_input), (lower_output, upper_output)
@@ -437,8 +397,8 @@ class PolarAmpWidth(Kernel):
     ) -> tuple[Tensor, Tensor]:
         """Return effective ``(sigma_input, sigma_output)`` for each atom."""
 
-        polar, _, _ = self._split(input_chart, output_chart, p)
-        amplitude, alpha = self._amplitude_and_alpha(polar)
+        direct, _, _ = self._split(input_chart, output_chart, p)
+        amplitude, alpha = self._amplitude_and_alpha(direct)
         return self._bandwidth_sigmas(amplitude, alpha)
 
     def bandwidth_precision(
@@ -466,54 +426,32 @@ class PolarAmpWidth(Kernel):
         *,
         step_size: float,
     ) -> Tensor:
-        """Project task motion tangentially, decay radius, then enforce 1<=q<=4."""
+        """Apply a direct-amplitude proposal and advance its activity state."""
 
-        self._split(input_chart, output_chart, p)
+        direct, input_p, output_p = self._split(input_chart, output_chart, p)
         if displacement.shape != p.shape:
             raise ValueError("displacement must match the atom parameter shape")
         if not math.isfinite(step_size) or step_size <= 0:
             raise ValueError("step_size must be finite and positive")
 
-        polar = self._project_polar(p[:, :2])
-        raw = displacement[:, :2]
-        radius_square = polar.square().sum(dim=-1, keepdim=True)
-        radial_coefficient = (raw * polar).sum(dim=-1, keepdim=True) / radius_square
-        tangent = raw - radial_coefficient * polar
+        maximum = self.amplitude_max.to(p)
+        old_w = direct[:, 0].clamp(-maximum, maximum)
+        old_q = direct[:, 1].clamp(1.0, 4.0)
+        accepted_w = (old_w + displacement[:, 0]).clamp(-maximum, maximum)
 
-        # Preserve the optimizer's angular proposal while allowing the radial
-        # history clock to be calibrated independently. ``finite_chord`` is
-        # the original q' = q + gamma ||tangent||^2 rule. ``time_energy``
-        # interprets gamma as an activity rate and divides the squared motion
-        # by the optimizer's outer time step.
-        chord = polar + tangent
-        chord_q = chord.square().sum(dim=-1, keepdim=True)
-        direction = chord / chord_q.sqrt()
-        energy = tangent.square().sum(dim=-1, keepdim=True)
-        if self.activity_mode == "time_energy":
-            energy = energy / step_size
-        proposed_amplitude, _ = self._amplitude_and_alpha(direction)
-        dormant_weight = 1.0 / (1.0 + (proposed_amplitude / self.w_c.to(p)).square())
-        dormant_q = (
-            3.0
-            * self.dormant_expansion_rate.to(p)
+        accepted_delta = (accepted_w - old_w) / maximum
+        delta_square = old_q * accepted_delta.square()
+        geometric_q = (old_q + delta_square).clamp(1.0, 4.0)
+
+        # One ordinary gradient step for R(q)=lambda/2*(q-1)^2. The clamp
+        # retains the state contract even for an unusually large step size.
+        regularized_q = (
+            geometric_q
+            - self.radial_regularization.to(p)
             * p.new_tensor(step_size)
-            * dormant_weight.unsqueeze(-1)
-        )
-        task_q = (radius_square + self.activity_gain.to(p) * energy + dormant_q).clamp(
-            1.0, 4.0
-        )
-        task_polar = direction * task_q.sqrt()
+            * (geometric_q - 1.0)
+        ).clamp(1.0, 4.0)
 
-        # Exact gradient flow for R(q)=lambda/2*(q-1)^2 over time step_size:
-        # y=(q-1)/q decays as exp(-4*lambda*t), keeping q in [1, 4].
-        decay = torch.exp(
-            -4.0 * self.radial_regularization.to(p) * p.new_tensor(step_size)
-        )
-        activity = (task_q - 1.0) / task_q
-        regularized_q = 1.0 / (1.0 - activity * decay)
-        regularized_polar = task_polar * (regularized_q / task_q).sqrt()
-
-        _, input_p, output_p = self._split(input_chart, output_chart, p)
         _, input_d, output_d = self._split(
             input_chart,
             output_chart,
@@ -529,7 +467,8 @@ class PolarAmpWidth(Kernel):
             output_p,
             output_d,
         )
-        return torch.cat((regularized_polar, updated_input, updated_output), dim=-1)
+        updated_direct = torch.stack((accepted_w, regularized_q), dim=-1)
+        return torch.cat((updated_direct, updated_input, updated_output), dim=-1)
 
     def project_parameter_gradient(
         self,
@@ -538,15 +477,20 @@ class PolarAmpWidth(Kernel):
         p: Tensor,
         gradient: Tensor,
     ) -> Tensor:
-        _, input_p, output_p = self._split(input_chart, output_chart, p)
-        polar_g, input_g, output_g = self._split(
+        direct, input_p, output_p = self._split(input_chart, output_chart, p)
+        del direct
+        direct_g, input_g, output_g = self._split(
             input_chart,
             output_chart,
             gradient,
         )
+        projected_direct = torch.stack(
+            (direct_g[:, 0], torch.zeros_like(direct_g[:, 1])),
+            dim=-1,
+        )
         return torch.cat(
             (
-                polar_g,
+                projected_direct,
                 self.profile.project_gradient(input_chart, input_p, input_g),
                 self.profile.project_gradient(output_chart, output_p, output_g),
             ),
@@ -563,10 +507,10 @@ class PolarAmpWidth(Kernel):
     ) -> Tensor:
         _, old_i, old_o = self._split(input_chart, output_chart, old)
         _, new_i, new_o = self._split(input_chart, output_chart, new)
-        polar_s, state_i, state_o = self._split(input_chart, output_chart, state)
+        direct_s, state_i, state_o = self._split(input_chart, output_chart, state)
         return torch.cat(
             (
-                polar_s,
+                direct_s,
                 self.profile.transport_state(input_chart, old_i, new_i, state_i),
                 self.profile.transport_state(output_chart, old_o, new_o, state_o),
             ),
@@ -586,24 +530,12 @@ class PolarAmpWidth(Kernel):
         input_end = 2 + input_dim
         return p[:, :2], p[:, 2:input_end], p[:, input_end:]
 
-    def _amplitude_and_alpha(self, polar: Tensor) -> tuple[Tensor, Tensor]:
-        radius_square = polar.square().sum(dim=-1)
-        # The exact polar map is used everywhere except the singular origin.
-        safe_square = radius_square.clamp_min(torch.finfo(polar.dtype).tiny)
-        amplitude = self.amplitude_max.to(polar) * polar[:, 0] / safe_square.sqrt()
-        alpha = ((radius_square - 1.0) / 3.0).clamp(0.0, 1.0)
+    def _amplitude_and_alpha(self, direct: Tensor) -> tuple[Tensor, Tensor]:
+        maximum = self.amplitude_max.to(direct)
+        amplitude = direct[:, 0].clamp(-maximum, maximum)
+        q = direct[:, 1].clamp(1.0, 4.0)
+        alpha = (q - 1.0) / 3.0
         return amplitude, alpha
-
-    @staticmethod
-    def _project_polar(polar: Tensor) -> Tensor:
-        radius_square = polar.square().sum(dim=-1, keepdim=True)
-        tiny = torch.finfo(polar.dtype).tiny
-        safe_radius = radius_square.clamp_min(tiny).sqrt()
-        fallback = torch.zeros_like(polar)
-        fallback[:, 1] = 1.0
-        unit = torch.where(radius_square > tiny, polar / safe_radius, fallback)
-        radius = safe_radius.clamp(1.0, 2.0)
-        return unit * radius
 
     def _bandwidth_sigmas(
         self, amplitude: Tensor, alpha: Tensor
@@ -734,9 +666,6 @@ class PolarAmpWidth(Kernel):
             f"upper_floor=({self.upper_floor_input.item():g}, "
             f"{self.upper_floor_output.item():g}), "
             f"alpha_init={self.alpha_init.item():g}, "
-            f"activity_gain={self.activity_gain.item():g}, "
-            f"activity_mode={self.activity_mode!r}, "
-            f"dormant_expansion_rate={self.dormant_expansion_rate.item():g}, "
             f"radial_regularization={self.radial_regularization.item():g}, "
             f"profile={type(self.profile).__name__}, "
             f"supports_factorization={self.supports_factorization}"

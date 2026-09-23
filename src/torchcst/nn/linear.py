@@ -84,6 +84,9 @@ class CSTLinear(CSTModule):
             raise ValueError("kernel.initialize must match the module device and dtype")
         self.atoms = Atoms(p)
 
+    def _checkpoint_layout(self) -> dict[str, object]:
+        return {"in_features": self.in_features, "out_features": self.out_features}
+
     @property
     def in_features(self) -> int:
         return self.input_chart.features

@@ -4,9 +4,11 @@ from torch.func import hessian, vmap
 
 from torchcst import (
     AmpWidth,
+    Biweight,
     Chart,
     Gaussian,
     Separable,
+    Triangle,
     Triweight,
     WendlandC2,
 )
@@ -16,10 +18,9 @@ def _double_profile(factory, sigma: float):
     return factory(sigma).to(dtype=torch.float64)
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
-def test_compact_columns_are_l2_normalized_or_zero(factory) -> None:
+def test_wendland_columns_are_l2_normalized_or_zero() -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1).double())
-    profile = _double_profile(factory, 0.5)
+    profile = _double_profile(WendlandC2, 0.5)
     p = torch.tensor([[0.0], [8.0]], dtype=torch.float64)
 
     values = profile.evaluate(chart, p)
@@ -43,15 +44,82 @@ def test_wendland_matches_the_unnormalized_polynomial() -> None:
 
 def test_triweight_matches_the_unnormalized_polynomial() -> None:
     chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
-    profile = _double_profile(Triweight, 1.0)
+    profile = Triweight(1.0, normalize_columns=False).double()
     p = torch.tensor([[0.0]], dtype=torch.float64)
 
     raw = torch.tensor([1.0, 0.75**3, 0.0], dtype=torch.float64)
-    expected = raw / torch.linalg.vector_norm(raw)
+    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], raw)
+
+
+def test_triweight_defaults_to_legacy_l2_column_normalization() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    profile = Triweight(1.0).double()
+    p = torch.tensor([[0.0]], dtype=torch.float64)
+
+    raw = torch.tensor([1.0, 0.75**3, 0.0], dtype=torch.float64)
+    torch.testing.assert_close(
+        profile.evaluate(chart, p)[:, 0], raw / torch.linalg.vector_norm(raw)
+    )
+
+
+def test_triangle_matches_the_radial_hat() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    profile = _double_profile(Triangle, 1.0)
+    p = torch.tensor([[0.0]], dtype=torch.float64)
+
+    expected = torch.tensor(
+        [1.0 - torch.finfo(torch.float64).eps**0.5, 0.5, 0.0],
+        dtype=torch.float64,
+    )
     torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+def test_biweight_matches_the_unnormalized_polynomial() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    profile = _double_profile(Biweight, 1.0)
+    p = torch.tensor([[0.0]], dtype=torch.float64)
+
+    expected = torch.tensor([1.0, 0.75**2, 0.0], dtype=torch.float64)
+    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
+
+
+def test_biweight_can_opt_into_discrete_column_normalization() -> None:
+    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    profile = Biweight(1.0, normalize_columns=True).double()
+    p = torch.tensor([[0.0]], dtype=torch.float64)
+
+    raw = torch.tensor([1.0, 0.75**2, 0.0], dtype=torch.float64)
+    expected = raw / torch.linalg.vector_norm(raw)
+    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
+    assert "normalize_columns=True" in repr(profile)
+
+
+def test_compact_normalization_override_must_be_boolean() -> None:
+    with pytest.raises(TypeError, match="bool or None"):
+        Biweight(1.0, normalize_columns=1)
+
+
+@pytest.mark.parametrize("factory", [Triangle, Biweight, Triweight])
+def test_raw_compact_profile_retains_one_site_center_and_width_derivatives(
+    factory,
+) -> None:
+    chart = Chart.points(torch.tensor([[0.0], [2.0]], dtype=torch.float64))
+    profile = factory(1.0, normalize_columns=False).double()
+    center = torch.tensor([[0.25]], dtype=torch.float64)
+    precision = torch.ones(1, dtype=torch.float64)
+
+    values, centers, widths = profile.tangent_with_precision(
+        chart, center, precision
+    )
+
+    assert torch.count_nonzero(values[:, 0]) == 1
+    assert centers[0, 0, 0] != 0
+    assert widths[0, 0] != 0
+    torch.testing.assert_close(centers[1], torch.zeros_like(centers[1]))
+    torch.testing.assert_close(widths[1], torch.zeros_like(widths[1]))
+
+
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_separated_compact_atoms_have_zero_inner_product(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
     compact = _double_profile(factory, 0.35)
@@ -72,7 +140,7 @@ def test_separated_compact_atoms_have_zero_inner_product(factory) -> None:
     assert gaussian_gram[0, 1].abs() > 1e-6
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_compact_tangent_is_finite_on_the_support_boundary(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
@@ -102,7 +170,7 @@ def test_wendland_mnist_grid_tangent_is_finite_float32() -> None:
     assert torch.isfinite(widths).all()
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Biweight, Triweight])
 def test_compact_autograd_hessian_is_finite_inside_boundary_and_outside(
     factory,
 ) -> None:
@@ -146,7 +214,7 @@ def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
     assert torch.isfinite(blocks).all()
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_compact_tangent_matches_autograd(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 11).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
@@ -171,14 +239,14 @@ def test_compact_tangent_matches_autograd(factory) -> None:
         torch.testing.assert_close(widths[:, atom], jacobian_prec[:, atom, atom])
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_compact_sigma_must_be_finite_and_positive(factory) -> None:
     for sigma in (0.0, -1.0, float("inf")):
         with pytest.raises(ValueError, match="finite and positive"):
             factory(sigma)
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triweight])
+@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
 def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
     kernel = AmpWidth(
         sigma_min=0.80,
@@ -198,10 +266,11 @@ def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
         represented,
         torch.einsum("oa,ia->aoi", phi_output, phi_input),
     )
-    torch.testing.assert_close(
-        torch.linalg.vector_norm(represented.flatten(1), dim=1),
-        p[:, 0].abs(),
-    )
+    if factory is WendlandC2:
+        torch.testing.assert_close(
+            torch.linalg.vector_norm(represented.flatten(1), dim=1),
+            p[:, 0].abs(),
+        )
     hessian = torch.func.hessian(
         lambda atom: kernel.materialize_atoms(
             input_chart,

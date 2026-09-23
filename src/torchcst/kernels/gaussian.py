@@ -26,37 +26,13 @@ class Gaussian(Profile):
         self.register_buffer("sigma", value)
 
     def parameter_dim(self, chart: Chart) -> int:
-        return chart.dim
+        return chart.center_parameter_dim
+
+    def parameter_dof(self, chart: Chart) -> int:
+        return chart.intrinsic_dim
 
     def initialize(self, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
-        if isinstance(atoms, bool) or not isinstance(atoms, int):
-            raise TypeError("atoms must be an integer")
-        if atoms < 1:
-            raise ValueError("atoms must be positive")
-        if mode == "balanced":
-            indices = (
-                torch.linspace(
-                    0,
-                    chart.features - 1,
-                    atoms,
-                    device=chart.coordinates.device,
-                )
-                .round()
-                .to(dtype=torch.long)
-            )
-            return chart.coordinates.index_select(0, indices)
-        if mode != "uniform":
-            raise ValueError("mode must be 'balanced' or 'uniform'")
-
-        low = chart.coordinates.amin(dim=0)
-        high = chart.coordinates.amax(dim=0)
-        unit = torch.rand(
-            atoms,
-            chart.dim,
-            device=chart.coordinates.device,
-            dtype=chart.coordinates.dtype,
-        )
-        return low + unit * (high - low)
+        return chart.initialize_centers(atoms, mode=mode)
 
     def evaluate(self, chart: Chart, p: Tensor) -> Tensor:
         precision = self.sigma.reciprocal().square()
@@ -77,9 +53,7 @@ class Gaussian(Profile):
         if precision.ndim == 1 and precision.shape != (p.shape[0],):
             raise ValueError("precision must be scalar or have shape [atoms]")
         precision = precision.to(device=p.device, dtype=p.dtype)
-        squared_distance = (
-            (chart.coordinates.unsqueeze(-2) - p.unsqueeze(-3)).square().sum(dim=-1)
-        )
+        squared_distance = chart.squared_distance(p)
         log_squared_values = -squared_distance * precision
         return torch.exp(0.5 * torch.log_softmax(log_squared_values, dim=0))
 
@@ -103,8 +77,8 @@ class Gaussian(Profile):
         """
         precision = precision.to(p)
         values = self.evaluate_with_precision(chart, p, precision)
-        offset = chart.coordinates[:, None, :] - p[None, :, :]
-        squared = offset.square().sum(-1)
+        offset = chart.center_offsets(p)
+        squared = chart.squared_distance(p)
         probability = values.square()
         center_log = 2 * precision.reshape(1, -1, 1) * offset
         center_mean = (probability[..., None] * center_log).sum(0, keepdim=True)
@@ -112,3 +86,23 @@ class Gaussian(Profile):
         precision_mean = (probability * squared).sum(0, keepdim=True)
         widths = 0.5 * values * (precision_mean - squared)
         return values, centers, widths
+
+    def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
+        return chart.geometry.project_tangent(p, gradient)
+
+    def apply_parameter_update(
+        self,
+        chart: Chart,
+        p: Tensor,
+        displacement: Tensor,
+    ) -> Tensor:
+        return chart.geometry.retract(p, displacement)
+
+    def transport_state(
+        self,
+        chart: Chart,
+        old: Tensor,
+        new: Tensor,
+        state: Tensor,
+    ) -> Tensor:
+        return chart.geometry.transport(old, new, state)

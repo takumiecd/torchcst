@@ -1,20 +1,23 @@
 """Fixed-shape continuous operators for PyTorch."""
 
 from .atoms import Atoms
-from .geometry import Chart
+from .geometry import Chart, EuclideanGeometry, Geometry, SphereGeometry
 from .kernels import (
     Amplitude,
     AmplitudeBandwidthSeparable,
     AmpWidth,
+    Biweight,
+    DirectAmpWidth,
     Gaussian,
     Kernel,
     PolarAmpWidth,
     Profile,
     Separable,
+    Triangle,
     Triweight,
     WendlandC2,
 )
-from .nn import CSTLinear, CSTModule
+from .nn import CSTConv2d, CSTLinear, CSTModule
 from .optim import (
     CSTSGD,
     AdamRConfig,
@@ -31,6 +34,8 @@ from .optim import (
     CSTQuadraticRMSProp,
     CSTQuadraticSGD,
     CSTRMSProp,
+    CurvatureBlockMask,
+    CurvatureBlockMode,
     NormalizedOptimizerConfig,
     QuadraticOptimizerConfig,
 )
@@ -43,7 +48,9 @@ __all__ = [
     "Amplitude",
     "AmplitudeBandwidthSeparable",
     "Atoms",
+    "Biweight",
     "CSTAdamR",
+    "CSTConv2d",
     "CSTImplicitAdam",
     "CSTLinear",
     "CSTModule",
@@ -58,13 +65,20 @@ __all__ = [
     "CSTQuadraticSGD",
     "CSTRMSProp",
     "Chart",
+    "CurvatureBlockMask",
+    "CurvatureBlockMode",
+    "DirectAmpWidth",
+    "EuclideanGeometry",
     "Gaussian",
+    "Geometry",
     "Kernel",
-    "PolarAmpWidth",
     "NormalizedOptimizerConfig",
+    "PolarAmpWidth",
     "Profile",
     "QuadraticOptimizerConfig",
     "Separable",
+    "SphereGeometry",
+    "Triangle",
     "Triweight",
     "WendlandC2",
 ]
