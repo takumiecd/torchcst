@@ -644,6 +644,9 @@ class PolarAmpWidth(Kernel):
         lower = minimum.to(amplitude) + lower_delta / (
             1.0 + self.lower_kappa.to(amplitude) * x
         )
+        # Independent lower decay and upper decay can otherwise cross. The
+        # effective upper envelope must never narrow below the lower curve.
+        upper = torch.maximum(upper, lower)
         if alpha is None:
             sigma = lower
         else:

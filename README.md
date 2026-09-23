@@ -345,6 +345,11 @@ center updates, while the kernel owns the layout of the complete opaque `p`
 row. Consequently, `kernel.parameter_dim(...)` reports stored width and
 `kernel.parameter_dof(...)` reports intrinsic degrees of freedom.
 
+For both amplitude-width kernels, the effective upper bandwidth bound is the
+maximum of its raw upper curve, configured floor, and lower curve. This keeps
+`lower <= upper` even when independent decay settings would make the curves
+cross; activity has no bandwidth effect where the two bounds coincide.
+
 ### `CSTLinear`
 
 `CSTLinear` combines input/output charts, an atom table, and one kernel. Its

@@ -166,6 +166,10 @@ optimizer = CSTParameterAdam(
 checkpoint contractは別である。`activity_gain`、`activity_mode`、
 `dormant_expansion_rate` はPolar専用であり、Directへ指定するとエラーになる。
 
+両kernelの有効な帯域上限は、上限曲線、指定したfloor、下限曲線の最大値とする。
+`lower_kappa` と `upper_decay_power` を独立に変えても、常に下限 ≤ 上限を保つ。
+両者が一致する区間ではactivityを増やしても帯域は変わらない。
+
 ## Polarとの互換性
 
 `PolarAmpWidth` と `DirectAmpWidth` は同じoperatorを表現できるが、parameter rowと
