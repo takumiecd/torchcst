@@ -18,9 +18,9 @@ class CSTModule(nn.Module):
     Family-specific backward stays on ``LinearAtomGrad`` or a future
     ``ConvAtomGrad``. This type does not unify those programs. Subclasses own
     one ``Atoms`` table, frozen charts, and the ``(S, κ)`` repulsion terms.
-    ``CSTParameterAdam`` discovers every site through this contract. The
-    normalized optimizer family still discovers ``CSTLinear`` specifically so
-    it can attach ``LinearAtomGrad``; Conv will need its own observation program.
+    ``CSTParameterAdam`` discovers every site through this contract. The N/D
+    optimizer family supports ``CSTLinear`` through ``LinearAtomGrad`` and
+    rejects other site families until they have observation programs.
     """
 
     atoms: Atoms

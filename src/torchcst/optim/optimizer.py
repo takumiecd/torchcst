@@ -11,7 +11,7 @@ from torch import Tensor, nn
 from torch.optim import Optimizer
 
 from torchcst._runtime.validation import device_checks, require
-from torchcst.nn import CSTLinear
+from torchcst.nn import CSTLinear, CSTModule
 
 from .config import AdamWConfig
 from .dense import DenseAdamWProposal, FunctionalAdamW
@@ -80,11 +80,22 @@ class _ModelOptimizer(Optimizer):
         self.last_step: CSTStepResult | None = None
         self._device_valid: Tensor | None = None
 
-        site_modules = [
+        all_cst_modules = [
             (name or "<root>", module)
             for name, module in model.named_modules()
-            if isinstance(module, CSTLinear)
+            if isinstance(module, CSTModule)
         ]
+        unsupported = [
+            f"{name} ({type(module).__name__})"
+            for name, module in all_cst_modules
+            if not isinstance(module, CSTLinear)
+        ]
+        if unsupported:
+            raise ValueError(
+                "this N/D optimizer supports only CSTLinear; unsupported CST sites: "
+                + ", ".join(unsupported)
+            )
+        site_modules = all_cst_modules
         if not site_modules:
             raise ValueError("model does not contain a CSTLinear site")
 

@@ -365,6 +365,11 @@ execution currently requires `groups=1`; `backend="auto"` falls back to the
 materialized path for grouped convolutions. Bias is deliberately kept outside
 the CST operator and can be added as an ordinary model parameter.
 
+`CSTParameterAdam` supports `CSTConv2d` when its backend resolves to factored
+execution. The N/D optimizer families currently support `CSTLinear` sites
+only; they reject models containing `CSTConv2d` at construction, including
+mixed Linear/Conv models with `dense=AdamWConfig(...)`.
+
 ## Other optimizer families
 
 The Adam paths above are the intended first choices. The package also retains
