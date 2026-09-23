@@ -74,6 +74,25 @@ def test_triangle_matches_the_radial_hat() -> None:
     torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
 
 
+def test_forward_skips_offsets_but_analytic_tangent_uses_them(monkeypatch) -> None:
+    chart = Chart.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1))
+    profile = Triweight(0.5)
+    centers = torch.tensor([[0.1]])
+    original = chart.center_offsets
+    calls = 0
+
+    def tracked(p):
+        nonlocal calls
+        calls += 1
+        return original(p)
+
+    monkeypatch.setattr(chart, "center_offsets", tracked)
+    profile.evaluate(chart, centers)
+    assert calls == 0
+    profile.tangent(chart, centers)
+    assert calls == 1
+
+
 def test_biweight_matches_the_unnormalized_polynomial() -> None:
     chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
     profile = _double_profile(Biweight, 1.0)

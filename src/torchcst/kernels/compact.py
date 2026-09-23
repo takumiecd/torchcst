@@ -63,7 +63,9 @@ class _CompactRadialProfile(Profile):
         precision: Tensor,
     ) -> Tensor:
         with cst_span("cst.profile.geometry"):
-            _, squared, precision = self._geometry(chart, p, precision)
+            _, squared, precision = self._geometry(
+                chart, p, precision, need_offsets=False
+            )
         with cst_span("cst.profile.radial"):
             raw = self._unnormalized_from_squared(squared, precision)
         if not self.normalize_columns:
@@ -115,8 +117,8 @@ class _CompactRadialProfile(Profile):
         return values, centers, widths
 
     def _geometry(
-        self, chart: Chart, p: Tensor, precision: Tensor
-    ) -> tuple[Tensor, Tensor, Tensor]:
+        self, chart: Chart, p: Tensor, precision: Tensor, *, need_offsets: bool = True
+    ) -> tuple[Tensor | None, Tensor, Tensor]:
         if p.ndim != 2 or p.shape[1] != self.parameter_dim(chart):
             raise ValueError(f"p must have shape [atoms, {self.parameter_dim(chart)}]")
         if precision.ndim not in (0, 1):
@@ -124,8 +126,10 @@ class _CompactRadialProfile(Profile):
         if precision.ndim == 1 and precision.shape != (p.shape[0],):
             raise ValueError("precision must be scalar or have shape [atoms]")
         precision = precision.to(device=p.device, dtype=p.dtype)
-        with cst_span("cst.profile.center_offsets"):
-            offset = chart.center_offsets(p)
+        offset = None
+        if need_offsets:
+            with cst_span("cst.profile.center_offsets"):
+                offset = chart.center_offsets(p)
         with cst_span("cst.profile.squared_distance"):
             squared = chart.squared_distance(p)
         return offset, squared, precision
