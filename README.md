@@ -418,8 +418,10 @@ is finite geometric spacing, not a discontinuous topology. For StripChart,
 `strip_layer.packed_weight()` returns a physically contiguous
 `[tiles, tile_out, tile_in]` tensor in sweep order. The current `forward`
 still builds a row-major dense weight for PyTorch's linear operation; native
-tile execution is future work. The new layouts have not yet been compared with
-the existing MNIST configuration for accuracy or speed.
+tile execution is future work. In the 2026-09-24 A100 MNIST study in the `cst`
+repository (K=2560, 3 seeds, 5 epochs), ProductChart reached 95.96% mean test
+accuracy versus 96.49% for the two-chart factored path; StripChart reached
+94.95%. These results use PyTorch materialization, before native tile execution.
 
 ### `CSTConv2d`
 

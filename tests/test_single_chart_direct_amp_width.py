@@ -47,13 +47,9 @@ def test_one_chart_direct_kernel_uses_selected_profile(profile):
     sigma, _, _ = kernel._sigma_bounds(amplitude, alpha)
     torch.testing.assert_close(kernel.bandwidth_sigma(chart, p), sigma)
     precision = sigma.reciprocal().square().detach()
-    squared = chart.squared_distance(p[:, 2:])
-    if profile is Gaussian:
-        raw = torch.exp(-0.5 * squared * precision)
-    else:
-        raw = profile(0.1, normalize_columns=False)._unnormalized_from_squared(
-            squared, precision
-        )
+    raw = profile(0.1, normalize_columns=False).evaluate_with_precision(
+        chart, p[:, 2:], precision
+    )
     expected = (raw * amplitude.unsqueeze(0)).sum(-1).reshape(chart.shape)
     torch.testing.assert_close(model.dense_weight(), expected)
     model.dense_weight().square().sum().backward()
