@@ -65,6 +65,86 @@ StripChart(
 北半球へ単射で写し、centerは球面上で更新する。Sphereの支持範囲検証では
 この写像による距離の縮みを保守的に見積もる。
 
+## TorusGeometryとStripの局所性
+
+`TorusGeometry(m, major_radius=R, minor_radius=r)`は、`R>r>0`のとき
+自由度`m`の輪状超曲面 `S^1 × S^(m-1)` を `R^(m+1)` に埋め込む。
+普通のドーナツ表面は`m=2`であり、`LinePattern × GridPattern((28,28))`
+なら`m=3`、siteとambient centerの保存幅は4になる。
+`circle_axis`は結合された幾何座標のどの成分を円周方向に使うかを指定する。
+その成分は`LinePattern`から来なければならず、Stripでは分割軸と一致する。
+
+円周軸の線座標を`t`、残りの`m-1`個の座標を`y`として、
+`θ=t/R`、`q=(r,y)/sqrt(r²+||y||²) ∈ S^(m-1)`とする。
+Chartは要求されたsiteだけについて次の位置を作る。
+
+```text
+F(θ,q) = ((R+r q₀)cosθ, (R+r q₀)sinθ, r q₁, …, r qₘ₋₁)
+```
+
+`q₀>0`なので、`GridPattern`のsiteは断面球面の外側の一つのパッチを
+占める。幾何のcenterは輪状超曲面全体を動ける。compact profileでは
+観測siteのない領域へcenterを初期化するとsupportが消えるため、
+通常は`atom_init="balanced"`を使う。単一Gridで断面球面の全面を
+覆ったとは解釈しない。
+
+距離はSphereと同じambient chord距離で、断面を`q,q'`、円周角を
+`θ,θ'`、`a=R+r q₀`、`a'=R+r q'₀`と置くと
+
+```text
+D² = 4aa' sin²((θ-θ')/2) + r² ||q-q'||²
+   = ||F(θ,q)||² + ||F(θ',q')||² - 2 F(θ,q)·F(θ',q')
+D  ≥ 2(R-r) |sin((θ-θ')/2)|
+```
+
+である。最短測地線を数値的に解く必要はない。最後の等式は将来の
+GEMM評価にも使える。`Triweight`などのcompact Profileのsupport半径
+`σ_max`もこのchord距離の単位で指定する。
+
+局所性の検証では、各タイルの円周軸上の座標範囲`[a_i,b_i]`を
+保持せずに計算する。`i<j`の二タイル間の最小円周方向gapを
+
+```text
+g_ij = min(a_j-b_i, 2πR-(b_j-a_i))
+L_ij = 2(R-r) sin(g_ij/(2R))
+```
+
+とすると、任意の両タイルのsite間距離は`L_ij`以上になる。
+タイル列は一周未満に制限する。隣接タイルは円の継ぎ目を含めて
+循環的に定義する。**隣接しないすべてのタイル対で
+`L_ij > 2σ_max`**なら、三角不等式から同じatomがその対の両方に
+届くことはない。4タイル以上では、任意の三タイルに非隣接対が
+含まれるため、atomが届くタイル数は高々2となる。
+2タイル以下ならこの上限は自明である。3タイルでは全対を検証する
+保守的な条件を用いる。`StripChart.validate_support`はこれを
+事前に判定し、満たさない設定を拒否する。
+**タイル幅が`2σ_max`を超えるだけでは、曲率と円の継ぎ目を
+考慮できないため十分ではない。**
+
+`max_arc_step`を指定すると、retraction時の円周方向の移動を
+一更新あたりその長さ以下に制限できる。`tile_pitch`より小さくすれば
+タイルstationを何個も飛び越す更新を避けられる。これは
+supportの二タイル保証とは別の制約である。現在の`packed_weight()`は
+タイル順の密な配列を作るが、atomの局所的な物理再配置やnativeな
+タイル演算はまだ実装していない。
+
+```python
+import math
+from torchcst import GridPattern, LinePattern, StripChart, TorusGeometry
+
+torus = TorusGeometry(
+    3, major_radius=100 / (2 * math.pi), minor_radius=1,
+    max_arc_step=10,
+)
+strip = StripChart(
+    shape=(256, 784), tile_shape=(64, 784),
+    axes=(LinePattern(256, spacing=0.1),
+          GridPattern((28, 28), spacing=2 / 27)),
+    axis=0, tile_pitch=25, geometry=torus,
+)
+strip.validate_support(10)
+```
+
 ### Profile
 
 - Chartが返す距離へ適用するscalar shape

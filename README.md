@@ -372,15 +372,18 @@ or through ordinary PyTorch CUDA operations, and `CSTParameterAdam` supports
 the direct path.
 
 ```python
+import math
+
 from torchcst import (
     CSTLinear, DirectAmpWidth, GridPattern, LinePattern, ProductChart,
-    StripChart, Triweight,
+    StripChart, TorusGeometry, Triweight,
 )
 
 # Logical [64, 784] weight, without a stored [64, 784, 3] site tensor.
 chart = ProductChart(
-    output=LinePattern(64, spacing=0.1),
-    input=GridPattern((28, 28), spacing=2 / 27),
+    shape=(64, 784),
+    axes=(LinePattern(64, spacing=0.1),
+          GridPattern((28, 28), spacing=2 / 27)),
 )
 kernel = DirectAmpWidth(
     amplitude_max=1.0, sigma_min=0.1, sigma_birth=0.4,
@@ -389,13 +392,15 @@ kernel = DirectAmpWidth(
 )
 layer = CSTLinear(chart=chart, atoms=256, kernel=kernel)
 
-# A different layout for the same logical weight. Local patterns describe
-# positions within a tile; tile_pitch places tiles along one sweep line.
+# The Line axis runs around a toroidal hypersurface. The Grid occupies a
+# two-dimensional patch of its spherical cross-section.
 strip = StripChart(
-    shape=(64, 784), tile_shape=(8, 49), tile_pitch=2.0,
-    local_output=LinePattern(8, spacing=0.1),
-    local_input=GridPattern((7, 7), spacing=0.1),
-    sweep="input", snake=True, seam_gap=1.0, seam_policy="separate",
+    shape=(64, 784), tile_shape=(16, 784),
+    axes=(LinePattern(64, spacing=0.1),
+          GridPattern((28, 28), spacing=2 / 27)),
+    axis=0, tile_pitch=4.1,
+    geometry=TorusGeometry(3, major_radius=16.4 / (2 * math.pi), minor_radius=0.4,
+                           max_arc_step=2),
 )
 strip_layer = CSTLinear(
     chart=strip, atoms=256,
@@ -407,14 +412,15 @@ strip_layer = CSTLinear(
 )
 ```
 
-`spacing` sets distances inside patterns. `tile_pitch` sets the longitudinal
-distance between tile stations; `seam_gap` adds distance at sweep row
-boundaries. To guarantee that one compact atom intersects at most two tile
-stations, the kernel's `sigma_max` (or fixed `sigma`) must be strictly smaller
-than `tile_pitch`. `seam_policy="separate"` additionally requires
-`tile_pitch + seam_gap > 2 * sigma_max`, so one
-atom cannot reach tile stations on both sides of a sweep boundary. The gap
-is finite geometric spacing, not a discontinuous topology. For StripChart,
+`spacing` sets distances inside patterns, and `tile_pitch` places neighboring
+tile stations along the selected Line axis. A compact atom can intersect at
+most two stations when the chart's distance lower bound between every
+nonadjacent pair exceeds `2 * sigma_max`. `StripChart.validate_support` checks
+this before constructing the single-chart kernel. For `TorusGeometry`, the
+check includes the curvature and the wraparound between the first and last
+tile; the formula and its limits are in [the geometry notes](docs/chart-geometry.ja.md).
+The optional `max_arc_step` bounds an atom's movement along the circle per
+update. For StripChart,
 `strip_layer.packed_weight()` returns a physically contiguous
 `[tiles, tile_out, tile_in]` tensor in sweep order. The current `forward`
 still builds a row-major dense weight for PyTorch's linear operation; native

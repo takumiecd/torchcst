@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+
 import torch
 from torch import Tensor, nn
 
 from .chart import Chart
-from .geometry import EuclideanGeometry, Geometry, SphereGeometry
+from .geometry import EuclideanGeometry, Geometry, SphereGeometry, TorusGeometry
 from .pattern import LinePattern, SitePattern
 
 
@@ -68,9 +69,7 @@ class _LazyChart(Chart):
         raise NotImplementedError
 
     def _embed(self, coordinates: Tensor) -> Tensor:
-        if isinstance(self.geometry, SphereGeometry):
-            return self.geometry.lift_tangent_sites(coordinates)
-        return coordinates
+        return self.geometry.lift_chart_coordinates(coordinates)
 
     def squared_distance(
         self, centers: Tensor, selection: slice | Tensor | None = None
@@ -173,6 +172,21 @@ def _unravel(indices: Tensor, shape: tuple[int, ...]) -> tuple[Tensor, ...]:
     return tuple(reversed(coordinates))
 
 
+def _torus_line_axis(
+    axes: tuple[SitePattern, ...], geometry: Geometry, *, strip_axis: int | None = None
+) -> None:
+    if not isinstance(geometry, TorusGeometry):
+        return
+    offset = 0
+    for index, pattern in enumerate(axes):
+        if offset == geometry.circle_axis and isinstance(pattern, LinePattern):
+            if strip_axis is not None and index != strip_axis:
+                break
+            return
+        offset += pattern.dim
+    raise ValueError("TorusGeometry.circle_axis must select the Chart LinePattern axis")
+
+
 class ProductChart(_LazyChart):
     """Lazy Cartesian layout of one site pattern per logical tensor axis."""
 
@@ -186,15 +200,22 @@ class ProductChart(_LazyChart):
         shape, axes = _validate_axes(shape, axes)
         dim = sum(axis.dim for axis in axes)
         super().__init__(shape, geometry or EuclideanGeometry(dim))
-        if (
-            isinstance(self.geometry, SphereGeometry)
-            and self.geometry.intrinsic_dim != dim
-        ) or (
-            not isinstance(self.geometry, SphereGeometry) and self.embedding_dim != dim
-        ):
+        if self.geometry.intrinsic_dim != dim:
             raise ValueError(
                 "geometry dimensions must match combined axis pattern dimensions"
             )
+        _torus_line_axis(axes, self.geometry)
+        if isinstance(self.geometry, TorusGeometry):
+            offset = 0
+            for pattern in axes:
+                if offset == self.geometry.circle_axis:
+                    low, high = pattern.bounds()
+                    if float(high[0] - low[0]) >= self.geometry.circumference:
+                        raise ValueError(
+                            "torus circle axis must span less than one turn"
+                        )
+                    break
+                offset += pattern.dim
         self.axes = nn.ModuleList(axes)
 
     @property
@@ -272,19 +293,22 @@ class StripChart(_LazyChart):
             raise ValueError("tile_pitch must exceed the width of one tile")
         dim = sum(pattern.dim for pattern in axes)
         super().__init__(shape, geometry or EuclideanGeometry(dim))
-        if (
-            isinstance(self.geometry, SphereGeometry)
-            and self.geometry.intrinsic_dim != dim
-        ) or (
-            not isinstance(self.geometry, SphereGeometry) and self.embedding_dim != dim
-        ):
+        if self.geometry.intrinsic_dim != dim:
             raise ValueError(
                 "geometry dimensions must match combined axis pattern dimensions"
             )
+        _torus_line_axis(axes, self.geometry, strip_axis=axis)
         self.axes = nn.ModuleList(axes)
         self.axis = axis
         self.tile_shape = tile_shape
         self.register_buffer("tile_pitch", line.reference.new_tensor(float(tile_pitch)))
+        if isinstance(self.geometry, TorusGeometry):
+            low, high = self._bounds()
+            circular_span = float(
+                high[self.geometry.circle_axis] - low[self.geometry.circle_axis]
+            )
+            if circular_span >= self.geometry.circumference:
+                raise ValueError("torus strip axis must span less than one turn")
 
     @property
     def reference(self) -> Tensor:
@@ -331,6 +355,9 @@ class StripChart(_LazyChart):
             raise ValueError("kernel support radius must be positive")
         if self.tile_count <= 2:
             return
+        if isinstance(self.geometry, TorusGeometry):
+            self._validate_torus_support(radius)
+            return
         if not isinstance(self.geometry, (EuclideanGeometry, SphereGeometry)):
             raise NotImplementedError(
                 "strip support bounds require Euclidean or Sphere geometry"
@@ -349,6 +376,36 @@ class StripChart(_LazyChart):
             nonneighbor_gap *= scale_floor
         if nonneighbor_gap <= 2 * radius:
             raise ValueError("strip support radius reaches more than two tile stations")
+
+    def _validate_torus_support(self, radius: float) -> None:
+        """Check second-neighbor stations, the nearest nonadjacent pairs."""
+
+        geometry = self.geometry
+        assert isinstance(geometry, TorusGeometry)
+        line = self.axes[self.axis]
+        start = float(line.start[0])
+        spacing = float(line.spacing[0])
+        pitch = float(self.tile_pitch)
+        period = geometry.circumference
+        intervals = []
+        for station in range(self.tile_count):
+            count = min(
+                self.tile_shape[self.axis],
+                self.shape[self.axis] - station * self.tile_shape[self.axis],
+            )
+            low = start + station * pitch
+            intervals.append((low, low + (count - 1) * spacing))
+        # Ordered, disjoint intervals make cyclic second-neighbor gaps the
+        # smallest candidates among all nonadjacent station pairs.
+        for station in range(self.tile_count):
+            left, right = sorted((station, (station + 2) % self.tile_count))
+            direct_gap = intervals[right][0] - intervals[left][1]
+            wrapped_gap = period - (intervals[right][1] - intervals[left][0])
+            gap = min(direct_gap, wrapped_gap)
+            if geometry.axis_separation_lower_bound(gap) <= 2 * radius:
+                raise ValueError(
+                    "strip support radius reaches more than two tile stations"
+                )
 
     def positions(self, indices: Tensor) -> Tensor:
         if (

@@ -13,6 +13,7 @@ from .geometry import (
     SitePattern,
     SphereGeometry,
     StripChart,
+    TorusGeometry,
 )
 from .kernels import (
     Amplitude,
@@ -97,6 +98,7 @@ __all__ = [
     "SitePattern",
     "SphereGeometry",
     "StripChart",
+    "TorusGeometry",
     "Triangle",
     "Triweight",
     "WendlandC2",
