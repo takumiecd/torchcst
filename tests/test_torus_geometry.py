@@ -31,7 +31,7 @@ def _kernel(radius: float) -> DirectAmpWidth:
     )
 
 
-def _strip() -> StripChart:
+def _strip(representation: str = "ambient") -> StripChart:
     return StripChart(
         shape=(16, 4),
         tile_shape=(4, 4),
@@ -43,6 +43,7 @@ def _strip() -> StripChart:
             major_radius=100 / (2 * math.pi),
             minor_radius=1.0,
             max_arc_step=10.0,
+            representation=representation,
         ),
     ).double()
 
@@ -134,6 +135,75 @@ def test_torus_retraction_transport_and_compact_tangent() -> None:
     torch.testing.assert_close(tangent[:, 0], jacobian[:, 0, 0], atol=1e-10, rtol=1e-10)
 
 
+def test_intrinsic_torus_stores_three_coordinates_and_matches_ambient_distance() -> (
+    None
+):
+    ambient = TorusGeometry(3, major_radius=8.0, minor_radius=2.0).double()
+    intrinsic = TorusGeometry(
+        3, major_radius=8.0, minor_radius=2.0, representation="intrinsic"
+    ).double()
+    sites = ambient.lift_chart_coordinates(
+        torch.tensor([[0.3, 0.2, -0.1], [1.1, -0.2, 0.3]], dtype=torch.float64)
+    )
+    centers = intrinsic.initialize_centers(sites, 2, mode="balanced")
+    assert centers.shape == (2, 3)
+    assert intrinsic.center_parameter_dim == intrinsic.intrinsic_dim == 3
+    assert intrinsic.embedding_dim == 4
+    intrinsic.validate_centers(centers)
+    decoded = intrinsic.decode_centers(centers)
+    torch.testing.assert_close(decoded, sites)
+    torch.testing.assert_close(
+        intrinsic.squared_distance(sites, centers),
+        ambient.squared_distance(sites, sites),
+    )
+    uniform = intrinsic.initialize_centers(sites, 32, mode="uniform")
+    intrinsic.validate_centers(uniform)
+    intrinsic.validate_points(intrinsic.decode_centers(uniform))
+
+
+def test_intrinsic_torus_tangent_matches_autograd_and_retracts_across_seam() -> None:
+    geometry = TorusGeometry(
+        3,
+        major_radius=5.0,
+        minor_radius=1.0,
+        representation="intrinsic",
+        max_arc_step=0.25,
+    ).double()
+    chart = ProductChart(
+        shape=(2, 4),
+        axes=(LinePattern(2, spacing=0.4), GridPattern((2, 2), spacing=0.2)),
+        geometry=geometry,
+    ).double()
+    profile = Triweight(1.8).double()
+    precision = torch.tensor([1 / 1.8**2], dtype=torch.float64)
+    for center in (
+        chart.initialize_centers(1, mode="balanced"),
+        torch.zeros(1, 3, dtype=torch.float64),
+        torch.tensor([[0.4, 0.7, -0.5]], dtype=torch.float64),
+    ):
+        _, tangent, _ = profile.tangent_with_precision(chart, center, precision)
+        jacobian = torch.autograd.functional.jacobian(
+            lambda p: profile.evaluate_with_precision(chart, p, precision), center
+        )
+        torch.testing.assert_close(
+            tangent[:, 0], jacobian[:, 0, 0], atol=1e-10, rtol=1e-10
+        )
+
+    old = torch.tensor([[math.pi * 5 - 0.1, 0.1, -0.2]], dtype=torch.float64)
+    updated = geometry.retract(
+        old, torch.tensor([[4.0, 100.0, 100.0]], dtype=torch.float64)
+    )
+    geometry.validate_centers(updated)
+    torch.testing.assert_close(
+        updated[0, 0], torch.tensor(-math.pi * 5 + 0.15, dtype=torch.float64)
+    )
+    assert (
+        torch.linalg.vector_norm(updated[0, 1:])
+        <= geometry.max_section_parameter_radius
+    )
+    geometry.validate_points(geometry.decode_centers(updated))
+
+
 def test_torus_large_update_cannot_jump_past_arc_step() -> None:
     geometry = TorusGeometry(
         2, major_radius=5.0, minor_radius=1.0, max_arc_step=0.25
@@ -147,14 +217,19 @@ def test_torus_large_update_cannot_jump_past_arc_step() -> None:
     geometry.validate_centers(moved)
 
 
-def test_torus_strip_support_packing_optimizer_and_checkpoint() -> None:
-    chart = _strip()
+@pytest.mark.parametrize("representation", ["ambient", "intrinsic"])
+def test_torus_strip_support_packing_optimizer_and_checkpoint(
+    representation: str,
+) -> None:
+    chart = _strip(representation)
     chart.validate_support(10.0)
     with pytest.raises(ValueError, match="more than two"):
         chart.validate_support(15.0)
     centers = chart.geometry.lift_chart_coordinates(
         torch.tensor([[0.5, -0.1, -0.1], [75.5, -0.1, -0.1]], dtype=torch.float64)
     )
+    if representation == "intrinsic":
+        centers = chart.geometry.encode_centers(centers)
     supported = chart.squared_distance(centers).reshape(4, 4, 4, 2).lt(100)
     torch.testing.assert_close(
         supported.any(dim=(1, 2)),
@@ -179,7 +254,7 @@ def test_torus_strip_support_packing_optimizer_and_checkpoint() -> None:
     CSTParameterAdam(model).step()
     chart.geometry.validate_centers(model.atoms.p[:, 2:])
     restored = CSTLinear(
-        chart=_strip(), atoms=3, kernel=_kernel(10.0), dtype=torch.float64
+        chart=_strip(representation), atoms=3, kernel=_kernel(10.0), dtype=torch.float64
     )
     restored.load_state_dict(copy.deepcopy(model.state_dict()))
     torch.testing.assert_close(restored.dense_weight(), model.dense_weight())

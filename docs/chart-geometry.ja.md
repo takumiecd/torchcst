@@ -70,9 +70,18 @@ StripChart(
 `TorusGeometry(m, major_radius=R, minor_radius=r)`は、`R>r>0`のとき
 自由度`m`の輪状超曲面 `S^1 × S^(m-1)` を `R^(m+1)` に埋め込む。
 普通のドーナツ表面は`m=2`であり、`LinePattern × GridPattern((28,28))`
-なら`m=3`、siteとambient centerの保存幅は4になる。
+なら`m=3`、siteの座標幅は4になる。
 `circle_axis`は結合された幾何座標のどの成分を円周方向に使うかを指定する。
 その成分は`LinePattern`から来なければならず、Stripでは分割軸と一致する。
+
+centerにはSphereと同じく二つの保存方式がある。
+既定の`representation="ambient"`では`R^(m+1)`上の表面点を
+`m+1`個で保存する。`representation="intrinsic"`では円周の弧長`t`を
+1個、断面球面のnormal coordinates`v ∈ R^(m-1)`を`m-1`個で保存し、
+合計`m`個にする。後者も距離の計算時はambientへ復号するため、
+同じ表面点なら距離は一致する。`t`は周期`2πR`で折り返し、
+`||v|| ≤ r(π-chart_margin)`として断面の反対極付近を除く。
+これはSphereのintrinsic版と同じ単一chartの制限である。
 
 円周軸の線座標を`t`、残りの`m-1`個の座標を`y`として、
 `θ=t/R`、`q=(r,y)/sqrt(r²+||y||²) ∈ S^(m-1)`とする。
@@ -83,7 +92,8 @@ F(θ,q) = ((R+r q₀)cosθ, (R+r q₀)sinθ, r q₁, …, r qₘ₋₁)
 ```
 
 `q₀>0`なので、`GridPattern`のsiteは断面球面の外側の一つのパッチを
-占める。幾何のcenterは輪状超曲面全体を動ける。compact profileでは
+占める。ambient centerは輪状超曲面全体を動けるが、intrinsic centerは
+前述の小さな断面capを除く。compact profileでは
 観測siteのない領域へcenterを初期化するとsupportが消えるため、
 通常は`atom_init="balanced"`を使う。単一Gridで断面球面の全面を
 覆ったとは解釈しない。
@@ -134,7 +144,7 @@ from torchcst import GridPattern, LinePattern, StripChart, TorusGeometry
 
 torus = TorusGeometry(
     3, major_radius=100 / (2 * math.pi), minor_radius=1,
-    max_arc_step=10,
+    max_arc_step=10, representation="intrinsic",
 )
 strip = StripChart(
     shape=(256, 784), tile_shape=(64, 784),
@@ -143,6 +153,7 @@ strip = StripChart(
     axis=0, tile_pitch=25, geometry=torus,
 )
 strip.validate_support(10)
+assert strip.center_parameter_dim == 3  # site coordinates have width 4
 ```
 
 ### Profile

@@ -326,6 +326,9 @@ compact_spherical = Chart.sphere(
 `SphereGeometry(d)` uses the robust ambient representation and stores `d + 1`
 center coordinates. With `representation="intrinsic"`, it stores exactly `d`
 normal coordinates and decodes them onto `S^d` before measuring distance.
+`TorusGeometry(d)` has the same `d + 1` versus `d` storage choice; its intrinsic
+form stores one periodic circle coordinate and `d - 1` section coordinates.
+Like the intrinsic sphere chart, it excludes a small antipodal section cap.
 Geometry owns decoding, distance, tangent/coordinate projection, retraction,
 and vector transport; it does not own kernel bandwidth or normalization.
 
@@ -400,7 +403,7 @@ strip = StripChart(
           GridPattern((28, 28), spacing=2 / 27)),
     axis=0, tile_pitch=4.1,
     geometry=TorusGeometry(3, major_radius=16.4 / (2 * math.pi), minor_radius=0.4,
-                           max_arc_step=2),
+                           max_arc_step=2, representation="intrinsic"),
 )
 strip_layer = CSTLinear(
     chart=strip, atoms=256,

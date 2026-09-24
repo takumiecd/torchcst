@@ -464,8 +464,9 @@ class TorusGeometry(Geometry):
 
     One Chart coordinate follows the major circle, measured as arc length at
     ``major_radius``. The remaining ``d-1`` coordinates lift to a northern
-    patch of the spherical cross-section. Centers use ambient coordinates and
-    the kernel measures ambient chord distance, as in ``SphereGeometry``.
+    patch of the spherical cross-section. Centers can use ambient coordinates
+    or an arc-length plus normal-coordinate representation. The kernel measures
+    ambient chord distance, as in ``SphereGeometry``.
     """
 
     def __init__(
@@ -476,11 +477,15 @@ class TorusGeometry(Geometry):
         minor_radius: float,
         circle_axis: int = 0,
         max_arc_step: float | None = None,
+        representation: Literal["ambient", "intrinsic"] = "ambient",
+        chart_margin: float = 0.05,
     ) -> None:
         if type(intrinsic_dim) is not int or intrinsic_dim < 2:
             raise ValueError("intrinsic_dim must be at least 2")
         if type(circle_axis) is not int or not 0 <= circle_axis < intrinsic_dim:
             raise ValueError("circle_axis must select one intrinsic coordinate")
+        if representation not in ("ambient", "intrinsic"):
+            raise ValueError("representation must be 'ambient' or 'intrinsic'")
         major = torch.as_tensor(major_radius, dtype=torch.get_default_dtype())
         minor = torch.as_tensor(minor_radius, dtype=torch.get_default_dtype())
         if (
@@ -498,18 +503,44 @@ class TorusGeometry(Geometry):
             or max_arc_step > math.pi * float(major)
         ):
             raise ValueError("max_arc_step must lie in (0, pi * major_radius]")
-        super().__init__(intrinsic_dim=intrinsic_dim, embedding_dim=intrinsic_dim + 1)
+        margin = torch.as_tensor(chart_margin, dtype=torch.get_default_dtype())
+        if (
+            margin.numel() != 1
+            or not bool(torch.isfinite(margin))
+            or margin <= 0
+            or margin >= torch.pi
+        ):
+            raise ValueError("chart_margin must be finite and lie in (0, pi)")
+        super().__init__(
+            intrinsic_dim=intrinsic_dim,
+            embedding_dim=intrinsic_dim + 1,
+            center_parameter_dim=(
+                intrinsic_dim + 1 if representation == "ambient" else intrinsic_dim
+            ),
+        )
         self.circle_axis = circle_axis
         self.max_arc_step = max_arc_step
+        self.representation = representation
         self.register_buffer("major_radius", major.detach().clone().reshape(()))
         self.register_buffer("minor_radius", minor.detach().clone().reshape(()))
+        self.register_buffer("chart_margin", margin.detach().clone().reshape(()))
 
     def _checkpoint_config(self) -> dict[str, object]:
-        return {"circle_axis": self.circle_axis, "max_arc_step": self.max_arc_step}
+        return {
+            "circle_axis": self.circle_axis,
+            "max_arc_step": self.max_arc_step,
+            "representation": self.representation,
+        }
 
     @property
     def circumference(self) -> float:
         return 2 * math.pi * float(self.major_radius)
+
+    @property
+    def max_section_parameter_radius(self) -> Tensor:
+        """Normal-coordinate radius excluding the section's antipodal cap."""
+
+        return self.minor_radius * (torch.pi - self.chart_margin)
 
     def _embed(self, theta: Tensor, section: Tensor) -> Tensor:
         major = self.major_radius.to(section)
@@ -559,10 +590,76 @@ class TorusGeometry(Geometry):
 
     def validate_centers(self, centers: Tensor, *, name: str = "centers") -> None:
         self._validate_center_structure(centers, name=name)
-        self.validate_points(centers, name=name)
+        if self.representation == "ambient":
+            self.validate_points(centers, name=name)
+            return
+        if not bool(torch.isfinite(centers).all()):
+            raise ValueError(f"{name} must be finite")
+        arc_limit = math.pi * float(self.major_radius)
+        tolerance = max(1.0, arc_limit) * 1e-5
+        if not bool(torch.all(centers[..., 0].abs() <= arc_limit + tolerance)):
+            raise ValueError(f"{name} circle coordinate must lie within one turn")
+        section_limit = self.max_section_parameter_radius.to(centers)
+        if not bool(
+            torch.all(
+                torch.linalg.vector_norm(centers[..., 1:], dim=-1)
+                <= section_limit + section_limit.clamp_min(1) * 1e-5
+            )
+        ):
+            raise ValueError(f"{name} must lie inside the torus section chart")
+
+    def _decode_intrinsic(self, centers: Tensor) -> Tensor:
+        radius = self.minor_radius.to(centers)
+        section = centers[..., 1:]
+        length = torch.linalg.vector_norm(section, dim=-1, keepdim=True)
+        angle = length / radius
+        q = torch.cat(
+            (
+                angle.cos(),
+                torch.sinc(angle / torch.pi) * section / radius,
+            ),
+            dim=-1,
+        )
+        return self._embed(centers[..., 0] / self.major_radius.to(centers), q)
+
+    def _encode_intrinsic(self, points: Tensor) -> Tensor:
+        radial = torch.linalg.vector_norm(points[..., :2], dim=-1, keepdim=True)
+        radius = self.minor_radius.to(points)
+        angle = torch.acos(
+            ((radial - self.major_radius.to(points)) / radius).clamp(-1, 1)
+        )
+        tail = points[..., 2:]
+        tail_norm = torch.linalg.vector_norm(tail, dim=-1, keepdim=True)
+        fallback = torch.zeros_like(tail)
+        fallback[..., 0] = 1.0
+        direction = torch.where(
+            tail_norm > torch.finfo(points.dtype).eps,
+            tail / tail_norm.clamp_min(torch.finfo(points.dtype).tiny),
+            fallback,
+        )
+        section = radius * angle * direction
+        section_norm = torch.linalg.vector_norm(section, dim=-1, keepdim=True)
+        limit = self.max_section_parameter_radius.to(points)
+        section = section * (
+            limit / section_norm.clamp_min(torch.finfo(points.dtype).tiny)
+        ).clamp_max(1)
+        arc = self.major_radius.to(points) * torch.atan2(
+            points[..., 1:2], points[..., :1]
+        )
+        return torch.cat((arc, section), dim=-1)
+
+    def encode_centers(self, points: Tensor) -> Tensor:
+        """Encode ambient torus points in the selected center representation."""
+
+        self.validate_points(points)
+        if self.representation == "intrinsic":
+            return self._encode_intrinsic(points)
+        return self._project_surface(points, points)
 
     def decode_centers(self, centers: Tensor) -> Tensor:
         self._validate_center_structure(centers, name="centers")
+        if self.representation == "intrinsic":
+            return self._decode_intrinsic(centers)
         return self._project_surface(centers, centers)
 
     def squared_distance(self, sites: Tensor, centers: Tensor) -> Tensor:
@@ -583,6 +680,44 @@ class TorusGeometry(Geometry):
         self._validate_center_structure(centers, name="centers")
         decoded = self.decode_centers(centers)
         offsets = sites[:, None, :] - decoded[None, :, :]
+        if self.representation == "intrinsic":
+            radius = self.minor_radius.to(centers)
+            major = self.major_radius.to(centers)
+            angle = centers[:, 0] / major
+            cosine, sine = angle.cos(), angle.sin()
+            radial = torch.linalg.vector_norm(decoded[:, :2], dim=-1)
+            circle_offset = (
+                (-sine[None, :] * offsets[..., 0] + cosine[None, :] * offsets[..., 1])
+                * radial[None, :]
+                / major
+            )
+            section_radial_offset = (
+                cosine[None, :] * offsets[..., 0] + sine[None, :] * offsets[..., 1]
+            )[..., None]
+            section_offset = offsets[..., 2:]
+            section = centers[:, 1:]
+            length = torch.linalg.vector_norm(section, dim=-1, keepdim=True)
+            theta = length / radius
+            scale = torch.sinc(theta / torch.pi)
+            theta_square = theta.square()
+            series = -1.0 / 3.0 + theta_square / 30.0 - theta_square.square() / 840.0
+            curvature = torch.where(
+                theta.abs() < 1e-3,
+                series / radius.square(),
+                (theta.cos() - scale)
+                / length.square().clamp_min(torch.finfo(centers.dtype).tiny),
+            )
+            radial_inner = (section_offset * section[None, :, :]).sum(
+                dim=-1, keepdim=True
+            )
+            section_gradient = (
+                scale[None, :, :] * section_offset
+                - (scale / radius)[None, :, :]
+                * section[None, :, :]
+                * section_radial_offset
+                + curvature[None, :, :] * section[None, :, :] * radial_inner
+            )
+            return torch.cat((circle_offset[..., None], section_gradient), dim=-1)
         normal = self._normal(decoded)[None, :, :]
         return offsets - (offsets * normal).sum(dim=-1, keepdim=True) * normal
 
@@ -595,7 +730,8 @@ class TorusGeometry(Geometry):
                 .round()
                 .long()
             )
-            return sites.index_select(0, indices)
+            selected = sites.index_select(0, indices)
+            return self.encode_centers(selected)
         if mode != "uniform":
             raise ValueError("mode must be 'balanced' or 'uniform'")
         theta = 2 * torch.pi * torch.rand(atoms, device=sites.device, dtype=sites.dtype)
@@ -603,9 +739,14 @@ class TorusGeometry(Geometry):
             atoms, self.intrinsic_dim, device=sites.device, dtype=sites.dtype
         )
         section = section / torch.linalg.vector_norm(section, dim=-1, keepdim=True)
-        return self._embed(theta, section)
+        sampled = self._embed(theta, section)
+        return self.encode_centers(sampled)
 
     def project_tangent(self, points: Tensor, vectors: Tensor) -> Tensor:
+        if self.representation == "intrinsic":
+            self._validate_center_structure(points, name="points")
+            self._validate_center_structure(vectors, name="vectors")
+            return vectors
         self._validate_structure(points, name="points")
         self._validate_structure(vectors, name="vectors")
         normal = self._normal(points)
@@ -661,6 +802,22 @@ class TorusGeometry(Geometry):
             raise ValueError("points and displacement must have matching shapes")
         if not bool(torch.isfinite(displacement).all()):
             raise ValueError("displacement must be finite")
+        if self.representation == "intrinsic":
+            arc_step = displacement[..., :1]
+            if self.max_arc_step is not None:
+                arc_step = arc_step.clamp(-self.max_arc_step, self.max_arc_step)
+            half_turn = math.pi * float(self.major_radius)
+            arc = (
+                torch.remainder(points[..., :1] + arc_step + half_turn, 2 * half_turn)
+                - half_turn
+            )
+            section = points[..., 1:] + displacement[..., 1:]
+            length = torch.linalg.vector_norm(section, dim=-1, keepdim=True)
+            limit = self.max_section_parameter_radius.to(section)
+            section = section * (
+                limit / length.clamp_min(torch.finfo(section.dtype).tiny)
+            ).clamp_max(1)
+            return torch.cat((arc, section), dim=-1)
         tangent = self.project_tangent(points, displacement)
         updated = self._project_surface(points + tangent, points)
         if self.max_arc_step is None:
@@ -688,6 +845,8 @@ class TorusGeometry(Geometry):
         self._validate_center_structure(vectors, name="vectors")
         if old.shape != new.shape or old.shape != vectors.shape:
             raise ValueError("old, new, and vectors must have matching shapes")
+        if self.representation == "intrinsic":
+            return vectors
         return self.project_tangent(new, vectors)
 
     def axis_separation_lower_bound(self, gap: float) -> float:
@@ -707,7 +866,8 @@ class TorusGeometry(Geometry):
             f"embedding_dim={self.embedding_dim}, "
             f"major_radius={float(self.major_radius):g}, "
             f"minor_radius={float(self.minor_radius):g}, "
-            f"circle_axis={self.circle_axis}, max_arc_step={self.max_arc_step}"
+            f"circle_axis={self.circle_axis}, max_arc_step={self.max_arc_step}, "
+            f"representation={self.representation!r}"
         )
 
 
