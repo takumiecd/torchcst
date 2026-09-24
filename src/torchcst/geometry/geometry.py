@@ -52,7 +52,9 @@ class Geometry(nn.Module, ABC):
 
     def set_extra_state(self, state: object) -> None:
         if state != self.get_extra_state():
-            raise RuntimeError("geometry checkpoint contract differs from this geometry")
+            raise RuntimeError(
+                "geometry checkpoint contract differs from this geometry"
+            )
 
     def _checkpoint_config(self) -> dict[str, object]:
         """Subclass-specific non-tensor settings; scalar buffers load separately."""
@@ -246,6 +248,33 @@ class SphereGeometry(Geometry):
         norm = torch.linalg.vector_norm(points, dim=-1, keepdim=True)
         tiny = torch.finfo(points.dtype).tiny
         return points * (self.radius.to(points) / norm.clamp_min(tiny))
+
+    def lift_tangent_sites(self, coordinates: Tensor) -> Tensor:
+        """Map Cartesian axis coordinates to the northern sphere hemisphere.
+
+        The gnomonic lift is injective and has unit local scale at the origin.
+        This gives lazy product charts spherical sites without a site table.
+        """
+
+        if (
+            not isinstance(coordinates, Tensor)
+            or coordinates.ndim != 2
+            or coordinates.shape[-1] != self.intrinsic_dim
+            or not coordinates.is_floating_point()
+        ):
+            raise ValueError(
+                f"coordinates must have shape [sites, {self.intrinsic_dim}]"
+            )
+        radius = self.radius.to(coordinates)
+        denominator = torch.sqrt(
+            radius.square() + coordinates.square().sum(-1, keepdim=True)
+        )
+        return (
+            torch.cat(
+                (radius.square().expand_as(denominator), radius * coordinates), dim=-1
+            )
+            / denominator
+        )
 
     @property
     def max_parameter_radius(self) -> Tensor:

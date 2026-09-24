@@ -38,7 +38,10 @@ def test_default_gaussian_profile_keeps_legacy_checkpoint_contract():
     "profile", [Gaussian, Triangle, Biweight, Triweight, WendlandC2]
 )
 def test_one_chart_direct_kernel_uses_selected_profile(profile):
-    chart = ProductChart(LinePattern(3, spacing=0.5), LinePattern(4, spacing=0.4))
+    chart = ProductChart(
+        shape=(3, 4),
+        axes=(LinePattern(3, spacing=0.5), LinePattern(4, spacing=0.4)),
+    )
     kernel = make_kernel(profile)
     model = CSTLinear(chart=chart, atoms=3, kernel=kernel, dtype=torch.float64)
     assert model.atoms.p.shape == (3, 4)
@@ -59,7 +62,10 @@ def test_one_chart_direct_kernel_uses_selected_profile(profile):
 
 
 def test_one_chart_direct_kernel_updates_activity_and_rejects_normalized_profile():
-    chart = ProductChart(LinePattern(2, spacing=0.5), LinePattern(2, spacing=0.5))
+    chart = ProductChart(
+        shape=(2, 2),
+        axes=(LinePattern(2, spacing=0.5), LinePattern(2, spacing=0.5)),
+    )
     normalized = make_kernel(Triweight)
     normalized.profile = Triweight(0.1)
     with pytest.raises(ValueError, match="unnormalized Profile"):
@@ -78,7 +84,13 @@ def test_one_chart_direct_kernel_updates_activity_and_rejects_normalized_profile
 
 
 def test_one_chart_direct_kernel_packs_strip_without_site_table():
-    chart = StripChart((3, 5), (2, 2), tile_pitch=2.0)
+    chart = StripChart(
+        shape=(3, 5),
+        axes=(LinePattern(3, spacing=0.2), LinePattern(5, spacing=0.2)),
+        tile_shape=(2, 5),
+        axis=0,
+        tile_pitch=2.0,
+    )
     model = CSTLinear(chart=chart, atoms=3, kernel=make_kernel(Triweight))
     packed = model.packed_weight()
     dense = model.dense_weight().flatten()

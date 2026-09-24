@@ -217,7 +217,9 @@ class DirectAmpWidth(Kernel):
 
     def set_extra_state(self, state: object) -> None:
         if state != self.get_extra_state():
-            raise RuntimeError("DirectAmpWidth checkpoint contract differs from this kernel")
+            raise RuntimeError(
+                "DirectAmpWidth checkpoint contract differs from this kernel"
+            )
 
     def _load_from_state_dict(
         self,
@@ -640,8 +642,8 @@ class DirectAmpWidth(Kernel):
         )
 
     def _check_single_chart(self, chart: Chart) -> None:
-        if not isinstance(chart, Chart) or len(chart.shape) != 2:
-            raise TypeError("single-chart DirectAmpWidth requires a two-dimensional Chart")
+        if not isinstance(chart, Chart) or not chart.shape:
+            raise TypeError("single-chart DirectAmpWidth requires a shaped Chart")
         if getattr(self.profile, "normalize_columns", True):
             raise ValueError(
                 "single-chart DirectAmpWidth requires an unnormalized Profile"
@@ -749,7 +751,9 @@ class DirectAmpWidth(Kernel):
             )
             for start in range(0, chart.features, self.site_chunk)
         ]
-        return torch.cat(blocks, dim=0).transpose(0, 1).reshape(p.shape[0], *chart.shape)
+        return (
+            torch.cat(blocks, dim=0).transpose(0, 1).reshape(p.shape[0], *chart.shape)
+        )
 
     def packed_weight(self, chart: StripChart, p: Tensor) -> Tensor:
         """Return physically ordered, contiguous tile-major weight storage."""
@@ -761,9 +765,7 @@ class DirectAmpWidth(Kernel):
         tiles = []
         for station in range(chart.tile_count):
             logical, local = chart.tile_indices(station)
-            values = self._single_block(
-                chart, center, amplitude, precision, logical
-            )
+            values = self._single_block(chart, center, amplitude, precision, logical)
             tile = values.new_zeros(tile_size).index_copy(0, local, values)
             tiles.append(tile.reshape(chart.tile_shape))
         return torch.stack(tiles)

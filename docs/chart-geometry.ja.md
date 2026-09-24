@@ -24,28 +24,46 @@ intrinsic表現では中心だけをnorth poleまわりのnormal coordinates `R^
 ### Chart
 
 - fixed-cardinalityな観測site
-- 線形演算子では論理的な重み形状`[out, in]`
+- 論理的なテンソル形状`shape`と、各軸に対応する`SitePattern`
 - Geometryの所有
 - spacingなどsite配置由来のmetadata
 
 Chartはprofile形状、bandwidth、amplitude、atom数を知らない。
-`ProductChart`は出力・入力の`SitePattern`を直積的に解釈し、
-`StripChart`は重みをタイルに分けて1次元の列に置く。両者とも必要なsite番号の
-座標だけを生成し、重み全体の座標テンソルを保持しない。
+`ProductChart`は`shape`の各軸に対応する`axes`を直積的に解釈する。
+テンソルの階数は`len(shape)`、幾何座標の次元は各patternの`dim`の和であり、
+両者は同じでなくてよい。例えば`shape=(64, 784, 4)`に対し、
+`axes=(LinePattern(64), GridPattern((28, 28)), LinePattern(4))`なら
+三階テンソルを四次元の幾何に配置する。`CSTLinear`だけが重みを
+`[out, in]`に制限する。ChartのAPIには入出力を表す特別な軸名はない。
+
+`StripChart`も同じ`shape`と`axes`を受け取る。`axis`で指定する延長軸は
+`LinePattern`でなければならず、それ以外の軸はタイル分割しない。
+`tile_shape`は各軸のタイル幅を表し、`tile_pitch`は延長軸上の隣接タイルの
+座標間隔となる。タイル列のために新しい幾何座標軸は追加しない。
+両Chartとも必要なsite番号の座標だけを生成し、テンソル全体の座標表を
+保持しない。
+
+```python
+ProductChart(shape=(64, 784), axes=(axis0_line, axis1_grid))
+StripChart(
+    shape=(64, 784), axes=(axis0_line, axis1_grid),
+    tile_shape=(8, 784), axis=0, tile_pitch=4.1,
+)
+```
 
 `LinePattern`、`GridPattern`、`PointsPattern`はsiteの局所的な並べ方を
 表す。`spacing`とGeometryが距離の意味を決める。`low/high`はgridの
 両端を直接指定したい場合の代替である。
 
-`StripChart`では`tile_pitch`が列上の隣接タイル間隔、`seam_gap`が
-折り返し部分の追加間隔になる。EuclideanGeometryとcompact kernelで
-`sigma_max < tile_pitch`（固定幅なら`sigma < tile_pitch`）なら、
-一つのatomが届くタイルstationは最大2個。
-`seam_policy="separate"`なら追加で
-`tile_pitch + seam_gap > 2 * sigma_max`を検査し、折り返しの両側へ同じ
-atomが届かないようにする。`tile_indices(station)`は小さなタイル内の
-対応だけを計算し、全siteのID表を保持しない。`packed_weight()`は
-station順の物理配列を返すが、現行のPyTorch forwardは密な行列を使う。
+新しいStrip配置で一タイル内の延長軸の幅を`L`、compact kernelの最大半径を
+`R`、`tile_pitch`を`P`とすると、`P > L`でタイルの順序が保たれる。
+さらに`2P - L > 2R`なら、離れた二タイルへ同時に届かないため、
+一つのatomが届くタイルは最大2個になる。`tile_indices(station)`は
+小さなタイル内の対応だけを計算し、全siteのID表を保持しない。
+`packed_weight()`はstation順の物理配列を返すが、現行のPyTorch forwardは
+密な行列を使う。SphereGeometryを指定した場合は、各軸の直積座標を
+北半球へ単射で写し、centerは球面上で更新する。Sphereの支持範囲検証では
+この写像による距離の縮みを保守的に見積もる。
 
 ### Profile
 

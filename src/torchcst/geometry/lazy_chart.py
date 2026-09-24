@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
-
+from collections.abc import Sequence
 import torch
 from torch import Tensor, nn
 
 from .chart import Chart
-from .geometry import EuclideanGeometry, Geometry
+from .geometry import EuclideanGeometry, Geometry, SphereGeometry
 from .pattern import LinePattern, SitePattern
 
 
 class _LazyChart(Chart):
     """A Chart whose sites are computed only for requested flat indices."""
 
-    def __init__(self, shape: tuple[int, int], geometry: Geometry) -> None:
+    def __init__(self, shape: tuple[int, ...], geometry: Geometry) -> None:
         nn.Module.__init__(self)
         if not isinstance(geometry, Geometry):
             raise TypeError("geometry must be a Geometry")
@@ -24,7 +23,7 @@ class _LazyChart(Chart):
         self.geometry = geometry
 
     @property
-    def shape(self) -> tuple[int, int]:
+    def shape(self) -> tuple[int, ...]:
         return self._shape
 
     @property
@@ -67,6 +66,11 @@ class _LazyChart(Chart):
 
     def positions(self, indices: Tensor) -> Tensor:
         raise NotImplementedError
+
+    def _embed(self, coordinates: Tensor) -> Tensor:
+        if isinstance(self.geometry, SphereGeometry):
+            return self.geometry.lift_tangent_sites(coordinates)
+        return coordinates
 
     def squared_distance(
         self, centers: Tensor, selection: slice | Tensor | None = None
@@ -137,37 +141,65 @@ class _LazyChart(Chart):
         raise NotImplementedError
 
 
+def _validate_axes(
+    shape: Sequence[int], axes: Sequence[SitePattern]
+) -> tuple[tuple[int, ...], tuple[SitePattern, ...]]:
+    shape = tuple(shape)
+    axes = tuple(axes)
+    if not shape or any(type(size) is not int or size < 1 for size in shape):
+        raise ValueError("shape must contain positive integers")
+    if len(axes) != len(shape):
+        raise ValueError("axes must contain one SitePattern per shape dimension")
+    if any(not isinstance(axis, SitePattern) for axis in axes):
+        raise TypeError("every axis must be a SitePattern")
+    if any(axis.features != size for axis, size in zip(axes, shape)):
+        raise ValueError("each axis pattern size must match its shape dimension")
+    reference = axes[0].reference
+    if any(
+        axis.reference.device != reference.device
+        or axis.reference.dtype != reference.dtype
+        for axis in axes[1:]
+    ):
+        raise ValueError("axis patterns must share device and dtype")
+    return shape, axes
+
+
+def _unravel(indices: Tensor, shape: tuple[int, ...]) -> tuple[Tensor, ...]:
+    remainder = indices
+    coordinates = []
+    for size in reversed(shape):
+        coordinates.append(remainder % size)
+        remainder = torch.div(remainder, size, rounding_mode="floor")
+    return tuple(reversed(coordinates))
+
+
 class ProductChart(_LazyChart):
-    """Lazy Cartesian layout of output and input site patterns."""
+    """Lazy Cartesian layout of one site pattern per logical tensor axis."""
 
     def __init__(
         self,
-        output: SitePattern,
-        input: SitePattern,
+        shape: Sequence[int],
+        axes: Sequence[SitePattern],
         *,
         geometry: Geometry | None = None,
     ) -> None:
-        if not isinstance(output, SitePattern) or not isinstance(input, SitePattern):
-            raise TypeError("output and input must be SitePattern instances")
+        shape, axes = _validate_axes(shape, axes)
+        dim = sum(axis.dim for axis in axes)
+        super().__init__(shape, geometry or EuclideanGeometry(dim))
         if (
-            output.reference.device != input.reference.device
-            or output.reference.dtype != input.reference.dtype
+            isinstance(self.geometry, SphereGeometry)
+            and self.geometry.intrinsic_dim != dim
+        ) or (
+            not isinstance(self.geometry, SphereGeometry) and self.embedding_dim != dim
         ):
-            raise ValueError("output and input patterns must share device and dtype")
-        dim = output.dim + input.dim
-        super().__init__(
-            (output.features, input.features), geometry or EuclideanGeometry(dim)
-        )
-        if self.embedding_dim != dim:
             raise ValueError(
-                "geometry.embedding_dim must match combined pattern dimensions"
+                "geometry dimensions must match combined axis pattern dimensions"
             )
-        self.output = output
-        self.input = input
+        self.axes = nn.ModuleList(axes)
 
     @property
     def reference(self) -> Tensor:
-        return self.output.reference
+        return self.axes[0].reference
 
     def positions(self, indices: Tensor) -> Tensor:
         if (
@@ -180,102 +212,86 @@ class ProductChart(_LazyChart):
             )
         if bool(((indices < 0) | (indices >= self.features)).any()):
             raise IndexError("site index out of bounds")
-        output_index = torch.div(indices, self.shape[1], rounding_mode="floor")
-        input_index = indices % self.shape[1]
-        return torch.cat(
-            (self.output.positions(output_index), self.input.positions(input_index)),
-            dim=-1,
+        return self._embed(
+            torch.cat(
+                tuple(
+                    axis.positions(axis_index)
+                    for axis, axis_index in zip(
+                        self.axes, _unravel(indices, self.shape)
+                    )
+                ),
+                dim=-1,
+            )
         )
 
     def _bounds(self) -> tuple[Tensor, Tensor]:
-        out_low, out_high = self.output.bounds()
-        in_low, in_high = self.input.bounds()
-        return torch.cat((out_low, in_low)), torch.cat((out_high, in_high))
+        bounds = [axis.bounds() for axis in self.axes]
+        return torch.cat(tuple(low for low, _ in bounds)), torch.cat(
+            tuple(high for _, high in bounds)
+        )
 
     def _layout(self) -> tuple:
-        return (type(self.output).__qualname__, type(self.input).__qualname__)
+        return tuple(type(axis).__qualname__ for axis in self.axes)
 
 
 class StripChart(_LazyChart):
-    """Lay matrix tiles on a line, with independent coordinates inside each tile.
-
-    ``tile_pitch`` is the distance between neighboring tile stations. A kernel
-    with support radius strictly below this pitch can touch at most two tile
-    stations. ``seam_gap`` adds distance when the sweep starts a new row.
-    """
+    """Tile one LinePattern axis while retaining the product geometry dimension."""
 
     def __init__(
         self,
-        shape: tuple[int, int],
-        tile_shape: tuple[int, int],
+        shape: Sequence[int],
+        tile_shape: Sequence[int],
         *,
+        axes: Sequence[SitePattern],
+        axis: int,
         tile_pitch: float,
-        local_output: SitePattern | None = None,
-        local_input: SitePattern | None = None,
-        sweep: Literal["input", "output"] = "input",
-        snake: bool = True,
-        seam_gap: float = 0.0,
-        seam_policy: Literal["join", "separate"] = "join",
         geometry: Geometry | None = None,
     ) -> None:
-        if (
-            len(shape) != 2
-            or len(tile_shape) != 2
-            or any(type(n) is not int or n < 1 for n in (*shape, *tile_shape))
-        ):
-            raise ValueError(
-                "shape and tile_shape must each contain two positive integers"
-            )
-        shape = tuple(shape)
+        shape, axes = _validate_axes(shape, axes)
         tile_shape = tuple(tile_shape)
-        if sweep not in ("input", "output") or not isinstance(snake, bool):
-            raise ValueError("sweep must be 'input' or 'output' and snake must be bool")
-        if seam_policy not in ("join", "separate"):
-            raise ValueError("seam_policy must be 'join' or 'separate'")
-        if (
-            not math.isfinite(tile_pitch)
-            or tile_pitch <= 0
-            or not math.isfinite(seam_gap)
-            or seam_gap < 0
+        if len(tile_shape) != len(shape) or any(
+            type(size) is not int or size < 1 or size > full
+            for size, full in zip(tile_shape, shape)
         ):
-            raise ValueError("tile_pitch must be positive and seam_gap nonnegative")
-        local_output = local_output or LinePattern(tile_shape[0], spacing=1.0)
-        local_input = local_input or LinePattern(tile_shape[1], spacing=1.0)
-        if (
-            local_output.features != tile_shape[0]
-            or local_input.features != tile_shape[1]
+            raise ValueError("tile_shape must match shape and fit every axis")
+        if type(axis) is not int or not 0 <= axis < len(shape):
+            raise ValueError("axis must select a shape dimension")
+        if not isinstance(axes[axis], LinePattern):
+            raise TypeError("the strip axis must use a one-dimensional LinePattern")
+        if any(
+            tile != full
+            for index, (tile, full) in enumerate(zip(tile_shape, shape))
+            if index != axis
         ):
-            raise ValueError("local pattern sizes must match tile_shape")
-        if (
-            local_output.reference.device != local_input.reference.device
-            or local_output.reference.dtype != local_input.reference.dtype
-        ):
-            raise ValueError("local patterns must share device and dtype")
-        dim = 1 + local_output.dim + local_input.dim
+            raise ValueError("only the selected LinePattern axis may be tiled")
+        if not math.isfinite(tile_pitch) or tile_pitch <= 0:
+            raise ValueError("tile_pitch must be positive")
+        line = axes[axis]
+        local_span = float(line.spacing[0]) * (tile_shape[axis] - 1)
+        if math.ceil(shape[axis] / tile_shape[axis]) > 1 and tile_pitch <= local_span:
+            raise ValueError("tile_pitch must exceed the width of one tile")
+        dim = sum(pattern.dim for pattern in axes)
         super().__init__(shape, geometry or EuclideanGeometry(dim))
-        if self.embedding_dim != dim:
+        if (
+            isinstance(self.geometry, SphereGeometry)
+            and self.geometry.intrinsic_dim != dim
+        ) or (
+            not isinstance(self.geometry, SphereGeometry) and self.embedding_dim != dim
+        ):
             raise ValueError(
-                "geometry.embedding_dim must match strip coordinate dimensions"
+                "geometry dimensions must match combined axis pattern dimensions"
             )
+        self.axes = nn.ModuleList(axes)
+        self.axis = axis
         self.tile_shape = tile_shape
-        self.sweep = sweep
-        self.snake = snake
-        self.seam_policy = seam_policy
-        self.local_output = local_output
-        self.local_input = local_input
-        self.register_buffer(
-            "tile_pitch", local_output.reference.new_tensor(float(tile_pitch))
-        )
-        self.register_buffer(
-            "seam_gap", local_output.reference.new_tensor(float(seam_gap))
-        )
+        self.register_buffer("tile_pitch", line.reference.new_tensor(float(tile_pitch)))
 
     @property
     def reference(self) -> Tensor:
         return self.tile_pitch
 
     @property
-    def tile_grid(self) -> tuple[int, int]:
+    def tile_grid(self) -> tuple[int, ...]:
         return tuple((n + t - 1) // t for n, t in zip(self.shape, self.tile_shape))
 
     @property
@@ -283,47 +299,56 @@ class StripChart(_LazyChart):
         return math.prod(self.tile_grid)
 
     def tile_indices(self, station: int) -> tuple[Tensor, Tensor]:
-        """Logical and tile-local indices for one physical tile station.
-
-        Edge tiles omit positions outside the logical weight. Each returned
-        array is at most one tile long; no global indirection table is stored.
-        """
+        """Return logical and local flat indices for one physical tile."""
 
         if type(station) is not int or not 0 <= station < self.tile_count:
             raise IndexError("tile station out of bounds")
-        rows, cols = self.tile_grid
-        inner_count = cols if self.sweep == "input" else rows
-        outer, inner = divmod(station, inner_count)
-        if self.snake and outer % 2:
-            inner = inner_count - 1 - inner
-        tile_row, tile_col = (outer, inner) if self.sweep == "input" else (inner, outer)
-        local_row = torch.arange(self.tile_shape[0], device=self.device)
-        local_col = torch.arange(self.tile_shape[1], device=self.device)
-        row = tile_row * self.tile_shape[0] + local_row[:, None]
-        col = tile_col * self.tile_shape[1] + local_col[None, :]
-        valid = (row < self.shape[0]) & (col < self.shape[1])
-        logical = (row * self.shape[1] + col).expand(self.tile_shape)
-        local = torch.arange(math.prod(self.tile_shape), device=self.device).reshape(
-            self.tile_shape
+        local_axes = torch.meshgrid(
+            *(torch.arange(size, device=self.device) for size in self.tile_shape),
+            indexing="ij",
         )
+        valid = torch.ones(self.tile_shape, dtype=torch.bool, device=self.device)
+        logical = torch.zeros(self.tile_shape, dtype=torch.long, device=self.device)
+        local = torch.zeros_like(logical)
+        logical_stride = 1
+        local_stride = 1
+        for index in reversed(range(len(self.shape))):
+            coordinate = local_axes[index]
+            global_coordinate = (
+                coordinate + station * self.tile_shape[index]
+                if index == self.axis
+                else coordinate
+            )
+            valid &= global_coordinate < self.shape[index]
+            logical += global_coordinate * logical_stride
+            local += coordinate * local_stride
+            logical_stride *= self.shape[index]
+            local_stride *= self.tile_shape[index]
         return logical[valid], local[valid]
 
     def validate_support(self, radius: float) -> None:
-        if not isinstance(self.geometry, EuclideanGeometry):
-            raise NotImplementedError("strip support bounds require EuclideanGeometry")
-        if not math.isfinite(radius) or radius <= 0 or radius >= float(self.tile_pitch):
-            raise ValueError(
-                "kernel support radius must be positive and smaller than tile_pitch"
+        if not math.isfinite(radius) or radius <= 0:
+            raise ValueError("kernel support radius must be positive")
+        if self.tile_count <= 2:
+            return
+        if not isinstance(self.geometry, (EuclideanGeometry, SphereGeometry)):
+            raise NotImplementedError(
+                "strip support bounds require Euclidean or Sphere geometry"
             )
-        outer_count = self.tile_grid[0] if self.sweep == "input" else self.tile_grid[1]
-        if (
-            self.seam_policy == "separate"
-            and outer_count > 1
-            and float(self.tile_pitch + self.seam_gap) <= 2 * radius
-        ):
-            raise ValueError(
-                "separate seams require tile_pitch + seam_gap > 2 * support radius"
+        line = self.axes[self.axis]
+        span = float(line.spacing[0]) * (self.tile_shape[self.axis] - 1)
+        nonneighbor_gap = 2 * float(self.tile_pitch) - span
+        if isinstance(self.geometry, SphereGeometry):
+            low, high = self._bounds()
+            bound = torch.maximum(low.abs(), high.abs())
+            max_norm_squared = float(bound.square().sum())
+            sphere_radius = float(self.geometry.radius)
+            scale_floor = (
+                sphere_radius**3 / (sphere_radius**2 + max_norm_squared) ** 1.5
             )
+            nonneighbor_gap *= scale_floor
+        if nonneighbor_gap <= 2 * radius:
+            raise ValueError("strip support radius reaches more than two tile stations")
 
     def positions(self, indices: Tensor) -> Tensor:
         if (
@@ -336,48 +361,49 @@ class StripChart(_LazyChart):
             )
         if bool(((indices < 0) | (indices >= self.features)).any()):
             raise IndexError("site index out of bounds")
-        row = torch.div(indices, self.shape[1], rounding_mode="floor")
-        col = indices % self.shape[1]
-        tile_row = torch.div(row, self.tile_shape[0], rounding_mode="floor")
-        tile_col = torch.div(col, self.tile_shape[1], rounding_mode="floor")
-        rows, cols = self.tile_grid
-        if self.sweep == "input":
-            outer, inner, inner_count = tile_row, tile_col, cols
-        else:
-            outer, inner, inner_count = tile_col, tile_row, rows
-        if self.snake:
-            inner = torch.where(outer % 2 == 0, inner, inner_count - 1 - inner)
-        station = outer * inner_count + inner
-        longitude = (
-            station.to(self.dtype) * self.tile_pitch
-            + outer.to(self.dtype) * self.seam_gap
-        )
-        return torch.cat(
-            (
-                longitude[:, None],
-                self.local_output.positions(row % self.tile_shape[0]),
-                self.local_input.positions(col % self.tile_shape[1]),
-            ),
-            dim=-1,
-        )
+        coordinates = []
+        for index, (pattern, axis_index) in enumerate(
+            zip(self.axes, _unravel(indices, self.shape))
+        ):
+            if index == self.axis:
+                station = torch.div(
+                    axis_index, self.tile_shape[index], rounding_mode="floor"
+                )
+                local_index = axis_index % self.tile_shape[index]
+                coordinates.append(
+                    pattern.positions(local_index)
+                    + station[:, None].to(self.dtype) * self.tile_pitch
+                )
+            else:
+                coordinates.append(pattern.positions(axis_index))
+        return self._embed(torch.cat(tuple(coordinates), dim=-1))
 
     def _bounds(self) -> tuple[Tensor, Tensor]:
-        out_low, out_high = self.local_output.bounds()
-        in_low, in_high = self.local_input.bounds()
-        major_count = self.tile_grid[0] if self.sweep == "input" else self.tile_grid[1]
-        stations = math.prod(self.tile_grid)
-        start = self.tile_pitch.new_zeros(1)
-        end = (stations - 1) * self.tile_pitch.reshape(1) + (
-            major_count - 1
-        ) * self.seam_gap.reshape(1)
-        return torch.cat((start, out_low, in_low)), torch.cat((end, out_high, in_high))
+        lows = []
+        highs = []
+        for index, pattern in enumerate(self.axes):
+            if index == self.axis:
+                start = pattern.positions(
+                    torch.zeros(1, dtype=torch.long, device=self.device)
+                )[0]
+                last_local = (self.shape[index] - 1) % self.tile_shape[index]
+                end = (
+                    pattern.positions(
+                        torch.tensor([last_local], dtype=torch.long, device=self.device)
+                    )[0]
+                    + (self.tile_count - 1) * self.tile_pitch
+                )
+                lows.append(start)
+                highs.append(end)
+            else:
+                low, high = pattern.bounds()
+                lows.append(low)
+                highs.append(high)
+        return torch.cat(tuple(lows)), torch.cat(tuple(highs))
 
     def _layout(self) -> tuple:
         return (
             self.tile_shape,
-            self.sweep,
-            self.snake,
-            self.seam_policy,
-            type(self.local_output).__qualname__,
-            type(self.local_input).__qualname__,
+            self.axis,
+            tuple(type(pattern).__qualname__ for pattern in self.axes),
         )
