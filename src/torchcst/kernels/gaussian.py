@@ -91,7 +91,7 @@ class Gaussian(Profile):
         )
 
     def tangent_config(self) -> tuple:
-        return (self.normalize_columns,)
+        return () if self.normalize_columns else (False,)
 
     @property
     def supports_tangent(self) -> bool:

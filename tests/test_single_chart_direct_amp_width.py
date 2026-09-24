@@ -30,6 +30,10 @@ def make_kernel(profile, *, site_chunk=3, atom_chunk=2):
     )
 
 
+def test_default_gaussian_profile_keeps_legacy_checkpoint_contract():
+    assert Gaussian(0.1).get_extra_state()["tangent_config"] == ()
+
+
 @pytest.mark.parametrize(
     "profile", [Gaussian, Triangle, Biweight, Triweight, WendlandC2]
 )

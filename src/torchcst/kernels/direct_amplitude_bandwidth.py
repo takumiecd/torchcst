@@ -665,7 +665,9 @@ class DirectAmpWidth(Kernel):
     def _single_values(
         self, chart: Chart, p: Tensor, selection: slice | Tensor
     ) -> Tensor:
-        direct, center = self._single_split(chart, p)
+        # The public entry points validate the chart and row shape once.
+        # Repeating those checks here synchronizes CUDA for every chunk.
+        direct, center = p[:, :2], p[:, 2:]
         amplitude, alpha = self._amplitude_and_alpha(direct)
         sigma, _, _ = self._sigma_bounds(amplitude, alpha)
         precision = sigma.reciprocal().square().detach()
