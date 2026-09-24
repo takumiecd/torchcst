@@ -24,10 +24,10 @@ from .kernels import (
     Kernel,
     PolarAmpWidth,
     Profile,
-    RadialKernel,
     Separable,
     Triangle,
     Triweight,
+    TriweightKernel,
     WendlandC2,
 )
 from .nn import CSTConv2d, CSTLinear, CSTModule
@@ -94,13 +94,13 @@ __all__ = [
     "ProductChart",
     "Profile",
     "QuadraticOptimizerConfig",
-    "RadialKernel",
     "Separable",
     "SitePattern",
     "SphereGeometry",
     "StripChart",
     "Triangle",
     "Triweight",
+    "TriweightKernel",
     "WendlandC2",
 ]
 

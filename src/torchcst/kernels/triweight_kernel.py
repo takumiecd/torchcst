@@ -1,9 +1,8 @@
-"""One-chart radial operator atoms, evaluated in bounded site blocks."""
+"""One-chart Triweight operator atoms, evaluated in bounded site blocks."""
 
 from __future__ import annotations
 
 import math
-from typing import Literal
 
 import torch
 from torch import Tensor
@@ -15,13 +14,12 @@ from torchcst.geometry.lazy_chart import StripChart
 from .base import AtomInit, Kernel
 
 
-class RadialKernel(Kernel):
-    r"""Signed amplitude times one radial function of the complete chart distance.
+class TriweightKernel(Kernel):
+    r"""Signed amplitude times Triweight of the complete chart distance.
 
     An atom row is ``[amplitude, center...]`` or, with adaptive width,
     ``[amplitude, center..., log_sigma]``. No input/output factorization is
-    assumed. ``triweight`` uses ``max(1 - d²/sigma², 0)^3``; ``wendland_c2``
-    uses ``max(1 - d/sigma, 0)^4 (1 + 4d/sigma)``. Both have compact support.
+    assumed. The compact profile is ``max(1 - d²/sigma², 0)^3``.
     """
 
     def __init__(
@@ -30,7 +28,6 @@ class RadialKernel(Kernel):
         *,
         sigma_min: float | None = None,
         sigma_max: float | None = None,
-        kind: Literal["triweight", "wendland_c2"] = "triweight",
         site_chunk: int = 2048,
         atom_chunk: int = 64,
         checkpoint_blocks: bool = True,
@@ -51,8 +48,6 @@ class RadialKernel(Kernel):
             raise ValueError(
                 "require 0 < sigma_min <= sigma <= sigma_max and sigma_min < sigma_max"
             )
-        if kind not in ("triweight", "wendland_c2"):
-            raise ValueError("kind must be 'triweight' or 'wendland_c2'")
         if (
             type(site_chunk) is not int
             or site_chunk < 1
@@ -70,17 +65,16 @@ class RadialKernel(Kernel):
             "sigma_max", self.sigma.new_tensor(sigma_max if adaptive_width else sigma)
         )
         self.adaptive_width = adaptive_width
-        self.kind = kind
         self.site_chunk = site_chunk
         self.atom_chunk = atom_chunk
         self.checkpoint_blocks = checkpoint_blocks
 
     def tangent_config(self) -> tuple:
-        return (self.kind, self.adaptive_width)
+        return (self.adaptive_width,)
 
     def _check_chart(self, chart: Chart) -> None:
         if not isinstance(chart, Chart) or len(chart.shape) != 2:
-            raise TypeError("RadialKernel requires a two-dimensional Chart")
+            raise TypeError("TriweightKernel requires a two-dimensional Chart")
         if isinstance(chart, StripChart):
             chart.validate_support(float(self.sigma_max))
 
@@ -94,7 +88,9 @@ class RadialKernel(Kernel):
     def initialize(self, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
         self._check_chart(chart)
         centers = chart.initialize_centers(atoms, mode=mode)
-        amplitude = centers.new_full((atoms, 1), 1.0 / math.sqrt(atoms))
+        amplitude = centers.new_empty((atoms, 1)).normal_(
+            mean=0.0, std=0.1 / math.sqrt(atoms)
+        )
         if not self.adaptive_width:
             return torch.cat((amplitude, centers), dim=-1)
         widths = centers.new_full((atoms, 1), float(self.sigma.log()))
@@ -111,11 +107,7 @@ class RadialKernel(Kernel):
             else self.sigma
         )
         scaled = squared / sigma.square()
-        if self.kind == "triweight":
-            raw = (1 - scaled).clamp_min(0).pow(3)
-        else:
-            radial = (scaled.clamp_min(0) + torch.finfo(scaled.dtype).eps).sqrt()
-            raw = (1 - radial).clamp_min(0).pow(4) * (1 + 4 * radial)
+        raw = (1 - scaled).clamp_min(0).pow(3)
         return raw * p[:, 0].unsqueeze(0)
 
     def _block(self, chart: Chart, p: Tensor, selection: slice | Tensor) -> Tensor:

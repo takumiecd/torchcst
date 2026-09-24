@@ -347,9 +347,9 @@ center updates, while the kernel owns the layout of the complete opaque `p`
 row. Consequently, `kernel.parameter_dim(...)` reports stored width and
 `kernel.parameter_dof(...)` reports intrinsic degrees of freedom.
 
-`RadialKernel` is a direct, single-chart kernel. Each atom contains one signed
-amplitude and one center in the chart geometry. It evaluates a compact
-triweight or Wendland C2 function of the complete site-center distance, with
+`TriweightKernel` is a direct, single-chart kernel. Each atom contains one signed
+amplitude and one center in the chart geometry. It evaluates compact
+Triweight on the complete site-center distance, with
 no input/output factors. By default the support radius `sigma` is fixed. With
 `sigma_min` and `sigma_max`, each atom also stores a bounded `log_sigma`.
 
@@ -371,7 +371,7 @@ the direct path.
 
 ```python
 from torchcst import (
-    CSTLinear, GridPattern, LinePattern, ProductChart, RadialKernel,
+    CSTLinear, GridPattern, LinePattern, ProductChart, TriweightKernel,
     StripChart,
 )
 
@@ -380,7 +380,7 @@ chart = ProductChart(
     output=LinePattern(64, spacing=0.1),
     input=GridPattern((28, 28), spacing=2 / 27),
 )
-layer = CSTLinear(chart=chart, atoms=256, kernel=RadialKernel(sigma=0.4))
+layer = CSTLinear(chart=chart, atoms=256, kernel=TriweightKernel(sigma=0.4))
 
 # A different layout for the same logical weight. Local patterns describe
 # positions within a tile; tile_pitch places tiles along one sweep line.
@@ -392,7 +392,7 @@ strip = StripChart(
 )
 strip_layer = CSTLinear(
     chart=strip, atoms=256,
-    kernel=RadialKernel(sigma=0.5, sigma_min=0.2, sigma_max=0.8),
+    kernel=TriweightKernel(sigma=0.5, sigma_min=0.2, sigma_max=0.8),
 )
 ```
 

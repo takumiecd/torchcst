@@ -14,9 +14,9 @@ from torchcst import (
     LinePattern,
     PointsPattern,
     ProductChart,
-    RadialKernel,
     SphereGeometry,
     StripChart,
+    TriweightKernel,
 )
 
 
@@ -61,7 +61,7 @@ def test_product_chart_delegates_distance_and_center_updates_to_geometry():
     output = PointsPattern(torch.tensor([[1.0, 0.0], [0.0, 1.0]]))
     inputs = PointsPattern(torch.zeros(2, 1))
     chart = ProductChart(output, inputs, geometry=SphereGeometry(2))
-    model = CSTLinear(chart=chart, atoms=2, kernel=RadialKernel(2.5))
+    model = CSTLinear(chart=chart, atoms=2, kernel=TriweightKernel(2.5))
     chart.geometry.validate_centers(model.atoms.p[:, 1:])
     loss = model(torch.randn(3, 2)).square().mean()
     loss.backward()
@@ -74,7 +74,7 @@ def test_large_product_chart_initialization_keeps_only_axis_state():
     chart = ProductChart(
         LinePattern(100_000, spacing=0.01), LinePattern(100_000, spacing=0.01)
     )
-    model = CSTLinear(chart=chart, atoms=3, kernel=RadialKernel(0.5))
+    model = CSTLinear(chart=chart, atoms=3, kernel=TriweightKernel(0.5))
     assert model.atoms.p.shape == (3, 3)
     assert sum(value.numel() for value in chart.buffers()) < 20
 
@@ -122,16 +122,16 @@ def test_strip_separate_seam_requires_enough_physical_gap():
         (4, 4), (2, 2), tile_pitch=2.0, seam_gap=0.1, seam_policy="separate"
     )
     with pytest.raises(ValueError, match="separate seams"):
-        CSTLinear(chart=chart, atoms=2, kernel=RadialKernel(1.1))
+        CSTLinear(chart=chart, atoms=2, kernel=TriweightKernel(1.1))
     chart = StripChart(
         (4, 4), (2, 2), tile_pitch=2.0, seam_gap=0.3, seam_policy="separate"
     )
-    CSTLinear(chart=chart, atoms=2, kernel=RadialKernel(1.1))
+    CSTLinear(chart=chart, atoms=2, kernel=TriweightKernel(1.1))
 
 
 def test_strip_packed_weight_is_physical_tile_order_with_zero_padded_edges():
     chart = StripChart((3, 5), (2, 2), tile_pitch=2.0)
-    model = CSTLinear(chart=chart, atoms=3, kernel=RadialKernel(1.0))
+    model = CSTLinear(chart=chart, atoms=3, kernel=TriweightKernel(1.0))
     packed = model.packed_weight()
     dense = model.dense_weight().flatten()
     assert packed.is_contiguous()
@@ -146,21 +146,14 @@ def test_strip_packed_weight_is_physical_tile_order_with_zero_padded_edges():
     assert torch.isfinite(model.atoms.p.grad).all()
 
 
-@pytest.mark.parametrize("kind", ["triweight", "wendland_c2"])
-def test_one_kernel_weight_and_gradient_match_dense_oracle(kind):
+def test_one_kernel_weight_and_gradient_match_dense_oracle():
     chart = ProductChart(LinePattern(3, spacing=0.8), GridPattern((2, 2), spacing=0.4))
-    kernel = RadialKernel(1.7, kind=kind, site_chunk=3, atom_chunk=2)
+    kernel = TriweightKernel(1.7, site_chunk=3, atom_chunk=2)
     model = CSTLinear(chart=chart, atoms=3, kernel=kernel, dtype=torch.float64)
     oracle_p = model.atoms.p.detach().clone().requires_grad_()
     sites = chart.positions(torch.arange(chart.features))
     squared = (sites[:, None, :] - oracle_p[None, :, 1:]).square().sum(-1)
-    if kind == "triweight":
-        radial = (1 - squared / kernel.sigma.square()).clamp_min(0).pow(3)
-    else:
-        distance = (
-            squared / kernel.sigma.square() + torch.finfo(squared.dtype).eps
-        ).sqrt()
-        radial = (1 - distance).clamp_min(0).pow(4) * (1 + 4 * distance)
+    radial = (1 - squared / kernel.sigma.square()).clamp_min(0).pow(3)
     oracle_weight = (radial * oracle_p[:, 0]).sum(-1).reshape(chart.shape)
     inputs = torch.randn(5, 4, dtype=torch.float64)
     expected = torch.nn.functional.linear(inputs, oracle_weight)
@@ -174,7 +167,7 @@ def test_one_kernel_weight_and_gradient_match_dense_oracle(kind):
 
 def test_adaptive_radius_uses_one_atom_row_and_respects_support_maximum():
     chart = ProductChart(LinePattern(2, spacing=0.5), LinePattern(3, spacing=0.5))
-    kernel = RadialKernel(0.8, sigma_min=0.4, sigma_max=1.2, site_chunk=2)
+    kernel = TriweightKernel(0.8, sigma_min=0.4, sigma_max=1.2, site_chunk=2)
     model = CSTLinear(chart=chart, atoms=2, kernel=kernel, dtype=torch.float64)
     assert model.atoms.p.shape == (2, 4)
     with torch.no_grad():
@@ -202,13 +195,15 @@ def test_adaptive_radius_uses_one_atom_row_and_respects_support_maximum():
     strip = StripChart((2, 3), (1, 2), tile_pitch=1.0)
     with pytest.raises(ValueError, match="smaller than tile_pitch"):
         CSTLinear(
-            chart=strip, atoms=2, kernel=RadialKernel(0.8, sigma_min=0.4, sigma_max=1.2)
+            chart=strip,
+            atoms=2,
+            kernel=TriweightKernel(0.8, sigma_min=0.4, sigma_max=1.2),
         )
 
 
 def test_single_chart_forward_requests_only_bounded_site_slices(monkeypatch):
     chart = ProductChart(LinePattern(5, spacing=0.2), LinePattern(7, spacing=0.3))
-    kernel = RadialKernel(0.8, site_chunk=4, atom_chunk=2)
+    kernel = TriweightKernel(0.8, site_chunk=4, atom_chunk=2)
     model = CSTLinear(chart=chart, atoms=5, kernel=kernel)
     original = chart.squared_distance
     selections = []
@@ -240,7 +235,7 @@ def test_strip_linear_parameter_adam_and_checkpoint_round_trip():
             local_input=LinePattern(2, spacing=0.3),
         )
         return CSTLinear(
-            chart=chart, atoms=4, kernel=RadialKernel(1.0), dtype=torch.float64
+            chart=chart, atoms=4, kernel=TriweightKernel(1.0), dtype=torch.float64
         )
 
     model = make()
@@ -257,7 +252,9 @@ def test_strip_linear_parameter_adam_and_checkpoint_round_trip():
 
 def test_single_chart_runs_one_normalized_optimizer_step():
     chart = ProductChart(LinePattern(2, spacing=1), LinePattern(2, spacing=1))
-    model = CSTLinear(chart=chart, atoms=1, kernel=RadialKernel(2), dtype=torch.float64)
+    model = CSTLinear(
+        chart=chart, atoms=1, kernel=TriweightKernel(2), dtype=torch.float64
+    )
     optimizer = CSTNormalizedSGD(model, lr=0.01, trust_radius=0.2)
     before = model.atoms.p.detach().clone()
     optimizer.zero_grad()
@@ -270,7 +267,7 @@ def test_single_chart_runs_one_normalized_optimizer_step():
 def test_checkpoint_rejects_a_different_grid_shape_with_same_site_count():
     def make(shape):
         chart = ProductChart(LinePattern(2, spacing=1), GridPattern(shape, spacing=1))
-        return CSTLinear(chart=chart, atoms=2, kernel=RadialKernel(1.0))
+        return CSTLinear(chart=chart, atoms=2, kernel=TriweightKernel(1.0))
 
     saved = make((2, 6)).state_dict()
     with pytest.raises(RuntimeError, match="site pattern checkpoint contract"):
@@ -280,4 +277,4 @@ def test_checkpoint_rejects_a_different_grid_shape_with_same_site_count():
 def test_strip_requires_kernel_support_smaller_than_tile_pitch():
     chart = StripChart((4, 4), (2, 2), tile_pitch=1.0)
     with pytest.raises(ValueError, match="smaller than tile_pitch"):
-        CSTLinear(chart=chart, atoms=2, kernel=RadialKernel(1.0))
+        CSTLinear(chart=chart, atoms=2, kernel=TriweightKernel(1.0))

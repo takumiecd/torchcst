@@ -62,9 +62,9 @@ station順の物理配列を返すが、現行のPyTorch forwardは密な行列�
 - amplitude/bandwidthなどKernel固有座標
 - stored parameter widthとintrinsic degrees of freedomの集計
 
-単一チャートの`RadialKernel`は`[amplitude, center...]`という一行の
+単一チャートの`TriweightKernel`は`[amplitude, center...]`という一行の
 パラメータから直接重みへの寄与を計算する。入力・出力のfactorは使わない。
-現時点ではcompact supportのtriweightとWendland C2を用意している。
+compact supportのTriweightを使う。
 `sigma_min`と`sigma_max`を指定すると各atomに`log_sigma`を追加し、
 更新後もこの範囲に収める。StripChartの二タイル制約には設定された
 最大半径`sigma_max`を使う。
