@@ -53,6 +53,17 @@ class Profile(nn.Module, ABC):
         """Optional values and first coordinate derivatives [features, atoms, q]."""
         raise NotImplementedError("profile has no specialized tangent")
 
+    def evaluate_with_precision_slice(
+        self,
+        chart: Chart,
+        p: Tensor,
+        precision: Tensor,
+        selection: slice | Tensor,
+    ) -> Tensor:
+        """Optional unnormalized values for bounded operator site slices."""
+
+        raise NotImplementedError("profile has no sliced precision evaluation")
+
     def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
         """Project a coordinate gradient into the profile's tangent space."""
 

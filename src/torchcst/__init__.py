@@ -27,7 +27,6 @@ from .kernels import (
     Separable,
     Triangle,
     Triweight,
-    TriweightKernel,
     WendlandC2,
 )
 from .nn import CSTConv2d, CSTLinear, CSTModule
@@ -100,7 +99,6 @@ __all__ = [
     "StripChart",
     "Triangle",
     "Triweight",
-    "TriweightKernel",
     "WendlandC2",
 ]
 

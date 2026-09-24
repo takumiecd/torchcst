@@ -347,11 +347,13 @@ center updates, while the kernel owns the layout of the complete opaque `p`
 row. Consequently, `kernel.parameter_dim(...)` reports stored width and
 `kernel.parameter_dof(...)` reports intrinsic degrees of freedom.
 
-`TriweightKernel` is a direct, single-chart kernel. Each atom contains one signed
-amplitude and one center in the chart geometry. It evaluates compact
-Triweight on the complete site-center distance, with
-no input/output factors. By default the support radius `sigma` is fixed. With
-`sigma_min` and `sigma_max`, each atom also stores a bounded `log_sigma`.
+`DirectAmpWidth` also accepts a single operator Chart. Its atom row is
+`[w, q, center...]`: `w` is signed amplitude, `q` is persistent bandwidth
+activity, and the selected `Profile` evaluates the complete chart distance.
+`Gaussian`, `Triweight`, `Biweight`, `Triangle`, and `WendlandC2` can be selected with
+`normalize_columns=False`. A single-chart profile must support bounded site
+slices. The two-chart call retains its factorized behavior and checkpoint
+format.
 
 For both amplitude-width kernels, the effective upper bandwidth bound is the
 maximum of its raw upper curve, configured floor, and lower curve. This keeps
@@ -371,8 +373,8 @@ the direct path.
 
 ```python
 from torchcst import (
-    CSTLinear, GridPattern, LinePattern, ProductChart, TriweightKernel,
-    StripChart,
+    CSTLinear, DirectAmpWidth, GridPattern, LinePattern, ProductChart,
+    StripChart, Triweight,
 )
 
 # Logical [64, 784] weight, without a stored [64, 784, 3] site tensor.
@@ -380,7 +382,12 @@ chart = ProductChart(
     output=LinePattern(64, spacing=0.1),
     input=GridPattern((28, 28), spacing=2 / 27),
 )
-layer = CSTLinear(chart=chart, atoms=256, kernel=TriweightKernel(sigma=0.4))
+kernel = DirectAmpWidth(
+    amplitude_max=1.0, sigma_min=0.1, sigma_birth=0.4,
+    sigma_max=0.8, w_c=0.05,
+    profile=Triweight(0.1, normalize_columns=False),
+)
+layer = CSTLinear(chart=chart, atoms=256, kernel=kernel)
 
 # A different layout for the same logical weight. Local patterns describe
 # positions within a tile; tile_pitch places tiles along one sweep line.
@@ -392,7 +399,11 @@ strip = StripChart(
 )
 strip_layer = CSTLinear(
     chart=strip, atoms=256,
-    kernel=TriweightKernel(sigma=0.5, sigma_min=0.2, sigma_max=0.8),
+    kernel=DirectAmpWidth(
+        amplitude_max=1.0, sigma_min=0.2, sigma_birth=0.5,
+        sigma_max=0.8, w_c=0.05,
+        profile=Triweight(0.2, normalize_columns=False),
+    ),
 )
 ```
 

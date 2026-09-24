@@ -7,8 +7,10 @@ from typing import Literal
 
 import torch
 from torch import Tensor
+from torch.utils.checkpoint import checkpoint
 
 from torchcst.geometry import Chart
+from torchcst.geometry.lazy_chart import StripChart
 from torchcst.profiling import cst_span
 
 from .base import AtomInit, Kernel, Profile
@@ -61,6 +63,9 @@ class DirectAmpWidth(Kernel):
         alpha_init: float = 0.0,
         radial_regularization: float = 0.1,
         profile: Profile | None = None,
+        site_chunk: int = 2048,
+        atom_chunk: int = 64,
+        checkpoint_blocks: bool = True,
     ) -> None:
         super().__init__()
         maximum_amplitude = self._positive_scalar(amplitude_max, name="amplitude_max")
@@ -189,6 +194,16 @@ class DirectAmpWidth(Kernel):
         self.register_buffer("upper_floor_output", exploration_floor_output)
         self.register_buffer("alpha_init", initial_alpha)
         self.register_buffer("radial_regularization", regularization)
+        if (
+            type(site_chunk) is not int
+            or site_chunk < 1
+            or type(atom_chunk) is not int
+            or atom_chunk < 1
+        ):
+            raise ValueError("chunk sizes must be positive integers")
+        self.site_chunk = site_chunk
+        self.atom_chunk = atom_chunk
+        self.checkpoint_blocks = checkpoint_blocks
 
     def get_extra_state(self) -> dict[str, object]:
         """Record the direct atom layout and profile settings in checkpoints."""
@@ -276,14 +291,24 @@ class DirectAmpWidth(Kernel):
 
         return self.w_c / self.lower_kappa.sqrt()
 
-    def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:
+    def parameter_dim(
+        self, input_chart: Chart, output_chart: Chart | None = None
+    ) -> int:
+        if output_chart is None:
+            self._check_single_chart(input_chart)
+            return 2 + self.profile.parameter_dim(input_chart)
         return (
             2
             + self.profile.parameter_dim(input_chart)
             + self.profile.parameter_dim(output_chart)
         )
 
-    def parameter_dof(self, input_chart: Chart, output_chart: Chart) -> int:
+    def parameter_dof(
+        self, input_chart: Chart, output_chart: Chart | None = None
+    ) -> int:
+        if output_chart is None:
+            self._check_single_chart(input_chart)
+            return 2 + self.profile.parameter_dof(input_chart)
         return (
             2
             + self.profile.parameter_dof(input_chart)
@@ -293,13 +318,28 @@ class DirectAmpWidth(Kernel):
     def initialize(
         self,
         input_chart: Chart,
-        output_chart: Chart,
-        atoms: int,
+        output_chart: Chart | int,
+        atoms: int | None = None,
         *,
         mode: AtomInit,
     ) -> Tensor:
         if mode not in ("balanced", "uniform"):
             raise ValueError("mode must be 'balanced' or 'uniform'")
+        if atoms is None:
+            if type(output_chart) is not int:
+                raise TypeError("single-chart initialization requires an atom count")
+            self._check_single_chart(input_chart)
+            atoms = output_chart
+            center = self.profile.initialize(input_chart, atoms, mode=mode)
+            amplitude = center.new_empty(atoms).normal_(
+                mean=0.0, std=0.1 / math.sqrt(atoms)
+            )
+            maximum = self.amplitude_max.to(amplitude)
+            amplitude = amplitude.clamp(-maximum, maximum)
+            q = torch.ones_like(amplitude) + 3.0 * self.alpha_init.to(amplitude)
+            return torch.cat((torch.stack((amplitude, q), dim=-1), center), dim=-1)
+        if not isinstance(output_chart, Chart):
+            raise TypeError("output_chart must be a Chart")
         input_p = self.profile.initialize(input_chart, atoms, mode="uniform")
         output_p = self.profile.initialize(output_chart, atoms, mode=mode)
 
@@ -314,9 +354,13 @@ class DirectAmpWidth(Kernel):
     def materialize_atoms(
         self,
         input_chart: Chart,
-        output_chart: Chart,
-        p: Tensor,
+        output_chart: Chart | Tensor,
+        p: Tensor | None = None,
     ) -> Tensor:
+        if p is None:
+            if not isinstance(output_chart, Tensor):
+                raise TypeError("single-chart materialization requires atom parameters")
+            return self._single_materialize_atoms(input_chart, output_chart)
         phi_input, phi_output = self.factors(input_chart, output_chart, p)
         return torch.einsum("oa,ia->aoi", phi_output, phi_input)
 
@@ -348,27 +392,55 @@ class DirectAmpWidth(Kernel):
         with cst_span("cst.kernel.amplitude_scale"):
             return phi_input, phi_output * amplitude.unsqueeze(0)
 
-    def amplitude(self, input_chart: Chart, output_chart: Chart, p: Tensor) -> Tensor:
+    def amplitude(
+        self,
+        input_chart: Chart,
+        output_chart: Chart | Tensor,
+        p: Tensor | None = None,
+    ) -> Tensor:
         """Return the bounded signed amplitude represented by each atom."""
 
-        direct, _, _ = self._split(input_chart, output_chart, p)
+        if p is None:
+            if not isinstance(output_chart, Tensor):
+                raise TypeError("single-chart amplitude requires atom parameters")
+            direct, _ = self._single_split(input_chart, output_chart)
+        else:
+            direct, _, _ = self._split(input_chart, output_chart, p)
         amplitude, _ = self._amplitude_and_alpha(direct)
         return amplitude
 
     def bandwidth_alpha(
-        self, input_chart: Chart, output_chart: Chart, p: Tensor
+        self,
+        input_chart: Chart,
+        output_chart: Chart | Tensor,
+        p: Tensor | None = None,
     ) -> Tensor:
         """Return the activity interpolation coordinate in ``[0, 1]``."""
 
-        direct, _, _ = self._split(input_chart, output_chart, p)
+        if p is None:
+            if not isinstance(output_chart, Tensor):
+                raise TypeError("single-chart bandwidth requires atom parameters")
+            direct, _ = self._single_split(input_chart, output_chart)
+        else:
+            direct, _, _ = self._split(input_chart, output_chart, p)
         _, alpha = self._amplitude_and_alpha(direct)
         return alpha
 
     def bandwidth_bounds(
-        self, input_chart: Chart, output_chart: Chart, p: Tensor
+        self,
+        input_chart: Chart,
+        output_chart: Chart | Tensor,
+        p: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
         """Return ``(L(w), U(w))`` for diagnostic use."""
 
+        if p is None:
+            if not isinstance(output_chart, Tensor):
+                raise TypeError("single-chart bandwidth requires atom parameters")
+            direct, _ = self._single_split(input_chart, output_chart)
+            amplitude, _ = self._amplitude_and_alpha(direct)
+            _, lower, upper = self._sigma_bounds(amplitude)
+            return lower, upper
         (input_bounds, output_bounds) = self.bandwidth_bounds_by_side(
             input_chart, output_chart, p
         )
@@ -388,10 +460,20 @@ class DirectAmpWidth(Kernel):
         return (lower_input, upper_input), (lower_output, upper_output)
 
     def bandwidth_sigma(
-        self, input_chart: Chart, output_chart: Chart, p: Tensor
+        self,
+        input_chart: Chart,
+        output_chart: Chart | Tensor,
+        p: Tensor | None = None,
     ) -> Tensor:
         """Return the shared effective input/output sigma for each atom."""
 
+        if p is None:
+            if not isinstance(output_chart, Tensor):
+                raise TypeError("single-chart bandwidth requires atom parameters")
+            direct, _ = self._single_split(input_chart, output_chart)
+            amplitude, alpha = self._amplitude_and_alpha(direct)
+            sigma, _, _ = self._sigma_bounds(amplitude, alpha)
+            return sigma
         sigma_input, _ = self.bandwidth_sigmas(input_chart, output_chart, p)
         self._require_shared_bandwidths()
         return sigma_input
@@ -406,7 +488,10 @@ class DirectAmpWidth(Kernel):
         return self._bandwidth_sigmas(amplitude, alpha)
 
     def bandwidth_precision(
-        self, input_chart: Chart, output_chart: Chart, p: Tensor
+        self,
+        input_chart: Chart,
+        output_chart: Chart | Tensor,
+        p: Tensor | None = None,
     ) -> Tensor:
         """Return the shared input/output precision for each atom."""
 
@@ -424,14 +509,18 @@ class DirectAmpWidth(Kernel):
     def apply_parameter_update(
         self,
         input_chart: Chart,
-        output_chart: Chart,
+        output_chart: Chart | Tensor,
         p: Tensor,
-        displacement: Tensor,
+        displacement: Tensor | None = None,
         *,
         step_size: float,
     ) -> Tensor:
         """Apply a direct-amplitude proposal and advance its activity state."""
 
+        if displacement is None:
+            if not isinstance(output_chart, Tensor):
+                raise TypeError("single-chart update requires atom parameters")
+            return self._single_apply_update(input_chart, output_chart, p, step_size)
         direct, input_p, output_p = self._split(input_chart, output_chart, p)
         if displacement.shape != p.shape:
             raise ValueError("displacement must match the atom parameter shape")
@@ -477,10 +566,24 @@ class DirectAmpWidth(Kernel):
     def project_parameter_gradient(
         self,
         input_chart: Chart,
-        output_chart: Chart,
+        output_chart: Chart | Tensor,
         p: Tensor,
-        gradient: Tensor,
+        gradient: Tensor | None = None,
     ) -> Tensor:
+        if gradient is None:
+            if not isinstance(output_chart, Tensor):
+                raise TypeError("single-chart projection requires atom parameters")
+            direct, center = self._single_split(input_chart, output_chart)
+            direct_g, center_g = self._single_split(input_chart, p)
+            return torch.cat(
+                (
+                    torch.stack(
+                        (direct_g[:, 0], torch.zeros_like(direct_g[:, 1])), dim=-1
+                    ),
+                    self.profile.project_gradient(input_chart, center, center_g),
+                ),
+                dim=-1,
+            )
         direct, input_p, output_p = self._split(input_chart, output_chart, p)
         del direct
         direct_g, input_g, output_g = self._split(
@@ -504,11 +607,26 @@ class DirectAmpWidth(Kernel):
     def transport_parameter_state(
         self,
         input_chart: Chart,
-        output_chart: Chart,
+        output_chart: Chart | Tensor,
         old: Tensor,
         new: Tensor,
-        state: Tensor,
+        state: Tensor | None = None,
     ) -> Tensor:
+        if state is None:
+            if not isinstance(output_chart, Tensor):
+                raise TypeError("single-chart transport requires atom parameters")
+            _, old_center = self._single_split(input_chart, output_chart)
+            _, new_center = self._single_split(input_chart, old)
+            direct_state, center_state = self._single_split(input_chart, new)
+            return torch.cat(
+                (
+                    direct_state,
+                    self.profile.transport_state(
+                        input_chart, old_center, new_center, center_state
+                    ),
+                ),
+                dim=-1,
+            )
         _, old_i, old_o = self._split(input_chart, output_chart, old)
         _, new_i, new_o = self._split(input_chart, output_chart, new)
         direct_s, state_i, state_o = self._split(input_chart, output_chart, state)
@@ -518,6 +636,127 @@ class DirectAmpWidth(Kernel):
                 self.profile.transport_state(input_chart, old_i, new_i, state_i),
                 self.profile.transport_state(output_chart, old_o, new_o, state_o),
             ),
+            dim=-1,
+        )
+
+    def _check_single_chart(self, chart: Chart) -> None:
+        if not isinstance(chart, Chart) or len(chart.shape) != 2:
+            raise TypeError("single-chart DirectAmpWidth requires a two-dimensional Chart")
+        if getattr(self.profile, "normalize_columns", True):
+            raise ValueError(
+                "single-chart DirectAmpWidth requires an unnormalized Profile"
+            )
+        if (
+            type(self.profile).evaluate_with_precision_slice
+            is Profile.evaluate_with_precision_slice
+        ):
+            raise TypeError("single-chart Profile must support sliced evaluation")
+        self._require_shared_bandwidths()
+        if isinstance(chart, StripChart):
+            chart.validate_support(float(self.sigma_max_input))
+
+    def _single_split(self, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
+        self._check_single_chart(chart)
+        expected_dim = 2 + self.profile.parameter_dim(chart)
+        if p.ndim != 2 or p.shape[1] != expected_dim:
+            raise ValueError(f"p must have shape [atoms, {expected_dim}]")
+        return p[:, :2], p[:, 2:]
+
+    def _single_values(
+        self, chart: Chart, p: Tensor, selection: slice | Tensor
+    ) -> Tensor:
+        direct, center = self._single_split(chart, p)
+        amplitude, alpha = self._amplitude_and_alpha(direct)
+        sigma, _, _ = self._sigma_bounds(amplitude, alpha)
+        precision = sigma.reciprocal().square().detach()
+        values = self.profile.evaluate_with_precision_slice(
+            chart, center, precision, selection
+        )
+        return values * amplitude.unsqueeze(0)
+
+    def _single_block(
+        self, chart: Chart, p: Tensor, selection: slice | Tensor
+    ) -> Tensor:
+        parts = []
+        for start in range(0, p.shape[0], self.atom_chunk):
+            selected = p[start : start + self.atom_chunk]
+            if (
+                self.checkpoint_blocks
+                and torch.is_grad_enabled()
+                and selected.requires_grad
+            ):
+                values = checkpoint(
+                    lambda x: self._single_values(chart, x, selection),
+                    selected,
+                    use_reentrant=False,
+                )
+            else:
+                values = self._single_values(chart, selected, selection)
+            parts.append(values.sum(dim=-1))
+        return torch.stack(parts).sum(dim=0)
+
+    def weight(self, chart: Chart, p: Tensor) -> Tensor:
+        """Sum single-chart atoms with bounded site and atom temporaries."""
+
+        self._single_split(chart, p)
+        blocks = [
+            self._single_block(
+                chart, p, slice(start, min(start + self.site_chunk, chart.features))
+            )
+            for start in range(0, chart.features, self.site_chunk)
+        ]
+        return torch.cat(blocks).reshape(chart.shape)
+
+    def _single_materialize_atoms(self, chart: Chart, p: Tensor) -> Tensor:
+        self._single_split(chart, p)
+        blocks = [
+            self._single_values(
+                chart, p, slice(start, min(start + self.site_chunk, chart.features))
+            )
+            for start in range(0, chart.features, self.site_chunk)
+        ]
+        return torch.cat(blocks, dim=0).transpose(0, 1).reshape(p.shape[0], *chart.shape)
+
+    def packed_weight(self, chart: StripChart, p: Tensor) -> Tensor:
+        """Return physically ordered, contiguous tile-major weight storage."""
+
+        if not isinstance(chart, StripChart):
+            raise TypeError("packed_weight requires a StripChart")
+        self._single_split(chart, p)
+        tile_size = math.prod(chart.tile_shape)
+        tiles = []
+        for station in range(chart.tile_count):
+            logical, local = chart.tile_indices(station)
+            values = self._single_block(chart, p, logical)
+            tile = values.new_zeros(tile_size).index_copy(0, local, values)
+            tiles.append(tile.reshape(chart.tile_shape))
+        return torch.stack(tiles)
+
+    def _single_apply_update(
+        self, chart: Chart, p: Tensor, displacement: Tensor, step_size: float
+    ) -> Tensor:
+        direct, center = self._single_split(chart, p)
+        if displacement.shape != p.shape:
+            raise ValueError("displacement must match the atom parameter shape")
+        if not math.isfinite(step_size) or step_size <= 0:
+            raise ValueError("step_size must be finite and positive")
+        maximum = self.amplitude_max.to(p)
+        old_w = direct[:, 0].clamp(-maximum, maximum)
+        old_q = direct[:, 1].clamp(1.0, 4.0)
+        accepted_w = (old_w + displacement[:, 0]).clamp(-maximum, maximum)
+        delta_square = old_q * ((accepted_w - old_w) / maximum).square()
+        geometric_q = (old_q + delta_square).clamp(1.0, 4.0)
+        regularized_q = (
+            geometric_q
+            - self.radial_regularization.to(p)
+            * p.new_tensor(step_size)
+            * (geometric_q - 1.0)
+        ).clamp(1.0, 4.0)
+        updated_center = self.profile.apply_parameter_update(
+            chart, center, displacement[:, 2:]
+        )
+        return torch.cat(
+            (torch.stack((accepted_w, regularized_q), dim=-1), updated_center),
             dim=-1,
         )
 

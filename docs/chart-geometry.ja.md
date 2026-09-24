@@ -62,12 +62,12 @@ station順の物理配列を返すが、現行のPyTorch forwardは密な行列�
 - amplitude/bandwidthなどKernel固有座標
 - stored parameter widthとintrinsic degrees of freedomの集計
 
-単一チャートの`TriweightKernel`は`[amplitude, center...]`という一行の
+単一チャートの`DirectAmpWidth`は`[w, q, center...]`という一行の
 パラメータから直接重みへの寄与を計算する。入力・出力のfactorは使わない。
-compact supportのTriweightを使う。
-`sigma_min`と`sigma_max`を指定すると各atomに`log_sigma`を追加し、
-更新後もこの範囲に収める。StripChartの二タイル制約には設定された
-最大半径`sigma_max`を使う。
+`w`は符号付き振幅、`q`は振幅更新から進む帯域activityで、Profileは
+Triweightなどから選ぶ。単一チャートでは正規化しないProfileの
+site slice評価を使い、全site×全atomの距離テンソルを保持しない。
+StripChartの二タイル制約には設定された最大半径`sigma_max`を使う。
 
 例えばPolar Kernelのparameter spaceは
 

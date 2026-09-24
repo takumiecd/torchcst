@@ -74,6 +74,28 @@ class _CompactRadialProfile(Profile):
             values, _ = _l2_column_scale(raw)
         return values
 
+    def evaluate_with_precision_slice(
+        self,
+        chart: Chart,
+        p: Tensor,
+        precision: Tensor,
+        selection: slice | Tensor,
+    ) -> Tensor:
+        """Evaluate raw compact values for a bounded set of operator sites."""
+
+        if self.normalize_columns:
+            raise ValueError("sliced evaluation requires normalize_columns=False")
+        if p.ndim != 2 or p.shape[1] != self.parameter_dim(chart):
+            raise ValueError(f"p must have shape [atoms, {self.parameter_dim(chart)}]")
+        if precision.ndim not in (0, 1) or (
+            precision.ndim == 1 and precision.shape != (p.shape[0],)
+        ):
+            raise ValueError("precision must be scalar or have shape [atoms]")
+        squared = chart.squared_distance(p, selection)
+        return self._unnormalized_from_squared(
+            squared, precision.to(device=p.device, dtype=p.dtype)
+        )
+
     def extra_repr(self) -> str:
         return (
             f"sigma={self.sigma.item():g}, "
