@@ -662,58 +662,90 @@ class DirectAmpWidth(Kernel):
             raise ValueError(f"p must have shape [atoms, {expected_dim}]")
         return p[:, :2], p[:, 2:]
 
-    def _single_values(
-        self, chart: Chart, p: Tensor, selection: slice | Tensor
-    ) -> Tensor:
-        # The public entry points validate the chart and row shape once.
-        # Repeating those checks here synchronizes CUDA for every chunk.
-        direct, center = p[:, :2], p[:, 2:]
+    def _single_components(
+        self, chart: Chart, p: Tensor
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        direct, center = self._single_split(chart, p)
         amplitude, alpha = self._amplitude_and_alpha(direct)
         sigma, _, _ = self._sigma_bounds(amplitude, alpha)
-        precision = sigma.reciprocal().square().detach()
+        return center, amplitude, sigma.reciprocal().square().detach()
+
+    def _single_values(
+        self,
+        chart: Chart,
+        center: Tensor,
+        amplitude: Tensor,
+        precision: Tensor,
+        selection: slice | Tensor,
+    ) -> Tensor:
         values = self.profile.evaluate_with_precision_slice(
             chart, center, precision, selection
         )
         return values * amplitude.unsqueeze(0)
 
     def _single_block(
-        self, chart: Chart, p: Tensor, selection: slice | Tensor
+        self,
+        chart: Chart,
+        center: Tensor,
+        amplitude: Tensor,
+        precision: Tensor,
+        selection: slice | Tensor,
     ) -> Tensor:
         parts = []
-        for start in range(0, p.shape[0], self.atom_chunk):
-            selected = p[start : start + self.atom_chunk]
+        for start in range(0, center.shape[0], self.atom_chunk):
+            stop = start + self.atom_chunk
+            selected_center = center[start:stop]
+            selected_amplitude = amplitude[start:stop]
+            selected_precision = precision[start:stop]
             if (
                 self.checkpoint_blocks
                 and torch.is_grad_enabled()
-                and selected.requires_grad
+                and (selected_center.requires_grad or selected_amplitude.requires_grad)
             ):
                 values = checkpoint(
-                    lambda x: self._single_values(chart, x, selection),
-                    selected,
+                    lambda c, a, prec=selected_precision: self._single_values(
+                        chart, c, a, prec, selection
+                    ),
+                    selected_center,
+                    selected_amplitude,
                     use_reentrant=False,
                 )
             else:
-                values = self._single_values(chart, selected, selection)
+                values = self._single_values(
+                    chart,
+                    selected_center,
+                    selected_amplitude,
+                    selected_precision,
+                    selection,
+                )
             parts.append(values.sum(dim=-1))
         return torch.stack(parts).sum(dim=0)
 
     def weight(self, chart: Chart, p: Tensor) -> Tensor:
         """Sum single-chart atoms with bounded site and atom temporaries."""
 
-        self._single_split(chart, p)
+        center, amplitude, precision = self._single_components(chart, p)
         blocks = [
             self._single_block(
-                chart, p, slice(start, min(start + self.site_chunk, chart.features))
+                chart,
+                center,
+                amplitude,
+                precision,
+                slice(start, min(start + self.site_chunk, chart.features)),
             )
             for start in range(0, chart.features, self.site_chunk)
         ]
         return torch.cat(blocks).reshape(chart.shape)
 
     def _single_materialize_atoms(self, chart: Chart, p: Tensor) -> Tensor:
-        self._single_split(chart, p)
+        center, amplitude, precision = self._single_components(chart, p)
         blocks = [
             self._single_values(
-                chart, p, slice(start, min(start + self.site_chunk, chart.features))
+                chart,
+                center,
+                amplitude,
+                precision,
+                slice(start, min(start + self.site_chunk, chart.features)),
             )
             for start in range(0, chart.features, self.site_chunk)
         ]
@@ -724,12 +756,14 @@ class DirectAmpWidth(Kernel):
 
         if not isinstance(chart, StripChart):
             raise TypeError("packed_weight requires a StripChart")
-        self._single_split(chart, p)
+        center, amplitude, precision = self._single_components(chart, p)
         tile_size = math.prod(chart.tile_shape)
         tiles = []
         for station in range(chart.tile_count):
             logical, local = chart.tile_indices(station)
-            values = self._single_block(chart, p, logical)
+            values = self._single_block(
+                chart, center, amplitude, precision, logical
+            )
             tile = values.new_zeros(tile_size).index_copy(0, local, values)
             tiles.append(tile.reshape(chart.tile_shape))
         return torch.stack(tiles)
