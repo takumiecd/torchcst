@@ -120,7 +120,7 @@ class _ModelOptimizer(Optimizer):
         names_by_id = {id(value): name for name, value in trainable}
         cst_owner_by_id: dict[int, str] = {}
         for site_name, site in site_modules:
-            if site.input_chart.trainable or site.output_chart.trainable:
+            if any(chart.trainable for chart in site.cst_charts()):
                 raise ValueError("CST optimizer supports frozen charts only")
             for parameter in site.cst_parameters():
                 if not parameter.requires_grad:
@@ -284,8 +284,7 @@ class _ModelOptimizer(Optimizer):
         if kernel_step_size is None:
             kernel_step_size = self.cst_config.lr
         updated = module.kernel.apply_parameter_update(
-            module.input_chart,
-            module.output_chart,
+            *module.cst_charts(),
             point,
             proposal.solve.displacement,
             step_size=kernel_step_size,

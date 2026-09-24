@@ -47,8 +47,7 @@ class CSTModule(nn.Module):
     def atom_parameter_dof(self) -> int:
         """Intrinsic degrees of freedom in one stored atom row."""
 
-        input_chart, output_chart = self.cst_charts()
-        return self.kernel.parameter_dof(input_chart, output_chart)
+        return self.kernel.parameter_dof(*self.cst_charts())
 
     @property
     def cst_degrees_of_freedom(self) -> int:

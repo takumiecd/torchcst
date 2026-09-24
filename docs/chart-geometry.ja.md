@@ -24,10 +24,28 @@ intrinsic表現では中心だけをnorth poleまわりのnormal coordinates `R^
 ### Chart
 
 - fixed-cardinalityな観測site
+- 線形演算子では論理的な重み形状`[out, in]`
 - Geometryの所有
 - spacingなどsite配置由来のmetadata
 
 Chartはprofile形状、bandwidth、amplitude、atom数を知らない。
+`ProductChart`は出力・入力の`SitePattern`を直積的に解釈し、
+`StripChart`は重みをタイルに分けて1次元の列に置く。両者とも必要なsite番号の
+座標だけを生成し、重み全体の座標テンソルを保持しない。
+
+`LinePattern`、`GridPattern`、`PointsPattern`はsiteの局所的な並べ方を
+表す。`spacing`とGeometryが距離の意味を決める。`low/high`はgridの
+両端を直接指定したい場合の代替である。
+
+`StripChart`では`tile_pitch`が列上の隣接タイル間隔、`seam_gap`が
+折り返し部分の追加間隔になる。EuclideanGeometryとcompact kernelで
+`sigma_max < tile_pitch`（固定幅なら`sigma < tile_pitch`）なら、
+一つのatomが届くタイルstationは最大2個。
+`seam_policy="separate"`なら追加で
+`tile_pitch + seam_gap > 2 * sigma_max`を検査し、折り返しの両側へ同じ
+atomが届かないようにする。`tile_indices(station)`は小さなタイル内の
+対応だけを計算し、全siteのID表を保持しない。`packed_weight()`は
+station順の物理配列を返すが、現行のPyTorch forwardは密な行列を使う。
 
 ### Profile
 
@@ -43,6 +61,13 @@ Chartはprofile形状、bandwidth、amplitude、atom数を知らない。
 - input/output Profileの結合
 - amplitude/bandwidthなどKernel固有座標
 - stored parameter widthとintrinsic degrees of freedomの集計
+
+単一チャートの`RadialKernel`は`[amplitude, center...]`という一行の
+パラメータから直接重みへの寄与を計算する。入力・出力のfactorは使わない。
+現時点ではcompact supportのtriweightとWendland C2を用意している。
+`sigma_min`と`sigma_max`を指定すると各atomに`log_sigma`を追加し、
+更新後もこの範囲に収める。StripChartの二タイル制約には設定された
+最大半径`sigma_max`を使う。
 
 例えばPolar Kernelのparameter spaceは
 

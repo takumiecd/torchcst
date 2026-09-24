@@ -1,7 +1,19 @@
 """Fixed-shape continuous operators for PyTorch."""
 
 from .atoms import Atoms
-from .geometry import Chart, EuclideanGeometry, Geometry, SphereGeometry
+from .geometry import (
+    Chart,
+    EuclideanGeometry,
+    ExplicitChart,
+    Geometry,
+    GridPattern,
+    LinePattern,
+    PointsPattern,
+    ProductChart,
+    SitePattern,
+    SphereGeometry,
+    StripChart,
+)
 from .kernels import (
     Amplitude,
     AmplitudeBandwidthSeparable,
@@ -12,6 +24,7 @@ from .kernels import (
     Kernel,
     PolarAmpWidth,
     Profile,
+    RadialKernel,
     Separable,
     Triangle,
     Triweight,
@@ -69,15 +82,23 @@ __all__ = [
     "CurvatureBlockMode",
     "DirectAmpWidth",
     "EuclideanGeometry",
+    "ExplicitChart",
     "Gaussian",
     "Geometry",
+    "GridPattern",
     "Kernel",
+    "LinePattern",
     "NormalizedOptimizerConfig",
+    "PointsPattern",
     "PolarAmpWidth",
+    "ProductChart",
     "Profile",
     "QuadraticOptimizerConfig",
+    "RadialKernel",
     "Separable",
+    "SitePattern",
     "SphereGeometry",
+    "StripChart",
     "Triangle",
     "Triweight",
     "WendlandC2",

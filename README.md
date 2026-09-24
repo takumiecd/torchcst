@@ -303,8 +303,10 @@ an observed peak-memory measurement.
 
 ### `Chart`
 
-`Chart` stores fixed observation sites together with the geometry in which
-those sites and atom centers live. Euclidean geometry remains the default;
+`Chart` is the common site and geometry contract. The existing
+`Chart.points`, `Chart.grid`, and `Chart.linspace` factories store explicit
+site tables. `ProductChart` and `StripChart` instead compute only requested
+site coordinates from small `SitePattern` objects. Euclidean geometry remains the default;
 embedded geometries distinguish their stored coordinate width from their true
 degrees of freedom. Charts are currently required to be frozen for
 optimizer-backed training.
@@ -345,6 +347,12 @@ center updates, while the kernel owns the layout of the complete opaque `p`
 row. Consequently, `kernel.parameter_dim(...)` reports stored width and
 `kernel.parameter_dof(...)` reports intrinsic degrees of freedom.
 
+`RadialKernel` is a direct, single-chart kernel. Each atom contains one signed
+amplitude and one center in the chart geometry. It evaluates a compact
+triweight or Wendland C2 function of the complete site-center distance, with
+no input/output factors. By default the support radius `sigma` is fixed. With
+`sigma_min` and `sigma_max`, each atom also stores a bounded `log_sigma`.
+
 For both amplitude-width kernels, the effective upper bandwidth bound is the
 maximum of its raw upper curve, configured floor, and lower curve. This keeps
 `lower <= upper` even when independent decay settings would make the curves
@@ -352,9 +360,55 @@ cross; activity has no bandwidth effect where the two bounds coincide.
 
 ### `CSTLinear`
 
-`CSTLinear` combines input/output charts, an atom table, and one kernel. Its
-`backend="factored"` path avoids retaining the full dense weight when the
-kernel supports exact factorization.
+`CSTLinear` accepts one operator chart with logical shape `[out, in]`, an atom
+table, and one kernel. The earlier input/output chart form remains available;
+its `backend="factored"` path avoids retaining the full dense weight when the
+kernel supports exact factorization. The single-chart path builds the required
+dense weight in bounded site/atom chunks, then uses `torch.nn.functional.linear`.
+It does not yet provide a native GEMM kernel. Forward and backward work on CPU
+or through ordinary PyTorch CUDA operations, and `CSTParameterAdam` supports
+the direct path.
+
+```python
+from torchcst import (
+    CSTLinear, GridPattern, LinePattern, ProductChart, RadialKernel,
+    StripChart,
+)
+
+# Logical [64, 784] weight, without a stored [64, 784, 3] site tensor.
+chart = ProductChart(
+    output=LinePattern(64, spacing=0.1),
+    input=GridPattern((28, 28), spacing=2 / 27),
+)
+layer = CSTLinear(chart=chart, atoms=256, kernel=RadialKernel(sigma=0.4))
+
+# A different layout for the same logical weight. Local patterns describe
+# positions within a tile; tile_pitch places tiles along one sweep line.
+strip = StripChart(
+    shape=(64, 784), tile_shape=(8, 49), tile_pitch=2.0,
+    local_output=LinePattern(8, spacing=0.1),
+    local_input=GridPattern((7, 7), spacing=0.1),
+    sweep="input", snake=True, seam_gap=1.0, seam_policy="separate",
+)
+strip_layer = CSTLinear(
+    chart=strip, atoms=256,
+    kernel=RadialKernel(sigma=0.5, sigma_min=0.2, sigma_max=0.8),
+)
+```
+
+`spacing` sets distances inside patterns. `tile_pitch` sets the longitudinal
+distance between tile stations; `seam_gap` adds distance at sweep row
+boundaries. To guarantee that one compact atom intersects at most two tile
+stations, the kernel's `sigma_max` (or fixed `sigma`) must be strictly smaller
+than `tile_pitch`. `seam_policy="separate"` additionally requires
+`tile_pitch + seam_gap > 2 * sigma_max`, so one
+atom cannot reach tile stations on both sides of a sweep boundary. The gap
+is finite geometric spacing, not a discontinuous topology. For StripChart,
+`strip_layer.packed_weight()` returns a physically contiguous
+`[tiles, tile_out, tile_in]` tensor in sweep order. The current `forward`
+still builds a row-major dense weight for PyTorch's linear operation; native
+tile execution is future work. The new layouts have not yet been compared with
+the existing MNIST configuration for accuracy or speed.
 
 ### `CSTConv2d`
 

@@ -7,6 +7,7 @@ from .compact import Biweight, Triangle, Triweight, WendlandC2
 from .direct_amplitude_bandwidth import DirectAmpWidth
 from .gaussian import Gaussian
 from .polar_amplitude_bandwidth import PolarAmpWidth
+from .radial import RadialKernel
 from .separable import Separable
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "Kernel",
     "PolarAmpWidth",
     "Profile",
+    "RadialKernel",
     "Separable",
     "Triangle",
     "Triweight",
