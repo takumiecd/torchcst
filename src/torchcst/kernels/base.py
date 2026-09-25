@@ -53,6 +53,17 @@ class Profile(nn.Module, ABC):
         """Optional values and first coordinate derivatives [features, atoms, q]."""
         raise NotImplementedError("profile has no specialized tangent")
 
+    def evaluate_with_precision_slice(
+        self,
+        chart: Chart,
+        p: Tensor,
+        precision: Tensor,
+        selection: slice | Tensor,
+    ) -> Tensor:
+        """Optional unnormalized values for bounded operator site slices."""
+
+        raise NotImplementedError("profile has no sliced precision evaluation")
+
     def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
         """Project a coordinate gradient into the profile's tangent space."""
 
@@ -94,7 +105,7 @@ class Profile(nn.Module, ABC):
 
 
 class Kernel(nn.Module, ABC):
-    """Interpret each opaque atom row as a complete operator contribution."""
+    """Interpret each atom row on one chart or a legacy chart pair."""
 
     def get_extra_state(self) -> dict[str, object]:
         """Record the kernel type and fixed non-buffer settings."""
@@ -110,29 +121,24 @@ class Kernel(nn.Module, ABC):
             raise RuntimeError("kernel checkpoint contract differs from this kernel")
 
     @abstractmethod
-    def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:
+    def parameter_dim(self, *charts: Chart) -> int:
         """Return the opaque coordinate width ``P`` for one atom."""
 
-    def parameter_dof(self, input_chart: Chart, output_chart: Chart) -> int:
+    def parameter_dof(self, *charts: Chart) -> int:
         """Return the geometric degrees of freedom in one atom row."""
 
-        return self.parameter_dim(input_chart, output_chart)
+        return self.parameter_dim(*charts)
 
     @abstractmethod
     def initialize(
         self,
-        input_chart: Chart,
-        output_chart: Chart,
-        atoms: int,
-        *,
+        *charts_and_atoms: Chart | int,
         mode: AtomInit,
     ) -> Tensor:
-        """Create an opaque coordinate table with shape ``[atoms, P]``."""
+        """Create an ``[atoms, P]`` table from chart(s), then atom count."""
 
     @abstractmethod
-    def materialize_atoms(
-        self, input_chart: Chart, output_chart: Chart, p: Tensor
-    ) -> Tensor:
+    def materialize_atoms(self, *charts_and_p: Chart | Tensor) -> Tensor:
         """Evaluate ``Kernel(p[a])`` as one matrix per atom.
 
         The result has shape ``[K, out_features, in_features]``. Every
@@ -155,28 +161,21 @@ class Kernel(nn.Module, ABC):
 
     def project_parameter_gradient(
         self,
-        input_chart: Chart,
-        output_chart: Chart,
-        p: Tensor,
-        gradient: Tensor,
+        *charts_p_gradient: Chart | Tensor,
     ) -> Tensor:
         """Project a parameter gradient into the kernel parameter tangent space."""
 
-        del input_chart, output_chart, p
+        gradient = charts_p_gradient[-1]
         if gradient.ndim != 2:
             raise ValueError("kernel gradient must have shape [atoms, parameters]")
         return gradient
 
-    def forward(self, input_chart: Chart, output_chart: Chart, p: Tensor) -> Tensor:
-        return self.materialize_atoms(input_chart, output_chart, p)
+    def forward(self, *charts_and_p: Chart | Tensor) -> Tensor:
+        return self.materialize_atoms(*charts_and_p)
 
     def apply_parameter_update(
         self,
-        input_chart: Chart,
-        output_chart: Chart,
-        p: Tensor,
-        displacement: Tensor,
-        *,
+        *charts_p_displacement: Chart | Tensor,
         step_size: float,
     ) -> Tensor:
         """Apply one optimizer proposal in this kernel's coordinate geometry.
@@ -188,22 +187,19 @@ class Kernel(nn.Module, ABC):
         table.
         """
 
-        del input_chart, output_chart, step_size
+        del step_size
+        p, displacement = charts_p_displacement[-2:]
         if displacement.shape != p.shape:
             raise ValueError("displacement must match the atom parameter shape")
         return p + displacement
 
     def transport_parameter_state(
         self,
-        input_chart: Chart,
-        output_chart: Chart,
-        old: Tensor,
-        new: Tensor,
-        state: Tensor,
+        *charts_old_new_state: Chart | Tensor,
     ) -> Tensor:
         """Transport vector-like optimizer state after a constrained update."""
 
-        del input_chart, output_chart
+        old, new, state = charts_old_new_state[-3:]
         if old.shape != new.shape or old.shape != state.shape:
             raise ValueError("old, new, and state must have matching shapes")
         return state

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Literal
 
@@ -12,7 +13,138 @@ from torch import Tensor, nn
 from .geometry import EuclideanGeometry, Geometry, SphereGeometry
 
 
-class Chart(nn.Module):
+class Chart(nn.Module, ABC):
+    """Geometry-backed observation sites for a logical tensor shape."""
+
+    def get_extra_state(self) -> dict[str, object]:
+        return {
+            "format_version": 1,
+            "chart_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            "features": self.features,
+            "embedding_dim": self.embedding_dim,
+            "trainable": self.trainable,
+        }
+
+    def set_extra_state(self, state: object) -> None:
+        if state != self.get_extra_state():
+            raise RuntimeError("chart checkpoint contract differs from this chart")
+
+    @classmethod
+    def points(
+        cls,
+        coordinates: Tensor,
+        *,
+        geometry: Geometry | None = None,
+        trainable: bool = False,
+    ) -> Chart:
+        return ExplicitChart.points(coordinates, geometry=geometry, trainable=trainable)
+
+    @classmethod
+    def linspace(
+        cls,
+        size: int,
+        *,
+        spacing: float | None = None,
+        low: float | None = None,
+        high: float | None = None,
+        center: float | None = None,
+        trainable: bool = False,
+    ) -> Chart:
+        return ExplicitChart.linspace(
+            size,
+            spacing=spacing,
+            low=low,
+            high=high,
+            center=center,
+            trainable=trainable,
+        )
+
+    @classmethod
+    def grid(
+        cls,
+        shape: Sequence[int],
+        *,
+        spacing: float | Sequence[float] | None = None,
+        low: float | None = None,
+        high: float | None = None,
+        center: float | Sequence[float] | None = None,
+        trainable: bool = False,
+    ) -> Chart:
+        return ExplicitChart.grid(
+            shape,
+            spacing=spacing,
+            low=low,
+            high=high,
+            center=center,
+            trainable=trainable,
+        )
+
+    @classmethod
+    def sphere(
+        cls,
+        features: int,
+        *,
+        intrinsic_dim: int,
+        radius: float = 1.0,
+        representation: Literal["ambient", "intrinsic"] = "ambient",
+        chart_margin: float = 0.05,
+        trainable: bool = False,
+    ) -> Chart:
+        return ExplicitChart.sphere(
+            features,
+            intrinsic_dim=intrinsic_dim,
+            radius=radius,
+            representation=representation,
+            chart_margin=chart_margin,
+            trainable=trainable,
+        )
+
+    @property
+    @abstractmethod
+    def features(self) -> int: ...
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return (self.features,)
+
+    @property
+    @abstractmethod
+    def reference(self) -> Tensor: ...
+
+    @property
+    def embedding_dim(self) -> int:
+        return self.geometry.embedding_dim
+
+    @property
+    def intrinsic_dim(self) -> int:
+        return self.geometry.intrinsic_dim
+
+    @property
+    def center_parameter_dim(self) -> int:
+        return self.geometry.center_parameter_dim
+
+    @property
+    @abstractmethod
+    def trainable(self) -> bool: ...
+
+    @abstractmethod
+    def positions(self, indices: Tensor) -> Tensor: ...
+
+    @abstractmethod
+    def squared_distance(
+        self, centers: Tensor, selection: slice | Tensor | None = None
+    ) -> Tensor: ...
+
+    @abstractmethod
+    def center_offsets(
+        self, centers: Tensor, selection: slice | Tensor | None = None
+    ) -> Tensor: ...
+
+    @abstractmethod
+    def initialize_centers(self, atoms: int, *, mode: str) -> Tensor: ...
+
+
+class ExplicitChart(Chart):
     """A fixed-cardinality collection of observation coordinates.
 
     Cartesian constructors take a grid step ``spacing`` in the same units as
@@ -64,7 +196,8 @@ class Chart(nn.Module):
 
         return {
             "format_version": 1,
-            "chart_type": f"{type(self).__module__}.{type(self).__qualname__}",
+            # Preserve the checkpoint tag of the original concrete Chart.
+            "chart_type": "torchcst.geometry.chart.Chart",
             "features": self.features,
             "embedding_dim": self.embedding_dim,
             "trainable": self.trainable,
@@ -294,6 +427,29 @@ class Chart(nn.Module):
         return self.coordinates.shape[0]
 
     @property
+    def shape(self) -> tuple[int, ...]:
+        """Logical site shape; explicit charts are one-dimensional."""
+
+        return (self.features,)
+
+    @property
+    def reference(self) -> Tensor:
+        return self.coordinates
+
+    @property
+    def device(self) -> torch.device:
+        return self.coordinates.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.coordinates.dtype
+
+    def positions(self, indices: Tensor) -> Tensor:
+        """Return coordinates for requested flattened site indices."""
+
+        return self.coordinates.index_select(0, indices)
+
+    @property
     def dim(self) -> int:
         """Stored coordinate width; retained as an alias for ``embedding_dim``."""
 
@@ -317,15 +473,21 @@ class Chart(nn.Module):
 
         return self.geometry.center_parameter_dim
 
-    def squared_distance(self, centers: Tensor) -> Tensor:
+    def squared_distance(
+        self, centers: Tensor, selection: slice | Tensor | None = None
+    ) -> Tensor:
         """Pairwise site-center squared distance in this chart's geometry."""
 
-        return self.geometry.squared_distance(self.coordinates, centers)
+        sites = self.coordinates if selection is None else self.coordinates[selection]
+        return self.geometry.squared_distance(sites, centers)
 
-    def center_offsets(self, centers: Tensor) -> Tensor:
+    def center_offsets(
+        self, centers: Tensor, selection: slice | Tensor | None = None
+    ) -> Tensor:
         """Site-center offsets in each center's tangent space."""
 
-        return self.geometry.center_offsets(self.coordinates, centers)
+        sites = self.coordinates if selection is None else self.coordinates[selection]
+        return self.geometry.center_offsets(sites, centers)
 
     def initialize_centers(self, atoms: int, *, mode: str) -> Tensor:
         """Initialize atom centers in the chart's geometry."""

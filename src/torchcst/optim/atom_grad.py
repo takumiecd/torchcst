@@ -173,7 +173,7 @@ class _LinearNDAtomGrad(LinearAtomGrad):
     ) -> None:
         if not self.accepts(generation=generation):
             return
-        if site.input_chart.trainable or site.output_chart.trainable:
+        if any(chart.trainable for chart in site.cst_charts()):
             raise ValueError("N/D atom gradients require frozen charts")
         self._validate_linear_tensors(site, inputs, output_gradient)
 

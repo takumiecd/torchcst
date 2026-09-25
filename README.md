@@ -303,8 +303,10 @@ an observed peak-memory measurement.
 
 ### `Chart`
 
-`Chart` stores fixed observation sites together with the geometry in which
-those sites and atom centers live. Euclidean geometry remains the default;
+`Chart` is the common site and geometry contract. The existing
+`Chart.points`, `Chart.grid`, and `Chart.linspace` factories store explicit
+site tables. `ProductChart` and `StripChart` instead compute only requested
+site coordinates from small `SitePattern` objects. Euclidean geometry remains the default;
 embedded geometries distinguish their stored coordinate width from their true
 degrees of freedom. Charts are currently required to be frozen for
 optimizer-backed training.
@@ -324,6 +326,9 @@ compact_spherical = Chart.sphere(
 `SphereGeometry(d)` uses the robust ambient representation and stores `d + 1`
 center coordinates. With `representation="intrinsic"`, it stores exactly `d`
 normal coordinates and decodes them onto `S^d` before measuring distance.
+`TorusGeometry(d)` has the same `d + 1` versus `d` storage choice; its intrinsic
+form stores one periodic circle coordinate and `d - 1` section coordinates.
+Like the intrinsic sphere chart, it excludes a small antipodal section cap.
 Geometry owns decoding, distance, tangent/coordinate projection, retraction,
 and vector transport; it does not own kernel bandwidth or normalization.
 
@@ -345,6 +350,14 @@ center updates, while the kernel owns the layout of the complete opaque `p`
 row. Consequently, `kernel.parameter_dim(...)` reports stored width and
 `kernel.parameter_dof(...)` reports intrinsic degrees of freedom.
 
+`DirectAmpWidth` also accepts a single operator Chart. Its atom row is
+`[w, q, center...]`: `w` is signed amplitude, `q` is persistent bandwidth
+activity, and the selected `Profile` evaluates the complete chart distance.
+`Gaussian`, `Triweight`, `Biweight`, `Triangle`, and `WendlandC2` can be selected with
+`normalize_columns=False`. A single-chart profile must support bounded site
+slices. The two-chart call retains its factorized behavior and checkpoint
+format.
+
 For both amplitude-width kernels, the effective upper bandwidth bound is the
 maximum of its raw upper curve, configured floor, and lower curve. This keeps
 `lower <= upper` even when independent decay settings would make the curves
@@ -352,9 +365,72 @@ cross; activity has no bandwidth effect where the two bounds coincide.
 
 ### `CSTLinear`
 
-`CSTLinear` combines input/output charts, an atom table, and one kernel. Its
-`backend="factored"` path avoids retaining the full dense weight when the
-kernel supports exact factorization.
+`CSTLinear` accepts one operator chart with logical shape `[out, in]`, an atom
+table, and one kernel. The earlier input/output chart form remains available;
+its `backend="factored"` path avoids retaining the full dense weight when the
+kernel supports exact factorization. The single-chart path builds the required
+dense weight in bounded site/atom chunks, then uses `torch.nn.functional.linear`.
+It does not yet provide a native GEMM kernel. Forward and backward work on CPU
+or through ordinary PyTorch CUDA operations, and `CSTParameterAdam` supports
+the direct path.
+
+```python
+import math
+
+from torchcst import (
+    CSTLinear, DirectAmpWidth, GridPattern, LinePattern, ProductChart,
+    StripChart, TorusGeometry, Triweight,
+)
+
+# Logical [64, 784] weight, without a stored [64, 784, 3] site tensor.
+chart = ProductChart(
+    shape=(64, 784),
+    axes=(LinePattern(64, spacing=0.1),
+          GridPattern((28, 28), spacing=2 / 27)),
+)
+kernel = DirectAmpWidth(
+    amplitude_max=1.0, sigma_min=0.1, sigma_birth=0.4,
+    sigma_max=0.8, w_c=0.05,
+    profile=Triweight(0.1, normalize_columns=False),
+)
+layer = CSTLinear(chart=chart, atoms=256, kernel=kernel)
+
+# The Line axis runs around a toroidal hypersurface. The Grid occupies a
+# two-dimensional patch of its spherical cross-section.
+strip = StripChart(
+    shape=(64, 784), tile_shape=(16, 784),
+    axes=(LinePattern(64, spacing=0.1),
+          GridPattern((28, 28), spacing=2 / 27)),
+    axis=0, tile_pitch=4.1,
+    geometry=TorusGeometry(3, major_radius=16.4 / (2 * math.pi), minor_radius=0.4,
+                           max_arc_step=2, representation="intrinsic"),
+)
+strip_layer = CSTLinear(
+    chart=strip, atoms=256,
+    kernel=DirectAmpWidth(
+        amplitude_max=1.0, sigma_min=0.2, sigma_birth=0.5,
+        sigma_max=0.8, w_c=0.05,
+        profile=Triweight(0.2, normalize_columns=False),
+    ),
+)
+```
+
+`spacing` sets distances inside patterns, and `tile_pitch` places neighboring
+tile stations along the selected Line axis. A compact atom can intersect at
+most two stations when the chart's distance lower bound between every
+nonadjacent pair exceeds `2 * sigma_max`. `StripChart.validate_support` checks
+this before constructing the single-chart kernel. For `TorusGeometry`, the
+check includes the curvature and the wraparound between the first and last
+tile; the formula and its limits are in [the geometry notes](docs/chart-geometry.ja.md).
+The optional `max_arc_step` bounds an atom's movement along the circle per
+update. For StripChart,
+`strip_layer.packed_weight()` returns a physically contiguous
+`[tiles, tile_out, tile_in]` tensor in sweep order. The current `forward`
+still builds a row-major dense weight for PyTorch's linear operation; native
+tile execution is future work. In the 2026-09-24 A100 MNIST study in the `cst`
+repository (K=2560, 3 seeds, 5 epochs), ProductChart reached 95.96% mean test
+accuracy versus 96.49% for the two-chart factored path; StripChart reached
+94.95%. These results use PyTorch materialization, before native tile execution.
 
 ### `CSTConv2d`
 
