@@ -127,7 +127,9 @@ def execution_plan(site: CSTLinear) -> _Plan:
     return plan
 
 
-def prepare(site: CSTLinear, p: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+def prepare(
+    site: CSTLinear, p: Tensor, *, use_triton: bool = True
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     plan = execution_plan(site)
     if p.ndim != 2 or p.shape[1] != plan.parameter_dim:
         raise ValueError(f"p must have shape [atoms, {plan.parameter_dim}]")
@@ -139,6 +141,20 @@ def prepare(site: CSTLinear, p: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]
         else:
             center, amplitude, precision = site.kernel.tile_parameters(site.chart, p)
         decoded = site.chart.geometry.decode_centers(center)
+    if (
+        use_triton
+        and decoded.is_cuda
+        and decoded.dtype == torch.float32
+        and not torch.version.hip
+        and site.chart.tile_count <= 1024
+    ):
+        from ._triton_preparation import Pack, route_and_layout
+
+        with cst_span("cst.linear.route_atoms"):
+            _, order, offsets = route_and_layout(plan.routing, decoded)
+        with cst_span("cst.linear.pack_atoms"):
+            packed = Pack.apply(amplitude, precision, decoded, order)
+        return packed, plan.circle, plan.section, offsets
     with cst_span("cst.linear.route_atoms"):
         owners = plan.routing.owners(decoded)
         layout = _station_layout(owners, site.chart.tile_count)

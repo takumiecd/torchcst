@@ -1,0 +1,91 @@
+"""GPU preparation preserving the Torch geometry and amplitude derivatives."""
+
+import torch
+import triton as tr
+from torch.autograd.function import once_differentiable
+
+from . import _triton_preparation_kernels as kernels
+
+
+def route_and_layout(routing, decoded):
+    count, stations = decoded.shape[0], routing.starts.numel()
+    owners = torch.empty(count, device=decoded.device, dtype=torch.long)
+    offsets = torch.empty(stations + 1, device=decoded.device, dtype=torch.long)
+    if not count:
+        offsets.zero_()
+        return owners, owners, offsets
+    bg = tr.next_power_of_2(stations)
+    ba = min(32, max(1, 1024 // bg))
+    with torch.cuda.device(decoded.device):
+        kernels.owners[(tr.cdiv(count, ba),)](
+            decoded,
+            routing.major_radius,
+            routing.period,
+            routing.starts,
+            routing.spans,
+            routing.spacing,
+            routing.last_row,
+            owners,
+            count,
+            stations,
+            *decoded.stride(),
+            ba,
+            bg,
+            enable_fp_fusion=False,
+        )
+        sorted_owners, order = torch.sort(owners, stable=True)
+        kernels.offsets[(tr.cdiv(stations + 1, 128),)](
+            sorted_owners,
+            offsets,
+            count,
+            stations,
+            count.bit_length(),
+            128,
+        )
+    return owners, order, offsets
+
+
+class Pack(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, amplitude, precision, decoded, order):
+        count, dimension = decoded.shape
+        packed = decoded.new_empty((count, dimension + 2))
+        ctx.save_for_backward(order)
+        ctx.dimension = dimension
+        if count:
+            with torch.cuda.device(decoded.device):
+                kernels.pack[(tr.cdiv(packed.numel(), 256),)](
+                    amplitude,
+                    precision,
+                    decoded,
+                    order,
+                    packed,
+                    count,
+                    dimension,
+                    amplitude.stride(0),
+                    precision.stride(0),
+                    *decoded.stride(),
+                    256,
+                )
+        return packed
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, gradient):
+        (order,) = ctx.saved_tensors
+        count, dimension = order.numel(), ctx.dimension
+        da = gradient.new_empty(count)
+        dc = gradient.new_empty((count, dimension))
+        if count:
+            with torch.cuda.device(gradient.device):
+                kernels.unpack_grad[(tr.cdiv(count * (dimension + 1), 256),)](
+                    gradient,
+                    order,
+                    da,
+                    dc,
+                    count,
+                    dimension,
+                    *gradient.stride(),
+                    256,
+                )
+        return da, None, dc, None

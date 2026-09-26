@@ -372,3 +372,45 @@ def test_triton_warm_forward_captures_updated_inputs_and_atoms():
             graph.replay()
             expected = torch.nn.functional.linear(x, model.dense_weight())
             torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-5)
+
+
+@GPU
+@pytest.mark.parametrize("rows,station_rows", [(1, 1), (9, 5), (21, 5), (64, 4)])
+@pytest.mark.parametrize("count", [0, 37, 257])
+def test_fused_routing_matches_reference_including_seams(rows, station_rows, count):
+    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from torchcst.nn._layout import _station_layout
+
+    torch.manual_seed(91)
+    model = _model(rows=rows, station_rows=station_rows, device="cuda")
+    routing = execution_plan(model).routing
+    arcs = torch.linspace(-20, 100, count, device="cuda")
+    angle = arcs / routing.major_radius
+    decoded = torch.stack((angle.cos(), angle.sin()), dim=1)
+    # Includes both signs of zero and the circle seam.
+    if count:
+        decoded[:4] = decoded.new_tensor([[1, 0], [1, -0.0], [-1, 0], [-1, -0.0]])
+    owners, order, offsets = route_and_layout(routing, decoded)
+    expected = routing.owners(decoded)
+    layout = _station_layout(expected, model.chart.tile_count)
+    assert torch.equal(owners, expected)
+    assert torch.equal(order, layout.order)
+    assert torch.equal(offsets, layout.offsets)
+
+
+@GPU
+@pytest.mark.parametrize("representation", ["intrinsic", "ambient"])
+def test_fused_preparation_matches_values_and_gradients(representation):
+    torch.manual_seed(93)
+    model = _model(
+        representation=representation, atoms=67, device="cuda", sigma_min=0.3
+    )
+    p = model.atoms.p
+    reference = prepare(model, p, use_triton=False)
+    actual = prepare(model, p)
+    torch.testing.assert_close(actual[0], reference[0], atol=0, rtol=0)
+    assert torch.equal(actual[3], reference[3])
+    gradient = torch.randn_like(actual[0].T).T  # noncontiguous upstream gradient
+    expected = torch.autograd.grad(reference[0], p, gradient)[0]
+    got = torch.autograd.grad(actual[0], p, gradient)[0]
+    torch.testing.assert_close(got, expected, atol=1e-6, rtol=1e-6)
