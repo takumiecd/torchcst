@@ -24,7 +24,7 @@ def log(**value):
     print(json.dumps(value), flush=True)
 
 
-def launch(grid, tensors, consts, stage, y, sink, w):
+def launch(grid, tensors, consts, stage, y, sink, w, *, fp_fusion=False):
     x, p, circle, section, offsets = tensors
     return fused_stage[grid](
         x,
@@ -38,7 +38,7 @@ def launch(grid, tensors, consts, stage, y, sink, w):
         **consts,
         STAGE=stage,
         num_warps=4,
-        enable_fp_fusion=False,
+        enable_fp_fusion=fp_fusion,
     )
 
 
@@ -86,6 +86,10 @@ def main():
             "stage3 writes a synthetic Y from cheap lane values; "
             "that output is not compared to dense."
         ),
+        "fp_fusion_note": (
+            "TF32 remains disabled. FP fusion changes rounding, so "
+            "stage0_fp_fusion is an experimental prototype path."
+        ),
     }
     path = args.output_dir / "results.json"
 
@@ -130,8 +134,15 @@ def main():
     sink = torch.empty(grid[0] * grid[1], device="cuda")
     w = torch.randn(16, 16, device="cuda")
     compiled = launch(grid, tensors, consts, 0, y0, sink, w)
+    y0_fp = torch.empty_like(y_fused)
+    compiled_fp = launch(
+        grid, tensors, consts, 0, y0_fp, sink, w, fp_fusion=True
+    )
     result["stages"] = {
         "0": compiled_record(compiled, args.output_dir, "stage0"),
+        "stage0_fp_fusion": compiled_record(
+            compiled_fp, args.output_dir, "stage0_fp_fusion"
+        ),
         "existing_fused": compiled_record(
             compiled_existing, args.output_dir, "existing_fused"
         ),
@@ -139,11 +150,15 @@ def main():
     result["checks"] = {
         "stage0_vs_fused": check(y0, y_fused),
         "stage0_vs_dense": check(y0, expected),
+        "stage0_fp_fusion_vs_dense": check(y0_fp, expected),
+        "stage0_fp_fusion_vs_fused": check(y0_fp, y_fused),
     }
     save()
     log(stage="checks", **result["checks"])
     assert result["checks"]["stage0_vs_fused"]["passed"]
     assert result["checks"]["stage0_vs_dense"]["passed"]
+    assert result["checks"]["stage0_fp_fusion_vs_dense"]["passed"]
+    assert result["checks"]["stage0_fp_fusion_vs_fused"]["passed"]
     y1 = torch.empty_like(y0)
     for stage, output in ((1, y1), (2, y1)):
         compiled = launch(grid, tensors, consts, stage, output, sink, w)
@@ -161,6 +176,9 @@ def main():
         timing(
             {
                 "stage0": lambda: launch(grid, tensors, consts, 0, y0, sink, w),
+                "stage0_fp_fusion": lambda: launch(
+                    grid, tensors, consts, 0, y0_fp, sink, w, fp_fusion=True
+                ),
                 "stage1": lambda: launch(grid, tensors, consts, 1, y1, sink, w),
                 "stage2": lambda: launch(grid, tensors, consts, 2, y1, sink, w),
                 "stage3": lambda: launch(grid, tensors, consts, 3, y3, sink, w),
