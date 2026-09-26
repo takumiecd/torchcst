@@ -15,6 +15,7 @@ class FusedConfig:
     warps: int = 4
     late_reduce: bool = False
     fp_fusion: bool = False
+    scalar_ba1: bool = False
 
     def __post_init__(self):
         for name, allowed in (
@@ -33,6 +34,17 @@ class FusedConfig:
             raise ValueError("late_reduce must be bool")
         if type(self.fp_fusion) is not bool:
             raise ValueError("fp_fusion must be bool")
+        if type(self.scalar_ba1) is not bool:
+            raise ValueError("scalar_ba1 must be bool")
+        if self.scalar_ba1 and not (self.atoms == 1 and self.late_reduce):
+            raise ValueError("scalar_ba1 requires atoms 1 and late_reduce")
+
+
+def fused_config_from_spec(text):
+    """Parse BM,BN,BK,BA,warps,late_reduce[,fp_fusion[,scalar_ba1]]."""
+    values = list(map(int, text.split(",")))
+    assert len(values) in (6, 7, 8) and all(value in (0, 1) for value in values[5:])
+    return FusedConfig(*values[:5], *(bool(value) for value in values[5:]))
 
 
 def default_fused_config(
@@ -87,6 +99,7 @@ def launch_fused(layer, x, prepared, y, config):
         BK=config.columns,
         BA=config.atoms,
         LATE_REDUCE=config.late_reduce,
+        SCALAR_BA1=config.scalar_ba1,
         num_warps=config.warps,
         enable_fp_fusion=config.fp_fusion,
     )
