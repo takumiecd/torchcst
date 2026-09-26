@@ -96,7 +96,7 @@ def run(size, batch, atoms, save):
     panels64 = weight.reshape(rows // 64, 64, cols // 64, 64)
     active_blocks64 = int((panels64 != 0).any(dim=(1, 3)).sum())
     total_blocks64 = (rows // 64) * (cols // 64)
-    # Shared dense W stays occupied at 16x16, so tile culling is not used.
+    # Occupancy is measured only. Ultra-low density may leave panels empty; there is no tile culling.
     result["nonzero_weight_fraction"] = float((weight != 0).sum()) / weight.numel()
     result["active_16x16_blocks"] = active_blocks
     result["total_16x16_blocks"] = total_blocks
@@ -138,8 +138,8 @@ def run(size, batch, atoms, save):
         result["checks"][name] = validation
         save(result)
         log(stage="validated", atoms=atoms, path=name, **validation)
-        if name == "dense" and not validation["passed"]:
-            result["failure"] = "dense W validation failed"
+        if not validation["passed"]:
+            result["failure"] = f"{name} validation failed"
             result["completed"] = False
             save(result)
             log(stage="failed", atoms=atoms, failure=result["failure"], path=name)
@@ -202,7 +202,7 @@ def main():
         if not run(args.size, args.batch, atoms, save):
             result["completed"] = False
             result["failure"] = (
-                "dense W validation failed; sweep stopped before lower atom counts"
+                "route validation failed; sweep stopped before lower atom counts"
             )
             (args.output_dir / "results.json").write_text(
                 json.dumps(result, indent=2) + "\n"
