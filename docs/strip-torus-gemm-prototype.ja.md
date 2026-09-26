@@ -441,3 +441,8 @@ snapshot は `srv11/cst-lab/torchcst-gemm-gap-20260926/`、archive SHA256 は
 `63d12da7afde4aef6b5e5f747a2503b8bda1bd1080ac409d69ffc0af3406b0cc`。
 結果とログを `output/triton-a100-20260926/diagnosis.{json,log}` に取得した。
 ハードウェア・コミット・6ケース完了・archive hash をローカルでも確認した。
+
+アトムから出力を直接求める次の試作と測定結果は
+[atom-prefix-linear.ja.md](atom-prefix-linear.ja.md) に記録した。
+Triweight の4種類の累積和を使って重み生成を省けるが、現時点のPyTorch実装は
+既存の融合版より遅く、公開backendには追加していない。
