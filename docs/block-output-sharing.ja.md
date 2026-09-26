@@ -2,6 +2,8 @@
 
 2026-09-26。[入力のatom間再利用](block-direct-reuse.ja.md)に続く実験。
 
+続報: [support外の演算量と列区間省略](support-culling-study.ja.md)。
+
 ## 結論
 
 単純なbroadcast積＋sumによる共有は遅くなったが、atom一つ分の寄与をIEEE FP32 dotで
