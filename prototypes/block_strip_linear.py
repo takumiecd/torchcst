@@ -34,6 +34,7 @@ class BlockStripLinear(nn.Module):
         dtype=torch.float32,
         tile_pitch=4.1,
         sigma=0.5,
+        sigma_min=0.2,
     ):
         super().__init__()
         if (
@@ -66,11 +67,11 @@ class BlockStripLinear(nn.Module):
         )
         kernel = DirectAmpWidth(
             amplitude_max=1,
-            sigma_min=0.2,
+            sigma_min=sigma_min,
             sigma_birth=sigma,
             sigma_max=0.8,
             w_c=0.05,
-            profile=Triweight(0.2, normalize_columns=False),
+            profile=Triweight(sigma_min, normalize_columns=False),
             checkpoint_blocks=False,
         )
         self.strip = CSTLinear(

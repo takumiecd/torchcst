@@ -56,7 +56,7 @@ def test_boundary_seam_and_graph_updates(backend):
     from torchcst.nn._backends._preparation import prepare
 
     layer = BlockStripLinear(
-        (32, 32), (16, 16), 8, device="cuda", tile_pitch=2.6, sigma=0.8
+        (32, 32), (16, 16), 8, device="cuda", tile_pitch=2.6, sigma=0.8, sigma_min=0.8
     )
     with torch.no_grad():
         p = layer.strip.atoms.p
