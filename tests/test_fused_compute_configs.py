@@ -115,8 +115,7 @@ def test_merge_buckets_matches_late_reduce_bitwise(shape, tile):
         p[:, 0] = 0.8
         if chart.tile_count > 1:
             counts = torch.diff(prepare(layer.strip, p, support_layout=True)[3])
-            # G=2 stores every shared atom in B[0]; B[1] (counts[-2]) stays empty.
-            assert counts[1] > 0
+            assert counts[1:-1:2].sum() > 0 and counts[-2] > 0
         x = torch.randn(5, shape[1], device="cuda")
         weight = layer.dense_weight()
         actual = layer(x, backend="triton_fused", fused_config=merged)
