@@ -429,6 +429,15 @@ single-part schedule. The experiment does not change the chart or materialize
 weights. Run `python -m prototypes.benchmark_triton_split --output paired.json`
 to compare both paths, including alternating wall-time measurements.
 
+The primary performance target is a conventional dense Linear with an already
+stored weight, measured with `prototypes.benchmark_dense_reference`. Dense
+weight creation is outside timing; CST preparation and on-the-fly tile
+generation stay inside. Report CST/dense time ratios (1 means parity), forward
+and forward+backward separately, and parameter storage plus peak extra tensor
+allocations. Equal-precision FP32 results and the BF16 dense speed target are
+reported separately. The older `materialized` CST baseline includes weight
+reconstruction and is not a conventional dense Linear baseline.
+
 ```python
 import math
 

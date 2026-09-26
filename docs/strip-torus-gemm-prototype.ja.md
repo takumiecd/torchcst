@@ -4,6 +4,68 @@
 重み生成と GEMM を融合する NVIDIA GPU 実装である。両方とも入力勾配と
 アトム勾配を計算でき、`CSTParameterAdam` と `LinearJGAtomGrad` で使える。
 
+## 性能評価の基準
+
+主目標は、**重みを保持する通常の dense Linear に対して、CST がどこまで
+速度とメモリで競争できるか**である。CST 内部の前版比は改善箇所の診断に使う。
+
+- 基準: 保持済み `W` を使う `torch.nn.functional.linear(X, W)`。重み生成は計測外。
+- CST: 所属判定・配置・重みタイル生成・GEMM を毎回含める。完全な `W` は保存しない。
+- FP32 は双方とも TF32 無効。同じ初期重み・入力で出力と入力勾配を照合する。
+- BF16 dense は別精度の実用的な速度目標として併記し、FP32同等精度とは扱わない。
+- 時間比は `CST / dense`。1で同速、1より大きければCSTの方が遅い。
+- 学習は forward と入力・パラメーター勾配まで。dense は `dW`、CST は `dp`。
+  パラメーター化が違うため、同じ勾配問題とは扱わない。optimizer step は含めない。
+- パラメーター容量、CST の固定buffer・配置計画、warmup 後の追加 tensor 割当ピークを
+  分けて記録する。割当ピークには一時領域・出力・勾配を含み、allocator の予約領域や
+  optimizer state は含めない。固定メモリと追加ピークを足した厳密な総VRAM比較ではない。
+
+```bash
+python -m prototypes.benchmark_dense_reference --output dense-reference.json \
+  --source-commit <measured-commit> --repeats 20
+```
+
+過去の `materialized` 比較は「CSTから重みを毎回生成してdense演算する経路」であり、
+通常のdense Linearとの速度比には使わない。
+
+### 保持済み dense との初回測定
+
+コミット `a406dff`、同じ A100 MIG 3g.40gb 区画で測定した。
+以下は両方とも準備済みの CUDA Graph を反復した forward 時間（ms）。
+CST の Graph は所属判定・配置・タイル生成も毎回実行する。
+
+| 重み形状 | M | アトム数 | dense FP32 | CST FP32 | CST / dense FP32 | dense BF16 | CST FP32 / dense BF16 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `[64,128]` | 16 | 64 | 0.0072 | 0.2031 | 28.3 | 0.0057 | 35.4 |
+| `[64,128]` | 128 | 64 | 0.0129 | 0.1788 | 13.8 | 0.0081 | 22.1 |
+| `[64,128]` | 16 | 256 | 0.0072 | 0.6088 | 84.8 | 0.0057 | 106.1 |
+| `[64,128]` | 128 | 256 | 0.0135 | 0.6058 | 44.9 | 0.0081 | 74.7 |
+| `[256,512]` | 32 | 512 | 0.0174 | 1.1024 | 63.3 | 0.0100 | 110.5 |
+| `[256,512]` | 128 | 512 | 0.0257 | 2.1855 | 85.0 | 0.0116 | 189.2 |
+
+現状のCSTは、この6形状では通常denseと速度で競争できていない。
+通常の呼出しを各20回交互に測ると、FP32 denseに対してforwardは約1.06–1.44倍、
+forward+backwardは約1.48–3.27倍だった。ただし、同期を含むホスト側の時間が
+大きく、小さいGPU計算の差を覆い隠す。Graph の比と併記し、通常時間の比だけで
+GEMMの性能が近いとは判断しない。学習全体のGraph比較は現状行っていない。
+
+FP32の学習パラメーター容量は、この設定でdenseの1/6.4–1/51.2。
+例えば `[256,512]`・512アトムでは、denseが524,288 bytes、CSTが10,240 bytes、
+CSTの固定buffer・計画が別途8,556 bytes。M=128のforward+backwardでの追加
+割当ピークはdenseが917,504 bytes、CSTが439,296 bytesだった。
+一方、forwardの追加ピークはCSTの方が大きい。この容量差は同じ学習品質を
+保証するものではなく、optimizer stateを含むモデル全体のVRAM比較でもない。
+
+同じ重み・入力で、CSTとFP32 denseの出力最大差は `6.56e-7`、入力勾配最大差は
+`2.39e-7`。BF16 denseの出力相対L2差はFP32 denseに対して約0.29–0.32%で、
+別精度の目標として扱う。
+
+再現用 snapshot は `srv11/cst-lab/torchcst-dense-reference-20260926/`。
+git archive SHA256 は
+`6c663be06da607561a800766124562b2a0ad018e595e5cdd7db6ed3c1088b263` で、
+転送元と先で一致を確認した。ローカルの取得結果は
+`output/triton-a100-20260926/dense-reference.json` と同名 `.log`。
+
 ## 責務と backend
 
 | 場所 | 責務 |
@@ -158,7 +220,7 @@ NVIDIA A100 80GB PCIe の MIG 3g.40gb 区画、PyTorch 2.6.0+cu126、Triton 3.2.
 全体は準備を含む壁時計時間の10回中央値、GPU欄は準備済みデータを使い
 数値カーネルだけを CUDA Graph で反復して測った中央値で、同じ種類の時間ではない。
 
-| 入力行 M | アトム数 | 準備 ms | PyTorch dense forward ms | Triton forward ms | Triton forward+backward ms | 融合 GPU ms | 分離 GPU ms |
+| 入力行 M | アトム数 | 準備 ms | CST materialized forward ms | Triton forward ms | Triton forward+backward ms | 融合 GPU ms | 分離 GPU ms |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 16 | 64 | 24.95 | 62.56 | 25.02 | 25.19 | 0.130 | 0.027 |
 | 128 | 64 | 24.93 | 62.50 | 24.99 | 25.30 | 0.119 | 0.035 |
