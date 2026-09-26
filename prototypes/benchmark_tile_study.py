@@ -140,7 +140,7 @@ def diagnose(size, batch, output_dir):
     }
 
 
-def mapped_control(layer, prepared):
+def mapped_control(layer, prepared, *, canonical_chunk=32):
     p, circle, section, offsets = prepared
     s, t = layer.tile_shape
     g = layer.strip.chart.tile_count
@@ -178,7 +178,7 @@ def mapped_control(layer, prepared):
         layer.strip.chart, layer.strip.atoms.p
     )
     canonical = []
-    for selection in virtual_indices.split(32):
+    for selection in virtual_indices.split(canonical_chunk):
         values = layer.strip.kernel.profile.evaluate_with_precision_slice(
             layer.strip.chart, center, prec, selection
         )
