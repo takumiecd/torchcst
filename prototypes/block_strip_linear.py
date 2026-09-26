@@ -135,7 +135,7 @@ class BlockStripLinear(nn.Module):
             raise ValueError("input feature count differs from mapped shape")
         if backend == "torch":
             return self.reference(x)
-        if backend not in ("triton_direct", "triton_fused"):
+        if backend not in ("triton_direct", "triton_reuse", "triton_fused"):
             raise ValueError("unknown prototype backend")
         if torch.is_grad_enabled() and (
             x.requires_grad or self.strip.atoms.p.requires_grad
@@ -145,7 +145,11 @@ class BlockStripLinear(nn.Module):
             raise ValueError("mapped Triton requires NVIDIA CUDA float32")
         if x.device != self.strip.atoms.p.device or self.strip.atoms.p.dtype != x.dtype:
             raise ValueError("input and model must share device and dtype")
-        from prototypes.block_strip_kernels import block_direct, block_fused
+        from prototypes.block_strip_kernels import (
+            block_direct,
+            block_direct_reuse,
+            block_fused,
+        )
 
         p, circle, section, offsets = prepared or prepare(
             self.strip, self.strip.atoms.p, support_layout=True
@@ -153,7 +157,8 @@ class BlockStripLinear(nn.Module):
         flat = x.reshape(-1, self.shape[1]).contiguous()
         y = flat.new_empty((flat.shape[0], self.shape[0]))
         bm = batch_tile or (16 if backend == "triton_direct" else 64)
-        if bm not in ((4, 16, 64) if backend == "triton_direct" else (16, 64)):
+        allowed = (4, 16, 64) if backend == "triton_direct" else (16, 64, 128)
+        if bm not in allowed or (backend == "triton_fused" and bm == 128):
             raise ValueError("unsupported batch tile")
         s, t = self.tile_shape
         opts = {
@@ -169,9 +174,12 @@ class BlockStripLinear(nn.Module):
             "PROFILE": PROFILE_KINDS[type(self.strip.kernel.profile)],
         }
         if flat.shape[0]:
-            if backend == "triton_direct":
+            if backend in ("triton_direct", "triton_reuse"):
                 bounds = torch.stack((section.amin(0), section.amax(0)))
-                block_direct[(math.ceil(flat.shape[0] / bm), self.shape[0])](
+                kernel = (
+                    block_direct_reuse if backend == "triton_reuse" else block_direct
+                )
+                kernel[(math.ceil(flat.shape[0] / bm), self.shape[0])](
                     flat,
                     p,
                     circle,
@@ -180,7 +188,9 @@ class BlockStripLinear(nn.Module):
                     bounds,
                     y,
                     **opts,
-                    BK=128,
+                    BK=min(128, 1 << (t - 1).bit_length())
+                    if backend == "triton_reuse"
+                    else 128,
                     num_warps=4,
                     enable_fp_fusion=False,
                 )

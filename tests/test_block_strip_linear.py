@@ -36,7 +36,7 @@ def test_mapped_reference_values_gradients_and_indices(shape, tile):
     "shape,tile",
     [((33, 35), (16, 16)), ((65, 129), (64, 128)), ((128, 128), (128, 128))],
 )
-@pytest.mark.parametrize("backend", ["triton_direct", "triton_fused"])
+@pytest.mark.parametrize("backend", ["triton_direct", "triton_fused", "triton_reuse"])
 def test_mapped_gpu(shape, tile, backend):
     torch.manual_seed(7)
     layer = BlockStripLinear(shape, tile, 16, device="cuda")
@@ -51,7 +51,7 @@ def test_mapped_gpu(shape, tile, backend):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("backend", ["triton_direct", "triton_fused"])
+@pytest.mark.parametrize("backend", ["triton_direct", "triton_fused", "triton_reuse"])
 def test_boundary_seam_and_graph_updates(backend):
     from torchcst.nn._backends._preparation import prepare
 
@@ -150,3 +150,20 @@ def test_diagnostic_modes_and_counts():
         )
         assert int(counts[:, 2].sum()) == int(((values != 0) & (amp != 0)).sum())
         assert bool((counts[:, 1] <= counts[:, 0]).all())
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("batch_tile", [16, 64, 128])
+def test_reuse_tail_and_multiple_column_fragments(batch_tile):
+    torch.manual_seed(19)
+    layer = BlockStripLinear((33, 197), (16, 192), 19, device="cuda")
+    with torch.no_grad():
+        layer.strip.atoms.p[::3, 0] = 0
+        x = torch.randn(129, 197, device="cuda")
+        expected = F.linear(x, layer.dense_weight())
+        torch.testing.assert_close(
+            layer(x, backend="triton_reuse", batch_tile=batch_tile),
+            expected,
+            atol=3e-5,
+            rtol=3e-5,
+        )
