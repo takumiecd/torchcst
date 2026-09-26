@@ -129,6 +129,26 @@ PYTHONPATH=src:. python -u -m prototypes.benchmark_fused_compute \
             128,32,32,1,4,1,0 128,32,64,1,4,1,0 --full
 ```
 
+### BA1のatom軸を除く試作
+
+Grok 4.7とBA1カーネルの生成コードを検討した。BM128/BN32/BK16/BA1のTriton中間表現には`tensor<512x1xf32>`のpartialと長さ1の`tt.reduce`が残る。PTXでは不要なprofile傾き計算は見つからなかった。実測するStrip+Torusはatomパラメータが5列で、振幅・精度を除く埋め込み次元は`D=3`。`D=2`と想定してSection追加次元を無視してはならない。
+
+実験commit `60f71a780c0a22667c61307094461ad266d3b69f`でGrok 4.7が既定経路を保ったまま、BA1/late-reduce専用の明示的な`scalar_ba1`を追加した。3バケット順、FP32式、無効サイトのマスク、IEEE dotを維持し、partialのatom軸だけを外した。A100の関連テスト65件が合格し、境界・Torus seam・CUDA Graph再生後のatom更新を含む旧経路との出力ビット一致を確認した。
+
+0.049%の準備込み同一run、CUDA Graph 3ラウンドでは、旧経路4.956945ms [4.950323–4.958344]、scalar経路4.953600ms [4.950972–4.956979]。全出力は同じdense Wとの照合に合格。両方128 registers/thread、compiler spill 0、shared memory 10,240 bytes/blockで、性能範囲が重なった。以前のrunよりGPU全体が約2倍遅い速度帯にあるため、別runの絶対値は比較しない。Grokと決めた停止条件に従い、高密度側の追加測定は行わず、`8823531`で実験コードをrevertした。BA1の長さ1のatom軸をソースで除くだけでは、測った形状の性能改善を確認できなかった。
+
+ソースarchive SHA256は`0dde5a33a0feeea550e467f608163e1909bc90243f795d28e5db88aa29a9af48`で遠隔展開前に一致を確認した。遠隔ディレクトリは`srv11/cst-lab/torchcst-ba1-scalar-60f71a7`。結果`output/triton-a100-20260927/low-density-bm/scalar-8192.json`のSHA256は`4eef3f2e01c03dae1eb7c9afc68ff29df48aa0348c53b42d4829db7d542e6380`、65件のテストlogは`75292d81558d2cc553772ba912a747239a5130b323f396b307cf162a68548433`で、いずれも遠隔と一致した。
+
+```bash
+PYTHONPATH=src:. python -m pytest -q --color=no \
+  tests/test_fused_compute_configs.py tests/test_block_strip_linear.py
+PYTHONPATH=src:. python -u -m prototypes.benchmark_fused_compute \
+  --output-dir scalar-8192 \
+  --source-commit 60f71a780c0a22667c61307094461ad266d3b69f \
+  --cases 4096:128:8192 \
+  --configs 128,32,16,1,4,1,0,0 128,32,16,1,4,1,0,1 --full
+```
+
 ## 生成後の空重み判定
 
 実験commit `ed8fd8fc45c23837f73b1da8081e923ce2b782f6`で、BN×BK重み小片を生成した後、全てゼロなら入力ロードとdotを飛ばした。全経路の出力照合は合格したが、同一runで全密度が遅くなった。特に8,192 atomsの準備込みは基準4.001→4.534ms、32,768では4.063→4.591ms。重み生成を終えてからの分岐では費用を回収できないため、commit `9c1489a`でコードをrevertした。NaN/Inf入力に対するゼロ重みとの積の意味も変わるので、この方式を採用しない。
