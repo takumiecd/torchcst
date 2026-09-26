@@ -43,8 +43,8 @@ def log(**value):
 
 def config(text):
     values = list(map(int, text.split(",")))
-    assert len(values) == 6 and values[-1] in (0, 1)
-    return FusedConfig(*values[:-1], bool(values[-1]))
+    assert len(values) in (6, 7) and all(value in (0, 1) for value in values[5:])
+    return FusedConfig(*values[:5], *(bool(value) for value in values[5:]))
 
 
 @torch.no_grad()

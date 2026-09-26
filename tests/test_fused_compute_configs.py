@@ -17,6 +17,7 @@ from prototypes.block_strip_linear import BlockStripLinear
         FusedConfig(128, 16, 16, 8, 4, True),
         FusedConfig(128, 32, 16, 16, 4, True),
         FusedConfig(128, 16, 64, 8, 8, True),
+        FusedConfig(128, 16, 16, 8, 4, True, True),
     ],
 )
 def test_fused_schedule_tail_and_seam(config):
@@ -57,3 +58,8 @@ def test_selected_fused_default_preserves_tails_and_explicit_override():
             override = layer(x, backend="triton_fused", batch_tile=64)
             original = layer(x, backend="triton_fused", fused_config=FusedConfig())
             torch.testing.assert_close(override, original, atol=0, rtol=0)
+
+
+def test_fp_fusion_requires_exact_bool():
+    with pytest.raises(ValueError, match="fp_fusion must be bool"):
+        FusedConfig(fp_fusion=1)

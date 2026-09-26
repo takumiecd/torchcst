@@ -14,6 +14,7 @@ class FusedConfig:
     atoms: int = 8
     warps: int = 4
     late_reduce: bool = False
+    fp_fusion: bool = False
 
     def __post_init__(self):
         for name, allowed in (
@@ -30,6 +31,8 @@ class FusedConfig:
                 raise ValueError(f"unsupported fused {name}")
         if type(self.late_reduce) is not bool:
             raise ValueError("late_reduce must be bool")
+        if type(self.fp_fusion) is not bool:
+            raise ValueError("fp_fusion must be bool")
 
 
 def default_fused_config(tile_shape, input_rows, requested_batch_rows=None):
@@ -73,5 +76,5 @@ def launch_fused(layer, x, prepared, y, config):
         BA=config.atoms,
         LATE_REDUCE=config.late_reduce,
         num_warps=config.warps,
-        enable_fp_fusion=False,
+        enable_fp_fusion=config.fp_fusion,
     )
