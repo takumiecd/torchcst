@@ -149,6 +149,16 @@ PYTHONPATH=src:. python -u -m prototypes.benchmark_fused_compute \
   --configs 128,32,16,1,4,1,0,0 128,32,16,1,4,1,0,1 --full
 ```
 
+### 隣接するI/Bバケットのループ統合試作
+
+Grok 4.7とsupport layoutのバケット順を確認した。`G>1`のstation `s>0`では、対象atomは前stationの境界`B[s-1]`、現在の内部`I[s]`、現在の境界`B[s]`の順に連続している。BA1なら、個別の3ループを`[Offsets[2*s-1], Offsets[2*s+2])`の1ループにしてもatomの訪問順を保てる。station 0は円周の継ぎ目で、最後の境界範囲の後に`[Offsets[0], Offsets[2])`を走査する必要がある。idle bucketを含めない終端にも注意した。
+
+Grok 4.7が実験commit `d7b34404c0c0c9ed320b31c8d3b68206bd47fdfa`で、BA1/late-reduceだけに明示的な`merge_buckets`を追加した。既定経路とdispatchは変更していない。A100ではTriton 3.2が3条件をつなぐ`and`構文を拒否し、関連テスト13件がコンパイル失敗、52件が合格した。修正commit `596102fbb5563e283b6b5f910bd7e6c252700bc1`で構文を分けると64件が合格し、残り1件はG=2で特定境界バケットが非空というテスト側の誤った前提で失敗した。
+
+テスト修正commit `2bd28dd5abc9b9966f335e1e879b6e746c9d189f`を別スナップショットで再実行すると、G=2の新経路のコンパイル中、Triton `make_ttgir`でPythonプロセスが`Aborted (core dumped)`となり、遠隔終了コード134だった。そこから追加のコンパイル試行と性能計測は行っていない。Triton停止の詳細原因は未特定であり、ループ統合の性能・正しさに結論は出ていない。実験コードは`a5f5712`、`4072d86`、`31ce9f0`の順にrevertした。
+
+3つのsource archive SHA256は順に`0f4159cc66939fe49fdd050de8411a1756a5bdc8751f3e50e5d97d32cda0be83`、`c782080e3d2eb7fd0351c708d7bf307a9a615c250cf406ee54ce60b5caa2ad50`、`056f9f45a4bc9a1175cc625e841cee38c082853caa720f6877b3fe17da785a91`で、遠隔展開前に一致を確認した。最後の遠隔ディレクトリは`srv11/cst-lab/torchcst-merge-buckets-2bd28dd`。abort logは`output/triton-a100-20260927/low-density-bm/merge-tests-abort.log`、SHA256は`b731d1f7ca3cf772becc308b0247204c6c0472419d4c92af3c89f5696a4b4fec`で遠隔と一致した。
+
 ## 生成後の空重み判定
 
 実験commit `ed8fd8fc45c23837f73b1da8081e923ce2b782f6`で、BN×BK重み小片を生成した後、全てゼロなら入力ロードとdotを飛ばした。全経路の出力照合は合格したが、同一runで全密度が遅くなった。特に8,192 atomsの準備込みは基準4.001→4.534ms、32,768では4.063→4.591ms。重み生成を終えてからの分岐では費用を回収できないため、commit `9c1489a`でコードをrevertした。NaN/Inf入力に対するゼロ重みとの積の意味も変わるので、この方式を採用しない。
