@@ -181,6 +181,9 @@ def tiled_linear(
             weight = kernel.weight_tile(chart, candidates, rows, columns)
             result = flat_inputs @ weight.T
         else:
-            result = flat_inputs.new_zeros((flat_inputs.shape[0], rows.numel()))
+            # Empty support still has zero derivatives with respect to X and
+            # every atom, including when the entire operator is inactive.
+            result = (flat_inputs.sum(-1, keepdim=True) * 0).expand(-1, rows.numel())
+            result = result + packed.sum() * 0
         outputs.append(result)
     return torch.cat(outputs, dim=-1).reshape(*inputs.shape[:-1], chart.shape[0])

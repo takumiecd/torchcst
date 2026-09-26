@@ -79,3 +79,23 @@ def test_seam_shared_atom_is_stored_once_and_gpu_classification_matches(device):
             )
             for a, b in zip(got, wanted, strict=True):
                 torch.testing.assert_close(a, b, atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
+def test_all_idle_atoms_keep_zero_input_and_parameter_gradients(device):
+    layer = _model(
+        device=device, sigma_min=0.3, backend="tiled" if device == "cpu" else "triton"
+    )
+    with torch.no_grad():
+        layer.atoms.p[:, 0] = 0.8
+        layer.atoms.p[:, 1] = 1
+        coordinates = layer.atoms.p.new_tensor([[8.5, 0, 0]])
+        layer.atoms.p[:, 2:] = layer.chart.geometry.encode_centers(
+            layer.chart.geometry.lift_chart_coordinates(coordinates)
+        )
+    assert not support_mask(layer.chart, layer.kernel, layer.atoms.p).any()
+    x = torch.randn(2, 21, device=device, requires_grad=True)
+    y = layer(x)
+    assert not y.any()
+    dx, dp = torch.autograd.grad(y.sum(), (x, layer.atoms.p))
+    assert not dx.any() and not dp.any()
