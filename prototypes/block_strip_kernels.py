@@ -45,9 +45,7 @@ def block_direct_reuse(
                 0.0,
             )
             rho = tl.load(Section + k * (D - 1), k < T, 0.0)
-            sites = (rho * cosine, rho * sine)
-            for dim in tl.static_range(2, D):
-                sites += (tl.load(Section + k * (D - 1) + dim - 1, k < T, 0.0),)
+            site_x, site_y = rho * cosine, rho * sine
             for slot in tl.static_range(1 if G == 1 else 3):
                 bucket = _bucket(station, slot, G)
                 begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
@@ -56,7 +54,15 @@ def block_direct_reuse(
                     if (amplitude != 0) & _row_possible(P, Bounds, a, cosine, sine, D):
                         squared = tl.full((BK,), 0, tl.float32)
                         for dim in tl.static_range(D):
-                            delta = sites[dim] - tl.load(P + a * (D + 2) + 2 + dim)
+                            if dim == 0:
+                                site = site_x
+                            elif dim == 1:
+                                site = site_y
+                            else:
+                                site = tl.load(
+                                    Section + k * (D - 1) + dim - 1, k < T, 0.0
+                                )
+                            delta = site - tl.load(P + a * (D + 2) + 2 + dim)
                             squared += delta * delta
                         value, _ = _profile(
                             squared, tl.load(P + a * (D + 2) + 1), PROFILE
