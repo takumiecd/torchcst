@@ -398,7 +398,14 @@ is available through `pip install -e '.[cuda]'` on Linux.
 Backend assignment is validated, so `layer.backend = "triton"` selects the
 implementation without changing parameters or checkpoint format. Execution
 block sizes are internal; they do not alter `StripChart.tile_shape`. The
-initial Triton kernels use fixed 16×16 blocks and IEEE float32 dot products;
+Triton path reuses validated fixed geometry while preparing fresh atoms and
+layouts every forward. Buffer-version and configuration changes invalidate
+this plan, including checkpoint loads and device/dtype moves. After warmup,
+forward can be captured in a CUDA Graph with fixed shapes and configuration;
+inputs and atom values may change between replays. Rebuild the graph after
+changing the chart or kernel configuration.
+
+The initial Triton kernels use fixed 16×16 blocks and IEEE float32 dot products;
 hardware autotuning and mixed precision are not enabled yet. Atom-gradient
 accumulation uses floating-point atomics, so deterministic-algorithm mode is
 rejected when those gradients are requested. Higher-order differentiation

@@ -20,7 +20,7 @@ from torchcst import (
     Triweight,
     WendlandC2,
 )
-from torchcst.nn._backends._triton import geometry_factors
+from torchcst.nn._backends._preparation import execution_plan, geometry_factors, prepare
 from torchcst.optim import LinearJGAtomGrad
 
 GPU = pytest.mark.skipif(
@@ -240,3 +240,111 @@ def test_triton_torus_embedding_dimensions(cross_shape):
     got = torch.autograd.grad(actual, (x, model.atoms.p), gradient)
     for actual_grad, expected_grad in zip(got, wanted):
         torch.testing.assert_close(actual_grad, expected_grad, atol=1e-4, rtol=1e-4)
+
+
+def test_preparation_reuses_only_constants_and_keeps_fresh_autograd_graphs():
+    model = _model()
+    plan = execution_plan(model)
+    state_keys = tuple(model.state_dict())
+    first = prepare(model, model.atoms.p)
+    first[0].sum().backward()
+    assert bool(torch.isfinite(model.atoms.p.grad).all())
+    model.atoms.p.grad = None
+    with torch.no_grad():
+        model.atoms.p[:, 0].add_(0.01)
+    second = prepare(model, model.atoms.p)
+    second[0].sum().backward()
+    assert bool(torch.isfinite(model.atoms.p.grad).all())
+    assert execution_plan(model) is plan
+    assert first[1] is second[1] and first[2] is second[2]
+    assert first[0] is not second[0]
+    assert not torch.equal(first[0], second[0])
+    assert tuple(model.state_dict()) == state_keys
+
+
+@pytest.mark.parametrize(
+    "change", ["buffer_update", "buffer_replace", "checkpoint", "dtype", "profile"]
+)
+def test_preparation_invalidates_changed_configuration(change):
+    model = _model()
+    first = execution_plan(model)
+    if change == "buffer_update":
+        model.chart.axes[1].start.add_(0.01)
+    elif change == "buffer_replace":
+        model.chart.tile_pitch = model.chart.tile_pitch.clone()
+    elif change == "checkpoint":
+        model.load_state_dict(model.state_dict())
+    elif change == "dtype":
+        model.double()
+    else:
+        model.kernel.profile = Biweight(3.5, normalize_columns=False)
+    second = execution_plan(model)
+    assert second is not first
+    circle, section = geometry_factors(model.chart)
+    torch.testing.assert_close(second.circle, circle)
+    torch.testing.assert_close(second.section, section)
+    assert execution_plan(model) is second
+
+
+@pytest.mark.parametrize("change", ["bandwidth", "normalization"])
+def test_preparation_revalidates_invalid_configuration(change):
+    model = _model()
+    execution_plan(model)
+    if change == "bandwidth":
+        model.kernel.sigma_max_input.fill_(100.0)
+    else:
+        model.kernel.profile.normalize_columns = True
+    with pytest.raises(ValueError):
+        prepare(model, model.atoms.p)
+
+
+def test_preparation_can_be_warmed_in_inference_then_used_for_training():
+    model = _model()
+    with torch.inference_mode():
+        prepare(model, model.atoms.p)
+    plan = execution_plan(model)
+    assert not plan.circle.is_inference() and not plan.section.is_inference()
+    prepare(model, model.atoms.p)[0].sum().backward()
+    assert bool(torch.isfinite(model.atoms.p.grad).all())
+    with torch.inference_mode():
+        inference_model = _model()
+        first = prepare(inference_model, inference_model.atoms.p)
+        second = prepare(inference_model, inference_model.atoms.p)
+        torch.testing.assert_close(first[0], second[0])
+        assert inference_model._strip_torus_plan is None
+
+
+def test_warm_preparation_does_not_read_tensor_values_on_the_host():
+    model = _model()
+    prepare(model, model.atoms.p)
+    with torch.profiler.profile(
+        activities=[torch.profiler.ProfilerActivity.CPU]
+    ) as trace:
+        prepare(model, model.atoms.p)
+    names = {event.key for event in trace.key_averages()}
+    assert "aten::item" not in names
+    assert "aten::_local_scalar_dense" not in names
+
+
+@GPU
+def test_triton_warm_forward_captures_updated_inputs_and_atoms():
+    torch.manual_seed(74)
+    model = _model(device="cuda", backend="triton", sigma_min=0.3)
+    x = torch.randn(7, 21, device="cuda")
+    with torch.no_grad():
+        stream = torch.cuda.Stream()
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream):
+            for _ in range(3):
+                model(x)
+        torch.cuda.current_stream().wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            actual = model(x)
+        for _ in range(2):
+            x.normal_()
+            model.atoms.p[:, 0].add_(0.01)
+            model.atoms.p[:, 2].add_(1.0)
+            graph.replay()
+            expected = torch.nn.functional.linear(x, model.dense_weight())
+            torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-5)

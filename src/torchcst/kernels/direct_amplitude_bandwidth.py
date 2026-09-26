@@ -673,10 +673,15 @@ class DirectAmpWidth(Kernel):
         the activity state's stop-gradient semantics have one definition.
         """
 
-        direct, center = self._single_split(chart, p)
-        amplitude, alpha = self._amplitude_and_alpha(direct)
+        self._single_split(chart, p)
+        return self._tile_parameters(p)
+
+    def _tile_parameters(self, p: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        """Evaluate a row table after an execution plan validated its schema."""
+
+        amplitude, alpha = self._amplitude_and_alpha(p[:, :2])
         sigma, _, _ = self._sigma_bounds(amplitude, alpha)
-        return center, amplitude, sigma.reciprocal().square().detach()
+        return p[:, 2:], amplitude, sigma.reciprocal().square().detach()
 
     def _single_values(
         self,

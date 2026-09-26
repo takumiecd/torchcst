@@ -11,7 +11,8 @@
 | `nn/linear.py` | モデル・Parameter の所有、公開 API、AtomGrad との接続 |
 | `nn/_backends/__init__.py` | backend の検証・選択・ディスパッチ |
 | `nn/_backends/_torch.py` | materialized / factored / tiled の PyTorch 実行 |
-| `nn/_backends/_triton.py` | 座標準備と autograd 接続。Triton は実行時だけ import |
+| `nn/_backends/_preparation.py` | 固定設定の検証・座標計画と、毎回新しく行うアトム準備 |
+| `nn/_backends/_triton.py` | autograd 接続。Triton は実行時だけ import |
 | `nn/_backends/_triton_kernels.py` | forward、入力勾配、アトム勾配の GPU カーネル |
 | `nn/_layout.py` | 不透明なアトム行の配置と repack 計画 |
 | `nn/_strip_torus.py` | 所属判定、支持範囲オラクル、タイルの基準計算 |
@@ -83,8 +84,18 @@ float32、dot は `input_precision="ieee"`。autotune / Tensor Core 用の
 
 アトム勾配は浮動小数点の atomic 加算を使う。決定的アルゴリズムモードで
 その勾配を要求すると明示的にエラーになる。Triton 経路は一次微分専用で、
-二次微分は PyTorch 経路を使う。準備処理には PyTorch と CPU 同期が残るため、
-CUDA Graph / `torch.compile` による全体の capture は対象外。
+二次微分は PyTorch 経路を使う。初回の設定検証には CPU 同期が必要なため、
+設定検証と固定座標の作成を warmup で済ませる。以降は、形状と設定を
+固定した forward 全体を CUDA Graph に capture できる。入力とアトム値は
+replay 間で更新できる。Chart・Kernel の設定や形状を変更した場合は再 capture
+する。学習全体の capture と `torch.compile` 対応は保証していない。
+
+固定座標と所属判定用の区間は実行計画として再利用する。buffer の identity・
+version・device・dtype、および設定メタデータを検査し、変更時には再検証・再作成
+する。checkpoint の読込みや `.to()` も対象となる。アトム値、並べ替え順序、
+autograd graph は保存せず、毎回計算する。初回が inference mode でも固定座標は
+通常の Tensor として作り、後の学習に使えるようにする。version のない
+inference Tensor を設定に含むモデルでは計画をキャッシュしない。
 
 ## 検証と計測
 
@@ -107,7 +118,7 @@ PyTorch の GEMM に渡す比較用経路も測る。融合版ではバッチ方
 重み生成が繰り返されるため、融合が常に速いとは仮定しない。初回 JIT を除外し、
 各ケースを複数回測定した中央値を JSON に保存する。
 
-## 2026-09-26 A100 での結果
+## 2026-09-26 A100 での結果：初版 `306d071`
 
 NVIDIA A100 80GB PCIe の MIG 3g.40gb 区画、PyTorch 2.6.0+cu126、Triton 3.2.0。
 リポジトリ全体は **371 passed**（skip なし）。うち Triton 関連は CPU 上の契約検査を含む 29 件。
@@ -124,11 +135,11 @@ NVIDIA A100 80GB PCIe の MIG 3g.40gb 区画、PyTorch 2.6.0+cu126、Triton 3.2.
 | 16 | 256 | 25.01 | 213.28 | 25.27 | 25.60 | 0.457 | 0.072 |
 | 128 | 256 | 25.05 | 213.29 | 25.18 | 26.82 | 0.443 | 0.078 |
 
-この4ケースの出力最大絶対差は `3.28e-7` 以下。現在は準備処理が全体時間の大半を占める。
+この4ケースの出力最大絶対差は `3.28e-7` 以下。初版では準備処理が全体時間の大半を占めた。
 また、同じ重み生成を使った分離実行の方が GPU 時間では速い。融合版の
 並列度・重み再生成・命令配置の改善余地を示す結果であり、広い形状や GPU での
-速度優位を主張するものではない。autotune より前に、準備段階の同期と
-配置更新の扱いを改善し、融合と分離を同じ条件で比較する。
+速度優位を主張するものではない。この結果から、最初の改善対象を準備段階の
+同期と配置更新にした。
 
 全体検証で見つかった `device="cuda"` と `cuda:0` の初期化検査の不一致、
 および `exp(log(bound))` の丸めで帯域幅が境界をわずかに越える問題も修正した。
@@ -138,3 +149,35 @@ NVIDIA A100 80GB PCIe の MIG 3g.40gb 区画、PyTorch 2.6.0+cu126、Triton 3.2.
 `manifest.json` に保存し、実行前に照合した。結果は `all-tests.xml`、
 `all-tests.log`、`benchmark.json`、`benchmark.log`。ローカルの取得先は
 `output/triton-a100-20260926/`。
+
+## 同日の改善：固定設定の再利用と準備時の同期削減
+
+設定検証と固定座標を再利用し、中心座標の重複 decode を除いた。所属数は
+既知のステーション数の配列へ `scatter_add_` で数え、`bincount` の出力サイズ
+決定に伴う同期を避ける。数値 GPU カーネル、FP32 の計算精度、Chart の定義は
+変更していない。
+
+同じ A100 区画・ソフトウェア・4形状で、warmup 後の10回中央値を比較した。
+時間は準備と同期を含む壁時計時間。GPU カーネル単体の速度向上を表すものではない。
+
+| 入力行 M | アトム数 | forward 初版 → 改善後 ms | forward+backward 初版 → 改善後 ms |
+| ---: | ---: | ---: | ---: |
+| 16 | 64 | 25.02 → 2.75 | 25.19 → 5.41 |
+| 128 | 64 | 24.99 → 2.75 | 25.30 → 7.89 |
+| 16 | 256 | 25.27 → 2.94 | 25.60 → 8.19 |
+| 128 | 256 | 25.18 → 2.94 | 26.82 → 8.23 |
+
+この範囲で forward は約8.6–9.1倍、forward+backward は約3.1–4.7倍になった。
+出力最大絶対差は引き続き `3.28e-7` 以下。GPU カーネル単体では融合版が
+0.126–0.458ms、分離版が0.027–0.078msであり、融合版自体には改善余地が残る。
+ホストと同期の遅延も含む小規模な測定なので、大きな形状での倍率は別途測る。
+
+A100 で全 **382 passed**（skip なし）、ローカル CPU で352 passed / 29 skipped。
+追加検証には設定変更・checkpoint 読込み・dtype 変更時の無効化、inference 後の
+学習、アトム値と入力を更新する CUDA Graph replay を含む。
+
+再現用 snapshot は `srv11/cst-lab/torchcst-triton-20260926-perf-prep1/`。
+基準コミットは `306d071`、変更を含む全110ファイルを manifest で照合した。
+`manifest.json` の SHA256 は
+`cc534514f899b6aaa6f31ef8938b8329bfeeadf26ebca2eb759cce0c8caa4648`。
+取得結果はローカルの同じ出力ディレクトリに `*-perf-prep1.*` として保存した。

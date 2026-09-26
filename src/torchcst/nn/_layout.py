@@ -31,7 +31,18 @@ def initial_layout(owners: Tensor, stations: int) -> AtomLayout:
         raise ValueError("owners must be a one-dimensional long tensor")
     if stations < 1 or bool(((owners < 0) | (owners >= stations)).any()):
         raise ValueError("owner outside station range")
-    counts = torch.bincount(owners, minlength=stations)
+    return _station_layout(owners, stations)
+
+
+def _station_layout(owners: Tensor, stations: int) -> AtomLayout:
+    """Layout for already bounded owners from the internal routing rule.
+
+    A fixed-size histogram avoids bincount's device-to-host maximum query.
+    The public/reference entry above still checks arbitrary caller input.
+    """
+
+    counts = owners.new_zeros(stations)
+    counts.scatter_add_(0, owners, torch.ones_like(owners))
     offsets = torch.cat((counts.new_zeros(1), counts.cumsum(0)))
     return AtomLayout(
         offsets, torch.argsort(owners, stable=True), torch.zeros_like(owners)

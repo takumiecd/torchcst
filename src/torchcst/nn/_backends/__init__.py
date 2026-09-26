@@ -31,7 +31,7 @@ class _Implementation:
 
 
 def _validate_triton(charts: tuple[Chart, ...], kernel: Kernel) -> None:
-    from ._triton import validate
+    from ._preparation import validate
 
     validate(charts, kernel)
 

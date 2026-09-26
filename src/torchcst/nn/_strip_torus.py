@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import torch
 from torch import Tensor
 
@@ -65,27 +67,56 @@ def route_atoms(chart: StripChart, kernel: DirectAmpWidth, p: Tensor) -> Tensor:
     """
 
     decoded = chart.geometry.decode_centers(p[:, 2:])
-    geometry = chart.geometry
-    arc = geometry.major_radius * torch.atan2(decoded[:, 1], decoded[:, 0])
-    stations = torch.arange(chart.tile_count, device=p.device)
-    line = chart.axes[chart.axis]
-    counts = (
-        chart.shape[chart.axis] - stations * chart.tile_shape[chart.axis]
-    ).clamp_max(chart.tile_shape[chart.axis])
-    starts = line.start[0] + stations * chart.tile_pitch
-    spans = (counts - 1) * line.spacing[0]
-    period = 2 * torch.pi * geometry.major_radius
-    relative = (
-        torch.remainder(arc[:, None] - (starts + spans / 2) + period / 2, period)
-        - period / 2
-    )
-    local = ((relative + spans / 2) / line.spacing[0]).round().clamp_min(0)
-    local = torch.minimum(local, counts - 1)
-    nearest = starts + local * line.spacing[0]
-    distance = (
-        torch.remainder(arc[:, None] - nearest + period / 2, period) - period / 2
-    ).abs()
-    return distance.argmin(dim=1)
+    return CircleRouting.from_chart(chart).owners(decoded)
+
+
+@dataclass(frozen=True)
+class CircleRouting:
+    """Fixed circle intervals, shared by reference and prepared execution."""
+
+    major_radius: Tensor
+    period: Tensor
+    starts: Tensor
+    spans: Tensor
+    spacing: Tensor
+    last_row: Tensor
+
+    @classmethod
+    def from_chart(cls, chart: StripChart) -> CircleRouting:
+        stations = torch.arange(chart.tile_count, device=chart.device)
+        line = chart.axes[chart.axis]
+        counts = (
+            chart.shape[chart.axis] - stations * chart.tile_shape[chart.axis]
+        ).clamp_max(chart.tile_shape[chart.axis])
+        return cls(
+            chart.geometry.major_radius,
+            2 * torch.pi * chart.geometry.major_radius,
+            line.start[0] + stations * chart.tile_pitch,
+            (counts - 1) * line.spacing[0],
+            line.spacing[0],
+            counts - 1,
+        )
+
+    @torch.no_grad()
+    def owners(self, decoded: Tensor) -> Tensor:
+        arc = self.major_radius * torch.atan2(decoded[:, 1], decoded[:, 0])
+        relative = (
+            torch.remainder(
+                arc[:, None] - (self.starts + self.spans / 2) + self.period / 2,
+                self.period,
+            )
+            - self.period / 2
+        )
+        # A singleton/zero-spacing LinePattern has one sampled angle per station.
+        spacing = self.spacing.clamp_min(torch.finfo(decoded.dtype).tiny)
+        local = ((relative + self.spans / 2) / spacing).round().clamp_min(0)
+        local = torch.minimum(local, self.last_row)
+        nearest = self.starts + local * self.spacing
+        distance = (
+            torch.remainder(arc[:, None] - nearest + self.period / 2, self.period)
+            - self.period / 2
+        ).abs()
+        return distance.argmin(dim=1)
 
 
 @torch.no_grad()

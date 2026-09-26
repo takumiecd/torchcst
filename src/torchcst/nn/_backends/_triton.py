@@ -12,56 +12,12 @@ import torch
 from torch import Tensor
 from torch.autograd.function import once_differentiable
 
-from torchcst.geometry import Chart, StripChart
-from torchcst.kernels import Biweight, Kernel, Triangle, Triweight, WendlandC2
 from torchcst.profiling import cst_span
 
-from .._layout import initial_layout
-from .._strip_torus import route_atoms
-from ._torch import validate_tiled
+from ._preparation import PROFILE_KINDS, prepare
 
 if TYPE_CHECKING:
     from ..linear import CSTLinear
-
-_PROFILES = {Biweight: 0, Triweight: 1, WendlandC2: 2, Triangle: 3}
-
-
-def validate(charts: tuple[Chart, ...], kernel: Kernel) -> None:
-    validate_tiled(charts, kernel)
-    if type(kernel.profile) not in _PROFILES:
-        raise ValueError(
-            "triton backend requires Biweight, Triweight, WendlandC2 or Triangle"
-        )
-
-
-def geometry_factors(chart: StripChart) -> tuple[Tensor, Tensor]:
-    """Factor ambient sites into row circle directions and column sections.
-
-    For row n and column k, the site is
-    [circle[n] * section[k, 0], section[k, 1:]]. Both tensors are linear
-    in the operator's axis lengths, including for nonuniform column patterns.
-    """
-
-    geometry = chart.geometry
-    rows = torch.arange(chart.shape[0], device=chart.device)
-    arc = chart.axes[0].positions(rows % chart.tile_shape[0]).squeeze(-1)
-    arc = (
-        arc
-        + torch.div(rows, chart.tile_shape[0], rounding_mode="floor") * chart.tile_pitch
-    )
-    angle = arc / geometry.major_radius
-    circle = torch.stack((angle.cos(), angle.sin()), dim=-1)
-    columns = torch.arange(chart.shape[1], device=chart.device)
-    cross = chart.axes[1].positions(columns)
-    section = torch.cat(
-        (geometry.minor_radius.expand(cross.shape[0], 1), cross), dim=-1
-    )
-    section = section / torch.linalg.vector_norm(section, dim=-1, keepdim=True)
-    section = section * geometry.minor_radius
-    section = torch.cat(
-        (section[:, :1] + geometry.major_radius, section[:, 1:]), dim=-1
-    )
-    return circle.contiguous(), section.contiguous()
 
 
 def forward(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
@@ -82,26 +38,17 @@ def forward(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
             "triton backend requires the optional torchcst[cuda] dependencies"
         ) from error
 
-    with cst_span("cst.linear.route_atoms"):
-        owners = route_atoms(site.chart, site.kernel, p)
-        layout = initial_layout(owners, site.chart.tile_count)
-    with cst_span("cst.linear.prepare_tiles"):
-        center, amplitude, precision = site.kernel.tile_parameters(site.chart, p)
-        center = site.chart.geometry.decode_centers(center)
-        packed = layout.pack(
-            torch.cat((amplitude[:, None], precision[:, None], center), dim=-1)
-        )
-        circle, section = geometry_factors(site.chart)
-        flat = inputs.reshape(-1, site.in_features).contiguous()
+    packed, circle, section, offsets = prepare(site, p)
+    flat = inputs.reshape(-1, site.in_features).contiguous()
     with cst_span("cst.linear.triton_matmul"):
         output = _FusedLinear.apply(
             flat,
             packed,
             circle,
             section,
-            layout.offsets,
+            offsets,
             site.chart.tile_shape[0],
-            _PROFILES[type(site.kernel.profile)],
+            PROFILE_KINDS[type(site.kernel.profile)],
         )
     return output.reshape(*inputs.shape[:-1], site.out_features)
 

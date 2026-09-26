@@ -26,9 +26,8 @@ from torchcst import (
     TorusGeometry,
     Triweight,
 )
-from torchcst.nn._backends._triton import _FusedLinear, geometry_factors
-from torchcst.nn._layout import initial_layout
-from torchcst.nn._strip_torus import route_atoms
+from torchcst.nn._backends._preparation import prepare as prepare_atoms
+from torchcst.nn._backends._triton import _FusedLinear
 
 
 def timed(fn, repeats):
@@ -73,16 +72,7 @@ def model(atoms):
 
 
 def prepare(layer):
-    p = layer.atoms.p
-    owners = route_atoms(layer.chart, layer.kernel, p)
-    layout = initial_layout(owners, layer.chart.tile_count)
-    center, amplitude, precision = layer.kernel.tile_parameters(layer.chart, p)
-    center = layer.chart.geometry.decode_centers(center)
-    packed = layout.pack(
-        torch.cat((amplitude[:, None], precision[:, None], center), dim=-1)
-    )
-    circle, section = geometry_factors(layer.chart)
-    return packed, circle, section, layout.offsets
+    return prepare_atoms(layer, layer.atoms.p)
 
 
 def probe(batch, atoms, repeats):
