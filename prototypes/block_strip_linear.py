@@ -278,7 +278,12 @@ class BlockStripLinear(nn.Module):
                 )
 
                 config = fused_config or default_fused_config(
-                    self.tile_shape, flat.shape[0], batch_tile
+                    self.tile_shape,
+                    flat.shape[0],
+                    batch_tile,
+                    atom_density=self.strip.atoms.p.shape[0]
+                    / (self.shape[0] * self.shape[1]),
+                    gpu_name=torch.cuda.get_device_name(flat.device),
                 )
                 launch_fused(self, flat, (p, circle, section, offsets), y, config)
         return y.reshape(*x.shape[:-1], self.shape[0])

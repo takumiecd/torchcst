@@ -35,12 +35,24 @@ class FusedConfig:
             raise ValueError("fp_fusion must be bool")
 
 
-def default_fused_config(tile_shape, input_rows, requested_batch_rows=None):
-    """Use the measured A100 schedule for 64x64 charts with enough input rows."""
+def default_fused_config(
+    tile_shape,
+    input_rows,
+    requested_batch_rows=None,
+    *,
+    atom_density=0.0,
+    gpu_name="",
+):
+    """Use the measured A100 schedule for 64x64 charts with enough input rows.
+
+    FP fusion stays off unless that schedule applies on an A100 and the atom
+    count is at least 5% of the dense matrix.
+    """
     if requested_batch_rows is not None:
         return FusedConfig(batch_rows=requested_batch_rows)
     if tuple(tile_shape) == (64, 64) and input_rows >= 128:
-        return FusedConfig(batch_rows=128, late_reduce=True)
+        fp_fusion = "A100" in gpu_name and atom_density >= 0.05
+        return FusedConfig(batch_rows=128, late_reduce=True, fp_fusion=fp_fusion)
     return FusedConfig()
 
 

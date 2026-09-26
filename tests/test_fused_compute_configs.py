@@ -1,10 +1,12 @@
 """Accumulation scheduling changes preserve local geometry and updated atoms."""
 
+import math
+
 import pytest
 import torch
 import torch.nn.functional as F
 
-from prototypes.block_fused_config import FusedConfig
+from prototypes.block_fused_config import FusedConfig, default_fused_config
 from prototypes.block_strip_linear import BlockStripLinear
 
 
@@ -63,3 +65,42 @@ def test_selected_fused_default_preserves_tails_and_explicit_override():
 def test_fp_fusion_requires_exact_bool():
     with pytest.raises(ValueError, match="fp_fusion must be bool"):
         FusedConfig(fp_fusion=1)
+
+
+def test_default_fp_fusion_requires_dense_a100_and_respects_override():
+    bm128 = FusedConfig(128, late_reduce=True)
+    assert default_fused_config(
+        (64, 64), 128, atom_density=0.05, gpu_name="NVIDIA A100-SXM4-40GB"
+    ) == FusedConfig(128, late_reduce=True, fp_fusion=True)
+    assert (
+        default_fused_config((64, 64), 128, atom_density=0.049, gpu_name="NVIDIA A100")
+        == bm128
+    )
+    assert (
+        default_fused_config(
+            (64, 64), 128, atom_density=0.2, gpu_name="NVIDIA RTX PRO 6000"
+        )
+        == bm128
+    )
+    assert default_fused_config(
+        (64, 64), 256, 64, atom_density=1.0, gpu_name="A100"
+    ) == FusedConfig(batch_rows=64)
+
+
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or "A100" not in torch.cuda.get_device_name(0),
+    reason="default FP fusion is selected only on A100",
+)
+def test_default_fp_fusion_matches_explicit_dense_a100_tile():
+    torch.manual_seed(419)
+    shape = (64, 64)
+    atoms = math.ceil(0.05 * shape[0] * shape[1])
+    layer = BlockStripLinear(shape, (64, 64), atoms, device="cuda")
+    x = torch.randn(128, shape[1], device="cuda")
+    selected = FusedConfig(128, late_reduce=True, fp_fusion=True)
+    actual = layer(x, backend="triton_fused")
+    explicit = layer(x, backend="triton_fused", fused_config=selected)
+    torch.testing.assert_close(actual, explicit, atol=0, rtol=0)
+    torch.testing.assert_close(
+        actual, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
+    )
