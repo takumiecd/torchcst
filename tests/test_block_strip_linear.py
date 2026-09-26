@@ -34,10 +34,22 @@ def test_mapped_reference_values_gradients_and_indices(shape, tile):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize(
     "shape,tile",
-    [((33, 35), (16, 16)), ((65, 129), (64, 128)), ((128, 128), (128, 128))],
+    [
+        ((3, 5), (4, 8)),
+        ((33, 35), (16, 16)),
+        ((65, 129), (64, 128)),
+        ((128, 128), (128, 128)),
+    ],
 )
 @pytest.mark.parametrize(
-    "backend", ["triton_direct", "triton_fused", "triton_reuse", "triton_shared"]
+    "backend",
+    [
+        "triton_direct",
+        "triton_fused",
+        "triton_reuse",
+        "triton_shared",
+        "triton_atom_dot",
+    ],
 )
 def test_mapped_gpu(shape, tile, backend):
     torch.manual_seed(7)
@@ -54,7 +66,14 @@ def test_mapped_gpu(shape, tile, backend):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize(
-    "backend", ["triton_direct", "triton_fused", "triton_reuse", "triton_shared"]
+    "backend",
+    [
+        "triton_direct",
+        "triton_fused",
+        "triton_reuse",
+        "triton_shared",
+        "triton_atom_dot",
+    ],
 )
 def test_boundary_seam_and_graph_updates(backend):
     from torchcst.nn._backends._preparation import prepare
@@ -175,9 +194,19 @@ def test_reuse_tail_and_multiple_column_fragments(batch_tile):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize(
-    "bm,bn,warps", [(16, 2, 4), (32, 4, 4), (64, 4, 8), (16, 8, 4)]
+    "backend,bm,bn,warps",
+    [
+        ("triton_shared", 16, 2, 4),
+        ("triton_shared", 32, 4, 4),
+        ("triton_shared", 64, 4, 8),
+        ("triton_shared", 16, 8, 4),
+        ("triton_atom_dot", 16, 16, 4),
+        ("triton_atom_dot", 32, 16, 4),
+        ("triton_atom_dot", 32, 32, 4),
+        ("triton_atom_dot", 64, 16, 8),
+    ],
 )
-def test_shared_partial_station_and_batch(bm, bn, warps):
+def test_shared_partial_station_and_batch(backend, bm, bn, warps):
     torch.manual_seed(41)
     layer = BlockStripLinear((17, 197), (5, 192), 19, device="cuda")
     with torch.no_grad():
@@ -186,7 +215,7 @@ def test_shared_partial_station_and_batch(bm, bn, warps):
         torch.testing.assert_close(
             layer(
                 x,
-                backend="triton_shared",
+                backend=backend,
                 batch_tile=bm,
                 output_tile=bn,
                 num_warps=warps,

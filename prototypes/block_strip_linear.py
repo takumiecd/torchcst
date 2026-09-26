@@ -137,7 +137,7 @@ class BlockStripLinear(nn.Module):
         backend="torch",
         batch_tile=None,
         prepared=None,
-        output_tile=4,
+        output_tile=None,
         num_warps=4,
     ):
         if x.shape[-1] != self.shape[1]:
@@ -148,9 +148,12 @@ class BlockStripLinear(nn.Module):
             "triton_direct",
             "triton_reuse",
             "triton_shared",
+            "triton_atom_dot",
             "triton_fused",
         ):
             raise ValueError("unknown prototype backend")
+        if output_tile is None:
+            output_tile = 16 if backend == "triton_atom_dot" else 4
         if torch.is_grad_enabled() and (
             x.requires_grad or self.strip.atoms.p.requires_grad
         ):
@@ -170,11 +173,16 @@ class BlockStripLinear(nn.Module):
         )
         flat = x.reshape(-1, self.shape[1]).contiguous()
         y = flat.new_empty((flat.shape[0], self.shape[0]))
-        bm = batch_tile or (16 if backend in ("triton_direct", "triton_shared") else 64)
+        bm = batch_tile or (
+            16
+            if backend in ("triton_direct", "triton_shared", "triton_atom_dot")
+            else 64
+        )
         allowed = (4, 16, 64) if backend == "triton_direct" else (16, 64, 128)
-        if backend == "triton_shared":
+        if backend in ("triton_shared", "triton_atom_dot"):
             allowed = (16, 32, 64)
-            if output_tile not in (1, 2, 4, 8) or num_warps not in (4, 8):
+            valid_outputs = (16, 32) if backend == "triton_atom_dot" else (1, 2, 4, 8)
+            if output_tile not in valid_outputs or num_warps not in (4, 8):
                 raise ValueError("unsupported shared execution shape")
         elif num_warps != 4 or output_tile != 4:
             raise ValueError("output_tile and num_warps apply only to triton_shared")
@@ -194,7 +202,7 @@ class BlockStripLinear(nn.Module):
             "PROFILE": PROFILE_KINDS[type(self.strip.kernel.profile)],
         }
         if flat.shape[0]:
-            if backend == "triton_shared":
+            if backend in ("triton_shared", "triton_atom_dot"):
                 from prototypes.block_shared_kernel import block_direct_shared
 
                 bounds = torch.stack((section.amin(0), section.amax(0)))
@@ -213,7 +221,11 @@ class BlockStripLinear(nn.Module):
                     y,
                     **opts,
                     BN=output_tile,
-                    BK=min(128, 1 << (t - 1).bit_length()),
+                    USE_DOT=backend == "triton_atom_dot",
+                    BK=max(
+                        16 if backend == "triton_atom_dot" else 1,
+                        min(128, 1 << (t - 1).bit_length()),
+                    ),
                     num_warps=num_warps,
                     enable_fp_fusion=False,
                 )

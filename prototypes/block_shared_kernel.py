@@ -28,6 +28,7 @@ def block_direct_shared(
     BM: tl.constexpr,
     BN: tl.constexpr,
     BK: tl.constexpr,
+    USE_DOT: tl.constexpr = False,
 ):
     group = tl.program_id(1)
     r = group // tr.cdiv(S, BN)
@@ -75,7 +76,17 @@ def block_direct_shared(
                             squared, tl.load(P + a * (D + 2) + 1), PROFILE
                         )
                         value = tl.where(possible[:, None] & valid[None, :], value, 0.0)
-                        acc += tl.sum(x[:, None, :] * value[None, :, :], 2) * amplitude
+                        if USE_DOT:
+                            acc = tl.dot(
+                                x,
+                                tl.trans(value * amplitude),
+                                acc,
+                                input_precision="ieee",
+                            )
+                        else:
+                            acc += (
+                                tl.sum(x[:, None, :] * value[None, :, :], 2) * amplitude
+                            )
     tl.store(
         Y + m[:, None] * N + n[None, :], acc, (m[:, None] < M) & row_valid[None, :]
     )

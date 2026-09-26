@@ -20,7 +20,7 @@ from torchcst.nn._backends._preparation import prepare
 
 
 @torch.no_grad()
-def run(size, batch, atoms, output_dir, profile, configs):
+def run(size, batch, atoms, output_dir, profile, configs, atom_dot):
     torch.manual_seed(21)
     layer = BlockStripLinear((size, size), (64, 64), atoms, device="cuda")
     prepared = prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
@@ -36,7 +36,7 @@ def run(size, batch, atoms, output_dir, profile, configs):
         functions[spec] = partial(
             layer,
             x,
-            backend="triton_shared",
+            backend="triton_atom_dot" if atom_dot else "triton_shared",
             batch_tile=bm,
             output_tile=bn,
             num_warps=warps,
@@ -81,6 +81,7 @@ def run(size, batch, atoms, output_dir, profile, configs):
             PROFILE=1,
             BM=bm,
             BN=bn,
+            USE_DOT=atom_dot,
             BK=64,
             num_warps=warps,
             enable_fp_fusion=False,
@@ -113,6 +114,7 @@ def main():
         nargs="+",
         default=["16:1:4", "16:2:4", "16:4:4", "16:8:4", "32:4:4", "32:4:8", "64:4:8"],
     )
+    parser.add_argument("--atom-dot", action="store_true")
     args = parser.parse_args()
     if len(args.source_commit) != 40 or any(
         c not in "0123456789abcdef" for c in args.source_commit
@@ -129,6 +131,7 @@ def main():
         "triton": triton.__version__,
         "precision": "FP32 TF32 off",
         "tile": [64, 64],
+        "atom_dot": args.atom_dot,
         "timing": "CUDA Graph, preparation included, median 3 rounds rep=20ms",
         "cases": [],
     }
@@ -136,7 +139,15 @@ def main():
         size, batch, atoms = map(int, spec.split(":"))
         print(json.dumps({"stage": "start", "case": spec}), flush=True)
         result["cases"].append(
-            run(size, batch, atoms, args.output_dir, index == 0, args.configs)
+            run(
+                size,
+                batch,
+                atoms,
+                args.output_dir,
+                index == 0,
+                args.configs,
+                args.atom_dot,
+            )
         )
         (args.output_dir / "results.json").write_text(
             json.dumps(result, indent=2) + "\n"
