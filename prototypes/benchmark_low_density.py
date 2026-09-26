@@ -58,8 +58,25 @@ def run(size, batch, atoms, save):
     }
     save(result)
     weight, canonical = mapped_control(layer, prepared, canonical_chunk=4)
+    rows, cols = weight.shape
+    if rows % 64 or cols % 64:
+        raise RuntimeError("logical W must be divisible by 64")
+    panels = weight.reshape(rows // 16, 16, cols // 16, 16)
+    active_blocks = int((panels != 0).any(dim=(1, 3)).sum())
+    total_blocks = (rows // 16) * (cols // 16)
+    # Shared dense W stays occupied at 16x16, so tile culling is not used.
+    result["nonzero_weight_fraction"] = float((weight != 0).sum()) / weight.numel()
+    result["active_16x16_blocks"] = active_blocks
+    result["total_16x16_blocks"] = total_blocks
     result["canonical"] = canonical
     save(result)
+    log(
+        stage="weight_occupancy",
+        atoms=atoms,
+        nonzero_weight_fraction=result["nonzero_weight_fraction"],
+        active_16x16_blocks=active_blocks,
+        total_16x16_blocks=total_blocks,
+    )
     assert canonical["passed"], canonical
     x = torch.randn(batch, size, device="cuda")
     expected = F.linear(x, weight)

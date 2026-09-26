@@ -21,7 +21,7 @@ class FusedConfig:
             ("batch_rows", (16, 32, 64, 128)),
             ("output_rows", (16, 32)),
             ("columns", (16, 32, 64)),
-            ("atoms", (4, 8, 16, 32, 64)),
+            ("atoms", (1, 2, 4, 8, 16, 32, 64)),
             ("warps", (4, 8)),
         ):
             if (

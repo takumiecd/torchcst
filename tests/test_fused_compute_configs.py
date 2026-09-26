@@ -14,6 +14,8 @@ from prototypes.block_strip_linear import BlockStripLinear
 @pytest.mark.parametrize(
     "config",
     [
+        FusedConfig(128, 16, 16, 1, 4, True),
+        FusedConfig(128, 16, 16, 2, 4, True),
         FusedConfig(128, 16, 16, 8, 4, False),
         FusedConfig(128, 16, 16, 32, 4, False),
         FusedConfig(128, 16, 16, 8, 4, True),
