@@ -2,6 +2,8 @@
 
 2026-09-26。`prototypes/benchmark_large_forward.py` の測定結果。
 
+続報: [小さな行列ブロックと準備処理の改善](block-strip-study.ja.md)。
+
 ## 結論
 
 2048²・4096²・8192²、入力行数128/512で比較した。
