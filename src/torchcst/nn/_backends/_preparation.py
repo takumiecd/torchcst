@@ -164,6 +164,7 @@ def prepare(
                 support=(plan.circle, plan.section, precision, site.chart.tile_shape[0])
                 if support_layout
                 else None,
+                retain_owners=False,
             )
         with cst_span("cst.linear.pack_atoms"):
             packed = Pack.apply(amplitude, precision, decoded, order)

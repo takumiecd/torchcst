@@ -35,14 +35,20 @@ def tile_parameters(kernel, p):
     return p[:, 2:], amplitude, precision
 
 
-def route_and_layout(routing, decoded, *, support=None):
+def route_and_layout(
+    routing, decoded, *, support=None, retain_owners=True, batched_support=True
+):
     count, stations = decoded.shape[0], routing.starts.numel()
-    owners = torch.empty(count, device=decoded.device, dtype=torch.long)
     buckets = stations if support is None else 2 * stations + 1
+    # Only the permutation and offsets survive preparation. Reuse ownership
+    # storage for support keys when the caller does not need owners returned.
+    key_dtype = torch.int32 if not retain_owners and buckets < 2**31 else torch.long
+    owners = torch.empty(count, device=decoded.device, dtype=key_dtype)
     offsets = torch.empty(buckets + 1, device=decoded.device, dtype=torch.long)
     if not count:
         offsets.zero_()
-        return owners, owners, offsets
+        order = torch.empty(0, device=decoded.device, dtype=torch.long)
+        return owners if retain_owners else None, order, offsets
     bg = (
         min(256, tr.next_power_of_2(stations))
         if stations > 1024
@@ -88,8 +94,14 @@ def route_and_layout(routing, decoded, *, support=None):
         keys = owners
         if support is not None:
             circle, section, precision, station_rows = support
-            keys = torch.empty_like(owners)
-            kernels.support_buckets[(count,)](
+            keys = torch.empty_like(owners) if retain_owners else owners
+            support_kernel = (
+                kernels.support_buckets_batched
+                if batched_support
+                else kernels.support_buckets
+            )
+            batch_atoms = 8 if batched_support else 1
+            support_kernel[(tr.cdiv(count, batch_atoms),)](
                 decoded,
                 precision,
                 owners,
@@ -103,7 +115,10 @@ def route_and_layout(routing, decoded, *, support=None):
                 station_rows,
                 *decoded.stride(),
                 tr.next_power_of_2(station_rows),
-                256,
+                min(256, tr.next_power_of_2(section.shape[0]))
+                if batched_support
+                else 256,
+                **({"A": count, "BA": batch_atoms} if batched_support else {}),
                 num_warps=4,
                 enable_fp_fusion=False,
             )
@@ -116,7 +131,7 @@ def route_and_layout(routing, decoded, *, support=None):
             count.bit_length(),
             128,
         )
-    return owners, order, offsets
+    return owners if retain_owners else None, order, offsets
 
 
 class Pack(torch.autograd.Function):

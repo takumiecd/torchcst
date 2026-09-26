@@ -270,6 +270,83 @@ def support_buckets(
 
 
 @tr.jit
+def support_buckets_batched(
+    Centers,
+    Precision,
+    Owners,
+    Circle,
+    Section,
+    Keys,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    D: tl.constexpr,
+    G: tl.constexpr,
+    STATION_ROWS: tl.constexpr,
+    CS0: tl.constexpr,
+    CS1: tl.constexpr,
+    ROWS: tl.constexpr,
+    COLS: tl.constexpr,
+    A: tl.constexpr,
+    BA: tl.constexpr,
+):
+    a = tl.program_id(0) * BA + tl.arange(0, BA)
+    owner = tl.load(Owners + a, a < A, 0)
+    cx = tl.load(Centers + a * CS0, a < A, 0.0)
+    cy = tl.load(Centers + a * CS0 + CS1, a < A, 0.0)
+    r = tl.sqrt(cx * cx + cy * cy)
+    ux, uy = cx / r, cy / r
+    precision = tl.load(Precision + a, a < A, 0.0)
+    count, first, second = 0, 0, 0
+    for shift in tl.static_range(3 if G >= 3 else G):  # noqa: FURB136
+        station = (owner + G - 1 + shift) % G
+        row = station[:, None] * STATION_ROWS + tl.arange(0, ROWS)[None, :]
+        valid = (
+            (row < N) & (tl.arange(0, ROWS)[None, :] < STATION_ROWS) & (a[:, None] < A)
+        )
+        cosine = tl.load(Circle + row * 2, valid, 0.0)
+        sine = tl.load(Circle + row * 2 + 1, valid, 0.0)
+        distance = (cosine - ux[:, None]) * (cosine - ux[:, None]) + (
+            sine - uy[:, None]
+        ) * (sine - uy[:, None])
+        nearest = tl.argmin(tl.where(valid, distance, float("inf")), axis=1)
+        chosen = station * STATION_ROWS + nearest
+        cosine, sine = (
+            tl.load(Circle + chosen * 2, a < A, 0.0),
+            tl.load(Circle + chosen * 2 + 1, a < A, 0.0),
+        )
+        hit = False
+        for start in range(tr.cdiv(K, COLS)):
+            k = start * COLS + tl.arange(0, COLS)
+            rho = tl.load(Section + k * (D - 1), k < K, 0.0)
+            dx, dy = (
+                cosine[:, None] * rho[None, :] - cx[:, None],
+                sine[:, None] * rho[None, :] - cy[:, None],
+            )
+            squared = dx * dx + dy * dy
+            for dim in tl.static_range(2, D):
+                site = tl.load(Section + k * (D - 1) + dim - 1, k < K, 0.0)
+                center = tl.load(Centers + a * CS0 + dim * CS1, a < A, 0.0)
+                delta = site[None, :] - center[:, None]
+                squared += delta * delta
+            hit |= (
+                tl.sum(
+                    ((k < K) & (squared * precision[:, None] < 1.0)).to(tl.int32),
+                    axis=1,
+                )
+                > 0
+            )
+        second = tl.where(hit & (count == 1), station, second)
+        first = tl.where(hit & (count == 0), station, first)
+        count += hit.to(tl.int32)
+    if G == 2:
+        boundary = 0
+    else:
+        boundary = tl.where((first + 1) % G == second, first, second)
+    key = tl.where(count == 0, 2 * G, tl.where(count == 1, 2 * first, 2 * boundary + 1))
+    tl.store(Keys + a, key, a < A)
+
+
+@tr.jit
 def offsets(
     SortedOwners,
     Offsets,
