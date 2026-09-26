@@ -296,7 +296,9 @@ def support_buckets_batched(
     r = tl.sqrt(cx * cx + cy * cy)
     ux, uy = cx / r, cy / r
     precision = tl.load(Precision + a, a < A, 0.0)
-    count, first, second = 0, 0, 0
+    count = tl.full((BA,), 0, tl.int32)
+    first = tl.full((BA,), 0, tl.int32)
+    second = tl.full((BA,), 0, tl.int32)
     for shift in tl.static_range(3 if G >= 3 else G):  # noqa: FURB136
         station = (owner + G - 1 + shift) % G
         row = station[:, None] * STATION_ROWS + tl.arange(0, ROWS)[None, :]
@@ -314,7 +316,7 @@ def support_buckets_batched(
             tl.load(Circle + chosen * 2, a < A, 0.0),
             tl.load(Circle + chosen * 2 + 1, a < A, 0.0),
         )
-        hit = False
+        hit = tl.full((BA,), False, tl.int1)
         for start in range(tr.cdiv(K, COLS)):
             k = start * COLS + tl.arange(0, COLS)
             rho = tl.load(Section + k * (D - 1), k < K, 0.0)

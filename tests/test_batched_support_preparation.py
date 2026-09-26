@@ -29,11 +29,12 @@ def test_compact_layout_matches_legacy(
     )
 
     torch.manual_seed(293)
-    layer = model(atoms, rows=rows, columns=columns, station_rows=station_rows)
+    layer = model(max(1, atoms), rows=rows, columns=columns, station_rows=station_rows)
+    p = layer.atoms.p[:atoms]
     with torch.no_grad():
-        layer.atoms.p[:, 2].add_(torch.randn(atoms, device="cuda") * 20)
-        layer.atoms.p[:, 0].uniform_(-0.8, 0.8)
-        center, _, precision = tile_parameters(layer.kernel, layer.atoms.p)
+        p[:, 2].add_(torch.randn(atoms, device="cuda") * 20)
+        p[:, 0].uniform_(-0.8, 0.8)
+        center, _, precision = tile_parameters(layer.kernel, p)
         decoded = layer.chart.geometry.decode_centers(center)
         plan = execution_plan(layer)
         support = (
