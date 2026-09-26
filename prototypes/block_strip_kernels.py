@@ -182,6 +182,7 @@ def block_fused(
     BK: tl.constexpr,
     BA: tl.constexpr,
     LATE_REDUCE: tl.constexpr = False,
+    SKIP_EMPTY: tl.constexpr = False,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -193,51 +194,99 @@ def block_fused(
         station = r * CG + c
         for start in range(0, T, BK):
             k = start + tl.arange(0, BK)
-            x = tl.load(
-                X + m[:, None] * K + (c * T + k)[None, :],
-                (m[:, None] < M) & (k[None, :] < T) & (c * T + k[None, :] < K),
-                0.0,
-            )
-            if LATE_REDUCE:
-                w = _weight_lanes(
-                    P,
-                    Circle,
-                    Section,
-                    Offsets,
-                    station,
-                    station * S + local,
-                    start,
-                    G * S,
-                    T,
-                    D,
-                    G,
-                    S,
-                    PROFILE,
-                    BN,
-                    BK,
-                    BA,
-                )
+            if SKIP_EMPTY:
+                if LATE_REDUCE:
+                    w = _weight_lanes(
+                        P,
+                        Circle,
+                        Section,
+                        Offsets,
+                        station,
+                        station * S + local,
+                        start,
+                        G * S,
+                        T,
+                        D,
+                        G,
+                        S,
+                        PROFILE,
+                        BN,
+                        BK,
+                        BA,
+                    )
+                else:
+                    w = _weight(
+                        P,
+                        Circle,
+                        Section,
+                        Offsets,
+                        station,
+                        station * S + local,
+                        start,
+                        G * S,
+                        T,
+                        D,
+                        G,
+                        S,
+                        PROFILE,
+                        BN,
+                        BK,
+                        BA,
+                        True,
+                    )
+                if tl.sum((w != 0).to(tl.int32)) > 0:
+                    x = tl.load(
+                        X + m[:, None] * K + (c * T + k)[None, :],
+                        (m[:, None] < M) & (k[None, :] < T) & (c * T + k[None, :] < K),
+                        0.0,
+                    )
+                    acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
             else:
-                w = _weight(
-                    P,
-                    Circle,
-                    Section,
-                    Offsets,
-                    station,
-                    station * S + local,
-                    start,
-                    G * S,
-                    T,
-                    D,
-                    G,
-                    S,
-                    PROFILE,
-                    BN,
-                    BK,
-                    BA,
-                    True,
+                x = tl.load(
+                    X + m[:, None] * K + (c * T + k)[None, :],
+                    (m[:, None] < M) & (k[None, :] < T) & (c * T + k[None, :] < K),
+                    0.0,
                 )
-            acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
+                if LATE_REDUCE:
+                    w = _weight_lanes(
+                        P,
+                        Circle,
+                        Section,
+                        Offsets,
+                        station,
+                        station * S + local,
+                        start,
+                        G * S,
+                        T,
+                        D,
+                        G,
+                        S,
+                        PROFILE,
+                        BN,
+                        BK,
+                        BA,
+                    )
+                else:
+                    w = _weight(
+                        P,
+                        Circle,
+                        Section,
+                        Offsets,
+                        station,
+                        station * S + local,
+                        start,
+                        G * S,
+                        T,
+                        D,
+                        G,
+                        S,
+                        PROFILE,
+                        BN,
+                        BK,
+                        BA,
+                        True,
+                    )
+                acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
     tl.store(
         Y + m[:, None] * N + n[None, :],
         acc,
