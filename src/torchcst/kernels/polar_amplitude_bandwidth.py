@@ -653,6 +653,8 @@ class PolarAmpWidth(Kernel):
             # Width is a scale, so alpha advances a constant fraction of the
             # multiplicative range rather than a constant absolute distance.
             sigma = torch.exp((1.0 - alpha) * lower.log() + alpha * upper.log())
+            # exp(log(bound)) can round one ulp outside its closed interval.
+            sigma = sigma.clamp(min=lower, max=upper)
         return sigma, lower, upper
 
     def _require_shared_bandwidths(self) -> None:

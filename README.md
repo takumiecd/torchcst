@@ -368,11 +368,42 @@ cross; activity has no bandwidth effect where the two bounds coincide.
 `CSTLinear` accepts one operator chart with logical shape `[out, in]`, an atom
 table, and one kernel. The earlier input/output chart form remains available;
 its `backend="factored"` path avoids retaining the full dense weight when the
-kernel supports exact factorization. The single-chart path builds the required
-dense weight in bounded site/atom chunks, then uses `torch.nn.functional.linear`.
-It does not yet provide a native GEMM kernel. Forward and backward work on CPU
-or through ordinary PyTorch CUDA operations, and `CSTParameterAdam` supports
-the direct path.
+kernel supports exact factorization. The default single-chart path builds the
+required dense weight in bounded site/atom chunks, then uses
+`torch.nn.functional.linear`. An explicit `backend="tiled"` is available for a
+`StripChart` on `TorusGeometry` with output-row stations, a full input axis, and
+`DirectAmpWidth` with an unnormalized compact profile. It routes atoms to
+stations, packs their opaque rows, evaluates temporary weight tiles, and
+immediately multiplies them by the input. The weight tile shape comes from
+`StripChart.tile_shape`. This PyTorch reference selects owners from circle
+coordinates and uses a stable sort per forward. Forward and backward work on
+CPU or through ordinary PyTorch CUDA operations.
+
+An explicit `backend="triton"` fuses weight generation with GEMM on NVIDIA
+CUDA. It uses the same Strip + Torus layout with raw `Biweight`, `Triweight`,
+`WendlandC2`, or `Triangle`. This first implementation requires float32 inputs,
+atoms and charts. It computes first-order input and atom gradients without
+materializing a full weight or weight-gradient matrix. `CSTParameterAdam` and
+`LinearJGAtomGrad` work with both tiled backends. Triton is loaded lazily and
+is available through `pip install -e '.[cuda]'` on Linux.
+
+| Backend | Execution |
+| --- | --- |
+| `auto` | Existing policy: materialized for one chart; factorization by size for two charts |
+| `materialized` | Generate the dense weight, then use PyTorch Linear |
+| `factored` | Exact input/output factors for supported two-chart kernels |
+| `tiled` | PyTorch reference using chart-defined weight tiles |
+| `triton` | Generated-weight GPU GEMM and custom first-order backward |
+
+Backend assignment is validated, so `layer.backend = "triton"` selects the
+implementation without changing parameters or checkpoint format. Execution
+block sizes are internal; they do not alter `StripChart.tile_shape`. The
+initial Triton kernels use fixed 16×16 blocks and IEEE float32 dot products;
+hardware autotuning and mixed precision are not enabled yet. Atom-gradient
+accumulation uses floating-point atomics, so deterministic-algorithm mode is
+rejected when those gradients are requested. Higher-order differentiation
+uses the PyTorch backends. See the [execution notes](docs/strip-torus-gemm-prototype.ja.md)
+for layout, tests and the fused-versus-split benchmark.
 
 ```python
 import math
@@ -406,13 +437,18 @@ strip = StripChart(
                            max_arc_step=2, representation="intrinsic"),
 )
 strip_layer = CSTLinear(
-    chart=strip, atoms=256,
+    chart=strip, atoms=256, backend="tiled",
     kernel=DirectAmpWidth(
         amplitude_max=1.0, sigma_min=0.2, sigma_birth=0.5,
         sigma_max=0.8, w_c=0.05,
         profile=Triweight(0.2, normalize_columns=False),
     ),
 )
+
+# On a supported NVIDIA GPU with the optional CUDA dependencies installed:
+# strip_layer = strip_layer.cuda()
+# strip_layer.backend = "triton"
+# y = strip_layer(torch.randn(32, 784, device="cuda"))
 ```
 
 `spacing` sets distances inside patterns, and `tile_pitch` places neighboring
@@ -423,11 +459,13 @@ this before constructing the single-chart kernel. For `TorusGeometry`, the
 check includes the curvature and the wraparound between the first and last
 tile; the formula and its limits are in [the geometry notes](docs/chart-geometry.ja.md).
 The optional `max_arc_step` bounds an atom's movement along the circle per
-update. For StripChart,
+update; it is not required for the tiled backend's routing or repack plan.
+For StripChart,
 `strip_layer.packed_weight()` returns a physically contiguous
-`[tiles, tile_out, tile_in]` tensor in sweep order. The current `forward`
-still builds a row-major dense weight for PyTorch's linear operation; native
-tile execution is future work. In the 2026-09-24 A100 MNIST study in the `cst`
+`[tiles, tile_out, tile_in]` tensor in sweep order. The PyTorch tiled forward
+generates one weight tile at a time; the Triton forward generates smaller
+execution blocks inside the GEMM kernel.
+In the 2026-09-24 A100 MNIST study in the `cst`
 repository (K=2560, 3 seeds, 5 epochs), ProductChart reached 95.96% mean test
 accuracy versus 96.49% for the two-chart factored path; StripChart reached
 94.95%. These results use PyTorch materialization, before native tile execution.

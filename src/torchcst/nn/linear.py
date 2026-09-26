@@ -2,22 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
 
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.geometry import Chart, StripChart
 from torchcst.kernels import AtomInit, Kernel
-from torchcst.profiling import cst_span
 
+from ._backends import (
+    Backend,
+    ResolvedBackend,
+    linear_forward,
+    resolve_backend,
+    validate_backend,
+)
 from .atom_grad import LinearAtomGrad
 from .module import CSTModule, RepulsionKind
-
-Backend = Literal["auto", "factored", "materialized"]
 
 
 class CSTLinear(CSTModule):
@@ -64,15 +65,6 @@ class CSTLinear(CSTModule):
             raise ValueError("a Kernel cannot own trainable state; put it in atom p")
         if atom_init not in ("balanced", "uniform"):
             raise ValueError("atom_init must be 'balanced' or 'uniform'")
-        if backend not in ("auto", "factored", "materialized"):
-            raise ValueError("backend must be 'auto', 'factored', or 'materialized'")
-        if backend == "factored" and (
-            single_chart or not kernel.supports_factorization
-        ):
-            raise ValueError(
-                "the selected kernel does not support factorized execution"
-            )
-
         if single_chart:
             self.chart = input_chart
         else:
@@ -99,9 +91,23 @@ class CSTLinear(CSTModule):
             raise ValueError(
                 f"kernel.initialize must return shape {list(expected_shape)}"
             )
-        if p.device != torch.device(target_device) or p.dtype != target_dtype:
+        # A device alias such as "cuda" resolves to an indexed device after
+        # .to(); compare against the actual chart device, not the alias.
+        initialized_device = (
+            charts[0].reference.device if single_chart else charts[0].coordinates.device
+        )
+        if p.device != initialized_device or p.dtype != target_dtype:
             raise ValueError("kernel.initialize must match the module device and dtype")
         self.atoms = Atoms(p)
+
+    @property
+    def backend(self) -> Backend:
+        return self._backend
+
+    @backend.setter
+    def backend(self, value: Backend) -> None:
+        validate_backend(value, self.cst_charts(), self.kernel)
+        self._backend = value
 
     def _checkpoint_layout(self) -> dict[str, object]:
         layout = {"in_features": self.in_features, "out_features": self.out_features}
@@ -227,43 +233,13 @@ class CSTLinear(CSTModule):
         kappa = atoms.square().sum()
         return summed, kappa
 
-    def _resolved_backend(self) -> Literal["factored", "materialized"]:
-        if hasattr(self, "chart"):
-            return "materialized"
-        if self.backend != "auto":
-            return self.backend
-        if not self.kernel.supports_factorization:
-            return "materialized"
-        factor_size = self.atom_count * (self.in_features + self.out_features)
-        dense_size = self.in_features * self.out_features
-        return "factored" if factor_size <= dense_size else "materialized"
+    def _resolved_backend(self) -> ResolvedBackend:
+        return resolve_backend(self)
 
     def _forward_from_p(
-        self,
-        inputs: Tensor,
-        p: Tensor,
-        *,
-        backend: Literal["factored", "materialized"],
+        self, inputs: Tensor, p: Tensor, *, backend: ResolvedBackend
     ) -> Tensor:
-        if hasattr(self, "chart"):
-            with cst_span("cst.linear.materialize"):
-                weight = self.kernel.weight(self.chart, p)
-            with cst_span("cst.linear.dense_matmul"):
-                return F.linear(inputs, weight)
-        if backend == "materialized":
-            with cst_span("cst.linear.materialize"):
-                weight = self._materialize_atoms(p).sum(dim=0)
-            with cst_span("cst.linear.dense_matmul"):
-                return F.linear(inputs, weight)
-
-        with cst_span("cst.linear.factors"):
-            phi_input, phi_output = self.kernel.factors(
-                self.input_chart, self.output_chart, p
-            )
-        with cst_span("cst.linear.input_matmul"):
-            atom_values = inputs @ phi_input
-        with cst_span("cst.linear.output_matmul"):
-            return atom_values @ phi_output.transpose(-2, -1)
+        return linear_forward(self, inputs, p, backend=backend)
 
     def forward(self, inputs: Tensor) -> Tensor:
         if inputs.ndim < 1 or inputs.shape[-1] != self.in_features:
