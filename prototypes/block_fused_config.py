@@ -32,6 +32,15 @@ class FusedConfig:
             raise ValueError("late_reduce must be bool")
 
 
+def default_fused_config(tile_shape, input_rows, requested_batch_rows=None):
+    """Use the measured A100 schedule for 64x64 charts with enough input rows."""
+    if requested_batch_rows is not None:
+        return FusedConfig(batch_rows=requested_batch_rows)
+    if tuple(tile_shape) == (64, 64) and input_rows >= 128:
+        return FusedConfig(batch_rows=128, late_reduce=True)
+    return FusedConfig()
+
+
 def launch_fused(layer, x, prepared, y, config):
     from prototypes.block_strip_kernels import block_fused
 

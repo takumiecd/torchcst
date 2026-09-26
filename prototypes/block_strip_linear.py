@@ -272,8 +272,13 @@ class BlockStripLinear(nn.Module):
                     enable_fp_fusion=False,
                 )
             else:
-                from prototypes.block_fused_config import FusedConfig, launch_fused
+                from prototypes.block_fused_config import (
+                    default_fused_config,
+                    launch_fused,
+                )
 
-                config = fused_config or FusedConfig(batch_rows=bm)
+                config = fused_config or default_fused_config(
+                    self.tile_shape, flat.shape[0], batch_tile
+                )
                 launch_fused(self, flat, (p, circle, section, offsets), y, config)
         return y.reshape(*x.shape[:-1], self.shape[0])

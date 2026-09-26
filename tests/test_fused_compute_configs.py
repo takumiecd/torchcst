@@ -35,3 +35,25 @@ def test_fused_schedule_tail_and_seam(config):
             17,
         )
     test_boundary_seam_and_graph_updates("triton_fused", {"fused_config": config})
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_selected_fused_default_preserves_tails_and_explicit_override():
+    torch.manual_seed(401)
+    layer = BlockStripLinear((65, 129), (64, 64), 37, device="cuda")
+    with torch.no_grad():
+        weight = layer.dense_weight()
+        for batch in (127, 129):
+            x = torch.randn(batch, 129, device="cuda")
+            selected = (
+                FusedConfig(128, late_reduce=True) if batch >= 128 else FusedConfig()
+            )
+            actual = layer(x, backend="triton_fused")
+            explicit = layer(x, backend="triton_fused", fused_config=selected)
+            torch.testing.assert_close(actual, explicit, atol=0, rtol=0)
+            torch.testing.assert_close(
+                actual, F.linear(x, weight), atol=3e-5, rtol=3e-5
+            )
+            override = layer(x, backend="triton_fused", batch_tile=64)
+            original = layer(x, backend="triton_fused", fused_config=FusedConfig())
+            torch.testing.assert_close(override, original, atol=0, rtol=0)
