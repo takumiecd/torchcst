@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import torch
@@ -80,6 +81,8 @@ class CircleRouting:
     spans: Tensor
     spacing: Tensor
     last_row: Tensor
+    pitch: Tensor | None = None
+    local_candidates: bool = False
 
     @classmethod
     def from_chart(cls, chart: StripChart) -> CircleRouting:
@@ -88,6 +91,24 @@ class CircleRouting:
         counts = (
             chart.shape[chart.axis] - stations * chart.tile_shape[chart.axis]
         ).clamp_max(chart.tile_shape[chart.axis])
+        # Ordered disjoint stations span less than one turn. In exact arithmetic
+        # only the containing/predecessor and successor intervals can win, plus
+        # the two endpoints across the circular gap. Keep two neighboring
+        # stations on each side to absorb rounding in the candidate estimate.
+        # This cold-plan guard bounds FP32 coordinate errors far below a pitch;
+        # extreme coordinate scales keep the exhaustive reference path.
+        start, pitch = float(line.start[0]), float(chart.tile_pitch)
+        span = float(line.spacing[0]) * (chart.tile_shape[chart.axis] - 1)
+        period = float(2 * torch.pi * chart.geometry.major_radius)
+        last_span = float((counts[-1] - 1) * line.spacing[0])
+        local_candidates = (
+            chart.dtype == torch.float32
+            and chart.tile_count >= 3
+            and all(math.isfinite(v) for v in (start, pitch, span, period))
+            and 0 <= span < pitch
+            and (chart.tile_count - 1) * pitch + last_span < period
+            and 256 * torch.finfo(torch.float32).eps * (abs(start) + period) < pitch
+        )
         return cls(
             chart.geometry.major_radius,
             2 * torch.pi * chart.geometry.major_radius,
@@ -95,6 +116,8 @@ class CircleRouting:
             (counts - 1) * line.spacing[0],
             line.spacing[0],
             counts - 1,
+            chart.tile_pitch,
+            local_candidates,
         )
 
     @torch.no_grad()

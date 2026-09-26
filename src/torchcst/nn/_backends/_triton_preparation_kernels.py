@@ -95,6 +95,59 @@ def owners(
 
 
 @tr.jit
+def owners_local(
+    Centers,
+    Major,
+    Period,
+    Starts,
+    Spans,
+    Spacing,
+    Last,
+    Pitch,
+    Owners,
+    A: tl.constexpr,
+    G: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Seven candidates for guarded, ordered, disjoint Strip intervals."""
+    a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    cx = tl.load(Centers + a * S0, a < A, 0.0)
+    cy = tl.load(Centers + a * S0 + S1, a < A, 0.0)
+    arc = tl.load(Major) * libdevice.atan2(cy, cx)
+    period, spacing = tl.load(Period), tl.load(Spacing)
+    relative_start = _remainder(arc - tl.load(Starts), period)
+    base = tl.floor(tl.div_rn(relative_start, tl.load(Pitch))).to(tl.int32)
+    base = tl.minimum(tl.maximum(base, 0), G - 1)
+    best = tl.full((BLOCK,), float("inf"), tl.float32)
+    owner = tl.full((BLOCK,), 2147483647, tl.int32)
+    for candidate in tl.static_range(7):
+        if candidate == 5:
+            g = tl.full((BLOCK,), 0, tl.int32)
+        elif candidate == 6:
+            g = tl.full((BLOCK,), G - 1, tl.int32)
+        else:
+            g = tl.minimum(tl.maximum(base + candidate - 2, 0), G - 1)
+        start, span = tl.load(Starts + g), tl.load(Spans + g)
+        last = tl.load(Last + g).to(tl.float32)
+        # Preserve the exhaustive kernel's FP32 expression and smaller-ID tie.
+        relative = (
+            _remainder(arc - (start + span / 2) + period / 2, period) - period / 2
+        )
+        local = libdevice.nearbyint(
+            (relative + span / 2) / tl.maximum(spacing, 1.1754943508222875e-38)
+        )
+        local = tl.minimum(tl.maximum(local, 0.0), last)
+        nearest = start + local * spacing
+        distance = tl.abs(_remainder(arc - nearest + period / 2, period) - period / 2)
+        better = (distance < best) | ((distance == best) & (g < owner))
+        owner = tl.where(better, g, owner)
+        best = tl.minimum(best, distance)
+    tl.store(Owners + a, owner, a < A)
+
+
+@tr.jit
 def owners_chunked(
     Centers,
     Major,

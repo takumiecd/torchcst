@@ -51,22 +51,40 @@ def route_and_layout(routing, decoded, *, support=None):
     ba = min(32, max(1, 1024 // bg))
     owner_kernel = kernels.owners_chunked if stations > 1024 else kernels.owners
     with torch.cuda.device(decoded.device):
-        owner_kernel[(tr.cdiv(count, ba),)](
-            decoded,
-            routing.major_radius,
-            routing.period,
-            routing.starts,
-            routing.spans,
-            routing.spacing,
-            routing.last_row,
-            owners,
-            count,
-            stations,
-            *decoded.stride(),
-            ba,
-            bg,
-            enable_fp_fusion=False,
-        )
+        if routing.local_candidates:
+            kernels.owners_local[(tr.cdiv(count, 128),)](
+                decoded,
+                routing.major_radius,
+                routing.period,
+                routing.starts,
+                routing.spans,
+                routing.spacing,
+                routing.last_row,
+                routing.pitch,
+                owners,
+                count,
+                stations,
+                *decoded.stride(),
+                128,
+                enable_fp_fusion=False,
+            )
+        else:
+            owner_kernel[(tr.cdiv(count, ba),)](
+                decoded,
+                routing.major_radius,
+                routing.period,
+                routing.starts,
+                routing.spans,
+                routing.spacing,
+                routing.last_row,
+                owners,
+                count,
+                stations,
+                *decoded.stride(),
+                ba,
+                bg,
+                enable_fp_fusion=False,
+            )
         keys = owners
         if support is not None:
             circle, section, precision, station_rows = support
