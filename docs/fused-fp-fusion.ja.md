@@ -60,14 +60,16 @@ CUDA Graph、3ラウンド、`rep=20ms`、経路順を交互に反転した中�
 
 A100で境界、Torus継ぎ目、端数形状、非連続入力、zero amplitude、
 CUDA Graph後のatom更新を含む57テストが通過した。新しい自動選択は
-小さい5%密度のGPUケースで明示設定と完全一致した。
+小さい5%密度のGPUケースで明示設定と完全一致し、デフォルト経路を
+CUDA Graphで捕捉した後のatom更新もdense対照と一致した。
 今回の大型測定は初期配置であり、学習後の偏りや他GPUでの性能は未評価。
 
 ## 再現情報
 
 - 診断と準備済み密度比較のsource: `47c9349bf219b0caaae93e17b174f3e369086276`。
 - 準備込み比較のsource: `be7c22e24e03b9ee5e371a0445aafd476da24ea5`。
-- 自動選択と最終GPUテストのsource: `e2bceb0ee614ebae205ff1cf2848973d1fada4c9`。
+- 準備込み測定後の自動選択source: `e2bceb0ee614ebae205ff1cf2848973d1fada4c9`。
+- 最終GPUテストsource: `bbcef37981b569635cc9108ef328093ca6fe76fa`。
 - 診断結果bundle SHA256: `1cbf34cde68b3e62aaee5cda27a21b18c330a3b6fd9615fe18039bbd8424cda4`。
 - 密度比較bundle SHA256: `86374d31dce8521beb7288a42fc72c2a77024bd9f9ceba1cd94065b2bacbce6e`。
 - 準備込み結果JSON SHA256: `8aa49d0eb4944ebbefec695e7122b02d57312f939e08498d1d97c1278688d09a`。
