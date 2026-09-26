@@ -7,11 +7,38 @@ import hashlib
 import json
 from contextlib import nullcontext
 from pathlib import Path
+from statistics import median
+from time import perf_counter
 from unittest.mock import patch
 
 import torch
 
 from prototypes.benchmark_triton_linear import model, timed
+
+
+def paired_wall(fn, repeats):
+    """Alternate order to expose shared-host latency and measurement drift."""
+    samples = {"baseline": [], "optimized": []}
+    for repeat in range(repeats + 3):
+        order = ("baseline", "optimized") if repeat % 2 else ("optimized", "baseline")
+        for name in order:
+            context = (
+                patch("torchcst.nn._backends._triton.split_count", return_value=1)
+                if name == "baseline"
+                else nullcontext()
+            )
+            with context:
+                torch.cuda.synchronize()
+                start = perf_counter()
+                fn()
+                torch.cuda.synchronize()
+                elapsed = (perf_counter() - start) * 1000
+                if repeat >= 3:
+                    samples[name].append(elapsed)
+    return {
+        name: {"median_ms": median(values), "samples_ms": values}
+        for name, values in samples.items()
+    }
 
 
 def probe(batch, atoms, rows, columns, repeats):
@@ -60,6 +87,10 @@ def probe(batch, atoms, rows, columns, repeats):
                         fn, rep=30, return_mode="median"
                     )
             result[name] = measurements
+    result["interleaved_wall"] = {
+        "forward": paired_wall(forward, repeats),
+        "forward_backward": paired_wall(training, repeats),
+    }
     return result
 
 
