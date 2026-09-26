@@ -192,6 +192,27 @@ PYTHONPATH=src:. python -u -m prototypes.benchmark_low_density \
   --atoms 3584 3072 2560
 ```
 
+### 超低密度atom直接方式の実行形状
+
+atom直接方式がBA1より速かった2,048/3,072 atomsで、Grok 4.7と既存の8,192 atoms形状比較を見直し、未測定のBN32を含む3候補だけを既存の`benchmark_block_shared.py --atom-dot`で同一run比較した。N=K=4096/M128/tile64×64、seed21、FP32/TF32無効、準備込みCUDA Graph 3ラウンド。`BM:BN:warps`表記、BK64、support cull無し。各ケースのcanonical対照と全経路のdense出力照合は合格、単位ms。
+
+| atoms | 64:16:4（既定） | 32:32:4 | 64:32:4 |
+| ---: | ---: | ---: | ---: |
+| 2,048 | **3.692** [3.690–3.694] | 4.658 [4.416–4.663] | 3.762 [3.755–3.769] |
+| 3,072 | **4.764** [4.721–4.775] | 5.899 [5.624–5.955] | 4.899 [4.839–5.019] |
+
+両ケースで既定と候補の3ラウンド範囲は重ならず、既定が速い。64:16:4/32:32:4/64:32:4のcompiler registers/threadは168/190/236、shared memory/blockは20,480/16,384/24,576 bytes、spillは全て0。この情報から実効occupancyは断定しない。BA1を含まない別runなので、先の交差表と絶対時間を比較しない。atom直接方式の既定形状とdispatchは変更しない。
+
+source commitは`ab0b1552e933d9950942d4f685a2c529a2ea7ace`、archive SHA256は`78da107d0565403e3e27fbf2a30ec5a44809d98c78e2de6583f59bc04b6bc33a`で遠隔展開前に一致。遠隔ディレクトリは`srv11/cst-lab/torchcst-direct-shapes-ab0b155`。結果は`output/triton-a100-20260927/ultra-direct-shapes/`に保存し、JSON/log SHA256は`acdfc2ee8b2d2e31d63a1c9c47c7d580e82379da84a337d44d587baae0585a25`/`d874b884286f4e3a8516e72fa7ca73232e70a7e618325ac6aa175fc95c739e07`で遠隔と一致した。
+
+```bash
+PYTHONPATH=src:. python -u -m prototypes.benchmark_block_shared --atom-dot \
+  --output-dir ultra-direct-shapes \
+  --source-commit ab0b1552e933d9950942d4f685a2c529a2ea7ace \
+  --cases 4096:128:2048 4096:128:3072 \
+  --configs 64:16:4 32:32:4 64:32:4
+```
+
 ## 生成後の空重み判定
 
 実験commit `ed8fd8fc45c23837f73b1da8081e923ce2b782f6`で、BN×BK重み小片を生成した後、全てゼロなら入力ロードとdotを飛ばした。全経路の出力照合は合格したが、同一runで全密度が遅くなった。特に8,192 atomsの準備込みは基準4.001→4.534ms、32,768では4.063→4.591ms。重み生成を終えてからの分岐では費用を回収できないため、commit `9c1489a`でコードをrevertした。NaN/Inf入力に対するゼロ重みとの積の意味も変わるので、この方式を採用しない。
