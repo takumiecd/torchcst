@@ -130,12 +130,26 @@ class BlockStripLinear(nn.Module):
             outputs.append(acc)
         return torch.cat(outputs, -1).reshape(*x.shape[:-1], self.shape[0])
 
-    def forward(self, x, *, backend="torch", batch_tile=None, prepared=None):
+    def forward(
+        self,
+        x,
+        *,
+        backend="torch",
+        batch_tile=None,
+        prepared=None,
+        output_tile=4,
+        num_warps=4,
+    ):
         if x.shape[-1] != self.shape[1]:
             raise ValueError("input feature count differs from mapped shape")
         if backend == "torch":
             return self.reference(x)
-        if backend not in ("triton_direct", "triton_reuse", "triton_fused"):
+        if backend not in (
+            "triton_direct",
+            "triton_reuse",
+            "triton_shared",
+            "triton_fused",
+        ):
             raise ValueError("unknown prototype backend")
         if torch.is_grad_enabled() and (
             x.requires_grad or self.strip.atoms.p.requires_grad
@@ -156,8 +170,14 @@ class BlockStripLinear(nn.Module):
         )
         flat = x.reshape(-1, self.shape[1]).contiguous()
         y = flat.new_empty((flat.shape[0], self.shape[0]))
-        bm = batch_tile or (16 if backend == "triton_direct" else 64)
+        bm = batch_tile or (16 if backend in ("triton_direct", "triton_shared") else 64)
         allowed = (4, 16, 64) if backend == "triton_direct" else (16, 64, 128)
+        if backend == "triton_shared":
+            allowed = (16, 32, 64)
+            if output_tile not in (1, 2, 4, 8) or num_warps not in (4, 8):
+                raise ValueError("unsupported shared execution shape")
+        elif num_warps != 4 or output_tile != 4:
+            raise ValueError("output_tile and num_warps apply only to triton_shared")
         if bm not in allowed or (backend == "triton_fused" and bm == 128):
             raise ValueError("unsupported batch tile")
         s, t = self.tile_shape
@@ -174,7 +194,30 @@ class BlockStripLinear(nn.Module):
             "PROFILE": PROFILE_KINDS[type(self.strip.kernel.profile)],
         }
         if flat.shape[0]:
-            if backend in ("triton_direct", "triton_reuse"):
+            if backend == "triton_shared":
+                from prototypes.block_shared_kernel import block_direct_shared
+
+                bounds = torch.stack((section.amin(0), section.amax(0)))
+                block_direct_shared[
+                    (
+                        math.ceil(flat.shape[0] / bm),
+                        self.row_groups * math.ceil(s / output_tile),
+                    )
+                ](
+                    flat,
+                    p,
+                    circle,
+                    section,
+                    offsets,
+                    bounds,
+                    y,
+                    **opts,
+                    BN=output_tile,
+                    BK=min(128, 1 << (t - 1).bit_length()),
+                    num_warps=num_warps,
+                    enable_fp_fusion=False,
+                )
+            elif backend in ("triton_direct", "triton_reuse"):
                 bounds = torch.stack((section.amin(0), section.amax(0)))
                 kernel = (
                     block_direct_reuse if backend == "triton_reuse" else block_direct

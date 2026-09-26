@@ -36,7 +36,9 @@ def test_mapped_reference_values_gradients_and_indices(shape, tile):
     "shape,tile",
     [((33, 35), (16, 16)), ((65, 129), (64, 128)), ((128, 128), (128, 128))],
 )
-@pytest.mark.parametrize("backend", ["triton_direct", "triton_fused", "triton_reuse"])
+@pytest.mark.parametrize(
+    "backend", ["triton_direct", "triton_fused", "triton_reuse", "triton_shared"]
+)
 def test_mapped_gpu(shape, tile, backend):
     torch.manual_seed(7)
     layer = BlockStripLinear(shape, tile, 16, device="cuda")
@@ -51,7 +53,9 @@ def test_mapped_gpu(shape, tile, backend):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("backend", ["triton_direct", "triton_fused", "triton_reuse"])
+@pytest.mark.parametrize(
+    "backend", ["triton_direct", "triton_fused", "triton_reuse", "triton_shared"]
+)
 def test_boundary_seam_and_graph_updates(backend):
     from torchcst.nn._backends._preparation import prepare
 
@@ -164,6 +168,30 @@ def test_reuse_tail_and_multiple_column_fragments(batch_tile):
         torch.testing.assert_close(
             layer(x, backend="triton_reuse", batch_tile=batch_tile),
             expected,
+            atol=3e-5,
+            rtol=3e-5,
+        )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize(
+    "bm,bn,warps", [(16, 2, 4), (32, 4, 4), (64, 4, 8), (16, 8, 4)]
+)
+def test_shared_partial_station_and_batch(bm, bn, warps):
+    torch.manual_seed(41)
+    layer = BlockStripLinear((17, 197), (5, 192), 19, device="cuda")
+    with torch.no_grad():
+        layer.strip.atoms.p[::3, 0] = 0
+        x = torch.randn(65, 197, device="cuda")
+        torch.testing.assert_close(
+            layer(
+                x,
+                backend="triton_shared",
+                batch_tile=bm,
+                output_tile=bn,
+                num_warps=warps,
+            ),
+            F.linear(x, layer.dense_weight()),
             atol=3e-5,
             rtol=3e-5,
         )
