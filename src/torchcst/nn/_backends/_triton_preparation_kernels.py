@@ -6,6 +6,45 @@ from triton.language.extra.cuda import libdevice
 
 
 @tr.jit
+def bandwidth(
+    Amplitude,
+    P,
+    Min,
+    Birth,
+    Max,
+    Floor,
+    WC,
+    Kappa,
+    LowerKappa,
+    Power,
+    Precision,
+    A: tl.constexpr,
+    PS0: tl.constexpr,
+    PS1: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    amplitude = tl.load(Amplitude + a, a < A, 0.0)
+    q = tl.load(P + a * PS0 + PS1, a < A, 1.0)
+    alpha = tl.div_rn(tl.minimum(tl.maximum(q, 1.0), 4.0) - 1.0, 3.0)
+    minimum, birth, maximum = tl.load(Min), tl.load(Birth), tl.load(Max)
+    ratio = tl.div_rn(amplitude, tl.load(WC))
+    x = ratio * ratio
+    kappa = tl.load(Kappa)
+    upper_x = libdevice.pow(x, tl.load(Power))
+    upper = minimum + tl.div_rn((maximum - minimum) * kappa, kappa + upper_x)
+    upper = tl.maximum(upper, tl.load(Floor))
+    lower = minimum + tl.div_rn(birth - minimum, 1.0 + tl.load(LowerKappa) * x)
+    upper = tl.maximum(upper, lower)
+    sigma = libdevice.exp(
+        (1.0 - alpha) * libdevice.log(lower) + alpha * libdevice.log(upper)
+    )
+    sigma = tl.minimum(tl.maximum(sigma, lower), upper)
+    inverse = tl.div_rn(1.0, sigma)
+    tl.store(Precision + a, inverse * inverse, a < A)
+
+
+@tr.jit
 def _remainder(x, period):
     value = libdevice.fmod(x, period)
     return tl.where(value < 0, value + period, value)

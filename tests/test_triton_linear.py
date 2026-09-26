@@ -408,9 +408,42 @@ def test_fused_preparation_matches_values_and_gradients(representation):
     p = model.atoms.p
     reference = prepare(model, p, use_triton=False)
     actual = prepare(model, p)
-    torch.testing.assert_close(actual[0], reference[0], atol=0, rtol=0)
+    torch.testing.assert_close(actual[0][:, 0], reference[0][:, 0], atol=0, rtol=0)
+    torch.testing.assert_close(actual[0][:, 2:], reference[0][:, 2:], atol=0, rtol=0)
+    torch.testing.assert_close(
+        actual[0][:, 1], reference[0][:, 1], atol=1e-6, rtol=1e-6
+    )
     assert torch.equal(actual[3], reference[3])
     gradient = torch.randn_like(actual[0].T).T  # noncontiguous upstream gradient
     expected = torch.autograd.grad(reference[0], p, gradient)[0]
     got = torch.autograd.grad(actual[0], p, gradient)[0]
     torch.testing.assert_close(got, expected, atol=1e-6, rtol=1e-6)
+
+
+@GPU
+@pytest.mark.parametrize("power,floor,birth", [(1.0, 0.3, 3.5), (0.4, 1.1, 2.2)])
+def test_fused_bandwidth_preserves_envelopes_and_stop_gradient(power, floor, birth):
+    from torchcst.nn._backends._triton_preparation import tile_parameters
+
+    torch.manual_seed(94)
+    model = _model(atoms=259, device="cuda", sigma_min=0.3)
+    kernel = model.kernel
+    with torch.no_grad():
+        kernel.upper_decay_power.fill_(power)
+        kernel.upper_floor_input.fill_(floor)
+        kernel.sigma_birth_input.fill_(birth)
+        kernel.lower_kappa.fill_(5.0)
+    p = torch.randn(7, 259, device="cuda").T.requires_grad_()
+    with torch.no_grad():
+        p[:, 0].uniform_(-2, 2)
+        p[:, 1].uniform_(-2, 7)
+        p[:5, 0] = p.new_tensor([-1, 1, 0, -2, 2])
+        p[:5, 1] = p.new_tensor([1, 4, 1, 4, 2.5])
+    _, amplitude, precision = tile_parameters(kernel, p)
+    _, expected_amplitude, expected_precision = kernel._tile_parameters(p)
+    torch.testing.assert_close(amplitude, expected_amplitude, atol=0, rtol=0)
+    torch.testing.assert_close(precision, expected_precision, atol=2e-6, rtol=1e-6)
+    assert not precision.requires_grad
+    actual_grad = torch.autograd.grad(amplitude.sum(), p)[0]
+    expected_grad = torch.autograd.grad(expected_amplitude.sum(), p)[0]
+    assert torch.equal(actual_grad, expected_grad)

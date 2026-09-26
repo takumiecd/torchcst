@@ -12,6 +12,8 @@
 | `nn/_backends/__init__.py` | backend の検証・選択・ディスパッチ |
 | `nn/_backends/_torch.py` | materialized / factored / tiled の PyTorch 実行 |
 | `nn/_backends/_preparation.py` | 固定設定の検証・座標計画と、毎回新しく行うアトム準備 |
+| `nn/_backends/_triton_preparation.py` | GPU の所属判定・配置作成と、詰め替えの autograd 接続 |
+| `nn/_backends/_triton_preparation_kernels.py` | 帯域幅・所属判定・オフセット・詰め替え・逆置換の融合カーネル |
 | `nn/_backends/_schedule.py` | A100 の SM 数・形状と一時領域上限から縮約の分割数を選択 |
 | `nn/_backends/_triton.py` | autograd 接続。Triton は実行時だけ import |
 | `nn/_backends/_triton_kernels.py` | forward、入力勾配、アトム勾配の GPU カーネル |
@@ -58,6 +60,19 @@ repack の正しさとは別の設定である。
 現段階では forward ごとに所属と安定ソートを計算し、`index_select` による
 一時配置を作る。モデルの Parameter や optimizer の moment は物理的に
 並べ替えない。独立した `plan_repack` は将来の永続配置の基準実装である。
+
+Triton の標準経路では1,024ステーション以下の NVIDIA float32 に対し、
+所属判定を1カーネルにまとめる。その後 Torch の安定ソートを使い、
+ソート済み所属列への lower-bound 探索でオフセットを作る。
+詰め替えも専用カーネルで行い、backward は置換の逆向きに勾配を書き戻す。
+置換なので書込み衝突や atomic は発生しない。PyTorch 基準経路の
+`index_select` と同じ意味で、Parameter 自体の順序は変更しない。
+
+組み込み `DirectAmpWidth` の帯域幅計算も1カーネルにまとめた。上下の幅の
+曲線、floor、対数補間と最終 clamp を同じ順序で評価し、帯域幅は微分しない。
+振幅 clamp と中心座標の decode は Torch に残して既存の微分を通す。
+Kernel のサブクラスは従来のパラメーター評価を使う。対象外の device・dtype・
+ステーション数は Torch の準備処理を使う。
 
 ## Triton の計算
 
@@ -278,3 +293,52 @@ manifest SHA256 は
 `da221e73b0c53d72a9d24d80ac4e6510a6ffab3d21e477daf1aab073d2dc095a`。
 コード・テスト・ベンチマーク101ファイルのハッシュをローカルと照合し、
 結果を `*-split-optin-final.*` として取得した。
+
+## 第三段階：Triton による準備処理の融合
+
+`8cf4562` で工程別プロファイラを追加し、`f265180` で所属判定と配置処理を
+融合した。続けて帯域幅計算も融合した。重み生成・GEMM のカーネル、実行
+ブロック、FP32 精度は変更せず、縮約分割の実験オプションも無効のまま比較した。
+
+`[64,128]`、入力16行・256アトムの warmed forward では、GPU カーネル数が
+**87 → 53 → 26** と減った（コピーとプロファイラの範囲注釈を除外）。
+プロファイラ自体にオーバーヘッドがあるため、その実行時間を速度の結論には
+使わず、別の通常計測で基準と融合版を交互に実行した。
+
+同じ A100 80GB PCIe MIG 3g.40gb、PyTorch 2.6.0+cu126、Triton 3.2.0 で
+各20回の中央値（ms）。基準は現在のコードの `prepare(..., use_triton=False)`。
+
+| 重み形状 | M | アトム数 | 通常 forward 基準 → 融合 | 通常 forward+backward 基準 → 融合 | forward Graph 基準 → 融合 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `[64,128]` | 16 | 64 | 2.700 → 2.528 | 7.768 → 7.539 | 0.342 → 0.204 |
+| `[64,128]` | 128 | 64 | 2.704 → 2.545 | 7.778 → 7.571 | 0.343 → 0.204 |
+| `[64,128]` | 16 | 256 | 2.873 → 2.710 | 8.088 → 7.686 | 0.744 → 0.560 |
+| `[64,128]` | 128 | 256 | 2.889 → 2.710 | 5.680 → 5.467 | 0.743 → 0.510 |
+| `[256,512]` | 32 | 512 | 3.104 → 2.930 | 6.229 → 5.972 | 1.177 → 1.105 |
+| `[256,512]` | 128 | 512 | 3.639 → 3.484 | 9.719 → 9.191 | 2.398 → 2.188 |
+
+通常 forward は全6ケースで約4.3–6.4%短縮、Graph 反復は約1.07–1.68倍。
+通常の学習時間は約3–5%短縮したが、ホスト側のばらつきは引き続き大きい。
+今回は通常 forward でも一貫した改善と起動数の削減が得られたため、準備融合を
+Triton backend の標準にした。大規模形状や他のGPUでの速度は未検証。
+
+**437 passed**（A100、skip なし）、CPU は373 passed / 63 skipped。
+所属・安定順序・オフセット、円環の継ぎ目・符号付きゼロ、空アトム、端数サイズ、
+両中心表現、非連続入力・勾配、帯域幅曲線の設定と振幅 clamp 境界を検証した。
+帯域幅の単体照合はFP32の丸めを許す `rtol=1e-6`。測定した6ケースでは出力と
+入力勾配の差は0、アトム勾配の最大絶対差は `6.11e-5`（既存の atomic 集計を含む）。
+
+```bash
+python -m prototypes.profile_triton_preparation --output profile.json
+python -m prototypes.benchmark_triton_preparation --output paired.json --repeats 20
+```
+
+最終 snapshot は `srv11/cst-lab/torchcst-fused-prep2-20260926/`。
+manifest SHA256 は
+`7a7776fefe689af6d6e56ec2071fb837fbec362cf4c21d1df327a4f5101a8d78`。
+コード・テスト・ベンチマーク105ファイルをローカルと照合した。
+結果はローカルの `output/triton-a100-20260926/*-fused-prep2.*`。
+前段階の結果とプロファイラ結果も同じ出力ディレクトリに保存している。
+
+残る準備処理の主な対象は Torch の中心座標変換と安定ソート。
+GEMM 内での重みタイルの再生成も今後の最適化対象である。

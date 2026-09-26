@@ -133,20 +133,31 @@ def prepare(
     plan = execution_plan(site)
     if p.ndim != 2 or p.shape[1] != plan.parameter_dim:
         raise ValueError(f"p must have shape [atoms, {plan.parameter_dim}]")
+    fused = (
+        use_triton
+        and p.is_cuda
+        and p.dtype == torch.float32
+        and not torch.version.hip
+        and site.chart.tile_count <= 1024
+    )
     with cst_span("cst.linear.prepare_atoms"):
         # Preserve overrides on custom kernels; the built-in evaluator can
         # reuse the plan's configuration validation without GPU/CPU sync.
-        if type(site.kernel).tile_parameters is DirectAmpWidth.tile_parameters:
+        if fused and type(site.kernel) is DirectAmpWidth:
+            from ._triton_preparation import tile_parameters
+
+            center, amplitude, precision = tile_parameters(site.kernel, p)
+        elif type(site.kernel).tile_parameters is DirectAmpWidth.tile_parameters:
             center, amplitude, precision = site.kernel._tile_parameters(p)
         else:
             center, amplitude, precision = site.kernel.tile_parameters(site.chart, p)
         decoded = site.chart.geometry.decode_centers(center)
     if (
-        use_triton
+        fused
         and decoded.is_cuda
         and decoded.dtype == torch.float32
-        and not torch.version.hip
-        and site.chart.tile_count <= 1024
+        and amplitude.dtype == torch.float32
+        and precision.dtype == torch.float32
     ):
         from ._triton_preparation import Pack, route_and_layout
 

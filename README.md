@@ -405,6 +405,13 @@ forward can be captured in a CUDA Graph with fixed shapes and configuration;
 inputs and atom values may change between replays. Rebuild the graph after
 changing the chart or kernel configuration.
 
+For NVIDIA float32 execution with up to 1,024 stations, preparation uses
+dedicated Triton kernels for routing, offset lookup, packing and the inverse
+gradient permutation. Built-in `DirectAmpWidth` also evaluates detached
+bandwidths in one kernel. Center decoding and amplitude-clamp derivatives
+remain in PyTorch, and the station permutation still uses a stable Torch sort.
+Other configurations retain the Torch preparation path.
+
 The initial Triton kernels use fixed 16×16 blocks and IEEE float32 dot products;
 hardware autotuning and mixed precision are not enabled yet. Atom-gradient
 accumulation uses floating-point atomics, so deterministic-algorithm mode is

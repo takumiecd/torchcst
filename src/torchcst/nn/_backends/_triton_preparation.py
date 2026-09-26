@@ -7,6 +7,34 @@ from torch.autograd.function import once_differentiable
 from . import _triton_preparation_kernels as kernels
 
 
+def tile_parameters(kernel, p):
+    # Keep clamp in Torch: its derivative includes the endpoints. Width is
+    # intentionally detached, matching DirectAmpWidth._tile_parameters.
+    maximum = kernel.amplitude_max
+    amplitude = p[:, 0].clamp(-maximum, maximum)
+    precision = torch.empty_like(amplitude)
+    if p.shape[0]:
+        with torch.cuda.device(p.device):
+            kernels.bandwidth[(tr.cdiv(p.shape[0], 128),)](
+                amplitude,
+                p,
+                kernel.sigma_min_input,
+                kernel.sigma_birth_input,
+                kernel.sigma_max_input,
+                kernel.upper_floor_input,
+                kernel.w_c,
+                kernel.kappa,
+                kernel.lower_kappa,
+                kernel.upper_decay_power,
+                precision,
+                p.shape[0],
+                *p.stride(),
+                128,
+                enable_fp_fusion=False,
+            )
+    return p[:, 2:], amplitude, precision
+
+
 def route_and_layout(routing, decoded):
     count, stations = decoded.shape[0], routing.starts.numel()
     owners = torch.empty(count, device=decoded.device, dtype=torch.long)
