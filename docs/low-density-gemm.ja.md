@@ -45,6 +45,26 @@
 
 少なくとも測った0.195%と0.391%の間に有利な設定の転換がある。連続する密度や別形状での閾値は未確定。`fp_fusion=True`は既に明示的な実験設定として使えるが、既定の自動選択は変更していない。
 
+## BA1の実験
+
+初期配置では8,192 atomsが4096 tileに均等に属し、各tileのinterior bucketは2 atoms、boundary bucketは0だった。BA8は6 laneを使わないため、Grok 4.7にBA1/BA2を実験設定として追加してもらった。既定BA8は維持した。A100で`tests/test_fused_compute_configs.py`と`tests/test_block_strip_linear.py`の計59件が合格し、境界・Torus seam・CUDA Graph再生中のatom更新を含む。全性能ケースも同一dense Wとの出力照合に合格。以下は準備込みで同じケース内のCUDA Graph 3ラウンド中央値、単位ms。
+
+| atoms | 密度 | BA8 / fusion無 | BA1 / fusion無 | BA1 / fusion有 |
+| ---: | ---: | ---: | ---: | ---: |
+| 8,192 | 0.049% | 4.001 | **2.622** | 別runで差が不安定 |
+| 32,768 | 0.195% | 4.068 | **3.111** | 別runで差が不安定 |
+| 65,536 | 0.391% | 4.916 | **3.921** | 別runで差が不安定 |
+| 131,072 | 0.781% | 6.681 | 5.709 | **5.278** |
+| 167,772 | 1.000% | 8.393 | 6.733 | **6.152** |
+| 335,544 | 2.000% | 13.091 | 11.510 | **10.233** |
+| 671,088 | 4.000% | 22.684 | 21.461 | **18.918** |
+
+最も疎な点ではBA1が既定の4.001→2.622ms（34.5%短縮）。BA2は同じ点で3.595ms、BA4は3.744msだった。1〜4%のBA1/fusion有も同一runでBA8/fusion有より速い。0.049〜0.391%のfusion有無の追加runではGPU速度が約2倍の状態に移り、ラウンド内にも変動したため小差の採否には用いない。BA1/fusion無の対BA8/fusion無の大きな優位は両runで維持した。自動選択はまだ変えていない。
+
+同じatom数/密度帯で入力行数と行列サイズも限定確認した。4096²/M512/8,192 atomsはBA8 13.315→BA1 **8.903ms**、8192²/M128/16,384 atomsは14.095→**9.181ms**。両ケースとも同一dense Wとの全出力照合に合格し、各ケース内の3ラウンドで差が安定した。tileは引き続き64×64。他の形状やGPUへの一般化は未検証。
+
+共有Wの占有率も`benchmark_low_density.py`に記録した。8,192 atoms（atom密度0.049%）でもWの**82.08%**が非ゼロで、**65,536/65,536個の16×16小片が非ゼロ**。32,768 atomsでは95.53%、65,536 atomsでは95.63%が非ゼロで、小片はどちらも全件非ゼロ。atom密度はWのスパース率ではない。空小片の間引きや疎行列パネルを主戦略にしない根拠になる。
+
 ## 生成後の空重み判定
 
 実験commit `ed8fd8fc45c23837f73b1da8081e923ce2b782f6`で、BN×BK重み小片を生成した後、全てゼロなら入力ロードとdotを飛ばした。全経路の出力照合は合格したが、同一runで全密度が遅くなった。特に8,192 atomsの準備込みは基準4.001→4.534ms、32,768では4.063→4.591ms。重み生成を終えてからの分岐では費用を回収できないため、commit `9c1489a`でコードをrevertした。NaN/Inf入力に対するゼロ重みとの積の意味も変わるので、この方式を採用しない。
@@ -75,3 +95,7 @@ PYTHONPATH=src:. python -m prototypes.benchmark_fused_compute \
 遠隔ディレクトリは`srv11/cst-lab/torchcst-low-density-483501c`。結果はGit管理外の`output/triton-a100-20260927/low-density-baseline/`と`output/triton-a100-20260927/low-density-skip/`に保存した。基準、低密度形状比較、1〜4%形状比較、生成後スキップの各JSON SHA256は順に`535610fc6898a66529c1687f819185c39ec5c389bcc6b66daf279f76119e7f93`、`fd33d45a1dbec07e70347a822cb12b6a196b6020b2bfa2924cb126f9cee3009f`、`516421400ec914c407d81e32be976ff4e80501b3a394a90ba568108c45bfcb7f`、`4c82a82d58bcb0f9284d69db328fbc02047e89279fdd523044c2b70dcdccc41d`。
 
 FP fusion sweepと外接箱パイロットの結果は、それぞれ`output/triton-a100-20260927/low-density-baseline/fp-sweep.json`、`output/triton-a100-20260927/low-density-cull/pilot.json`。各JSON SHA256は`d9de8f7192e9128bdf88ea1e4d93b638db75d6408c1867a09b88a4e24b4ec560`、`7b488b1526dc4980119791647676765c1748469329e1cc2a0d393715cd65d32a`で、ローカル/遠隔一致を確認した。
+
+BA1追加のソースcommitは`b1fd5de61a24b906351bc80125104ac67fd2be9c`、archive SHA256は`854f9815f41516af3574fd7712a8923fd999936c3d64756fb3ce54a5543709ac`。遠隔ディレクトリは`srv11/cst-lab/torchcst-ba2-b1fd5de`。同一runのBA幅比較、0.781〜4%のfusion比較、0.049〜0.391%のfusion比較、W占有率を`output/triton-a100-20260927/low-density-ba/`に保存し、結果JSON SHA256は順に`fd790c0de9d08993f4260d93f16cea4866f22c40ec53c8fa38fdde9609448fa4`、`bea6a6b90ab2bdb5fd96fa1febc21a28257ddb1b3207b12279924dfc0cf31b25`、`a9ef376acb31b886b5d07130af8e977af06fb9e97c60fafe9ced2c8dc33c62d4`、`3f4d9cb400bb82ae05d1d50afd94cc494ed29a2cf13d574bb24abd9793104e6c`。全てローカル/遠隔hash一致を確認した。
+
+追加のM512/N8192確認結果は同ディレクトリの`shapes.json`、SHA256は`821e9379b2dcbc252b15aa4ef90389f90a8af0b91dac3bc5040b3a190adb04c0`で、遠隔と一致した。
