@@ -19,7 +19,10 @@ def routing(stations, *, start=0.0, spacing=0.1, extra=0.0):
         tile_shape=(8, 1),
         axis=0,
         tile_pitch=4.1,
-        axes=(LinePattern(rows, start=start, spacing=spacing), LinePattern(1)),
+        axes=(
+            LinePattern(rows, low=start, high=start + (rows - 1) * spacing),
+            LinePattern(1, spacing=1.0),
+        ),
         geometry=TorusGeometry(
             2,
             major_radius=(stations * 4.1 + extra) / (2 * math.pi),
