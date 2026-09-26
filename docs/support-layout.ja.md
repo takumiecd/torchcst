@@ -113,3 +113,9 @@ optimizer状態やbackwardを含む総学習メモリの数字ではない。全
 結果・生の各ラウンド時間・ログは `output/triton-a100-20260926/support-layout*`。
 GPU名、6ケース完了、ソースcommit、転送hash、テスト完了をローカルでも照合した。
 最終修正はPyTorch参照版の全idle時の勾配接続で、速度測定のTriton経路は同一。
+
+## 同じ配置を使う直接縮約の試作
+
+細かなremapを追加せず、atomから出力・勾配を局所的に縮約する試作を追加した。
+方式・制限・A100測定は [local-atom-linear.ja.md](local-atom-linear.ja.md) に記録した。
+現段階で既存融合版に対する安定した速度優位はなく、標準経路は変更していない。
