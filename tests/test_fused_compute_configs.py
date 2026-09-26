@@ -105,3 +105,18 @@ def test_default_fp_fusion_matches_explicit_dense_a100_tile():
         torch.testing.assert_close(
             actual, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
         )
+        stream = torch.cuda.Stream()
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream):
+            for _ in range(3):
+                layer(x, backend="triton_fused")
+        torch.cuda.current_stream().wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            captured = layer(x, backend="triton_fused")
+        layer.strip.atoms.p[:, 0] *= 0.7
+        layer.strip.atoms.p[:, 2] += 0.2
+        graph.replay()
+        torch.testing.assert_close(
+            captured, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
+        )
