@@ -131,7 +131,7 @@ PYTHONPATH=src:. python -u -m prototypes.benchmark_fused_compute \
 
 ### BA1のatom軸を除く試作
 
-Grok 4.7とBA1カーネルの生成コードを検討した。BM128/BN32/BK16/BA1のTriton中間表現には`tensor<512x1xf32>`のpartialと長さ1の`tt.reduce`が残る。PTXでは不要なprofile傾き計算は見つからなかった。実測するStrip+Torusはatomパラメータが5列で、振幅・精度を除く埋め込み次元は`D=3`。`D=2`と想定してSection追加次元を無視してはならない。
+Grok 4.7とBA1カーネルの生成コードを検討した。BM128/BN32/BK16/BA1のTriton中間表現には`tensor<512x1xf32>`のpartialと長さ1の`tt.reduce`が残る。PTXでは不要なprofile傾き計算は見つからなかった。Strip+Torusの元atomパラメータは5列だが、`prepare`後のpacked配列は6列で、カーネルに渡す埋め込み次元は`D=4`。`D=2`と想定してSection追加次元を無視してはならない。
 
 実験commit `60f71a780c0a22667c61307094461ad266d3b69f`でGrok 4.7が既定経路を保ったまま、BA1/late-reduce専用の明示的な`scalar_ba1`を追加した。3バケット順、FP32式、無効サイトのマスク、IEEE dotを維持し、partialのatom軸だけを外した。A100の関連テスト65件が合格し、境界・Torus seam・CUDA Graph再生後のatom更新を含む旧経路との出力ビット一致を確認した。
 
