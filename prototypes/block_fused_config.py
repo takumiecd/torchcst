@@ -15,7 +15,6 @@ class FusedConfig:
     warps: int = 4
     late_reduce: bool = False
     fp_fusion: bool = False
-    skip_empty: bool = False
 
     def __post_init__(self):
         for name, allowed in (
@@ -34,8 +33,6 @@ class FusedConfig:
             raise ValueError("late_reduce must be bool")
         if type(self.fp_fusion) is not bool:
             raise ValueError("fp_fusion must be bool")
-        if type(self.skip_empty) is not bool:
-            raise ValueError("skip_empty must be bool")
 
 
 def default_fused_config(
@@ -90,7 +87,6 @@ def launch_fused(layer, x, prepared, y, config):
         BK=config.columns,
         BA=config.atoms,
         LATE_REDUCE=config.late_reduce,
-        SKIP_EMPTY=config.skip_empty,
         num_warps=config.warps,
         enable_fp_fusion=config.fp_fusion,
     )
