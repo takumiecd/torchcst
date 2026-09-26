@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from contextlib import nullcontext
+from functools import partial
 from pathlib import Path
 from statistics import median
 from time import perf_counter
@@ -14,6 +14,14 @@ from unittest.mock import patch
 import torch
 
 from prototypes.benchmark_triton_linear import model, timed
+from torchcst.nn._backends._triton import forward as triton_forward
+
+
+def execution_mode(name):
+    return patch(
+        "torchcst.nn._backends._triton.forward",
+        partial(triton_forward, split_reductions=name == "optimized"),
+    )
 
 
 def paired_wall(fn, repeats):
@@ -22,11 +30,7 @@ def paired_wall(fn, repeats):
     for repeat in range(repeats + 3):
         order = ("baseline", "optimized") if repeat % 2 else ("optimized", "baseline")
         for name in order:
-            context = (
-                patch("torchcst.nn._backends._triton.split_count", return_value=1)
-                if name == "baseline"
-                else nullcontext()
-            )
+            context = execution_mode(name)
             with context:
                 torch.cuda.synchronize()
                 start = perf_counter()
@@ -61,11 +65,7 @@ def probe(batch, atoms, rows, columns, repeats):
     result = {"batch": batch, "atoms": atoms, "shape": [rows, columns]}
     reference = None
     for name in ("baseline", "optimized"):
-        context = (
-            patch("torchcst.nn._backends._triton.split_count", return_value=1)
-            if name == "baseline"
-            else nullcontext()
-        )
+        context = execution_mode(name)
         with context:
             actual = training()
             if reference is None:

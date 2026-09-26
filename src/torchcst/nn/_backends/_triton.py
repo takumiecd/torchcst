@@ -21,7 +21,9 @@ if TYPE_CHECKING:
     from ..linear import CSTLinear
 
 
-def forward(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
+def forward(
+    site: CSTLinear, inputs: Tensor, p: Tensor, *, split_reductions: bool = False
+) -> Tensor:
     if inputs.device.type != "cuda" or p.device != inputs.device or torch.version.hip:
         raise ValueError(
             "triton backend requires inputs and atoms on the same NVIDIA CUDA device"
@@ -50,6 +52,7 @@ def forward(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
             offsets,
             site.chart.tile_shape[0],
             PROFILE_KINDS[type(site.kernel.profile)],
+            split_reductions,
         )
     return output.reshape(*inputs.shape[:-1], site.out_features)
 
@@ -60,7 +63,17 @@ def _ceildiv(value: int, divisor: int) -> int:
 
 class _FusedLinear(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, inputs, packed, circle, section, offsets, station_rows, profile):
+    def forward(
+        ctx,
+        inputs,
+        packed,
+        circle,
+        section,
+        offsets,
+        station_rows,
+        profile,
+        split_reductions=False,
+    ):
         from ._triton_kernels import fused_forward, reduce_partials
 
         output = torch.empty(
@@ -81,10 +94,13 @@ class _FusedLinear(torch.autograd.Function):
             "BA": 8,
         }
         bm, bn = ctx.options["BM"], ctx.options["BN"]
-        properties = torch.cuda.get_device_properties(inputs.device)
-        ctx.multiprocessors = (
-            properties.multi_processor_count if "A100" in properties.name else 0
-        )
+        # Keep the production path unchanged until the extra allocation and
+        # launch overhead also improves ordinary (uncaptured) execution.
+        ctx.multiprocessors = 0
+        if split_reductions:
+            properties = torch.cuda.get_device_properties(inputs.device)
+            if "A100" in properties.name:
+                ctx.multiprocessors = properties.multi_processor_count
         if inputs.shape[0]:
             grid = (
                 _ceildiv(inputs.shape[0], bm),
@@ -187,4 +203,4 @@ class _FusedLinear(torch.autograd.Function):
                         num_warps=4,
                         enable_fp_fusion=False,
                     )
-        return dx, dp, None, None, None, None, None
+        return (dx, dp) + (None,) * (len(ctx.needs_input_grad) - 2)

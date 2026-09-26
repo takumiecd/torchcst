@@ -21,6 +21,7 @@ from torchcst import (
     WendlandC2,
 )
 from torchcst.nn._backends._preparation import execution_plan, geometry_factors, prepare
+from torchcst.nn._backends._triton import forward as triton_forward
 from torchcst.optim import LinearJGAtomGrad
 
 GPU = pytest.mark.skipif(
@@ -133,7 +134,8 @@ def test_triton_matches_dense_forward_and_gradients(
     x = torch.randn(21, 33, device="cuda").T.requires_grad_()
     x_fused = x.detach().clone().requires_grad_()
     grad = torch.randn(19, 33, device="cuda").T
-    expected, actual = dense(x), fused(x_fused)
+    expected = dense(x)
+    actual = triton_forward(fused, x_fused, fused.atoms.p, split_reductions=atoms == 67)
     torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-5)
     expected.backward(grad)
     actual.backward(grad)
@@ -170,7 +172,7 @@ def test_triton_small_station_counts_and_empty_blocks(rows, station_rows, atoms)
     )
     inputs = torch.randn(2, 3, 21, device="cuda", requires_grad=True)
     expected = torch.nn.functional.linear(inputs, model.dense_weight())
-    actual = model(inputs)
+    actual = triton_forward(model, inputs, model.atoms.p, split_reductions=True)
     torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-5)
     grad = torch.randn_like(actual)
     expected_grads = torch.autograd.grad(expected, (inputs, model.atoms.p), grad)
@@ -349,16 +351,20 @@ def test_triton_warm_forward_captures_updated_inputs_and_atoms():
     torch.manual_seed(74)
     model = _model(device="cuda", backend="triton", sigma_min=0.3, atoms=67)
     x = torch.randn(7, 21, device="cuda")
+
+    def run():
+        return triton_forward(model, x, model.atoms.p, split_reductions=True)
+
     with torch.no_grad():
         stream = torch.cuda.Stream()
         stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(stream):
             for _ in range(3):
-                model(x)
+                run()
         torch.cuda.current_stream().wait_stream(stream)
         graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(graph):
-            actual = model(x)
+            actual = run()
         for _ in range(2):
             x.normal_()
             model.atoms.p[:, 0].add_(0.01)
