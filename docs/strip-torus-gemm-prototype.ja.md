@@ -1,5 +1,9 @@
 # Strip + Torus Linear の実行設計
 
+現在の標準tiled/Triton経路は、単独タイル用・境界共有アトムを分ける配置へ更新した。
+最新の配置、再利用実験と測定結果は [support-layout.ja.md](support-layout.ja.md) を参照。
+以下には旧所属方式を含む段階ごとの設計・実験履歴を残している。
+
 `CSTLinear(..., backend="tiled")` は PyTorch 基準実装、`backend="triton"` は
 重み生成と GEMM を融合する NVIDIA GPU 実装である。両方とも入力勾配と
 アトム勾配を計算でき、`CSTParameterAdam` と `LinearJGAtomGrad` で使える。
