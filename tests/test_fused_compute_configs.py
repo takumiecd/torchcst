@@ -22,6 +22,9 @@ from prototypes.block_strip_linear import BlockStripLinear
         FusedConfig(128, 32, 16, 16, 4, True),
         FusedConfig(128, 16, 64, 8, 8, True),
         FusedConfig(128, 16, 16, 8, 4, True, True),
+        FusedConfig(128, 32, 16, 1, 4, True),
+        FusedConfig(128, 16, 64, 1, 4, True),
+        FusedConfig(128, 16, 32, 1, 4, True, True),
     ],
 )
 def test_fused_schedule_tail_and_seam(config):
