@@ -105,6 +105,30 @@ PYTHONPATH=src:. python -u -m prototypes.benchmark_fused_compute \
   --configs 128,32,16,1,4,1,0 64,32,16,1,4,1,0 32,32,16,1,4,1,0 --full
 ```
 
+### BNとBKを同時に広げた比較
+
+Grok 4.7と既存のBN/BK個別比較の交差セルを検討し、BM128/BA1/4 warps/late-reduce/fusion無を固定した。0.049%でBN32/BK16とBN16/BK64を同一runの対照に、BN32/BK32とBN32/BK64を測った。準備込みCUDA Graph 3ラウンド中央値、単位ms。
+
+| 設定 | 中央値 | 3ラウンド範囲 | registers/thread | compiler spill |
+| --- | ---: | ---: | ---: | ---: |
+| BN32/BK16 | **4.690** | 4.616–4.969 | 128 | 0 |
+| BN16/BK64 | 5.013 | 5.013–5.024 | 168 | 0 |
+| BN32/BK32 | 5.058 | 4.942–5.272 | 168 | 0 |
+| BN32/BK64 | 4.942 | 4.941–4.946 | 255 | 0 |
+
+全設定が同じdense Wとの出力照合に合格。BN32/BK64の中央値は対照より遅く、3ラウンドの範囲も対照と重なる。BN32/BK32も速くない。このrunも以前よりGPU全体が約2倍遅い速度帯であり、別runの絶対値とは比較しない。Grokと決めた停止条件に従い、0.195%以上には広げなかった。自動選択は変更していない。
+
+結果は`output/triton-a100-20260927/low-density-bm/bn-bk-8192.json`、SHA256は`113559ff2c85b00d5946b5f6fea8a292f84f03496d263c48a06f7ea806aecf80`で遠隔結果と一致。ソースcommitは`b1fd5de61a24b906351bc80125104ac67fd2be9c`、遠隔ディレクトリは`srv11/cst-lab/torchcst-ba2-b1fd5de`。
+
+```bash
+PYTHONPATH=src:. python -u -m prototypes.benchmark_fused_compute \
+  --output-dir low-density-bn-bk-8192 \
+  --source-commit b1fd5de61a24b906351bc80125104ac67fd2be9c \
+  --cases 4096:128:8192 \
+  --configs 128,32,16,1,4,1,0 128,16,64,1,4,1,0 \
+            128,32,32,1,4,1,0 128,32,64,1,4,1,0 --full
+```
+
 ## 生成後の空重み判定
 
 実験commit `ed8fd8fc45c23837f73b1da8081e923ce2b782f6`で、BN×BK重み小片を生成した後、全てゼロなら入力ロードとdotを飛ばした。全経路の出力照合は合格したが、同一runで全密度が遅くなった。特に8,192 atomsの準備込みは基準4.001→4.534ms、32,768では4.063→4.591ms。重み生成を終えてからの分岐では費用を回収できないため、commit `9c1489a`でコードをrevertした。NaN/Inf入力に対するゼロ重みとの積の意味も変わるので、この方式を採用しない。
