@@ -15,6 +15,7 @@ class FusedConfig:
     warps: int = 4
     late_reduce: bool = False
     fp_fusion: bool = False
+    merge_buckets: bool = False
 
     def __post_init__(self):
         for name, allowed in (
@@ -33,6 +34,10 @@ class FusedConfig:
             raise ValueError("late_reduce must be bool")
         if type(self.fp_fusion) is not bool:
             raise ValueError("fp_fusion must be bool")
+        if type(self.merge_buckets) is not bool:
+            raise ValueError("merge_buckets must be bool")
+        if self.merge_buckets and not (self.atoms == 1 and self.late_reduce):
+            raise ValueError("merge_buckets requires atoms=1 and late_reduce=True")
 
 
 def default_fused_config(
@@ -87,6 +92,7 @@ def launch_fused(layer, x, prepared, y, config):
         BK=config.columns,
         BA=config.atoms,
         LATE_REDUCE=config.late_reduce,
+        MERGE_BUCKETS=config.merge_buckets,
         num_warps=config.warps,
         enable_fp_fusion=config.fp_fusion,
     )

@@ -43,7 +43,7 @@ def log(**value):
 
 def config(text):
     values = list(map(int, text.split(",")))
-    assert len(values) in (6, 7) and all(value in (0, 1) for value in values[5:])
+    assert len(values) in (6, 7, 8) and all(value in (0, 1) for value in values[5:])
     return FusedConfig(*values[:5], *(bool(value) for value in values[5:]))
 
 

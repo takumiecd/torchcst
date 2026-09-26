@@ -72,6 +72,80 @@ def test_fp_fusion_requires_exact_bool():
         FusedConfig(fp_fusion=1)
 
 
+def test_merge_buckets_requires_exact_bool_and_ba1_late_reduce():
+    with pytest.raises(ValueError, match="merge_buckets must be bool"):
+        FusedConfig(merge_buckets=1)
+    with pytest.raises(ValueError, match="atoms=1 and late_reduce=True"):
+        FusedConfig(128, 16, 16, 8, 4, True, False, True)
+    with pytest.raises(ValueError, match="atoms=1 and late_reduce=True"):
+        FusedConfig(atoms=1, merge_buckets=True)
+    opted = FusedConfig(128, 16, 16, 1, 4, True, False, True)
+    assert opted.merge_buckets and not opted.fp_fusion
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize(
+    "shape, tile",
+    [
+        ((15, 18), (15, 18)),
+        ((17, 17), (16, 17)),
+    ],
+)
+def test_merge_buckets_matches_late_reduce_bitwise(shape, tile):
+    from torchcst.nn._backends._preparation import prepare
+
+    torch.manual_seed(431)
+    layer = BlockStripLinear(
+        shape, tile, 8, device="cuda", tile_pitch=2.6, sigma=0.8, sigma_min=0.8
+    )
+    old = FusedConfig(16, 16, 16, 1, 4, True)
+    merged = FusedConfig(16, 16, 16, 1, 4, True, False, True)
+    with torch.no_grad():
+        p = layer.strip.atoms.p
+        chart = layer.strip.chart
+        assert chart.tile_count == (1 if shape == (15, 18) else 2)
+        coord = p.new_zeros((8, 3))
+        coord[:, 0] = (
+            chart.axes[0].start[0] + (torch.arange(8, device="cuda") // 2) * 2.6
+        )
+        coord[:, 0] += torch.where(torch.arange(8, device="cuda") % 2 == 0, 0.7, 2.05)
+        p[:, 2:] = chart.geometry.encode_centers(
+            chart.geometry.lift_chart_coordinates(coord)
+        )
+        p[:, 0] = 0.8
+        if chart.tile_count > 1:
+            counts = torch.diff(prepare(layer.strip, p, support_layout=True)[3])
+            assert counts[1:-1:2].sum() > 0 and counts[-2] > 0
+        x = torch.randn(5, shape[1], device="cuda")
+        weight = layer.dense_weight()
+        actual = layer(x, backend="triton_fused", fused_config=merged)
+        reference = layer(x, backend="triton_fused", fused_config=old)
+        torch.testing.assert_close(actual, reference, atol=0, rtol=0)
+        torch.testing.assert_close(actual, F.linear(x, weight), atol=3e-5, rtol=3e-5)
+        assert layer(x[:0], backend="triton_fused", fused_config=merged).shape == (
+            0,
+            shape[0],
+        )
+        stream = torch.cuda.Stream()
+        stream.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(stream):
+            for _ in range(3):
+                layer(x, backend="triton_fused", fused_config=merged)
+                layer(x, backend="triton_fused", fused_config=old)
+        torch.cuda.current_stream().wait_stream(stream)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            captured = layer(x, backend="triton_fused", fused_config=merged)
+            captured_old = layer(x, backend="triton_fused", fused_config=old)
+        p[:, 0] *= 0.7
+        p[:, 2] += 0.2
+        graph.replay()
+        torch.testing.assert_close(captured, captured_old, atol=0, rtol=0)
+        torch.testing.assert_close(
+            captured, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
+        )
+
+
 def test_default_fp_fusion_requires_dense_a100_and_respects_override():
     bm128 = FusedConfig(128, late_reduce=True)
     assert default_fused_config(

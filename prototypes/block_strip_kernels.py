@@ -25,6 +25,7 @@ def _weight_lanes(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    MERGE_BUCKETS: tl.constexpr = False,
 ):
     """Accumulate atom lanes first, reducing once after all I/B buckets."""
     sites = tl.arange(0, BN * BK)
@@ -32,16 +33,39 @@ def _weight_lanes(
     valid = (rows < N) & (rows < (station + 1) * S) & (cols < K)
     sx, sy = _sites(Circle, Section, rows, cols, valid, D)
     partial = tl.full((BN * BK, BA), 0.0, tl.float32)
-    for slot in tl.static_range(1 if G == 1 else 3):
-        bucket = _bucket(station, slot, G)
-        begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
-        for start in range(begin, end, BA):
-            atoms = start + tl.arange(0, BA)
-            value, _ = _values(
-                P, Section, atoms, atoms < end, sx, sy, cols, valid, D, PROFILE
-            )
-            amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
-            partial += value * amplitude[None, :]
+    # BA=1 and G>1: packed I/B neighbors are one increasing atom range,
+    # except station 0, whose wrap bucket precedes buckets 0 and 1.
+    if MERGE_BUCKETS and G > 1 and BA == 1:
+        passes = 1
+        if station == 0:
+            passes = 2
+        for part in range(passes):
+            if station == 0:
+                index = 2 * G - 1 if part == 0 else 0
+                span = 1 if part == 0 else 2
+                begin = tl.load(Offsets + index)
+                end = tl.load(Offsets + index + span)
+            else:
+                begin = tl.load(Offsets + 2 * station - 1)
+                end = tl.load(Offsets + 2 * station + 2)
+            for start in range(begin, end, BA):
+                atoms = start + tl.arange(0, BA)
+                value, _ = _values(
+                    P, Section, atoms, atoms < end, sx, sy, cols, valid, D, PROFILE
+                )
+                amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
+                partial += value * amplitude[None, :]
+    else:
+        for slot in tl.static_range(1 if G == 1 else 3):
+            bucket = _bucket(station, slot, G)
+            begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
+            for start in range(begin, end, BA):
+                atoms = start + tl.arange(0, BA)
+                value, _ = _values(
+                    P, Section, atoms, atoms < end, sx, sy, cols, valid, D, PROFILE
+                )
+                amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
+                partial += value * amplitude[None, :]
     return tl.reshape(tl.sum(partial, 1), (BN, BK))
 
 
@@ -182,6 +206,7 @@ def block_fused(
     BK: tl.constexpr,
     BA: tl.constexpr,
     LATE_REDUCE: tl.constexpr = False,
+    MERGE_BUCKETS: tl.constexpr = False,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -216,6 +241,7 @@ def block_fused(
                     BN,
                     BK,
                     BA,
+                    MERGE_BUCKETS,
                 )
             else:
                 w = _weight(
