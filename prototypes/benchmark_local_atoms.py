@@ -54,7 +54,11 @@ def shared_model():
     with torch.no_grad():
         a = torch.arange(64, device="cuda")
         coord = layer.atoms.p.new_zeros((64, 3))
-        coord[:, 0] = (a // 16) * 2.6 + torch.where(a % 2 == 0, 0.7, 2.05)
+        coord[:, 0] = (
+            layer.chart.axes[0].start[0]
+            + (a // 16) * 2.6
+            + torch.where(a % 2 == 0, 0.7, 2.05)
+        )
         layer.atoms.p[:, 2:] = chart.geometry.encode_centers(
             chart.geometry.lift_chart_coordinates(coord)
         )
@@ -134,6 +138,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
+    parser.add_argument("--shared-only", action="store_true")
     args = parser.parse_args()
     torch.backends.cuda.matmul.allow_tf32 = False
     result = {
@@ -142,7 +147,7 @@ def main():
         "source_commit": args.source_commit,
         "cases": [],
     }
-    for case in (
+    cases = (
         (16, 64, 64, 128),
         (128, 64, 64, 128),
         (16, 256, 64, 128),
@@ -150,7 +155,8 @@ def main():
         (32, 512, 256, 512),
         (128, 512, 256, 512),
         (16, 64, 64, 128, True),
-    ):
+    )
+    for case in cases[-1:] if args.shared_only else cases:
         result["cases"].append(probe(*case))
         args.output.write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(result["cases"][-1]), flush=True)
