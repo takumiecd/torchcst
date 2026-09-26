@@ -96,11 +96,12 @@ def test_default_fp_fusion_matches_explicit_dense_a100_tile():
     shape = (64, 64)
     atoms = math.ceil(0.05 * shape[0] * shape[1])
     layer = BlockStripLinear(shape, (64, 64), atoms, device="cuda")
-    x = torch.randn(128, shape[1], device="cuda")
-    selected = FusedConfig(128, late_reduce=True, fp_fusion=True)
-    actual = layer(x, backend="triton_fused")
-    explicit = layer(x, backend="triton_fused", fused_config=selected)
-    torch.testing.assert_close(actual, explicit, atol=0, rtol=0)
-    torch.testing.assert_close(
-        actual, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
-    )
+    with torch.no_grad():
+        x = torch.randn(128, shape[1], device="cuda")
+        selected = FusedConfig(128, late_reduce=True, fp_fusion=True)
+        actual = layer(x, backend="triton_fused")
+        explicit = layer(x, backend="triton_fused", fused_config=selected)
+        torch.testing.assert_close(actual, explicit, atol=0, rtol=0)
+        torch.testing.assert_close(
+            actual, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
+        )
