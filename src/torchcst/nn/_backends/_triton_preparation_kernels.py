@@ -95,6 +95,67 @@ def owners(
 
 
 @tr.jit
+def owners_chunked(
+    Centers,
+    Major,
+    Period,
+    Starts,
+    Spans,
+    Spacing,
+    Last,
+    Owners,
+    A: tl.constexpr,
+    G: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    BA: tl.constexpr,
+    BG: tl.constexpr,
+):
+    """Bounded station scan; never form a global atom-by-station tensor."""
+    a = tl.program_id(0) * BA + tl.arange(0, BA)
+    cx = tl.load(Centers + a * S0, a < A, 0.0)
+    cy = tl.load(Centers + a * S0 + S1, a < A, 0.0)
+    arc = tl.load(Major) * libdevice.atan2(cy, cx)
+    period, spacing = tl.load(Period), tl.load(Spacing)
+    best = tl.full((BA,), float("inf"), tl.float32)
+    owner = tl.full((BA,), 2147483647, tl.int32)
+    for start in range(0, G, BG):
+        g = start + tl.arange(0, BG)
+        starts = tl.load(Starts + g, g < G, 0.0)
+        spans = tl.load(Spans + g, g < G, 0.0)
+        last = tl.load(Last + g, g < G, 0).to(tl.float32)
+        relative = (
+            _remainder(
+                arc[:, None] - (starts + spans / 2)[None, :] + period / 2, period
+            )
+            - period / 2
+        )
+        local = libdevice.nearbyint(
+            (relative + spans[None, :] / 2)
+            / tl.maximum(spacing, 1.1754943508222875e-38)
+        )
+        local = tl.minimum(tl.maximum(local, 0.0), last[None, :])
+        nearest = starts[None, :] + local * spacing
+        distance = tl.abs(
+            _remainder(arc[:, None] - nearest + period / 2, period) - period / 2
+        )
+        distance = tl.where(g[None, :] < G, distance, float("inf"))
+        minimum = tl.min(distance, axis=1)
+        selected = tl.min(
+            tl.where(
+                (g[None, :] < G) & (distance == minimum[:, None]),
+                g[None, :],
+                2147483647,
+            ),
+            axis=1,
+        )
+        better = (minimum < best) | ((minimum == best) & (selected < owner))
+        owner = tl.where(better, selected, owner)
+        best = tl.minimum(best, minimum)
+    tl.store(Owners + a, owner, a < A)
+
+
+@tr.jit
 def support_buckets(
     Centers,
     Precision,

@@ -244,6 +244,10 @@ def main():
         default=["fixed_total", "fixed_per_tile"],
     )
     args = parser.parse_args()
+    if len(args.source_commit) != 40 or any(
+        c not in "0123456789abcdef" for c in args.source_commit
+    ):
+        parser.error("--source-commit must be a full 40-character Git commit ID")
     torch.backends.cuda.matmul.allow_tf32 = False
     args.output_dir.mkdir(parents=True, exist_ok=True)
     props = torch.cuda.get_device_properties(0)

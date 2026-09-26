@@ -43,10 +43,15 @@ def route_and_layout(routing, decoded, *, support=None):
     if not count:
         offsets.zero_()
         return owners, owners, offsets
-    bg = tr.next_power_of_2(stations)
+    bg = (
+        min(256, tr.next_power_of_2(stations))
+        if stations > 1024
+        else tr.next_power_of_2(stations)
+    )
     ba = min(32, max(1, 1024 // bg))
+    owner_kernel = kernels.owners_chunked if stations > 1024 else kernels.owners
     with torch.cuda.device(decoded.device):
-        kernels.owners[(tr.cdiv(count, ba),)](
+        owner_kernel[(tr.cdiv(count, ba),)](
             decoded,
             routing.major_radius,
             routing.period,

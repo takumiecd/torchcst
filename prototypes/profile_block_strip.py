@@ -12,7 +12,7 @@ import triton
 from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.profile_current_paths import capture
 from torchcst.nn._backends._preparation import execution_plan
-from torchcst.nn._backends._triton_preparation_kernels import owners
+from torchcst.nn._backends._triton_preparation_kernels import owners, owners_chunked
 
 
 @torch.no_grad()
@@ -41,16 +41,22 @@ def main():
         for backend in ("triton_fused", "triton_direct"):
             name = f"block_{tile[0]}x{tile[1]}_{backend}"
             prof = capture(
-                view, x, name, partial(layer, x, backend=backend), False, args.output_dir
+                view,
+                x,
+                name,
+                partial(layer, x, backend=backend),
+                False,
+                args.output_dir,
             )
             case["profiles"].append(prof)
         routing = execution_plan(layer.strip).routing
         decoded = layer.strip.chart.geometry.decode_centers(layer.strip.atoms.p[:, 2:])
         a, g = decoded.shape[0], layer.strip.chart.tile_count
-        bg = triton.next_power_of_2(g)
+        bg = 256 if g > 1024 else triton.next_power_of_2(g)
         ba = min(32, max(1, 1024 // bg))
         scratch = torch.empty(a, device="cuda", dtype=torch.long)
-        compiled = owners[(triton.cdiv(a, ba),)](
+        owner_kernel = owners_chunked if g > 1024 else owners
+        compiled = owner_kernel[(triton.cdiv(a, ba),)](
             decoded,
             routing.major_radius,
             routing.period,

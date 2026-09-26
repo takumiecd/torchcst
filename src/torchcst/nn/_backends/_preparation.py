@@ -134,11 +134,7 @@ def prepare(
     if p.ndim != 2 or p.shape[1] != plan.parameter_dim:
         raise ValueError(f"p must have shape [atoms, {plan.parameter_dim}]")
     fused = (
-        use_triton
-        and p.is_cuda
-        and p.dtype == torch.float32
-        and not torch.version.hip
-        and site.chart.tile_count <= 1024
+        use_triton and p.is_cuda and p.dtype == torch.float32 and not torch.version.hip
     )
     with cst_span("cst.linear.prepare_atoms"):
         # Preserve overrides on custom kernels; the built-in evaluator can
