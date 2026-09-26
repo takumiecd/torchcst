@@ -173,11 +173,7 @@ class BlockStripLinear(nn.Module):
         )
         flat = x.reshape(-1, self.shape[1]).contiguous()
         y = flat.new_empty((flat.shape[0], self.shape[0]))
-        bm = batch_tile or (
-            16
-            if backend in ("triton_direct", "triton_shared", "triton_atom_dot")
-            else 64
-        )
+        bm = batch_tile or (16 if backend in ("triton_direct", "triton_shared") else 64)
         allowed = (4, 16, 64) if backend == "triton_direct" else (16, 64, 128)
         if backend in ("triton_shared", "triton_atom_dot"):
             allowed = (16, 32, 64)

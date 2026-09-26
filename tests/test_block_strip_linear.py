@@ -203,6 +203,7 @@ def test_reuse_tail_and_multiple_column_fragments(batch_tile):
         ("triton_atom_dot", 16, 16, 4),
         ("triton_atom_dot", 32, 16, 4),
         ("triton_atom_dot", 32, 32, 4),
+        ("triton_atom_dot", 64, 16, 4),
         ("triton_atom_dot", 64, 16, 8),
     ],
 )
