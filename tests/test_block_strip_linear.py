@@ -75,7 +75,8 @@ def test_mapped_gpu(shape, tile, backend):
         "triton_atom_dot",
     ],
 )
-def test_boundary_seam_and_graph_updates(backend):
+def test_boundary_seam_and_graph_updates(backend, execution=None):
+    execution = execution or {}
     from torchcst.nn._backends._preparation import prepare
 
     layer = BlockStripLinear(
@@ -98,7 +99,7 @@ def test_boundary_seam_and_graph_updates(backend):
         assert counts[1:-1:2].sum() > 0 and counts[-2] > 0
         x = torch.randn(5, 32, device="cuda")
         torch.testing.assert_close(
-            layer(x, backend=backend),
+            layer(x, backend=backend, **execution),
             F.linear(x, layer.dense_weight()),
             atol=3e-5,
             rtol=3e-5,
@@ -107,11 +108,11 @@ def test_boundary_seam_and_graph_updates(backend):
         stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(stream):
             for _ in range(3):
-                layer(x, backend=backend)
+                layer(x, backend=backend, **execution)
         torch.cuda.current_stream().wait_stream(stream)
         graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(graph):
-            y = layer(x, backend=backend)
+            y = layer(x, backend=backend, **execution)
         p[:, 0] *= 0.7
         p[:, 2] += 0.2
         graph.replay()
@@ -224,4 +225,47 @@ def test_shared_partial_station_and_batch(backend, bm, bn, warps):
             F.linear(x, layer.dense_weight()),
             atol=3e-5,
             rtol=3e-5,
+        )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize(
+    "width,mode", [(16, "bounds"), (16, "exact"), (32, "bounds"), (32, "exact")]
+)
+def test_support_culling_partial_and_seam(width, mode):
+    torch.manual_seed(29)
+    layer = BlockStripLinear((17, 197), (5, 192), 19, device="cuda")
+    with torch.no_grad():
+        layer.strip.atoms.p[::3, 0] = 0
+        x = torch.randn(65, 197, device="cuda")
+        torch.testing.assert_close(
+            layer(x, backend="triton_atom_dot", column_tile=width, support_cull=mode),
+            F.linear(x, layer.dense_weight()),
+            atol=3e-5,
+            rtol=3e-5,
+        )
+    test_boundary_seam_and_graph_updates(
+        "triton_atom_dot", {"column_tile": width, "support_cull": mode}
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_support_counts_match_canonical_atom_sites():
+    from prototypes.block_support_diagnostics import diagnose_support
+    from torchcst.nn._backends._preparation import prepare
+
+    layer = BlockStripLinear((17, 65), (16, 64), 12, device="cuda")
+    with torch.no_grad():
+        p = layer.strip.atoms.p
+        p[::4, 0] = 0
+        result = diagnose_support(
+            layer, prepare(layer.strip, p, support_layout=True), 65
+        )
+        center, amp, prec = layer.strip.kernel.tile_parameters(layer.strip.chart, p)
+        indices = layer.logical_to_virtual(torch.arange(17 * 65, device="cuda"))
+        values = layer.strip.kernel.profile.evaluate_with_precision_slice(
+            layer.strip.chart, center, prec, indices
+        )
+        assert result["nonzero_sites_per_m_group"] == int(
+            ((values != 0) & (amp != 0)).sum()
         )

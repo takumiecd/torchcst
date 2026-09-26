@@ -139,6 +139,8 @@ class BlockStripLinear(nn.Module):
         prepared=None,
         output_tile=None,
         num_warps=4,
+        column_tile=None,
+        support_cull="none",
     ):
         if x.shape[-1] != self.shape[1]:
             raise ValueError("input feature count differs from mapped shape")
@@ -152,6 +154,18 @@ class BlockStripLinear(nn.Module):
             "triton_fused",
         ):
             raise ValueError("unknown prototype backend")
+        if backend != "triton_atom_dot" and (
+            column_tile is not None or support_cull != "none"
+        ):
+            raise ValueError(
+                "column_tile and support_cull apply only to triton_atom_dot"
+            )
+        if column_tile not in (None, 16, 32, 64, 128) or support_cull not in (
+            "none",
+            "bounds",
+            "exact",
+        ):
+            raise ValueError("invalid column execution options")
         if output_tile is None:
             output_tile = 16 if backend == "triton_atom_dot" else 4
         if torch.is_grad_enabled() and (
@@ -200,8 +214,17 @@ class BlockStripLinear(nn.Module):
         if flat.shape[0]:
             if backend in ("triton_shared", "triton_atom_dot"):
                 from prototypes.block_shared_kernel import block_direct_shared
+                from prototypes.block_support import section_bounds
 
-                bounds = torch.stack((section.amin(0), section.amax(0)))
+                bk = column_tile or max(
+                    16 if backend == "triton_atom_dot" else 1,
+                    min(128, 1 << (t - 1).bit_length()),
+                )
+                bounds = (
+                    section_bounds(section, bk)
+                    if support_cull != "none"
+                    else torch.stack((section.amin(0), section.amax(0)))
+                )
                 block_direct_shared[
                     (
                         math.ceil(flat.shape[0] / bm),
@@ -218,10 +241,9 @@ class BlockStripLinear(nn.Module):
                     **opts,
                     BN=output_tile,
                     USE_DOT=backend == "triton_atom_dot",
-                    BK=max(
-                        16 if backend == "triton_atom_dot" else 1,
-                        min(128, 1 << (t - 1).bit_length()),
-                    ),
+                    BK=bk,
+                    CULL_CHUNKS=support_cull != "none",
+                    CHECK_ZERO=support_cull == "exact",
                     num_warps=num_warps,
                     enable_fp_fusion=False,
                 )

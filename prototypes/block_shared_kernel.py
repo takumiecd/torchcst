@@ -29,6 +29,8 @@ def block_direct_shared(
     BN: tl.constexpr,
     BK: tl.constexpr,
     USE_DOT: tl.constexpr = False,
+    CULL_CHUNKS: tl.constexpr = False,
+    CHECK_ZERO: tl.constexpr = False,
 ):
     group = tl.program_id(1)
     r = group // tr.cdiv(S, BN)
@@ -45,11 +47,16 @@ def block_direct_shared(
         for start in range(tr.cdiv(T, BK)):
             k = start * BK + tl.arange(0, BK)
             valid = (k < T) & (c * T + k < K)
-            x = tl.load(
-                X + m[:, None] * K + (c * T + k)[None, :],
-                (m[:, None] < M) & valid[None, :],
-                0.0,
-            )
+            if CULL_CHUNKS:
+                x = tl.full((BM, BK), 0, tl.float32)
+                loaded = False
+            else:
+                x = tl.load(
+                    X + m[:, None] * K + (c * T + k)[None, :],
+                    (m[:, None] < M) & valid[None, :],
+                    0.0,
+                )
+            chunk_bounds = Bounds + start * 2 * (D - 1) if CULL_CHUNKS else Bounds
             rho = tl.load(Section + k * (D - 1), k < T, 0.0)
             site_x = cosine[:, None] * rho[None, :]
             site_y = sine[:, None] * rho[None, :]
@@ -58,7 +65,9 @@ def block_direct_shared(
                 begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
                 for a in range(begin, end):
                     amplitude = tl.load(P + a * (D + 2))
-                    possible = row_valid & _row_possible(P, Bounds, a, cosine, sine, D)
+                    possible = row_valid & _row_possible(
+                        P, chunk_bounds, a, cosine, sine, D
+                    )
                     if (amplitude != 0) & (tl.sum(possible.to(tl.int32), 0) > 0):
                         squared = tl.full((BN, BK), 0, tl.float32)
                         for dim in tl.static_range(D):
@@ -76,17 +85,32 @@ def block_direct_shared(
                             squared, tl.load(P + a * (D + 2) + 1), PROFILE
                         )
                         value = tl.where(possible[:, None] & valid[None, :], value, 0.0)
-                        if USE_DOT:
-                            acc = tl.dot(
-                                x,
-                                tl.trans(value * amplitude),
-                                acc,
-                                input_precision="ieee",
+                        nonzero = True
+                        if CHECK_ZERO:
+                            nonzero = (
+                                tl.sum(tl.sum((value != 0).to(tl.int32), 1), 0) > 0
                             )
-                        else:
-                            acc += (
-                                tl.sum(x[:, None, :] * value[None, :, :], 2) * amplitude
-                            )
+                        if nonzero:
+                            if CULL_CHUNKS:  # noqa: SIM102 -- constexpr protects loaded
+                                if not loaded:
+                                    x = tl.load(
+                                        X + m[:, None] * K + (c * T + k)[None, :],
+                                        (m[:, None] < M) & valid[None, :],
+                                        0.0,
+                                    )
+                                    loaded = True
+                            if USE_DOT:
+                                acc = tl.dot(
+                                    x,
+                                    tl.trans(value * amplitude),
+                                    acc,
+                                    input_precision="ieee",
+                                )
+                            else:
+                                acc += (
+                                    tl.sum(x[:, None, :] * value[None, :, :], 2)
+                                    * amplitude
+                                )
     tl.store(
         Y + m[:, None] * N + n[None, :], acc, (m[:, None] < M) & row_valid[None, :]
     )
