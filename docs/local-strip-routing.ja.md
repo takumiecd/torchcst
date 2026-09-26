@@ -2,6 +2,9 @@
 
 2026-09-26。[目標atom密度の再測定](target-atom-density.ja.md)で見つかった所属探索を改善した。
 
+続く[I/B分類と一時メモリの改善](batched-support-preparation.ja.md)では、分類のまとめ処理と
+整数配列の再利用・32bit化を行った。以下はその変更前の測定である。
+
 ## 変更
 
 `CircleRouting`に固定pitchと局所候補検索の適用条件を保存し、GPU準備で条件を満たす場合は
