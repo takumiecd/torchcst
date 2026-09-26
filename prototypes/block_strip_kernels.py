@@ -8,6 +8,36 @@ from torchcst.nn._backends._triton_kernels import _profile, _sites, _values, _we
 
 
 @tr.jit
+def _lane_buckets(
+    partial,
+    P,
+    Section,
+    Offsets,
+    station,
+    sx,
+    sy,
+    cols,
+    valid,
+    D: tl.constexpr,
+    G: tl.constexpr,
+    PROFILE: tl.constexpr,
+    BA: tl.constexpr,
+):
+    """Previous per-bucket lane loop. Unchanged default when merge is off."""
+    for slot in tl.static_range(1 if G == 1 else 3):
+        bucket = _bucket(station, slot, G)
+        begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
+        for start in range(begin, end, BA):
+            atoms = start + tl.arange(0, BA)
+            value, _ = _values(
+                P, Section, atoms, atoms < end, sx, sy, cols, valid, D, PROFILE
+            )
+            amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
+            partial += value * amplitude[None, :]
+    return partial
+
+
+@tr.jit
 def _weight_lanes(
     P,
     Circle,
@@ -35,37 +65,88 @@ def _weight_lanes(
     partial = tl.full((BN * BK, BA), 0.0, tl.float32)
     # BA=1 and G>1: packed I/B neighbors are one increasing atom range,
     # except station 0, whose wrap bucket precedes buckets 0 and 1.
-    if MERGE_BUCKETS and G > 1 and BA == 1:
-        passes = 1
-        if station == 0:
-            passes = 2
-        for part in range(passes):
-            if station == 0:
-                index = 2 * G - 1 if part == 0 else 0
-                span = 1 if part == 0 else 2
-                begin = tl.load(Offsets + index)
-                end = tl.load(Offsets + index + span)
+    # Triton 3.2 rejects chained `and` and a data-dependent range trip count.
+    if MERGE_BUCKETS:
+        if G > 1:
+            if BA == 1:
+                for part in tl.static_range(2):
+                    if station == 0:
+                        if part == 0:
+                            begin = tl.load(Offsets + 2 * G - 1)
+                            end = tl.load(Offsets + 2 * G)
+                        else:
+                            begin = tl.load(Offsets)
+                            end = tl.load(Offsets + 2)
+                    else:
+                        begin = tl.load(Offsets + 2 * station - 1)
+                        if part == 0:
+                            end = tl.load(Offsets + 2 * station + 2)
+                        else:
+                            end = begin
+                    for start in range(begin, end, BA):
+                        atoms = start + tl.arange(0, BA)
+                        value, _ = _values(
+                            P,
+                            Section,
+                            atoms,
+                            atoms < end,
+                            sx,
+                            sy,
+                            cols,
+                            valid,
+                            D,
+                            PROFILE,
+                        )
+                        amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
+                        partial += value * amplitude[None, :]
             else:
-                begin = tl.load(Offsets + 2 * station - 1)
-                end = tl.load(Offsets + 2 * station + 2)
-            for start in range(begin, end, BA):
-                atoms = start + tl.arange(0, BA)
-                value, _ = _values(
-                    P, Section, atoms, atoms < end, sx, sy, cols, valid, D, PROFILE
+                partial = _lane_buckets(
+                    partial,
+                    P,
+                    Section,
+                    Offsets,
+                    station,
+                    sx,
+                    sy,
+                    cols,
+                    valid,
+                    D,
+                    G,
+                    PROFILE,
+                    BA,
                 )
-                amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
-                partial += value * amplitude[None, :]
+        else:
+            partial = _lane_buckets(
+                partial,
+                P,
+                Section,
+                Offsets,
+                station,
+                sx,
+                sy,
+                cols,
+                valid,
+                D,
+                G,
+                PROFILE,
+                BA,
+            )
     else:
-        for slot in tl.static_range(1 if G == 1 else 3):
-            bucket = _bucket(station, slot, G)
-            begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
-            for start in range(begin, end, BA):
-                atoms = start + tl.arange(0, BA)
-                value, _ = _values(
-                    P, Section, atoms, atoms < end, sx, sy, cols, valid, D, PROFILE
-                )
-                amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
-                partial += value * amplitude[None, :]
+        partial = _lane_buckets(
+            partial,
+            P,
+            Section,
+            Offsets,
+            station,
+            sx,
+            sy,
+            cols,
+            valid,
+            D,
+            G,
+            PROFILE,
+            BA,
+        )
     return tl.reshape(tl.sum(partial, 1), (BN, BK))
 
 
