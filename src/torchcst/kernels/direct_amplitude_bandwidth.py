@@ -664,13 +664,24 @@ class DirectAmpWidth(Kernel):
             raise ValueError(f"p must have shape [atoms, {expected_dim}]")
         return p[:, :2], p[:, 2:]
 
-    def _single_components(
+    def tile_parameters(
         self, chart: Chart, p: Tensor
     ) -> tuple[Tensor, Tensor, Tensor]:
-        direct, center = self._single_split(chart, p)
-        amplitude, alpha = self._amplitude_and_alpha(direct)
+        """Return encoded centers, amplitudes and detached inverse square widths.
+
+        Execution backends share this preparation so amplitude clamping and
+        the activity state's stop-gradient semantics have one definition.
+        """
+
+        self._single_split(chart, p)
+        return self._tile_parameters(p)
+
+    def _tile_parameters(self, p: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        """Evaluate a row table after an execution plan validated its schema."""
+
+        amplitude, alpha = self._amplitude_and_alpha(p[:, :2])
         sigma, _, _ = self._sigma_bounds(amplitude, alpha)
-        return center, amplitude, sigma.reciprocal().square().detach()
+        return p[:, 2:], amplitude, sigma.reciprocal().square().detach()
 
     def _single_values(
         self,
@@ -726,7 +737,7 @@ class DirectAmpWidth(Kernel):
     def weight(self, chart: Chart, p: Tensor) -> Tensor:
         """Sum single-chart atoms with bounded site and atom temporaries."""
 
-        center, amplitude, precision = self._single_components(chart, p)
+        center, amplitude, precision = self.tile_parameters(chart, p)
         blocks = [
             self._single_block(
                 chart,
@@ -739,8 +750,44 @@ class DirectAmpWidth(Kernel):
         ]
         return torch.cat(blocks).reshape(chart.shape)
 
+    def weight_tile(
+        self, chart: Chart, p: Tensor, rows: Tensor, columns: Tensor
+    ) -> Tensor:
+        """Sum atom contributions on one [output rows, input columns] tile.
+
+        The tile is a temporary PyTorch tensor. A native tiled GEMM may
+        evaluate the same entries directly in registers or shared memory.
+        """
+
+        if not hasattr(chart, "shape") or len(chart.shape) != 2:
+            raise ValueError("weight_tile requires a two-dimensional operator chart")
+        if (
+            rows.ndim != 1
+            or columns.ndim != 1
+            or rows.dtype != torch.long
+            or columns.dtype != torch.long
+            or rows.device != p.device
+            or columns.device != p.device
+        ):
+            raise ValueError("rows and columns must be long vectors on the atom device")
+        if bool(((rows < 0) | (rows >= chart.shape[0])).any()) or bool(
+            ((columns < 0) | (columns >= chart.shape[1])).any()
+        ):
+            raise IndexError("weight tile index out of bounds")
+        if p.shape[0] == 0 or rows.numel() == 0 or columns.numel() == 0:
+            return p.new_zeros((rows.numel(), columns.numel()))
+        center, amplitude, precision = self.tile_parameters(chart, p)
+        sites = (rows[:, None] * chart.shape[1] + columns[None, :]).reshape(-1)
+        pieces = [
+            self._single_block(
+                chart, center, amplitude, precision, sites[start:start + self.site_chunk]
+            )
+            for start in range(0, sites.numel(), self.site_chunk)
+        ]
+        return torch.cat(pieces).reshape(rows.numel(), columns.numel())
+
     def _single_materialize_atoms(self, chart: Chart, p: Tensor) -> Tensor:
-        center, amplitude, precision = self._single_components(chart, p)
+        center, amplitude, precision = self.tile_parameters(chart, p)
         blocks = [
             self._single_values(
                 chart,
@@ -760,7 +807,7 @@ class DirectAmpWidth(Kernel):
 
         if not isinstance(chart, StripChart):
             raise TypeError("packed_weight requires a StripChart")
-        center, amplitude, precision = self._single_components(chart, p)
+        center, amplitude, precision = self.tile_parameters(chart, p)
         tile_size = math.prod(chart.tile_shape)
         tiles = []
         for station in range(chart.tile_count):
@@ -866,6 +913,8 @@ class DirectAmpWidth(Kernel):
             # Width is a scale, so alpha advances a constant fraction of the
             # multiplicative range rather than a constant absolute distance.
             sigma = torch.exp((1.0 - alpha) * lower.log() + alpha * upper.log())
+            # exp(log(bound)) can round one ulp outside its closed interval.
+            sigma = sigma.clamp(min=lower, max=upper)
         return sigma, lower, upper
 
     def _require_shared_bandwidths(self) -> None:

@@ -11,6 +11,8 @@ from torch.autograd.function import once_differentiable
 
 from torchcst.atoms import AtomGrad
 
+from ._backends import ResolvedBackend
+
 if TYPE_CHECKING:
     from .linear import CSTLinear
 
@@ -124,7 +126,7 @@ class _CSTLinearAutograd(torch.autograd.Function):
         site: CSTLinear,
         atom_grad: LinearAtomGrad,
         generation: int,
-        backend: Literal["factored", "materialized"],
+        backend: ResolvedBackend,
     ) -> Tensor:
         ctx.save_for_backward(inputs, p)
         ctx.site = site

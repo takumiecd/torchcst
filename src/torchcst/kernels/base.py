@@ -146,6 +146,13 @@ class Kernel(nn.Module, ABC):
         encoded in ``p`` and interpreted here.
         """
 
+    def weight_tile(
+        self, chart: Chart, p: Tensor, rows: Tensor, columns: Tensor
+    ) -> Tensor:
+        """Optional single-chart sum on an output-row/input-column tile."""
+
+        raise NotImplementedError("this kernel does not provide weight tiles")
+
     @property
     def supports_factorization(self) -> bool:
         """Whether ``factors`` supplies an exact execution factorization."""
