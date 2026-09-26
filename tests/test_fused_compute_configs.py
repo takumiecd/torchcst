@@ -89,6 +89,7 @@ def test_merge_buckets_requires_exact_bool_and_ba1_late_reduce():
     [
         ((15, 18), (15, 18)),
         ((17, 17), (16, 17)),
+        ((32, 32), (16, 16)),
     ],
 )
 def test_merge_buckets_matches_late_reduce_bitwise(shape, tile):
@@ -103,7 +104,7 @@ def test_merge_buckets_matches_late_reduce_bitwise(shape, tile):
     with torch.no_grad():
         p = layer.strip.atoms.p
         chart = layer.strip.chart
-        assert chart.tile_count == (1 if shape == (15, 18) else 2)
+        assert chart.tile_count == {(15, 18): 1, (17, 17): 2, (32, 32): 4}[shape]
         coord = p.new_zeros((8, 3))
         coord[:, 0] = (
             chart.axes[0].start[0] + (torch.arange(8, device="cuda") // 2) * 2.6
@@ -113,10 +114,9 @@ def test_merge_buckets_matches_late_reduce_bitwise(shape, tile):
             chart.geometry.lift_chart_coordinates(coord)
         )
         p[:, 0] = 0.8
-        if chart.tile_count > 1:
+        if chart.tile_count == 4:
             counts = torch.diff(prepare(layer.strip, p, support_layout=True)[3])
-            # G=2 stores every shared atom in B[0]; B[1] (counts[-2]) stays empty.
-            assert counts[1] > 0
+            assert counts[1:-1:2].sum() > 0 and counts[-2] > 0
         x = torch.randn(5, shape[1], device="cuda")
         weight = layer.dense_weight()
         actual = layer(x, backend="triton_fused", fused_config=merged)
