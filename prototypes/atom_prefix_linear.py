@@ -38,7 +38,11 @@ def prepare_prefix(site, p: Tensor) -> PrefixPlan:
     plan = execution_plan(site)  # validates Strip+Torus and unnormalized profile
     if p.dtype not in (torch.float32, torch.float64):
         raise ValueError("atom prefix prototype requires float32 or float64")
-    encoded, amplitude, precision = site.kernel.tile_parameters(site.chart, p)
+    if p.ndim != 2 or p.shape[1] != plan.parameter_dim:
+        raise ValueError(f"p must have shape [atoms, {plan.parameter_dim}]")
+    # execution_plan validates the fixed kernel configuration. As in the
+    # existing backend, avoid repeating host-synchronizing checks in capture.
+    encoded, amplitude, precision = site.kernel._tile_parameters(p)
     centers = site.chart.geometry.decode_centers(encoded)
     radius = centers[:, :2].norm(dim=-1)
     direction = centers[:, :2] / radius[:, None]
