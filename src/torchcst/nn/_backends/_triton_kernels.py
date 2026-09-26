@@ -173,6 +173,7 @@ def fused_forward(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    SPLIT_K: tl.constexpr = 1,
 ):
     tile = tl.program_id(1)
     station = tile // tr.cdiv(STATION_ROWS, BN)
@@ -180,7 +181,7 @@ def fused_forward(
     m = tl.program_id(0) * BM + tl.arange(0, BM)
     n = row_start + tl.arange(0, BN)
     acc = tl.full((BM, BN), 0.0, tl.float32)
-    for k_start in range(0, K, BK):
+    for k_start in range(tl.program_id(2) * BK, K, BK * SPLIT_K):
         k = k_start + tl.arange(0, BK)
         x = tl.load(
             X + m[:, None] * K + k[None, :], (m[:, None] < M) & (k[None, :] < K), 0.0
@@ -209,7 +210,7 @@ def fused_forward(
         & (n[None, :] < N)
         & (n[None, :] < (station + 1) * STATION_ROWS)
     )
-    tl.store(Y + m[:, None] * N + n[None, :], acc, mask)
+    tl.store(Y + tl.program_id(2) * M * N + m[:, None] * N + n[None, :], acc, mask)
 
 
 @tr.jit
@@ -231,12 +232,13 @@ def backward_inputs(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    SPLIT_N: tl.constexpr = 1,
 ):
     m = tl.program_id(0) * BM + tl.arange(0, BM)
     col_start = tl.program_id(1) * BK
     k = col_start + tl.arange(0, BK)
     acc = tl.full((BM, BK), 0.0, tl.float32)
-    for station in range(G):
+    for station in range(tl.program_id(2), G, SPLIT_N):
         for local in range(tr.cdiv(STATION_ROWS, BN)):
             row_start = station * STATION_ROWS + local * BN
             n = row_start + tl.arange(0, BN)
@@ -265,7 +267,22 @@ def backward_inputs(
                 BA,
             )
             acc = tl.dot(dy, w, acc, input_precision="ieee")
-    tl.store(DX + m[:, None] * K + k[None, :], acc, (m[:, None] < M) & (k[None, :] < K))
+    tl.store(
+        DX + tl.program_id(2) * M * K + m[:, None] * K + k[None, :],
+        acc,
+        (m[:, None] < M) & (k[None, :] < K),
+    )
+
+
+@tr.jit
+def reduce_partials(
+    Partial, Output, SIZE: tl.constexpr, PARTS: tl.constexpr, BLOCK: tl.constexpr
+):
+    positions = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    total = tl.full((BLOCK,), 0.0, tl.float32)
+    for part in tl.static_range(PARTS):
+        total += tl.load(Partial + part * SIZE + positions, positions < SIZE, 0.0)
+    tl.store(Output + positions, total, positions < SIZE)
 
 
 @tr.jit

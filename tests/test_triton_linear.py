@@ -105,11 +105,21 @@ def test_backend_switch_is_validated():
 @pytest.mark.parametrize("profile", [Biweight, Triweight, WendlandC2, Triangle])
 @pytest.mark.parametrize("representation", ["intrinsic", "ambient"])
 @pytest.mark.parametrize("sigma_min", [0.3, 3.5])
-def test_triton_matches_dense_forward_and_gradients(profile, representation, sigma_min):
+@pytest.mark.parametrize("atoms", [13, 67])
+def test_triton_matches_dense_forward_and_gradients(
+    profile, representation, sigma_min, atoms
+):
     torch.manual_seed(31)
-    dense = _model(profile, representation, device="cuda", sigma_min=sigma_min)
+    dense = _model(
+        profile, representation, device="cuda", sigma_min=sigma_min, atoms=atoms
+    )
     fused = _model(
-        profile, representation, device="cuda", backend="triton", sigma_min=sigma_min
+        profile,
+        representation,
+        device="cuda",
+        backend="triton",
+        sigma_min=sigma_min,
+        atoms=atoms,
     )
     with torch.no_grad():
         dense.atoms.p[:, 0].uniform_(-0.7, 0.7)
@@ -139,7 +149,15 @@ def test_triton_matches_dense_forward_and_gradients(profile, representation, sig
 @GPU
 @pytest.mark.parametrize(
     "rows,station_rows,atoms",
-    [(5, 5, 1), (9, 5, 1), (19, 5, 1), (19, 5, 37), (37, 20, 13)],
+    [
+        (5, 5, 1),
+        (9, 5, 1),
+        (19, 5, 1),
+        (19, 5, 37),
+        (37, 20, 13),
+        (37, 20, 67),
+        (21, 5, 67),
+    ],
 )
 def test_triton_small_station_counts_and_empty_blocks(rows, station_rows, atoms):
     torch.manual_seed(9)
@@ -329,7 +347,7 @@ def test_warm_preparation_does_not_read_tensor_values_on_the_host():
 @GPU
 def test_triton_warm_forward_captures_updated_inputs_and_atoms():
     torch.manual_seed(74)
-    model = _model(device="cuda", backend="triton", sigma_min=0.3)
+    model = _model(device="cuda", backend="triton", sigma_min=0.3, atoms=67)
     x = torch.randn(7, 21, device="cuda")
     with torch.no_grad():
         stream = torch.cuda.Stream()

@@ -12,6 +12,7 @@
 | `nn/_backends/__init__.py` | backend の検証・選択・ディスパッチ |
 | `nn/_backends/_torch.py` | materialized / factored / tiled の PyTorch 実行 |
 | `nn/_backends/_preparation.py` | 固定設定の検証・座標計画と、毎回新しく行うアトム準備 |
+| `nn/_backends/_schedule.py` | A100 の SM 数・形状と一時領域上限から縮約の分割数を選択 |
 | `nn/_backends/_triton.py` | autograd 接続。Triton は実行時だけ import |
 | `nn/_backends/_triton_kernels.py` | forward、入力勾配、アトム勾配の GPU カーネル |
 | `nn/_layout.py` | 不透明なアトム行の配置と repack 計画 |
@@ -76,6 +77,17 @@ forward は各出力領域を一つのプログラムが担当し、入力列を
 重み生成と積の累積を行う。入力勾配は `dX = dY W` を同様に処理する。
 アトム勾配は小さな `dW_tile = dY_tile.T @ X_tile` を作り、プロファイルの
 微分と縮約してアトムごとに加算する。完全な `W` / `dW` は生成しない。
+
+A100 では forward の入力列方向と入力勾配のステーション方向を複数の
+プログラムへ分割できる。各プログラムが別々の部分結果を書き、最後に
+専用カーネルで加算する。部分結果の書込みには atomic を使わない。
+分割数は最大8で、各処理の一時領域を32 MiB以内に制限する。SM 数の8倍を
+プログラム数の目安とし、縮約の長さと一時領域上限も考慮する。
+平均アトム数が1ステーションあたり8未満の場合や、すでに十分なプログラム数が
+ある場合は分割しない。A100 以外も従来の分割なしを使う。
+
+変更するのは計算の割り当てと加算順序で、Chart のタイル形状と FP32 IEEE
+精度は維持する。アトム勾配のカーネルは従来どおりである。
 
 最初の実装は `BM=BN=BK=16`、アトムチャンク `BA=8`、4 warps。
 これらは内部設定で、Chart の `tile_shape` を変更しない。浮動小数点演算は

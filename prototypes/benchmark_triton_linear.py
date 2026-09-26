@@ -43,16 +43,20 @@ def timed(fn, repeats):
     return median(samples)
 
 
-def model(atoms):
+def model(atoms, *, rows=64, columns=128, station_rows=16):
+    stations = math.ceil(rows / station_rows)
     chart = StripChart(
-        shape=(64, 128),
-        tile_shape=(16, 128),
-        axes=(LinePattern(64, spacing=0.1), GridPattern((8, 16), spacing=0.05)),
+        shape=(rows, columns),
+        tile_shape=(station_rows, columns),
+        axes=(
+            LinePattern(rows, spacing=min(0.1, 1.5 / max(station_rows - 1, 1))),
+            GridPattern((columns // 16, 16), spacing=0.05),
+        ),
         axis=0,
         tile_pitch=4.1,
         geometry=TorusGeometry(
             3,
-            major_radius=16.4 / (2 * math.pi),
+            major_radius=max(2, stations) * 4.1 / (2 * math.pi),
             minor_radius=0.4,
             representation="intrinsic",
         ),

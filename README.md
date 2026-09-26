@@ -412,6 +412,13 @@ rejected when those gradients are requested. Higher-order differentiation
 uses the PyTorch backends. See the [execution notes](docs/strip-torus-gemm-prototype.ja.md)
 for layout, tests and the fused-versus-split benchmark.
 
+On A100, forward and input-gradient reductions can use multiple programs and
+a final sum to improve parallelism. The internal schedule uses the available
+SM count, workload shape and atom count, with at most eight partials and a
+32 MiB workspace limit per operation. Sparse or already highly parallel
+workloads keep the single-part schedule, as do other GPU models. These
+temporary partial outputs do not change the chart or materialize weights.
+
 ```python
 import math
 

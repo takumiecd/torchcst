@@ -15,6 +15,7 @@ from torch.autograd.function import once_differentiable
 from torchcst.profiling import cst_span
 
 from ._preparation import PROFILE_KINDS, prepare
+from ._schedule import split_count
 
 if TYPE_CHECKING:
     from ..linear import CSTLinear
@@ -60,7 +61,7 @@ def _ceildiv(value: int, divisor: int) -> int:
 class _FusedLinear(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inputs, packed, circle, section, offsets, station_rows, profile):
-        from ._triton_kernels import fused_forward
+        from ._triton_kernels import fused_forward, reduce_partials
 
         output = torch.empty(
             (inputs.shape[0], circle.shape[0]), device=inputs.device, dtype=inputs.dtype
@@ -80,29 +81,47 @@ class _FusedLinear(torch.autograd.Function):
             "BA": 8,
         }
         bm, bn = ctx.options["BM"], ctx.options["BN"]
+        properties = torch.cuda.get_device_properties(inputs.device)
+        ctx.multiprocessors = (
+            properties.multi_processor_count if "A100" in properties.name else 0
+        )
         if inputs.shape[0]:
             grid = (
                 _ceildiv(inputs.shape[0], bm),
                 (offsets.numel() - 1) * _ceildiv(station_rows, bn),
             )
+            parts = split_count(
+                reduction_tiles=_ceildiv(inputs.shape[1], ctx.options["BK"]),
+                elements=output.numel(),
+                programs=grid[0] * grid[1],
+                multiprocessors=ctx.multiprocessors,
+                atoms=packed.shape[0],
+                stations=offsets.numel() - 1,
+            )
+            partial = output if parts == 1 else output.new_empty((parts, *output.shape))
             with torch.cuda.device(inputs.device):
-                fused_forward[grid](
+                fused_forward[(*grid, parts)](
                     inputs,
                     packed,
                     circle,
                     section,
                     offsets,
-                    output,
+                    partial,
                     **ctx.options,
+                    SPLIT_K=parts,
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
+                if parts > 1:
+                    reduce_partials[(_ceildiv(output.numel(), 256),)](
+                        partial, output, output.numel(), parts, 256
+                    )
         return output
 
     @staticmethod
     @once_differentiable
     def backward(ctx, output_gradient):
-        from ._triton_kernels import backward_atoms, backward_inputs
+        from ._triton_kernels import backward_atoms, backward_inputs, reduce_partials
 
         inputs, packed, circle, section, offsets = ctx.saved_tensors
         gradient = output_gradient.contiguous()
@@ -125,17 +144,31 @@ class _FusedLinear(torch.autograd.Function):
                         _ceildiv(inputs.shape[0], bm),
                         _ceildiv(inputs.shape[1], bk),
                     )
-                    backward_inputs[grid](
+                    parts = split_count(
+                        reduction_tiles=offsets.numel() - 1,
+                        elements=dx.numel(),
+                        programs=grid[0] * grid[1],
+                        multiprocessors=ctx.multiprocessors,
+                        atoms=packed.shape[0],
+                        stations=offsets.numel() - 1,
+                    )
+                    partial = dx if parts == 1 else dx.new_empty((parts, *dx.shape))
+                    backward_inputs[(*grid, parts)](
                         gradient,
                         packed,
                         circle,
                         section,
                         offsets,
-                        dx,
+                        partial,
                         **ctx.options,
+                        SPLIT_N=parts,
                         num_warps=4,
                         enable_fp_fusion=False,
                     )
+                    if parts > 1:
+                        reduce_partials[(_ceildiv(dx.numel(), 256),)](
+                            partial, dx, dx.numel(), parts, 256
+                        )
                 if dp is not None:
                     grid = (
                         (offsets.numel() - 1)
