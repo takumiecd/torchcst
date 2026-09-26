@@ -91,6 +91,10 @@ Grok 4.7の提案を基に、BM128/BA1/late-reduceでBN（出力行幅）、BK�
 
 Grok 4.7との検討を経て、実験commit `ac8f532a3e4aca702be8c0bfd66de965fe86ef7c`で、各BN×BKサイト小片の4次元外接箱と3つの所属バケットにあるatomのサポートを比較し、届かない場合に重み生成を飛ばした。約0.049%のパイロットでは全出力がdenseと一致したが、準備込み4.000→6.423ms、準備済み3.871→6.283msと大幅に遅い。カーネル内での箱計算とatomの再走査を伴うこの方式は先へ進めず、`f78569e`でrevertした。最も疎な点で明確に不利なため、密度を増やした測定は行わなかった。
 
+## dot精度設定の試作
+
+実験commit `c9138833b61c31581f95b1c738dc37bd9dff0e82`で、Grok 4.7に既定`ieee`を維持したまま明示的な`tf32x3`設定を追加してもらった。A100上で`tests/test_fused_compute_configs.py tests/test_block_strip_linear.py`を実行すると、追加したBA1/BN32/BK16の`tf32x3`ケースのTriton `make_llir`中にPythonプロセスが`Aborted (core dumped)`で終了し、遠隔終了コードは134だった。これ以上のコンパイル再試行や性能計測は行わず、`f3bee3e`で試作をrevertした。精度や速度の結論は出ていない。失敗原因の特定も未了であり、`tf32x3`一般がA100で使えないという主張ではない。archive SHA256は`388e61d30da7cfcf9e0713bac361b7256cfec249b6fe1b0cd1ddea8fa34c9a4c`で、遠隔展開前に一致を確認した。
+
 ## 再現
 
 基準ソースcommitは`483501cfcbfcdbb63ade9e4550df11a8355d9969`、archive SHA256は`a450bcba12bd65b6a1b4ae0c34939c5d23940f92a3c00112be7e0cad1ff2e40f`。A100上の展開前にhash一致を確認した。`tests/test_block_strip_linear.py`は47件合格。結果JSONのローカル/遠隔SHA256も照合済み。
