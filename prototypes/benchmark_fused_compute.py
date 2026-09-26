@@ -42,9 +42,14 @@ def log(**value):
 
 
 def config(text):
-    values = list(map(int, text.split(",")))
+    parts = text.split(",")
+    assert len(parts) in (6, 7, 8)
+    values = list(map(int, parts[:7] if len(parts) == 8 else parts))
     assert len(values) in (6, 7) and all(value in (0, 1) for value in values[5:])
-    return FusedConfig(*values[:5], *(bool(value) for value in values[5:]))
+    precision = {}
+    if len(parts) == 8:
+        precision["dot_precision"] = parts[7]
+    return FusedConfig(*values[:5], *(bool(value) for value in values[5:]), **precision)
 
 
 @torch.no_grad()

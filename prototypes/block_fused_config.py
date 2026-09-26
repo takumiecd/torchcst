@@ -15,6 +15,7 @@ class FusedConfig:
     warps: int = 4
     late_reduce: bool = False
     fp_fusion: bool = False
+    dot_precision: str = "ieee"
 
     def __post_init__(self):
         for name, allowed in (
@@ -33,6 +34,11 @@ class FusedConfig:
             raise ValueError("late_reduce must be bool")
         if type(self.fp_fusion) is not bool:
             raise ValueError("fp_fusion must be bool")
+        if type(self.dot_precision) is not str or self.dot_precision not in (
+            "ieee",
+            "tf32x3",
+        ):
+            raise ValueError("unsupported fused dot_precision")
 
 
 def default_fused_config(
@@ -87,6 +93,7 @@ def launch_fused(layer, x, prepared, y, config):
         BK=config.columns,
         BA=config.atoms,
         LATE_REDUCE=config.late_reduce,
+        DOT_PRECISION=config.dot_precision,
         num_warps=config.warps,
         enable_fp_fusion=config.fp_fusion,
     )

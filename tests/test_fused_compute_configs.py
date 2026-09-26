@@ -22,6 +22,7 @@ from prototypes.block_strip_linear import BlockStripLinear
         FusedConfig(128, 32, 16, 16, 4, True),
         FusedConfig(128, 16, 64, 8, 8, True),
         FusedConfig(128, 16, 16, 8, 4, True, True),
+        FusedConfig(128, 32, 16, 1, 4, True, False, "tf32x3"),
     ],
 )
 def test_fused_schedule_tail_and_seam(config):
@@ -67,6 +68,13 @@ def test_selected_fused_default_preserves_tails_and_explicit_override():
 def test_fp_fusion_requires_exact_bool():
     with pytest.raises(ValueError, match="fp_fusion must be bool"):
         FusedConfig(fp_fusion=1)
+
+
+def test_dot_precision_requires_supported_value():
+    with pytest.raises(ValueError, match="unsupported fused dot_precision"):
+        FusedConfig(dot_precision="tf32")
+    with pytest.raises(ValueError, match="unsupported fused dot_precision"):
+        FusedConfig(dot_precision=1)
 
 
 def test_default_fp_fusion_requires_dense_a100_and_respects_override():
