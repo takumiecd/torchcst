@@ -1,4 +1,4 @@
-"""Prepared-only timing of the three fused stage kernels."""
+"""Prepared-only timing of the fused stage kernels and the existing fused kernel."""
 
 import argparse
 import hashlib
@@ -42,9 +42,9 @@ def launch(grid, tensors, consts, stage, y, sink, w):
     )
 
 
-def compiled_record(compiled, output_dir, stage):
+def compiled_record(compiled, output_dir, stem):
     ptx = compiled.asm["ptx"]
-    path = output_dir / f"stage{stage}.ptx"
+    path = output_dir / f"{stem}.ptx"
     path.write_text(ptx)
     return {
         "n_regs": compiled.n_regs,
@@ -69,6 +69,7 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.manual_seed(21)
     prop = torch.cuda.get_device_properties(0)
+    assert "A100" in prop.name
     result = {
         "source_commit": args.source_commit,
         "device": prop.name,
@@ -78,6 +79,11 @@ def main():
         "batch": args.batch,
         "atoms": args.atoms,
         "config": {"BM": BM, "BN": BN, "BK": BK, "BA": BA, "num_warps": 4},
+        "timing_note": (
+            "stage1 writes checksum Sink and stage2 uses one synthetic "
+            "runtime 16x16 W fragment reused across tile iterations; their "
+            "times are counterfactual and non-additive."
+        ),
     }
     path = args.output_dir / "results.json"
 
@@ -117,12 +123,17 @@ def main():
     }
     tensors = (x, p, circle, section, offsets)
     y_fused = torch.empty(args.batch, args.size, device="cuda")
-    launch_fused(layer, x, prepared, y_fused, cfg)
+    compiled_existing = launch_fused(layer, x, prepared, y_fused, cfg)
     y0 = torch.empty_like(y_fused)
     sink = torch.empty(grid[0] * grid[1], device="cuda")
     w = torch.randn(16, 16, device="cuda")
     compiled = launch(grid, tensors, consts, 0, y0, sink, w)
-    result["stages"] = {"0": compiled_record(compiled, args.output_dir, 0)}
+    result["stages"] = {
+        "0": compiled_record(compiled, args.output_dir, "stage0"),
+        "existing_fused": compiled_record(
+            compiled_existing, args.output_dir, "existing_fused"
+        ),
+    }
     result["checks"] = {
         "stage0_vs_fused": check(y0, y_fused),
         "stage0_vs_dense": check(y0, expected),
@@ -135,7 +146,7 @@ def main():
     for stage, output in ((1, y1), (2, y1)):
         compiled = launch(grid, tensors, consts, stage, output, sink, w)
         result["stages"][str(stage)] = compiled_record(
-            compiled, args.output_dir, stage
+            compiled, args.output_dir, f"stage{stage}"
         )
         save()
     result.update(
@@ -144,6 +155,9 @@ def main():
                 "stage0": lambda: launch(grid, tensors, consts, 0, y0, sink, w),
                 "stage1": lambda: launch(grid, tensors, consts, 1, y1, sink, w),
                 "stage2": lambda: launch(grid, tensors, consts, 2, y1, sink, w),
+                "existing_fused": lambda: launch_fused(
+                    layer, x, prepared, y_fused, cfg
+                ),
             }
         )
     )
