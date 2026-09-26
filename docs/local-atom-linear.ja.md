@@ -1,5 +1,8 @@
 # I/B配置を使う局所的なアトム直接縮約
 
+続く大規模forward比較（2048²〜8192²）は
+[大規模denseとの比較](large-forward-scaling.ja.md)を参照。
+
 `prototypes/local_atom_linear.py` と `local_atom_kernels.py` の試作。
 公開backendや既存の標準経路は変更しない。
 単独用 `I[g]`・境界用 `B[g]` の配置をそのまま利用する。
