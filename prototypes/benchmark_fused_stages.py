@@ -82,7 +82,9 @@ def main():
         "timing_note": (
             "stage1 writes checksum Sink and stage2 uses one synthetic "
             "runtime 16x16 W fragment reused across tile iterations; their "
-            "times are counterfactual and non-additive."
+            "times are counterfactual and non-additive. "
+            "stage3 writes a synthetic Y from cheap lane values; "
+            "that output is not compared to dense."
         ),
     }
     path = args.output_dir / "results.json"
@@ -149,12 +151,19 @@ def main():
             compiled, args.output_dir, f"stage{stage}"
         )
         save()
+    y3 = torch.empty_like(y0)
+    compiled = launch(grid, tensors, consts, 3, y3, sink, w)
+    result["stages"]["3"] = compiled_record(compiled, args.output_dir, "stage3")
+    result["checks"]["stage3_finite"] = bool(torch.isfinite(y3).all())
+    save()
+    assert result["checks"]["stage3_finite"]
     result.update(
         timing(
             {
                 "stage0": lambda: launch(grid, tensors, consts, 0, y0, sink, w),
                 "stage1": lambda: launch(grid, tensors, consts, 1, y1, sink, w),
                 "stage2": lambda: launch(grid, tensors, consts, 2, y1, sink, w),
+                "stage3": lambda: launch(grid, tensors, consts, 3, y3, sink, w),
                 "existing_fused": lambda: launch_fused(
                     layer, x, prepared, y_fused, cfg
                 ),
