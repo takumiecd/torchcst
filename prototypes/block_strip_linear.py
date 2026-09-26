@@ -141,7 +141,12 @@ class BlockStripLinear(nn.Module):
         num_warps=4,
         column_tile=None,
         support_cull="none",
+        fused_config=None,
     ):
+        if fused_config is not None and backend != "triton_fused":
+            raise ValueError("fused_config requires triton_fused")
+        if fused_config is not None and batch_tile is not None:
+            raise ValueError("specify fused_config or batch_tile")
         if x.shape[-1] != self.shape[1]:
             raise ValueError("input feature count differs from mapped shape")
         if backend == "torch":
@@ -179,7 +184,6 @@ class BlockStripLinear(nn.Module):
         from prototypes.block_strip_kernels import (
             block_direct,
             block_direct_reuse,
-            block_fused,
         )
 
         p, circle, section, offsets = prepared or prepare(
@@ -196,7 +200,7 @@ class BlockStripLinear(nn.Module):
                 raise ValueError("unsupported shared execution shape")
         elif num_warps != 4 or output_tile != 4:
             raise ValueError("output_tile and num_warps apply only to triton_shared")
-        if bm not in allowed or (backend == "triton_fused" and bm == 128):
+        if bm not in allowed:
             raise ValueError("unsupported batch tile")
         s, t = self.tile_shape
         opts = {
@@ -268,20 +272,8 @@ class BlockStripLinear(nn.Module):
                     enable_fp_fusion=False,
                 )
             else:
-                block_fused[
-                    (math.ceil(flat.shape[0] / bm), self.row_groups * math.ceil(s / 16))
-                ](
-                    flat,
-                    p,
-                    circle,
-                    section,
-                    offsets,
-                    y,
-                    **opts,
-                    BN=16,
-                    BK=16,
-                    BA=8,
-                    num_warps=4,
-                    enable_fp_fusion=False,
-                )
+                from prototypes.block_fused_config import FusedConfig, launch_fused
+
+                config = fused_config or FusedConfig(batch_rows=bm)
+                launch_fused(self, flat, (p, circle, section, offsets), y, config)
         return y.reshape(*x.shape[:-1], self.shape[0])

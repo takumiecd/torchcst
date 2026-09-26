@@ -4,7 +4,45 @@ import triton as tr
 import triton.language as tl
 
 from prototypes.local_atom_kernels import _bucket, _row_possible, _row_values
-from torchcst.nn._backends._triton_kernels import _profile, _weight
+from torchcst.nn._backends._triton_kernels import _profile, _sites, _values, _weight
+
+
+@tr.jit
+def _weight_lanes(
+    P,
+    Circle,
+    Section,
+    Offsets,
+    station,
+    row_start,
+    col_start,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    D: tl.constexpr,
+    G: tl.constexpr,
+    S: tl.constexpr,
+    PROFILE: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    BA: tl.constexpr,
+):
+    """Accumulate atom lanes first, reducing once after all I/B buckets."""
+    sites = tl.arange(0, BN * BK)
+    rows, cols = row_start + sites // BK, col_start + sites % BK
+    valid = (rows < N) & (rows < (station + 1) * S) & (cols < K)
+    sx, sy = _sites(Circle, Section, rows, cols, valid, D)
+    partial = tl.full((BN * BK, BA), 0.0, tl.float32)
+    for slot in tl.static_range(1 if G == 1 else 3):
+        bucket = _bucket(station, slot, G)
+        begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
+        for start in range(begin, end, BA):
+            atoms = start + tl.arange(0, BA)
+            value, _ = _values(
+                P, Section, atoms, atoms < end, sx, sy, cols, valid, D, PROFILE
+            )
+            amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
+            partial += value * amplitude[None, :]
+    return tl.reshape(tl.sum(partial, 1), (BN, BK))
 
 
 @tr.jit
@@ -143,6 +181,7 @@ def block_fused(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    LATE_REDUCE: tl.constexpr = False,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -159,25 +198,45 @@ def block_fused(
                 (m[:, None] < M) & (k[None, :] < T) & (c * T + k[None, :] < K),
                 0.0,
             )
-            w = _weight(
-                P,
-                Circle,
-                Section,
-                Offsets,
-                station,
-                station * S + local,
-                start,
-                G * S,
-                T,
-                D,
-                G,
-                S,
-                PROFILE,
-                BN,
-                BK,
-                BA,
-                True,
-            )
+            if LATE_REDUCE:
+                w = _weight_lanes(
+                    P,
+                    Circle,
+                    Section,
+                    Offsets,
+                    station,
+                    station * S + local,
+                    start,
+                    G * S,
+                    T,
+                    D,
+                    G,
+                    S,
+                    PROFILE,
+                    BN,
+                    BK,
+                    BA,
+                )
+            else:
+                w = _weight(
+                    P,
+                    Circle,
+                    Section,
+                    Offsets,
+                    station,
+                    station * S + local,
+                    start,
+                    G * S,
+                    T,
+                    D,
+                    G,
+                    S,
+                    PROFILE,
+                    BN,
+                    BK,
+                    BA,
+                    True,
+                )
             acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
     tl.store(
         Y + m[:, None] * N + n[None, :],
