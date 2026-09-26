@@ -25,40 +25,12 @@ def _weight_lanes(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
-    SCALAR_BA1: tl.constexpr = False,
 ):
     """Accumulate atom lanes first, reducing once after all I/B buckets."""
     sites = tl.arange(0, BN * BK)
     rows, cols = row_start + sites // BK, col_start + sites % BK
     valid = (rows < N) & (rows < (station + 1) * S) & (cols < K)
     sx, sy = _sites(Circle, Section, rows, cols, valid, D)
-    if SCALAR_BA1:
-        partial = tl.full((BN * BK,), 0.0, tl.float32)
-        for slot in tl.static_range(1 if G == 1 else 3):
-            bucket = _bucket(station, slot, G)
-            begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
-            for atom in range(begin, end):
-                active = atom < end
-                cx = tl.load(P + atom * (D + 2) + 2, active, other=0.0)
-                cy = tl.load(P + atom * (D + 2) + 3, active, other=0.0)
-                dx, dy = sx - cx, sy - cy
-                squared = dx * dx + dy * dy
-                for dim in tl.static_range(2, D):
-                    site = tl.load(
-                        Section + cols * (D - 1) + dim - 1, valid, other=0.0
-                    )
-                    center = tl.load(
-                        P + atom * (D + 2) + dim + 2, active, other=0.0
-                    )
-                    difference = site - center
-                    squared += difference * difference
-                precision = tl.load(P + atom * (D + 2) + 1, active, other=0.0)
-                value, _ = _profile(squared, precision, PROFILE)
-                mask = valid & active
-                value = tl.where(mask, value, 0.0)
-                amplitude = tl.load(P + atom * (D + 2), active, 0.0)
-                partial += value * amplitude
-        return tl.reshape(partial, (BN, BK))
     partial = tl.full((BN * BK, BA), 0.0, tl.float32)
     for slot in tl.static_range(1 if G == 1 else 3):
         bucket = _bucket(station, slot, G)
@@ -210,7 +182,6 @@ def block_fused(
     BK: tl.constexpr,
     BA: tl.constexpr,
     LATE_REDUCE: tl.constexpr = False,
-    SCALAR_BA1: tl.constexpr = False,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -245,7 +216,6 @@ def block_fused(
                     BN,
                     BK,
                     BA,
-                    SCALAR_BA1,
                 )
             else:
                 w = _weight(

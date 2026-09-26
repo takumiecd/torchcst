@@ -14,7 +14,7 @@ import triton
 
 from prototypes.benchmark_large_forward import check, peak_extra
 from prototypes.benchmark_tile_study import mapped_control, timing
-from prototypes.block_fused_config import fused_config_from_spec, launch_fused
+from prototypes.block_fused_config import FusedConfig, launch_fused
 from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.profile_current_paths import capture, resource_record
 from torchcst.nn._backends._preparation import prepare
@@ -42,7 +42,9 @@ def log(**value):
 
 
 def config(text):
-    return fused_config_from_spec(text)
+    values = list(map(int, text.split(",")))
+    assert len(values) in (6, 7) and all(value in (0, 1) for value in values[5:])
+    return FusedConfig(*values[:5], *(bool(value) for value in values[5:]))
 
 
 @torch.no_grad()
