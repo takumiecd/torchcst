@@ -149,6 +149,8 @@ def tiled_linear(
     inputs: Tensor,
     p: Tensor,
     layout: AtomLayout,
+    *,
+    support_layout: bool = False,
 ) -> Tensor:
     """Evaluate each chart-defined weight tile and multiply it immediately."""
 
@@ -165,6 +167,10 @@ def tiled_linear(
                 (station + 1) % chart.tile_count,
             )
         )
+        if support_layout:
+            from ._support_layout import station_buckets
+
+            neighbors = station_buckets(station, chart.tile_count)
         candidates = torch.cat(
             [packed[layout.offsets[g] : layout.offsets[g + 1]] for g in neighbors]
         )

@@ -128,7 +128,7 @@ def execution_plan(site: CSTLinear) -> _Plan:
 
 
 def prepare(
-    site: CSTLinear, p: Tensor, *, use_triton: bool = True
+    site: CSTLinear, p: Tensor, *, use_triton: bool = True, support_layout: bool = False
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     plan = execution_plan(site)
     if p.ndim != 2 or p.shape[1] != plan.parameter_dim:
@@ -162,13 +162,24 @@ def prepare(
         from ._triton_preparation import Pack, route_and_layout
 
         with cst_span("cst.linear.route_atoms"):
-            _, order, offsets = route_and_layout(plan.routing, decoded)
+            _, order, offsets = route_and_layout(
+                plan.routing,
+                decoded,
+                support=(plan.circle, plan.section, precision, site.chart.tile_shape[0])
+                if support_layout
+                else None,
+            )
         with cst_span("cst.linear.pack_atoms"):
             packed = Pack.apply(amplitude, precision, decoded, order)
         return packed, plan.circle, plan.section, offsets
     with cst_span("cst.linear.route_atoms"):
-        owners = plan.routing.owners(decoded)
-        layout = _station_layout(owners, site.chart.tile_count)
+        if support_layout:
+            from .._support_layout import support_layout as classify
+
+            layout = classify(plan, decoded, precision, site.chart.tile_shape[0])
+        else:
+            owners = plan.routing.owners(decoded)
+            layout = _station_layout(owners, site.chart.tile_count)
     with cst_span("cst.linear.pack_atoms"):
         packed = layout.pack(
             torch.cat((amplitude[:, None], precision[:, None], decoded), dim=-1)

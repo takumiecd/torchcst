@@ -95,6 +95,67 @@ def owners(
 
 
 @tr.jit
+def support_buckets(
+    Centers,
+    Precision,
+    Owners,
+    Circle,
+    Section,
+    Keys,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    D: tl.constexpr,
+    G: tl.constexpr,
+    STATION_ROWS: tl.constexpr,
+    CS0: tl.constexpr,
+    CS1: tl.constexpr,
+    ROWS: tl.constexpr,
+    COLS: tl.constexpr,
+):
+    a = tl.program_id(0)
+    owner = tl.load(Owners + a)
+    cx = tl.load(Centers + a * CS0)
+    cy = tl.load(Centers + a * CS0 + CS1)
+    r = tl.sqrt(cx * cx + cy * cy)
+    ux, uy = cx / r, cy / r
+    precision = tl.load(Precision + a)
+    count, first, second = 0, 0, 0
+    for shift in tl.static_range(3 if G >= 3 else G):  # noqa: FURB136
+        station = (owner + G - 1 + shift) % G
+        row = station * STATION_ROWS + tl.arange(0, ROWS)
+        valid = (row < N) & (tl.arange(0, ROWS) < STATION_ROWS)
+        cosine = tl.load(Circle + row * 2, valid, 0.0)
+        sine = tl.load(Circle + row * 2 + 1, valid, 0.0)
+        distance = (cosine - ux) * (cosine - ux) + (sine - uy) * (sine - uy)
+        nearest = tl.argmin(tl.where(valid, distance, float("inf")), axis=0)
+        chosen = station * STATION_ROWS + nearest
+        cosine, sine = tl.load(Circle + chosen * 2), tl.load(Circle + chosen * 2 + 1)
+        hit = False
+        for start in range(tr.cdiv(K, COLS)):
+            k = start * COLS + tl.arange(0, COLS)
+            rho = tl.load(Section + k * (D - 1), k < K, 0.0)
+            dx, dy = cosine * rho - cx, sine * rho - cy
+            squared = dx * dx + dy * dy
+            for dim in tl.static_range(2, D):
+                site = tl.load(Section + k * (D - 1) + dim - 1, k < K, 0.0)
+                center = tl.load(Centers + a * CS0 + dim * CS1)
+                delta = site - center
+                squared += delta * delta
+            hit |= (
+                tl.sum(((k < K) & (squared * precision < 1.0)).to(tl.int32), axis=0) > 0
+            )
+        second = tl.where(hit & (count == 1), station, second)
+        first = tl.where(hit & (count == 0), station, first)
+        count += hit.to(tl.int32)
+    if G == 2:
+        boundary = 0
+    else:
+        boundary = tl.where((first + 1) % G == second, first, second)
+    key = tl.where(count == 0, 2 * G, tl.where(count == 1, 2 * first, 2 * boundary + 1))
+    tl.store(Keys + a, key)
+
+
+@tr.jit
 def offsets(
     SortedOwners,
     Offsets,

@@ -22,7 +22,13 @@ if TYPE_CHECKING:
 
 
 def forward(
-    site: CSTLinear, inputs: Tensor, p: Tensor, *, split_reductions: bool = False
+    site: CSTLinear,
+    inputs: Tensor,
+    p: Tensor,
+    *,
+    split_reductions: bool = False,
+    support_layout: bool = True,
+    batch_tile: int = 16,
 ) -> Tensor:
     if inputs.device.type != "cuda" or p.device != inputs.device or torch.version.hip:
         raise ValueError(
@@ -41,7 +47,7 @@ def forward(
             "triton backend requires the optional torchcst[cuda] dependencies"
         ) from error
 
-    packed, circle, section, offsets = prepare(site, p)
+    packed, circle, section, offsets = prepare(site, p, support_layout=support_layout)
     flat = inputs.reshape(-1, site.in_features).contiguous()
     with cst_span("cst.linear.triton_matmul"):
         output = _FusedLinear.apply(
@@ -53,6 +59,8 @@ def forward(
             site.chart.tile_shape[0],
             PROFILE_KINDS[type(site.kernel.profile)],
             split_reductions,
+            support_layout,
+            batch_tile,
         )
     return output.reshape(*inputs.shape[:-1], site.out_features)
 
@@ -73,6 +81,8 @@ class _FusedLinear(torch.autograd.Function):
         station_rows,
         profile,
         split_reductions=False,
+        support_layout=False,
+        batch_tile=16,
     ):
         from ._triton_kernels import fused_forward, reduce_partials
 
@@ -80,15 +90,19 @@ class _FusedLinear(torch.autograd.Function):
             (inputs.shape[0], circle.shape[0]), device=inputs.device, dtype=inputs.dtype
         )
         ctx.save_for_backward(inputs, packed, circle, section, offsets)
+        stations = _ceildiv(circle.shape[0], station_rows)
+        if batch_tile not in (16, 32, 64):
+            raise ValueError("batch_tile must be 16, 32 or 64")
         ctx.options = {
             "M": inputs.shape[0],
             "N": circle.shape[0],
             "K": inputs.shape[1],
             "D": packed.shape[1] - 2,
-            "G": offsets.numel() - 1,
+            "G": stations,
+            "SUPPORT_LAYOUT": support_layout,
             "STATION_ROWS": station_rows,
             "PROFILE": profile,
-            "BM": 16,
+            "BM": batch_tile,
             "BN": 16,
             "BK": 16,
             "BA": 8,
@@ -104,7 +118,7 @@ class _FusedLinear(torch.autograd.Function):
         if inputs.shape[0]:
             grid = (
                 _ceildiv(inputs.shape[0], bm),
-                (offsets.numel() - 1) * _ceildiv(station_rows, bn),
+                stations * _ceildiv(station_rows, bn),
             )
             parts = split_count(
                 reduction_tiles=_ceildiv(inputs.shape[1], ctx.options["BK"]),
@@ -112,7 +126,7 @@ class _FusedLinear(torch.autograd.Function):
                 programs=grid[0] * grid[1],
                 multiprocessors=ctx.multiprocessors,
                 atoms=packed.shape[0],
-                stations=offsets.numel() - 1,
+                stations=ctx.options["G"],
             )
             partial = output if parts == 1 else output.new_empty((parts, *output.shape))
             with torch.cuda.device(inputs.device):
@@ -161,12 +175,12 @@ class _FusedLinear(torch.autograd.Function):
                         _ceildiv(inputs.shape[1], bk),
                     )
                     parts = split_count(
-                        reduction_tiles=offsets.numel() - 1,
+                        reduction_tiles=ctx.options["G"],
                         elements=dx.numel(),
                         programs=grid[0] * grid[1],
                         multiprocessors=ctx.multiprocessors,
                         atoms=packed.shape[0],
-                        stations=offsets.numel() - 1,
+                        stations=ctx.options["G"],
                     )
                     partial = dx if parts == 1 else dx.new_empty((parts, *dx.shape))
                     backward_inputs[(*grid, parts)](
@@ -187,8 +201,7 @@ class _FusedLinear(torch.autograd.Function):
                         )
                 if dp is not None:
                     grid = (
-                        (offsets.numel() - 1)
-                        * _ceildiv(ctx.options["STATION_ROWS"], bn),
+                        ctx.options["G"] * _ceildiv(ctx.options["STATION_ROWS"], bn),
                         _ceildiv(inputs.shape[1], bk),
                     )
                     backward_atoms[grid](

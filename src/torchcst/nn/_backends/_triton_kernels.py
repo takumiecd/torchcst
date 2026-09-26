@@ -24,6 +24,7 @@ def materialize_weights(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    SUPPORT_LAYOUT: tl.constexpr = False,
 ):
     """Benchmark control: use the same generator but write weights to HBM."""
     tile = tl.program_id(0)
@@ -47,6 +48,7 @@ def materialize_weights(
         BN,
         BK,
         BA,
+        SUPPORT_LAYOUT,
     )
     n, k = row_start + tl.arange(0, BN), col_start + tl.arange(0, BK)
     valid = (
@@ -134,16 +136,28 @@ def _weight(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    SUPPORT_LAYOUT: tl.constexpr = False,
 ):
     sites = tl.arange(0, BN * BK)
     rows, cols = row_start + sites // BK, col_start + sites % BK
     valid = (rows < N) & (rows < (station + 1) * STATION_ROWS) & (cols < K)
     sx, sy = _sites(Circle, Section, rows, cols, valid, D)
     weights = tl.full((BN * BK,), 0.0, tl.float32)
-    for neighbor in tl.static_range(3 if G >= 3 else G):  # noqa: FURB136
-        # Triton 3.2 lowers min(G, 3) to a runtime tensor.
-        owner = (station + G - 1 + neighbor) % G
-        begin, end = tl.load(Offsets + owner), tl.load(Offsets + owner + 1)
+    for neighbor in tl.static_range(
+        (1 if G == 1 else 3) if SUPPORT_LAYOUT else (3 if G >= 3 else G)  # noqa: FURB136
+    ):
+        if SUPPORT_LAYOUT:
+            if G == 1:
+                bucket = 0
+            else:
+                bucket = tl.where(
+                    neighbor == 0,
+                    2 * ((station + G - 1) % G) + 1,
+                    2 * station + neighbor - 1,
+                )
+        else:
+            bucket = (station + G - 1 + neighbor) % G
+        begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
         for start in range(begin, end, BA):
             atoms = start + tl.arange(0, BA)
             value, _ = _values(
@@ -173,6 +187,7 @@ def fused_forward(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    SUPPORT_LAYOUT: tl.constexpr = False,
     SPLIT_K: tl.constexpr = 1,
 ):
     tile = tl.program_id(1)
@@ -203,6 +218,7 @@ def fused_forward(
             BN,
             BK,
             BA,
+            SUPPORT_LAYOUT,
         )
         acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
     mask = (
@@ -232,6 +248,7 @@ def backward_inputs(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    SUPPORT_LAYOUT: tl.constexpr = False,
     SPLIT_N: tl.constexpr = 1,
 ):
     m = tl.program_id(0) * BM + tl.arange(0, BM)
@@ -265,6 +282,7 @@ def backward_inputs(
                 BN,
                 BK,
                 BA,
+                SUPPORT_LAYOUT,
             )
             acc = tl.dot(dy, w, acc, input_precision="ieee")
     tl.store(
@@ -305,6 +323,7 @@ def backward_atoms(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    SUPPORT_LAYOUT: tl.constexpr = False,
 ):
     tile = tl.program_id(0)
     station = tile // tr.cdiv(STATION_ROWS, BN)
@@ -329,10 +348,21 @@ def backward_atoms(
     valid = (rows < N) & (rows < (station + 1) * STATION_ROWS) & (cols < K)
     sx, sy = _sites(Circle, Section, rows, cols, valid, D)
     gradient = tl.reshape(dw, (BN * BK,))
-    for neighbor in tl.static_range(3 if G >= 3 else G):  # noqa: FURB136
-        # Triton 3.2 lowers min(G, 3) to a runtime tensor.
-        owner = (station + G - 1 + neighbor) % G
-        begin, end = tl.load(Offsets + owner), tl.load(Offsets + owner + 1)
+    for neighbor in tl.static_range(
+        (1 if G == 1 else 3) if SUPPORT_LAYOUT else (3 if G >= 3 else G)  # noqa: FURB136
+    ):
+        if SUPPORT_LAYOUT:
+            if G == 1:
+                bucket = 0
+            else:
+                bucket = tl.where(
+                    neighbor == 0,
+                    2 * ((station + G - 1) % G) + 1,
+                    2 * station + neighbor - 1,
+                )
+        else:
+            bucket = (station + G - 1 + neighbor) % G
+        begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
         for start in range(begin, end, BA):
             atoms = start + tl.arange(0, BA)
             active = atoms < end

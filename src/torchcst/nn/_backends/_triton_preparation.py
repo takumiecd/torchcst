@@ -35,10 +35,11 @@ def tile_parameters(kernel, p):
     return p[:, 2:], amplitude, precision
 
 
-def route_and_layout(routing, decoded):
+def route_and_layout(routing, decoded, *, support=None):
     count, stations = decoded.shape[0], routing.starts.numel()
     owners = torch.empty(count, device=decoded.device, dtype=torch.long)
-    offsets = torch.empty(stations + 1, device=decoded.device, dtype=torch.long)
+    buckets = stations if support is None else 2 * stations + 1
+    offsets = torch.empty(buckets + 1, device=decoded.device, dtype=torch.long)
     if not count:
         offsets.zero_()
         return owners, owners, offsets
@@ -61,12 +62,34 @@ def route_and_layout(routing, decoded):
             bg,
             enable_fp_fusion=False,
         )
-        sorted_owners, order = torch.sort(owners, stable=True)
-        kernels.offsets[(tr.cdiv(stations + 1, 128),)](
+        keys = owners
+        if support is not None:
+            circle, section, precision, station_rows = support
+            keys = torch.empty_like(owners)
+            kernels.support_buckets[(count,)](
+                decoded,
+                precision,
+                owners,
+                circle,
+                section,
+                keys,
+                circle.shape[0],
+                section.shape[0],
+                decoded.shape[1],
+                stations,
+                station_rows,
+                *decoded.stride(),
+                tr.next_power_of_2(station_rows),
+                256,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+        sorted_owners, order = torch.sort(keys, stable=True)
+        kernels.offsets[(tr.cdiv(buckets + 1, 128),)](
             sorted_owners,
             offsets,
             count,
-            stations,
+            buckets,
             count.bit_length(),
             128,
         )
