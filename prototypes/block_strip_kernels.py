@@ -182,7 +182,6 @@ def block_fused(
     BK: tl.constexpr,
     BA: tl.constexpr,
     LATE_REDUCE: tl.constexpr = False,
-    DOT_PRECISION: tl.constexpr = "ieee",
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -238,7 +237,7 @@ def block_fused(
                     BA,
                     True,
                 )
-            acc = tl.dot(x, tl.trans(w), acc, input_precision=DOT_PRECISION)
+            acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
     tl.store(
         Y + m[:, None] * N + n[None, :],
         acc,
