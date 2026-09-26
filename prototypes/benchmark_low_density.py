@@ -22,10 +22,23 @@ from prototypes.block_strip_linear import BlockStripLinear
 from torchcst.nn._backends._preparation import prepare
 
 FUSED = FusedConfig(batch_rows=128, late_reduce=True, fp_fusion=False)
+BA1 = FusedConfig(128, 32, 16, 1, 4, True, False)
 
 
 def log(**data):
     print(json.dumps(data), flush=True)
+
+
+def empty_station_fraction(counts):
+    """Fraction of stations whose support-layout buckets contain no atoms."""
+    stations = (counts.numel() - 1) // 2
+    if stations == 1:
+        return float(counts[0] == 0)
+    interior = counts[:-1:2]
+    boundary = counts[1:-1:2]
+    previous = torch.roll(boundary, 1)
+    empty = (interior == 0) & (boundary == 0) & (previous == 0)
+    return float(empty.sum().item()) / stations
 
 
 @torch.no_grad()
@@ -41,6 +54,7 @@ def run(size, batch, atoms, save):
         "routes": {
             "atom_dot": {"backend": "triton_atom_dot", "BM": 64, "BN": 16},
             "fused": asdict(FUSED),
+            "ba1": asdict(BA1),
         },
     }
     save(result)
@@ -56,18 +70,38 @@ def run(size, batch, atoms, save):
         "idle": int(counts[-1]),
         "max": int(counts.max()),
     }
+    result["empty_station_fraction"] = empty_station_fraction(counts)
     save(result)
-    weight, canonical = mapped_control(layer, prepared, canonical_chunk=4)
+    try:
+        weight, canonical = mapped_control(layer, prepared, canonical_chunk=4)
+    except AssertionError as exc:
+        detail = exc.args[0] if exc.args else str(exc)
+        result["canonical"] = detail if isinstance(detail, dict) else {"passed": False}
+        result["failure"] = "canonical dense W validation failed"
+        result["completed"] = False
+        save(result)
+        log(
+            stage="failed",
+            atoms=atoms,
+            failure=result["failure"],
+            canonical=result["canonical"],
+        )
+        return False
     rows, cols = weight.shape
     if rows % 64 or cols % 64:
         raise RuntimeError("logical W must be divisible by 64")
     panels = weight.reshape(rows // 16, 16, cols // 16, 16)
     active_blocks = int((panels != 0).any(dim=(1, 3)).sum())
     total_blocks = (rows // 16) * (cols // 16)
+    panels64 = weight.reshape(rows // 64, 64, cols // 64, 64)
+    active_blocks64 = int((panels64 != 0).any(dim=(1, 3)).sum())
+    total_blocks64 = (rows // 64) * (cols // 64)
     # Shared dense W stays occupied at 16x16, so tile culling is not used.
     result["nonzero_weight_fraction"] = float((weight != 0).sum()) / weight.numel()
     result["active_16x16_blocks"] = active_blocks
     result["total_16x16_blocks"] = total_blocks
+    result["active_64x64_blocks"] = active_blocks64
+    result["total_64x64_blocks"] = total_blocks64
     result["canonical"] = canonical
     save(result)
     log(
@@ -76,6 +110,9 @@ def run(size, batch, atoms, save):
         nonzero_weight_fraction=result["nonzero_weight_fraction"],
         active_16x16_blocks=active_blocks,
         total_16x16_blocks=total_blocks,
+        active_64x64_blocks=active_blocks64,
+        total_64x64_blocks=total_blocks64,
+        empty_station_fraction=result["empty_station_fraction"],
     )
     assert canonical["passed"], canonical
     x = torch.randn(batch, size, device="cuda")
@@ -90,6 +127,10 @@ def run(size, batch, atoms, save):
         "fused_prepared": partial(
             layer, x, backend="triton_fused", fused_config=FUSED, prepared=prepared
         ),
+        "ba1_full": partial(layer, x, backend="triton_fused", fused_config=BA1),
+        "ba1_prepared": partial(
+            layer, x, backend="triton_fused", fused_config=BA1, prepared=prepared
+        ),
     }
     result["checks"] = {}
     for name, fn in functions.items():
@@ -97,6 +138,12 @@ def run(size, batch, atoms, save):
         result["checks"][name] = validation
         save(result)
         log(stage="validated", atoms=atoms, path=name, **validation)
+        if name == "dense" and not validation["passed"]:
+            result["failure"] = "dense W validation failed"
+            result["completed"] = False
+            save(result)
+            log(stage="failed", atoms=atoms, failure=result["failure"], path=name)
+            return False
     valid = {
         name: fn for name, fn in functions.items() if result["checks"][name]["passed"]
     }
@@ -105,6 +152,7 @@ def run(size, batch, atoms, save):
     result["completed"] = True
     save(result)
     log(stage="timed", atoms=atoms, medians=result.get("median_ms", {}))
+    return True
 
 
 @torch.no_grad()
@@ -151,7 +199,15 @@ def main():
                 json.dumps(result, indent=2) + "\n"
             )
 
-        run(args.size, args.batch, atoms, save)
+        if not run(args.size, args.batch, atoms, save):
+            result["completed"] = False
+            result["failure"] = (
+                "dense W validation failed; sweep stopped before lower atom counts"
+            )
+            (args.output_dir / "results.json").write_text(
+                json.dumps(result, indent=2) + "\n"
+            )
+            raise SystemExit(result["failure"])
         gc.collect()
         torch.cuda.empty_cache()
     result["completed"] = True
