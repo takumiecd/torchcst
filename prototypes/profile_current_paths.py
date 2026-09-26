@@ -6,12 +6,12 @@ Compiler resources are reported separately; they are not achieved occupancy.
 
 import argparse
 import json
-from collections import defaultdict
 from pathlib import Path
 
 import torch
 from torch.profiler import record_function
 
+from prototypes._profile_trace import kernel_summary
 from prototypes.benchmark_triton_linear import model
 from prototypes.local_atom_kernels import direct_forward
 from prototypes.local_atom_linear import forward as direct
@@ -105,19 +105,8 @@ def capture(layer, x, name, fn, training, output_dir):
             with record_function("measured_step"):
                 step()
             torch.cuda.synchronize()
-    prof.export_chrome_trace(str(output_dir / f"{name}.trace.json"))
-    kernels = defaultdict(lambda: {"calls": 0, "total_us": 0.0})
-    for event in prof.profiler.events():
-        if event.device_type == torch.autograd.DeviceType.CUDA:
-            kernels[event.name]["calls"] += 1
-            kernels[event.name]["total_us"] += event.device_time_total
-    entries = [{"name": key, **value} for key, value in kernels.items()]
-    entries.sort(key=lambda entry: entry["total_us"], reverse=True)
-    total = sum(e["total_us"] for e in entries)
-    for entry in entries:
-        entry["share_of_device_event_time"] = entry["total_us"] / total if total else 0
-        entry["us_per_step"] = entry["total_us"] / 3
-    assert entries and total > 0
+    trace_path = output_dir / f"{name}.trace.json"
+    prof.export_chrome_trace(str(trace_path))
     phases = [
         {
             "name": e.key,
@@ -131,9 +120,9 @@ def capture(layer, x, name, fn, training, output_dir):
         "name": name,
         "training": training,
         "steps": 3,
-        "device_event_us_per_step": total / 3,
-        "phases": phases,
-        "kernels": entries,
+        # Ranges overlap and must never be added to kernel durations.
+        "annotation_ranges": phases,
+        **kernel_summary(trace_path, steps=3),
     }
 
 
@@ -171,7 +160,7 @@ def main():
             json.dumps(
                 {
                     "name": name,
-                    "total_us": measured["device_event_us_per_step"],
+                    "kernel_us": measured["kernel_us_per_step"],
                     "top": measured["kernels"][:4],
                 }
             ),
@@ -186,7 +175,7 @@ def main():
             json.dumps(
                 {
                     "name": name + "_train",
-                    "total_us": measured["device_event_us_per_step"],
+                    "kernel_us": measured["kernel_us_per_step"],
                     "top": measured["kernels"][:4],
                 }
             ),
