@@ -22,9 +22,6 @@ from prototypes.block_strip_linear import BlockStripLinear
 from torchcst.nn._backends._preparation import prepare
 
 FUSED = FusedConfig(batch_rows=128, late_reduce=True, fp_fusion=False)
-FUSED_CULL = FusedConfig(
-    batch_rows=128, late_reduce=True, fp_fusion=False, cull_empty=True
-)
 
 
 def log(**data):
@@ -44,7 +41,6 @@ def run(size, batch, atoms, save):
         "routes": {
             "atom_dot": {"backend": "triton_atom_dot", "BM": 64, "BN": 16},
             "fused": asdict(FUSED),
-            "fused_cull": asdict(FUSED_CULL),
         },
     }
     save(result)
@@ -76,16 +72,6 @@ def run(size, batch, atoms, save):
         "fused_full": partial(layer, x, backend="triton_fused", fused_config=FUSED),
         "fused_prepared": partial(
             layer, x, backend="triton_fused", fused_config=FUSED, prepared=prepared
-        ),
-        "fused_cull_full": partial(
-            layer, x, backend="triton_fused", fused_config=FUSED_CULL
-        ),
-        "fused_cull_prepared": partial(
-            layer,
-            x,
-            backend="triton_fused",
-            fused_config=FUSED_CULL,
-            prepared=prepared,
         ),
     }
     result["checks"] = {}

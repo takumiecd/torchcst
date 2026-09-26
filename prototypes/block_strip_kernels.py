@@ -182,7 +182,6 @@ def block_fused(
     BK: tl.constexpr,
     BA: tl.constexpr,
     LATE_REDUCE: tl.constexpr = False,
-    CULL_EMPTY: tl.constexpr = False,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -193,167 +192,52 @@ def block_fused(
     for c in range(CG):
         station = r * CG + c
         for start in range(0, T, BK):
-            if CULL_EMPTY:
-                k = start + tl.arange(0, BK)
-                row = local + tl.arange(0, BN)
-                row_valid = row < S
-                col_valid = k < T
-                pair = row_valid[:, None] & col_valid[None, :]
-                rows = station * S + row
-                cosine = tl.load(Circle + rows * 2, row_valid, 0.0)
-                sine = tl.load(Circle + rows * 2 + 1, row_valid, 0.0)
-                rho = tl.load(Section + k * (D - 1), col_valid, 0.0)
-                low = tl.full((D,), 0.0, tl.float32)
-                high = tl.full((D,), 0.0, tl.float32)
-                for dim in tl.static_range(D):
-                    if dim == 0:
-                        coord = rho[None, :] * cosine[:, None]
-                    elif dim == 1:
-                        coord = rho[None, :] * sine[:, None]
-                    else:
-                        extra = tl.load(
-                            Section + k * (D - 1) + dim - 1, col_valid, 0.0
-                        )
-                        coord = extra[None, :] + 0.0 * row_valid[:, None]
-                    flat_low = tl.reshape(
-                        tl.where(pair, coord, float("inf")), (BN * BK,)
-                    )
-                    flat_high = tl.reshape(
-                        tl.where(pair, coord, float("-inf")), (BN * BK,)
-                    )
-                    bound_low = tl.min(flat_low, axis=0)
-                    bound_high = tl.max(flat_high, axis=0)
-                    axis = tl.arange(0, D) == dim
-                    low = tl.where(axis, bound_low, low)
-                    high = tl.where(axis, bound_high, high)
-                # Slack and NaNs only admit extra work.
-                box_nan = (
-                    tl.sum(((low != low) | (high != high)).to(tl.int32), 0) != 0  # noqa: PLR0124
+            k = start + tl.arange(0, BK)
+            x = tl.load(
+                X + m[:, None] * K + (c * T + k)[None, :],
+                (m[:, None] < M) & (k[None, :] < T) & (c * T + k[None, :] < K),
+                0.0,
+            )
+            if LATE_REDUCE:
+                w = _weight_lanes(
+                    P,
+                    Circle,
+                    Section,
+                    Offsets,
+                    station,
+                    station * S + local,
+                    start,
+                    G * S,
+                    T,
+                    D,
+                    G,
+                    S,
+                    PROFILE,
+                    BN,
+                    BK,
+                    BA,
                 )
-                any_support = box_nan.to(tl.int32)
-                for slot in tl.static_range(1 if G == 1 else 3):
-                    bucket = _bucket(station, slot, G)
-                    begin = tl.load(Offsets + bucket)
-                    end = tl.load(Offsets + bucket + 1)
-                    for atom in range(begin, end):
-                        base = atom * (D + 2)
-                        amplitude = tl.load(P + base)
-                        precision = tl.load(P + base + 1)
-                        center = tl.load(P + base + 2 + tl.arange(0, D))
-                        gap = tl.maximum(
-                            tl.maximum(low - center, center - high), 0.0
-                        )
-                        lower = tl.sum(gap * gap, 0)
-                        center_nan = (
-                            tl.sum((center != center).to(tl.int32), 0) != 0  # noqa: PLR0124
-                        )
-                        may = (
-                            (amplitude != amplitude)  # noqa: PLR0124
-                            | (precision != precision)  # noqa: PLR0124
-                            | (lower != lower)  # noqa: PLR0124
-                            | center_nan
-                            | (
-                                (amplitude != 0)
-                                & (
-                                    (precision <= 0)
-                                    | (lower * precision <= 1.00001)
-                                )
-                            )
-                        )
-                        any_support = any_support | may.to(tl.int32)
-                if any_support != 0:
-                    x = tl.load(
-                        X + m[:, None] * K + (c * T + k)[None, :],
-                        (m[:, None] < M) & (k[None, :] < T) & (c * T + k[None, :] < K),
-                        0.0,
-                    )
-                    if LATE_REDUCE:
-                        w = _weight_lanes(
-                            P,
-                            Circle,
-                            Section,
-                            Offsets,
-                            station,
-                            station * S + local,
-                            start,
-                            G * S,
-                            T,
-                            D,
-                            G,
-                            S,
-                            PROFILE,
-                            BN,
-                            BK,
-                            BA,
-                        )
-                    else:
-                        w = _weight(
-                            P,
-                            Circle,
-                            Section,
-                            Offsets,
-                            station,
-                            station * S + local,
-                            start,
-                            G * S,
-                            T,
-                            D,
-                            G,
-                            S,
-                            PROFILE,
-                            BN,
-                            BK,
-                            BA,
-                            True,
-                        )
-                    acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
             else:
-                k = start + tl.arange(0, BK)
-                x = tl.load(
-                    X + m[:, None] * K + (c * T + k)[None, :],
-                    (m[:, None] < M) & (k[None, :] < T) & (c * T + k[None, :] < K),
-                    0.0,
+                w = _weight(
+                    P,
+                    Circle,
+                    Section,
+                    Offsets,
+                    station,
+                    station * S + local,
+                    start,
+                    G * S,
+                    T,
+                    D,
+                    G,
+                    S,
+                    PROFILE,
+                    BN,
+                    BK,
+                    BA,
+                    True,
                 )
-                if LATE_REDUCE:
-                    w = _weight_lanes(
-                        P,
-                        Circle,
-                        Section,
-                        Offsets,
-                        station,
-                        station * S + local,
-                        start,
-                        G * S,
-                        T,
-                        D,
-                        G,
-                        S,
-                        PROFILE,
-                        BN,
-                        BK,
-                        BA,
-                    )
-                else:
-                    w = _weight(
-                        P,
-                        Circle,
-                        Section,
-                        Offsets,
-                        station,
-                        station * S + local,
-                        start,
-                        G * S,
-                        T,
-                        D,
-                        G,
-                        S,
-                        PROFILE,
-                        BN,
-                        BK,
-                        BA,
-                        True,
-                    )
-                acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
+            acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
     tl.store(
         Y + m[:, None] * N + n[None, :],
         acc,
