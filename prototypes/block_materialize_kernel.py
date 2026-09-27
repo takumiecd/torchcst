@@ -13,7 +13,6 @@ def materialize_logical(
     Section,
     Offsets,
     W,
-    Boxes,
     N: tl.constexpr,
     K: tl.constexpr,
     S: tl.constexpr,
@@ -28,7 +27,6 @@ def materialize_logical(
     FACTORED: tl.constexpr = False,
     ROW_GROUP_START=0,
     LOCAL_W: tl.constexpr = False,
-    BOX_CULL: tl.constexpr = False,
 ):
     tile = tl.program_id(0)
     row_group = tile // triton.cdiv(S, BN) + ROW_GROUP_START
@@ -54,8 +52,6 @@ def materialize_logical(
             PROFILE,
             BN,
             BK,
-            Boxes,
-            BOX_CULL,
         )
     else:
         w = _weight_lanes(

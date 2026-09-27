@@ -9,13 +9,7 @@ from torchcst.nn._backends._preparation import PROFILE_KINDS, prepare
 
 
 def streamed_forward(
-    layer,
-    x,
-    *,
-    prepared=None,
-    weight_chunk_rows=1024,
-    materialize_tile=(64, 32),
-    materialize_boxes=None,
+    layer, x, *, prepared=None, weight_chunk_rows=1024, materialize_tile=(64, 32)
 ):
     """Generate a row window of logical W and multiply it before reusing the buffer."""
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64:
@@ -49,12 +43,6 @@ def streamed_forward(
         return y.reshape(*x.shape[:-1], layer.shape[0])
     chunk = min(weight_chunk_rows, layer.shape[0])
     bn, bk = materialize_tile
-    if materialize_boxes is not None and (
-        materialize_boxes.shape != (layer.strip.chart.tile_count, 64 // bk, 8)
-        or materialize_boxes.device != x.device
-        or materialize_boxes.dtype != x.dtype
-    ):
-        raise ValueError("materialize_boxes must match fixed station-column sites")
     w = flat.new_empty((chunk, layer.shape[1]))
     for start in range(0, layer.shape[0], chunk):
         rows = min(chunk, layer.shape[0] - start)
@@ -64,7 +52,6 @@ def streamed_forward(
             section,
             offsets,
             w,
-            materialize_boxes if materialize_boxes is not None else w,
             N=layer.shape[0],
             K=layer.shape[1],
             S=64,
@@ -79,7 +66,6 @@ def streamed_forward(
             FACTORED=True,
             ROW_GROUP_START=start // 64,
             LOCAL_W=True,
-            BOX_CULL=materialize_boxes is not None,
             num_warps=4,
             enable_fp_fusion=True,
         )

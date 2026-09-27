@@ -91,8 +91,6 @@ def _weight_columns_factored(
     PROFILE: tl.constexpr,
     BN: tl.constexpr,
     BK: tl.constexpr,
-    Boxes,
-    BOX_CULL: tl.constexpr,
 ):
     """Evaluate column-only distance terms once per atom and column."""
     rows = row_start + tl.arange(0, BN)
@@ -106,12 +104,6 @@ def _weight_columns_factored(
     w = tl.load(Section + cols * 3 + 2, col_valid, other=0.0)
     sx = cosine[:, None] * rho[None, :]
     sy = sine[:, None] * rho[None, :]
-    if BOX_CULL:
-        box = (station * tr.cdiv(K, BK) + col_start // BK) * 8
-        lx, ly = tl.load(Boxes + box), tl.load(Boxes + box + 1)
-        lz, lw = tl.load(Boxes + box + 2), tl.load(Boxes + box + 3)
-        hx, hy = tl.load(Boxes + box + 4), tl.load(Boxes + box + 5)
-        hz, hw = tl.load(Boxes + box + 6), tl.load(Boxes + box + 7)
     partial = tl.full((BN, BK), 0.0, tl.float32)
     for slot in tl.static_range(1 if G == 1 else 3):
         bucket = _bucket(station, slot, G)
@@ -121,28 +113,18 @@ def _weight_columns_factored(
             cy = tl.load(P + atom * 6 + 3)
             cz = tl.load(P + atom * 6 + 4)
             cw = tl.load(P + atom * 6 + 5)
+            dx = sx - cx
+            dy = sy - cy
+            dz = z - cz
+            dw = w - cw
+            squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
             precision = tl.load(P + atom * 6 + 1)
-            if BOX_CULL:
-                gx = tl.maximum(tl.maximum(lx - cx, cx - hx), 0.0)
-                gy = tl.maximum(tl.maximum(ly - cy, cy - hy), 0.0)
-                gz = tl.maximum(tl.maximum(lz - cz, cz - hz), 0.0)
-                gw = tl.maximum(tl.maximum(lw - cw, cw - hw), 0.0)
-                lower = (gx * gx + gy * gy) + (gz * gz + gw * gw)
-                relevant = ~(lower * precision > 1.0001)
-            else:
-                relevant = True
-            if relevant:
-                dx = sx - cx
-                dy = sy - cy
-                dz = z - cz
-                dw = w - cw
-                squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
-                value, _ = _profile(squared, precision, PROFILE)
-                amplitude = tl.load(P + atom * 6)
-                partial += (
-                    tl.where(row_valid[:, None] & col_valid[None, :], value, 0.0)
-                    * amplitude
-                )
+            value, _ = _profile(squared, precision, PROFILE)
+            amplitude = tl.load(P + atom * 6)
+            partial += (
+                tl.where(row_valid[:, None] & col_valid[None, :], value, 0.0)
+                * amplitude
+            )
     return partial
 
 

@@ -62,7 +62,6 @@ def main():
             section,
             offsets,
             w,
-            w,
             N=size,
             K=size,
             S=64,

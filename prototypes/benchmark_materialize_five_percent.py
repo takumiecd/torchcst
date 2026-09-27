@@ -54,7 +54,6 @@ def main():
             section,
             offsets,
             factored_w if factored else generated_w,
-            factored_w if factored else generated_w,
             N=args.size,
             K=args.size,
             S=s,
