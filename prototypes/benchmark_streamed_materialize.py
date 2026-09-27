@@ -44,8 +44,13 @@ def main():
             x, backend="triton_streamed", prepared=packed, weight_chunk_rows=chunk
         )
 
-    def streamed_full(chunk):
-        return layer(x, backend="triton_streamed", weight_chunk_rows=chunk)
+    def streamed_full(chunk, tile=None):
+        return layer(
+            x,
+            backend="triton_streamed",
+            weight_chunk_rows=chunk,
+            materialize_tile=tile,
+        )
 
     functions = {
         "fused_default": partial(layer, x, backend="triton_fused"),
@@ -54,6 +59,8 @@ def main():
             f"stream_{chunk}_full": partial(streamed_full, chunk)
             for chunk in (512, 1024, size)
         },
+        "stream_1024_32x32_full": partial(streamed_full, 1024, (32, 32)),
+        "stream_1024_64x64_full": partial(streamed_full, 1024, (64, 64)),
     }
     checks = {name: check(fn(), expected) for name, fn in functions.items()}
     assert all(result["passed"] for result in checks.values()), checks

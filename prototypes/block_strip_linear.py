@@ -143,6 +143,7 @@ class BlockStripLinear(nn.Module):
         support_cull="none",
         fused_config=None,
         weight_chunk_rows=1024,
+        materialize_tile=None,
     ):
         if fused_config is not None and backend != "triton_fused":
             raise ValueError("fused_config requires triton_fused")
@@ -156,10 +157,18 @@ class BlockStripLinear(nn.Module):
             from prototypes.block_streamed_forward import streamed_forward
 
             return streamed_forward(
-                self, x, prepared=prepared, weight_chunk_rows=weight_chunk_rows
+                self,
+                x,
+                prepared=prepared,
+                weight_chunk_rows=weight_chunk_rows,
+                materialize_tile=(64, 32)
+                if materialize_tile is None
+                else materialize_tile,
             )
-        if weight_chunk_rows != 1024:
-            raise ValueError("weight_chunk_rows applies only to triton_streamed")
+        if weight_chunk_rows != 1024 or materialize_tile is not None:
+            raise ValueError(
+                "weight_chunk_rows and materialize_tile apply only to triton_streamed"
+            )
         if backend not in (
             "triton_direct",
             "triton_reuse",
