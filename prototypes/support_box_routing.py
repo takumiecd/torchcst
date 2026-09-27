@@ -175,14 +175,16 @@ def support_buckets_batched_box(
             if USE_WITNESS and ((G == 1) or (shift == 1)):
                 hint = tl.load(WitnessCols + a, atom_valid, 0)
                 hint_valid = (hint >= 0) & (hint < K) & possible
-                rho = tl.load(Section + hint * 3, hint_valid, 0.0)
-                z = tl.load(Section + hint * 3 + 1, hint_valid, 0.0)
-                w = tl.load(Section + hint * 3 + 2, hint_valid, 0.0)
-                dx = cosine * rho - cx
-                dy = sine * rho - cy
-                dz = z - cz
-                dw = w - cw
-                witness_distance = (dx * dx + dy * dy) + (dz * dz + dw * dw)
+                hint_rho = tl.load(Section + hint * 3, hint_valid, 0.0)
+                hint_z = tl.load(Section + hint * 3 + 1, hint_valid, 0.0)
+                hint_w = tl.load(Section + hint * 3 + 2, hint_valid, 0.0)
+                hint_dx = cosine * hint_rho - cx
+                hint_dy = sine * hint_rho - cy
+                hint_dz = hint_z - cz
+                hint_dw = hint_w - cw
+                witness_distance = (
+                    hint_dx * hint_dx + hint_dy * hint_dy
+                ) + (hint_dz * hint_dz + hint_dw * hint_dw)
                 witness = hint_valid & (witness_distance * precision < 0.9999)
                 hit = witness
                 need_exact = possible & ~witness
