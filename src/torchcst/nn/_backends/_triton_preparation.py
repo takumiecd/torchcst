@@ -36,7 +36,13 @@ def tile_parameters(kernel, p):
 
 
 def route_and_layout(
-    routing, decoded, *, support=None, retain_owners=True, batched_support=True
+    routing,
+    decoded,
+    *,
+    support=None,
+    retain_owners=True,
+    batched_support=True,
+    support_boxes=None,
 ):
     count, stations = decoded.shape[0], routing.starts.numel()
     buckets = stations if support is None else 2 * stations + 1
@@ -95,11 +101,18 @@ def route_and_layout(
         if support is not None:
             circle, section, precision, station_rows = support
             keys = torch.empty_like(owners) if retain_owners else owners
-            support_kernel = (
-                kernels.support_buckets_batched
-                if batched_support
-                else kernels.support_buckets
-            )
+            if support_boxes is not None:
+                if not batched_support:
+                    raise ValueError("boxed support requires batched support")
+                from prototypes.support_box_routing import support_buckets_batched_box
+
+                support_kernel = support_buckets_batched_box
+            else:
+                support_kernel = (
+                    kernels.support_buckets_batched
+                    if batched_support
+                    else kernels.support_buckets
+                )
             batch_atoms = 8 if batched_support else 1
             support_kernel[(tr.cdiv(count, batch_atoms),)](
                 decoded,
@@ -107,6 +120,7 @@ def route_and_layout(
                 owners,
                 circle,
                 section,
+                *((support_boxes,) if support_boxes is not None else ()),
                 keys,
                 circle.shape[0],
                 section.shape[0],
