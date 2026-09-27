@@ -28,9 +28,11 @@ def main():
     parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--splits", type=int, nargs="+", default=[2, 4, 8])
+    parser.add_argument("--stages", type=int, nargs="+", default=[])
     args = parser.parse_args()
     assert args.size % 64 == 0 and args.batch > 0
     assert all(split in (2, 4, 8, 16) for split in args.splits)
+    assert all(stage in (1, 2, 3, 4, 5) for stage in args.stages)
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     props = torch.cuda.get_device_properties(0)
@@ -45,7 +47,7 @@ def main():
     cfg = FusedConfig(128, 16, 32, 1, 4, True, True)
     legacy_cfg = FusedConfig(128, 16, 16, 8, 4, True, True)
 
-    def split_forward(split, hoist_section=False):
+    def split_forward(split, hoist_section=False, num_stages=None):
         p, circle, section, offsets = (
             prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
             if args.full
@@ -54,6 +56,9 @@ def main():
         y = torch.empty_like(expected)
         partial = torch.empty((split, *expected.shape), device="cuda")
         s, t = layer.tile_shape
+        launch_options = {"num_warps": cfg.warps, "enable_fp_fusion": cfg.fp_fusion}
+        if num_stages is not None:
+            launch_options["num_stages"] = num_stages
         block_fused[
             (
                 math.ceil(args.batch / cfg.batch_rows),
@@ -83,8 +88,7 @@ def main():
             LATE_REDUCE=cfg.late_reduce,
             SPLIT_K=split,
             HOIST_SECTION=hoist_section,
-            num_warps=cfg.warps,
-            enable_fp_fusion=cfg.fp_fusion,
+            **launch_options,
         )
         block_split_reduce[(triton.cdiv(y.numel(), 256),)](
             partial, y, args.batch, args.size, split
@@ -117,6 +121,12 @@ def main():
     functions.update({f"split_{n}": partial(split_forward, n) for n in args.splits})
     if 8 in args.splits:
         functions["split_8_hoist"] = partial(split_forward, 8, True)
+        functions.update(
+            {
+                f"stages_{stage}": partial(split_forward, 8, True, stage)
+                for stage in args.stages
+            }
+        )
     checks = {name: check(fn(), expected) for name, fn in functions.items()}
     assert all(value["passed"] for value in checks.values()), checks
     results = {
