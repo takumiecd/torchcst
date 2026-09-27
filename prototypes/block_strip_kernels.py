@@ -8,7 +8,9 @@ from torchcst.nn._backends._triton_kernels import _profile, _sites, _values, _we
 
 
 @tr.jit
-def _values_preloaded_4d(P, atoms, atom_valid, sx, sy, sz, sw, valid, PROFILE: tl.constexpr):
+def _values_preloaded_4d(
+    P, atoms, atom_valid, sx, sy, sz, sw, valid, PROFILE: tl.constexpr
+):
     center_x = tl.load(P + atoms * 6 + 2, atom_valid, other=0.0)
     center_y = tl.load(P + atoms * 6 + 3, atom_valid, other=0.0)
     center_z = tl.load(P + atoms * 6 + 4, atom_valid, other=0.0)
@@ -71,6 +73,59 @@ def _weight_lanes(
             amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
             partial += value * amplitude[None, :]
     return tl.reshape(tl.sum(partial, 1), (BN, BK))
+
+
+@tr.jit
+def _weight_columns_factored(
+    P,
+    Circle,
+    Section,
+    Offsets,
+    station,
+    row_start,
+    col_start,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    G: tl.constexpr,
+    S: tl.constexpr,
+    PROFILE: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    """Evaluate column-only distance terms once per atom and column."""
+    rows = row_start + tl.arange(0, BN)
+    cols = col_start + tl.arange(0, BK)
+    row_valid = (rows < N) & (rows < (station + 1) * S)
+    col_valid = cols < K
+    cosine = tl.load(Circle + rows * 2, row_valid, other=0.0)
+    sine = tl.load(Circle + rows * 2 + 1, row_valid, other=0.0)
+    rho = tl.load(Section + cols * 3, col_valid, other=0.0)
+    z = tl.load(Section + cols * 3 + 1, col_valid, other=0.0)
+    w = tl.load(Section + cols * 3 + 2, col_valid, other=0.0)
+    sx = cosine[:, None] * rho[None, :]
+    sy = sine[:, None] * rho[None, :]
+    partial = tl.full((BN, BK), 0.0, tl.float32)
+    for slot in tl.static_range(1 if G == 1 else 3):
+        bucket = _bucket(station, slot, G)
+        begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
+        for atom in range(begin, end):
+            cx = tl.load(P + atom * 6 + 2)
+            cy = tl.load(P + atom * 6 + 3)
+            cz = tl.load(P + atom * 6 + 4)
+            cw = tl.load(P + atom * 6 + 5)
+            dx = sx - cx
+            dy = sy - cy
+            dz = z - cz
+            dw = w - cw
+            squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
+            precision = tl.load(P + atom * 6 + 1)
+            value, _ = _profile(squared, precision, PROFILE)
+            amplitude = tl.load(P + atom * 6)
+            partial += (
+                tl.where(row_valid[:, None] & col_valid[None, :], value, 0.0)
+                * amplitude
+            )
+    return partial
 
 
 @tr.jit
@@ -212,6 +267,7 @@ def block_fused(
     LATE_REDUCE: tl.constexpr = False,
     SPLIT_K: tl.constexpr = 1,
     HOIST_SECTION: tl.constexpr = False,
+    COLUMN_FACTORED: tl.constexpr = False,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -233,25 +289,44 @@ def block_fused(
                 0.0,
             )
             if LATE_REDUCE:
-                w = _weight_lanes(
-                    P,
-                    Circle,
-                    Section,
-                    Offsets,
-                    station,
-                    station * S + local,
-                    start,
-                    G * S,
-                    T,
-                    D,
-                    G,
-                    S,
-                    PROFILE,
-                    BN,
-                    BK,
-                    BA,
-                    HOIST_SECTION,
-                )
+                if COLUMN_FACTORED:
+                    tl.static_assert(D == 4 and BA == 1)
+                    w = _weight_columns_factored(
+                        P,
+                        Circle,
+                        Section,
+                        Offsets,
+                        station,
+                        station * S + local,
+                        start,
+                        G * S,
+                        T,
+                        G,
+                        S,
+                        PROFILE,
+                        BN,
+                        BK,
+                    )
+                else:
+                    w = _weight_lanes(
+                        P,
+                        Circle,
+                        Section,
+                        Offsets,
+                        station,
+                        station * S + local,
+                        start,
+                        G * S,
+                        T,
+                        D,
+                        G,
+                        S,
+                        PROFILE,
+                        BN,
+                        BK,
+                        BA,
+                        HOIST_SECTION,
+                    )
             else:
                 w = _weight(
                     P,
