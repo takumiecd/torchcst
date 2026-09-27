@@ -128,12 +128,7 @@ def execution_plan(site: CSTLinear) -> _Plan:
 
 
 def prepare(
-    site: CSTLinear,
-    p: Tensor,
-    *,
-    use_triton: bool = True,
-    support_layout: bool = False,
-    support_chord_nearest: bool = False,
+    site: CSTLinear, p: Tensor, *, use_triton: bool = True, support_layout: bool = False
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     plan = execution_plan(site)
     if p.ndim != 2 or p.shape[1] != plan.parameter_dim:
@@ -170,7 +165,6 @@ def prepare(
                 if support_layout
                 else None,
                 retain_owners=False,
-                chord_nearest=support_chord_nearest,
             )
         with cst_span("cst.linear.pack_atoms"):
             packed = Pack.apply(amplitude, precision, decoded, order)
