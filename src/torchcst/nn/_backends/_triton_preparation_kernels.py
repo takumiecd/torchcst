@@ -322,8 +322,8 @@ def support_buckets_batched(
             )
             best = tl.full((BA,), float("inf"), tl.float32)
             chosen_local = tl.full((BA,), STATION_ROWS, tl.int32)
-            for delta in tl.static_range(-2, 3):
-                local = tl.minimum(tl.maximum(nearest + delta, 0), STATION_ROWS - 1)
+            for row_offset in tl.static_range(-2, 3):
+                local = tl.minimum(tl.maximum(nearest + row_offset, 0), STATION_ROWS - 1)
                 row = first_row + local
                 direction_x = tl.load(Circle + row * 2, a < A, 0.0)
                 direction_y = tl.load(Circle + row * 2 + 1, a < A, 0.0)
