@@ -25,6 +25,7 @@ from prototypes.block_strip_linear import BlockStripLinear
         FusedConfig(128, 32, 16, 1, 4, True),
         FusedConfig(128, 16, 64, 1, 4, True),
         FusedConfig(128, 16, 32, 1, 4, True, True),
+        FusedConfig(128, 16, 32, 1, 4, True, True, 4),
     ],
 )
 def test_fused_schedule_tail_and_seam(config):
@@ -70,6 +71,39 @@ def test_selected_fused_default_preserves_tails_and_explicit_override():
 def test_fp_fusion_requires_exact_bool():
     with pytest.raises(ValueError, match="fp_fusion must be bool"):
         FusedConfig(fp_fusion=1)
+
+
+def test_split_k_requires_supported_integer():
+    for value in (0, 3, 32, True):
+        with pytest.raises(ValueError, match="unsupported fused split_k"):
+            FusedConfig(split_k=value)
+
+
+def test_default_five_percent_split_k_is_limited_to_measured_shapes():
+    base = FusedConfig(128, late_reduce=True, fp_fusion=True)
+    for size in (4096, 8192):
+        density = round(size * size * 0.05) / (size * size)
+        assert default_fused_config(
+            (64, 64),
+            128,
+            atom_density=density,
+            gpu_name="NVIDIA A100",
+            logical_shape=(size, size),
+        ) == FusedConfig(128, 16, 32, 1, 4, True, True, 8)
+    assert default_fused_config(
+        (64, 64),
+        128,
+        atom_density=round(1024 * 1024 * 0.05) / (1024 * 1024),
+        gpu_name="NVIDIA A100",
+        logical_shape=(1024, 1024),
+    ) == base
+    assert default_fused_config(
+        (64, 64),
+        512,
+        atom_density=round(4096 * 4096 * 0.05) / (4096 * 4096),
+        gpu_name="NVIDIA A100",
+        logical_shape=(4096, 4096),
+    ) == base
 
 
 def test_default_fp_fusion_requires_dense_a100_and_respects_override():
