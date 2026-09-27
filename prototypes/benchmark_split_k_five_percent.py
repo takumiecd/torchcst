@@ -32,12 +32,16 @@ def main():
     parser.add_argument("--column-factored", action="store_true")
     parser.add_argument("--tile-rows", type=int, nargs="+", default=[])
     parser.add_argument("--tile-columns", type=int, nargs="+", default=[])
+    parser.add_argument("--batch-rows", type=int, nargs="+", default=[])
+    parser.add_argument("--warps", type=int, nargs="+", default=[])
     args = parser.parse_args()
     assert args.size % 64 == 0 and args.batch > 0
     assert all(split in (2, 4, 8, 16) for split in args.splits)
     assert all(stage in (1, 2, 3, 4, 5) for stage in args.stages)
     assert all(rows in (16, 32, 64) for rows in args.tile_rows)
     assert all(columns in (16, 32, 64) for columns in args.tile_columns)
+    assert all(rows in (32, 64, 128) for rows in args.batch_rows)
+    assert all(warps in (4, 8) for warps in args.warps)
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     props = torch.cuda.get_device_properties(0)
@@ -59,6 +63,8 @@ def main():
         column_factored=False,
         output_rows=None,
         columns=None,
+        batch_rows=None,
+        warps=None,
     ):
         p, circle, section, offsets = (
             prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
@@ -70,12 +76,16 @@ def main():
         s, t = layer.tile_shape
         output_rows = output_rows or cfg.output_rows
         columns = columns or cfg.columns
-        launch_options = {"num_warps": cfg.warps, "enable_fp_fusion": cfg.fp_fusion}
+        batch_rows = batch_rows or cfg.batch_rows
+        launch_options = {
+            "num_warps": warps or cfg.warps,
+            "enable_fp_fusion": cfg.fp_fusion,
+        }
         if num_stages is not None:
             launch_options["num_stages"] = num_stages
         block_fused[
             (
-                math.ceil(args.batch / cfg.batch_rows),
+                math.ceil(args.batch / batch_rows),
                 layer.row_groups * math.ceil(s / output_rows),
                 split,
             )
@@ -95,7 +105,7 @@ def main():
             G=layer.strip.chart.tile_count,
             D=p.shape[1] - 2,
             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-            BM=cfg.batch_rows,
+            BM=batch_rows,
             BN=output_rows,
             BK=columns,
             BA=cfg.atoms,
@@ -155,6 +165,42 @@ def main():
                 for columns in args.tile_columns
             }
         )
+        functions.update(
+            {
+                f"batch_rows_{rows}": partial(
+                    split_forward,
+                    8,
+                    True,
+                    column_factored=True,
+                    output_rows=32,
+                    batch_rows=rows,
+                )
+                for rows in args.batch_rows
+            }
+        )
+        functions.update(
+            {
+                f"warps_{warps}": partial(
+                    split_forward,
+                    8,
+                    True,
+                    column_factored=True,
+                    output_rows=32,
+                    warps=warps,
+                )
+                for warps in args.warps
+            }
+        )
+        if 64 in args.batch_rows and 8 in args.warps:
+            functions["batch_rows_64_warps_8"] = partial(
+                split_forward,
+                8,
+                True,
+                column_factored=True,
+                output_rows=32,
+                batch_rows=64,
+                warps=8,
+            )
     if 8 in args.splits:
         functions["split_8_hoist"] = partial(split_forward, 8, True)
         functions.update(
