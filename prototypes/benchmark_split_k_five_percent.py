@@ -45,7 +45,7 @@ def main():
     cfg = FusedConfig(128, 16, 32, 1, 4, True, True)
     legacy_cfg = FusedConfig(128, 16, 16, 8, 4, True, True)
 
-    def split_forward(split):
+    def split_forward(split, hoist_section=False):
         p, circle, section, offsets = (
             prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
             if args.full
@@ -82,6 +82,7 @@ def main():
             BA=cfg.atoms,
             LATE_REDUCE=cfg.late_reduce,
             SPLIT_K=split,
+            HOIST_SECTION=hoist_section,
             num_warps=cfg.warps,
             enable_fp_fusion=cfg.fp_fusion,
         )
@@ -114,6 +115,8 @@ def main():
         ),
     }
     functions.update({f"split_{n}": partial(split_forward, n) for n in args.splits})
+    if 8 in args.splits:
+        functions["split_8_hoist"] = partial(split_forward, 8, True)
     checks = {name: check(fn(), expected) for name, fn in functions.items()}
     assert all(value["passed"] for value in checks.values()), checks
     results = {

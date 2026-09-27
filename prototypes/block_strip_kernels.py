@@ -8,6 +8,24 @@ from torchcst.nn._backends._triton_kernels import _profile, _sites, _values, _we
 
 
 @tr.jit
+def _values_preloaded_4d(P, atoms, atom_valid, sx, sy, sz, sw, valid, PROFILE: tl.constexpr):
+    center_x = tl.load(P + atoms * 6 + 2, atom_valid, other=0.0)
+    center_y = tl.load(P + atoms * 6 + 3, atom_valid, other=0.0)
+    center_z = tl.load(P + atoms * 6 + 4, atom_valid, other=0.0)
+    center_w = tl.load(P + atoms * 6 + 5, atom_valid, other=0.0)
+    dx = sx[:, None] - center_x[None, :]
+    dy = sy[:, None] - center_y[None, :]
+    squared = dx * dx + dy * dy
+    dz = sz[:, None] - center_z[None, :]
+    squared += dz * dz
+    dw = sw[:, None] - center_w[None, :]
+    squared += dw * dw
+    precision = tl.load(P + atoms * 6 + 1, atom_valid, other=0.0)
+    value, _ = _profile(squared, precision[None, :], PROFILE)
+    return tl.where(valid[:, None] & atom_valid[None, :], value, 0.0)
+
+
+@tr.jit
 def _weight_lanes(
     P,
     Circle,
@@ -25,21 +43,31 @@ def _weight_lanes(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    HOIST_SECTION: tl.constexpr = False,
 ):
     """Accumulate atom lanes first, reducing once after all I/B buckets."""
     sites = tl.arange(0, BN * BK)
     rows, cols = row_start + sites // BK, col_start + sites % BK
     valid = (rows < N) & (rows < (station + 1) * S) & (cols < K)
     sx, sy = _sites(Circle, Section, rows, cols, valid, D)
+    if HOIST_SECTION:
+        tl.static_assert(D == 4)
+        sz = tl.load(Section + cols * (D - 1) + 1, valid, other=0.0)
+        sw = tl.load(Section + cols * (D - 1) + 2, valid, other=0.0)
     partial = tl.full((BN * BK, BA), 0.0, tl.float32)
     for slot in tl.static_range(1 if G == 1 else 3):
         bucket = _bucket(station, slot, G)
         begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
         for start in range(begin, end, BA):
             atoms = start + tl.arange(0, BA)
-            value, _ = _values(
-                P, Section, atoms, atoms < end, sx, sy, cols, valid, D, PROFILE
-            )
+            if HOIST_SECTION:
+                value = _values_preloaded_4d(
+                    P, atoms, atoms < end, sx, sy, sz, sw, valid, PROFILE
+                )
+            else:
+                value, _ = _values(
+                    P, Section, atoms, atoms < end, sx, sy, cols, valid, D, PROFILE
+                )
             amplitude = tl.load(P + atoms * (D + 2), atoms < end, 0.0)
             partial += value * amplitude[None, :]
     return tl.reshape(tl.sum(partial, 1), (BN, BK))
@@ -183,6 +211,7 @@ def block_fused(
     BA: tl.constexpr,
     LATE_REDUCE: tl.constexpr = False,
     SPLIT_K: tl.constexpr = 1,
+    HOIST_SECTION: tl.constexpr = False,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -221,6 +250,7 @@ def block_fused(
                     BN,
                     BK,
                     BA,
+                    HOIST_SECTION,
                 )
             else:
                 w = _weight(
