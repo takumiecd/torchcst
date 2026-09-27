@@ -1,5 +1,7 @@
 # atom密度5%のmapped GEMM改善（A100）
 
+続く測定で距離計算の列方向因数化と32行tileによるX再利用を導入した。現在の既定設定と比較値は[atom群とX再利用の記録](five-percent-atom-group-and-x-reuse.ja.md)を参照。以下は当時の16行tileの測定記録である。
+
 2026-09-27。5%ちょうどを主対象に、既存のBA8局所合算からBA1/BN16/BK32、K方向8分割、Section座標のループ外読出しへ進めた。対象は`BlockStripLinear`のforward prototype。全重み行列`W`は標準経路で生成・保持しない。
 
 ## 条件と結論
