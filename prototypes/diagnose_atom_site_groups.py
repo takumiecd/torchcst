@@ -51,6 +51,8 @@ def measure(centers, radii, active, sites, site_index, atom_width):
     site_points = sites[site_index]
     site_center = site_points.mean(axis=1)
     site_radius = np.linalg.norm(site_points - site_center[:, None, :], axis=2).max(1)
+    site_low = site_points.min(axis=1)
+    site_high = site_points.max(axis=1)
     site_count = site_index.shape[1]
     exact_out = ~active[:, site_index].any(axis=2)
     center_distance = np.linalg.norm(
@@ -76,6 +78,17 @@ def measure(centers, radii, active, sites, site_index, atom_width):
     group_distance = np.linalg.norm(
         group_centers[:, None, :] - site_center[None, :, :], axis=2
     )
+    group_low = np.array([centers[group].min(axis=0) for group in atom_groups])
+    group_high = np.array([centers[group].max(axis=0) for group in atom_groups])
+    group_max_radius = np.array([radii[group].max() for group in atom_groups])
+    box_gap = np.maximum(
+        np.maximum(
+            site_low[None, :, :] - group_high[:, None, :],
+            group_low[:, None, :] - site_high[None, :, :],
+        ),
+        0.0,
+    )
+    box_bound_out = np.linalg.norm(box_gap, axis=2) > group_max_radius[:, None] + 1e-6
     bound_out = group_distance > outer_radius[:, None] + site_radius[None, :] + 1e-6
     bound_inside = group_distance + site_radius[None, :] + 1e-6 < inner_radius[:, None]
     oracle_out = np.array(
@@ -85,6 +98,7 @@ def measure(centers, radii, active, sites, site_index, atom_width):
         [active[group][:, site_index].all(axis=(0, 2)) for group in atom_groups]
     )
     assert not np.any(bound_out & ~oracle_out)
+    assert not np.any(box_bound_out & ~oracle_out)
     assert not np.any(bound_inside & ~oracle_inside)
     weights = np.array([len(group) * site_count for group in atom_groups])[:, None]
     pairs = len(centers) * sites.shape[0]
@@ -98,6 +112,7 @@ def measure(centers, radii, active, sites, site_index, atom_width):
         "atom_site_bound_out_pairs": int(individual_out.sum() * site_count),
         "group_exact_out_pairs": int((oracle_out * weights).sum()),
         "group_bound_out_pairs": int((bound_out * weights).sum()),
+        "group_box_bound_out_pairs": int((box_bound_out * weights).sum()),
         "group_exact_inside_pairs": int((oracle_inside * weights).sum()),
         "group_bound_inside_pairs": int((bound_inside * weights).sum()),
         "site_radius_median": float(np.median(site_radius)),
@@ -126,7 +141,7 @@ def main():
     )[: args.stations].tolist()
     offsets = offsets.cpu().tolist()
     section = section.cpu().numpy().astype(np.float64)
-    site_shapes = ((16, 32), (8, 8), (4, 8), (4, 4))
+    site_shapes = ((32, 32), (16, 32), (8, 8), (4, 8), (4, 4))
     indices = {f"{r}x{c}": site_groups(r, c) for r, c in site_shapes}
     result = {
         "source_commit": args.source_commit,
