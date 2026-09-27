@@ -29,6 +29,7 @@ from prototypes.block_strip_linear import BlockStripLinear
         FusedConfig(128, 16, 32, 1, 4, True, True, 8),
         FusedConfig(128, 16, 32, 1, 4, True, True, 8, True),
         FusedConfig(128, 16, 32, 1, 4, True, True, 8, True, True),
+        FusedConfig(128, 32, 32, 1, 4, True, True, 8, True, True),
     ],
 )
 def test_fused_schedule_tail_and_seam(config):
@@ -99,7 +100,7 @@ def test_default_five_percent_split_k_is_limited_to_measured_shapes():
             atom_density=density,
             gpu_name="NVIDIA A100",
             logical_shape=(size, size),
-        ) == FusedConfig(128, 16, 32, 1, 4, True, True, 8, True, True)
+        ) == FusedConfig(128, 32, 32, 1, 4, True, True, 8, True, True)
     assert (
         default_fused_config(
             (64, 64),

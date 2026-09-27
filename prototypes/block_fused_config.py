@@ -76,7 +76,7 @@ def default_fused_config(
             and logical_shape in ((4096, 4096), (8192, 8192))
             and atom_density < 0.051
         ):
-            return FusedConfig(128, 16, 32, 1, 4, True, True, 8, True, True)
+            return FusedConfig(128, 32, 32, 1, 4, True, True, 8, True, True)
         return FusedConfig(batch_rows=128, late_reduce=True, fp_fusion=fp_fusion)
     return FusedConfig()
 
