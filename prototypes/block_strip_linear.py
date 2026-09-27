@@ -142,6 +142,7 @@ class BlockStripLinear(nn.Module):
         column_tile=None,
         support_cull="none",
         fused_config=None,
+        weight_chunk_rows=1024,
     ):
         if fused_config is not None and backend != "triton_fused":
             raise ValueError("fused_config requires triton_fused")
@@ -151,6 +152,14 @@ class BlockStripLinear(nn.Module):
             raise ValueError("input feature count differs from mapped shape")
         if backend == "torch":
             return self.reference(x)
+        if backend == "triton_streamed":
+            from prototypes.block_streamed_forward import streamed_forward
+
+            return streamed_forward(
+                self, x, prepared=prepared, weight_chunk_rows=weight_chunk_rows
+            )
+        if weight_chunk_rows != 1024:
+            raise ValueError("weight_chunk_rows applies only to triton_streamed")
         if backend not in (
             "triton_direct",
             "triton_reuse",

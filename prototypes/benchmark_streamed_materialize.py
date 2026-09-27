@@ -9,10 +9,9 @@ import torch
 import torch.nn.functional as F
 
 from prototypes.benchmark_large_forward import check
-from prototypes.benchmark_materialize_five_percent import materialize_logical
 from prototypes.benchmark_tile_study import mapped_control, timing
 from prototypes.block_strip_linear import BlockStripLinear
-from torchcst.nn._backends._preparation import PROFILE_KINDS, prepare
+from torchcst.nn._backends._preparation import prepare
 
 
 @torch.no_grad()
@@ -35,49 +34,19 @@ def main():
     assert canonical["passed"]
     x = torch.randn(batch, size, device="cuda")
     expected = F.linear(x, expected_w)
-    buffers = {
-        chunk: (torch.empty((chunk, size), device="cuda"), torch.empty_like(x))
-        for chunk in (64, 128, 256, 512, 1024, size)
-    }
+    chunks = (64, 128, 256, 512, 1024, size)
 
     def streamed(chunk, packed):
-        p, circle, section, offsets = packed
-        w, y = buffers[chunk]
-        for start in range(0, size, chunk):
-            materialize_logical[(chunk // 32, size // 64, 2)](
-                p,
-                circle,
-                section,
-                offsets,
-                w,
-                N=size,
-                K=size,
-                S=64,
-                T=64,
-                CG=size // 64,
-                G=layer.strip.chart.tile_count,
-                D=p.shape[1] - 2,
-                PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-                BN=32,
-                BK=32,
-                BA=1,
-                FACTORED=True,
-                ROW_GROUP_START=start // 64,
-                LOCAL_W=True,
-                num_warps=4,
-                enable_fp_fusion=True,
-            )
-            torch.mm(x, w.T, out=y[:, start : start + chunk])
-        return y
+        return layer(
+            x, backend="triton_streamed", prepared=packed, weight_chunk_rows=chunk
+        )
 
     def streamed_full(chunk):
-        return streamed(
-            chunk, prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
-        )
+        return layer(x, backend="triton_streamed", weight_chunk_rows=chunk)
 
     functions = {
         "fused_default": partial(layer, x, backend="triton_fused"),
-        **{f"stream_{chunk}": partial(streamed, chunk, prepared) for chunk in buffers},
+        **{f"stream_{chunk}": partial(streamed, chunk, prepared) for chunk in chunks},
         **{
             f"stream_{chunk}_full": partial(streamed_full, chunk)
             for chunk in (512, 1024, size)
@@ -94,8 +63,7 @@ def main():
         "canonical": canonical,
         "checks": checks,
         "transient_weight_bytes": {
-            str(chunk): w.numel() * w.element_size()
-            for chunk, (w, _) in buffers.items()
+            str(chunk): chunk * size * x.element_size() for chunk in chunks
         },
         "timing": "CUDA Graph 3 rounds rep=20ms; _full paths include support preparation",
         **timing(functions),
