@@ -37,9 +37,11 @@ def materialize_logical(
     BK: tl.constexpr,
     BA: tl.constexpr,
     FACTORED: tl.constexpr = False,
+    ROW_GROUP_START=0,
+    LOCAL_W: tl.constexpr = False,
 ):
     tile = tl.program_id(0)
-    row_group = tile // triton.cdiv(S, BN)
+    row_group = tile // triton.cdiv(S, BN) + ROW_GROUP_START
     local = (tile % triton.cdiv(S, BN)) * BN
     column_group = tl.program_id(1)
     start = tl.program_id(2) * BK
@@ -47,18 +49,46 @@ def materialize_logical(
     if FACTORED:
         tl.static_assert(D == 4 and BA == 1)
         w = _weight_columns_factored(
-            P, Circle, Section, Offsets, station, station * S + local, start,
-            G * S, T, G, S, PROFILE, BN, BK,
+            P,
+            Circle,
+            Section,
+            Offsets,
+            station,
+            station * S + local,
+            start,
+            G * S,
+            T,
+            G,
+            S,
+            PROFILE,
+            BN,
+            BK,
         )
     else:
         w = _weight_lanes(
-            P, Circle, Section, Offsets, station, station * S + local, start,
-            G * S, T, D, G, S, PROFILE, BN, BK, BA,
+            P,
+            Circle,
+            Section,
+            Offsets,
+            station,
+            station * S + local,
+            start,
+            G * S,
+            T,
+            D,
+            G,
+            S,
+            PROFILE,
+            BN,
+            BK,
+            BA,
         )
     n = row_group * S + local + tl.arange(0, BN)
     k = column_group * T + start + tl.arange(0, BK)
     tl.store(
-        W + n[:, None] * K + k[None, :],
+        W
+        + (n[:, None] - ROW_GROUP_START * S if LOCAL_W else n[:, None]) * K
+        + k[None, :],
         w,
         (n[:, None] < N)
         & (local + tl.arange(0, BN)[:, None] < S)
