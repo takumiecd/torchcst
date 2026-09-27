@@ -8,9 +8,7 @@ from torchcst.nn._backends._triton_kernels import _profile, _sites, _values, _we
 
 
 @tr.jit
-def _values_preloaded_4d(
-    P, atoms, atom_valid, sx, sy, sz, sw, valid, PROFILE: tl.constexpr
-):
+def _values_preloaded_4d(P, atoms, atom_valid, sx, sy, sz, sw, valid, PROFILE: tl.constexpr):
     center_x = tl.load(P + atoms * 6 + 2, atom_valid, other=0.0)
     center_y = tl.load(P + atoms * 6 + 3, atom_valid, other=0.0)
     center_z = tl.load(P + atoms * 6 + 4, atom_valid, other=0.0)
@@ -214,7 +212,6 @@ def block_fused(
     LATE_REDUCE: tl.constexpr = False,
     SPLIT_K: tl.constexpr = 1,
     HOIST_SECTION: tl.constexpr = False,
-    DOT_PRECISION: tl.constexpr = "ieee",
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -275,7 +272,7 @@ def block_fused(
                     BA,
                     True,
                 )
-            acc = tl.dot(x, tl.trans(w), acc, input_precision=DOT_PRECISION)
+            acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
     tl.store(
         Y + split * M * N + m[:, None] * N + n[None, :],
         acc,
