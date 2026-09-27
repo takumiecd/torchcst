@@ -268,6 +268,7 @@ def block_fused(
     SPLIT_K: tl.constexpr = 1,
     HOIST_SECTION: tl.constexpr = False,
     COLUMN_FACTORED: tl.constexpr = False,
+    DOT_BF16_SPLIT: tl.constexpr = 0,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -347,7 +348,18 @@ def block_fused(
                     BA,
                     True,
                 )
-            acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
+            if DOT_BF16_SPLIT:
+                x_hi = x.to(tl.bfloat16)
+                w_hi = w.to(tl.bfloat16)
+                x_lo = (x - x_hi.to(tl.float32)).to(tl.bfloat16)
+                w_lo = (w - w_hi.to(tl.float32)).to(tl.bfloat16)
+                acc = tl.dot(x_hi, tl.trans(w_hi), acc)
+                acc = tl.dot(x_lo, tl.trans(w_hi), acc)
+                acc = tl.dot(x_hi, tl.trans(w_lo), acc)
+                if DOT_BF16_SPLIT == 4:
+                    acc = tl.dot(x_lo, tl.trans(w_lo), acc)
+            else:
+                acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
     tl.store(
         Y + split * M * N + m[:, None] * N + n[None, :],
         acc,
