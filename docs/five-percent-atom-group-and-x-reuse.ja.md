@@ -35,6 +35,8 @@ A100 80GB PCIe MIG 3g.40gb、42 SM、FP32、PyTorch matmul の TF32 無効、see
 
 4096²/8192² の full 比較は commit `7206124`、準備済み比較と既定設定の検証は `4e2caa0`。全候補が全出力検査に合格。新設定は `default_fused_config` の A100・正確な 5%・対象形状・M=128 に限定した。A100 で境界/継ぎ目/CUDA Graph 更新テスト 2 件合格、ローカルで CPU 対象 5 件合格（CUDA 対象は skip）。
 
+棄却した実験コードを除いた `a166e9d` でも A100 テスト 2 件が通り、4096² full 同一 run の既定 32 行は 14.233 ms、旧 16 行相当は 14.612 ms、dense 参考値は 0.663 ms。全出力の正しさも通過した。
+
 split-K を 2/4/8/16 にした 4096² full の列方向距離再利用版は 16.02/15.10/14.69/14.68 ms。8 と 16 はほぼ同等で、16 は作業 tensor を倍にするため 8 を維持した。split-K=8 の partial tensor は 4096² で 16 MiB、8192² で 32 MiB。32 行化によってこの allocation は増えない。全学習ピーク、allocator 予約量、optimizer state を含む総メモリは今回測定していない。
 
 ## 棄却した距離式
@@ -45,7 +47,7 @@ Claude Sonnet 4.6、Gemini 3.1 Pro、Grok 4.7 に読み取り専用で相談し�
 
 ## 再現と記録
 
-ソース archive SHA256: 群診断 `065855c8505946a26e2d324ffaa1734debfedd8be3838f04d2274c1752b88288`、tile 比較 `bd60d7237d9ec1f9fe0bb137d93c1835f937745423f0581233565c41d38b5a4e`、既定設定確認 `80c25ae78d3691a9c1ac6c3de7c027b3f59a1de3da8794b90ee8cc33b3abc6b7`。いずれもリモートで一致を確認した。
+ソース archive SHA256: 群診断 `065855c8505946a26e2d324ffaa1734debfedd8be3838f04d2274c1752b88288`、tile 比較 `bd60d7237d9ec1f9fe0bb137d93c1835f937745423f0581233565c41d38b5a4e`、既定設定確認 `80c25ae78d3691a9c1ac6c3de7c027b3f59a1de3da8794b90ee8cc33b3abc6b7`、棄却コード削除後 `023f635b9e60951f42f2984c39ff0abfdb6986a980cd63757b8dd7e02293409c`。いずれもリモートで一致を確認した。
 
 ローカル結果は `output/triton-a100-20260927/`（gitignored）。SHA256 は次の通り。
 
@@ -59,6 +61,7 @@ Claude Sonnet 4.6、Gemini 3.1 Pro、Grok 4.7 に読み取り専用で相談し�
 | `tile-8192.json` | `840b6580fee942c5691f78fd2a92b9fd550b9105e30df50d45dfb42fbc0b5386` |
 | `default-prepared-4096.json` | `0fb13cd0f22db57dd1e49e67bbf2a7287bbadc102f61ca35b89811b2c7a69ee8` |
 | `default-prepared-8192.json` | `7d1f4fc4b3de8a6c91a5195c73bebbdbb88cc13c446e8228f65696c47c558038` |
+| `final-4096.json` | `a56f2a13829acd3ff8a7cd79bc021c1291d4a55f9b569b1d5ca892ab2678a67f` |
 
 再現コマンドの例（隔離 checkout で実行）：
 
