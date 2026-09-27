@@ -30,8 +30,6 @@ def main():
     parser.add_argument("--splits", type=int, nargs="+", default=[2, 4, 8])
     parser.add_argument("--stages", type=int, nargs="+", default=[])
     parser.add_argument("--column-factored", action="store_true")
-    parser.add_argument("--cull-tile", action="store_true")
-    parser.add_argument("--radial-factor", action="store_true")
     parser.add_argument("--tile-rows", type=int, nargs="+", default=[])
     parser.add_argument("--tile-columns", type=int, nargs="+", default=[])
     args = parser.parse_args()
@@ -59,8 +57,6 @@ def main():
         hoist_section=False,
         num_stages=None,
         column_factored=False,
-        cull_tile=False,
-        radial_factor=False,
         output_rows=None,
         columns=None,
     ):
@@ -107,8 +103,6 @@ def main():
             SPLIT_K=split,
             HOIST_SECTION=hoist_section,
             COLUMN_FACTORED=column_factored,
-            CULL_TILE=cull_tile,
-            RADIAL_FACTOR=radial_factor,
             **launch_options,
         )
         block_split_reduce[(triton.cdiv(y.numel(), 256),)](
@@ -149,16 +143,14 @@ def main():
         )
         functions.update(
             {
-                f"tile_rows_{rows}": partial(
-                    split_forward, 8, True, None, True, False, False, rows
-                )
+                f"tile_rows_{rows}": partial(split_forward, 8, True, None, True, rows)
                 for rows in args.tile_rows
             }
         )
         functions.update(
             {
                 f"tile_columns_{columns}": partial(
-                    split_forward, 8, True, None, True, False, False, None, columns
+                    split_forward, 8, True, None, True, None, columns
                 )
                 for columns in args.tile_columns
             }
@@ -171,12 +163,6 @@ def main():
                 for stage in args.stages
             }
         )
-        if args.cull_tile:
-            functions["cull_tile"] = partial(split_forward, 8, True, None, True, True)
-        if args.radial_factor:
-            functions["radial_factor"] = partial(
-                split_forward, 8, True, None, True, False, True
-            )
     checks = {name: check(fn(), expected) for name, fn in functions.items()}
     assert all(value["passed"] for value in checks.values()), checks
     results = {
