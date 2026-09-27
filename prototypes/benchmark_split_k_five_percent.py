@@ -32,7 +32,6 @@ def main():
     parser.add_argument("--column-factored", action="store_true")
     parser.add_argument("--tile-rows", type=int, nargs="+", default=[])
     parser.add_argument("--tile-columns", type=int, nargs="+", default=[])
-    parser.add_argument("--bf16-dot", action="store_true")
     args = parser.parse_args()
     assert args.size % 64 == 0 and args.batch > 0
     assert all(split in (2, 4, 8, 16) for split in args.splits)
@@ -60,7 +59,6 @@ def main():
         column_factored=False,
         output_rows=None,
         columns=None,
-        dot_bf16_split=0,
     ):
         p, circle, section, offsets = (
             prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
@@ -105,7 +103,6 @@ def main():
             SPLIT_K=split,
             HOIST_SECTION=hoist_section,
             COLUMN_FACTORED=column_factored,
-            DOT_BF16_SPLIT=dot_bf16_split,
             **launch_options,
         )
         block_split_reduce[(triton.cdiv(y.numel(), 256),)](
@@ -158,15 +155,6 @@ def main():
                 for columns in args.tile_columns
             }
         )
-        if args.bf16_dot:
-            functions.update(
-                {
-                    f"bf16_dot_{terms}": partial(
-                        split_forward, 8, True, None, True, 32, 32, terms
-                    )
-                    for terms in (3, 4)
-                }
-            )
     if 8 in args.splits:
         functions["split_8_hoist"] = partial(split_forward, 8, True)
         functions.update(
