@@ -182,6 +182,7 @@ def block_fused(
     BK: tl.constexpr,
     BA: tl.constexpr,
     LATE_REDUCE: tl.constexpr = False,
+    SPLIT_K: tl.constexpr = 1,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -189,7 +190,11 @@ def block_fused(
     n = r * S + local + tl.arange(0, BN)
     m = tl.program_id(0) * BM + tl.arange(0, BM)
     acc = tl.full((BM, BN), 0, tl.float32)
-    for c in range(CG):
+    if SPLIT_K == 1:
+        split = 0
+    else:
+        split = tl.program_id(2)
+    for c in range(split, CG, SPLIT_K):
         station = r * CG + c
         for start in range(0, T, BK):
             k = start + tl.arange(0, BK)
@@ -239,7 +244,26 @@ def block_fused(
                 )
             acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
     tl.store(
-        Y + m[:, None] * N + n[None, :],
+        Y + split * M * N + m[:, None] * N + n[None, :],
         acc,
         (m[:, None] < M) & (n[None, :] < N) & (local + tl.arange(0, BN)[None, :] < S),
     )
+
+
+@tr.jit
+def block_split_reduce(
+    Partial,
+    Y,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    BLOCK: tl.constexpr = 256,
+):
+    index = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    split = tl.arange(0, SPLIT_K)
+    values = tl.load(
+        Partial + split[:, None] * M * N + index[None, :],
+        index[None, :] < M * N,
+        other=0.0,
+    )
+    tl.store(Y + index, tl.sum(values, axis=0), index < M * N)
