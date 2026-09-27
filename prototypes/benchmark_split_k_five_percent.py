@@ -29,7 +29,6 @@ def main():
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--splits", type=int, nargs="+", default=[2, 4, 8])
     parser.add_argument("--stages", type=int, nargs="+", default=[])
-    parser.add_argument("--early-atom-loads", action="store_true")
     args = parser.parse_args()
     assert args.size % 64 == 0 and args.batch > 0
     assert all(split in (2, 4, 8, 16) for split in args.splits)
@@ -48,9 +47,7 @@ def main():
     cfg = FusedConfig(128, 16, 32, 1, 4, True, True)
     legacy_cfg = FusedConfig(128, 16, 16, 8, 4, True, True)
 
-    def split_forward(
-        split, hoist_section=False, num_stages=None, early_atom_loads=False
-    ):
+    def split_forward(split, hoist_section=False, num_stages=None):
         p, circle, section, offsets = (
             prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
             if args.full
@@ -91,7 +88,6 @@ def main():
             LATE_REDUCE=cfg.late_reduce,
             SPLIT_K=split,
             HOIST_SECTION=hoist_section,
-            EARLY_ATOM_LOADS=early_atom_loads,
             **launch_options,
         )
         block_split_reduce[(triton.cdiv(y.numel(), 256),)](
@@ -125,8 +121,6 @@ def main():
     functions.update({f"split_{n}": partial(split_forward, n) for n in args.splits})
     if 8 in args.splits:
         functions["split_8_hoist"] = partial(split_forward, 8, True)
-        if args.early_atom_loads:
-            functions["early_atom_loads"] = partial(split_forward, 8, True, None, True)
         functions.update(
             {
                 f"stages_{stage}": partial(split_forward, 8, True, stage)
