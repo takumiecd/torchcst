@@ -43,6 +43,7 @@ def main():
     x = torch.randn(args.batch, args.size, device="cuda")
     expected = F.linear(x, weight)
     cfg = FusedConfig(128, 16, 32, 1, 4, True, True)
+    legacy_cfg = FusedConfig(128, 16, 16, 8, 4, True, True)
 
     def split_forward(split):
         p, circle, section, offsets = (
@@ -91,11 +92,24 @@ def main():
 
     functions = {
         "dense": partial(F.linear, x, weight),
+        "legacy": partial(
+            layer,
+            x,
+            backend="triton_fused",
+            fused_config=legacy_cfg,
+            prepared=None if args.full else prepared,
+        ),
         "baseline": partial(
             layer,
             x,
             backend="triton_fused",
             fused_config=cfg,
+            prepared=None if args.full else prepared,
+        ),
+        "default": partial(
+            layer,
+            x,
+            backend="triton_fused",
             prepared=None if args.full else prepared,
         ),
     }
