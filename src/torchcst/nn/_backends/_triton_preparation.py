@@ -36,7 +36,13 @@ def tile_parameters(kernel, p):
 
 
 def route_and_layout(
-    routing, decoded, *, support=None, retain_owners=True, batched_support=True
+    routing,
+    decoded,
+    *,
+    support=None,
+    retain_owners=True,
+    batched_support=True,
+    chord_nearest=False,
 ):
     count, stations = decoded.shape[0], routing.starts.numel()
     buckets = stations if support is None else 2 * stations + 1
@@ -118,7 +124,11 @@ def route_and_layout(
                 min(256, tr.next_power_of_2(section.shape[0]))
                 if batched_support
                 else 256,
-                **({"A": count, "BA": batch_atoms} if batched_support else {}),
+                **(
+                    {"A": count, "BA": batch_atoms, "CHORD_NEAREST": chord_nearest}
+                    if batched_support
+                    else {}
+                ),
                 num_warps=4,
                 enable_fp_fusion=False,
             )

@@ -288,6 +288,7 @@ def support_buckets_batched(
     COLS: tl.constexpr,
     A: tl.constexpr,
     BA: tl.constexpr,
+    CHORD_NEAREST: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     owner = tl.load(Owners + a, a < A, 0)
@@ -301,16 +302,53 @@ def support_buckets_batched(
     second = tl.full((BA,), 0, tl.int32)
     for shift in tl.static_range(3 if G >= 3 else G):  # noqa: FURB136
         station = (owner + G - 1 + shift) % G
-        row = station[:, None] * STATION_ROWS + tl.arange(0, ROWS)[None, :]
-        valid = (
-            (row < N) & (tl.arange(0, ROWS)[None, :] < STATION_ROWS) & (a[:, None] < A)
-        )
-        cosine = tl.load(Circle + row * 2, valid, 0.0)
-        sine = tl.load(Circle + row * 2 + 1, valid, 0.0)
-        distance = (cosine - ux[:, None]) * (cosine - ux[:, None]) + (
-            sine - uy[:, None]
-        ) * (sine - uy[:, None])
-        nearest = tl.argmin(tl.where(valid, distance, float("inf")), axis=1)
+        if CHORD_NEAREST:
+            tl.static_assert(STATION_ROWS == 64 and N == G * STATION_ROWS)
+            first_row = station * STATION_ROWS
+            last_row = first_row + STATION_ROWS - 1
+            first_x = tl.load(Circle + first_row * 2, a < A, 0.0)
+            first_y = tl.load(Circle + first_row * 2 + 1, a < A, 0.0)
+            last_x = tl.load(Circle + last_row * 2, a < A, 0.0)
+            last_y = tl.load(Circle + last_row * 2 + 1, a < A, 0.0)
+            chord_x, chord_y = last_x - first_x, last_y - first_y
+            projection = (
+                ((ux - first_x) * chord_x + (uy - first_y) * chord_y)
+                * (STATION_ROWS - 1)
+                / tl.maximum(chord_x * chord_x + chord_y * chord_y, 1.0e-20)
+            )
+            nearest = tl.minimum(
+                tl.maximum(tl.floor(projection + 0.5).to(tl.int32), 0),
+                STATION_ROWS - 1,
+            )
+            best = tl.full((BA,), float("inf"), tl.float32)
+            chosen_local = tl.full((BA,), STATION_ROWS, tl.int32)
+            for delta in tl.static_range(-2, 3):
+                local = tl.minimum(tl.maximum(nearest + delta, 0), STATION_ROWS - 1)
+                row = first_row + local
+                direction_x = tl.load(Circle + row * 2, a < A, 0.0)
+                direction_y = tl.load(Circle + row * 2 + 1, a < A, 0.0)
+                distance = (direction_x - ux) * (direction_x - ux) + (
+                    direction_y - uy
+                ) * (direction_y - uy)
+                better = (distance < best) | (
+                    (distance == best) & (local < chosen_local)
+                )
+                chosen_local = tl.where(better, local, chosen_local)
+                best = tl.minimum(best, distance)
+            nearest = chosen_local
+        else:
+            row = station[:, None] * STATION_ROWS + tl.arange(0, ROWS)[None, :]
+            valid = (
+                (row < N)
+                & (tl.arange(0, ROWS)[None, :] < STATION_ROWS)
+                & (a[:, None] < A)
+            )
+            cosine = tl.load(Circle + row * 2, valid, 0.0)
+            sine = tl.load(Circle + row * 2 + 1, valid, 0.0)
+            distance = (cosine - ux[:, None]) * (cosine - ux[:, None]) + (
+                sine - uy[:, None]
+            ) * (sine - uy[:, None])
+            nearest = tl.argmin(tl.where(valid, distance, float("inf")), axis=1)
         chosen = station * STATION_ROWS + nearest
         cosine, sine = (
             tl.load(Circle + chosen * 2, a < A, 0.0),
