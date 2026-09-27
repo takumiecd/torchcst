@@ -14,7 +14,12 @@ from prototypes.benchmark_tile_study import mapped_control, timing
 from prototypes.block_fused_config import FusedConfig
 from prototypes.block_strip_kernels import block_split_reduce
 from prototypes.block_strip_linear import BlockStripLinear
-from prototypes.grouped_cull_kernels import block_grouped_fused, build_grouped
+from prototypes.grouped_cull_kernels import (
+    block_grouped_csr_fused,
+    block_grouped_fused,
+    build_candidate_csr,
+    build_grouped,
+)
 from torchcst.nn._backends._preparation import prepare
 
 
@@ -37,6 +42,7 @@ def main():
     layer = BlockStripLinear((size, size), (64, 64), atoms, device="cuda")
     prepared = prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
     grouped = build_grouped(prepared)
+    csr = build_candidate_csr(grouped)
     weight, canonical = mapped_control(layer, prepared, canonical_chunk=4)
     assert canonical["passed"], canonical
     x = torch.randn(batch, size, device="cuda")
@@ -74,8 +80,46 @@ def main():
             num_warps=4,
             enable_fp_fusion=True,
         )
-        if not resources:
-            resources.update(
+        if "grouped_16" not in resources:
+            resources["grouped_16"] = dict(
+                registers_per_thread=compiled.n_regs,
+                compiler_spills=compiled.n_spills,
+                shared_bytes_per_block=compiled.metadata.shared,
+            )
+        block_split_reduce[(triton.cdiv(result.numel(), 256),)](
+            partial, result, batch, size, 8
+        )
+        return result
+
+    def csr_forward():
+        partial = x.new_empty((8, batch, size))
+        result = x.new_empty((batch, size))
+        compiled = block_grouped_csr_fused[(1, (size // 64) * 4, 8)](
+            x,
+            grouped.packed,
+            grouped.circle,
+            grouped.section,
+            grouped.group_starts,
+            grouped.group_counts,
+            csr.offsets,
+            csr.groups,
+            partial,
+            M=batch,
+            N=size,
+            K=size,
+            S=64,
+            T=64,
+            CG=size // 64,
+            PROFILE=1,
+            BM=128,
+            BN=16,
+            BK=32,
+            SPLIT_K=8,
+            num_warps=4,
+            enable_fp_fusion=True,
+        )
+        if "grouped_csr_16" not in resources:
+            resources["grouped_csr_16"] = dict(
                 registers_per_thread=compiled.n_regs,
                 compiler_spills=compiled.n_spills,
                 shared_bytes_per_block=compiled.metadata.shared,
@@ -94,6 +138,7 @@ def main():
             layer, x, backend="triton_fused", prepared=prepared, fused_config=cfg32
         ),
         "grouped_16": grouped_forward,
+        "grouped_csr_16": csr_forward,
     }
     checks = {name: check(fn(), expected) for name, fn in functions.items()}
     if not all(value["passed"] for value in checks.values()):
@@ -121,10 +166,18 @@ def main():
         "groups": grouped.groups,
         "group_build_host_seconds": grouped.build_seconds,
         "grouped_tensor_payload_bytes": memory,
+        "csr_build_host_seconds": csr.build_seconds,
+        "csr_tensor_payload_bytes": sum(
+            tensor.numel() * tensor.element_size()
+            for tensor in (csr.offsets, csr.groups)
+        ),
+        "csr_candidates": csr.candidates,
+        "csr_possible_groups": csr.possible_groups,
+        "csr_kept_fraction": csr.candidates / max(csr.possible_groups, 1),
         "resources": resources,
         "canonical": canonical,
         "checks": checks,
-        "timing": "CUDA Graph 3 rounds rep=20ms; dense W and grouping precomputed",
+        "timing": "CUDA Graph 3 rounds rep=20ms; dense W, grouping, CSR precomputed",
         **measured,
         "completed": True,
     }

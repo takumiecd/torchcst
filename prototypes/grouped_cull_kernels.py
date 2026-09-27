@@ -33,6 +33,15 @@ class GroupedPrepared:
     build_seconds: float
 
 
+@dataclass(frozen=True)
+class CandidateCsr:
+    offsets: torch.Tensor
+    groups: torch.Tensor
+    candidates: int
+    possible_groups: int
+    build_seconds: float
+
+
 def _outward(values: np.ndarray, direction: float, steps: int = 8) -> np.ndarray:
     result = np.asarray(values, dtype=np.float32)
     for _ in range(steps):
@@ -172,6 +181,66 @@ def build_grouped(
     )
 
 
+def build_candidate_csr(grouped: GroupedPrepared) -> CandidateCsr:
+    """Offline conservative group IDs for each 16x32 site tile.
+
+    IDs stay in B[station-1], I[station], B[station] order. The floating-point
+    comparison is deliberately looser than the device branch, so borderline
+    groups remain candidates. This does not reuse the index after atom updates.
+    """
+    import time
+
+    started = time.perf_counter()
+    group_offsets = grouped.group_offsets.cpu().numpy()
+    group_bounds = grouped.group_bounds.cpu().numpy()
+    site_bounds = grouped.site_bounds.cpu().numpy()
+    stations = site_bounds.shape[0] // 8
+    if len(group_offsets) != 2 * stations + 2:
+        raise ValueError("CSR geometry and group buckets disagree")
+    offsets = [0]
+    ids: list[np.ndarray] = []
+    possible_groups = 0
+    for station in range(stations):
+        bucket_ids = (
+            2 * ((station - 1) % stations) + 1,
+            2 * station,
+            2 * station + 1,
+        )
+        candidates = np.concatenate(
+            [
+                np.arange(group_offsets[b], group_offsets[b + 1], dtype=np.int32)
+                for b in bucket_ids
+            ]
+        )
+        possible_groups += 8 * len(candidates)
+        bounds = group_bounds[candidates]
+        boxes = site_bounds[station * 8 : (station + 1) * 8]
+        low = boxes[:, None, :4]
+        high = boxes[:, None, 4:8]
+        gap = np.maximum(
+            np.maximum(low - bounds[None, :, 4:8], bounds[None, :, :4] - high),
+            0.0,
+        )
+        lower = np.sum(gap * gap, axis=-1)
+        keep = (lower <= bounds[None, :, 8] + np.float32(1e-4)) | ~np.isfinite(lower)
+        for tile in range(8):
+            chosen = candidates[keep[tile]]
+            ids.append(chosen)
+            offsets.append(offsets[-1] + len(chosen))
+    flat = np.concatenate(ids) if ids else np.empty(0, dtype=np.int32)
+    if offsets[-1] >= 2**31:
+        raise ValueError("candidate list exceeds int32 indexing")
+    return CandidateCsr(
+        offsets=torch.as_tensor(
+            np.asarray(offsets, dtype=np.int32), device=grouped.packed.device
+        ),
+        groups=torch.as_tensor(flat, device=grouped.packed.device),
+        candidates=len(flat),
+        possible_groups=possible_groups,
+        build_seconds=time.perf_counter() - started,
+    )
+
+
 @tr.jit
 def _weight_grouped(
     P,
@@ -306,6 +375,119 @@ def block_grouped_fused(
                 station * S + local,
                 col_start,
                 G,
+                PROFILE,
+                BN,
+                BK,
+            )
+            acc = tl.dot(x, tl.trans(weight), acc, input_precision="ieee")
+    tl.store(
+        Y + split * M * N + m[:, None] * N + n[None, :],
+        acc,
+        (m[:, None] < M) & (n[None, :] < N),
+    )
+
+
+@tr.jit
+def _weight_grouped_csr(
+    P,
+    Circle,
+    Section,
+    GroupStarts,
+    GroupCounts,
+    CandidateOffsets,
+    CandidateGroups,
+    station,
+    row_start,
+    col_start,
+    PROFILE: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    rows = row_start + tl.arange(0, BN)
+    cols = col_start + tl.arange(0, BK)
+    cosine = tl.load(Circle + rows * 2)
+    sine = tl.load(Circle + rows * 2 + 1)
+    rho = tl.load(Section + cols * 3)
+    z = tl.load(Section + cols * 3 + 1)
+    w = tl.load(Section + cols * 3 + 2)
+    sx = cosine[:, None] * rho[None, :]
+    sy = sine[:, None] * rho[None, :]
+    tile = station * 8 + ((row_start - station * 64) // 16) * 2 + col_start // 32
+    first = tl.load(CandidateOffsets + tile)
+    last = tl.load(CandidateOffsets + tile + 1)
+    partial = tl.full((BN, BK), 0.0, tl.float32)
+    for entry in range(first, last):
+        group = tl.load(CandidateGroups + entry)
+        first_atom = tl.load(GroupStarts + group)
+        count = tl.load(GroupCounts + group)
+        for atom in range(first_atom, first_atom + count):
+            cx = tl.load(P + atom * 6 + 2)
+            cy = tl.load(P + atom * 6 + 3)
+            cz = tl.load(P + atom * 6 + 4)
+            cw = tl.load(P + atom * 6 + 5)
+            dx = sx - cx
+            dy = sy - cy
+            dz = z - cz
+            dw = w - cw
+            squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
+            precision = tl.load(P + atom * 6 + 1)
+            value, _ = _profile(squared, precision, PROFILE)
+            amplitude = tl.load(P + atom * 6)
+            partial += value * amplitude
+    return partial
+
+
+@tr.jit
+def block_grouped_csr_fused(
+    X,
+    P,
+    Circle,
+    Section,
+    GroupStarts,
+    GroupCounts,
+    CandidateOffsets,
+    CandidateGroups,
+    Y,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    S: tl.constexpr,
+    T: tl.constexpr,
+    CG: tl.constexpr,
+    PROFILE: tl.constexpr,
+    BM: tl.constexpr = 128,
+    BN: tl.constexpr = 16,
+    BK: tl.constexpr = 32,
+    SPLIT_K: tl.constexpr = 8,
+):
+    tl.static_assert(S == 64 and T == 64 and BN == 16 and BK == 32)
+    tile = tl.program_id(1)
+    row_group = tile // 4
+    local = (tile % 4) * 16
+    n = row_group * S + local + tl.arange(0, BN)
+    m = tl.program_id(0) * BM + tl.arange(0, BM)
+    split = tl.program_id(2)
+    acc = tl.full((BM, BN), 0.0, tl.float32)
+    for c in range(split, CG, SPLIT_K):
+        station = row_group * CG + c
+        for col_start in range(0, T, BK):
+            k = col_start + tl.arange(0, BK)
+            x = tl.load(
+                X + m[:, None] * K + (c * T + k)[None, :],
+                (m[:, None] < M) & (c * T + k[None, :] < K),
+                0.0,
+            )
+            weight = _weight_grouped_csr(
+                P,
+                Circle,
+                Section,
+                GroupStarts,
+                GroupCounts,
+                CandidateOffsets,
+                CandidateGroups,
+                station,
+                station * S + local,
+                col_start,
                 PROFILE,
                 BN,
                 BK,
