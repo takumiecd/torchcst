@@ -91,6 +91,7 @@ def _weight_columns_factored(
     PROFILE: tl.constexpr,
     BN: tl.constexpr,
     BK: tl.constexpr,
+    CULL_TILE: tl.constexpr = False,
 ):
     """Evaluate column-only distance terms once per atom and column."""
     rows = row_start + tl.arange(0, BN)
@@ -104,6 +105,16 @@ def _weight_columns_factored(
     w = tl.load(Section + cols * 3 + 2, col_valid, other=0.0)
     sx = cosine[:, None] * rho[None, :]
     sy = sine[:, None] * rho[None, :]
+    if CULL_TILE:
+        valid_sites = row_valid[:, None] & col_valid[None, :]
+        low_x = tl.min(tl.min(tl.where(valid_sites, sx, float("inf")), 0), 0)
+        high_x = tl.max(tl.max(tl.where(valid_sites, sx, -float("inf")), 0), 0)
+        low_y = tl.min(tl.min(tl.where(valid_sites, sy, float("inf")), 0), 0)
+        high_y = tl.max(tl.max(tl.where(valid_sites, sy, -float("inf")), 0), 0)
+        low_z = tl.min(tl.where(col_valid, z, float("inf")), 0)
+        high_z = tl.max(tl.where(col_valid, z, -float("inf")), 0)
+        low_w = tl.min(tl.where(col_valid, w, float("inf")), 0)
+        high_w = tl.max(tl.where(col_valid, w, -float("inf")), 0)
     partial = tl.full((BN, BK), 0.0, tl.float32)
     for slot in tl.static_range(1 if G == 1 else 3):
         bucket = _bucket(station, slot, G)
@@ -113,18 +124,27 @@ def _weight_columns_factored(
             cy = tl.load(P + atom * 6 + 3)
             cz = tl.load(P + atom * 6 + 4)
             cw = tl.load(P + atom * 6 + 5)
-            dx = sx - cx
-            dy = sy - cy
-            dz = z - cz
-            dw = w - cw
-            squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
             precision = tl.load(P + atom * 6 + 1)
-            value, _ = _profile(squared, precision, PROFILE)
-            amplitude = tl.load(P + atom * 6)
-            partial += (
-                tl.where(row_valid[:, None] & col_valid[None, :], value, 0.0)
-                * amplitude
-            )
+            possible = True
+            if CULL_TILE:
+                gap_x = tl.maximum(tl.maximum(low_x - cx, cx - high_x), 0.0)
+                gap_y = tl.maximum(tl.maximum(low_y - cy, cy - high_y), 0.0)
+                gap_z = tl.maximum(tl.maximum(low_z - cz, cz - high_z), 0.0)
+                gap_w = tl.maximum(tl.maximum(low_w - cw, cw - high_w), 0.0)
+                lower = gap_x * gap_x + gap_y * gap_y + gap_z * gap_z + gap_w * gap_w
+                possible = (lower * precision <= 1.00001) | (precision <= 0)
+            if possible:
+                dx = sx - cx
+                dy = sy - cy
+                dz = z - cz
+                dw = w - cw
+                squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
+                value, _ = _profile(squared, precision, PROFILE)
+                amplitude = tl.load(P + atom * 6)
+                partial += (
+                    tl.where(row_valid[:, None] & col_valid[None, :], value, 0.0)
+                    * amplitude
+                )
     return partial
 
 
@@ -268,6 +288,7 @@ def block_fused(
     SPLIT_K: tl.constexpr = 1,
     HOIST_SECTION: tl.constexpr = False,
     COLUMN_FACTORED: tl.constexpr = False,
+    CULL_TILE: tl.constexpr = False,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -306,6 +327,7 @@ def block_fused(
                         PROFILE,
                         BN,
                         BK,
+                        CULL_TILE,
                     )
                 else:
                     w = _weight_lanes(
