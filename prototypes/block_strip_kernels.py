@@ -92,6 +92,7 @@ def _weight_columns_factored(
     BN: tl.constexpr,
     BK: tl.constexpr,
     CULL_TILE: tl.constexpr = False,
+    RADIAL_FACTOR: tl.constexpr = False,
 ):
     """Evaluate column-only distance terms once per atom and column."""
     rows = row_start + tl.arange(0, BN)
@@ -103,8 +104,15 @@ def _weight_columns_factored(
     rho = tl.load(Section + cols * 3, col_valid, other=0.0)
     z = tl.load(Section + cols * 3 + 1, col_valid, other=0.0)
     w = tl.load(Section + cols * 3 + 2, col_valid, other=0.0)
-    sx = cosine[:, None] * rho[None, :]
-    sy = sine[:, None] * rho[None, :]
+    if CULL_TILE or not RADIAL_FACTOR:
+        sx = cosine[:, None] * rho[None, :]
+        sy = sine[:, None] * rho[None, :]
+    if RADIAL_FACTOR:
+        rho0 = tl.load(Section + col_start * 3, col_start < K, other=0.0)
+        dr = rho - rho0
+        radial_quadratic = (cosine * cosine + sine * sine)[:, None] * (dr * dr)[None, :]
+        row_x0 = cosine * rho0
+        row_y0 = sine * rho0
     if CULL_TILE:
         valid_sites = row_valid[:, None] & col_valid[None, :]
         low_x = tl.min(tl.min(tl.where(valid_sites, sx, float("inf")), 0), 0)
@@ -134,11 +142,23 @@ def _weight_columns_factored(
                 lower = gap_x * gap_x + gap_y * gap_y + gap_z * gap_z + gap_w * gap_w
                 possible = (lower * precision <= 1.00001) | (precision <= 0)
             if possible:
-                dx = sx - cx
-                dy = sy - cy
                 dz = z - cz
                 dw = w - cw
-                squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
+                if RADIAL_FACTOR:
+                    bx = row_x0 - cx
+                    by = row_y0 - cy
+                    row_squared = bx * bx + by * by
+                    row_linear = 2.0 * (bx * cosine + by * sine)
+                    xy_squared = (
+                        row_squared[:, None]
+                        + row_linear[:, None] * dr[None, :]
+                        + radial_quadratic
+                    )
+                else:
+                    dx = sx - cx
+                    dy = sy - cy
+                    xy_squared = dx * dx + dy * dy
+                squared = xy_squared + (dz * dz + dw * dw)[None, :]
                 value, _ = _profile(squared, precision, PROFILE)
                 amplitude = tl.load(P + atom * 6)
                 partial += (
@@ -289,6 +309,7 @@ def block_fused(
     HOIST_SECTION: tl.constexpr = False,
     COLUMN_FACTORED: tl.constexpr = False,
     CULL_TILE: tl.constexpr = False,
+    RADIAL_FACTOR: tl.constexpr = False,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -328,6 +349,7 @@ def block_fused(
                         BN,
                         BK,
                         CULL_TILE,
+                        RADIAL_FACTOR,
                     )
                 else:
                     w = _weight_lanes(
