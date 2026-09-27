@@ -23,6 +23,32 @@ def station_site_boxes(circle, section, station_rows):
 
 
 @torch.no_grad()
+def station_column_boxes(circle, section, station_rows, column_tile):
+    """Outward-padded 4D AABBs for station by column-tile site sets."""
+    assert circle.shape[0] % station_rows == 0
+    assert section.shape[0] % column_tile == 0 and section.shape[1] == 3
+    directions = circle.reshape(-1, station_rows, 2)
+    cmin, cmax = directions.amin(dim=1), directions.amax(dim=1)
+    columns = section.reshape(-1, column_tile, 3)
+    smin, smax = columns.amin(dim=1), columns.amax(dim=1)
+    products = torch.stack(
+        (
+            cmin[:, None] * smin[None, :, :1],
+            cmin[:, None] * smax[None, :, :1],
+            cmax[:, None] * smin[None, :, :1],
+            cmax[:, None] * smax[None, :, :1],
+        )
+    )
+    xymin, xymax = products.amin(dim=0), products.amax(dim=0)
+    zwmin = smin[None, :, 1:].expand(cmin.shape[0], -1, -1)
+    zwmax = smax[None, :, 1:].expand(cmax.shape[0], -1, -1)
+    lower, upper = torch.cat((xymin, zwmin), -1), torch.cat((xymax, zwmax), -1)
+    magnitude = torch.maximum(lower.abs(), upper.abs())
+    margin = magnitude * (32 * torch.finfo(circle.dtype).eps) + 1e-4
+    return torch.cat((lower - margin, upper + margin), -1).contiguous()
+
+
+@torch.no_grad()
 def boxed_prepare(site, p, *, boxes=None):
     """Prepare current atom values with exact fallback for box-overlapping stations."""
     from torchcst.nn._backends._preparation import execution_plan
