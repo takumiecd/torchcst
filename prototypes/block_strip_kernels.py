@@ -92,6 +92,7 @@ def _weight_columns_factored(
     BN: tl.constexpr,
     BK: tl.constexpr,
     POLAR_CHORD: tl.constexpr = False,
+    PROJECTED_CHORD: tl.constexpr = False,
 ):
     """Evaluate column-only distance terms once per atom and column."""
     rows = row_start + tl.arange(0, BN)
@@ -103,7 +104,12 @@ def _weight_columns_factored(
     rho = tl.load(Section + cols * 3, col_valid, other=0.0)
     z = tl.load(Section + cols * 3 + 1, col_valid, other=0.0)
     w = tl.load(Section + cols * 3 + 2, col_valid, other=0.0)
-    if not POLAR_CHORD:
+    if PROJECTED_CHORD:
+        q = cosine * cosine + sine * sine
+        root_q = tl.sqrt(q)
+        inv_root_q = 1.0 / root_q
+        rho_scaled = root_q[:, None] * rho[None, :]
+    elif not POLAR_CHORD:
         sx = cosine[:, None] * rho[None, :]
         sy = sine[:, None] * rho[None, :]
     partial = tl.full((BN, BK), 0.0, tl.float32)
@@ -117,7 +123,14 @@ def _weight_columns_factored(
             cw = tl.load(P + atom * 6 + 5)
             dz = z - cz
             dw = w - cw
-            if POLAR_CHORD:
+            if PROJECTED_CHORD:
+                parallel = (cx * cosine + cy * sine) * inv_root_q
+                perp = (cx * sine - cy * cosine) * inv_root_q
+                delta = rho_scaled - parallel[:, None]
+                squared = (delta * delta + (perp * perp)[:, None]) + (
+                    dz * dz + dw * dw
+                )[None, :]
+            elif POLAR_CHORD:
                 radius = tl.sqrt(cx * cx + cy * cy)
                 ux, uy = cx / radius, cy / radius
                 angular = (cosine - ux) * (cosine - ux) + (sine - uy) * (sine - uy)

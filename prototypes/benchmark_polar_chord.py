@@ -37,7 +37,7 @@ def main():
     expected = F.linear(x, expected_w)
     w = torch.empty_like(expected_w)
 
-    def generate(polar, bk):
+    def generate(mode, bk):
         p, circle, section, offsets = prepared
         return materialize_logical[(layer.row_groups, layer.column_groups, 64 // bk)](
             p,
@@ -57,7 +57,8 @@ def main():
             BK=bk,
             BA=1,
             FACTORED=True,
-            POLAR_CHORD=polar,
+            POLAR_CHORD=mode == "polar",
+            PROJECTED_CHORD=mode == "projected",
             num_warps=4,
             enable_fp_fusion=True,
         )
@@ -65,9 +66,16 @@ def main():
     functions = {}
     checks = {}
     resources = {}
-    for polar, bk in ((False, 32), (True, 32), (False, 64), (True, 64)):
-        name = f"{'polar' if polar else 'cartesian'}_bk{bk}"
-        compiled = generate(polar, bk)
+    for mode, bk in (
+        ("cartesian", 32),
+        ("polar", 32),
+        ("projected", 32),
+        ("cartesian", 64),
+        ("polar", 64),
+        ("projected", 64),
+    ):
+        name = f"{mode}_bk{bk}"
+        compiled = generate(mode, bk)
         checks[name] = {
             "weight": check(w, expected_w),
             "output": check(F.linear(x, w), expected),
@@ -77,8 +85,8 @@ def main():
             "compiler_spills": compiled.n_spills,
         }
 
-        def generated(polar=polar, bk=bk):
-            generate(polar, bk)
+        def generated(mode=mode, bk=bk):
+            generate(mode, bk)
             return F.linear(x, w)
 
         functions[name] = generated
