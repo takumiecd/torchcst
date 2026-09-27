@@ -49,7 +49,27 @@ def station_column_boxes(circle, section, station_rows, column_tile):
 
 
 @torch.no_grad()
-def boxed_prepare(site, p, *, boxes=None):
+def balanced_home_columns(site):
+    """Initial balanced-site column as a reusable positive support hint."""
+    if site.atom_init != "balanced":
+        raise ValueError("home columns require balanced atom initialization")
+    count = site.atoms.p.shape[0]
+    positions = (
+        torch.linspace(
+            0,
+            site.chart.features - 1,
+            count,
+            device=site.atoms.p.device,
+            dtype=torch.float64,
+        )
+        .round()
+        .to(torch.int32)
+    )
+    return (positions % site.chart.shape[1]).contiguous()
+
+
+@torch.no_grad()
+def boxed_prepare(site, p, *, boxes=None, witness_cols=None):
     """Prepare current atom values with exact fallback for box-overlapping stations."""
     from torchcst.nn._backends._preparation import execution_plan
     from torchcst.nn._backends._triton_preparation import (
@@ -70,6 +90,7 @@ def boxed_prepare(site, p, *, boxes=None):
         support=(plan.circle, plan.section, precision, station_rows),
         retain_owners=False,
         support_boxes=boxes,
+        support_witness_cols=witness_cols,
     )
     packed = Pack.apply(amplitude, precision, decoded, order)
     return packed, plan.circle, plan.section, offsets
@@ -83,6 +104,7 @@ def support_buckets_batched_box(
     Circle,
     Section,
     Boxes,
+    WitnessCols,
     Keys,
     N: tl.constexpr,
     K: tl.constexpr,
@@ -95,6 +117,7 @@ def support_buckets_batched_box(
     COLS: tl.constexpr,
     A: tl.constexpr,
     BA: tl.constexpr,
+    USE_WITNESS: tl.constexpr = False,
 ):
     tl.static_assert(D == 4)
     a = tl.program_id(0) * BA + tl.arange(0, BA)
@@ -149,27 +172,44 @@ def support_buckets_batched_box(
             chosen = station * STATION_ROWS + nearest
             cosine = tl.load(Circle + chosen * 2, possible, 0.0)
             sine = tl.load(Circle + chosen * 2 + 1, possible, 0.0)
-            for start in range(tr.cdiv(K, COLS)):
-                k = start * COLS + tl.arange(0, COLS)
-                rho = tl.load(Section + k * 3, k < K, 0.0)
-                sx = cosine[:, None] * rho[None, :]
-                sy = sine[:, None] * rho[None, :]
-                dx = sx - cx[:, None]
-                dy = sy - cy[:, None]
-                z = tl.load(Section + k * 3 + 1, k < K, 0.0)
-                w = tl.load(Section + k * 3 + 2, k < K, 0.0)
-                dz = z[None, :] - cz[:, None]
-                dw = w[None, :] - cw[:, None]
-                squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)
-                hit |= (
-                    tl.sum(
-                        ((k[None, :] < K) & (squared * precision[:, None] < 1.0)).to(
-                            tl.int32
-                        ),
-                        axis=1,
-                    )
-                    > 0
-                ) & possible
+            if USE_WITNESS and ((G == 1) or (shift == 1)):
+                hint = tl.load(WitnessCols + a, atom_valid, 0)
+                hint_valid = (hint >= 0) & (hint < K) & possible
+                rho = tl.load(Section + hint * 3, hint_valid, 0.0)
+                z = tl.load(Section + hint * 3 + 1, hint_valid, 0.0)
+                w = tl.load(Section + hint * 3 + 2, hint_valid, 0.0)
+                dx = cosine * rho - cx
+                dy = sine * rho - cy
+                dz = z - cz
+                dw = w - cw
+                witness_distance = (dx * dx + dy * dy) + (dz * dz + dw * dw)
+                witness = hint_valid & (witness_distance * precision < 0.9999)
+                hit = witness
+                need_exact = possible & ~witness
+            else:
+                need_exact = possible
+            if tl.sum(need_exact.to(tl.int32), 0) > 0:
+                for start in range(tr.cdiv(K, COLS)):
+                    k = start * COLS + tl.arange(0, COLS)
+                    rho = tl.load(Section + k * 3, k < K, 0.0)
+                    sx = cosine[:, None] * rho[None, :]
+                    sy = sine[:, None] * rho[None, :]
+                    dx = sx - cx[:, None]
+                    dy = sy - cy[:, None]
+                    z = tl.load(Section + k * 3 + 1, k < K, 0.0)
+                    w = tl.load(Section + k * 3 + 2, k < K, 0.0)
+                    dz = z[None, :] - cz[:, None]
+                    dw = w[None, :] - cw[:, None]
+                    squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)
+                    hit |= (
+                        tl.sum(
+                            (
+                                (k[None, :] < K) & (squared * precision[:, None] < 1.0)
+                            ).to(tl.int32),
+                            axis=1,
+                        )
+                        > 0
+                    ) & need_exact
         second = tl.where(hit & (count == 1), station, second)
         first = tl.where(hit & (count == 0), station, first)
         count += hit.to(tl.int32)

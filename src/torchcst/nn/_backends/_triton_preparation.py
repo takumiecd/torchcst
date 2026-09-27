@@ -43,7 +43,10 @@ def route_and_layout(
     retain_owners=True,
     batched_support=True,
     support_boxes=None,
+    support_witness_cols=None,
 ):
+    if support_witness_cols is not None and support_boxes is None:
+        raise ValueError("support_witness_cols requires support_boxes")
     count, stations = decoded.shape[0], routing.starts.numel()
     buckets = stations if support is None else 2 * stations + 1
     # Only the permutation and offsets survive preparation. Reuse ownership
@@ -121,6 +124,15 @@ def route_and_layout(
                 circle,
                 section,
                 *((support_boxes,) if support_boxes is not None else ()),
+                *(
+                    (
+                        support_witness_cols
+                        if support_witness_cols is not None
+                        else support_boxes,
+                    )
+                    if support_boxes is not None
+                    else ()
+                ),
                 keys,
                 circle.shape[0],
                 section.shape[0],
@@ -133,6 +145,11 @@ def route_and_layout(
                 if batched_support
                 else 256,
                 **({"A": count, "BA": batch_atoms} if batched_support else {}),
+                **(
+                    {"USE_WITNESS": support_witness_cols is not None}
+                    if support_boxes is not None
+                    else {}
+                ),
                 num_warps=4,
                 enable_fp_fusion=False,
             )

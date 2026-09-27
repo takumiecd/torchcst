@@ -7,7 +7,11 @@ import torch.nn.functional as F
 pytest.importorskip("triton")
 
 from prototypes.block_strip_linear import BlockStripLinear
-from prototypes.support_box_routing import boxed_prepare, station_site_boxes
+from prototypes.support_box_routing import (
+    balanced_home_columns,
+    boxed_prepare,
+    station_site_boxes,
+)
 from torchcst.nn._backends._preparation import execution_plan, prepare
 
 
@@ -27,6 +31,7 @@ def test_boxed_support_matches_exact_layout_and_graph_updates():
     chart = site.chart
     plan = execution_plan(site)
     boxes = station_site_boxes(plan.circle, plan.section, 64)
+    hints = balanced_home_columns(site)
     x = torch.randn(7, 128, device="cuda")
     with torch.no_grad():
         p = site.atoms.p
@@ -43,8 +48,11 @@ def test_boxed_support_matches_exact_layout_and_graph_updates():
         def compare():
             ordinary = prepare(site, p, support_layout=True)
             boxed = boxed_prepare(site, p, boxes=boxes)
+            witnessed = boxed_prepare(site, p, boxes=boxes, witness_cols=hints)
             assert torch.equal(ordinary[3], boxed[3])
             assert torch.equal(ordinary[0], boxed[0])
+            assert torch.equal(ordinary[3], witnessed[3])
+            assert torch.equal(ordinary[0], witnessed[0])
             actual = layer(
                 x, backend="triton_streamed", prepared=boxed, weight_chunk_rows=64
             )
@@ -76,7 +84,7 @@ def test_boxed_support_matches_exact_layout_and_graph_updates():
             captured = layer(
                 x,
                 backend="triton_streamed",
-                prepared=boxed_prepare(site, p, boxes=boxes),
+                prepared=boxed_prepare(site, p, boxes=boxes, witness_cols=hints),
                 weight_chunk_rows=64,
             )
         p[:, 2] -= 0.35
