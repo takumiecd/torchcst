@@ -4,6 +4,8 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+pytest.importorskip("triton")
+
 from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.support_box_routing import boxed_prepare, station_site_boxes
 from torchcst.nn._backends._preparation import execution_plan, prepare
