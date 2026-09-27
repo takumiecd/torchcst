@@ -194,7 +194,7 @@ def support_buckets_batched_box(
             chosen = station * STATION_ROWS + nearest
             cosine = tl.load(Circle + chosen * 2, possible, 0.0)
             sine = tl.load(Circle + chosen * 2 + 1, possible, 0.0)
-            if USE_WITNESS and not FAST_WITNESS and ((G == 1) or (shift == 1)):
+            if (USE_WITNESS & (not FAST_WITNESS)) & ((G == 1) | (shift == 1)):
                 hint = tl.load(WitnessCols + a, atom_valid, 0)
                 hint_valid = (hint >= 0) & (hint < K) & possible
                 hint_rho = tl.load(Section + hint * 3, hint_valid, 0.0)
