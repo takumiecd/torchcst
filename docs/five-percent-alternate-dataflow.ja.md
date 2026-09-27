@@ -1,19 +1,27 @@
 # atom 密度 5%：小分け重み生成と GEMM の分離
 
-2026-09-27。前回の [X 再利用と atom 群](five-percent-atom-group-and-x-reuse.ja.md) の後、5% を主対象に計算経路を変えた。結論は、列方向の距離項を共有して論理重みを **1024 出力行ずつ**作り、その都度 cuBLAS GEMM に渡す明示的な `triton_streamed` 試作 backend が最も有望だった、というもの。dispatch は変更していない。この backend は forward 専用であり、学習全体の高速化を示す結果ではない。
+2026-09-27。前回の [X 再利用と atom 群](five-percent-atom-group-and-x-reuse.ja.md) の後、5% を主対象に計算経路を変えた。列方向の距離項を共有して論理重みを **1024 出力行ずつ**作り、その都度 cuBLAS GEMM に渡す `triton_streamed` 試作 backend が有望だった。さらに、固定したsiteの箱を使って隣接stationの不要な支持検査を省いた。dispatch は変更していない。これらは forward 専用であり、学習全体の高速化を示す結果ではない。
 
 ## 条件と主結果
 
 A100 80GB PCIe MIG 3g.40gb（42 SM）、FP32、TF32 無効、seed 21、入力 128 行、64×64 tile、Triweight、atom 数 `round(N² × 0.05)`。各形状で同じ atom・入力・dense oracle を用い、CUDA Graph 3 round の中央値を比較した。`full` は毎回 `prepare` を含む。出力全体を atol=rtol=3e-5 で照合し、全候補が合格した。生成済み dense W の速度は重み生成を含まないため、主比較には使わない。
 
-| 形状 | 現行 `triton_fused` full | `triton_streamed` full、1024行、重みタイル64×32 | 短縮率 | 一時重み |
-| --- | ---: | ---: | ---: | ---: |
-| 128×4096×4096 | 14.189 ms | 12.461 ms | 12.2% | 16 MiB |
-| 128×8192×8192 | 55.962 ms | 49.883 ms | 10.9% | 32 MiB |
+| 形状 | 現行 `triton_fused` full | 小分け方式 full | 箱付き準備＋小分け full | 現行比短縮 | 一時重み |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 128×4096×4096 | 14.137 ms | 12.455 ms | 12.157 ms | 14.0% | 16 MiB |
+| 128×8192×8192 | 55.875 ms | 49.713 ms | 48.836 ms | 12.6% | 32 MiB |
 
-CUDA Graph を使わない通常呼び出しの同期 wall time 中央値も 4096² は 14.308→12.650 ms（11.6%短縮）、8192² は 56.180→50.095 ms（10.8%短縮）。通常呼び出しのサンプルは各経路 10 回連続を 3 round、順序を交互にした。入力/モデル/出力以外で単発 forward 時に増えた PyTorch allocated bytes のピークは、4096² で双方 58,721,280 byte、8192² で双方 231,106,560 byte。この値は測定 run の既存 tensor を差し引いた増分であり、学習全体のピークや allocator reserved bytes ではない。
+CUDA Graph を使わない通常呼び出しの同期 wall time 中央値は、4096² で現行14.226 ms、小分け12.545 ms、箱付き12.241 ms。8192² で55.929/49.775/48.892 ms。各経路 10 回連続を 3 round、順序を交互にした。箱のない小分け方式と現行方式については、単発 forward 時に増えた PyTorch allocated bytes のピークが4096²で双方58,721,280 byte、8192²で双方231,106,560 byteだった。箱付き版のピークは別途測っていない。これらは測定runの既存tensorを差し引いた増分であり、学習全体のピークやallocator reserved bytesではない。
+
+生成済みdense重みを掛けるだけの参考値は0.658/3.023 msで、箱付き方式も重み生成に大きな時間を使っている。dense参考値には重み生成とそのメモリ確保を含まない。
 
 `triton_streamed` は `prototypes/block_strip_linear.py` から明示的に選択できる。既定の重み生成 tile は64×32、重み窓は1024行。4D の chart、64×64 tile、行数が64の倍数という条件に限定した forward-only 試作で、勾配が必要な呼び出しは拒否する。重み窓を生成して同じ buffer を使い回し、`torch.mm` で出力の該当列へ直接書く。atom 更新後の CUDA Graph 再実行を含む A100 テスト `tests/test_streamed_materialization.py` は 1 件合格した。これを既定 dispatch に組み込んでいない。
+
+## 固定site箱による準備の改善
+
+現在の支持域分類はatomごとにownerと隣接2 stationを調べる。固定したsiteの4D AABBと、現在のatom中心・現在のprecisionから距離下界を求め、支持半径を確実に超える隣接stationの64列走査を省く。重なる場合は従来どおり厳密な最近行×全列検査へ戻す。ownerは必ず厳密検査する。箱は固定幾何から一度作り、4096²で128 KiB、8192²で512 KiB。今回のfull測定には毎forwardのatom配置準備を含み、固定箱の一度限りの生成は含まない。
+
+初期配置の全atom診断では、除外可能な隣接走査が4096²で1,677,722/1,677,722、8192²で6,710,886/6,710,886だった。箱だけの診断値を速度とは見なしていない。実測の配置準備は4096²で2.770→2.471 ms、8192²で11.348→10.478 ms。両形状とも準備済みのatom配列・offsetsが従来方式と完全一致した。境界共有、seam、idle、atom移動とCUDA Graph更新を含むA100テスト `tests/test_support_box_routing.py` も合格した。箱付き準備は `prototypes/support_box_routing.py` の `boxed_prepare` を明示的に呼び、`triton_streamed` に `prepared` として渡す試作である。
 
 ## 経路の内訳とメモリの調整
 
@@ -29,10 +37,13 @@ CUDA Graph を使わない通常呼び出しの同期 wall time 中央値も 409
 - BF16 を high/low に分けた3項・4項の Tensor Core dot は正しさに合格したが、4096² full は14.971/14.983 msで現行14.166 msより遅い。実験 kernel は取り除いた。
 - fused kernel の batch tile BM を128から64/32へ減らすと、4096² full は14.215→23.205/41.465 msに悪化した。8 warps も16.832 msで遅い。これは別資料の出力行 tile BN=32 の選択とは別の sweep。
 - Torus 上の chord から support row を予測し近傍だけ検査する準備案は、出力と準備済み tensor が一致したが、4096² の準備時間が2.779→6.111 ms、full が14.220→17.554 msに悪化した。実験コードは履歴に残し、現行実装から除いた。
+- 極座標chordで距離項を行と列へ分ける重み生成は、4096² prepared の生成＋cuBLAS が現行9.552→11.226 msに悪化し、出力の相対L2誤差が約1.97e-4へ増えた。円方向への射影式は14.124 msまで遅く、全出力488箇所が許容差を超えた。大きなTorus半径のFP32丸めが問題になるため、どちらも試作履歴に残して現行コードから除いた。
 
 ## 再現
 
 試作 backend とテストは commit `b589248`、最終タイル比較は `b93bef4`。隔離した git archive の SHA256 はそれぞれ `591a63ad31810e570677a219b80258f0c617992cb489b88354b3506ca6adc149` と `6d13e18e018aa2a7967e071faaf89ed2801bf25bbfa03dd8bcf12199ca7df000`。いずれもA100側で一致を確認した。結果 JSON は gitignored の `output/triton-a100-20260927/` にある。
+
+箱付き準備の境界・更新テストは commit `1a5a389`、最終同一run比較は `d30be48`。git archive SHA256 は `5fc30970e81efc0ebdcf9a5f0ed282692289be09a9cb117f35ccb64a070050a8` / `77b82b057f6b6730b4365fe1c3878533fbd4c64d127192552c4fc4fff6e5a913` で、A100側と一致した。CUDAテストは2件合格。
 
 | JSON | SHA256 |
 | --- | --- |
@@ -44,6 +55,9 @@ CUDA Graph を使わない通常呼び出しの同期 wall time 中央値も 409
 | `materialize-4096.json` / `materialize-8192.json` | `df0f26d141104343702887766b923973d4f9b8c9c38d6028b8a5b1a7588c22dc` / `c87d8d06bf4d2128caac09ae3fcd919c64ea14c001695b00c922b985ab230407` |
 | `factored-sweep-4096.json` / `factored-sweep-8192.json` | `f7f8e967a10aa16ee7198fe3addd9bce1e7a8e2d98d06305d2f86cffb4efdb15` / `a3e99e09f689c919dc58ffbad1a00a9edd34649221e3417435176c1aa5390173` |
 | `streamed-tile-4096.json` / `streamed-tile-8192.json` | `322671c5619be7f44bb66e52c8c353765d704e52e5fbe36264b88685f40c6f48` / `2b90da578279adea6fcc3d6e8d8e585bc47b99d7114a76b8b2e71405d5397c63` |
+| `neighbor-box-4096.json` / `neighbor-box-8192.json` | `8bec6954248fe1d3e31e88c65947874f7d6699d315411ca375e3d2caf9d7e287` / `edf5e73f773a410d4fa56b4988ea5e000444f7a3085b183faad6c3dc5c551c6d` |
+| `polar-4096.json` / `projected-4096.json` | `88f590c308e44bbcca8480057246db7fd431e0afb010f0450ae1407a83c2e1ce` / `cdf33248ce62510ee1972b8b3f680e5de0a03ac48a45593eb198b874631a2b37` |
+| `box-final-4096.json` / `box-final-8192.json` | `6b9cfde45c6587fc8f8a45a9328e9de59bba0a0533cc54354b26d7a5aec5163d` / `a191723f3c3ca586aff75e6edc03ebbecb77d703276f5aad5233355379bf639d` |
 
 隔離 checkout で次を実行する。最後の pytest は CUDA/A100 が必要。
 
@@ -53,6 +67,11 @@ PYTHONPATH=src:. python -m prototypes.benchmark_streamed_materialize \
 PYTHONPATH=src:. python -m prototypes.benchmark_streamed_materialize \
   --size 8192 --eager --source-commit b93bef4 --output streamed-tile-8192.json
 PYTHONPATH=src:.:tests python -m pytest -q tests/test_streamed_materialization.py
+PYTHONPATH=src:. python -m prototypes.benchmark_box_support \
+  --size 4096 --eager --source-commit d30be48 --output box-final-4096.json
+PYTHONPATH=src:. python -m prototypes.benchmark_box_support \
+  --size 8192 --eager --source-commit d30be48 --output box-final-8192.json
+PYTHONPATH=src:.:tests python -m pytest -q tests/test_support_box_routing.py
 ```
 
 次の技術課題は backward と学習時ピーク、学習後に移動した atom の分布、長い系列で重み窓を使い回せる条件の確認。CSR案を採るなら群と候補を更新するGPU処理の総時間を full forward に含める必要がある。
