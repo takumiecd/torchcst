@@ -91,7 +91,6 @@ def _weight_columns_factored(
     PROFILE: tl.constexpr,
     BN: tl.constexpr,
     BK: tl.constexpr,
-    POLAR_CHORD: tl.constexpr = False,
 ):
     """Evaluate column-only distance terms once per atom and column."""
     rows = row_start + tl.arange(0, BN)
@@ -103,9 +102,8 @@ def _weight_columns_factored(
     rho = tl.load(Section + cols * 3, col_valid, other=0.0)
     z = tl.load(Section + cols * 3 + 1, col_valid, other=0.0)
     w = tl.load(Section + cols * 3 + 2, col_valid, other=0.0)
-    if not POLAR_CHORD:
-        sx = cosine[:, None] * rho[None, :]
-        sy = sine[:, None] * rho[None, :]
+    sx = cosine[:, None] * rho[None, :]
+    sy = sine[:, None] * rho[None, :]
     partial = tl.full((BN, BK), 0.0, tl.float32)
     for slot in tl.static_range(1 if G == 1 else 3):
         bucket = _bucket(station, slot, G)
@@ -115,20 +113,11 @@ def _weight_columns_factored(
             cy = tl.load(P + atom * 6 + 3)
             cz = tl.load(P + atom * 6 + 4)
             cw = tl.load(P + atom * 6 + 5)
+            dx = sx - cx
+            dy = sy - cy
             dz = z - cz
             dw = w - cw
-            if POLAR_CHORD:
-                radius = tl.sqrt(cx * cx + cy * cy)
-                ux, uy = cx / radius, cy / radius
-                angular = (cosine - ux) * (cosine - ux) + (sine - uy) * (sine - uy)
-                radial = rho - radius
-                squared = (radial * radial + (rho * radius) * angular[:, None]) + (
-                    dz * dz + dw * dw
-                )[None, :]
-            else:
-                dx = sx - cx
-                dy = sy - cy
-                squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
+            squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
             precision = tl.load(P + atom * 6 + 1)
             value, _ = _profile(squared, precision, PROFILE)
             amplitude = tl.load(P + atom * 6)

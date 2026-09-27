@@ -27,7 +27,6 @@ def materialize_logical(
     FACTORED: tl.constexpr = False,
     ROW_GROUP_START=0,
     LOCAL_W: tl.constexpr = False,
-    POLAR_CHORD: tl.constexpr = False,
 ):
     tile = tl.program_id(0)
     row_group = tile // triton.cdiv(S, BN) + ROW_GROUP_START
@@ -53,7 +52,6 @@ def materialize_logical(
             PROFILE,
             BN,
             BK,
-            POLAR_CHORD,
         )
     else:
         w = _weight_lanes(
