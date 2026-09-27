@@ -28,9 +28,11 @@ def main():
     parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--splits", type=int, nargs="+", default=[2, 4, 8])
+    parser.add_argument("--atom-splits", type=int, nargs="+", default=[])
     args = parser.parse_args()
     assert args.size % 64 == 0 and args.batch > 0
     assert all(split in (2, 4, 8, 16) for split in args.splits)
+    assert all(split in (2, 4) for split in args.atom_splits)
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     props = torch.cuda.get_device_properties(0)
@@ -45,20 +47,21 @@ def main():
     cfg = FusedConfig(128, 16, 32, 1, 4, True, True)
     legacy_cfg = FusedConfig(128, 16, 16, 8, 4, True, True)
 
-    def split_forward(split, hoist_section=False):
+    def split_forward(split, hoist_section=False, atom_splits=1):
         p, circle, section, offsets = (
             prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
             if args.full
             else prepared
         )
         y = torch.empty_like(expected)
-        partial = torch.empty((split, *expected.shape), device="cuda")
+        total_splits = split * atom_splits
+        partial = torch.empty((total_splits, *expected.shape), device="cuda")
         s, t = layer.tile_shape
         block_fused[
             (
                 math.ceil(args.batch / cfg.batch_rows),
                 layer.row_groups * math.ceil(s / cfg.output_rows),
-                split,
+                total_splits,
             )
         ](
             x,
@@ -83,11 +86,12 @@ def main():
             LATE_REDUCE=cfg.late_reduce,
             SPLIT_K=split,
             HOIST_SECTION=hoist_section,
+            SPLIT_ATOMS=atom_splits,
             num_warps=cfg.warps,
             enable_fp_fusion=cfg.fp_fusion,
         )
         block_split_reduce[(triton.cdiv(y.numel(), 256),)](
-            partial, y, args.batch, args.size, split
+            partial, y, args.batch, args.size, total_splits
         )
         return y
 
@@ -117,6 +121,12 @@ def main():
     functions.update({f"split_{n}": partial(split_forward, n) for n in args.splits})
     if 8 in args.splits:
         functions["split_8_hoist"] = partial(split_forward, 8, True)
+        functions.update(
+            {
+                f"split_8_atom_{n}_hoist": partial(split_forward, 8, True, n)
+                for n in args.atom_splits
+            }
+        )
     checks = {name: check(fn(), expected) for name, fn in functions.items()}
     assert all(value["passed"] for value in checks.values()), checks
     results = {

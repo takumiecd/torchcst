@@ -44,6 +44,8 @@ def _weight_lanes(
     BK: tl.constexpr,
     BA: tl.constexpr,
     HOIST_SECTION: tl.constexpr = False,
+    ATOM_SPLIT=0,
+    SPLIT_ATOMS: tl.constexpr = 1,
 ):
     """Accumulate atom lanes first, reducing once after all I/B buckets."""
     sites = tl.arange(0, BN * BK)
@@ -58,7 +60,7 @@ def _weight_lanes(
     for slot in tl.static_range(1 if G == 1 else 3):
         bucket = _bucket(station, slot, G)
         begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
-        for start in range(begin, end, BA):
+        for start in range(begin + ATOM_SPLIT * BA, end, BA * SPLIT_ATOMS):
             atoms = start + tl.arange(0, BA)
             if HOIST_SECTION:
                 value = _values_preloaded_4d(
@@ -212,6 +214,7 @@ def block_fused(
     LATE_REDUCE: tl.constexpr = False,
     SPLIT_K: tl.constexpr = 1,
     HOIST_SECTION: tl.constexpr = False,
+    SPLIT_ATOMS: tl.constexpr = 1,
 ):
     tile = tl.program_id(1)
     r = tile // tr.cdiv(S, BN)
@@ -220,9 +223,20 @@ def block_fused(
     m = tl.program_id(0) * BM + tl.arange(0, BM)
     acc = tl.full((BM, BN), 0, tl.float32)
     if SPLIT_K == 1:
+        if SPLIT_ATOMS == 1:
+            partial_id = 0
+        else:
+            partial_id = tl.program_id(2)
+    else:
+        partial_id = tl.program_id(2)
+    if SPLIT_K == 1:
         split = 0
     else:
-        split = tl.program_id(2)
+        split = partial_id % SPLIT_K
+    if SPLIT_ATOMS == 1:
+        atom_split = 0
+    else:
+        atom_split = partial_id // SPLIT_K
     for c in range(split, CG, SPLIT_K):
         station = r * CG + c
         for start in range(0, T, BK):
@@ -251,6 +265,8 @@ def block_fused(
                     BK,
                     BA,
                     HOIST_SECTION,
+                    atom_split,
+                    SPLIT_ATOMS,
                 )
             else:
                 w = _weight(
@@ -274,7 +290,7 @@ def block_fused(
                 )
             acc = tl.dot(x, tl.trans(w), acc, input_precision="ieee")
     tl.store(
-        Y + split * M * N + m[:, None] * N + n[None, :],
+        Y + partial_id * M * N + m[:, None] * N + n[None, :],
         acc,
         (m[:, None] < M) & (n[None, :] < N) & (local + tl.arange(0, BN)[None, :] < S),
     )
