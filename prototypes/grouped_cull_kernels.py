@@ -13,6 +13,7 @@ import numpy as np
 import torch
 import triton as tr
 import triton.language as tl
+from triton.language.extra.cuda import libdevice
 
 from prototypes.local_atom_kernels import _bucket
 from torchcst.nn._backends._triton_kernels import _profile
@@ -227,7 +228,7 @@ def _weight_grouped(
             gz = tl.maximum(tl.maximum(lz - bhz, blz - hz), 0.0)
             gw = tl.maximum(tl.maximum(lw - bhw, blw - hw), 0.0)
             lower = (gx * gx + gy * gy) + (gz * gz + gw * gw)
-            if (lower <= radius2) | (radius2 == float("inf")) | (lower != lower):
+            if (lower <= radius2) | (radius2 == float("inf")) | libdevice.isnan(lower):
                 first_atom = tl.load(GroupStarts + group)
                 count = tl.load(GroupCounts + group)
                 for atom in range(first_atom, first_atom + count):
@@ -272,7 +273,10 @@ def block_grouped_fused(
     BK: tl.constexpr = 32,
     SPLIT_K: tl.constexpr = 8,
 ):
-    tl.static_assert(S == 64 and T == 64 and BN == 16 and BK == 32)
+    tl.static_assert(S == 64)
+    tl.static_assert(T == 64)
+    tl.static_assert(BN == 16)
+    tl.static_assert(BK == 32)
     tile = tl.program_id(1)
     row_group = tile // 4
     local = (tile % 4) * 16
