@@ -70,9 +70,18 @@ def main():
             torch.mm(x, w.T, out=y[:, start : start + chunk])
         return y
 
+    def streamed_full(chunk):
+        return streamed(
+            chunk, prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
+        )
+
     functions = {
         "fused_default": partial(layer, x, backend="triton_fused"),
         **{f"stream_{chunk}": partial(streamed, chunk, prepared) for chunk in buffers},
+        **{
+            f"stream_{chunk}_full": partial(streamed_full, chunk)
+            for chunk in (512, 1024, size)
+        },
     }
     checks = {name: check(fn(), expected) for name, fn in functions.items()}
     assert all(result["passed"] for result in checks.values()), checks
@@ -88,7 +97,7 @@ def main():
             str(chunk): w.numel() * w.element_size()
             for chunk, (w, _) in buffers.items()
         },
-        "timing": "CUDA Graph 3 rounds rep=20ms; support layout precomputed for streamed paths",
+        "timing": "CUDA Graph 3 rounds rep=20ms; _full paths include support preparation",
         **timing(functions),
         "completed": True,
     }
