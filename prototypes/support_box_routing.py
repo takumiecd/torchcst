@@ -69,7 +69,7 @@ def balanced_home_columns(site):
 
 
 @torch.no_grad()
-def boxed_prepare(site, p, *, boxes=None, witness_cols=None):
+def boxed_prepare(site, p, *, boxes=None, witness_cols=None, fast_witness=False):
     """Prepare current atom values with exact fallback for box-overlapping stations."""
     from torchcst.nn._backends._preparation import execution_plan
     from torchcst.nn._backends._triton_preparation import (
@@ -91,6 +91,7 @@ def boxed_prepare(site, p, *, boxes=None, witness_cols=None):
         retain_owners=False,
         support_boxes=boxes,
         support_witness_cols=witness_cols,
+        support_fast_witness=fast_witness,
     )
     packed = Pack.apply(amplitude, precision, decoded, order)
     return packed, plan.circle, plan.section, offsets
@@ -104,6 +105,7 @@ def support_buckets_batched_box(
     Circle,
     Section,
     Boxes,
+    OwnerRows,
     WitnessCols,
     Keys,
     N: tl.constexpr,
@@ -118,6 +120,7 @@ def support_buckets_batched_box(
     A: tl.constexpr,
     BA: tl.constexpr,
     USE_WITNESS: tl.constexpr = False,
+    FAST_WITNESS: tl.constexpr = False,
 ):
     tl.static_assert(D == 4)
     a = tl.program_id(0) * BA + tl.arange(0, BA)
@@ -156,6 +159,25 @@ def support_buckets_batched_box(
                 (lower * precision <= 1.0001) | (radius2 == float("inf"))
             )
         hit = tl.full((BA,), False, tl.int1)
+        if FAST_WITNESS and ((G == 1) or (shift == 1)):
+            fast_row = tl.load(OwnerRows + a, atom_valid, 0)
+            fast_hint = tl.load(WitnessCols + a, atom_valid, 0)
+            fast_valid = atom_valid & (fast_hint >= 0) & (fast_hint < K)
+            fast_cosine = tl.load(Circle + fast_row * 2, fast_valid, 0.0)
+            fast_sine = tl.load(Circle + fast_row * 2 + 1, fast_valid, 0.0)
+            fast_rho = tl.load(Section + fast_hint * 3, fast_valid, 0.0)
+            fast_z = tl.load(Section + fast_hint * 3 + 1, fast_valid, 0.0)
+            fast_w = tl.load(Section + fast_hint * 3 + 2, fast_valid, 0.0)
+            fast_dx = fast_cosine * fast_rho - cx
+            fast_dy = fast_sine * fast_rho - cy
+            fast_dz = fast_z - cz
+            fast_dw = fast_w - cw
+            fast_distance = (fast_dx * fast_dx + fast_dy * fast_dy) + (
+                fast_dz * fast_dz + fast_dw * fast_dw
+            )
+            fast_hit = fast_valid & (fast_distance * precision < 0.9999)
+            hit = fast_hit
+            possible = possible & ~fast_hit
         if tl.sum(possible.to(tl.int32), 0) > 0:
             row = station[:, None] * STATION_ROWS + tl.arange(0, ROWS)[None, :]
             valid = (
@@ -172,7 +194,7 @@ def support_buckets_batched_box(
             chosen = station * STATION_ROWS + nearest
             cosine = tl.load(Circle + chosen * 2, possible, 0.0)
             sine = tl.load(Circle + chosen * 2 + 1, possible, 0.0)
-            if USE_WITNESS and ((G == 1) or (shift == 1)):
+            if USE_WITNESS and not FAST_WITNESS and ((G == 1) or (shift == 1)):
                 hint = tl.load(WitnessCols + a, atom_valid, 0)
                 hint_valid = (hint >= 0) & (hint < K) & possible
                 hint_rho = tl.load(Section + hint * 3, hint_valid, 0.0)
@@ -182,9 +204,9 @@ def support_buckets_batched_box(
                 hint_dy = sine * hint_rho - cy
                 hint_dz = hint_z - cz
                 hint_dw = hint_w - cw
-                witness_distance = (
-                    hint_dx * hint_dx + hint_dy * hint_dy
-                ) + (hint_dz * hint_dz + hint_dw * hint_dw)
+                witness_distance = (hint_dx * hint_dx + hint_dy * hint_dy) + (
+                    hint_dz * hint_dz + hint_dw * hint_dw
+                )
                 witness = hint_valid & (witness_distance * precision < 0.9999)
                 hit = witness
                 need_exact = possible & ~witness

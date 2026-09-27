@@ -44,15 +44,21 @@ def route_and_layout(
     batched_support=True,
     support_boxes=None,
     support_witness_cols=None,
+    support_fast_witness=False,
 ):
     if support_witness_cols is not None and support_boxes is None:
         raise ValueError("support_witness_cols requires support_boxes")
+    if support_fast_witness and (
+        support_witness_cols is None or not routing.local_candidates
+    ):
+        raise ValueError("fast witness requires hints and local owner routing")
     count, stations = decoded.shape[0], routing.starts.numel()
     buckets = stations if support is None else 2 * stations + 1
     # Only the permutation and offsets survive preparation. Reuse ownership
     # storage for support keys when the caller does not need owners returned.
     key_dtype = torch.int32 if not retain_owners and buckets < 2**31 else torch.long
     owners = torch.empty(count, device=decoded.device, dtype=key_dtype)
+    owner_rows = torch.empty_like(owners) if support_fast_witness else owners
     offsets = torch.empty(buckets + 1, device=decoded.device, dtype=torch.long)
     if not count:
         offsets.zero_()
@@ -77,10 +83,13 @@ def route_and_layout(
                 routing.last_row,
                 routing.pitch,
                 owners,
+                owner_rows,
                 count,
                 stations,
                 *decoded.stride(),
                 128,
+                support[3] if support is not None else 0,
+                support_fast_witness,
                 enable_fp_fusion=False,
             )
         else:
@@ -124,6 +133,7 @@ def route_and_layout(
                 circle,
                 section,
                 *((support_boxes,) if support_boxes is not None else ()),
+                *((owner_rows,) if support_boxes is not None else ()),
                 *(
                     (
                         support_witness_cols
@@ -146,7 +156,10 @@ def route_and_layout(
                 else 256,
                 **({"A": count, "BA": batch_atoms} if batched_support else {}),
                 **(
-                    {"USE_WITNESS": support_witness_cols is not None}
+                    {
+                        "USE_WITNESS": support_witness_cols is not None,
+                        "FAST_WITNESS": support_fast_witness,
+                    }
                     if support_boxes is not None
                     else {}
                 ),

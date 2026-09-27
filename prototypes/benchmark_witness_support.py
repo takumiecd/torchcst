@@ -43,12 +43,18 @@ def main():
     def witnessed():
         return boxed_prepare(site, site.atoms.p, boxes=boxes, witness_cols=hints)
 
+    def fast_witnessed():
+        return boxed_prepare(
+            site, site.atoms.p, boxes=boxes, witness_cols=hints, fast_witness=True
+        )
+
     ordinary_layout = prepare(site, site.atoms.p, support_layout=True)
     boxed_layout = boxed()
     witness_layout = witnessed()
+    fast_witness_layout = fast_witnessed()
     exact_layout = all(
         torch.equal(ordinary_layout[index], variant[index])
-        for variant in (boxed_layout, witness_layout)
+        for variant in (boxed_layout, witness_layout, fast_witness_layout)
         for index in (0, 3)
     )
     assert exact_layout
@@ -65,17 +71,27 @@ def main():
     def witnessed_full():
         return layer(x, backend="triton_streamed", prepared=witnessed())
 
+    def fast_witnessed_full():
+        return layer(x, backend="triton_streamed", prepared=fast_witnessed())
+
     functions = {
         "ordinary_prepare": lambda: prepare(site, site.atoms.p, support_layout=True),
         "boxed_prepare": boxed,
         "witnessed_prepare": witnessed,
+        "fast_witnessed_prepare": fast_witnessed,
         "ordinary_full": ordinary_full,
         "boxed_full": boxed_full,
         "witnessed_full": witnessed_full,
+        "fast_witnessed_full": fast_witnessed_full,
     }
     checks = {
         name: check(functions[name](), expected)
-        for name in ("ordinary_full", "boxed_full", "witnessed_full")
+        for name in (
+            "ordinary_full",
+            "boxed_full",
+            "witnessed_full",
+            "fast_witnessed_full",
+        )
     }
     assert all(value["passed"] for value in checks.values())
     result = {

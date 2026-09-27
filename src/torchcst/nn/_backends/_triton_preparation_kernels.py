@@ -105,11 +105,14 @@ def owners_local(
     Last,
     Pitch,
     Owners,
+    OwnerRows,
     A: tl.constexpr,
     G: tl.constexpr,
     S0: tl.constexpr,
     S1: tl.constexpr,
     BLOCK: tl.constexpr,
+    STATION_ROWS: tl.constexpr,
+    SAVE_ROW: tl.constexpr,
 ):
     """Seven candidates for guarded, ordered, disjoint Strip intervals."""
     a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -122,6 +125,8 @@ def owners_local(
     base = tl.minimum(tl.maximum(base, 0), G - 1)
     best = tl.full((BLOCK,), float("inf"), tl.float32)
     owner = tl.full((BLOCK,), 2147483647, tl.int32)
+    if SAVE_ROW:
+        best_row = tl.full((BLOCK,), 0, tl.int32)
     for candidate in tl.static_range(7):
         if candidate == 5:
             g = tl.full((BLOCK,), 0, tl.int32)
@@ -142,9 +147,13 @@ def owners_local(
         nearest = start + local * spacing
         distance = tl.abs(_remainder(arc - nearest + period / 2, period) - period / 2)
         better = (distance < best) | ((distance == best) & (g < owner))
+        if SAVE_ROW:
+            best_row = tl.where(better, g * STATION_ROWS + local.to(tl.int32), best_row)
         owner = tl.where(better, g, owner)
         best = tl.minimum(best, distance)
     tl.store(Owners + a, owner, a < A)
+    if SAVE_ROW:
+        tl.store(OwnerRows + a, best_row, a < A)
 
 
 @tr.jit

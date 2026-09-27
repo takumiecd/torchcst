@@ -49,10 +49,15 @@ def test_boxed_support_matches_exact_layout_and_graph_updates():
             ordinary = prepare(site, p, support_layout=True)
             boxed = boxed_prepare(site, p, boxes=boxes)
             witnessed = boxed_prepare(site, p, boxes=boxes, witness_cols=hints)
+            fast_witnessed = boxed_prepare(
+                site, p, boxes=boxes, witness_cols=hints, fast_witness=True
+            )
             assert torch.equal(ordinary[3], boxed[3])
             assert torch.equal(ordinary[0], boxed[0])
             assert torch.equal(ordinary[3], witnessed[3])
             assert torch.equal(ordinary[0], witnessed[0])
+            assert torch.equal(ordinary[3], fast_witnessed[3])
+            assert torch.equal(ordinary[0], fast_witnessed[0])
             actual = layer(
                 x, backend="triton_streamed", prepared=boxed, weight_chunk_rows=64
             )
@@ -84,7 +89,9 @@ def test_boxed_support_matches_exact_layout_and_graph_updates():
             captured = layer(
                 x,
                 backend="triton_streamed",
-                prepared=boxed_prepare(site, p, boxes=boxes, witness_cols=hints),
+                prepared=boxed_prepare(
+                    site, p, boxes=boxes, witness_cols=hints, fast_witness=True
+                ),
                 weight_chunk_rows=64,
             )
         p[:, 2] -= 0.35
