@@ -2,6 +2,9 @@
 
 import argparse
 import json
+import statistics
+import time
+from functools import partial
 from pathlib import Path
 
 import torch
@@ -75,6 +78,8 @@ def main():
         return layer(x, backend="triton_streamed", prepared=fast_witnessed())
 
     functions = {
+        "dense_precomputed": partial(F.linear, x, expected_w),
+        "fused_default": partial(layer, x, backend="triton_fused"),
         "ordinary_prepare": lambda: prepare(site, site.atoms.p, support_layout=True),
         "boxed_prepare": boxed,
         "witnessed_prepare": witnessed,
@@ -87,6 +92,8 @@ def main():
     checks = {
         name: check(functions[name](), expected)
         for name in (
+            "dense_precomputed",
+            "fused_default",
             "ordinary_full",
             "boxed_full",
             "witnessed_full",
@@ -94,6 +101,27 @@ def main():
         )
     }
     assert all(value["passed"] for value in checks.values())
+    eager_names = ("fused_default", "ordinary_full", "fast_witnessed_full")
+    for name in eager_names:
+        for _ in range(3):
+            functions[name]()
+    torch.cuda.synchronize()
+    eager_samples = {name: [] for name in eager_names}
+    for round_index in range(3):
+        order = eager_names if round_index % 2 == 0 else tuple(reversed(eager_names))
+        for name in order:
+            start = time.perf_counter()
+            for _ in range(10):
+                functions[name]()
+            torch.cuda.synchronize()
+            eager_samples[name].append((time.perf_counter() - start) * 100)
+    eager = {
+        name: {
+            "median_ms": statistics.median(samples),
+            "samples_ms": samples,
+        }
+        for name, samples in eager_samples.items()
+    }
     result = {
         "source_commit": args.source_commit,
         "device": prop.name,
@@ -103,6 +131,7 @@ def main():
         "canonical": canonical,
         "exact_prepared_layout": exact_layout,
         "checks": checks,
+        "eager_wall_time": eager,
         "static_box_bytes": boxes.numel() * boxes.element_size(),
         "static_witness_bytes": hints.numel() * hints.element_size(),
         "timing": "CUDA Graph 3 rounds rep=20ms; fixed boxes and home-column hints built once",
