@@ -460,7 +460,10 @@ def block_grouped_csr_fused(
     BK: tl.constexpr = 32,
     SPLIT_K: tl.constexpr = 8,
 ):
-    tl.static_assert(S == 64 and T == 64 and BN == 16 and BK == 32)
+    tl.static_assert(S == 64)
+    tl.static_assert(T == 64)
+    tl.static_assert(BN == 16)
+    tl.static_assert(BK == 32)
     tile = tl.program_id(1)
     row_group = tile // 4
     local = (tile % 4) * 16
