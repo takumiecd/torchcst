@@ -129,6 +129,13 @@ def main():
         ),
     }
     functions.update({f"split_{n}": partial(split_forward, n) for n in args.splits})
+    if args.column_factored:
+        functions.update(
+            {
+                f"column_factored_{n}": partial(split_forward, n, True, None, True)
+                for n in args.splits
+            }
+        )
     if 8 in args.splits:
         functions["split_8_hoist"] = partial(split_forward, 8, True)
         functions.update(
@@ -137,8 +144,6 @@ def main():
                 for stage in args.stages
             }
         )
-        if args.column_factored:
-            functions["column_factored"] = partial(split_forward, 8, True, None, True)
         if args.cull_tile:
             functions["cull_tile"] = partial(split_forward, 8, True, None, True, True)
     checks = {name: check(fn(), expected) for name, fn in functions.items()}
