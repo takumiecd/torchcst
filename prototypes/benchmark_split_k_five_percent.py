@@ -32,10 +32,14 @@ def main():
     parser.add_argument("--column-factored", action="store_true")
     parser.add_argument("--cull-tile", action="store_true")
     parser.add_argument("--radial-factor", action="store_true")
+    parser.add_argument("--tile-rows", type=int, nargs="+", default=[])
+    parser.add_argument("--tile-columns", type=int, nargs="+", default=[])
     args = parser.parse_args()
     assert args.size % 64 == 0 and args.batch > 0
     assert all(split in (2, 4, 8, 16) for split in args.splits)
     assert all(stage in (1, 2, 3, 4, 5) for stage in args.stages)
+    assert all(rows in (16, 32, 64) for rows in args.tile_rows)
+    assert all(columns in (16, 32, 64) for columns in args.tile_columns)
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     props = torch.cuda.get_device_properties(0)
@@ -57,6 +61,8 @@ def main():
         column_factored=False,
         cull_tile=False,
         radial_factor=False,
+        output_rows=None,
+        columns=None,
     ):
         p, circle, section, offsets = (
             prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
@@ -66,13 +72,15 @@ def main():
         y = torch.empty_like(expected)
         partial = torch.empty((split, *expected.shape), device="cuda")
         s, t = layer.tile_shape
+        output_rows = output_rows or cfg.output_rows
+        columns = columns or cfg.columns
         launch_options = {"num_warps": cfg.warps, "enable_fp_fusion": cfg.fp_fusion}
         if num_stages is not None:
             launch_options["num_stages"] = num_stages
         block_fused[
             (
                 math.ceil(args.batch / cfg.batch_rows),
-                layer.row_groups * math.ceil(s / cfg.output_rows),
+                layer.row_groups * math.ceil(s / output_rows),
                 split,
             )
         ](
@@ -92,8 +100,8 @@ def main():
             D=p.shape[1] - 2,
             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
             BM=cfg.batch_rows,
-            BN=cfg.output_rows,
-            BK=cfg.columns,
+            BN=output_rows,
+            BK=columns,
             BA=cfg.atoms,
             LATE_REDUCE=cfg.late_reduce,
             SPLIT_K=split,
@@ -137,6 +145,22 @@ def main():
             {
                 f"column_factored_{n}": partial(split_forward, n, True, None, True)
                 for n in args.splits
+            }
+        )
+        functions.update(
+            {
+                f"tile_rows_{rows}": partial(
+                    split_forward, 8, True, None, True, False, False, rows
+                )
+                for rows in args.tile_rows
+            }
+        )
+        functions.update(
+            {
+                f"tile_columns_{columns}": partial(
+                    split_forward, 8, True, None, True, False, False, None, columns
+                )
+                for columns in args.tile_columns
             }
         )
     if 8 in args.splits:
