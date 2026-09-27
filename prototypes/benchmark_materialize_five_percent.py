@@ -13,7 +13,7 @@ import triton.language as tl
 
 from prototypes.benchmark_large_forward import check
 from prototypes.benchmark_tile_study import mapped_control, timing
-from prototypes.block_strip_kernels import _weight_lanes
+from prototypes.block_strip_kernels import _weight_columns_factored, _weight_lanes
 from prototypes.block_strip_linear import BlockStripLinear
 from torchcst.nn._backends._preparation import PROFILE_KINDS, prepare
 
@@ -36,6 +36,7 @@ def materialize_logical(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    FACTORED: tl.constexpr = False,
 ):
     tile = tl.program_id(0)
     row_group = tile // triton.cdiv(S, BN)
@@ -43,24 +44,17 @@ def materialize_logical(
     column_group = tl.program_id(1)
     start = tl.program_id(2) * BK
     station = row_group * CG + column_group
-    w = _weight_lanes(
-        P,
-        Circle,
-        Section,
-        Offsets,
-        station,
-        station * S + local,
-        start,
-        G * S,
-        T,
-        D,
-        G,
-        S,
-        PROFILE,
-        BN,
-        BK,
-        BA,
-    )
+    if FACTORED:
+        tl.static_assert(D == 4 and BA == 1)
+        w = _weight_columns_factored(
+            P, Circle, Section, Offsets, station, station * S + local, start,
+            G * S, T, G, S, PROFILE, BN, BK,
+        )
+    else:
+        w = _weight_lanes(
+            P, Circle, Section, Offsets, station, station * S + local, start,
+            G * S, T, D, G, S, PROFILE, BN, BK, BA,
+        )
     n = row_group * S + local + tl.arange(0, BN)
     k = column_group * T + start + tl.arange(0, BK)
     tl.store(
@@ -94,13 +88,14 @@ def main():
     x = torch.randn(args.batch, args.size, device="cuda")
     expected = F.linear(x, expected_w)
     generated_w = torch.empty_like(expected_w)
+    factored_w = torch.empty_like(expected_w)
     s, t = layer.tile_shape
 
-    def generate(packed):
+    def generate(packed, *, factored=False):
         p, circle, section, offsets = packed
         return materialize_logical[
             (
-                layer.row_groups * math.ceil(s / 16),
+                layer.row_groups * math.ceil(s / (32 if factored else 16)),
                 layer.column_groups,
                 math.ceil(t / 32),
             )
@@ -109,7 +104,7 @@ def main():
             circle,
             section,
             offsets,
-            generated_w,
+            factored_w if factored else generated_w,
             N=args.size,
             K=args.size,
             S=s,
@@ -118,37 +113,44 @@ def main():
             G=layer.strip.chart.tile_count,
             D=p.shape[1] - 2,
             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-            BN=16,
+            BN=32 if factored else 16,
             BK=32,
             BA=1,
+            FACTORED=factored,
             num_warps=4,
             enable_fp_fusion=True,
         )
 
-    def generated(prepared_only):
+    def generated(prepared_only, *, factored=False):
         current = (
             prepared
             if prepared_only
             else prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
         )
-        generate(current)
-        return F.linear(x, generated_w)
+        generate(current, factored=factored)
+        return F.linear(x, factored_w if factored else generated_w)
 
     generate(prepared)
+    generate(prepared, factored=True)
     weight_check = check(generated_w, expected_w)
+    factored_weight_check = check(factored_w, expected_w)
     functions = {
         "dense": partial(F.linear, x, expected_w),
         "fused_default": partial(layer, x, backend="triton_fused"),
         "generate_only": partial(generate, prepared),
         "generated_prepared": partial(generated, True),
         "generated_full": partial(generated, False),
+        "factored_generate_only": partial(generate, prepared, factored=True),
+        "factored_generated_prepared": partial(generated, True, factored=True),
+        "factored_generated_full": partial(generated, False, factored=True),
     }
     checks = {
         name: check(fn(), expected)
         for name, fn in functions.items()
-        if name != "generate_only"
+        if not name.endswith("generate_only")
     }
-    assert weight_check["passed"] and all(c["passed"] for c in checks.values())
+    assert weight_check["passed"] and factored_weight_check["passed"]
+    assert all(c["passed"] for c in checks.values())
     result = {
         "source_commit": args.source_commit,
         "device": prop.name,
@@ -157,6 +159,7 @@ def main():
         "atoms": atoms,
         "canonical": canonical,
         "weight_check": weight_check,
+        "factored_weight_check": factored_weight_check,
         "checks": checks,
         "transient_weight_bytes": generated_w.numel() * generated_w.element_size(),
         "timing": "CUDA Graph 3 rounds rep=20ms; dense W precomputed",
