@@ -2,6 +2,8 @@
 
 import argparse
 import json
+import statistics
+import time
 from functools import partial
 from pathlib import Path
 
@@ -21,6 +23,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--size", type=int, default=4096)
+    parser.add_argument("--eager", action="store_true")
     args = parser.parse_args()
     size = args.size
     assert size in (4096, 8192)
@@ -56,16 +59,40 @@ def main():
         return layer(x, backend="triton_streamed", prepared=prepare_with_boxes())
 
     functions = {
+        "dense_precomputed": partial(F.linear, x, expected_w),
+        "fused_default": partial(layer, x, backend="triton_fused"),
         "ordinary_prepare": partial(prepare, site, site.atoms.p, support_layout=True),
         "boxed_prepare": prepare_with_boxes,
         "ordinary_full": ordinary_full,
         "boxed_full": boxed_full,
     }
     checks = {
+        "dense_precomputed": check(functions["dense_precomputed"](), expected),
+        "fused_default": check(functions["fused_default"](), expected),
         "ordinary_full": check(ordinary_full(), expected),
         "boxed_full": check(boxed_full(), expected),
     }
     assert all(item["passed"] for item in checks.values())
+    eager = {}
+    if args.eager:
+        selected = ("fused_default", "ordinary_full", "boxed_full")
+        for name in selected:
+            for _ in range(3):
+                functions[name]()
+        torch.cuda.synchronize()
+        samples = {name: [] for name in selected}
+        for round_index in range(3):
+            order = selected if round_index % 2 == 0 else reversed(selected)
+            for name in order:
+                start = time.perf_counter()
+                for _ in range(10):
+                    functions[name]()
+                torch.cuda.synchronize()
+                samples[name].append((time.perf_counter() - start) * 100)
+        eager = {
+            name: {"median_ms": statistics.median(values), "samples_ms": values}
+            for name, values in samples.items()
+        }
     result = {
         "source_commit": args.source_commit,
         "device": prop.name,
@@ -75,6 +102,7 @@ def main():
         "canonical": canonical,
         "exact_prepared_layout": exact_layout,
         "checks": checks,
+        "eager_wall_time": eager,
         "static_box_bytes": boxes.numel() * boxes.element_size(),
         "timing": "CUDA Graph 3 rounds rep=20ms; boxes built once from fixed geometry",
         **timing(functions),
