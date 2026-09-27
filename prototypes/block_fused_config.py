@@ -19,6 +19,7 @@ class FusedConfig:
     fp_fusion: bool = False
     split_k: int = 1
     hoist_section: bool = False
+    column_factored: bool = False
 
     def __post_init__(self):
         for name, allowed in (
@@ -41,6 +42,10 @@ class FusedConfig:
             raise ValueError("unsupported fused split_k")
         if type(self.hoist_section) is not bool:
             raise ValueError("hoist_section must be bool")
+        if type(self.column_factored) is not bool:
+            raise ValueError("column_factored must be bool")
+        if self.column_factored and (self.atoms != 1 or not self.late_reduce):
+            raise ValueError("column_factored requires atoms=1 and late_reduce")
 
 
 def default_fused_config(
@@ -71,7 +76,7 @@ def default_fused_config(
             and logical_shape in ((4096, 4096), (8192, 8192))
             and atom_density < 0.051
         ):
-            return FusedConfig(128, 16, 32, 1, 4, True, True, 8, True)
+            return FusedConfig(128, 16, 32, 1, 4, True, True, 8, True, True)
         return FusedConfig(batch_rows=128, late_reduce=True, fp_fusion=fp_fusion)
     return FusedConfig()
 
@@ -80,9 +85,13 @@ def launch_fused(layer, x, prepared, y, config):
     from prototypes.block_strip_kernels import block_fused, block_split_reduce
 
     p, circle, section, offsets = prepared
+    if config.column_factored and p.shape[1] - 2 != 4:
+        raise ValueError("column_factored requires four-dimensional atom coordinates")
     s, t = layer.tile_shape
-    partial = y if config.split_k == 1 else torch.empty(
-        (config.split_k, *y.shape), device=y.device, dtype=y.dtype
+    partial = (
+        y
+        if config.split_k == 1
+        else torch.empty((config.split_k, *y.shape), device=y.device, dtype=y.dtype)
     )
     grid = (
         math.ceil(x.shape[0] / config.batch_rows),
@@ -113,6 +122,7 @@ def launch_fused(layer, x, prepared, y, config):
         LATE_REDUCE=config.late_reduce,
         SPLIT_K=config.split_k,
         HOIST_SECTION=config.hoist_section,
+        COLUMN_FACTORED=config.column_factored,
         num_warps=config.warps,
         enable_fp_fusion=config.fp_fusion,
     )

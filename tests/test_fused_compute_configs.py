@@ -28,6 +28,7 @@ from prototypes.block_strip_linear import BlockStripLinear
         FusedConfig(128, 16, 32, 1, 4, True, True, 4),
         FusedConfig(128, 16, 32, 1, 4, True, True, 8),
         FusedConfig(128, 16, 32, 1, 4, True, True, 8, True),
+        FusedConfig(128, 16, 32, 1, 4, True, True, 8, True, True),
     ],
 )
 def test_fused_schedule_tail_and_seam(config):
@@ -81,6 +82,13 @@ def test_split_k_requires_supported_integer():
             FusedConfig(split_k=value)
 
 
+def test_column_factored_requires_supported_schedule():
+    with pytest.raises(ValueError, match="column_factored must be bool"):
+        FusedConfig(column_factored=1)
+    with pytest.raises(ValueError, match="requires atoms=1 and late_reduce"):
+        FusedConfig(column_factored=True)
+
+
 def test_default_five_percent_split_k_is_limited_to_measured_shapes():
     base = FusedConfig(128, late_reduce=True, fp_fusion=True)
     for size in (4096, 8192):
@@ -91,21 +99,27 @@ def test_default_five_percent_split_k_is_limited_to_measured_shapes():
             atom_density=density,
             gpu_name="NVIDIA A100",
             logical_shape=(size, size),
-        ) == FusedConfig(128, 16, 32, 1, 4, True, True, 8, True)
-    assert default_fused_config(
-        (64, 64),
-        128,
-        atom_density=round(1024 * 1024 * 0.05) / (1024 * 1024),
-        gpu_name="NVIDIA A100",
-        logical_shape=(1024, 1024),
-    ) == base
-    assert default_fused_config(
-        (64, 64),
-        512,
-        atom_density=round(4096 * 4096 * 0.05) / (4096 * 4096),
-        gpu_name="NVIDIA A100",
-        logical_shape=(4096, 4096),
-    ) == base
+        ) == FusedConfig(128, 16, 32, 1, 4, True, True, 8, True, True)
+    assert (
+        default_fused_config(
+            (64, 64),
+            128,
+            atom_density=round(1024 * 1024 * 0.05) / (1024 * 1024),
+            gpu_name="NVIDIA A100",
+            logical_shape=(1024, 1024),
+        )
+        == base
+    )
+    assert (
+        default_fused_config(
+            (64, 64),
+            512,
+            atom_density=round(4096 * 4096 * 0.05) / (4096 * 4096),
+            gpu_name="NVIDIA A100",
+            logical_shape=(4096, 4096),
+        )
+        == base
+    )
 
 
 def test_default_fp_fusion_requires_dense_a100_and_respects_override():
