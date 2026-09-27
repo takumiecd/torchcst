@@ -11,13 +11,8 @@ import torch.nn.functional as F
 from prototypes.benchmark_large_forward import check
 from prototypes.benchmark_tile_study import mapped_control, timing
 from prototypes.block_strip_linear import BlockStripLinear
-from prototypes.support_box_routing import station_site_boxes
+from prototypes.support_box_routing import boxed_prepare, station_site_boxes
 from torchcst.nn._backends._preparation import execution_plan, prepare
-from torchcst.nn._backends._triton_preparation import (
-    Pack,
-    route_and_layout,
-    tile_parameters,
-)
 
 
 @torch.no_grad()
@@ -41,22 +36,11 @@ def main():
     boxes = station_site_boxes(plan.circle, plan.section, 64)
     x = torch.randn(128, size, device="cuda")
 
-    def boxed_prepare():
-        p = site.atoms.p
-        center, amplitude, precision = tile_parameters(site.kernel, p)
-        decoded = site.chart.geometry.decode_centers(center)
-        _, order, offsets = route_and_layout(
-            plan.routing,
-            decoded,
-            support=(plan.circle, plan.section, precision, 64),
-            retain_owners=False,
-            support_boxes=boxes,
-        )
-        packed = Pack.apply(amplitude, precision, decoded, order)
-        return packed, plan.circle, plan.section, offsets
+    def prepare_with_boxes():
+        return boxed_prepare(site, site.atoms.p, boxes=boxes)
 
     ordinary = prepare(site, site.atoms.p, support_layout=True)
-    boxed = boxed_prepare()
+    boxed = prepare_with_boxes()
     exact_layout = torch.equal(ordinary[3], boxed[3]) and torch.equal(
         ordinary[0], boxed[0]
     )
@@ -69,11 +53,11 @@ def main():
         return layer(x, backend="triton_streamed")
 
     def boxed_full():
-        return layer(x, backend="triton_streamed", prepared=boxed_prepare())
+        return layer(x, backend="triton_streamed", prepared=prepare_with_boxes())
 
     functions = {
         "ordinary_prepare": partial(prepare, site, site.atoms.p, support_layout=True),
-        "boxed_prepare": boxed_prepare,
+        "boxed_prepare": prepare_with_boxes,
         "ordinary_full": ordinary_full,
         "boxed_full": boxed_full,
     }

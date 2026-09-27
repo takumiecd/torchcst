@@ -22,6 +22,33 @@ def station_site_boxes(circle, section, station_rows):
     return torch.cat((lower - margin, upper + margin), 1).contiguous()
 
 
+@torch.no_grad()
+def boxed_prepare(site, p, *, boxes=None):
+    """Prepare current atom values with exact fallback for box-overlapping stations."""
+    from torchcst.nn._backends._preparation import execution_plan
+    from torchcst.nn._backends._triton_preparation import (
+        Pack,
+        route_and_layout,
+        tile_parameters,
+    )
+
+    plan = execution_plan(site)
+    station_rows = site.chart.tile_shape[0]
+    if boxes is None:
+        boxes = station_site_boxes(plan.circle, plan.section, station_rows)
+    center, amplitude, precision = tile_parameters(site.kernel, p)
+    decoded = site.chart.geometry.decode_centers(center)
+    _, order, offsets = route_and_layout(
+        plan.routing,
+        decoded,
+        support=(plan.circle, plan.section, precision, station_rows),
+        retain_owners=False,
+        support_boxes=boxes,
+    )
+    packed = Pack.apply(amplitude, precision, decoded, order)
+    return packed, plan.circle, plan.section, offsets
+
+
 @tr.jit
 def support_buckets_batched_box(
     Centers,
@@ -60,22 +87,25 @@ def support_buckets_batched_box(
     second = tl.full((BA,), 0, tl.int32)
     for shift in tl.static_range(3 if G >= 3 else G):  # noqa: FURB136
         station = (owner + G - 1 + shift) % G
-        lx = tl.load(Boxes + station * 8)
-        ly = tl.load(Boxes + station * 8 + 1)
-        lz = tl.load(Boxes + station * 8 + 2)
-        lw = tl.load(Boxes + station * 8 + 3)
-        hx = tl.load(Boxes + station * 8 + 4)
-        hy = tl.load(Boxes + station * 8 + 5)
-        hz = tl.load(Boxes + station * 8 + 6)
-        hw = tl.load(Boxes + station * 8 + 7)
-        gx = tl.maximum(tl.maximum(lx - cx, cx - hx), 0.0)
-        gy = tl.maximum(tl.maximum(ly - cy, cy - hy), 0.0)
-        gz = tl.maximum(tl.maximum(lz - cz, cz - hz), 0.0)
-        gw = tl.maximum(tl.maximum(lw - cw, cw - hw), 0.0)
-        lower = (gx * gx + gy * gy) + (gz * gz + gw * gw)
-        possible = atom_valid & (
-            (lower * precision <= 1.0001) | (radius2 == float("inf"))
-        )
+        if (G == 1) or (shift == 1):
+            possible = atom_valid
+        else:
+            lx = tl.load(Boxes + station * 8)
+            ly = tl.load(Boxes + station * 8 + 1)
+            lz = tl.load(Boxes + station * 8 + 2)
+            lw = tl.load(Boxes + station * 8 + 3)
+            hx = tl.load(Boxes + station * 8 + 4)
+            hy = tl.load(Boxes + station * 8 + 5)
+            hz = tl.load(Boxes + station * 8 + 6)
+            hw = tl.load(Boxes + station * 8 + 7)
+            gx = tl.maximum(tl.maximum(lx - cx, cx - hx), 0.0)
+            gy = tl.maximum(tl.maximum(ly - cy, cy - hy), 0.0)
+            gz = tl.maximum(tl.maximum(lz - cz, cz - hz), 0.0)
+            gw = tl.maximum(tl.maximum(lw - cw, cw - hw), 0.0)
+            lower = (gx * gx + gy * gy) + (gz * gz + gw * gw)
+            possible = atom_valid & (
+                (lower * precision <= 1.0001) | (radius2 == float("inf"))
+            )
         hit = tl.full((BA,), False, tl.int1)
         if tl.sum(possible.to(tl.int32), 0) > 0:
             row = station[:, None] * STATION_ROWS + tl.arange(0, ROWS)[None, :]
