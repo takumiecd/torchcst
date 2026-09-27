@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--splits", type=int, nargs="+", default=[2, 4, 8])
     parser.add_argument("--stages", type=int, nargs="+", default=[])
+    parser.add_argument("--tf32x3", action="store_true")
     args = parser.parse_args()
     assert args.size % 64 == 0 and args.batch > 0
     assert all(split in (2, 4, 8, 16) for split in args.splits)
@@ -47,7 +48,9 @@ def main():
     cfg = FusedConfig(128, 16, 32, 1, 4, True, True)
     legacy_cfg = FusedConfig(128, 16, 16, 8, 4, True, True)
 
-    def split_forward(split, hoist_section=False, num_stages=None):
+    def split_forward(
+        split, hoist_section=False, num_stages=None, dot_precision="ieee"
+    ):
         p, circle, section, offsets = (
             prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
             if args.full
@@ -88,6 +91,7 @@ def main():
             LATE_REDUCE=cfg.late_reduce,
             SPLIT_K=split,
             HOIST_SECTION=hoist_section,
+            DOT_PRECISION=dot_precision,
             **launch_options,
         )
         block_split_reduce[(triton.cdiv(y.numel(), 256),)](
@@ -127,6 +131,8 @@ def main():
                 for stage in args.stages
             }
         )
+        if args.tf32x3:
+            functions["tf32x3"] = partial(split_forward, 8, True, None, "tf32x3")
     checks = {name: check(fn(), expected) for name, fn in functions.items()}
     assert all(value["passed"] for value in checks.values()), checks
     results = {
