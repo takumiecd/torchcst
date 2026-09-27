@@ -18,6 +18,7 @@ class FusedConfig:
     late_reduce: bool = False
     fp_fusion: bool = False
     split_k: int = 1
+    hoist_section: bool = False
 
     def __post_init__(self):
         for name, allowed in (
@@ -38,6 +39,8 @@ class FusedConfig:
             raise ValueError("fp_fusion must be bool")
         if type(self.split_k) is not int or self.split_k not in (1, 2, 4, 8, 16):
             raise ValueError("unsupported fused split_k")
+        if type(self.hoist_section) is not bool:
+            raise ValueError("hoist_section must be bool")
 
 
 def default_fused_config(
@@ -68,7 +71,7 @@ def default_fused_config(
             and logical_shape in ((4096, 4096), (8192, 8192))
             and atom_density < 0.051
         ):
-            return FusedConfig(128, 16, 32, 1, 4, True, True, 8)
+            return FusedConfig(128, 16, 32, 1, 4, True, True, 8, True)
         return FusedConfig(batch_rows=128, late_reduce=True, fp_fusion=fp_fusion)
     return FusedConfig()
 
@@ -109,6 +112,7 @@ def launch_fused(layer, x, prepared, y, config):
         BA=config.atoms,
         LATE_REDUCE=config.late_reduce,
         SPLIT_K=config.split_k,
+        HOIST_SECTION=config.hoist_section,
         num_warps=config.warps,
         enable_fp_fusion=config.fp_fusion,
     )
