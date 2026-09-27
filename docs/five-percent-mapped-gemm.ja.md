@@ -34,6 +34,8 @@ BA1/BN16/BK32では、D=4のSection座標2列をatomループの外に読み出�
 
 保守的なsupport boxで省けるatom×列小片は、16列で4096²が0.652%、8192²が0.637%、32列では0.317%/0.298%。全ゼロ小片の正確な割合は16列で約4.0%/3.9%で、atom寄与のゼロ要素は約37.5%/37.4%。この初期配置では、事前box indexによる大幅な評価削減という予想を支持しない。既存の低密度試作でもbox判定の費用が勝っており、今回は実装しない。
 
+K方向8分割に加えてatom方向も2/4分割する試作は全出力が正しいが、4096²では分割なし16.549→2分割18.381/4分割21.500ms、8192²では66.019→73.572/85.779ms。入力読出しとdotをatom分割数だけ繰り返す費用が勝った。この試作は`656a0a5`でrevertし、最終kernel・設定は最終測定sourceと同じである。
+
 ## 検証と再現
 
 最終kernel・既定選択のA100関連テストは67件合格。端数形状、I/B境界、Torus seam、CUDA Graph再生後のatom更新を含む。ローカル全体はRuff合格、pytest 426件合格・172件CUDA skip。GPU backwardと学習後の配置は未検証。
@@ -42,6 +44,7 @@ BA1/BN16/BK32では、D=4のSection座標2列をatomループの外に読み出�
 - A100最終測定JSON SHA256：4096² `0bd31e55b6b2bd498d659e949eb49780c8ba4674a0f3e868c17da6a28673687b`、8192² `e0d56b84eae3493a4e733af4a80ab24fa68470408e2a05667616ef82faa166b8`。
 - A100 67テストlog SHA256：`50f5ff41a9389f31a424e23d6d83a003ff9572bde8f2e457e7421574000c0672`。remote：`srv11/cst-lab/torchcst-five-percent-final-hoist`。
 - 診断source commit：全W `9bab7b97fd0a8d8354a547a3b8c83d8f2fc6ebf0`、support `6bc9a7a49d5d28d53b2fe3f83c431d79445eb071`。結果JSON SHA256はそれぞれ4096² `e26d80e72cd903d88d6f0e9929aa4cd4a7a7cd3ab776e23bd3df2de0c7879b92`、8192² `0892af2ef1486eda4aded3979d72eaaedb3cbf5035774d3ce161dc08b4a86e93`、support `ecf15d08756a6edb801aa435ae8d1106a57fdaa6bc6150a269f559a29e909604`。
+- atom方向分割の実験commit：`58d235a0104dd62d9934ec4bfc628b3cbbc7b444`。archive SHA256：`2754ad9a82ba89098d40bb58fb51e4ed576d76c024c3340b9a16701daf159850`。結果JSON SHA256：4096² `7687617566ce98791fb8f46f35d9a8e69083300c92c801f9090a9487cc7026d2`、8192² `3e65f60f2db0e5abd509bb74ba41e1ec0f50fd06135510f228f95d27443fb434`。
 - ローカル結果：`output/triton-a100-20260927/five-percent/`。各JSONでsource commit、A100/42 SM、完了flag、atom数、canonical照合、全経路照合、各経路3サンプル、remote/local hash一致を確認した。
 
 ```bash
