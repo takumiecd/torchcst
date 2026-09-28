@@ -56,7 +56,7 @@ def main():
     list_counts = torch.empty((g, 8), device="cuda", dtype=torch.int32)
     build_tile_atom_lists[(g, 8)](
         packed, circle, section, offsets, lists, list_counts,
-        G=g, MAX_CANDIDATES=max_candidates, BA=8, num_warps=4,
+        G=g, MAX_CANDIDATES=max_candidates, BA=8, COMPACT=False, num_warps=4,
         enable_fp_fusion=False,
     )
     rows = 1024
@@ -71,10 +71,10 @@ def main():
             def run():
                 dp.zero_()
                 mapped_backward_atoms_listed[(rows // 64 * layer.column_groups * 4, 2)](
-                    dw, packed, circle, section, lists, list_counts, dp,
+                    dw, packed, circle, section, lists, list_counts, offsets, dp,
                     K=n, CG=layer.column_groups, G=g,
                     PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-                    MAX_CANDIDATES=max_candidates, BA=ba,
+                    MAX_CANDIDATES=max_candidates, BA=ba, COMPACT=False,
                     STATION_START=0, ROW_START=0,
                     num_warps=warps, enable_fp_fusion=True,
                 )

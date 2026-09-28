@@ -446,8 +446,15 @@ class _MappedStreamed(torch.autograd.Function):
                             (chunk // 64 * layer.column_groups, 8, max_candidates, 5)
                         )
                     else:
+                        list_dtype = (
+                            torch.uint8
+                            if max_candidates <= 256
+                            else torch.uint16
+                            if max_candidates <= 65536
+                            else torch.int32
+                        )
                         atom_lists = torch.empty(
-                            (g, 8, max_candidates), device=x.device, dtype=torch.int32
+                            (g, 8, max_candidates), device=x.device, dtype=list_dtype
                         )
                         list_counts = torch.empty(
                             (g, 8), device=x.device, dtype=torch.int32
@@ -462,6 +469,7 @@ class _MappedStreamed(torch.autograd.Function):
                             G=g,
                             MAX_CANDIDATES=max_candidates,
                             BA=8,
+                            COMPACT=True,
                             num_warps=4,
                             enable_fp_fusion=False,
                         )
@@ -478,6 +486,7 @@ class _MappedStreamed(torch.autograd.Function):
                             section,
                             atom_lists,
                             list_counts,
+                            offsets,
                             dp,
                             K=k,
                             CG=layer.column_groups,
@@ -485,6 +494,7 @@ class _MappedStreamed(torch.autograd.Function):
                             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                             MAX_CANDIDATES=max_candidates,
                             BA=8,
+                            COMPACT=True,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
                             num_warps=4,

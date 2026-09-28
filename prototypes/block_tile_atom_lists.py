@@ -17,6 +17,7 @@ def build_tile_atom_lists(
     G: tl.constexpr,
     MAX_CANDIDATES: tl.constexpr,
     BA: tl.constexpr,
+    COMPACT: tl.constexpr,
 ):
     station = tl.program_id(0)
     tile = tl.program_id(1)
@@ -33,6 +34,7 @@ def build_tile_atom_lists(
     lz, hz = tl.min(sz, 0), tl.max(sz, 0)
     lw, hw = tl.min(sw, 0), tl.max(sw, 0)
     count = 0
+    bucket_rank = 0
     for neighbor in tl.static_range(1 if G == 1 else 3):
         if G == 1:
             bucket = 0
@@ -59,9 +61,12 @@ def build_tile_atom_lists(
             possible = active & (lower_bound * precision <= 1.0001)
             position = count + tl.cumsum(possible.to(tl.int32), 0) - 1
             tl.store(
-                Lists + (station * 8 + tile) * MAX_CANDIDATES + position, atom, possible
+                Lists + (station * 8 + tile) * MAX_CANDIDATES + position,
+                bucket_rank + atom - begin if COMPACT else atom,
+                possible,
             )
             count += tl.sum(possible.to(tl.int32), 0)
+        bucket_rank += end - begin
     tl.store(Counts + station * 8 + tile, count)
 
 
@@ -73,6 +78,7 @@ def mapped_backward_atoms_listed(
     Section,
     Lists,
     Counts,
+    Offsets,
     DP,
     K: tl.constexpr,
     CG: tl.constexpr,
@@ -80,6 +86,7 @@ def mapped_backward_atoms_listed(
     PROFILE: tl.constexpr,
     MAX_CANDIDATES: tl.constexpr,
     BA: tl.constexpr,
+    COMPACT: tl.constexpr,
     STATION_START,
     ROW_START,
 ):
@@ -99,10 +106,34 @@ def mapped_backward_atoms_listed(
     sw = tl.load(Section + cols * 3 + 2)
     gradient = tl.reshape(dw, (512,))
     count = tl.load(Counts + station * 8 + tile)
+    if COMPACT:
+        if G == 1:
+            begin0 = tl.load(Offsets)
+        else:
+            bucket0 = 2 * ((station + G - 1) % G) + 1
+            begin0 = tl.load(Offsets + bucket0)
+            length0 = tl.load(Offsets + bucket0 + 1) - begin0
+            begin1 = tl.load(Offsets + 2 * station)
+            length1 = tl.load(Offsets + 2 * station + 1) - begin1
+            begin2 = tl.load(Offsets + 2 * station + 1)
     for atom_start in range(0, count, BA):
         lanes = atom_start + tl.arange(0, BA)
         active = lanes < count
         atom = tl.load(Lists + (station * 8 + tile) * MAX_CANDIDATES + lanes, active, 0)
+        if COMPACT:
+            rank = atom.to(tl.int32)
+            if G == 1:
+                atom = begin0 + rank
+            else:
+                atom = tl.where(
+                    rank < length0,
+                    begin0 + rank,
+                    tl.where(
+                        rank < length0 + length1,
+                        begin1 + rank - length0,
+                        begin2 + rank - length0 - length1,
+                    ),
+                )
         cx = tl.load(P + atom * 6 + 2, active, 0.0)
         cy = tl.load(P + atom * 6 + 3, active, 0.0)
         cz = tl.load(P + atom * 6 + 4, active, 0.0)

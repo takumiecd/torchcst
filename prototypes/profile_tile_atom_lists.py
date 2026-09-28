@@ -115,6 +115,7 @@ def main():
             G=g,
             MAX_CANDIDATES=max_candidates,
             BA=8,
+            COMPACT=False,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -130,6 +131,7 @@ def main():
             section,
             lists,
             counts,
+            offsets,
             dp,
             K=n,
             CG=layer.column_groups,
@@ -137,6 +139,7 @@ def main():
             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
             MAX_CANDIDATES=max_candidates,
             BA=8,
+            COMPACT=False,
             STATION_START=0,
             ROW_START=0,
             num_warps=4,
