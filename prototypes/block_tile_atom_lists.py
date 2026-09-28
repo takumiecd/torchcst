@@ -114,7 +114,15 @@ def mapped_backward_atoms_listed(
     sz = tl.load(Section + cols * 3 + 1)
     sw = tl.load(Section + cols * 3 + 2)
     if FACTORED_MOMENTS:
-        site_norm = (sx * sx + sy * sy) + (sz * sz + sw * sw)
+        anchor_row = station * 64 + row_tile * BR
+        anchor_col = col_tile * BC
+        anchor_radius = tl.load(Section + anchor_col * 3)
+        ax = tl.load(Circle + anchor_row * 2) * anchor_radius
+        ay = tl.load(Circle + anchor_row * 2 + 1) * anchor_radius
+        az = tl.load(Section + anchor_col * 3 + 1)
+        aw = tl.load(Section + anchor_col * 3 + 2)
+        vx, vy, vz, vw = sx - ax, sy - ay, sz - az, sw - aw
+        site_norm = (vx * vx + vy * vy) + (vz * vz + vw * vw)
     gradient = tl.reshape(dw, (BR * BC,))
     count = tl.load(Counts + station * (4096 // (BR * BC)) + tile)
     if COMPACT:
@@ -158,9 +166,10 @@ def mapped_backward_atoms_listed(
         precision = tl.load(P + atom * 6 + 1, active, 0.0)
         amplitude = tl.load(P + atom * 6, active, 0.0)
         if FACTORED_MOMENTS:
-            atom_norm = (cx * cx + cy * cy) + (cz * cz + cw * cw)
-            dot = (sx[:, None] * cx[None, :] + sy[:, None] * cy[None, :]) + (
-                sz[:, None] * cz[None, :] + sw[:, None] * cw[None, :]
+            ux, uy, uz, uw = cx - ax, cy - ay, cz - az, cw - aw
+            atom_norm = (ux * ux + uy * uy) + (uz * uz + uw * uw)
+            dot = (vx[:, None] * ux[None, :] + vy[:, None] * uy[None, :]) + (
+                vz[:, None] * uz[None, :] + vw[:, None] * uw[None, :]
             )
             squared = (site_norm[:, None] + atom_norm[None, :]) - 2.0 * dot
         else:
@@ -176,10 +185,10 @@ def mapped_backward_atoms_listed(
         if FACTORED_MOMENTS:
             weighted = gradient[:, None] * slope
             mass = tl.sum(weighted, 0)
-            dcx = -2.0 * amplitude * (tl.sum(weighted * sx[:, None], 0) - cx * mass)
-            dcy = -2.0 * amplitude * (tl.sum(weighted * sy[:, None], 0) - cy * mass)
-            dcz = -2.0 * amplitude * (tl.sum(weighted * sz[:, None], 0) - cz * mass)
-            dcw = -2.0 * amplitude * (tl.sum(weighted * sw[:, None], 0) - cw * mass)
+            dcx = -2.0 * amplitude * (tl.sum(weighted * vx[:, None], 0) - ux * mass)
+            dcy = -2.0 * amplitude * (tl.sum(weighted * vy[:, None], 0) - uy * mass)
+            dcz = -2.0 * amplitude * (tl.sum(weighted * vz[:, None], 0) - uz * mass)
+            dcw = -2.0 * amplitude * (tl.sum(weighted * vw[:, None], 0) - uw * mass)
         else:
             scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
             dcx = tl.sum(scale * dx, 0)
