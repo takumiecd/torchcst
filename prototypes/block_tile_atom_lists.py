@@ -97,6 +97,7 @@ def mapped_backward_atoms_listed(
     ROW_START,
     PIPE_STAGES: tl.constexpr = 1,
     LOOP_UNROLL: tl.constexpr = 1,
+    FACTORED_MOMENTS: tl.constexpr = False,
 ):
     program = tl.program_id(0)
     station = STATION_START + program // (64 // BR)
@@ -112,6 +113,8 @@ def mapped_backward_atoms_listed(
     sx, sy = _sites(Circle, Section, rows, cols, tl.full((BR * BC,), True, tl.int1), 4)
     sz = tl.load(Section + cols * 3 + 1)
     sw = tl.load(Section + cols * 3 + 2)
+    if FACTORED_MOMENTS:
+        site_norm = (sx * sx + sy * sy) + (sz * sz + sw * sw)
     gradient = tl.reshape(dw, (BR * BC,))
     count = tl.load(Counts + station * (4096 // (BR * BC)) + tile)
     if COMPACT:
@@ -154,20 +157,35 @@ def mapped_backward_atoms_listed(
         cw = tl.load(P + atom * 6 + 5, active, 0.0)
         precision = tl.load(P + atom * 6 + 1, active, 0.0)
         amplitude = tl.load(P + atom * 6, active, 0.0)
-        dx = sx[:, None] - cx[None, :]
-        dy = sy[:, None] - cy[None, :]
-        dz = sz[:, None] - cz[None, :]
-        dw_site = sw[:, None] - cw[None, :]
-        squared = (dx * dx + dy * dy) + (dz * dz + dw_site * dw_site)
+        if FACTORED_MOMENTS:
+            atom_norm = (cx * cx + cy * cy) + (cz * cz + cw * cw)
+            dot = (sx[:, None] * cx[None, :] + sy[:, None] * cy[None, :]) + (
+                sz[:, None] * cz[None, :] + sw[:, None] * cw[None, :]
+            )
+            squared = (site_norm[:, None] + atom_norm[None, :]) - 2.0 * dot
+        else:
+            dx = sx[:, None] - cx[None, :]
+            dy = sy[:, None] - cy[None, :]
+            dz = sz[:, None] - cz[None, :]
+            dw_site = sw[:, None] - cw[None, :]
+            squared = (dx * dx + dy * dy) + (dz * dz + dw_site * dw_site)
         value, slope = _profile(squared, precision[None, :], PROFILE)
         value = tl.where(active[None, :], value, 0.0)
         slope = tl.where(active[None, :], slope, 0.0)
         da = tl.sum(gradient[:, None] * value, 0)
-        scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
-        dcx = tl.sum(scale * dx, 0)
-        dcy = tl.sum(scale * dy, 0)
-        dcz = tl.sum(scale * dz, 0)
-        dcw = tl.sum(scale * dw_site, 0)
+        if FACTORED_MOMENTS:
+            weighted = gradient[:, None] * slope
+            mass = tl.sum(weighted, 0)
+            dcx = -2.0 * amplitude * (tl.sum(weighted * sx[:, None], 0) - cx * mass)
+            dcy = -2.0 * amplitude * (tl.sum(weighted * sy[:, None], 0) - cy * mass)
+            dcz = -2.0 * amplitude * (tl.sum(weighted * sz[:, None], 0) - cz * mass)
+            dcw = -2.0 * amplitude * (tl.sum(weighted * sw[:, None], 0) - cw * mass)
+        else:
+            scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
+            dcx = tl.sum(scale * dx, 0)
+            dcy = tl.sum(scale * dy, 0)
+            dcz = tl.sum(scale * dz, 0)
+            dcw = tl.sum(scale * dw_site, 0)
         tl.atomic_add(DP + atom * 6, da, active, sem="relaxed")
         tl.atomic_add(DP + atom * 6 + 2, dcx, active, sem="relaxed")
         tl.atomic_add(DP + atom * 6 + 3, dcy, active, sem="relaxed")
