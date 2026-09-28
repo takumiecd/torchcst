@@ -16,6 +16,7 @@ from prototypes.block_tile_atom_lists import (
     build_tile_atom_lists,
     mapped_backward_atoms_listed,
 )
+from prototypes.bounded_gemm import bounded_gemm
 from prototypes.support_box_routing import balanced_home_columns, station_site_boxes
 from torchcst.nn._backends._preparation import PROFILE_KINDS, execution_plan
 
@@ -24,9 +25,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, required=True)
     parser.add_argument("--rows", type=int, required=True)
+    parser.add_argument("--cache-windows", type=int, default=0)
+    parser.add_argument("--gemm-mode", choices=("ieee", "tf32x3_dx"), default="ieee")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     n, m = args.size, args.rows
+    if args.cache_windows < 0 or args.cache_windows * 1024 > n // 2:
+        parser.error("cached windows must cover no more than half of W")
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     layer = BlockStripLinear((n, n), (64, 64), round(0.05 * n * n), device="cuda")
@@ -58,7 +63,36 @@ def main():
     dp = torch.zeros_like(packed)
     chunk = 1024
     w = x.new_empty((chunk, n))
+    cache = x.new_empty((args.cache_windows * chunk, n))
     profile = PROFILE_KINDS[type(layer.strip.kernel.profile)]
+
+    def materialize(start, rows, target):
+        materialize_logical[(math.ceil(rows / 64), layer.column_groups, 2)](
+            packed,
+            circle,
+            section,
+            offsets,
+            target,
+            N=n,
+            K=n,
+            S=64,
+            T=64,
+            CG=layer.column_groups,
+            G=g,
+            D=4,
+            PROFILE=profile,
+            BN=64,
+            BK=32,
+            BA=1,
+            FACTORED=True,
+            ROW_GROUP_START=start // 64,
+            LOCAL_W=True,
+            num_warps=4,
+            enable_fp_fusion=True,
+        )
+
+    for start in range(0, cache.shape[0], chunk):
+        materialize(start, chunk, cache[start : start + chunk])
 
     def run():
         events = {key: [] for key in ("weight", "input_mm", "list", "dw_mm", "atoms")}
@@ -78,39 +112,28 @@ def main():
         start_wall = time.perf_counter()
         for start in range(0, n, chunk):
             rows = min(chunk, n - start)
-
-            def weight(start=start, rows=rows):
-                materialize_logical[(math.ceil(rows / 64), layer.column_groups, 2)](
-                    packed,
-                    circle,
-                    section,
-                    offsets,
-                    w,
-                    N=n,
-                    K=n,
-                    S=64,
-                    T=64,
-                    CG=layer.column_groups,
-                    G=g,
-                    D=4,
-                    PROFILE=profile,
-                    BN=64,
-                    BK=32,
-                    BA=1,
-                    FACTORED=True,
-                    ROW_GROUP_START=start // 64,
-                    LOCAL_W=True,
-                    num_warps=4,
-                    enable_fp_fusion=True,
+            if start < cache.shape[0]:
+                weight = cache[start : start + rows]
+            else:
+                record(
+                    "weight",
+                    lambda start=start, rows=rows: materialize(start, rows, w),
                 )
-
-            record("weight", weight)
-            record(
-                "input_mm",
-                lambda start=start, rows=rows: dx.addmm_(
-                    dy[:, start : start + rows], w[:rows]
-                ),
-            )
+                weight = w[:rows]
+            if args.gemm_mode == "tf32x3_dx":
+                record(
+                    "input_mm",
+                    lambda start=start, rows=rows, weight=weight: bounded_gemm(
+                        dy[:, start : start + rows], weight, dx, add=start > 0
+                    ),
+                )
+            else:
+                record(
+                    "input_mm",
+                    lambda start=start, rows=rows, weight=weight: dx.addmm_(
+                        dy[:, start : start + rows], weight
+                    ),
+                )
 
         record(
             "list",
@@ -164,6 +187,7 @@ def main():
                     BC=64,
                     STATION_START=start // 64 * layer.column_groups,
                     ROW_START=start,
+                    OPT_TRIWEIGHT=True,
                     num_warps=1,
                     enable_fp_fusion=True,
                 ),
@@ -182,6 +206,8 @@ def main():
         "size": n,
         "rows": m,
         "max_candidates": max_candidates,
+        "cache_windows": args.cache_windows,
+        "gemm_mode": args.gemm_mode,
         "wall_median_ms": statistics.median(wall for wall, _ in samples),
         "gpu_median_ms": {
             key: statistics.median(durations[key] for _, durations in samples)
