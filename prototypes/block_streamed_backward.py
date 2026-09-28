@@ -369,22 +369,24 @@ class _MappedStreamed(torch.autograd.Function):
             cache_weight_rows=cache_rows,
             return_cache=True,
         )
-        ctx.save_for_backward(x, packed, circle, section, offsets, cached)
+        ctx.save_for_backward(x, packed, circle, section, offsets)
+        ctx.cached_w = cached
         return output
 
     @staticmethod
     @once_differentiable
     def backward(ctx, dy):
-        x, packed, circle, section, offsets, cached = ctx.saved_tensors
+        x, packed, circle, section, offsets = ctx.saved_tensors
+        cached = ctx.cached_w
         layer = ctx.layer
         n, k = layer.shape
         m = x.shape[0]
         dy = dy.contiguous()
         dx = torch.zeros_like(x) if ctx.needs_input_grad[0] else None
-        dp = torch.zeros_like(packed) if ctx.needs_input_grad[1] else None
-        if dp is not None and torch.are_deterministic_algorithms_enabled():
+        need_dp = ctx.needs_input_grad[1]
+        if need_dp and torch.are_deterministic_algorithms_enabled():
             raise RuntimeError("mapped atom backward uses atomic accumulation")
-        if dx is not None and m and (ctx.atom_kernel != "fused" or dp is None):
+        if dx is not None and m and (ctx.atom_kernel != "fused" or not need_dp):
             chunk = min(ctx.window_rows, n)
             w = x.new_empty((chunk, k))
             for start in range(0, n, chunk):
@@ -419,6 +421,9 @@ class _MappedStreamed(torch.autograd.Function):
                         enable_fp_fusion=True,
                     )
                 dx.addmm_(dy[:, start : start + rows], weight)
+        ctx.cached_w = None
+        del cached
+        dp = torch.zeros_like(packed) if need_dp else None
         if dp is not None and m:
             kernel = (
                 mapped_backward_atoms_factored
