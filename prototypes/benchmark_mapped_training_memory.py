@@ -32,7 +32,15 @@ def main():
     parser.add_argument("--source-commit", required=True)
     parser.add_argument(
         "--atom-kernel",
-        choices=("baseline", "factored", "staged", "atom_major", "interval", "fused"),
+        choices=(
+            "baseline",
+            "factored",
+            "staged",
+            "staged_partial",
+            "atom_major",
+            "interval",
+            "fused",
+        ),
         default="baseline",
     )
     args = parser.parse_args()

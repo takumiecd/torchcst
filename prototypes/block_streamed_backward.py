@@ -156,11 +156,16 @@ def mapped_backward_atoms_factored(
     STAGED: tl.constexpr = False,
     WRITE_WEIGHT: tl.constexpr = False,
     CULL_BOX: tl.constexpr = False,
+    WRITE_PARTIAL: tl.constexpr = False,
+    MAX_CANDIDATES: tl.constexpr = 0,
     STATION_START=0,
     ROW_START=0,
+    Partial=None,
 ):
     """Hoist site coordinates and reuse atom/site differences across derivatives."""
     tl.static_assert(not WRITE_WEIGHT or STAGED)
+    tl.static_assert(not WRITE_PARTIAL or STAGED)
+    tl.static_assert(not (WRITE_PARTIAL and CULL_BOX))
     tile = tl.program_id(0)
     station = tile // tr.cdiv(S, BN) + STATION_START
     local = (tile % tr.cdiv(S, BN)) * BN
@@ -204,6 +209,7 @@ def mapped_backward_atoms_factored(
     gradient = tl.reshape(dw, (BN * BK,))
     if WRITE_WEIGHT:
         weight = tl.full((BN * BK,), 0.0, tl.float32)
+    candidate_base = 0
     for neighbor in tl.static_range(1 if G == 1 else 3):
         if G == 1:
             bucket = 0
@@ -246,37 +252,92 @@ def mapped_backward_atoms_factored(
                 if WRITE_WEIGHT:
                     weight += tl.sum(value * amplitude[None, :], axis=1)
                 da = tl.sum(gradient[:, None] * value, axis=0)
-                tl.atomic_add(DP + atoms * 6, da, possible, sem="relaxed")
                 scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
-                tl.atomic_add(
-                    DP + atoms * 6 + 2,
-                    tl.sum(scale * dx, axis=0),
-                    possible,
-                    sem="relaxed",
-                )
-                tl.atomic_add(
-                    DP + atoms * 6 + 3,
-                    tl.sum(scale * dy, axis=0),
-                    possible,
-                    sem="relaxed",
-                )
-                tl.atomic_add(
-                    DP + atoms * 6 + 4,
-                    tl.sum(scale * dz, axis=0),
-                    possible,
-                    sem="relaxed",
-                )
-                tl.atomic_add(
-                    DP + atoms * 6 + 5,
-                    tl.sum(scale * dw_site, axis=0),
-                    possible,
-                    sem="relaxed",
-                )
+                dcx = tl.sum(scale * dx, axis=0)
+                dcy = tl.sum(scale * dy, axis=0)
+                dcz = tl.sum(scale * dz, axis=0)
+                dcw = tl.sum(scale * dw_site, axis=0)
+                if WRITE_PARTIAL:
+                    tile_in_station = (tile % tr.cdiv(S, BN)) * tr.cdiv(
+                        T, BK
+                    ) + tl.program_id(1)
+                    slot = candidate_base + atoms - begin
+                    base = (
+                        (
+                            (station - STATION_START)
+                            * (tr.cdiv(S, BN) * tr.cdiv(T, BK))
+                            + tile_in_station
+                        )
+                        * MAX_CANDIDATES
+                        + slot
+                    ) * 5
+                    tl.store(Partial + base, da, active)
+                    tl.store(Partial + base + 1, dcx, active)
+                    tl.store(Partial + base + 2, dcy, active)
+                    tl.store(Partial + base + 3, dcz, active)
+                    tl.store(Partial + base + 4, dcw, active)
+                else:
+                    tl.atomic_add(DP + atoms * 6, da, possible, sem="relaxed")
+                    tl.atomic_add(DP + atoms * 6 + 2, dcx, possible, sem="relaxed")
+                    tl.atomic_add(DP + atoms * 6 + 3, dcy, possible, sem="relaxed")
+                    tl.atomic_add(DP + atoms * 6 + 4, dcz, possible, sem="relaxed")
+                    tl.atomic_add(DP + atoms * 6 + 5, dcw, possible, sem="relaxed")
+        candidate_base += end - begin
     if WRITE_WEIGHT:
         tl.store(
             DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :],
             tl.reshape(weight, (BN, BK)),
         )
+
+
+@tr.jit
+def reduce_mapped_backward_partials(
+    Partial,
+    Offsets,
+    DP,
+    G: tl.constexpr,
+    MAX_CANDIDATES: tl.constexpr,
+    BA: tl.constexpr,
+    STATION_START,
+):
+    local_station = tl.program_id(0)
+    station = STATION_START + local_station
+    slot = tl.program_id(1) * BA + tl.arange(0, BA)
+    if G == 1:
+        begin0 = tl.load(Offsets)
+        end0 = tl.load(Offsets + 1)
+        length0 = end0 - begin0
+        atom = begin0 + slot
+        total = length0
+    else:
+        bucket0 = 2 * ((station + G - 1) % G) + 1
+        begin0 = tl.load(Offsets + bucket0)
+        end0 = tl.load(Offsets + bucket0 + 1)
+        begin1 = tl.load(Offsets + 2 * station)
+        end1 = tl.load(Offsets + 2 * station + 1)
+        begin2 = tl.load(Offsets + 2 * station + 1)
+        end2 = tl.load(Offsets + 2 * station + 2)
+        length0 = end0 - begin0
+        length1 = end1 - begin1
+        length2 = end2 - begin2
+        atom = tl.where(
+            slot < length0,
+            begin0 + slot,
+            tl.where(
+                slot < length0 + length1,
+                begin1 + slot - length0,
+                begin2 + slot - length0 - length1,
+            ),
+        )
+        total = length0 + length1 + length2
+    active = slot < total
+    tiles = tl.arange(0, 8)
+    base = ((local_station * 8 + tiles[:, None]) * MAX_CANDIDATES + slot[None, :]) * 5
+    for component in tl.static_range(5):
+        partial = tl.load(Partial + base + component, active[None, :], 0.0)
+        summed = tl.sum(partial, 0)
+        target = tl.where(component == 0, 0, component + 1)
+        tl.atomic_add(DP + atom * 6 + target, summed, active, sem="relaxed")
 
 
 class _MappedStreamed(torch.autograd.Function):
@@ -340,14 +401,43 @@ class _MappedStreamed(torch.autograd.Function):
             kernel = (
                 mapped_backward_atoms_factored
                 if ctx.atom_kernel
-                in ("factored", "staged", "atom_major", "interval", "fused")
+                in (
+                    "factored",
+                    "staged",
+                    "staged_partial",
+                    "atom_major",
+                    "interval",
+                    "fused",
+                )
                 else mapped_backward_atoms
             )
             atom_bk = 32 if ctx.atom_kernel == "factored" else 16
-            if ctx.atom_kernel in ("staged", "atom_major", "interval", "fused"):
+            if ctx.atom_kernel in (
+                "staged",
+                "staged_partial",
+                "atom_major",
+                "interval",
+                "fused",
+            ):
                 chunk = min(ctx.window_rows, n)
                 if dx is None or ctx.atom_kernel == "fused":
                     w = x.new_empty((chunk, k))
+                if ctx.atom_kernel == "staged_partial":
+                    g = layer.strip.chart.tile_count
+                    counts = offsets[1:] - offsets[:-1]
+                    stations = torch.arange(g, device=offsets.device)
+                    if g == 1:
+                        max_candidates = int(counts[0].item())
+                    else:
+                        candidate_counts = (
+                            counts[2 * ((stations + g - 1) % g) + 1]
+                            + counts[2 * stations]
+                            + counts[2 * stations + 1]
+                        )
+                        max_candidates = int(candidate_counts.max().item())
+                    partial = x.new_empty(
+                        (chunk // 64 * layer.column_groups, 8, max_candidates, 5)
+                    )
                 for start in range(0, n, chunk):
                     rows = min(chunk, n - start)
                     torch.mm(dy[:, start : start + rows].T, x, out=w[:rows])
@@ -424,11 +514,33 @@ class _MappedStreamed(torch.autograd.Function):
                             BA=8,
                             STAGED=True,
                             WRITE_WEIGHT=ctx.atom_kernel == "fused" and dx is not None,
+                            WRITE_PARTIAL=ctx.atom_kernel == "staged_partial",
+                            MAX_CANDIDATES=max_candidates
+                            if ctx.atom_kernel == "staged_partial"
+                            else 0,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
+                            Partial=partial
+                            if ctx.atom_kernel == "staged_partial"
+                            else None,
                             num_warps=4,
-                            enable_fp_fusion=ctx.atom_kernel == "staged",
+                            enable_fp_fusion=ctx.atom_kernel
+                            in ("staged", "staged_partial"),
                         )
+                        if ctx.atom_kernel == "staged_partial":
+                            station_count = rows // 64 * layer.column_groups
+                            reduce_mapped_backward_partials[
+                                (station_count, tr.cdiv(max_candidates, 32))
+                            ](
+                                partial,
+                                offsets,
+                                dp,
+                                G=layer.strip.chart.tile_count,
+                                MAX_CANDIDATES=max_candidates,
+                                BA=32,
+                                STATION_START=start // 64 * layer.column_groups,
+                                num_warps=4,
+                            )
                         if ctx.atom_kernel == "fused" and dx is not None:
                             dx.addmm_(dy[:, start : start + rows], w[:rows])
             else:
@@ -468,6 +580,7 @@ def mapped_streamed_trainable(
         "baseline",
         "factored",
         "staged",
+        "staged_partial",
         "atom_major",
         "interval",
         "fused",
