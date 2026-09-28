@@ -9,8 +9,11 @@ from triton.language.extra.cuda import libdevice
 def _interval_sum(prefix, first, last, BK: tl.constexpr):
     end_index = tl.maximum(last - 1, 0)
     before_index = tl.maximum(first - 1, 0)
-    end_value = tl.reshape(tl.gather(prefix, end_index[None, :], 0), (BK,))
-    before_value = tl.reshape(tl.gather(prefix, before_index[None, :], 0), (BK,))
+    rows = tl.arange(0, 64)
+    end_value = tl.sum(tl.where(rows[:, None] == end_index[None, :], prefix, 0.0), 0)
+    before_value = tl.sum(
+        tl.where(rows[:, None] == before_index[None, :], prefix, 0.0), 0
+    )
     return tl.where(
         last > first, end_value - tl.where(first > 0, before_value, 0.0), 0.0
     )
