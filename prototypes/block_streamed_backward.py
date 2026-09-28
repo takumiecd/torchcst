@@ -426,7 +426,7 @@ class _MappedStreamed(torch.autograd.Function):
                         num_warps=4,
                         enable_fp_fusion=True,
                     )
-                if ctx.gemm_mode == "tf32x3":
+                if ctx.gemm_mode in ("tf32x3", "tf32x3_dx"):
                     bounded_gemm(
                         dy[:, start : start + rows],
                         weight,
@@ -706,9 +706,9 @@ def mapped_streamed_trainable(
     cache_rows = cache_windows * window_rows
     if cache_rows > layer.shape[0] // 2:
         raise ValueError("cached windows must cover no more than half of W")
-    if gemm_mode not in ("ieee", "tf32x3"):
-        raise ValueError("gemm_mode must be ieee or tf32x3")
-    if gemm_mode == "tf32x3" and atom_kernel != "staged_listed":
+    if gemm_mode not in ("ieee", "tf32x3", "tf32x3_dx"):
+        raise ValueError("unknown gemm_mode")
+    if gemm_mode != "ieee" and atom_kernel != "staged_listed":
         raise ValueError("tf32x3 GEMM is implemented for staged_listed only")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols

@@ -28,7 +28,9 @@ def main():
     parser.add_argument("--microbatch-rows", type=int, default=128)
     parser.add_argument("--window-rows", type=int, default=1024)
     parser.add_argument("--cache-windows", type=int, default=0)
-    parser.add_argument("--gemm-mode", choices=("ieee", "tf32x3"), default="ieee")
+    parser.add_argument(
+        "--gemm-mode", choices=("ieee", "tf32x3", "tf32x3_dx"), default="ieee"
+    )
     parser.add_argument("--accumulation-steps", type=int, default=1)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
