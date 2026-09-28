@@ -56,9 +56,9 @@ def main():
     stations = rows // 64 * layer.column_groups
     profile = PROFILE_KINDS[type(layer.strip.kernel.profile)]
 
-    def site_major():
+    def site_major(bn=16, bk=32, ba=8):
         dp.zero_()
-        mapped_backward_atoms_factored[(stations * 4, 2)](
+        mapped_backward_atoms_factored[(stations * (64 // bn), 64 // bk)](
             dw,
             x,
             dy,
@@ -76,9 +76,9 @@ def main():
             G=g,
             PROFILE=profile,
             BM=16,
-            BN=16,
-            BK=32,
-            BA=8,
+            BN=bn,
+            BK=bk,
+            BA=ba,
             STAGED=True,
             STATION_START=0,
             ROW_START=0,
@@ -89,6 +89,41 @@ def main():
     baseline_ms = milliseconds(site_major)
     reference = dp.clone()
     counts = torch.diff(offsets)
+    site_variants = []
+    for bn, bk, ba in (
+        (8, 32, 8),
+        (8, 32, 16),
+        (16, 16, 16),
+        (16, 32, 4),
+        (16, 32, 16),
+        (16, 32, 32),
+        (16, 64, 4),
+        (16, 64, 8),
+        (16, 64, 16),
+        (32, 16, 8),
+        (32, 32, 8),
+    ):
+        try:
+            run = lambda bn=bn, bk=bk, ba=ba: site_major(bn, bk, ba)
+            elapsed = milliseconds(run)
+            site_variants.append(
+                {
+                    "bn": bn,
+                    "bk": bk,
+                    "ba": ba,
+                    "ms": elapsed,
+                    "max_abs_diff": float((dp - reference).abs().max().item()),
+                }
+            )
+        except Exception as error:  # noqa: BLE001 - report variants independently
+            site_variants.append(
+                {
+                    "bn": bn,
+                    "bk": bk,
+                    "ba": ba,
+                    "error": str(error)[:400],
+                }
+            )
     variants = []
     for bn, bk, ba, lanes, warps in (
         (16, 32, 2, 16, 4),
@@ -159,6 +194,7 @@ def main():
         "max_bucket_count": int(counts.max().item()),
         "median_bucket_count": float(counts.median().item()),
         "site_major_ms": baseline_ms,
+        "site_variants": site_variants,
         "variants": variants,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
