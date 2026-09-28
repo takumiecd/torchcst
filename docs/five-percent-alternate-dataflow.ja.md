@@ -1,6 +1,7 @@
 # atom 密度 5%：小分け重み生成と GEMM の分離
 
 更新後の[学習ステップ基準値と重み再利用の測定](five-percent-training-and-reuse.ja.md)も参照。
+[メモリ優先の判定](five-percent-memory-first.ja.md)では、現行の全重みなし経路もforwardピークで生成済みdenseを上回ることを確認した。
 
 2026-09-27。前回の [X 再利用と atom 群](five-percent-atom-group-and-x-reuse.ja.md) の後、5% を主対象に計算経路を変えた。列方向の距離項を共有して論理重みを **1024 出力行ずつ**作り、その都度 cuBLAS GEMM に渡す `triton_streamed` 試作 backend が有望だった。さらに固定siteの箱と陽性 witness を使い、不要な支持域検査を省いた。dispatch は変更していない。これらは forward 専用であり、学習全体の高速化を示す結果ではない。
 
