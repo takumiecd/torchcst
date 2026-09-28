@@ -65,9 +65,9 @@ def main():
                 dw, packed, circle, section, lists, list_counts, offsets, dp,
                 K=n, CG=layer.column_groups, G=g,
                 PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-                MAX_CANDIDATES=max_candidates, BA=8, COMPACT=True,
+                MAX_CANDIDATES=max_candidates, BA=1, COMPACT=True,
                 BR=br, BC=bc, STATION_START=0, ROW_START=0,
-                num_warps=4, enable_fp_fusion=True,
+                num_warps=1, enable_fp_fusion=True,
             )
 
         ms = milliseconds(backward)
