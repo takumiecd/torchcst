@@ -99,8 +99,12 @@ def mapped_backward_atoms_listed(
     LOOP_UNROLL: tl.constexpr = 1,
     OPT_TRIWEIGHT: tl.constexpr = False,
     WRITE_PARTIAL: tl.constexpr = False,
+    WRITE_WEIGHT: tl.constexpr = False,
     Partial=None,
 ):
+    # Experimental in-place W output; only the listed 16x64, one-atom path
+    # has been checked against the separate materializer.
+    tl.static_assert(not WRITE_WEIGHT or (BR == 16 and BC == 64 and BA == 1))
     program = tl.program_id(0)
     station = STATION_START + program // (64 // BR)
     row_tile = program % (64 // BR)
@@ -116,6 +120,8 @@ def mapped_backward_atoms_listed(
     sz = tl.load(Section + cols * 3 + 1)
     sw = tl.load(Section + cols * 3 + 2)
     gradient = tl.reshape(dw, (BR * BC,))
+    if WRITE_WEIGHT:
+        weight = tl.full((BR * BC,), 0.0, tl.float32)
     count = tl.load(Counts + station * (4096 // (BR * BC)) + tile)
     if COMPACT:
         if G == 1:
@@ -164,6 +170,8 @@ def mapped_backward_atoms_listed(
         squared = (dx * dx + dy * dy) + (dz * dz + dw_site * dw_site)
         if OPT_TRIWEIGHT and PROFILE == 1:
             gap = tl.maximum(1.0 - squared * precision[None, :], 0.0)
+            if WRITE_WEIGHT:
+                weight += tl.sum(gap * gap * gap * amplitude[None, :], 1)
             weighted = tl.where(active[None, :], gradient[:, None] * gap * gap, 0.0)
             da = tl.sum(weighted * gap, 0)
             multiplier = 6.0 * precision * amplitude
@@ -175,6 +183,8 @@ def mapped_backward_atoms_listed(
             value, slope = _profile(squared, precision[None, :], PROFILE)
             value = tl.where(active[None, :], value, 0.0)
             slope = tl.where(active[None, :], slope, 0.0)
+            if WRITE_WEIGHT:
+                weight += tl.sum(value * amplitude[None, :], 1)
             da = tl.sum(gradient[:, None] * value, 0)
             scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
             dcx = tl.sum(scale * dx, 0)
@@ -194,3 +204,8 @@ def mapped_backward_atoms_listed(
             tl.atomic_add(DP + atom * 6 + 3, dcy, active, sem="relaxed")
             tl.atomic_add(DP + atom * 6 + 4, dcz, active, sem="relaxed")
             tl.atomic_add(DP + atom * 6 + 5, dcw, active, sem="relaxed")
+    if WRITE_WEIGHT:
+        tl.store(
+            DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :],
+            tl.reshape(weight, (BR, BC)),
+        )
