@@ -28,7 +28,6 @@ def main():
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=hints
     )
     g = layer.strip.chart.tile_count
-    cg = layer.column_groups
     stations = torch.linspace(0, g - 1, min(args.sample_stations, g)).round().int()
     offsets_cpu = offsets.cpu().tolist()
     summary = {
@@ -67,8 +66,8 @@ def main():
         if ids.numel() == 0:
             continue
         atoms = packed[ids]
-        row_start = station // cg * 64
-        col_start = station % cg * 64
+        row_start = station * 64
+        col_start = 0
         directions = circle[row_start : row_start + 64]
         cross = section[col_start : col_start + 64]
         sites = torch.stack(
