@@ -43,7 +43,8 @@ def main():
     dp = torch.zeros_like(packed)
     results = []
     reference = None
-    for br, bc in ((16, 32), (8, 32), (16, 16), (8, 16), (32, 32), (16, 64)):
+    for br, bc in ((16, 32), (8, 32), (16, 16), (8, 16), (32, 32),
+                   (16, 64), (8, 64), (32, 64)):
         tiles = 4096 // (br * bc)
         lists = torch.empty((g, tiles, max_candidates), device="cuda", dtype=dtype)
         list_counts = torch.empty((g, tiles), device="cuda", dtype=torch.int32)
