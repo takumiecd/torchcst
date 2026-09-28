@@ -25,6 +25,8 @@
 
 ## 次の設計判断
 
+追加のA100測定では、forwardのW生成とTensor Core GEMMを二重バッファで重ねても50.20→48.30 msで、32 MiBの窓を追加する価値は小さかった。backwardの局所dW GEMMとatom勾配を重ねた場合は78.83→78.31 msで、同じく32 MiB追加した。16×64サイトタイルを8×64にするとW生成は26.92→24.66 msへ短縮したが、候補一覧の構築は3.14→5.89 ms、一覧容量は13.43→26.87 MBとなる。backwardのatom勾配は5.28 msでほぼ変わらず、学習ステップへの採用は見送った。入力勾配GEMMのタイル変更は単体で3.00→2.68 ms/窓だったが、8192²・M=2048の学習ステップを3回測ると、変更前180.72 ms、変更後178.78 msと180.78 msで、安定した改善を確認できなかった。これらの値は `profile_overlap_forward.py`、`profile_overlap_dw_atoms.py`、`profile_listed_materialize.py`、`profile_listed_tile_shapes.py`、`profile_bounded_gemm_tiles.py` の試作測定で、結果JSONは同じ出力ディレクトリにある。
+
 局所Wを完全に消してatom計算とGEMMを単一カーネルにすると、複数の入力バッチタイルが同じWタイルを必要とする。現行の生成一回・複数入力行で利用する順序に比べ、atom評価の重複が増える可能性がある。M=2048ではTensor Core化後のGEMMが23.4 ms、候補一覧を使うW生成が27.0 msなので、単純な融合では生成費用を繰り返す危険がある。融合案は同じピーク・出力精度・学習ステップ時間で比較してから採用する。
 
 今回の実装は[局所forward](../prototypes/block_streamed_forward.py)、[候補一覧W生成](../prototypes/block_materialize_listed.py)、[局所Tensor Core GEMM](../prototypes/bounded_gemm.py)、[共有候補一覧を使うbackward](../prototypes/block_streamed_backward.py)。結果JSONは `output/triton-a100-20260928/` に保存した。
