@@ -470,6 +470,8 @@ class _MappedStreamed(torch.autograd.Function):
                             MAX_CANDIDATES=max_candidates,
                             BA=8,
                             COMPACT=True,
+                            BR=16,
+                            BC=32,
                             num_warps=4,
                             enable_fp_fusion=False,
                         )
@@ -495,6 +497,8 @@ class _MappedStreamed(torch.autograd.Function):
                             MAX_CANDIDATES=max_candidates,
                             BA=8,
                             COMPACT=True,
+                            BR=16,
+                            BC=32,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
                             num_warps=4,

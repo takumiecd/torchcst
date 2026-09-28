@@ -116,6 +116,8 @@ def main():
             MAX_CANDIDATES=max_candidates,
             BA=8,
             COMPACT=False,
+            BR=16,
+            BC=32,
             num_warps=4,
             enable_fp_fusion=False,
         )
@@ -140,6 +142,8 @@ def main():
             MAX_CANDIDATES=max_candidates,
             BA=8,
             COMPACT=False,
+            BR=16,
+            BC=32,
             STATION_START=0,
             ROW_START=0,
             num_warps=4,

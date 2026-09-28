@@ -18,15 +18,17 @@ def build_tile_atom_lists(
     MAX_CANDIDATES: tl.constexpr,
     BA: tl.constexpr,
     COMPACT: tl.constexpr,
+    BR: tl.constexpr,
+    BC: tl.constexpr,
 ):
     station = tl.program_id(0)
     tile = tl.program_id(1)
-    row_base = tile // 2 * 16
-    col_base = tile % 2 * 32
-    sites = tl.arange(0, 512)
-    rows = station * 64 + row_base + sites // 32
-    cols = col_base + sites % 32
-    sx, sy = _sites(Circle, Section, rows, cols, tl.full((512,), True, tl.int1), 4)
+    row_base = tile // (64 // BC) * BR
+    col_base = tile % (64 // BC) * BC
+    sites = tl.arange(0, BR * BC)
+    rows = station * 64 + row_base + sites // BC
+    cols = col_base + sites % BC
+    sx, sy = _sites(Circle, Section, rows, cols, tl.full((BR * BC,), True, tl.int1), 4)
     sz = tl.load(Section + cols * 3 + 1)
     sw = tl.load(Section + cols * 3 + 2)
     lx, hx = tl.min(sx, 0), tl.max(sx, 0)
@@ -61,13 +63,13 @@ def build_tile_atom_lists(
             possible = active & (lower_bound * precision <= 1.0001)
             position = count + tl.cumsum(possible.to(tl.int32), 0) - 1
             tl.store(
-                Lists + (station * 8 + tile) * MAX_CANDIDATES + position,
+                Lists + (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES + position,
                 bucket_rank + atom - begin if COMPACT else atom,
                 possible,
             )
             count += tl.sum(possible.to(tl.int32), 0)
         bucket_rank += end - begin
-    tl.store(Counts + station * 8 + tile, count)
+    tl.store(Counts + station * (4096 // (BR * BC)) + tile, count)
 
 
 @tr.jit
@@ -87,25 +89,27 @@ def mapped_backward_atoms_listed(
     MAX_CANDIDATES: tl.constexpr,
     BA: tl.constexpr,
     COMPACT: tl.constexpr,
+    BR: tl.constexpr,
+    BC: tl.constexpr,
     STATION_START,
     ROW_START,
 ):
     program = tl.program_id(0)
-    station = STATION_START + program // 4
-    row_tile = program % 4
+    station = STATION_START + program // (64 // BR)
+    row_tile = program % (64 // BR)
     col_tile = tl.program_id(1)
-    tile = row_tile * 2 + col_tile
-    logical_rows = (station // CG) * 64 + row_tile * 16 + tl.arange(0, 16)
-    logical_cols = (station % CG) * 64 + col_tile * 32 + tl.arange(0, 32)
+    tile = row_tile * (64 // BC) + col_tile
+    logical_rows = (station // CG) * 64 + row_tile * BR + tl.arange(0, BR)
+    logical_cols = (station % CG) * 64 + col_tile * BC + tl.arange(0, BC)
     dw = tl.load(DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :])
-    sites = tl.arange(0, 512)
-    rows = station * 64 + row_tile * 16 + sites // 32
-    cols = col_tile * 32 + sites % 32
-    sx, sy = _sites(Circle, Section, rows, cols, tl.full((512,), True, tl.int1), 4)
+    sites = tl.arange(0, BR * BC)
+    rows = station * 64 + row_tile * BR + sites // BC
+    cols = col_tile * BC + sites % BC
+    sx, sy = _sites(Circle, Section, rows, cols, tl.full((BR * BC,), True, tl.int1), 4)
     sz = tl.load(Section + cols * 3 + 1)
     sw = tl.load(Section + cols * 3 + 2)
-    gradient = tl.reshape(dw, (512,))
-    count = tl.load(Counts + station * 8 + tile)
+    gradient = tl.reshape(dw, (BR * BC,))
+    count = tl.load(Counts + station * (4096 // (BR * BC)) + tile)
     if COMPACT:
         if G == 1:
             begin0 = tl.load(Offsets)
@@ -119,7 +123,7 @@ def mapped_backward_atoms_listed(
     for atom_start in range(0, count, BA):
         lanes = atom_start + tl.arange(0, BA)
         active = lanes < count
-        atom = tl.load(Lists + (station * 8 + tile) * MAX_CANDIDATES + lanes, active, 0)
+        atom = tl.load(Lists + (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES + lanes, active, 0)
         if COMPACT:
             rank = atom.to(tl.int32)
             if G == 1:
