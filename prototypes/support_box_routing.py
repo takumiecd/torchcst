@@ -24,10 +24,10 @@ def _decode_intrinsic_torus(
     v = tl.load(Center + atom * CS0 + 2 * CS1, valid, 0.0)
     major = tl.load(Major)
     minor = tl.load(Minor)
-    angle = tl.sqrt(u * u + v * v) / minor
+    angle = tl.div_rn(tl.sqrt(u * u + v * v), minor)
     sinc = tl.where(angle == 0.0, 1.0, libdevice.sin(angle) / angle)
     radial = major + minor * libdevice.cos(angle)
-    theta = arc / major
+    theta = tl.div_rn(arc, major)
     tl.store(Decoded + atom * 4, radial * libdevice.cos(theta), valid)
     tl.store(Decoded + atom * 4 + 1, radial * libdevice.sin(theta), valid)
     tl.store(Decoded + atom * 4 + 2, sinc * u, valid)
