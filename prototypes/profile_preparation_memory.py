@@ -34,7 +34,23 @@ def main():
     torch.cuda.reset_peak_memory_stats()
     before = torch.cuda.memory_allocated()
     sort_events = []
+    decode_events = []
     original_sort = torch.sort
+    geometry_type = type(site.chart.geometry)
+    original_decode = geometry_type.decode_centers
+
+    def measured_decode(geometry, centers):
+        torch.cuda.synchronize()
+        event = {
+            "live_before_bytes": torch.cuda.memory_allocated(),
+            "peak_before_bytes": torch.cuda.max_memory_allocated(),
+        }
+        decoded = original_decode(geometry, centers)
+        torch.cuda.synchronize()
+        event["live_after_bytes"] = torch.cuda.memory_allocated()
+        event["peak_after_bytes"] = torch.cuda.max_memory_allocated()
+        decode_events.append(event)
+        return decoded
 
     def measured_sort(*sort_args, **sort_kwargs):
         torch.cuda.synchronize()
@@ -52,12 +68,14 @@ def main():
         return sorted_result
 
     torch.sort = measured_sort
+    geometry_type.decode_centers = measured_decode
     try:
         prepared = boxed_prepare(
             site, site.atoms.p, boxes=boxes, witness_cols=hints, fast_witness=True
         )
     finally:
         torch.sort = original_sort
+        geometry_type.decode_centers = original_decode
     torch.cuda.synchronize()
     after = torch.cuda.memory_allocated()
     peak = torch.cuda.max_memory_allocated()
@@ -72,15 +90,26 @@ def main():
             tensor.numel() * tensor.element_size() for tensor in prepared
         ),
         "baseline_live_bytes": before,
+        "decode_events": decode_events,
         "sort_events": sort_events,
         "after_prepare_live_bytes": after,
         "prepare_peak_bytes": peak,
         "completed": True,
     }
     assert len(sort_events) == 1, sort_events
+    assert len(decode_events) == 1, decode_events
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
-    print(json.dumps({"stage": "completed", "sort": sort_events, "peak": peak}))
+    print(
+        json.dumps(
+            {
+                "stage": "completed",
+                "decode": decode_events,
+                "sort": sort_events,
+                "peak": peak,
+            }
+        )
+    )
 
 
 if __name__ == "__main__":
