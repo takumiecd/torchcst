@@ -22,7 +22,10 @@ def milliseconds(fn, repeats=5):
     torch.cuda.synchronize()
     values = []
     for _ in range(repeats):
-        begin, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+        begin, end = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
         begin.record()
         fn()
         end.record()
@@ -38,7 +41,7 @@ def main():
     args = parser.parse_args()
     n = args.size
     torch.manual_seed(21)
-    layer = BlockStripLinear((n, n), (64, 64), round(.05 * n * n), device="cuda")
+    layer = BlockStripLinear((n, n), (64, 64), round(0.05 * n * n), device="cuda")
     plan = execution_plan(layer.strip)
     packed, circle, section, offsets = trainable_boxed_prepare(
         layer.strip,
@@ -49,15 +52,27 @@ def main():
     g = layer.strip.chart.tile_count
     counts = offsets[1:] - offsets[:-1]
     ids = torch.arange(g, device="cuda")
-    max_candidates = int((
-        counts[2 * ((ids + g - 1) % g) + 1] + counts[2 * ids] + counts[2 * ids + 1]
-    ).max().item())
+    max_candidates = int(
+        (counts[2 * ((ids + g - 1) % g) + 1] + counts[2 * ids] + counts[2 * ids + 1])
+        .max()
+        .item()
+    )
     lists = torch.empty((g, 8, max_candidates), device="cuda", dtype=torch.int32)
     list_counts = torch.empty((g, 8), device="cuda", dtype=torch.int32)
     build_tile_atom_lists[(g, 8)](
-        packed, circle, section, offsets, lists, list_counts,
-        G=g, MAX_CANDIDATES=max_candidates, BA=8, COMPACT=False,
-        BR=16, BC=32, num_warps=4,
+        packed,
+        circle,
+        section,
+        offsets,
+        lists,
+        list_counts,
+        G=g,
+        MAX_CANDIDATES=max_candidates,
+        BA=8,
+        COMPACT=False,
+        BR=16,
+        BC=32,
+        num_warps=4,
         enable_fp_fusion=False,
     )
     rows = 1024
@@ -69,21 +84,39 @@ def main():
     reference = None
     for ba in (1, 2, 4, 8):
         for warps in (1, 2, 4, 8):
-            def run():
+
+            def run(ba=ba, warps=warps):
                 dp.zero_()
                 mapped_backward_atoms_listed[(rows // 64 * layer.column_groups * 4, 2)](
-                    dw, packed, circle, section, lists, list_counts, offsets, dp,
-                    K=n, CG=layer.column_groups, G=g,
+                    dw,
+                    packed,
+                    circle,
+                    section,
+                    lists,
+                    list_counts,
+                    offsets,
+                    dp,
+                    K=n,
+                    CG=layer.column_groups,
+                    G=g,
                     PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-                    MAX_CANDIDATES=max_candidates, BA=ba, COMPACT=False,
-                    BR=16, BC=32,
-                    STATION_START=0, ROW_START=0,
-                    num_warps=warps, enable_fp_fusion=True,
+                    MAX_CANDIDATES=max_candidates,
+                    BA=ba,
+                    COMPACT=False,
+                    BR=16,
+                    BC=32,
+                    STATION_START=0,
+                    ROW_START=0,
+                    num_warps=warps,
+                    enable_fp_fusion=True,
                 )
+
             ms = milliseconds(run)
             if reference is None:
                 reference = dp.clone()
-            error = float((dp - reference).abs().sum().item() / reference.abs().sum().item())
+            error = float(
+                (dp - reference).abs().sum().item() / reference.abs().sum().item()
+            )
             results.append({"ba": ba, "warps": warps, "ms": ms, "relative_l1": error})
             print(json.dumps(results[-1]), flush=True)
     result = {"size": n, "max_candidates": max_candidates, "cases": results}

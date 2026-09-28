@@ -8,7 +8,10 @@ import torch
 
 from prototypes.block_streamed_backward import trainable_boxed_prepare
 from prototypes.block_strip_linear import BlockStripLinear
-from prototypes.block_tile_atom_lists import build_tile_atom_lists, mapped_backward_atoms_listed
+from prototypes.block_tile_atom_lists import (
+    build_tile_atom_lists,
+    mapped_backward_atoms_listed,
+)
 from prototypes.profile_listed_tuning import milliseconds
 from prototypes.support_box_routing import balanced_home_columns, station_site_boxes
 from torchcst.nn._backends._preparation import PROFILE_KINDS, execution_plan
@@ -21,10 +24,11 @@ def main():
     args = parser.parse_args()
     n = args.size
     torch.manual_seed(21)
-    layer = BlockStripLinear((n, n), (64, 64), round(.05 * n * n), device="cuda")
+    layer = BlockStripLinear((n, n), (64, 64), round(0.05 * n * n), device="cuda")
     plan = execution_plan(layer.strip)
     packed, circle, section, offsets = trainable_boxed_prepare(
-        layer.strip, layer.strip.atoms.p,
+        layer.strip,
+        layer.strip.atoms.p,
         boxes=station_site_boxes(plan.circle, plan.section, 64),
         witness_cols=balanced_home_columns(layer.strip),
     )
@@ -43,40 +47,79 @@ def main():
     dp = torch.zeros_like(packed)
     results = []
     reference = None
-    for br, bc in ((16, 32), (8, 32), (16, 16), (8, 16), (32, 32),
-                   (16, 64), (8, 64), (32, 64)):
+    for br, bc in (
+        (16, 32),
+        (8, 32),
+        (16, 16),
+        (8, 16),
+        (32, 32),
+        (16, 64),
+        (8, 64),
+        (32, 64),
+    ):
         tiles = 4096 // (br * bc)
         lists = torch.empty((g, tiles, max_candidates), device="cuda", dtype=dtype)
         list_counts = torch.empty((g, tiles), device="cuda", dtype=torch.int32)
 
-        def build():
+        def build(tiles=tiles, lists=lists, list_counts=list_counts, br=br, bc=bc):
             build_tile_atom_lists[(g, tiles)](
-                packed, circle, section, offsets, lists, list_counts,
-                G=g, MAX_CANDIDATES=max_candidates, BA=8, COMPACT=True,
-                BR=br, BC=bc, num_warps=4, enable_fp_fusion=False,
+                packed,
+                circle,
+                section,
+                offsets,
+                lists,
+                list_counts,
+                G=g,
+                MAX_CANDIDATES=max_candidates,
+                BA=8,
+                COMPACT=True,
+                BR=br,
+                BC=bc,
+                num_warps=4,
+                enable_fp_fusion=False,
             )
 
         build_ms = milliseconds(build)
 
-        def backward():
+        def backward(lists=lists, list_counts=list_counts, br=br, bc=bc):
             dp.zero_()
             mapped_backward_atoms_listed[
                 (rows // 64 * layer.column_groups * (64 // br), 64 // bc)
             ](
-                dw, packed, circle, section, lists, list_counts, offsets, dp,
-                K=n, CG=layer.column_groups, G=g,
+                dw,
+                packed,
+                circle,
+                section,
+                lists,
+                list_counts,
+                offsets,
+                dp,
+                K=n,
+                CG=layer.column_groups,
+                G=g,
                 PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-                MAX_CANDIDATES=max_candidates, BA=1, COMPACT=True,
-                BR=br, BC=bc, STATION_START=0, ROW_START=0,
-                num_warps=1, enable_fp_fusion=True,
+                MAX_CANDIDATES=max_candidates,
+                BA=1,
+                COMPACT=True,
+                BR=br,
+                BC=bc,
+                STATION_START=0,
+                ROW_START=0,
+                num_warps=1,
+                enable_fp_fusion=True,
             )
 
         ms = milliseconds(backward)
         if reference is None:
             reference = dp.clone()
-        error = float((dp - reference).abs().sum().item() / reference.abs().sum().item())
+        error = float(
+            (dp - reference).abs().sum().item() / reference.abs().sum().item()
+        )
         row = {
-            "br": br, "bc": bc, "build_ms": build_ms, "backward_ms": ms,
+            "br": br,
+            "bc": bc,
+            "build_ms": build_ms,
+            "backward_ms": ms,
             "list_mb": lists.numel() * lists.element_size() / 1e6,
             "retained_fraction": float(
                 list_counts.sum().item() / (candidate_counts.sum().item() * tiles)

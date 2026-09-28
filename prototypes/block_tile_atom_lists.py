@@ -63,7 +63,9 @@ def build_tile_atom_lists(
             possible = active & (lower_bound * precision <= 1.0001)
             position = count + tl.cumsum(possible.to(tl.int32), 0) - 1
             tl.store(
-                Lists + (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES + position,
+                Lists
+                + (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES
+                + position,
                 bucket_rank + atom - begin if COMPACT else atom,
                 possible,
             )
@@ -123,7 +125,11 @@ def mapped_backward_atoms_listed(
     for atom_start in range(0, count, BA):
         lanes = atom_start + tl.arange(0, BA)
         active = lanes < count
-        atom = tl.load(Lists + (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES + lanes, active, 0)
+        atom = tl.load(
+            Lists + (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES + lanes,
+            active,
+            0,
+        )
         if COMPACT:
             rank = atom.to(tl.int32)
             if G == 1:
