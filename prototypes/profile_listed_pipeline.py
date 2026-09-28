@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--size", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--triweight-sweep", action="store_true")
+    parser.add_argument("--lane-sweep", action="store_true")
     args = parser.parse_args()
     n = args.size
     torch.manual_seed(21)
@@ -70,22 +71,28 @@ def main():
     dp = torch.zeros_like(packed)
     results = []
     reference = None
-    configs = (
-        ((1, 1, False), (1, 1, True))
-        if args.triweight_sweep
-        else (
-            (1, 1, False),
-            (2, 1, False),
-            (3, 1, False),
-            (4, 1, False),
-            (1, 2, False),
-            (1, 4, False),
-            (2, 2, False),
+    if args.lane_sweep:
+        configs = tuple(
+            (1, 1, True, ba, warps) for ba in (1, 2, 4, 8) for warps in (1, 2, 4)
         )
-    )
-    for stages, unroll, triweight in configs:
+    elif args.triweight_sweep:
+        configs = ((1, 1, False, 1, 1), (1, 1, True, 1, 1))
+    else:
+        configs = tuple(
+            (stages, unroll, False, 1, 1)
+            for stages, unroll in (
+                (1, 1),
+                (2, 1),
+                (3, 1),
+                (4, 1),
+                (1, 2),
+                (1, 4),
+                (2, 2),
+            )
+        )
+    for stages, unroll, triweight, ba, warps in configs:
 
-        def run(stages=stages, unroll=unroll, triweight=triweight):
+        def run(stages=stages, unroll=unroll, triweight=triweight, ba=ba, warps=warps):
             dp.zero_()
             return mapped_backward_atoms_listed[
                 (1024 // 64 * layer.column_groups * 4, 1)
@@ -103,7 +110,7 @@ def main():
                 G=g,
                 PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                 MAX_CANDIDATES=max_candidates,
-                BA=1,
+                BA=ba,
                 COMPACT=True,
                 BR=16,
                 BC=64,
@@ -112,7 +119,7 @@ def main():
                 PIPE_STAGES=stages,
                 LOOP_UNROLL=unroll,
                 OPT_TRIWEIGHT=triweight,
-                num_warps=1,
+                num_warps=warps,
                 enable_fp_fusion=True,
             )
 
@@ -130,6 +137,8 @@ def main():
                 "stages": stages,
                 "unroll": unroll,
                 "optimized_triweight": triweight,
+                "ba": ba,
+                "warps": warps,
                 "ms": ms,
                 "relative_l1": error,
                 "max_abs_diff": max_abs,
@@ -141,6 +150,8 @@ def main():
                 "stages": stages,
                 "unroll": unroll,
                 "optimized_triweight": triweight,
+                "ba": ba,
+                "warps": warps,
                 "error": str(exc)[:300],
             }
         results.append(row)
