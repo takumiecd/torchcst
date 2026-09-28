@@ -8,6 +8,7 @@ import triton.language as tl
 from torch.autograd.function import once_differentiable
 
 from prototypes.block_atom_major_backward import mapped_backward_atoms_station
+from prototypes.block_interval_backward import mapped_backward_atoms_interval
 from prototypes.block_materialize_kernel import materialize_logical
 from prototypes.block_streamed_forward import streamed_forward
 from prototypes.support_box_routing import atomic_bucket_sort
@@ -311,11 +312,12 @@ class _MappedStreamed(torch.autograd.Function):
         if dp is not None and m:
             kernel = (
                 mapped_backward_atoms_factored
-                if ctx.atom_kernel in ("factored", "staged", "atom_major", "fused")
+                if ctx.atom_kernel
+                in ("factored", "staged", "atom_major", "interval", "fused")
                 else mapped_backward_atoms
             )
             atom_bk = 32 if ctx.atom_kernel == "factored" else 16
-            if ctx.atom_kernel in ("staged", "atom_major", "fused"):
+            if ctx.atom_kernel in ("staged", "atom_major", "interval", "fused"):
                 chunk = min(ctx.window_rows, n)
                 if dx is None or ctx.atom_kernel == "fused":
                     w = x.new_empty((chunk, k))
@@ -341,6 +343,30 @@ class _MappedStreamed(torch.autograd.Function):
                             BN=16,
                             BK=32,
                             BA=4,
+                            LANES=16,
+                            STATION_START=start // 64 * layer.column_groups,
+                            ROW_START=start,
+                            num_warps=4,
+                            enable_fp_fusion=False,
+                        )
+                    elif ctx.atom_kernel == "interval":
+                        mapped_backward_atoms_interval[
+                            (rows // 64 * layer.column_groups, 16)
+                        ](
+                            w,
+                            packed,
+                            circle,
+                            section,
+                            offsets,
+                            dp,
+                            K=k,
+                            S=64,
+                            T=64,
+                            CG=layer.column_groups,
+                            G=layer.strip.chart.tile_count,
+                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            BR=8,
+                            BK=16,
                             LANES=16,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
@@ -411,7 +437,14 @@ def mapped_streamed_trainable(
         raise ValueError("trainable mapped prototype requires at least two row tiles")
     if type(window_rows) is not int or window_rows < 64 or window_rows % 64:
         raise ValueError("window_rows must be a positive multiple of 64")
-    if atom_kernel not in ("baseline", "factored", "staged", "atom_major", "fused"):
+    if atom_kernel not in (
+        "baseline",
+        "factored",
+        "staged",
+        "atom_major",
+        "interval",
+        "fused",
+    ):
         raise ValueError("unknown atom_kernel")
     # Keep every temporary W/dW window strictly smaller than the logical matrix.
     window_rows = min(window_rows, (layer.shape[0] // 128) * 64)
