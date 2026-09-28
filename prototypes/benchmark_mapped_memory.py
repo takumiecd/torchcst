@@ -38,12 +38,13 @@ def main():
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
+    parser.add_argument("--seed", type=int, default=21)
     args = parser.parse_args()
     if args.batch < 1:
         parser.error("batch must be positive")
     if args.weight_chunk_rows < 64 or args.weight_chunk_rows % 64:
         parser.error("weight-chunk-rows must be a positive multiple of 64")
-    torch.manual_seed(21)
+    torch.manual_seed(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
     prop = torch.cuda.get_device_properties(0)
     assert "A100" in prop.name
@@ -139,6 +140,7 @@ def main():
     time_ms = do_bench_cudagraph(fn, rep=20, return_mode="median")
     result = {
         "source_commit": args.source_commit,
+        "seed": args.seed,
         "device": prop.name,
         "multiprocessors": prop.multi_processor_count,
         "mode": args.mode,
