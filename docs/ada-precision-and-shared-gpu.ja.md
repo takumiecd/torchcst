@@ -48,3 +48,5 @@ backwardの候補一覧カーネルがatom勾配と局所Wを同時に作り、d
 小バッチ向けのatom直接融合forwardも試したが、その時点で別プロジェクトの`policy_server.py`がGPUを使用しており、各方式の時間が大きく揺れた。この値で採否は判断しない。`prototypes.profile_ada_forward_alternatives`と`output/ada-20260928/ada-forward-alternatives-8192-m128.json`を再実行可能な診断として残す。
 
 今後はAdaを主な開発環境にし、アルゴリズムはGPU世代で固定しない。次に検証するのは、M=128のW生成・小バッチGEMMと、M=2048のforward/backward GEMMおよびatom勾配を分けた改善である。採否はステップ全体の時間、denseより低いピーク、出力・入力勾配・atom勾配の精度で判断する。Blackwellは候補を絞った後の確認に使い、Ampereは回帰確認に使う。L2 hit率は未測定なので、窓サイズと速度の関係をcache効果と断定しない。
+
+共有RTX 6000 Adaが再び使用中になった後、Colab ProのL4で同世代の追加測定を行った。[L4の学習ステップとL2カウンタ](colab-l4-ada.ja.md)を参照。L4で測ったL2 hit率をRTX 6000 Adaのhit率として扱わない。
