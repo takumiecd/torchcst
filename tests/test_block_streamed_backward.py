@@ -122,3 +122,27 @@ def test_mapped_backward_after_atom_movement_and_boundary_support(atom_kernel):
     torch.testing.assert_close(y, expected, atol=3e-5, rtol=3e-5)
     torch.testing.assert_close(dx, expected_dx, atol=3e-5, rtol=3e-5)
     torch.testing.assert_close(dp, expected_dp, atol=3e-4, rtol=3e-4)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_cached_backward_when_only_atom_gradient_is_required():
+    torch.manual_seed(817)
+    layer = BlockStripLinear((128, 128), (64, 64), 256, device="cuda")
+    site = layer.strip
+    plan = execution_plan(site)
+    x = torch.randn(3, 128, device="cuda")
+    upstream = torch.randn(3, 128, device="cuda")
+    y = mapped_streamed_trainable(
+        layer,
+        x,
+        boxes=station_site_boxes(plan.circle, plan.section, 64),
+        witness_cols=balanced_home_columns(site),
+        window_rows=64,
+        atom_kernel="staged_listed",
+        cache_windows=1,
+    )
+    (dp,) = torch.autograd.grad(y, (site.atoms.p,), upstream)
+    expected = layer.reference(x)
+    (expected_dp,) = torch.autograd.grad(expected, (site.atoms.p,), upstream)
+    torch.testing.assert_close(y, expected, atol=3e-5, rtol=3e-5)
+    torch.testing.assert_close(dp, expected_dp, atol=3e-4, rtol=3e-4)

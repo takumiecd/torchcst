@@ -361,12 +361,15 @@ class _MappedStreamed(torch.autograd.Function):
         ctx.layer = layer
         ctx.window_rows = window_rows
         ctx.atom_kernel = atom_kernel
+        reuse_input_weight = ctx.needs_input_grad[0] and (
+            atom_kernel != "fused" or not ctx.needs_input_grad[1]
+        )
         output, cached = streamed_forward(
             layer,
             x,
             prepared=(packed, circle, section, offsets),
             weight_chunk_rows=window_rows,
-            cache_weight_rows=cache_rows,
+            cache_weight_rows=cache_rows if reuse_input_weight else 0,
             return_cache=True,
         )
         ctx.save_for_backward(x, packed, circle, section, offsets)
