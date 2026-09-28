@@ -41,6 +41,7 @@ def main():
         "column_interval_visited_pairs": 0,
         "column_active_pairs": 0,
         "tiles": {},
+        "group_skips": {},
     }
     tile_shapes = (
         (4, 4),
@@ -60,6 +61,11 @@ def main():
             "boundary": 0,
             "supported_pairs_inside": 0,
             "supported_pairs_boundary": 0,
+        }
+    for shape in ("16x32", "8x16"):
+        summary["group_skips"][shape] = {
+            order: {"groups": 0, "exact_outside": 0, "box_outside": 0}
+            for order in ("packed", "angle_sorted")
         }
     for station in stations.tolist():
         buckets = (
@@ -120,6 +126,55 @@ def main():
             entry["supported_pairs_boundary"] += (
                 int(active.sum().item()) - inside * row_tile * col_tile
             )
+            if (row_tile, col_tile) in ((16, 32), (8, 16)):
+                sites_by_tile = sites.reshape(
+                    64 // row_tile, row_tile, 64 // col_tile, col_tile, 4
+                ).permute(0, 2, 1, 3, 4)
+                lower = sites_by_tile.amin(dim=(2, 3))
+                upper = sites_by_tile.amax(dim=(2, 3))
+                center = atoms[:, None, None, 2:]
+                delta = torch.maximum(lower[None] - center, center - upper[None])
+                box_dist = delta.clamp_min(0).square().sum(-1)
+                box_hit = box_dist * atoms[:, None, None, 1] <= 1.0
+                assert bool((any_tile & ~box_hit).any().item()) is False
+                begin = 0
+                for bucket in buckets:
+                    length = offsets_cpu[bucket + 1] - offsets_cpu[bucket]
+                    stop = begin + length
+                    if length:
+                        relative = atoms[begin:stop, 2:4]
+                        angle = torch.atan2(
+                            directions[0, 0] * relative[:, 1]
+                            - directions[0, 1] * relative[:, 0],
+                            directions[0, 0] * relative[:, 0]
+                            + directions[0, 1] * relative[:, 1],
+                        )
+                        for order, permutation in (
+                            ("packed", torch.arange(length, device="cuda")),
+                            ("angle_sorted", torch.argsort(angle)),
+                        ):
+                            exact = any_tile[begin:stop][permutation]
+                            box = box_hit[begin:stop][permutation]
+                            padding = (-length) % 8
+                            if padding:
+                                exact = torch.cat(
+                                    (
+                                        exact,
+                                        exact.new_zeros((padding, *exact.shape[1:])),
+                                    )
+                                )
+                                box = torch.cat(
+                                    (box, box.new_zeros((padding, *box.shape[1:])))
+                                )
+                            exact_groups = exact.reshape(-1, 8, *exact.shape[1:]).any(1)
+                            box_groups = box.reshape(-1, 8, *box.shape[1:]).any(1)
+                            target = summary["group_skips"][f"{row_tile}x{col_tile}"][
+                                order
+                            ]
+                            target["groups"] += exact_groups.numel()
+                            target["exact_outside"] += int((~exact_groups).sum().item())
+                            target["box_outside"] += int((~box_groups).sum().item())
+                    begin = stop
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary), flush=True)
