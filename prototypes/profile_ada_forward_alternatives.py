@@ -40,12 +40,19 @@ def main():
     lists = build_listed_forward_candidates(layer, *prepared)
     x = torch.randn(m, n, device="cuda")
     y = torch.empty((m, n), device="cuda")
+    window_rows = min(1024, n // 2)
+    cache_rows = 0 if n == 1024 else 2048
 
     def bounded():
         return streamed_forward(
-            layer, x, prepared=prepared, weight_chunk_rows=1024,
-            cache_weight_rows=2048, materialize_mode="listed", listed_data=lists,
-            gemm_mode="ieee" if m == 128 else "tf32x3",
+            layer,
+            x,
+            prepared=prepared,
+            weight_chunk_rows=window_rows,
+            cache_weight_rows=cache_rows,
+            materialize_mode="listed",
+            listed_data=lists,
+            gemm_mode="ieee" if m == 128 or n == 1024 else "tf32x3",
         )
 
     configs = {
@@ -68,6 +75,7 @@ def main():
     bounded_ms, bounded_samples = measure(bounded)
     cases = {}
     for name, config in configs.items():
+
         def run(config=config):
             return launch_fused(layer, x, prepared, y, config)
 
@@ -82,7 +90,9 @@ def main():
                 "accuracy": accuracy,
                 "registers": kernel.n_regs,
                 "spills": kernel.n_spills,
-                "scratch_bytes": config.split_k * m * n * 4 if config.split_k > 1 else 0,
+                "scratch_bytes": config.split_k * m * n * 4
+                if config.split_k > 1
+                else 0,
             }
         except Exception as error:  # noqa: BLE001 - retain other result
             cases[name] = {"error": str(error)[:500]}

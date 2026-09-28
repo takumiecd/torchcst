@@ -28,16 +28,23 @@ def main():
     x = torch.randn((m, n), device="cuda", requires_grad=True)
     dy = torch.randn((m, n), device="cuda")
     optimizer = torch.optim.AdamW([layer.strip.atoms.p], lr=1e-3, foreach=True)
+    window_rows = min(1024, n // 2)
+    cache_windows = 0 if n == 1024 else 2
+    bounded_mode = m == 2048 and n > 1024
 
     def step():
         optimizer.zero_grad(set_to_none=True)
         x.grad = None
         y = mapped_streamed_trainable(
-            layer, x, boxes=boxes, witness_cols=hints,
-            window_rows=1024, cache_windows=2,
+            layer,
+            x,
+            boxes=boxes,
+            witness_cols=hints,
+            window_rows=window_rows,
+            cache_windows=cache_windows,
             atom_kernel="staged_listed",
-            gemm_mode="ieee" if m == 128 else "tf32x3_dx",
-            forward_gemm_mode="ieee" if m == 128 else "tf32x3",
+            gemm_mode="tf32x3_dx" if bounded_mode else "ieee",
+            forward_gemm_mode="tf32x3" if bounded_mode else "ieee",
             materialize_mode="listed",
         )
         y.backward(dy)
@@ -47,7 +54,10 @@ def main():
         step()
     torch.cuda.synchronize()
     with torch.profiler.profile(
-        activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ]
     ) as profiler:
         step()
         torch.cuda.synchronize()
@@ -59,6 +69,8 @@ def main():
         "torch": torch.__version__,
         "size": n,
         "rows": m,
+        "window_rows": window_rows,
+        "cache_windows": cache_windows,
         "atoms": round(0.05 * n * n),
         "steps": 1,
         **kernel_summary(trace, steps=1),

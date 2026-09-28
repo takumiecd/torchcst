@@ -25,3 +25,13 @@ seed 21、単層AdamW、FP32、TF32無効、全出力の許容`atol=rtol=3e-5`�
 両方とも全出力照合は違反0。denseのM=128は各回0.230–0.365 msと短時間測定の揺れが大きく、保持窓1枚の別runでは4.07倍だった。速度比は概ね4–5倍の目安。M=2048ではactivation等がピークを支配し、1024²のCSTによる節約は約5.8 MBしか残らない。1024²を主目標にすると、大形状で重要なメモリ上の利益と計算密度を評価しにくい。
 
 再現コードは`prototypes.profile_paired_dense_cst`と`prototypes.benchmark_mapped_training_memory`。測定JSONは`output/ada-20260928/cache-hypotheses/paired-dense-cst-1024-m128-cache0.json`、`paired-dense-cst-1024-m2048-cache0.json`、`step-1024-m{128,2048}-cst-cache0.json`、`step-1024-m{128,2048}-dense.json`。旧A100測定との比較は[サイズ別メモリ記録](five-percent-mapped-training-memory.ja.md)を参照。
+
+## 1024²向け経路とdispatchの判断
+
+現行の1024²学習は8192²と同じlisted候補、局所W生成、局所dWからatom勾配への集約を使い、W窓とGEMM精度だけサイズに合わせる。`torch.profiler`下の1ステップGPU kernel時間はM=128で0.848 ms、M=2048で1.182 ms。いずれも局所W生成4回が約0.260 ms、atom勾配2回が約0.212 msを占める。M=2048のGEMM群も合計約0.371 ms。profiler時間は通常の同期wall時間とは異なる。GEMMだけを別kernelへ切り替えても、1024²の差全体は解消しにくい。
+
+forward専用の既存融合候補をM=128で比較した。局所W＋GEMMが0.180 ms、A100向け融合設定が0.174 msだったが、後者は4 MiBのscratchを要求し、1024²全Wの4 MiBと同容量。scratchなしの単純融合は0.507 msで遅い。両候補は出力照合に通ったが、backwardは未実装であり、1024²学習用の代替backendとして採用できない。
+
+`CSTLinear`には既に`_IMPLEMENTATIONS`のbackend登録と`auto`選択がある。ただし現行`auto`は入力のM、GPU、学習時のメモリ上限を見ず、単一chartでは全Wを作る`materialized`を選ぶ。mapped試作の学習経路もこの登録表の外にある。**新しいPyTorch dispatcherを先に設けても、今の1024²を速くするkernelは増えない。** 次の実装順は、全W相当の一時領域を避ける1024²用forward/backward経路を試作・検証し、実測で勝った時にshape・M・dtype・device・学習モードを受ける小さな実行ポリシーへ登録すること。明示的なbackend指定を残し、自動選択が全Wへ戻らない条件をテストする。
+
+内訳とforward比較のJSONは`output/ada-20260928/cache-hypotheses/kernels-1024-m128.json`、`kernels-1024-m2048.json`、`forward-alternatives-1024-m128.json`。計測コードは`prototypes.profile_mapped_training_kernels`と`prototypes.profile_ada_forward_alternatives`。
