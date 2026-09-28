@@ -20,6 +20,18 @@ def _interval_sum(prefix, first, last, BK: tl.constexpr):
 
 
 @tr.jit
+def _interval_sum_scratch(
+    Scratch, station_local, cb, moment: tl.constexpr, first, last, BK: tl.constexpr
+):
+    cols = tl.arange(0, BK)
+    base = ((station_local * (64 // BK) + cb) * 20 + moment) * 64 * BK + cols
+    active = last > first
+    end_value = tl.load(Scratch + base + (last - 1) * BK, active, 0.0)
+    before_value = tl.load(Scratch + base + (first - 1) * BK, active & (first > 0), 0.0)
+    return end_value - before_value
+
+
+@tr.jit
 def _inside_row(Circle, station, row, rho, z, w, cx, cy, cz, cw, precision):
     valid = (row >= 0) & (row < 64)
     index = station * 64 + tl.maximum(tl.minimum(row, 63), 0)
@@ -47,6 +59,8 @@ def mapped_backward_atoms_moments(
     BK: tl.constexpr,
     STATION_START,
     ROW_START,
+    USE_SCRATCH: tl.constexpr = False,
+    Scratch=None,
 ):
     """Build local dW prefix moments and contract exact supported row intervals."""
     station = STATION_START + tl.program_id(0)
@@ -56,45 +70,46 @@ def mapped_backward_atoms_moments(
     rho = tl.load(Section + cols * 3)
     z = tl.load(Section + cols * 3 + 1)
     w = tl.load(Section + cols * 3 + 2)
-    cosine = tl.load(Circle + (station * 64 + rows) * 2)
-    sine = tl.load(Circle + (station * 64 + rows) * 2 + 1)
     c0 = tl.load(Circle + station * 64 * 2)
     s0 = tl.load(Circle + station * 64 * 2 + 1)
-    sx = cosine[:, None] * rho[None, :]
-    sy = sine[:, None] * rho[None, :]
     x0 = c0 * rho
     y0 = s0 * rho
-    ux = sx - x0[None, :]
-    uy = sy - y0[None, :]
-    h = ux * ux + uy * uy
-    logical_rows = (station // CG) * 64 + rows
-    logical_cols = (station % CG) * 64 + cols
-    gradient = tl.load(
-        DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :]
-    )
+    if not USE_SCRATCH:
+        cosine = tl.load(Circle + (station * 64 + rows) * 2)
+        sine = tl.load(Circle + (station * 64 + rows) * 2 + 1)
+        sx = cosine[:, None] * rho[None, :]
+        sy = sine[:, None] * rho[None, :]
+        ux = sx - x0[None, :]
+        uy = sy - y0[None, :]
+        h = ux * ux + uy * uy
+        logical_rows = (station // CG) * 64 + rows
+        logical_cols = (station % CG) * 64 + cols
+        gradient = tl.load(
+            DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :]
+        )
 
-    u2, uv, uh = ux * ux, ux * uy, ux * h
-    v2, vh, h2 = uy * uy, uy * h, h * h
-    m0 = tl.cumsum(gradient, 0)
-    m1 = tl.cumsum(gradient * ux, 0)
-    m2 = tl.cumsum(gradient * uy, 0)
-    m3 = tl.cumsum(gradient * h, 0)
-    m4 = tl.cumsum(gradient * u2, 0)
-    m5 = tl.cumsum(gradient * uv, 0)
-    m6 = tl.cumsum(gradient * uh, 0)
-    m7 = tl.cumsum(gradient * v2, 0)
-    m8 = tl.cumsum(gradient * vh, 0)
-    m9 = tl.cumsum(gradient * h2, 0)
-    m10 = tl.cumsum(gradient * u2 * ux, 0)
-    m11 = tl.cumsum(gradient * u2 * uy, 0)
-    m12 = tl.cumsum(gradient * u2 * h, 0)
-    m13 = tl.cumsum(gradient * uv * uy, 0)
-    m14 = tl.cumsum(gradient * uv * h, 0)
-    m15 = tl.cumsum(gradient * ux * h2, 0)
-    m16 = tl.cumsum(gradient * v2 * uy, 0)
-    m17 = tl.cumsum(gradient * v2 * h, 0)
-    m18 = tl.cumsum(gradient * uy * h2, 0)
-    m19 = tl.cumsum(gradient * h2 * h, 0)
+        u2, uv, uh = ux * ux, ux * uy, ux * h
+        v2, vh, h2 = uy * uy, uy * h, h * h
+        m0 = tl.cumsum(gradient, 0)
+        m1 = tl.cumsum(gradient * ux, 0)
+        m2 = tl.cumsum(gradient * uy, 0)
+        m3 = tl.cumsum(gradient * h, 0)
+        m4 = tl.cumsum(gradient * u2, 0)
+        m5 = tl.cumsum(gradient * uv, 0)
+        m6 = tl.cumsum(gradient * uh, 0)
+        m7 = tl.cumsum(gradient * v2, 0)
+        m8 = tl.cumsum(gradient * vh, 0)
+        m9 = tl.cumsum(gradient * h2, 0)
+        m10 = tl.cumsum(gradient * u2 * ux, 0)
+        m11 = tl.cumsum(gradient * u2 * uy, 0)
+        m12 = tl.cumsum(gradient * u2 * h, 0)
+        m13 = tl.cumsum(gradient * uv * uy, 0)
+        m14 = tl.cumsum(gradient * uv * h, 0)
+        m15 = tl.cumsum(gradient * ux * h2, 0)
+        m16 = tl.cumsum(gradient * v2 * uy, 0)
+        m17 = tl.cumsum(gradient * v2 * h, 0)
+        m18 = tl.cumsum(gradient * uy * h2, 0)
+        m19 = tl.cumsum(gradient * h2 * h, 0)
 
     c63 = tl.load(Circle + (station * 64 + 63) * 2)
     s63 = tl.load(Circle + (station * 64 + 63) * 2 + 1)
@@ -152,26 +167,89 @@ def mapped_backward_atoms_moments(
                     Circle, station, last - 1, rho, z, w, cx, cy, cz, cw, precision
                 )
 
-            g0 = _interval_sum(m0, first, last, BK)
-            g1 = _interval_sum(m1, first, last, BK)
-            g2 = _interval_sum(m2, first, last, BK)
-            g3 = _interval_sum(m3, first, last, BK)
-            g4 = _interval_sum(m4, first, last, BK)
-            g5 = _interval_sum(m5, first, last, BK)
-            g6 = _interval_sum(m6, first, last, BK)
-            g7 = _interval_sum(m7, first, last, BK)
-            g8 = _interval_sum(m8, first, last, BK)
-            g9 = _interval_sum(m9, first, last, BK)
-            g10 = _interval_sum(m10, first, last, BK)
-            g11 = _interval_sum(m11, first, last, BK)
-            g12 = _interval_sum(m12, first, last, BK)
-            g13 = _interval_sum(m13, first, last, BK)
-            g14 = _interval_sum(m14, first, last, BK)
-            g15 = _interval_sum(m15, first, last, BK)
-            g16 = _interval_sum(m16, first, last, BK)
-            g17 = _interval_sum(m17, first, last, BK)
-            g18 = _interval_sum(m18, first, last, BK)
-            g19 = _interval_sum(m19, first, last, BK)
+            if USE_SCRATCH:
+                local_station = tl.program_id(0)
+                g0 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 0, first, last, BK
+                )
+                g1 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 1, first, last, BK
+                )
+                g2 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 2, first, last, BK
+                )
+                g3 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 3, first, last, BK
+                )
+                g4 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 4, first, last, BK
+                )
+                g5 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 5, first, last, BK
+                )
+                g6 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 6, first, last, BK
+                )
+                g7 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 7, first, last, BK
+                )
+                g8 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 8, first, last, BK
+                )
+                g9 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 9, first, last, BK
+                )
+                g10 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 10, first, last, BK
+                )
+                g11 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 11, first, last, BK
+                )
+                g12 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 12, first, last, BK
+                )
+                g13 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 13, first, last, BK
+                )
+                g14 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 14, first, last, BK
+                )
+                g15 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 15, first, last, BK
+                )
+                g16 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 16, first, last, BK
+                )
+                g17 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 17, first, last, BK
+                )
+                g18 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 18, first, last, BK
+                )
+                g19 = _interval_sum_scratch(
+                    Scratch, local_station, cb, 19, first, last, BK
+                )
+            else:
+                g0 = _interval_sum(m0, first, last, BK)
+                g1 = _interval_sum(m1, first, last, BK)
+                g2 = _interval_sum(m2, first, last, BK)
+                g3 = _interval_sum(m3, first, last, BK)
+                g4 = _interval_sum(m4, first, last, BK)
+                g5 = _interval_sum(m5, first, last, BK)
+                g6 = _interval_sum(m6, first, last, BK)
+                g7 = _interval_sum(m7, first, last, BK)
+                g8 = _interval_sum(m8, first, last, BK)
+                g9 = _interval_sum(m9, first, last, BK)
+                g10 = _interval_sum(m10, first, last, BK)
+                g11 = _interval_sum(m11, first, last, BK)
+                g12 = _interval_sum(m12, first, last, BK)
+                g13 = _interval_sum(m13, first, last, BK)
+                g14 = _interval_sum(m14, first, last, BK)
+                g15 = _interval_sum(m15, first, last, BK)
+                g16 = _interval_sum(m16, first, last, BK)
+                g17 = _interval_sum(m17, first, last, BK)
+                g18 = _interval_sum(m18, first, last, BK)
+                g19 = _interval_sum(m19, first, last, BK)
 
             dx0, dy0 = cx - x0, cy - y0
             base_sq = (x0 - cx) * (x0 - cx) + (y0 - cy) * (y0 - cy)

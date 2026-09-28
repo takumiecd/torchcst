@@ -7,6 +7,7 @@ from pathlib import Path
 
 import torch
 
+from prototypes.block_moment_backward import mapped_backward_atoms_moments
 from prototypes.block_prefix_build import build_backward_prefix_moments
 from prototypes.block_streamed_backward import (
     mapped_backward_atoms_factored,
@@ -85,6 +86,7 @@ def main():
         )
 
     direct_ms = milliseconds(baseline)
+    reference = dp.clone()
     variants = []
     for bk in (4, 8, 16):
         scratch = torch.empty(
@@ -108,12 +110,41 @@ def main():
 
         try:
             elapsed = milliseconds(run)
+
+            def contract(bk=bk, scratch=scratch):
+                dp.zero_()
+                mapped_backward_atoms_moments[(station_count, 64 // bk)](
+                    dw,
+                    packed,
+                    circle,
+                    section,
+                    offsets,
+                    dp,
+                    K=n,
+                    CG=layer.column_groups,
+                    G=layer.strip.chart.tile_count,
+                    BK=bk,
+                    STATION_START=0,
+                    ROW_START=0,
+                    USE_SCRATCH=True,
+                    Scratch=scratch,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
+
+            contract_ms = milliseconds(contract)
+            difference = (dp - reference).abs()
             variants.append(
                 {
                     "bk": bk,
                     "prefix_ms": elapsed,
+                    "contract_ms": contract_ms,
                     "scratch_bytes": scratch.numel() * scratch.element_size(),
                     "finite": bool(torch.isfinite(scratch).all().item()),
+                    "max_abs_diff": float(difference.max().item()),
+                    "relative_l1": float(
+                        difference.sum().item() / reference.abs().sum().item()
+                    ),
                 }
             )
         except Exception as error:  # noqa: BLE001 - report variants independently
