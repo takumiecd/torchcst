@@ -1,6 +1,7 @@
 # 5% atom密度：全Wを作らずdense未満のforwardピークに到達
 
 小さい入力行数と学習時のbatch設計は[追加検討](five-percent-batch-memory-strategy.ja.md)を参照。
+[mapped学習ステップの測定](five-percent-mapped-training-memory.ja.md)ではbackwardとAdamWまで比較した。
 
 2026-09-28。ここでの5%は `A = round(0.05 × N × K)` 個のCST atomを意味し、論理重みの非ゼロ率ではない。A100 80GB PCIe MIG 3g.40gb（42 SM）、FP32、TF32無効、64×64論理tile、seed21で測定した。CST経路は全重み `W[N,K]` を作らず、1024行以下の局所窓を作り、入力行全体へ適用して再利用する。
 

@@ -1,6 +1,8 @@
 # 5% CST：学習時の入力行数とピークメモリ
 
-2026-09-28。ここでの5%は `A = round(0.05 × N × K)` 個のatom数を指す。現行mapped `BlockStripLinear` のCST経路はforward専用で、以下の新しい表は**学習ピークではない**。生成済みdenseとの比較では、dense側だけが全重み `W[N,K]` を保持する。CST側は全Wを作らず局所重み窓を再利用する。A100 80GB PCIe MIG 3g.40gb、FP32、TF32無効、seed21。各経路を独立プロセスで測り、全出力はdense oracleと照合した。GPU tensor割当ピークであり、CUDA contextとallocator reservedは含まない。
+その後、同じmapped幾何でbackwardとAdamWまで実行した[学習ピーク測定](five-percent-mapped-training-memory.ja.md)を追加した。以下のforward表と当時の設計判断はその前段階の記録。
+
+2026-09-28。ここでの5%は `A = round(0.05 × N × K)` 個のatom数を指す。この時点のmapped `BlockStripLinear` のCST経路はforward専用で、以下の表は**学習ピークではない**。生成済みdenseとの比較では、dense側だけが全重み `W[N,K]` を保持する。CST側は全Wを作らず局所重み窓を再利用する。A100 80GB PCIe MIG 3g.40gb、FP32、TF32無効、seed21。各経路を独立プロセスで測り、全出力はdense oracleと照合した。GPU tensor割当ピークであり、CUDA contextとallocator reservedは含まない。
 
 ## 「batch size」ではなく行列に入る総行数
 
@@ -29,7 +31,9 @@
 
 このmapped試作のatomパラメータは1 atomあたりFP32で5値なので、5%ではパラメータ要素数がdenseの約25%。FP32のパラメータ、勾配、AdamWの二つのmomentを同じ比率で保持できれば、4096²の1層でdense約256 MiB対CST約64 MiB、8192²で約1024 MiB対約256 MiBとなる。これは**常駐する4配列だけの容量見積もり**で、幾何、activation、routing scratch、backward中間値、optimizer一時領域を含まない。多層ではこの常駐差が各層に積み上がる可能性がある。
 
-既存の勾配対応native `CSTLinear` では4096²・batch128・AdamWの学習ステップピークがdense 358.9 MB対CST 144.0 MBだった。ただし[既存測定](five-percent-training-and-reuse.ja.md)のnative Stripはmapped `BlockStripLinear` と異なる幾何で、速度もCST 6468 ms対dense 3.785 msだった。このメモリ差を現在のmapped forward試作へ外挿しない。mapped経路の `dX` とatom `dP`、更新後の再配置が必要である。
+既存の勾配対応native `CSTLinear` では4096²・batch128・AdamWの学習ステップピークがdense 358.9 MB対CST 144.0 MBだった。ただし[既存測定](five-percent-training-and-reuse.ja.md)のnative Stripはmapped `BlockStripLinear` と異なる幾何で、速度もCST 6468 ms対dense 3.785 msだった。この値の外挿は避け、その後にmapped経路自体の[学習測定](five-percent-mapped-training-memory.ja.md)を実施した。
+
+native Stripでもmicrobatchを1・16・128行に変えて学習を測り直した。4096²のdense／CSTピークは1行で352.63／138.97 MB、16行で353.37／139.46 MB、128行で358.88／143.97 MB。1024²では1行の38.73／16.62 MBから2048行の68.21／50.29 MBへ増え、CSTの削減率は57.1%から26.3%へ低下した。4096²の16行×8回の勾配蓄積ではCSTピークが158.18 MBとなり、128行一括の143.97 MBより高い。2回目以降のforwardで既存のatom勾配と準備領域が重なるためである。source `5022253`、archive SHA256 `afa6b1dec5952e881a65c1b19c7c323effad923e81836b5a3d00f972970fa68d`。A100側で一致を確認し、結果は `output/triton-a100-20260928/train-{1024,4096}-m*.json` に保存した。
 
 ## 開発上の判断
 

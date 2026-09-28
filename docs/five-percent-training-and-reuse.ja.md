@@ -1,5 +1,7 @@
 # 5% atom：学習ステップの基準値と重み再利用
 
+後続の[同一mapped幾何での学習測定](five-percent-mapped-training-memory.ja.md)で、局所重み窓を使うbackwardとAdamWのピークを比較した。以下のnative Strip結果は別幾何の先行測定として残す。
+
 メモリ削減を必須条件とする場合は、追加の[実測ピークメモリ判定](five-percent-memory-first.ja.md)を参照。本資料の全重み再利用は速度の診断であり、実装候補ではない。
 
 2026-09-28。A100 80GB PCIe MIG 3g.40gb（42 SM）、FP32、TF32無効、seed 21。新しい二つの測定は**異なるCST幾何**を使うため、速度を一つの学習経路として合算しない。
