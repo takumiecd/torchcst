@@ -17,6 +17,7 @@ from prototypes.benchmark_large_forward import check
 from prototypes.benchmark_tile_study import mapped_control
 from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.support_box_routing import (
+    atomic_bucket_sort,
     balanced_home_columns,
     boxed_prepare,
     station_site_boxes,
@@ -32,7 +33,7 @@ def main():
     parser.add_argument("--weight-chunk-rows", type=int, default=1024)
     parser.add_argument(
         "--mode",
-        choices=("dense", "fused", "stream", "stream_fast", "stream_fast_decode"),
+        choices=("dense", "fused", "stream", "stream_fast", "stream_fast_decode", "stream_atomic"),
         required=True,
     )
     parser.add_argument("--output", type=Path, required=True)
@@ -84,14 +85,35 @@ def main():
             )
 
             def fn():
-                packed = boxed_prepare(
-                    site,
-                    site.atoms.p,
-                    boxes=boxes,
-                    witness_cols=hints,
-                    fast_witness=True,
-                    fast_decode=args.mode == "stream_fast_decode",
-                )
+                if args.mode == "stream_atomic":
+                    original_sort = torch.sort
+
+                    def bucket_sort(keys, **_kwargs):
+                        return atomic_bucket_sort(
+                            keys, 2 * plan.routing.starts.numel() + 1
+                        )
+
+                    torch.sort = bucket_sort
+                    try:
+                        packed = boxed_prepare(
+                            site,
+                            site.atoms.p,
+                            boxes=boxes,
+                            witness_cols=hints,
+                            fast_witness=True,
+                            fast_decode=True,
+                        )
+                    finally:
+                        torch.sort = original_sort
+                else:
+                    packed = boxed_prepare(
+                        site,
+                        site.atoms.p,
+                        boxes=boxes,
+                        witness_cols=hints,
+                        fast_witness=True,
+                        fast_decode=args.mode == "stream_fast_decode",
+                    )
                 return layer(
                     x,
                     backend="triton_streamed",

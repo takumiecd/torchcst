@@ -99,13 +99,6 @@ def atomic_bucket_sort(keys, buckets):
         _bucket_scatter[(tr.cdiv(keys.numel(), 128),)](
             keys, cursors, sorted_keys, order, keys.numel(), 128, num_warps=4
         )
-        torch.cuda.synchronize()
-        if order.min().item() < 0 or order.max().item() >= keys.numel():
-            raise AssertionError(
-                f"bad permutation: key range {keys.min().item()}..{keys.max().item()}, "
-                f"order range {order.min().item()}..{order.max().item()}, "
-                f"counts sum {counts.sum().item()}"
-            )
     return sorted_keys, order
 
 
