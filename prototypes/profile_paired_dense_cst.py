@@ -36,6 +36,8 @@ def main():
     )
     parser.add_argument("--compare-baseline", action="store_true")
     parser.add_argument("--compare-csr", action="store_true")
+    parser.add_argument("--compare-unroll", action="store_true")
+    parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--baseline-same-gemm", action="store_true")
     parser.add_argument("--graph", action="store_true")
     parser.add_argument(
@@ -48,7 +50,17 @@ def main():
         parser.error(
             "alternate window rows and cache windows must be specified together"
         )
-    if sum((args.compare_baseline, args.compare_csr, compare_alternate)) > 1:
+    if (
+        sum(
+            (
+                args.compare_baseline,
+                args.compare_csr,
+                args.compare_unroll,
+                compare_alternate,
+            )
+        )
+        > 1
+    ):
         parser.error("choose one comparison mode")
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -91,6 +103,7 @@ def main():
             gemm_mode=cst_mode,
             forward_gemm_mode=forward_mode,
             materialize_mode=args.materialize_mode,
+            listed_unroll=args.listed_unroll,
         )
         accuracy = check(actual, expected)
         assert accuracy["passed"], accuracy
@@ -134,6 +147,7 @@ def main():
                     if mode == "cst_csr"
                     else args.materialize_mode
                 ),
+                listed_unroll=1 if mode == "cst_unroll1" else args.listed_unroll,
             )
         output.backward(gradient)
         optimizers[key].step()
@@ -143,6 +157,8 @@ def main():
         if args.compare_baseline
         else ("dense", "cst_csr", "cst")
         if args.compare_csr
+        else ("dense", "cst_unroll1", "cst")
+        if args.compare_unroll
         else ("dense", "cst_alt", "cst")
         if compare_alternate
         else ("dense", "cst")
@@ -173,6 +189,7 @@ def main():
         "rows": m,
         "cst_mode": cst_mode,
         "materialize_mode": args.materialize_mode,
+        "listed_unroll": args.listed_unroll,
         "graph": args.graph,
         "optimizer_mode": args.optimizer_mode,
         "window_rows": window_rows,
@@ -195,6 +212,11 @@ def main():
     if args.compare_csr:
         result["paired_cst_vs_csr_ratio_median"] = statistics.median(
             cst / csr for cst, csr in zip(samples["cst"], samples["cst_csr"])
+        )
+    if args.compare_unroll:
+        result["paired_cst_vs_unroll1_ratio_median"] = statistics.median(
+            cst / baseline
+            for cst, baseline in zip(samples["cst"], samples["cst_unroll1"])
         )
     if compare_alternate:
         result["alternate"] = {

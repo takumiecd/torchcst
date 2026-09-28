@@ -29,6 +29,7 @@ def streamed_forward(
     gemm_mode="ieee",
     materialize_mode="default",
     listed_data=None,
+    listed_unroll=1,
 ):
     """Generate a row window of logical W and multiply it before reusing the buffer."""
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64:
@@ -43,6 +44,8 @@ def streamed_forward(
         raise ValueError("unsupported materialization tile")
     if gemm_mode not in ("ieee", "tf32x3", "fp16x3"):
         raise ValueError("unknown forward gemm_mode")
+    if listed_unroll not in (1, 2, 4, 8):
+        raise ValueError("listed_unroll must be 1, 2, 4, or 8")
     if materialize_mode not in (
         "default",
         "listed",
@@ -126,6 +129,11 @@ def streamed_forward(
                 CSR=csr,
                 BOUNDED=materialize_mode == "listed_bounded",
                 Bases=list_bases,
+                **(
+                    {"LOOP_UNROLL": listed_unroll}
+                    if materialize_mode != "listed_parallel"
+                    else {}
+                ),
                 STATION_START=start // 64 * layer.column_groups,
                 ROW_START=start,
                 num_warps=4 if materialize_mode == "listed_parallel" else 1,

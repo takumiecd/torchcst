@@ -6,7 +6,10 @@ from pathlib import Path
 
 import torch
 
-from prototypes.block_streamed_backward import trainable_boxed_prepare
+from prototypes.block_streamed_backward import (
+    build_listed_forward_candidates_bounded,
+    trainable_boxed_prepare,
+)
 from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.block_tile_atom_lists import (
     build_tile_atom_lists,
@@ -24,6 +27,7 @@ def main():
     parser.add_argument("--triweight-sweep", action="store_true")
     parser.add_argument("--lane-sweep", action="store_true")
     parser.add_argument("--partial-sweep", action="store_true")
+    parser.add_argument("--bounded", action="store_true")
     args = parser.parse_args()
     n = args.size
     torch.manual_seed(21)
@@ -47,25 +51,30 @@ def main():
         .max()
         .item()
     )
-    dtype = torch.uint8 if max_candidates <= 256 else torch.uint16
-    lists = torch.empty((g, 4, max_candidates), device="cuda", dtype=dtype)
-    counts = torch.empty((g, 4), device="cuda", dtype=torch.int32)
-    build_tile_atom_lists[(g, 4)](
-        packed,
-        circle,
-        section,
-        offsets,
-        lists,
-        counts,
-        G=g,
-        MAX_CANDIDATES=max_candidates,
-        BA=8,
-        COMPACT=True,
-        BR=16,
-        BC=64,
-        num_warps=4,
-        enable_fp_fusion=False,
-    )
+    if args.bounded:
+        lists, counts, max_candidates = build_listed_forward_candidates_bounded(
+            layer, packed, circle, section, offsets
+        )
+    else:
+        dtype = torch.uint8 if max_candidates <= 256 else torch.uint16
+        lists = torch.empty((g, 4, max_candidates), device="cuda", dtype=dtype)
+        counts = torch.empty((g, 4), device="cuda", dtype=torch.int32)
+        build_tile_atom_lists[(g, 4)](
+            packed,
+            circle,
+            section,
+            offsets,
+            lists,
+            counts,
+            G=g,
+            MAX_CANDIDATES=max_candidates,
+            BA=8,
+            COMPACT=True,
+            BR=16,
+            BC=64,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
     x = torch.randn(128, n, device="cuda")
     dy = torch.randn(128, 1024, device="cuda")
     dw = torch.mm(dy.T, x)
@@ -137,6 +146,7 @@ def main():
                 PIPE_STAGES=stages,
                 LOOP_UNROLL=unroll,
                 OPT_TRIWEIGHT=triweight,
+                BOUNDED=args.bounded,
                 WRITE_PARTIAL=write_partial,
                 Partial=partial,
                 num_warps=warps,
@@ -171,6 +181,13 @@ def main():
                 "ms": ms,
                 "relative_l1": error,
                 "max_abs_diff": max_abs,
+                "violations_3e_4": int(
+                    ((dp - reference).abs() > 3e-4 + 3e-4 * reference.abs())
+                    .sum()
+                    .item()
+                )
+                if not write_partial
+                else None,
                 "registers": kernel.n_regs,
                 "spills": kernel.n_spills,
             }
@@ -186,7 +203,10 @@ def main():
             }
         results.append(row)
         print(json.dumps(row), flush=True)
-    args.output.write_text(json.dumps({"size": n, "cases": results}, indent=2) + "\n")
+    args.output.write_text(
+        json.dumps({"size": n, "bounded": args.bounded, "cases": results}, indent=2)
+        + "\n"
+    )
 
 
 if __name__ == "__main__":

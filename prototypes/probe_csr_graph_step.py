@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--window-rows", type=int, default=None)
     parser.add_argument("--cache-windows", type=int, default=None)
     parser.add_argument("--verify-steps", type=int, default=0)
+    parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument(
         "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
     )
@@ -64,6 +65,7 @@ def main():
             gemm_mode=mode,
             forward_gemm_mode=forward_mode,
             materialize_mode=args.materialize_mode,
+            listed_unroll=args.listed_unroll,
         )
         y.backward(dy)
         optimizer.step()
@@ -76,6 +78,7 @@ def main():
         "shape": [m, n, n],
         "device": torch.cuda.get_device_name(),
         "materialize_mode": args.materialize_mode,
+        "listed_unroll": args.listed_unroll,
         "optimizer_mode": args.optimizer_mode,
         "cache_windows": cache_windows,
         "window_rows": window_rows,
@@ -129,6 +132,7 @@ def main():
                     gemm_mode=mode,
                     forward_gemm_mode=forward_mode,
                     materialize_mode=args.materialize_mode,
+                    listed_unroll=args.listed_unroll,
                 )
                 eager_y.backward(dy)
                 eager_optimizer.step()

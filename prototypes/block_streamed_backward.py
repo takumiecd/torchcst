@@ -482,11 +482,13 @@ class _MappedStreamed(torch.autograd.Function):
         gemm_mode,
         forward_gemm_mode,
         materialize_mode,
+        listed_unroll,
     ):
         ctx.layer = layer
         ctx.window_rows = window_rows
         ctx.atom_kernel = atom_kernel
         ctx.materialize_mode = materialize_mode
+        ctx.listed_unroll = listed_unroll
         ctx.gemm_mode = gemm_mode
         ctx.weight_fp_fusion = weight_fp_fusion_enabled(x.device)
         if materialize_mode == "listed_csr":
@@ -515,6 +517,7 @@ class _MappedStreamed(torch.autograd.Function):
             gemm_mode=forward_gemm_mode,
             materialize_mode=materialize_mode,
             listed_data=ctx.listed_data,
+            listed_unroll=listed_unroll,
         )
         ctx.save_for_backward(x, packed, circle, section, offsets)
         ctx.cached_w = cached
@@ -573,6 +576,11 @@ class _MappedStreamed(torch.autograd.Function):
                             CSR=csr,
                             BOUNDED=ctx.materialize_mode == "listed_bounded",
                             Bases=list_bases,
+                            **(
+                                {"LOOP_UNROLL": ctx.listed_unroll}
+                                if ctx.materialize_mode != "listed_parallel"
+                                else {}
+                            ),
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
                             num_warps=4
@@ -856,7 +864,7 @@ class _MappedStreamed(torch.autograd.Function):
                     enable_fp_fusion=False,
                 )
         ctx.listed_data = None
-        return dx, dp, None, None, None, None, None, None, None, None, None, None
+        return dx, dp, None, None, None, None, None, None, None, None, None, None, None
 
 
 def mapped_streamed_trainable(
@@ -871,6 +879,7 @@ def mapped_streamed_trainable(
     gemm_mode="ieee",
     forward_gemm_mode="ieee",
     materialize_mode="default",
+    listed_unroll=1,
 ):
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
         raise ValueError("trainable mapped prototype requires full 64x64 tiles")
@@ -917,6 +926,8 @@ def mapped_streamed_trainable(
         "listed_bounded",
     ):
         raise ValueError("unknown materialize_mode")
+    if listed_unroll not in (1, 2, 4, 8):
+        raise ValueError("listed_unroll must be 1, 2, 4, or 8")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )
@@ -930,4 +941,5 @@ def mapped_streamed_trainable(
         gemm_mode,
         forward_gemm_mode,
         materialize_mode,
+        listed_unroll,
     )

@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
     parser.add_argument("--graph", action="store_true")
     parser.add_argument("--cache-windows", type=int, default=None)
+    parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument(
         "--materialize-mode",
         choices=("listed", "listed_csr", "listed_bounded"),
@@ -57,6 +58,7 @@ def main():
             gemm_mode="fp16x3_dx" if bounded_mode else "ieee",
             forward_gemm_mode="fp16x3" if bounded_mode else "ieee",
             materialize_mode=args.materialize_mode,
+            listed_unroll=args.listed_unroll,
         )
         y.backward(dy)
         optimizer.step()
@@ -89,6 +91,7 @@ def main():
         "rows": m,
         "graph": args.graph,
         "materialize_mode": args.materialize_mode,
+        "listed_unroll": args.listed_unroll,
         "window_rows": window_rows,
         "cache_windows": cache_windows,
         "atoms": round(0.05 * n * n),

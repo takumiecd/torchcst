@@ -1,0 +1,30 @@
+{
+  "size": 8192,
+  "rows": 2048,
+  "seed": 21,
+  "listed_unroll": 4,
+  "output": {
+    "max_abs": 1.817941665649414e-06,
+    "relative_l1": 1.2860671631642617e-05,
+    "relative_l2": 1.3109531209920533e-05,
+    "violations_3e_5": 0,
+    "violations_3e_4": 0,
+    "elements": 16777216
+  },
+  "dx": {
+    "max_abs": 2.384185791015625e-07,
+    "relative_l1": 1.7535484175823512e-06,
+    "relative_l2": 1.767517574080557e-06,
+    "violations_3e_5": 0,
+    "violations_3e_4": 0,
+    "elements": 16777216
+  },
+  "dp": {
+    "max_abs": 0.00048828125,
+    "relative_l1": 9.60089607815462e-09,
+    "relative_l2": 2.8932833018302517e-08,
+    "violations_3e_5": 13,
+    "violations_3e_4": 0,
+    "elements": 16777215
+  }
+}

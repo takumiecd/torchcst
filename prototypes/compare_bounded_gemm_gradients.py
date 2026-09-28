@@ -45,6 +45,7 @@ def main():
         default="default",
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
     args = parser.parse_args()
     torch.manual_seed(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -69,6 +70,7 @@ def main():
             gemm_mode=gemm_mode,
             forward_gemm_mode=args.forward_gemm_mode if experimental else "ieee",
             materialize_mode=args.materialize_mode if experimental else "default",
+            listed_unroll=args.listed_unroll if experimental else 1,
         )
         dx, dp = torch.autograd.grad(y, (x, layer.strip.atoms.p), gradient)
         torch.cuda.synchronize()
@@ -80,6 +82,7 @@ def main():
         "size": n,
         "rows": m,
         "seed": args.seed,
+        "listed_unroll": args.listed_unroll,
         "output": compare(outputs[1], outputs[0]),
         "dx": compare(x3[0], ieee[0]),
         "dp": compare(x3[1], ieee[1]),

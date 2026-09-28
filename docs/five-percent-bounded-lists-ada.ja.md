@@ -56,3 +56,24 @@ CUDA C++試作の実行にはCUDA Toolkitと`ninja`が必要だった。Ada側�
 この追加検証後、RTX 6000 Adaで`tests/test_block_streamed_backward.py`と`tests/test_streamed_materialization.py`は61件通過した。結果JSONは`docs/data/ada-20260929/`にも保存した。次は局所W・atom縮約で実際に処理している候補atomとsiteの比率を測り、候補選別を強める余地を判断する。
 
 その後、32 stationを標本にして実際の支持域とbox候補を照合した。16×64 tileの26,208個のatom–tile対のうち、boxが残すのは18,809件（71.77%）、真に1サイト以上を支持するのは18,229件（69.56%）。**box候補内の偽陽性は3.08%**だった。8×64でもbox候補33,935件に対する偽陽性は4.26%で、より細かく分ける費用を正当化しにくい。これは標本・初期配置についての割合であり、atom移動後や別の密度での上限ではない。64×64 station内のatom–site対全体では約44.93%が支持域内にある。候補をさらに削る余地より、候補のうち支持域外の個別site約37%に費やす演算と、実際に支持するsiteの計算を減らす方が有望と判断した。診断コードは`prototypes.profile_backward_support`、集計JSONは`docs/data/ada-20260929/overnight-support-ratio-box.json`。
+
+## 03:30 JST：局所Wのループ展開
+
+Adaが引き続き空いていることを前後に確認した。`materialize_listed`のatomループへTritonの`loop_unroll_factor`を付け、`listed_unroll=4`を明示的に選べるようにした。既定値1と公開backendは変更しない。最初の1024×8192窓では、1/2/4/8回展開のGraph中央値が0.538/0.504/0.490/0.494 ms。どの版の生成Wも基準と**ビット一致**した。4回展開を採用候補とする。
+
+8192²・M=2048・5%の完全AdamWステップで、dense、従来unroll1、unroll4のGraphを同じプロセスで交互に32回、続いて48回実行した。前後ともRTX 6000 Ada profileで使用率0%、割当39 MiB、別ジョブは見えなかった。
+
+| 交互Graph測定 | 32回 | 48回 |
+| --- | ---: | ---: |
+| unroll4 / unroll1 対応ペア比の中央値 | **0.95896** | **0.95899** |
+| unroll4 / dense 対応ペア比の中央値 | 1.2256 | 1.2385 |
+| unroll4単独中央値 | 38.37 ms | 39.45 ms |
+| unroll1単独中央値 | 42.44 ms | 43.27 ms |
+
+対応ペアの比では約**4.1%短縮**。単独中央値にはGPUの時間変動が混ざるため、差4 msをそのまま改善量とは扱わない。1ステップのGPU profilerでは局所W生成12呼び出し合計が6.351→5.293 ms、全kernel合計が34.929→33.580 msとなり、改善方向は交互Graph測定と一致した。なお異なるprofile実行間の小差に厳密な因果帰属はしない。
+
+別プロセスのGraph capture割当ピークはunroll4 CST **884,781,056 bytes**、dense **1,577,585,152 bytes**。従来unroll1とCSTピークは同値で、denseより43.9%低い。全W・全dWは引き続き作らない。seed 21/22/23のIEEE対照ではforwardと入力勾配の3e-5基準違反0、atom勾配の3e-4基準違反0。Graphとeagerの12更新後の最大パラメータ差は7.63e-6。強制overflowとGraph再実行を含むGPUテストは63件通過した。
+
+並行して二つの案を採否判定した。WをGEMM前に高位・低位のFP16へ分ける試作は局所forward 0.546→0.549 msで改善せず、入力勾配GEMM単体は0.578→0.547 msだったが、分割コストと2配列の生成・保持を含めていない。完全ステップへは接続しない。atom勾配で1 CTA当たりのatomレーンやwarp数を増やす試行は、最良のBA2・1 warpが局所0.897→0.874 msと小差に留まり、atom勾配の3e-4基準を228,724要素で外した。BA4以上はregister spillや低速化も発生したため採用しない。両方とも診断コードとJSONを保存した。
+
+推奨する実験設定は`mapped_streamed_trainable(..., materialize_mode="listed_bounded", listed_unroll=4, window_rows=1024, cache_windows=4, gemm_mode="fp16x3_dx", forward_gemm_mode="fp16x3", atom_kernel="staged_listed")`。unroll4は大形状Adaで検証した明示的な試作オプションである。測定CLIは`prototypes.profile_paired_dense_cst --compare-unroll --listed-unroll 4 --graph`と`prototypes.probe_csr_graph_step --listed-unroll 4`。JSONは`docs/data/ada-20260929/overnight-unroll4-*.json`、単独カーネル比較は`overnight-w-unroll.json`、反証は`overnight-bounded-lanes.json`と`overnight-presplit-weight-gemm.json`。

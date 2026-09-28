@@ -23,6 +23,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, choices=(1024, 8192), required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--unroll-sweep", action="store_true")
     args = parser.parse_args()
     torch.manual_seed(21)
     n = args.size
@@ -49,17 +50,30 @@ def main():
     errors = {}
     reference = None
     for mode, data in candidates.items():
+        if args.unroll_sweep and mode != "bounded":
+            continue
         if mode == "csr":
             lists, counts, bases, _ = data
             cap = 0
         else:
             lists, counts, cap = data
             bases = None
-        for warps in (1, 2, 4, 8):
-            name = f"{mode}-{warps}"
+        configurations = (
+            ((1, unroll) for unroll in (1, 2, 4, 8))
+            if args.unroll_sweep
+            else ((warps, 1) for warps in (1, 2, 4, 8))
+        )
+        for warps, unroll in configurations:
+            name = f"{mode}-{warps}-unroll{unroll}"
 
             def run(
-                lists=lists, counts=counts, cap=cap, mode=mode, bases=bases, warps=warps
+                lists=lists,
+                counts=counts,
+                cap=cap,
+                mode=mode,
+                bases=bases,
+                warps=warps,
+                unroll=unroll,
             ):
                 materialize_listed[grid](
                     packed,
@@ -79,6 +93,7 @@ def main():
                     CSR=mode == "csr",
                     BOUNDED=mode == "bounded",
                     Bases=bases,
+                    LOOP_UNROLL=unroll,
                     num_warps=warps,
                     enable_fp_fusion=False,
                 )
@@ -110,8 +125,9 @@ def main():
         "device": torch.cuda.get_device_name(),
         "size": n,
         "window_rows": rows,
+        "unroll_sweep": args.unroll_sweep,
         "bounded_capacity": candidates["bounded"][2],
-        "max_abs_vs_csr_1warp": errors,
+        "max_abs_vs_first_configuration": errors,
         "median_ms": {name: statistics.median(v) for name, v in samples.items()},
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
