@@ -68,6 +68,40 @@ def main():
         }
         results.append(row)
         print(json.dumps(row), flush=True)
+    torch.set_float32_matmul_precision("high")
+    x_hi = x.to(torch.float16).to(torch.float32)
+    dy_hi = dy.to(torch.float16).to(torch.float32)
+    w_hi = w.to(torch.float16).to(torch.float32)
+    x_lo = x - x_hi
+    dy_lo = dy - dy_hi
+    w_lo = w - w_hi
+
+    def dw_three():
+        torch.mm(dy_hi.T, x_hi, out=dw)
+        dw.addmm_(dy_hi.T, x_lo)
+        dw.addmm_(dy_lo.T, x_hi)
+
+    def dx_three():
+        torch.mm(dy_hi, w_hi, out=dx)
+        dx.addmm_(dy_hi, w_lo)
+        dx.addmm_(dy_lo, w_hi)
+
+    dw_three()
+    dx_three()
+    row = {
+        "mode": "three_tf32_products",
+        "allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+        "dw_ms": milliseconds(dw_three),
+        "dx_ms": milliseconds(dx_three),
+        "dw_error": compare(dw, reference_dw),
+        "dx_error": compare(dx, reference_dx),
+        "split_bytes": sum(
+            tensor.numel() * tensor.element_size()
+            for tensor in (x_hi, x_lo, dy_hi, dy_lo, w_hi, w_lo)
+        ),
+    }
+    results.append(row)
+    print(json.dumps(row), flush=True)
     output = {
         "device": torch.cuda.get_device_name(),
         "size": n,
