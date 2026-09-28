@@ -28,7 +28,10 @@ def mapped_backward_atoms_interval(
     ROW_START,
 ):
     """Accumulate each atom once while visiting its possible support rows."""
-    tl.static_assert(S == 64 and T == 64 and S % BR == 0 and T % BK == 0)
+    tl.static_assert(S == 64)
+    tl.static_assert(T == 64)
+    tl.static_assert(S % BR == 0)
+    tl.static_assert(T % BK == 0)
     station = STATION_START + tl.program_id(0)
     lane = tl.program_id(1)
     row_group = station // CG
