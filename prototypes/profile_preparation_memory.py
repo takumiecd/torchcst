@@ -8,6 +8,7 @@ import torch
 
 from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.support_box_routing import (
+    atomic_bucket_sort,
     balanced_home_columns,
     boxed_prepare,
     station_site_boxes,
@@ -21,7 +22,7 @@ def main():
     parser.add_argument("--size", type=int, choices=(4096, 8192), required=True)
     parser.add_argument("--fast-decode", action="store_true")
     parser.add_argument(
-        "--sort-mode", choices=("sort_stable", "argsort_stable", "sort_unstable"),
+        "--sort-mode", choices=("sort_stable", "argsort_stable", "sort_unstable", "atomic_bucket"),
         default="sort_stable",
     )
     parser.add_argument("--output", type=Path, required=True)
@@ -70,6 +71,8 @@ def main():
         elif args.sort_mode == "argsort_stable":
             order = torch.argsort(sort_args[0], stable=True)
             sorted_result = sort_args[0][order], order
+        elif args.sort_mode == "atomic_bucket":
+            sorted_result = atomic_bucket_sort(sort_args[0], 2 * (n // 64) + 1)
         else:
             sorted_result = original_sort(sort_args[0], stable=False)
         torch.cuda.synchronize()

@@ -62,6 +62,48 @@ def decode_intrinsic_torus_compact(geometry, center):
     return decoded
 
 
+@tr.jit
+def _bucket_histogram(Keys, Counts, A: tl.constexpr, BINS: tl.constexpr, B: tl.constexpr):
+    atom = tl.program_id(0) * B + tl.arange(0, B)
+    key = tl.load(Keys + atom, atom < A, BINS)
+    histogram = tl.histogram(key, BINS)
+    bucket = tl.arange(0, BINS)
+    tl.atomic_add(Counts + bucket, histogram, sem="relaxed")
+
+
+@tr.jit
+def _bucket_scatter(
+    Keys, Cursors, SortedKeys, Order, A: tl.constexpr, B: tl.constexpr
+):
+    atom = tl.program_id(0) * B + tl.arange(0, B)
+    valid = atom < A
+    key = tl.load(Keys + atom, valid, 0)
+    position = tl.atomic_add(Cursors + key, 1, valid, sem="relaxed")
+    tl.store(SortedKeys + position, key, valid)
+    tl.store(Order + position, atom, valid)
+
+
+@torch.no_grad()
+def atomic_bucket_sort(keys, buckets):
+    """Forward-only low-scratch bucket permutation; order within a bucket varies."""
+    if keys.dtype != torch.int32 or keys.device.type != "cuda":
+        raise ValueError("atomic bucket sort requires CUDA int32 keys")
+    bins = tr.next_power_of_2(buckets)
+    counts = torch.zeros(bins, dtype=torch.int32, device=keys.device)
+    if keys.numel():
+        _bucket_histogram[(tr.cdiv(keys.numel(), 1024),)](
+            keys, counts, keys.numel(), bins, 1024, num_warps=4
+        )
+    cursors = torch.cumsum(counts, dim=0, dtype=torch.int32) - counts
+    sorted_keys = torch.empty_like(keys)
+    order = torch.empty(keys.numel(), dtype=torch.int32, device=keys.device)
+    if keys.numel():
+        _bucket_scatter[(tr.cdiv(keys.numel(), 128),)](
+            keys, cursors, sorted_keys, order, keys.numel(), 128, num_warps=4
+        )
+    return sorted_keys, order
+
+
 @torch.no_grad()
 def station_site_boxes(circle, section, station_rows):
     """Outward-padded AABBs for all sampled 4D sites in each station."""
