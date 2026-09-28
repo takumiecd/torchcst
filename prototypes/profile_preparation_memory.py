@@ -20,6 +20,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, choices=(4096, 8192), required=True)
     parser.add_argument("--fast-decode", action="store_true")
+    parser.add_argument(
+        "--sort-mode", choices=("sort_stable", "argsort_stable", "sort_unstable"),
+        default="sort_stable",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
     args = parser.parse_args()
@@ -61,7 +65,13 @@ def main():
             "stable": sort_kwargs.get("stable"),
             "input_bytes": sort_args[0].numel() * sort_args[0].element_size(),
         }
-        sorted_result = original_sort(*sort_args, **sort_kwargs)
+        if args.sort_mode == "sort_stable":
+            sorted_result = original_sort(*sort_args, **sort_kwargs)
+        elif args.sort_mode == "argsort_stable":
+            order = torch.argsort(sort_args[0], stable=True)
+            sorted_result = sort_args[0][order], order
+        else:
+            sorted_result = original_sort(sort_args[0], stable=False)
         torch.cuda.synchronize()
         event["live_after_bytes"] = torch.cuda.memory_allocated()
         event["peak_after_bytes"] = torch.cuda.max_memory_allocated()
@@ -91,6 +101,7 @@ def main():
         "shape": [128, n, n],
         "atoms": site.atoms.p.shape[0],
         "fast_decode": args.fast_decode,
+        "sort_mode": args.sort_mode,
         "input_bytes": x.numel() * x.element_size(),
         "atom_parameter_bytes": site.atoms.p.numel() * site.atoms.p.element_size(),
         "prepared_payload_bytes": sum(
