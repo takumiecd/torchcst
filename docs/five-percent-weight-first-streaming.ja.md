@@ -1,5 +1,7 @@
 # 5% atom密度：局所重みを先に作って入力へ使い切る
 
+この実行順序のまま準備処理を縮小した[更新測定](five-percent-compact-native.ja.md)で、128行入力でもdense未満のforwardピークに到達した。以下は準備処理の変更前の測定記録。
+
 2026-09-28。`atom数 = round(0.05 × N × K)`、A100 80GB PCIe MIG 3g.40gb（42 SM）、FP32、TF32無効、seed21。全論理重み `W[N,K]` を保持せず、局所重み窓を作って入力の全行に使い、同じbufferを次の窓へ使い回す。
 
 ```text
