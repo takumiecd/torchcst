@@ -57,6 +57,8 @@ def main():
         shape: {"full": 0, "boundary": 0, "outside": 0}
         for shape in ((16, 64), (8, 32), (8, 16), (4, 16))
     }
+    active_site_pairs = 0
+    sampled_site_pairs = 0
     samples = 64
     for flat_tile in torch.linspace(
         0, counts.numel() - 1, steps=samples, dtype=torch.long
@@ -94,6 +96,8 @@ def main():
         precision = packed[atoms, 1]
         scaled = ((sites[None] - centers[:, None, None, :]) ** 2).sum(-1)
         scaled *= precision[:, None, None]
+        active_site_pairs += int((scaled < 1).sum().item())
+        sampled_site_pairs += scaled.numel()
         for (tile_rows, tile_cols), record in support.items():
             shaped = scaled.reshape(
                 count, 16 // tile_rows, tile_rows, 64 // tile_cols, tile_cols
@@ -104,6 +108,11 @@ def main():
             record["outside"] += int((lo >= 1).sum().item())
             record["boundary"] += int(((lo < 1) & (hi >= 1)).sum().item())
     result["sampled_candidate_support"] = {}
+    result["sampled_atom_site_pairs"] = {
+        "pairs": sampled_site_pairs,
+        "inside_support_fraction": active_site_pairs / sampled_site_pairs,
+        "outside_support_fraction": 1 - active_site_pairs / sampled_site_pairs,
+    }
     for shape, record in support.items():
         total = sum(record.values())
         result["sampled_candidate_support"][f"{shape[0]}x{shape[1]}"] = {
