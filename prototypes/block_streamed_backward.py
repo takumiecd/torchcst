@@ -400,7 +400,7 @@ class _MappedStreamed(torch.autograd.Function):
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
                             num_warps=4,
-                            enable_fp_fusion=False,
+                            enable_fp_fusion=ctx.atom_kernel == "staged",
                         )
                         if ctx.atom_kernel == "fused" and dx is not None:
                             dx.addmm_(dy[:, start : start + rows], w[:rows])
