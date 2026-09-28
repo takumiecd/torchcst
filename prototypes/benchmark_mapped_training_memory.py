@@ -38,6 +38,7 @@ def main():
         "--materialize-mode", choices=("default", "listed"), default="default"
     )
     parser.add_argument("--accumulation-steps", type=int, default=1)
+    parser.add_argument("--warmup-steps", type=int, default=1)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
@@ -56,8 +57,18 @@ def main():
         default="baseline",
     )
     args = parser.parse_args()
-    if min(args.microbatch_rows, args.accumulation_steps, args.repeats) < 1:
-        parser.error("microbatch-rows, accumulation-steps and repeats must be positive")
+    if (
+        min(
+            args.microbatch_rows,
+            args.accumulation_steps,
+            args.warmup_steps,
+            args.repeats,
+        )
+        < 1
+    ):
+        parser.error(
+            "microbatch-rows, accumulation-steps, warmup-steps and repeats must be positive"
+        )
     if args.window_rows < 64 or args.window_rows % 64:
         parser.error("window-rows must be a positive multiple of 64")
     if args.cache_windows < 0:
@@ -185,6 +196,9 @@ def main():
         json.dumps({"stage": "first_step", "mode": args.mode, "ms": first_step_ms}),
         flush=True,
     )
+    for _ in range(args.warmup_steps - 1):
+        step()
+    torch.cuda.synchronize()
     samples = []
     for _ in range(args.repeats):
         torch.cuda.synchronize()
@@ -233,6 +247,7 @@ def main():
         "microbatch_rows": args.microbatch_rows,
         "accumulation_steps": args.accumulation_steps,
         "effective_rows_per_step": args.microbatch_rows * args.accumulation_steps,
+        "warmup_steps": args.warmup_steps,
         "canonical": canonical,
         "output_check": output_check,
         "parameter_bytes": parameter.numel() * parameter.element_size(),
