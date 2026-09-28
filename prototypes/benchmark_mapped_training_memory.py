@@ -154,6 +154,20 @@ def main():
     phases = step(record_phases=True)
     torch.cuda.synchronize()
     peak = torch.cuda.max_memory_allocated()
+    assert parameter.grad is not None and x.grad is not None
+    gradients = {
+        "atom_or_weight_finite": bool(torch.isfinite(parameter.grad).all().item()),
+        "input_finite": bool(torch.isfinite(x.grad).all().item()),
+        "atom_or_weight_l1": float(parameter.grad.abs().sum().item()),
+        "input_l1": float(x.grad.abs().sum().item()),
+    }
+    assert all((gradients["atom_or_weight_finite"], gradients["input_finite"]))
+    assert gradients["atom_or_weight_l1"] > 0 and gradients["input_l1"] > 0
+    optimizer_state_bytes = sum(
+        value.numel() * value.element_size()
+        for value in optimizer.state[parameter].values()
+        if isinstance(value, torch.Tensor) and value.device.type == "cuda"
+    )
     result = {
         "source_commit": args.source_commit,
         "device": prop.name,
@@ -168,6 +182,10 @@ def main():
         "canonical": canonical,
         "output_check": output_check,
         "parameter_bytes": parameter.numel() * parameter.element_size(),
+        "parameter_gradient_bytes": parameter.grad.numel()
+        * parameter.grad.element_size(),
+        "optimizer_state_bytes": optimizer_state_bytes,
+        "gradient_check": gradients,
         "first_step_ms": first_step_ms,
         "steady_step_samples_ms": samples,
         "steady_step_median_ms": statistics.median(samples),
