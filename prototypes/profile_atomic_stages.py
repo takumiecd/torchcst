@@ -92,16 +92,24 @@ def main():
     variants = {}
     if args.scan_materialize:
         materialize_one()
-        for bn, bk, ba in ((64, 32, 2), (64, 32, 4), (64, 32, 8), (32, 32, 4), (16, 32, 8)):
+        configs = [
+            (16, 32, 1, True), (32, 32, 1, True),
+            (32, 64, 1, True), (64, 64, 1, True),
+            (64, 32, 2, False), (64, 32, 4, False),
+            (64, 32, 8, False), (32, 32, 4, False),
+            (16, 32, 8, False),
+        ]
+        for bn, bk, ba, factored in configs:
             candidate = torch.empty_like(w)
 
             def candidate_fn():
-                materialize(candidate, bn=bn, bk=bk, ba=ba, factored=False)
+                materialize(candidate, bn=bn, bk=bk, ba=ba, factored=factored)
 
             candidate_fn()
             error = (candidate - w).abs()
             valid = torch.isclose(candidate, w, atol=3e-5, rtol=3e-5)
-            variants[f"lanes_{bn}x{bk}_ba{ba}"] = {
+            name = f"{'factored' if factored else 'lanes'}_{bn}x{bk}_ba{ba}"
+            variants[name] = {
                 "passed": bool(valid.all().item()),
                 "max_abs": float(error.max().item()),
                 "time_ms": do_bench_cudagraph(candidate_fn, rep=20, return_mode="median"),
