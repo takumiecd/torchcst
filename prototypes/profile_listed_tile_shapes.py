@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--optimized-triweight", action="store_true")
     args = parser.parse_args()
     n = args.size
     torch.manual_seed(21)
@@ -105,6 +106,7 @@ def main():
                 BC=bc,
                 STATION_START=0,
                 ROW_START=0,
+                OPT_TRIWEIGHT=args.optimized_triweight,
                 num_warps=1,
                 enable_fp_fusion=True,
             )
@@ -128,7 +130,17 @@ def main():
         }
         results.append(row)
         print(json.dumps(row), flush=True)
-    args.output.write_text(json.dumps({"size": n, "cases": results}, indent=2) + "\n")
+    args.output.write_text(
+        json.dumps(
+            {
+                "size": n,
+                "optimized_triweight": args.optimized_triweight,
+                "cases": results,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
 
 
 if __name__ == "__main__":
