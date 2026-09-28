@@ -101,3 +101,7 @@ Adaが引き続き空いていることを前後に確認した。`materialize_l
 引き続きAda profile、使用率0%、割当39 MiBを確認して測定した。局所Wで`||site-atom||²`を`||site||²+||atom||²-2 site·atom`へ展開し、site側のノルムをatomループ外へ出す案を試した。1024×8192窓のGraph交互測定は従来0.485 ms、展開版0.607 ms。生成Wの最大絶対差も0.00292と大きく、浮動小数点の相殺誤差がある。速度・精度の両方で不採用。再現用の`EXPANDED_DISTANCE`診断分岐は既定`False`で、通常経路は変えていない。JSONは`docs/data/ada-20260929/overnight-w-distance.json`。
 
 新builderとunroll4のまま1024行窓のW保持を4窓から2窓へ減らす案も測った。8192²・M=2048の完全AdamWステップで同一プロセスの32回交互Graph測定では、2窓/4窓の対応ペア比中央値は**1.0508**（約5.1%遅い）。別プロセスの2窓Graph capture割当ピークは**839,613,952 bytes**で、4窓の884,781,056 bytesより45.17 MB低く、denseより46.8%低い。出力の3e-5基準違反0、Graph/eagerの4更新後パラメータ最大差4.19e-8。2窓はメモリ優先の選択肢として残すが、速度優先の推奨は4窓を維持する。JSONは`overnight-cache2-paired.json`と`overnight-cache2-peak.json`。
+
+## 07:40 JST：改善後のカーネル内訳
+
+RTX 6000 Ada profile、使用率0%、割当39 MiBを確認した上で、推奨の4窓・unroll4・builder BA32/1 warpのGraph完全ステップを1回プロファイルした。GPU kernel合計33.31 ms中、FP16x3局所GEMMは16呼び出し8.79 ms、atom勾配は8呼び出し6.70 ms、IEEE局所dW GEMMは8呼び出し6.10 ms、局所W生成は12呼び出し5.08 ms、routingは1.04 ms、候補一覧構築は**0.160 ms**。この内訳はprofilerによる単一ステップであり、前節の交互Graph完全ステップの時間比とは直接比較しない。次の大きな改善には、atom勾配・局所dW・局所GEMMのいずれかで数ms単位を削る必要がある。再現は`prototypes.profile_mapped_training_kernels --graph --materialize-mode listed_bounded --listed-unroll 4 --listed-builder-ba 32 --listed-builder-warps 1 --cache-windows 4 --rows 2048`、JSONは`docs/data/ada-20260929/overnight-final-profile.json`。Chrome traceはAda側の同名`.trace.json`に保持した。
