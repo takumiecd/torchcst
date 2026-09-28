@@ -153,10 +153,12 @@ def mapped_backward_atoms_factored(
     BK: tl.constexpr,
     BA: tl.constexpr,
     STAGED: tl.constexpr = False,
+    WRITE_WEIGHT: tl.constexpr = False,
     STATION_START=0,
     ROW_START=0,
 ):
     """Hoist site coordinates and reuse atom/site differences across derivatives."""
+    tl.static_assert(not WRITE_WEIGHT or STAGED)
     tile = tl.program_id(0)
     station = tile // tr.cdiv(S, BN) + STATION_START
     local = (tile % tr.cdiv(S, BN)) * BN
@@ -193,6 +195,8 @@ def mapped_backward_atoms_factored(
     sz = tl.load(Section + cols * 3 + 1, valid, 0.0)
     sw = tl.load(Section + cols * 3 + 2, valid, 0.0)
     gradient = tl.reshape(dw, (BN * BK,))
+    if WRITE_WEIGHT:
+        weight = tl.full((BN * BK,), 0.0, tl.float32)
     for neighbor in tl.static_range(1 if G == 1 else 3):
         if G == 1:
             bucket = 0
@@ -220,6 +224,8 @@ def mapped_backward_atoms_factored(
             value = tl.where(valid[:, None] & active[None, :], value, 0.0)
             slope = tl.where(valid[:, None] & active[None, :], slope, 0.0)
             amplitude = tl.load(P + atoms * 6, active, 0.0)
+            if WRITE_WEIGHT:
+                weight += tl.sum(value * amplitude[None, :], axis=1)
             da = tl.sum(gradient[:, None] * value, axis=0)
             tl.atomic_add(DP + atoms * 6, da, active, sem="relaxed")
             scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
@@ -238,6 +244,11 @@ def mapped_backward_atoms_factored(
                 active,
                 sem="relaxed",
             )
+    if WRITE_WEIGHT:
+        tl.store(
+            DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :],
+            tl.reshape(weight, (BN, BK)),
+        )
 
 
 class _MappedStreamed(torch.autograd.Function):
@@ -268,7 +279,7 @@ class _MappedStreamed(torch.autograd.Function):
         dp = torch.zeros_like(packed) if ctx.needs_input_grad[1] else None
         if dp is not None and torch.are_deterministic_algorithms_enabled():
             raise RuntimeError("mapped atom backward uses atomic accumulation")
-        if dx is not None and m:
+        if dx is not None and m and (ctx.atom_kernel != "fused" or dp is None):
             chunk = min(ctx.window_rows, n)
             w = x.new_empty((chunk, k))
             for start in range(0, n, chunk):
@@ -300,13 +311,13 @@ class _MappedStreamed(torch.autograd.Function):
         if dp is not None and m:
             kernel = (
                 mapped_backward_atoms_factored
-                if ctx.atom_kernel in ("factored", "staged", "atom_major")
+                if ctx.atom_kernel in ("factored", "staged", "atom_major", "fused")
                 else mapped_backward_atoms
             )
             atom_bk = 32 if ctx.atom_kernel == "factored" else 16
-            if ctx.atom_kernel in ("staged", "atom_major"):
+            if ctx.atom_kernel in ("staged", "atom_major", "fused"):
                 chunk = min(ctx.window_rows, n)
-                if dx is None:
+                if dx is None or ctx.atom_kernel == "fused":
                     w = x.new_empty((chunk, k))
                 for start in range(0, n, chunk):
                     rows = min(chunk, n - start)
@@ -359,11 +370,14 @@ class _MappedStreamed(torch.autograd.Function):
                             BK=32,
                             BA=8,
                             STAGED=True,
+                            WRITE_WEIGHT=ctx.atom_kernel == "fused" and dx is not None,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
                             num_warps=4,
                             enable_fp_fusion=False,
                         )
+                        if ctx.atom_kernel == "fused" and dx is not None:
+                            dx.addmm_(dy[:, start : start + rows], w[:rows])
             else:
                 arguments = (x, dy, packed, circle, section, offsets, dp)
                 if ctx.atom_kernel == "factored":
@@ -397,7 +411,7 @@ def mapped_streamed_trainable(
         raise ValueError("trainable mapped prototype requires at least two row tiles")
     if type(window_rows) is not int or window_rows < 64 or window_rows % 64:
         raise ValueError("window_rows must be a positive multiple of 64")
-    if atom_kernel not in ("baseline", "factored", "staged", "atom_major"):
+    if atom_kernel not in ("baseline", "factored", "staged", "atom_major", "fused"):
         raise ValueError("unknown atom_kernel")
     # Keep every temporary W/dW window strictly smaller than the logical matrix.
     window_rows = min(window_rows, (layer.shape[0] // 128) * 64)
