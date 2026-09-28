@@ -170,7 +170,10 @@ def test_cached_backward_when_only_atom_gradient_is_required():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("listed_unroll", (1, 4))
-def test_bounded_lists_fall_back_when_every_tile_overflows(monkeypatch, listed_unroll):
+@pytest.mark.parametrize("builder", ((8, 4), (32, 1)))
+def test_bounded_lists_fall_back_when_every_tile_overflows(
+    monkeypatch, listed_unroll, builder
+):
     torch.manual_seed(729)
     layer = BlockStripLinear((128, 128), (64, 64), 819, device="cuda")
     site = layer.strip
@@ -179,8 +182,8 @@ def test_bounded_lists_fall_back_when_every_tile_overflows(monkeypatch, listed_u
     hints = balanced_home_columns(site)
     original_builder = streamed_backward.build_listed_forward_candidates_bounded
 
-    def one_entry_builder(*args):
-        result = original_builder(*args, max_candidates=1)
+    def one_entry_builder(*args, **kwargs):
+        result = original_builder(*args, max_candidates=1, **kwargs)
         assert torch.all(result[1] == -1)
         return result
 
@@ -199,6 +202,8 @@ def test_bounded_lists_fall_back_when_every_tile_overflows(monkeypatch, listed_u
         atom_kernel="staged_listed",
         materialize_mode="listed_bounded",
         listed_unroll=listed_unroll,
+        listed_builder_ba=builder[0],
+        listed_builder_warps=builder[1],
     )
     actual_dx, actual_dp = torch.autograd.grad(actual, (x, site.atoms.p), upstream)
     expected = layer.reference(x)
@@ -244,7 +249,8 @@ def test_bounded_uint8_lists_guard_large_bucket_ranks():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("listed_unroll", (1, 4))
-def test_bounded_graph_replay_after_bucket_overflow(listed_unroll):
+@pytest.mark.parametrize("builder", ((8, 4), (32, 1)))
+def test_bounded_graph_replay_after_bucket_overflow(listed_unroll, builder):
     torch.manual_seed(829)
     layer = BlockStripLinear((128, 128), (64, 64), 819, device="cuda")
     site = layer.strip
@@ -264,6 +270,8 @@ def test_bounded_graph_replay_after_bucket_overflow(listed_unroll):
                 atom_kernel="staged_listed",
                 materialize_mode="listed_bounded",
                 listed_unroll=listed_unroll,
+                listed_builder_ba=builder[0],
+                listed_builder_warps=builder[1],
             )
 
     for _ in range(3):
@@ -280,7 +288,9 @@ def test_bounded_graph_replay_after_bucket_overflow(listed_unroll):
     prepared = trainable_boxed_prepare(
         site, site.atoms.p, boxes=boxes, witness_cols=hints
     )
-    _, counts, _ = build_listed_forward_candidates_bounded(layer, *prepared)
+    _, counts, _ = build_listed_forward_candidates_bounded(
+        layer, *prepared, ba=builder[0], warps=builder[1]
+    )
     assert torch.any(counts == -1)
     eager = forward()
     with torch.no_grad():
@@ -314,6 +324,8 @@ def test_bounded_graph_replay_after_bucket_overflow(listed_unroll):
             atom_kernel="staged_listed",
             materialize_mode=mode,
             listed_unroll=listed_unroll if mode == "listed_bounded" else 1,
+            listed_builder_ba=builder[0],
+            listed_builder_warps=builder[1],
         )
 
     bounded_trainable = trainable("listed_bounded")

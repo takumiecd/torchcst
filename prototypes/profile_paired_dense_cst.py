@@ -37,7 +37,10 @@ def main():
     parser.add_argument("--compare-baseline", action="store_true")
     parser.add_argument("--compare-csr", action="store_true")
     parser.add_argument("--compare-unroll", action="store_true")
+    parser.add_argument("--compare-builder", action="store_true")
     parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
+    parser.add_argument("--listed-builder-ba", type=int, default=8)
+    parser.add_argument("--listed-builder-warps", type=int, default=4)
     parser.add_argument("--baseline-same-gemm", action="store_true")
     parser.add_argument("--graph", action="store_true")
     parser.add_argument(
@@ -56,6 +59,7 @@ def main():
                 args.compare_baseline,
                 args.compare_csr,
                 args.compare_unroll,
+                args.compare_builder,
                 compare_alternate,
             )
         )
@@ -104,6 +108,8 @@ def main():
             forward_gemm_mode=forward_mode,
             materialize_mode=args.materialize_mode,
             listed_unroll=args.listed_unroll,
+            listed_builder_ba=args.listed_builder_ba,
+            listed_builder_warps=args.listed_builder_warps,
         )
         accuracy = check(actual, expected)
         assert accuracy["passed"], accuracy
@@ -148,6 +154,12 @@ def main():
                     else args.materialize_mode
                 ),
                 listed_unroll=1 if mode == "cst_unroll1" else args.listed_unroll,
+                listed_builder_ba=(
+                    8 if mode == "cst_builder_baseline" else args.listed_builder_ba
+                ),
+                listed_builder_warps=(
+                    4 if mode == "cst_builder_baseline" else args.listed_builder_warps
+                ),
             )
         output.backward(gradient)
         optimizers[key].step()
@@ -159,6 +171,8 @@ def main():
         if args.compare_csr
         else ("dense", "cst_unroll1", "cst")
         if args.compare_unroll
+        else ("dense", "cst_builder_baseline", "cst")
+        if args.compare_builder
         else ("dense", "cst_alt", "cst")
         if compare_alternate
         else ("dense", "cst")
@@ -190,6 +204,8 @@ def main():
         "cst_mode": cst_mode,
         "materialize_mode": args.materialize_mode,
         "listed_unroll": args.listed_unroll,
+        "listed_builder_ba": args.listed_builder_ba,
+        "listed_builder_warps": args.listed_builder_warps,
         "graph": args.graph,
         "optimizer_mode": args.optimizer_mode,
         "window_rows": window_rows,
@@ -217,6 +233,11 @@ def main():
         result["paired_cst_vs_unroll1_ratio_median"] = statistics.median(
             cst / baseline
             for cst, baseline in zip(samples["cst"], samples["cst_unroll1"])
+        )
+    if args.compare_builder:
+        result["paired_cst_vs_builder_baseline_ratio_median"] = statistics.median(
+            cst / baseline
+            for cst, baseline in zip(samples["cst"], samples["cst_builder_baseline"])
         )
     if compare_alternate:
         result["alternate"] = {

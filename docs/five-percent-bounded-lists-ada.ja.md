@@ -87,3 +87,11 @@ Adaが引き続き空いていることを前後に確認した。`materialize_l
 4回展開済みの局所W生成へTritonのsoftware pipelineを加えた。1/2/3/4段の1024行窓中央値は0.500/0.554/0.554/0.545 ms。Wはすべてビット一致したが、段数を増やすと遅い。1段を維持する。FP16x3局所GEMMでは9種類の追加tileをforwardと入力勾配で調べた。現行 `(BM,BN,BK,warps)=(64,128,32,4)` が0.544/0.577 msで、追加tileに両方を上回るものはなかった。例えば`(64,256,32,8)`は0.544/0.584 ms、`(128,128,32,8)`は0.574/0.624 ms。どの結果も人工入力に対する3e-5基準違反0だった。
 
 局所dWのIEEE FP32 GEMMへ転置連続化した`dY`を渡す案も測った。全8窓の交互GPU event測定で、現行の転置viewは8.50 ms、`dY.T.contiguous()`を64 MiBの追加バッファへコピーしてから計算すると9.54 ms、対応ペア比1.124だった。最初の窓のdW差は3e-4基準違反0だが、遅くメモリも増えるため完全ステップへ接続しない。これらは局所測定であり、完全ステップの改善を主張しない。既定の4回展開・1段・元のGEMM配置を維持する。GPUテスト63件を再確認した。JSONは`docs/data/ada-20260929/overnight-w-pipeline.json`、`overnight-fp16x3-tiles-extended.json`、`overnight-dw-layout.json`。
+
+## 05:40 JST：候補リスト構築のatom幅とwarp数
+
+開始時と性能測定前にRTX 6000 Ada profile、GPU使用率0%、割当39 MiBを確認した。候補リスト構築はこれまで`BA=8`、4 warpだったが、8192²の65,536 tileを1 CTAずつ処理するため、各CTAのwarp数を減らしatomレーンを増やす余地があった。`BA=2/4/8/16/32/64/128`、1/2/4/8 warpをGraphで交互に24回ずつ測った。従来の`BA8・4 warp`は0.942 ms、`BA32・1 warp`は**0.125 ms**だった。構築後のcountと有効リスト要素は全28構成で従来版と完全一致し、overflow tileは0。`BA64・1 warp`は0.128 ms、`BA128・1 warp`は0.130 msで、8192²では32レーンが最速だった。1024²では候補構築が元々0.018 msと小さく、`BA32・1 warp`は0.006 ms。1024²での完全ステップへの効果は未測定である。
+
+試作APIに`listed_builder_ba=32, listed_builder_warps=1`を明示指定できるようにした。既定値`BA8・4 warp`と公開backendは変更していない。8192²・M=2048・5%・AdamW完全ステップでは、従来builderと新builderとdenseのGraphを同一プロセスで交互に32回、別runで48回測定した。新/従来の対応ペア比中央値は**0.96016／0.95356**（約4.0／4.6%短縮）、新/denseは1.2269／1.2378。単独中央値はGPUの時間変動を含むため、改善率には対応ペア比を使う。新builderの別プロセスGraph capture割当ピークは**884,781,056 bytes**で従来と同じ、denseの以前の1,577,585,152 bytesより43.9%低い。出力の3e-5基準違反0、Graph/eagerの12更新後のパラメータ最大差7.63e-6、強制overflowとGraph再実行を含むGPUテスト67件が通過した。新builderは候補一覧の作り方だけを変え、全W・全dWを作らない。
+
+現時点でAda大形状の推奨試作設定は前節の設定に`listed_builder_ba=32, listed_builder_warps=1`を追加する。再現コードは`prototypes.profile_bounded_list_builder`、`prototypes.profile_paired_dense_cst --compare-builder --listed-builder-ba 32 --listed-builder-warps 1 --graph`、`prototypes.probe_csr_graph_step --listed-builder-ba 32 --listed-builder-warps 1`。JSONは`docs/data/ada-20260929/overnight-list-builder-sweep2.json`、`overnight-builder-paired-32.json`、`overnight-builder-paired-48.json`、`overnight-builder-peak.json`。

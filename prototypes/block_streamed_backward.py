@@ -432,7 +432,7 @@ def build_listed_forward_candidates_csr(layer, packed, circle, section, offsets)
 
 
 def build_listed_forward_candidates_bounded(
-    layer, packed, circle, section, offsets, *, max_candidates=192
+    layer, packed, circle, section, offsets, *, max_candidates=192, ba=8, warps=4
 ):
     """Graph-safe compact lists; overflow tiles scan their complete bucket span."""
     if type(max_candidates) is not int or not 1 <= max_candidates <= 65536:
@@ -454,13 +454,13 @@ def build_listed_forward_candidates_bounded(
         list_counts,
         G=g,
         MAX_CANDIDATES=max_candidates,
-        BA=8,
+        BA=ba,
         COMPACT=True,
         BR=16,
         BC=64,
         BOUNDED=True,
         RANK_LIMIT=rank_limit,
-        num_warps=4,
+        num_warps=warps,
         enable_fp_fusion=False,
     )
     return atom_lists, list_counts, max_candidates
@@ -483,6 +483,8 @@ class _MappedStreamed(torch.autograd.Function):
         forward_gemm_mode,
         materialize_mode,
         listed_unroll,
+        listed_builder_ba,
+        listed_builder_warps,
     ):
         ctx.layer = layer
         ctx.window_rows = window_rows
@@ -501,7 +503,19 @@ class _MappedStreamed(torch.autograd.Function):
                 if materialize_mode == "listed_bounded"
                 else build_listed_forward_candidates
             )
-            ctx.listed_data = builder(layer, packed, circle, section, offsets)
+            ctx.listed_data = (
+                builder(
+                    layer,
+                    packed,
+                    circle,
+                    section,
+                    offsets,
+                    ba=listed_builder_ba,
+                    warps=listed_builder_warps,
+                )
+                if materialize_mode == "listed_bounded"
+                else builder(layer, packed, circle, section, offsets)
+            )
         else:
             ctx.listed_data = None
         reuse_input_weight = ctx.needs_input_grad[0] and (
@@ -864,7 +878,7 @@ class _MappedStreamed(torch.autograd.Function):
                     enable_fp_fusion=False,
                 )
         ctx.listed_data = None
-        return dx, dp, None, None, None, None, None, None, None, None, None, None, None
+        return (dx, dp) + (None,) * 13
 
 
 def mapped_streamed_trainable(
@@ -880,6 +894,8 @@ def mapped_streamed_trainable(
     forward_gemm_mode="ieee",
     materialize_mode="default",
     listed_unroll=1,
+    listed_builder_ba=8,
+    listed_builder_warps=4,
 ):
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
         raise ValueError("trainable mapped prototype requires full 64x64 tiles")
@@ -928,6 +944,10 @@ def mapped_streamed_trainable(
         raise ValueError("unknown materialize_mode")
     if listed_unroll not in (1, 2, 4, 8):
         raise ValueError("listed_unroll must be 1, 2, 4, or 8")
+    if listed_builder_ba not in (2, 4, 8, 16, 32, 64):
+        raise ValueError("listed_builder_ba must be a supported power of two")
+    if listed_builder_warps not in (1, 2, 4, 8):
+        raise ValueError("listed_builder_warps must be 1, 2, 4, or 8")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )
@@ -942,4 +962,6 @@ def mapped_streamed_trainable(
         forward_gemm_mode,
         materialize_mode,
         listed_unroll,
+        listed_builder_ba,
+        listed_builder_warps,
     )

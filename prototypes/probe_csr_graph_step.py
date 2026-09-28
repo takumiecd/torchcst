@@ -24,6 +24,8 @@ def main():
     parser.add_argument("--cache-windows", type=int, default=None)
     parser.add_argument("--verify-steps", type=int, default=0)
     parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
+    parser.add_argument("--listed-builder-ba", type=int, default=8)
+    parser.add_argument("--listed-builder-warps", type=int, default=4)
     parser.add_argument(
         "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
     )
@@ -66,6 +68,8 @@ def main():
             forward_gemm_mode=forward_mode,
             materialize_mode=args.materialize_mode,
             listed_unroll=args.listed_unroll,
+            listed_builder_ba=args.listed_builder_ba,
+            listed_builder_warps=args.listed_builder_warps,
         )
         y.backward(dy)
         optimizer.step()
@@ -79,6 +83,8 @@ def main():
         "device": torch.cuda.get_device_name(),
         "materialize_mode": args.materialize_mode,
         "listed_unroll": args.listed_unroll,
+        "listed_builder_ba": args.listed_builder_ba,
+        "listed_builder_warps": args.listed_builder_warps,
         "optimizer_mode": args.optimizer_mode,
         "cache_windows": cache_windows,
         "window_rows": window_rows,
@@ -133,6 +139,8 @@ def main():
                     forward_gemm_mode=forward_mode,
                     materialize_mode=args.materialize_mode,
                     listed_unroll=args.listed_unroll,
+                    listed_builder_ba=args.listed_builder_ba,
+                    listed_builder_warps=args.listed_builder_warps,
                 )
                 eager_y.backward(dy)
                 eager_optimizer.step()
