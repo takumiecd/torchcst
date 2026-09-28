@@ -72,7 +72,9 @@ def main():
             order = torch.argsort(sort_args[0], stable=True)
             sorted_result = sort_args[0][order], order
         elif args.sort_mode == "atomic_bucket":
-            sorted_result = atomic_bucket_sort(sort_args[0], 2 * (n // 64) + 1)
+            sorted_result = atomic_bucket_sort(
+                sort_args[0], 2 * plan.routing.starts.numel() + 1
+            )
         else:
             sorted_result = original_sort(sort_args[0], stable=False)
         torch.cuda.synchronize()
