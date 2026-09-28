@@ -67,8 +67,8 @@ def main():
     dp = torch.zeros_like(packed)
     results = []
     reference = None
-    for ba in (1, 2, 4, 8, 16, 32):
-        for warps in (4, 8):
+    for ba in (1, 2, 4, 8):
+        for warps in (1, 2, 4, 8):
             def run():
                 dp.zero_()
                 mapped_backward_atoms_listed[(rows // 64 * layer.column_groups * 4, 2)](
