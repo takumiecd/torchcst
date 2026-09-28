@@ -2,6 +2,10 @@
 
 2026-09-28。8192²、atom密度5%、seed 21、RTX 6000 Ada。学習経路は全dense W・dWを持たず、局所W窓を使う。基準の学習ステップは[既存の記録](ada-precision-and-shared-gpu.ja.md)を参照。
 
+## Wの分割単位
+
+8192×8192の論理Wは、CST幾何では64×64のタイル128×128個に対応する。listed生成では各64×64タイルを4つの16×64小片に分け、Tritonの1 programが1小片を作る。小片は合計65,536個。生成した小片は1024×8192（FP32で32 MiB）の局所W窓へ書き、窓単位でGEMMに渡してバッファを再利用する。窓は全8個。M=2048のTF32x3 GEMM側の計算タイルは別に`BM=32, BN=128, BK=32`であり、16×64はTensor CoreのMMA形状を表すものではない。forwardからbackwardへ先頭2窓を保持する。
+
 ## 構造を測った結果
 
 候補一覧は65,536個の16×64タイルに対して空タイル0個、候補atom数は中央値125、平均147、最大176。先頭・中央の各1024行の局所Wを調べると、全16×64タイルが非ゼロで、非ゼロ要素率もほぼ100%だった。**5%のatom密度からブロック疎GEMMの効率は期待できない**。
@@ -16,7 +20,9 @@
 
 入力XはM=2048で64 MiB、局所Wの1024行窓は32 MiB、packed atomは約76.8 MiB。[NVIDIAのRTX 6000 Ada資料](https://images.nvidia.com/aem-dam/en-zz/Solutions/technologies/NVIDIA-ADA-GPU-PROVIZ-Architecture-Whitepaper_1.1.pdf)にあるL2は96 MiBなので、三者を同時には保持できない。繰り返し読むXを`evict_last`、書き終えたYを`evict_first`にする仮説を試すため、`bounded_gemm_kernel`に既定値が空の任意ヒントを追加した。ヒントの各組み合わせは既定結果と完全一致した。
 
-速度比較中に別のGPUプロセスが約4.7 GiBを使い始め、同じ条件の反復が約13–35 msに揺れた。記録した中央値は採否に使えない。別プロセスを止めず、速度実験を中断した。次に空いたときは、既定・X保持・W保持・Y早期退避を交互に複数回実行し、ステップ全体とピークメモリも確認する。[CUDAのL2保持方針](https://docs.nvidia.com/cuda/cuda-programming-guide/pdf/cuda-programming-guide.pdf)は優先度であり、ヒットを保証しない。
+速度比較中に別のGPUプロセスが約4.7 GiBを使い始め、同じ条件の反復が約13–35 msに揺れた。記録した中央値は採否に使えない。別プロセスを止めず、速度実験を中断した。[CUDAのL2保持方針](https://docs.nvidia.com/cuda/cuda-programming-guide/pdf/cuda-programming-guide.pdf)は優先度であり、ヒットを保証しない。
+
+GPUが再び0%・39 MiB、他プロセスなしになった後、同じM=2048の局所W生成＋forward GEMMを8回ずつ交互に再測定した。中央値は既定16.88 ms、X保持＋Y早期退避16.92 ms、X/W保持＋Y早期退避16.91 ms、W保持＋Y早期退避16.92 ms。全候補の出力は既定と完全一致した。差は反復の揺れ以下で、**このヒント単体に速度改善は見えない**。学習ステップ全体へは採用しない。結果は`gemm-cache-hints-m2048-free.json`。
 
 次に検討する大きな変更は、atomの移動を安全に検査したうえで候補リストとルーティングを複数ステップ再利用すること。毎ステップの構築とソートを減らせる可能性があるが、支持領域の変化を見逃すと正確性が崩れる。まず更新前後の候補集合変化率と検証コストを測る。
 
