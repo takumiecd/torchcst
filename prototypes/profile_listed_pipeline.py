@@ -99,7 +99,7 @@ def main():
         configs = ((1, 1, False, 1, 1, False), (1, 1, True, 1, 1, False))
     else:
         configs = tuple(
-            (stages, unroll, False, 1, 1, False)
+            (stages, unroll, args.bounded, 1, 1, False)
             for stages, unroll in (
                 (1, 1),
                 (2, 1),

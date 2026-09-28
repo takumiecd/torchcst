@@ -77,3 +77,5 @@ Adaが引き続き空いていることを前後に確認した。`materialize_l
 並行して二つの案を採否判定した。WをGEMM前に高位・低位のFP16へ分ける試作は局所forward 0.546→0.549 msで改善せず、入力勾配GEMM単体は0.578→0.547 msだったが、分割コストと2配列の生成・保持を含めていない。完全ステップへは接続しない。atom勾配で1 CTA当たりのatomレーンやwarp数を増やす試行は、最良のBA2・1 warpが局所0.897→0.874 msと小差に留まり、atom勾配の3e-4基準を228,724要素で外した。BA4以上はregister spillや低速化も発生したため採用しない。両方とも診断コードとJSONを保存した。
 
 推奨する実験設定は`mapped_streamed_trainable(..., materialize_mode="listed_bounded", listed_unroll=4, window_rows=1024, cache_windows=4, gemm_mode="fp16x3_dx", forward_gemm_mode="fp16x3", atom_kernel="staged_listed")`。unroll4は大形状Adaで検証した明示的な試作オプションである。測定CLIは`prototypes.profile_paired_dense_cst --compare-unroll --listed-unroll 4 --graph`と`prototypes.probe_csr_graph_step --listed-unroll 4`。JSONは`docs/data/ada-20260929/overnight-unroll4-*.json`、単独カーネル比較は`overnight-w-unroll.json`、反証は`overnight-bounded-lanes.json`と`overnight-presplit-weight-gemm.json`。
+
+同じ展開をatom勾配kernelへ移す案もboundedリストで別途測った。1段・展開1回の局所0.901 msに対し、2～4段のpipelineは1.010～1.042 ms。展開2回は0.949 ms、4回は1.007 msと遅く、両方で3e-4基準を約228,730要素で超えた。展開の有無がatomの縮約・atomic更新順を変えるため、局所W生成と同じ判断はできない。atom勾配側は現行1段・展開1回を維持する。JSONは`docs/data/ada-20260929/overnight-bounded-atom-pipeline.json`。
