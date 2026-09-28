@@ -43,10 +43,17 @@ def streamed_forward(
         raise ValueError("unsupported materialization tile")
     if gemm_mode not in ("ieee", "tf32x3", "fp16x3"):
         raise ValueError("unknown forward gemm_mode")
-    if materialize_mode not in ("default", "listed", "listed_parallel", "listed_csr"):
+    if materialize_mode not in (
+        "default",
+        "listed",
+        "listed_parallel",
+        "listed_csr",
+        "listed_bounded",
+    ):
         raise ValueError("unknown forward materialize_mode")
     if (
-        materialize_mode in ("listed", "listed_parallel", "listed_csr")
+        materialize_mode
+        in ("listed", "listed_parallel", "listed_csr", "listed_bounded")
         and listed_data is None
     ):
         raise ValueError("listed forward requires candidate lists")
@@ -85,7 +92,12 @@ def streamed_forward(
     for start in range(0, layer.shape[0], chunk):
         rows = min(chunk, layer.shape[0] - start)
         target = cached[start : start + rows] if start < cache_weight_rows else w[:rows]
-        if materialize_mode in ("listed", "listed_parallel", "listed_csr"):
+        if materialize_mode in (
+            "listed",
+            "listed_parallel",
+            "listed_csr",
+            "listed_bounded",
+        ):
             csr = materialize_mode == "listed_csr"
             if csr:
                 atom_lists, list_counts, list_bases, _ = listed_data
@@ -112,6 +124,7 @@ def streamed_forward(
                 PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                 MAX_CANDIDATES=max_candidates,
                 CSR=csr,
+                BOUNDED=materialize_mode == "listed_bounded",
                 Bases=list_bases,
                 STATION_START=start // 64 * layer.column_groups,
                 ROW_START=start,

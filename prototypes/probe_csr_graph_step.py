@@ -20,9 +20,13 @@ def main():
     parser.add_argument("--size", type=int, choices=(1024, 8192), required=True)
     parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
     parser.add_argument("--rounds", type=int, default=20)
+    parser.add_argument("--window-rows", type=int, default=None)
+    parser.add_argument("--cache-windows", type=int, default=None)
     parser.add_argument("--verify-steps", type=int, default=0)
     parser.add_argument(
-        "--materialize-mode", choices=("listed", "listed_csr"), default="listed_csr"
+        "--materialize-mode",
+        choices=("listed", "listed_csr", "listed_bounded"),
+        default="listed_csr",
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -39,6 +43,10 @@ def main():
     )
     mode = "ieee" if m == 128 else "fp16x3_dx"
     forward_mode = "ieee" if m == 128 else "fp16x3"
+    window_rows = min(1024, n // 2) if args.window_rows is None else args.window_rows
+    cache_windows = (
+        (0 if n == 1024 else 2) if args.cache_windows is None else args.cache_windows
+    )
 
     def step():
         optimizer.zero_grad(set_to_none=True)
@@ -49,8 +57,8 @@ def main():
             boxes=boxes,
             witness_cols=hints,
             atom_kernel="staged_listed",
-            window_rows=min(1024, n // 2),
-            cache_windows=0 if n == 1024 else 2,
+            window_rows=window_rows,
+            cache_windows=cache_windows,
             gemm_mode=mode,
             forward_gemm_mode=forward_mode,
             materialize_mode=args.materialize_mode,
@@ -66,6 +74,8 @@ def main():
         "shape": [m, n, n],
         "device": torch.cuda.get_device_name(),
         "materialize_mode": args.materialize_mode,
+        "cache_windows": cache_windows,
+        "window_rows": window_rows,
         "allocated_after_warmup": torch.cuda.memory_allocated(),
     }
     try:
@@ -111,8 +121,8 @@ def main():
                     boxes=boxes,
                     witness_cols=hints,
                     atom_kernel="staged_listed",
-                    window_rows=min(1024, n // 2),
-                    cache_windows=0 if n == 1024 else 2,
+                    window_rows=window_rows,
+                    cache_windows=cache_windows,
                     gemm_mode=mode,
                     forward_gemm_mode=forward_mode,
                     materialize_mode=args.materialize_mode,

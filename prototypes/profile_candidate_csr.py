@@ -11,6 +11,7 @@ import torch
 from prototypes.block_materialize_listed import materialize_listed
 from prototypes.block_streamed_backward import (
     build_listed_forward_candidates,
+    build_listed_forward_candidates_bounded,
     build_listed_forward_candidates_csr,
     trainable_boxed_prepare,
 )
@@ -40,14 +41,25 @@ def main():
     )
     original = build_listed_forward_candidates(layer, packed, circle, section, offsets)
     csr = build_listed_forward_candidates_csr(layer, packed, circle, section, offsets)
+    bounded = build_listed_forward_candidates_bounded(
+        layer, packed, circle, section, offsets
+    )
     lists, counts, max_candidates = original
     csr_lists, csr_counts, bases, cursor = csr
+    bounded_lists, bounded_counts, bounded_capacity = bounded
     assert torch.equal(counts, csr_counts)
     positions = torch.arange(max_candidates, device="cuda")[None, None, :]
     valid = positions < counts[..., None]
     csr_positions = torch.where(valid, bases[..., None] + positions, 0)
     assert torch.equal(lists[valid].to(torch.int32), csr_lists[csr_positions][valid])
     assert cursor.item() <= csr_lists.numel()
+    assert torch.equal(counts, bounded_counts)
+    bounded_positions = torch.arange(bounded_capacity, device="cuda")[None, None, :]
+    bounded_valid = bounded_positions < counts[..., None]
+    assert torch.equal(
+        lists[:, :, :bounded_capacity][bounded_valid].to(torch.int32),
+        bounded_lists[bounded_valid].to(torch.int32),
+    )
 
     common = {
         "K": n,
@@ -88,6 +100,21 @@ def main():
         **common,
     )
     weight_max_abs = (w - reference_w).abs().max().item()
+    bounded_w = torch.empty_like(w)
+    materialize_listed[grid](
+        packed,
+        circle,
+        section,
+        bounded_lists,
+        bounded_counts,
+        offsets,
+        bounded_w,
+        MAX_CANDIDATES=bounded_capacity,
+        BOUNDED=True,
+        num_warps=1,
+        **common,
+    )
+    bounded_weight_max_abs = (bounded_w - reference_w).abs().max().item()
     dw = torch.randn_like(w)
     dp = torch.zeros_like(packed)
     reference_dp = torch.zeros_like(packed)
@@ -133,17 +160,42 @@ def main():
     gradient_relative_l2 = (
         gradient.norm() / reference_dp.norm().clamp_min(1e-30)
     ).item()
+    bounded_dp = torch.zeros_like(packed)
+    mapped_backward_atoms_listed[(grid[0], 1)](
+        dw,
+        packed,
+        circle,
+        section,
+        bounded_lists,
+        bounded_counts,
+        offsets,
+        bounded_dp,
+        MAX_CANDIDATES=bounded_capacity,
+        BOUNDED=True,
+        num_warps=1,
+        **backward,
+        **common,
+    )
+    bounded_gradient = bounded_dp - reference_dp
+    bounded_gradient_max_abs = bounded_gradient.abs().max().item()
+    bounded_gradient_relative_l2 = (
+        bounded_gradient.norm() / reference_dp.norm().clamp_min(1e-30)
+    ).item()
     torch.cuda.synchronize()
 
-    samples = {"dynamic": [], "fixed": [], "csr": []}
+    samples = {"dynamic": [], "fixed": [], "csr": [], "bounded": []}
     for i in range(args.rounds):
-        order = ("dynamic", "fixed", "csr")
-        order = order[i % 3 :] + order[: i % 3]
+        order = ("dynamic", "fixed", "csr", "bounded")
+        order = order[i % 4 :] + order[: i % 4]
         for mode in order:
             torch.cuda.synchronize()
             start = time.perf_counter()
             if mode == "csr":
                 build_listed_forward_candidates_csr(
+                    layer, packed, circle, section, offsets
+                )
+            elif mode == "bounded":
+                build_listed_forward_candidates_bounded(
                     layer, packed, circle, section, offsets
                 )
             else:
@@ -165,11 +217,17 @@ def main():
         "capacity": max_candidates,
         "csr_reserved_entries": cursor.item(),
         "csr_allocated_entries": csr_lists.numel(),
+        "bounded_capacity": bounded_capacity,
+        "bounded_dtype": str(bounded_lists.dtype),
+        "bounded_allocated_bytes": bounded_lists.numel() * bounded_lists.element_size(),
         "checks": {
             "exact_lists": True,
             "weight_max_abs": weight_max_abs,
+            "bounded_weight_max_abs": bounded_weight_max_abs,
             "gradient_max_abs": gradient_max_abs,
             "gradient_relative_l2": gradient_relative_l2,
+            "bounded_gradient_max_abs": bounded_gradient_max_abs,
+            "bounded_gradient_relative_l2": bounded_gradient_relative_l2,
         },
         "median_ms": {k: statistics.median(v) for k, v in samples.items()},
         "samples_ms": samples,

@@ -38,7 +38,7 @@ def main():
     )
     parser.add_argument(
         "--materialize-mode",
-        choices=("default", "listed", "listed_csr"),
+        choices=("default", "listed", "listed_csr", "listed_bounded"),
         default="default",
     )
     parser.add_argument("--accumulation-steps", type=int, default=1)

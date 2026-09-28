@@ -23,6 +23,7 @@ def materialize_listed(
     STATION_START,
     ROW_START,
     CSR: tl.constexpr = False,
+    BOUNDED: tl.constexpr = False,
     Bases=None,
 ):
     program = tl.program_id(0)
@@ -55,9 +56,23 @@ def materialize_listed(
         begin1 = tl.load(Offsets + 2 * station)
         length1 = tl.load(Offsets + 2 * station + 1) - begin1
         begin2 = tl.load(Offsets + 2 * station + 1)
-    for i in range(count):
-        rank = tl.load(Lists + list_base + i)
-        rank = rank.to(tl.int32)
+    if BOUNDED:
+        if G == 1:
+            total_candidates = tl.load(Offsets + 1) - begin0
+        else:
+            total_candidates = (
+                length0 + length1 + tl.load(Offsets + 2 * station + 2) - begin2
+            )
+        loop_count = tl.where(count < 0, total_candidates, count)
+    else:
+        loop_count = count
+    for i in range(loop_count):
+        listed_rank = tl.load(
+            Lists + list_base + i,
+            mask=count >= 0 if BOUNDED else True,
+            other=0,
+        ).to(tl.int32)
+        rank = tl.where(count < 0, i, listed_rank) if BOUNDED else listed_rank
         if G == 1:
             atom = begin0 + rank
         else:

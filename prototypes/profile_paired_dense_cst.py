@@ -22,19 +22,31 @@ def main():
     parser.add_argument("--size", type=int, default=8192)
     parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
     parser.add_argument("--rounds", type=int, default=10)
+    parser.add_argument("--window-rows", type=int, default=None)
+    parser.add_argument("--cache-windows", type=int, default=None)
+    parser.add_argument("--alt-window-rows", type=int, default=None)
+    parser.add_argument("--alt-cache-windows", type=int, default=None)
     parser.add_argument(
         "--gemm-mode", choices=("auto", "ieee", "fp16x3_dx"), default="auto"
     )
     parser.add_argument(
         "--materialize-mode",
-        choices=("listed", "listed_parallel", "listed_csr"),
+        choices=("listed", "listed_parallel", "listed_csr", "listed_bounded"),
         default="listed",
     )
     parser.add_argument("--compare-baseline", action="store_true")
+    parser.add_argument("--compare-csr", action="store_true")
     parser.add_argument("--baseline-same-gemm", action="store_true")
     parser.add_argument("--graph", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    compare_alternate = args.alt_window_rows is not None
+    if compare_alternate != (args.alt_cache_windows is not None):
+        parser.error(
+            "alternate window rows and cache windows must be specified together"
+        )
+    if sum((args.compare_baseline, args.compare_csr, compare_alternate)) > 1:
+        parser.error("choose one comparison mode")
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     n, m = args.size, args.rows
@@ -53,8 +65,10 @@ def main():
     plan = execution_plan(layer.strip)
     boxes = station_site_boxes(plan.circle, plan.section, 64)
     hints = balanced_home_columns(layer.strip)
-    window_rows = min(1024, n // 2)
-    cache_windows = 0 if n == 1024 else 2
+    window_rows = min(1024, n // 2) if args.window_rows is None else args.window_rows
+    cache_windows = (
+        (0 if n == 1024 else 2) if args.cache_windows is None else args.cache_windows
+    )
     cst_mode = (
         ("ieee" if m == 128 or n == 1024 else "fp16x3_dx")
         if args.gemm_mode == "auto"
@@ -101,21 +115,37 @@ def main():
                 boxes=boxes,
                 witness_cols=hints,
                 atom_kernel="staged_listed",
-                window_rows=window_rows,
-                cache_windows=cache_windows,
+                window_rows=(
+                    args.alt_window_rows if mode == "cst_alt" else window_rows
+                ),
+                cache_windows=(
+                    args.alt_cache_windows if mode == "cst_alt" else cache_windows
+                ),
                 gemm_mode="ieee"
                 if baseline and not args.baseline_same_gemm
                 else cst_mode,
                 forward_gemm_mode=(
                     "ieee" if baseline and not args.baseline_same_gemm else forward_mode
                 ),
-                materialize_mode="listed" if baseline else args.materialize_mode,
+                materialize_mode=(
+                    "listed"
+                    if baseline
+                    else "listed_csr"
+                    if mode == "cst_csr"
+                    else args.materialize_mode
+                ),
             )
         output.backward(gradient)
         optimizers[key].step()
 
     modes = (
-        ("dense", "cst_baseline", "cst") if args.compare_baseline else ("dense", "cst")
+        ("dense", "cst_baseline", "cst")
+        if args.compare_baseline
+        else ("dense", "cst_csr", "cst")
+        if args.compare_csr
+        else ("dense", "cst_alt", "cst")
+        if compare_alternate
+        else ("dense", "cst")
     )
     for mode in (*modes, *reversed(modes)):
         step(mode)
@@ -160,6 +190,19 @@ def main():
         result["paired_cst_vs_baseline_ratio_median"] = statistics.median(
             cst / baseline
             for cst, baseline in zip(samples["cst"], samples["cst_baseline"])
+        )
+    if args.compare_csr:
+        result["paired_cst_vs_csr_ratio_median"] = statistics.median(
+            cst / csr for cst, csr in zip(samples["cst"], samples["cst_csr"])
+        )
+    if compare_alternate:
+        result["alternate"] = {
+            "window_rows": args.alt_window_rows,
+            "cache_windows": args.alt_cache_windows,
+        }
+        result["paired_alternate_vs_cst_ratio_median"] = statistics.median(
+            alternate / cst
+            for alternate, cst in zip(samples["cst_alt"], samples["cst"])
         )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")

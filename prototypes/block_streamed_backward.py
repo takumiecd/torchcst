@@ -431,6 +431,41 @@ def build_listed_forward_candidates_csr(layer, packed, circle, section, offsets)
     return atom_lists, list_counts, list_bases, cursor
 
 
+def build_listed_forward_candidates_bounded(
+    layer, packed, circle, section, offsets, *, max_candidates=192
+):
+    """Graph-safe compact lists; overflow tiles scan their complete bucket span."""
+    if type(max_candidates) is not int or not 1 <= max_candidates <= 65536:
+        raise ValueError("bounded candidate capacity must be in [1, 65536]")
+    g = layer.strip.chart.tile_count
+    rank_limit = 256 if max_candidates <= 256 else 65536
+    atom_lists = torch.empty(
+        (g, 4, max_candidates),
+        device=packed.device,
+        dtype=torch.uint8 if rank_limit == 256 else torch.uint16,
+    )
+    list_counts = torch.empty((g, 4), device=packed.device, dtype=torch.int32)
+    build_tile_atom_lists[(g, 4)](
+        packed,
+        circle,
+        section,
+        offsets,
+        atom_lists,
+        list_counts,
+        G=g,
+        MAX_CANDIDATES=max_candidates,
+        BA=8,
+        COMPACT=True,
+        BR=16,
+        BC=64,
+        BOUNDED=True,
+        RANK_LIMIT=rank_limit,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    return atom_lists, list_counts, max_candidates
+
+
 class _MappedStreamed(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -458,10 +493,13 @@ class _MappedStreamed(torch.autograd.Function):
             ctx.listed_data = build_listed_forward_candidates_csr(
                 layer, packed, circle, section, offsets
             )
-        elif materialize_mode in ("listed", "listed_parallel"):
-            ctx.listed_data = build_listed_forward_candidates(
-                layer, packed, circle, section, offsets
+        elif materialize_mode in ("listed", "listed_parallel", "listed_bounded"):
+            builder = (
+                build_listed_forward_candidates_bounded
+                if materialize_mode == "listed_bounded"
+                else build_listed_forward_candidates
             )
+            ctx.listed_data = builder(layer, packed, circle, section, offsets)
         else:
             ctx.listed_data = None
         reuse_input_weight = ctx.needs_input_grad[0] and (
@@ -533,6 +571,7 @@ class _MappedStreamed(torch.autograd.Function):
                             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                             MAX_CANDIDATES=max_candidates,
                             CSR=csr,
+                            BOUNDED=ctx.materialize_mode == "listed_bounded",
                             Bases=list_bases,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
@@ -676,6 +715,7 @@ class _MappedStreamed(torch.autograd.Function):
                             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                             MAX_CANDIDATES=max_candidates,
                             CSR=csr,
+                            BOUNDED=ctx.materialize_mode == "listed_bounded",
                             Bases=list_bases,
                             BA=1,
                             COMPACT=True,
@@ -857,7 +897,13 @@ def mapped_streamed_trainable(
         raise ValueError("bounded GEMM is implemented for staged_listed only")
     if forward_gemm_mode not in ("ieee", "tf32x3", "fp16x3"):
         raise ValueError("unknown forward_gemm_mode")
-    if materialize_mode not in ("default", "listed", "listed_parallel", "listed_csr"):
+    if materialize_mode not in (
+        "default",
+        "listed",
+        "listed_parallel",
+        "listed_csr",
+        "listed_bounded",
+    ):
         raise ValueError("unknown materialize_mode")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols

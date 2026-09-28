@@ -18,8 +18,11 @@ def main():
     parser.add_argument("--size", type=int, default=8192)
     parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
     parser.add_argument("--graph", action="store_true")
+    parser.add_argument("--cache-windows", type=int, default=None)
     parser.add_argument(
-        "--materialize-mode", choices=("listed", "listed_csr"), default="listed"
+        "--materialize-mode",
+        choices=("listed", "listed_csr", "listed_bounded"),
+        default="listed",
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -35,7 +38,9 @@ def main():
         [layer.strip.atoms.p], lr=1e-3, foreach=True, capturable=args.graph
     )
     window_rows = min(1024, n // 2)
-    cache_windows = 0 if n == 1024 else 2
+    cache_windows = (
+        (0 if n == 1024 else 2) if args.cache_windows is None else args.cache_windows
+    )
     bounded_mode = m == 2048
 
     def step():

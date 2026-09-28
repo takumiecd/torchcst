@@ -1,5 +1,7 @@
 # 5% CST 学習：新しい計算経路の探索
 
+続くRTX 6000 Adaでの圧縮候補リスト、窓幅、CUDA C++の実測は[固定長の圧縮候補リストと窓の選択](five-percent-bounded-lists-ada.ja.md)に記録した。
+
 2026-09-29。対象は Triweight、64×64 tile、RTX 6000 Ada。全 W と全 dW を作らず、dense 学習より低いピークメモリを守る。1024²・M=128/2048 は小形状の反証試験、8192²・M=2048 は主目標。速度の基準は[対象形状と完全ステップの測定](five-percent-target-shapes.ja.md)。以下の時間は特記しない限り**局所窓の kernel 時間**で、AdamW 全ステップとは異なる。
 
 ## 今回分かったこと

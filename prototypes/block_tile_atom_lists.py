@@ -21,6 +21,8 @@ def build_tile_atom_lists(
     BR: tl.constexpr,
     BC: tl.constexpr,
     CSR: tl.constexpr = False,
+    BOUNDED: tl.constexpr = False,
+    RANK_LIMIT: tl.constexpr = 65536,
     Bases=None,
     Cursor=None,
 ):
@@ -38,7 +40,19 @@ def build_tile_atom_lists(
     ly, hy = tl.min(sy, 0), tl.max(sy, 0)
     lz, hz = tl.min(sz, 0), tl.max(sz, 0)
     lw, hw = tl.min(sw, 0), tl.max(sw, 0)
-    if CSR:
+    if BOUNDED:
+        if G == 1:
+            capacity = tl.load(Offsets + 1) - tl.load(Offsets)
+        else:
+            prev = 2 * ((station + G - 1) % G) + 1
+            capacity = (
+                tl.load(Offsets + prev + 1)
+                - tl.load(Offsets + prev)
+                + tl.load(Offsets + 2 * station + 2)
+                - tl.load(Offsets + 2 * station)
+            )
+        base = (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES
+    elif CSR:
         if G == 1:
             capacity = tl.load(Offsets + 1) - tl.load(Offsets)
         else:
@@ -83,10 +97,19 @@ def build_tile_atom_lists(
             tl.store(
                 Lists + base + position,
                 bucket_rank + atom - begin if COMPACT else atom,
-                possible,
+                possible
+                & (
+                    (position < MAX_CANDIDATES) & (capacity <= RANK_LIMIT)
+                    if BOUNDED
+                    else True
+                ),
             )
             count += tl.sum(possible.to(tl.int32), 0)
         bucket_rank += end - begin
+    if BOUNDED:
+        count = tl.where(
+            (count <= MAX_CANDIDATES) & (capacity <= RANK_LIMIT), count, -1
+        )
     tl.store(Counts + station * (4096 // (BR * BC)) + tile, count)
 
 
@@ -123,6 +146,7 @@ def mapped_backward_atoms_listed(
     N: tl.constexpr = 0,
     FUSED_DW: tl.constexpr = False,
     CSR: tl.constexpr = False,
+    BOUNDED: tl.constexpr = False,
     Bases=None,
 ):
     # Experimental in-place W output; only the listed 16x64, one-atom path
@@ -180,16 +204,28 @@ def mapped_backward_atoms_listed(
             begin1 = tl.load(Offsets + 2 * station)
             length1 = tl.load(Offsets + 2 * station + 1) - begin1
             begin2 = tl.load(Offsets + 2 * station + 1)
+    if BOUNDED:
+        if G == 1:
+            total_candidates = tl.load(Offsets + 1) - begin0
+        else:
+            total_candidates = (
+                length0 + length1 + tl.load(Offsets + 2 * station + 2) - begin2
+            )
+        loop_count = tl.where(count < 0, total_candidates, count)
+    else:
+        loop_count = count
     for atom_start in tl.range(
-        0, count, BA, num_stages=PIPE_STAGES, loop_unroll_factor=LOOP_UNROLL
+        0, loop_count, BA, num_stages=PIPE_STAGES, loop_unroll_factor=LOOP_UNROLL
     ):
         lanes = atom_start + tl.arange(0, BA)
-        active = lanes < count
+        active = lanes < loop_count
         atom = tl.load(
             Lists + list_base + lanes,
-            active,
+            active & (count >= 0) if BOUNDED else active,
             0,
-        )
+        ).to(tl.int32)
+        if BOUNDED:
+            atom = tl.where(count < 0, lanes, atom)
         if COMPACT:
             rank = atom.to(tl.int32)
             if G == 1:
