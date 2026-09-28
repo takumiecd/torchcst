@@ -65,7 +65,6 @@ def main():
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     prop = torch.cuda.get_device_properties(0)
-    assert "A100" in prop.name
     n = args.size
     atom_count = round(n * n * 0.05)
     layer = BlockStripLinear((n, n), (64, 64), atom_count, device="cuda")
