@@ -95,14 +95,11 @@ def main():
     def atom_gradient(bm=16, bn=16, bk=16, ba=8, factored=False):
         dp.zero_()
         kernel = mapped_backward_atoms_factored if factored else mapped_backward_atoms
+        arguments = (x, dy, packed, circle, section, offsets, dp)
+        if factored:
+            arguments = (packed, *arguments)
         kernel[(g * (64 // bn), 64 // bk)](
-            x,
-            dy,
-            packed,
-            circle,
-            section,
-            offsets,
-            dp,
+            *arguments,
             M=m,
             N=n,
             K=n,

@@ -19,7 +19,7 @@ from torchcst.nn._backends._preparation import execution_plan
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("size", (128, 192))
-@pytest.mark.parametrize("atom_kernel", ("baseline", "factored"))
+@pytest.mark.parametrize("atom_kernel", ("baseline", "factored", "staged"))
 def test_mapped_streamed_backward_matches_torch_reference(size, atom_kernel):
     torch.manual_seed(916)
     layer = BlockStripLinear(
@@ -50,7 +50,7 @@ def test_mapped_streamed_backward_matches_torch_reference(size, atom_kernel):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("atom_kernel", ("baseline", "factored"))
+@pytest.mark.parametrize("atom_kernel", ("baseline", "factored", "staged"))
 def test_mapped_backward_after_atom_movement_and_boundary_support(atom_kernel):
     torch.manual_seed(563)
     layer = BlockStripLinear(

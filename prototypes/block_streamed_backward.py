@@ -131,6 +131,7 @@ def mapped_backward_atoms(
 
 @tr.jit
 def mapped_backward_atoms_factored(
+    DW,
     X,
     DY,
     P,
@@ -150,29 +151,39 @@ def mapped_backward_atoms_factored(
     BN: tl.constexpr,
     BK: tl.constexpr,
     BA: tl.constexpr,
+    STAGED: tl.constexpr = False,
+    STATION_START=0,
+    ROW_START=0,
 ):
     """Hoist site coordinates and reuse atom/site differences across derivatives."""
     tile = tl.program_id(0)
-    station = tile // tr.cdiv(S, BN)
+    station = tile // tr.cdiv(S, BN) + STATION_START
     local = (tile % tr.cdiv(S, BN)) * BN
     col_start = tl.program_id(1) * BK
     local_cols = col_start + tl.arange(0, BK)
     logical_rows = (station // CG) * S + local + tl.arange(0, BN)
     logical_cols = (station % CG) * T + local_cols
-    dw = tl.full((BN, BK), 0.0, tl.float32)
-    for start in range(0, M, BM):
-        m = start + tl.arange(0, BM)
-        dy = tl.load(
-            DY + m[:, None] * N + logical_rows[None, :],
-            (m[:, None] < M) & (logical_rows[None, :] < N),
+    if STAGED:
+        dw = tl.load(
+            DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :],
+            (logical_rows[:, None] < N) & (logical_cols[None, :] < K),
             0.0,
         )
-        x = tl.load(
-            X + m[:, None] * K + logical_cols[None, :],
-            (m[:, None] < M) & (logical_cols[None, :] < K),
-            0.0,
-        )
-        dw = tl.dot(tl.trans(dy), x, dw, input_precision="ieee")
+    else:
+        dw = tl.full((BN, BK), 0.0, tl.float32)
+        for start in range(0, M, BM):
+            m = start + tl.arange(0, BM)
+            dy = tl.load(
+                DY + m[:, None] * N + logical_rows[None, :],
+                (m[:, None] < M) & (logical_rows[None, :] < N),
+                0.0,
+            )
+            x = tl.load(
+                X + m[:, None] * K + logical_cols[None, :],
+                (m[:, None] < M) & (logical_cols[None, :] < K),
+                0.0,
+            )
+            dw = tl.dot(tl.trans(dy), x, dw, input_precision="ieee")
     sites = tl.arange(0, BN * BK)
     rows = station * S + local + sites // BK
     cols = col_start + sites % BK
@@ -288,33 +299,65 @@ class _MappedStreamed(torch.autograd.Function):
         if dp is not None and m:
             kernel = (
                 mapped_backward_atoms_factored
-                if ctx.atom_kernel == "factored"
+                if ctx.atom_kernel in ("factored", "staged")
                 else mapped_backward_atoms
             )
             atom_bk = 32 if ctx.atom_kernel == "factored" else 16
-            kernel[(layer.strip.chart.tile_count * 4, 64 // atom_bk)](
-                x,
-                dy,
-                packed,
-                circle,
-                section,
-                offsets,
-                dp,
-                M=m,
-                N=n,
-                K=k,
-                S=64,
-                T=64,
-                CG=layer.column_groups,
-                G=layer.strip.chart.tile_count,
-                PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-                BM=16,
-                BN=16,
-                BK=atom_bk,
-                BA=8,
-                num_warps=4,
-                enable_fp_fusion=False,
-            )
+            if ctx.atom_kernel == "staged":
+                chunk = min(ctx.window_rows, n)
+                if dx is None:
+                    w = x.new_empty((chunk, k))
+                for start in range(0, n, chunk):
+                    rows = min(chunk, n - start)
+                    torch.mm(dy[:, start : start + rows].T, x, out=w[:rows])
+                    kernel[(rows // 64 * layer.column_groups * 4, 2)](
+                        w,
+                        x,
+                        dy,
+                        packed,
+                        circle,
+                        section,
+                        offsets,
+                        dp,
+                        M=m,
+                        N=n,
+                        K=k,
+                        S=64,
+                        T=64,
+                        CG=layer.column_groups,
+                        G=layer.strip.chart.tile_count,
+                        PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                        BM=16,
+                        BN=16,
+                        BK=32,
+                        BA=8,
+                        STAGED=True,
+                        STATION_START=start // 64 * layer.column_groups,
+                        ROW_START=start,
+                        num_warps=4,
+                        enable_fp_fusion=False,
+                    )
+            else:
+                arguments = (x, dy, packed, circle, section, offsets, dp)
+                if ctx.atom_kernel == "factored":
+                    arguments = (packed, *arguments)
+                kernel[(layer.strip.chart.tile_count * 4, 64 // atom_bk)](
+                    *arguments,
+                    M=m,
+                    N=n,
+                    K=k,
+                    S=64,
+                    T=64,
+                    CG=layer.column_groups,
+                    G=layer.strip.chart.tile_count,
+                    PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                    BM=16,
+                    BN=16,
+                    BK=atom_bk,
+                    BA=8,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
         return dx, dp, None, None, None, None, None, None
 
 
@@ -323,8 +366,8 @@ def mapped_streamed_trainable(
 ):
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
         raise ValueError("trainable mapped prototype requires full 64x64 tiles")
-    if atom_kernel not in ("baseline", "factored"):
-        raise ValueError("atom_kernel must be baseline or factored")
+    if atom_kernel not in ("baseline", "factored", "staged"):
+        raise ValueError("atom_kernel must be baseline, factored or staged")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )
