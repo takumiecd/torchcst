@@ -50,4 +50,12 @@ decode、pack、optimizerの小kernel融合はなお候補だが、Graphでhost 
 
 ## 判定
 
-**今回、同期を除いて完全ステップをGraph化する安全な経路は得られたが、dense同等の速度にはまだ届かない。** 主目標の8192²・M=2048では、同一Ada上のGraph交互測定でdenseの1.266倍、ピークは約41%低い。小形状1024²・M=2048では速度約2.05倍、ピークはdense未満。M=128のGraphはメモリ条件で失格。次は主目標で残るGPU kernel時間の内訳をGraph条件で採り直し、候補リストの107 MB予約領域を縮めてもhost同期を戻さない方法を優先する。dispatchへの統合は形状別のメモリ条件を満たす方式が固まってから行う。
+**今回、同期を除いて完全ステップをGraph化する安全な経路は得られたが、dense同等の速度にはまだ届かない。** 主目標の8192²・M=2048では、同一Ada上のGraph交互測定でdenseの1.266倍、ピークは約41%低い。小形状1024²・M=2048では速度約2.05倍、ピークはdense未満。M=128のGraphはメモリ条件で失格。候補リストの107 MB予約領域を縮めてもhost同期を戻さない方法は、引き続き検討する。
+
+## dispatch と CUDA C++ の順序
+
+その後、8192²・M=2048の`listed_csr`完全AdamWステップをGraph再実行でプロファイルした。GPU kernel合計35.09 msのうち、局所W生成`materialize_listed`が7.52 ms（14回）、atom勾配`mapped_backward_atoms_listed`が5.69 ms（8回）、FP16x3 GEMMが8.92 ms（16回）、局所dW GEMMのCUTLASS kernelが5.85 ms（8回）。候補リスト生成は0.73 ms（1回）。1024²・M=2048でも局所W生成0.260 ms、atom勾配0.219 msがkernel時間約1.00 msの約48%を占めた。traceを含むJSONは`output/ada-20260928/cache-hypotheses/profile-graph-csr-{1024,8192}-m2048.json`、計測コードは`prototypes.profile_mapped_training_kernels`。
+
+これに基づく実装順は、**小さな内部実行ポリシーを先に作り、CUDA C++は局所W生成の単独比較から始める**こと。ポリシーはshape、実効入力行数M、dtype、GPU、学習モード、ピークメモリ上限を入力にし、測定済みケースだけ`listed_csr`とGEMM精度、Graph適格性を選ぶ。Graph capture自体は学習ループの責務として分ける。1024²・M=128はGraphがメモリ条件に失敗したためeagerへ、未測定GPU・shapeは保守的な明示経路へ戻す。これはPyTorchのdevice/autograd dispatch key登録とは別の、CST内部の実行ポリシーである。
+
+TritonからCUDA C++へ同じ計算式を移すだけで速くなる証拠はない。2次元site×atom tileとdW融合はTriton試作で遅く、7基底は数値誤差、20項は演算数が障害だった。CUDA C++を試す理由は、station単位の共有メモリ配置、warp間の仕事配分、atomデータ再利用を直接制御し、**局所W生成7.52 msを明確に削れるか**を反証するため。最初は1窓のW照合、時間、register/shared-memory使用量、ピーク増分を比べ、優位がなければ全経路の移植には進まない。全W・全dWを作らない条件は維持する。

@@ -17,6 +17,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, default=8192)
     parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
+    parser.add_argument("--graph", action="store_true")
+    parser.add_argument(
+        "--materialize-mode", choices=("listed", "listed_csr"), default="listed"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(21)
@@ -27,10 +31,12 @@ def main():
     hints = balanced_home_columns(layer.strip)
     x = torch.randn((m, n), device="cuda", requires_grad=True)
     dy = torch.randn((m, n), device="cuda")
-    optimizer = torch.optim.AdamW([layer.strip.atoms.p], lr=1e-3, foreach=True)
+    optimizer = torch.optim.AdamW(
+        [layer.strip.atoms.p], lr=1e-3, foreach=True, capturable=args.graph
+    )
     window_rows = min(1024, n // 2)
     cache_windows = 0 if n == 1024 else 2
-    bounded_mode = m == 2048 and n > 1024
+    bounded_mode = m == 2048
 
     def step():
         optimizer.zero_grad(set_to_none=True)
@@ -43,9 +49,9 @@ def main():
             window_rows=window_rows,
             cache_windows=cache_windows,
             atom_kernel="staged_listed",
-            gemm_mode="tf32x3_dx" if bounded_mode else "ieee",
-            forward_gemm_mode="tf32x3" if bounded_mode else "ieee",
-            materialize_mode="listed",
+            gemm_mode="fp16x3_dx" if bounded_mode else "ieee",
+            forward_gemm_mode="fp16x3" if bounded_mode else "ieee",
+            materialize_mode=args.materialize_mode,
         )
         y.backward(dy)
         optimizer.step()
@@ -53,13 +59,20 @@ def main():
     for _ in range(3):
         step()
     torch.cuda.synchronize()
+    if args.graph:
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph):
+            step()
+        run_step = graph.replay
+    else:
+        run_step = step
     with torch.profiler.profile(
         activities=[
             torch.profiler.ProfilerActivity.CPU,
             torch.profiler.ProfilerActivity.CUDA,
         ]
     ) as profiler:
-        step()
+        run_step()
         torch.cuda.synchronize()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     trace = args.output.with_suffix(".trace.json")
@@ -69,6 +82,8 @@ def main():
         "torch": torch.__version__,
         "size": n,
         "rows": m,
+        "graph": args.graph,
+        "materialize_mode": args.materialize_mode,
         "window_rows": window_rows,
         "cache_windows": cache_windows,
         "atoms": round(0.05 * n * n),
