@@ -366,8 +366,14 @@ def mapped_streamed_trainable(
 ):
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
         raise ValueError("trainable mapped prototype requires full 64x64 tiles")
+    if layer.shape[0] < 128:
+        raise ValueError("trainable mapped prototype requires at least two row tiles")
+    if type(window_rows) is not int or window_rows < 64 or window_rows % 64:
+        raise ValueError("window_rows must be a positive multiple of 64")
     if atom_kernel not in ("baseline", "factored", "staged"):
         raise ValueError("atom_kernel must be baseline, factored or staged")
+    # Keep every temporary W/dW window strictly smaller than the logical matrix.
+    window_rows = min(window_rows, (layer.shape[0] // 128) * 64)
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )

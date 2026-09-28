@@ -182,6 +182,7 @@ def main():
         "torch": torch.__version__,
         "mode": args.mode,
         "atom_kernel": args.atom_kernel,
+        "cst_window_rows": min(1024, (n // 128) * 64) if args.mode == "cst" else None,
         "shape": [args.microbatch_rows, n, n],
         "atoms": atom_count,
         "microbatch_rows": args.microbatch_rows,

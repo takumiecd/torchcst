@@ -36,7 +36,6 @@ def test_mapped_streamed_backward_matches_torch_reference(size, atom_kernel):
         x,
         boxes=boxes,
         witness_cols=hints,
-        window_rows=64,
         atom_kernel=atom_kernel,
     )
     dx, dp = torch.autograd.grad(y, (x, site.atoms.p), upstream)

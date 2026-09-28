@@ -1,5 +1,7 @@
 # 5% mapped CST：学習ステップのピークメモリ
 
+backwardの後続速度改善は[こちら](five-percent-backward-speed.ja.md)に記録した。
+
 2026-09-28。`A = round(0.05 × N × K)` 個のatomを持つ `BlockStripLinear` で、forward、入力勾配、atom勾配、AdamW更新まで実行した。CST経路は全重み `W[N,K]` と全重み勾配 `dW[N,K]` を保持しない。forwardと入力勾配では最大1024行の局所重み窓を使い回す。atom勾配では各16×16 site tileの `dW` を局所的に計算し、現在のatomへ加算する。実装は[backward試作](../prototypes/block_streamed_backward.py)と[測定コード](../prototypes/benchmark_mapped_training_memory.py)。
 
 条件はA100 80GB PCIe MIG 3g.40gb（42 SM）、FP32、TF32無効、seed21、AdamW `foreach=True`。dense側はCSTから生成した初期Wをパラメータとして保持し、`F.linear` を使う。CSTの正しさ確認に使った全Wはメモリ測定前に解放した。各経路を独立プロセスで測り、optimizer状態生成後のステップで `torch.cuda.max_memory_allocated()` を取った。数値はGPU tensor割当量で、CUDA allocator reservedとcontextは含まない。時間はウォームアップ後1ステップの同期wall timeで、JITと初期W生成を含まない。
