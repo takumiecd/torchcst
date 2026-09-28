@@ -7,6 +7,7 @@ import torch
 from prototypes.block_materialize_kernel import materialize_logical
 from prototypes.block_materialize_listed import materialize_listed
 from prototypes.bounded_gemm import bounded_gemm
+from prototypes.bounded_gemm_fp16x3 import bounded_gemm_fp16x3
 from torchcst.nn._backends._preparation import PROFILE_KINDS, prepare
 
 
@@ -39,7 +40,7 @@ def streamed_forward(
         raise ValueError("weight_chunk_rows must be a positive multiple of 64")
     if materialize_tile not in ((16, 32), (32, 32), (64, 32), (32, 64), (64, 64)):
         raise ValueError("unsupported materialization tile")
-    if gemm_mode not in ("ieee", "tf32x3"):
+    if gemm_mode not in ("ieee", "tf32x3", "fp16x3"):
         raise ValueError("unknown forward gemm_mode")
     if materialize_mode not in ("default", "listed"):
         raise ValueError("unknown forward materialize_mode")
@@ -127,6 +128,8 @@ def streamed_forward(
         output_window = y[:, start : start + rows]
         if gemm_mode == "tf32x3":
             bounded_gemm(flat, target.T, output_window)
+        elif gemm_mode == "fp16x3":
+            bounded_gemm_fp16x3(flat, target.T, output_window)
         else:
             torch.mm(flat, target.T, out=output_window)
     output = y.reshape(*x.shape[:-1], layer.shape[0])

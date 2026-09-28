@@ -29,3 +29,7 @@ GPUが再び0%・39 MiB、他プロセスなしになった後、同じM=2048の
 現行の8192行・1024行窓では、forwardが局所Wを8回生成し、先頭2窓だけbackwardの入力勾配へ保持する。残り6窓はbackwardで再生成する。これは重複計算だが、全Wを保持しないための選択である。実測で保持を2窓から4窓へ増やしても、M=128の学習ステップ18.33→18.26 msと明確に速くならず、ピークは588→642 MBに増えた[記録](ada-precision-and-shared-gpu.ja.md)。局所dWは8窓を別途計算するが、Wがほぼ全面で非ゼロのため、窓単位で丸ごと省く場所は見つかっていない。候補一覧は同じステップのforward/backwardで共有済みだが、atom更新後の次ステップでは作り直す。
 
 実験コードは`prototypes.profile_candidate_occupancy`、`prototypes.profile_weight_tile_rank`、`prototypes.profile_gemm_cache_hints`。生のJSONは`output/ada-20260928/cache-hypotheses/`に保存した。
+
+局所WのTensor Core GEMMについては、[FP16高低成分の試作結果](ada-fp16x3-local-gemm.ja.md)も参照。AdaのM=2048で完全な学習ステップを約16%短縮し、M=128ではIEEE経路の方が速かった。
+
+別の2案も採用しなかった。候補atomを2/4/8件並列に評価する局所W生成は、先頭1024行の0.537 msに対して最良でも0.668 ms。出力誤差は許容内だったが速くならなかった。準備済みforwardをCUDA Graphで再実行しても、M=128はeager 6.293/graph 6.275 ms、M=2048は17.053/17.011 msで差は小さい。Graphの測定には配置準備・backward・optimizerは含まない。JSONは`parallel-weight-atoms-m2048.json`と`graph-prepared-m128-interleaved.json`、`graph-prepared-m2048-interleaved.json`。

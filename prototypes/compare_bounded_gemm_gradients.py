@@ -15,10 +15,12 @@ from torchcst.nn._backends._preparation import execution_plan
 def compare(actual, expected):
     diff = (actual - expected).abs()
     tolerance = 3e-4 + 3e-4 * expected.abs()
+    strict_tolerance = 3e-5 + 3e-5 * expected.abs()
     return {
         "max_abs": diff.max().item(),
         "relative_l1": (diff.sum() / expected.abs().sum()).item(),
         "relative_l2": (diff.norm() / expected.norm()).item(),
+        "violations_3e_5": (diff > strict_tolerance).sum().item(),
         "violations_3e_4": (diff > tolerance).sum().item(),
         "elements": actual.numel(),
     }
@@ -28,18 +30,21 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, required=True)
     parser.add_argument("--rows", type=int, required=True)
+    parser.add_argument("--seed", type=int, default=21)
     parser.add_argument(
-        "--compare-mode", choices=("ieee", "tf32x3", "tf32x3_dx"), default="tf32x3"
+        "--compare-mode",
+        choices=("ieee", "tf32x3", "tf32x3_dx", "fp16x3", "fp16x3_dx"),
+        default="tf32x3",
     )
     parser.add_argument(
-        "--forward-gemm-mode", choices=("ieee", "tf32x3"), default="ieee"
+        "--forward-gemm-mode", choices=("ieee", "tf32x3", "fp16x3"), default="ieee"
     )
     parser.add_argument(
         "--materialize-mode", choices=("default", "listed"), default="default"
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    torch.manual_seed(21)
+    torch.manual_seed(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
     n, m = args.size, args.rows
     layer = BlockStripLinear((n, n), (64, 64), round(n * n * 0.05), device="cuda")
@@ -72,6 +77,7 @@ def main():
     result = {
         "size": n,
         "rows": m,
+        "seed": args.seed,
         "output": compare(outputs[1], outputs[0]),
         "dx": compare(x3[0], ieee[0]),
         "dp": compare(x3[1], ieee[1]),
