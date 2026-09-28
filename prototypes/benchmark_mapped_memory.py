@@ -28,12 +28,15 @@ from torchcst.nn._backends._preparation import execution_plan, prepare
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, choices=(4096, 8192), required=True)
+    parser.add_argument("--batch", type=int, default=128)
     parser.add_argument(
         "--mode", choices=("dense", "fused", "stream", "stream_fast"), required=True
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
     args = parser.parse_args()
+    if args.batch < 1:
+        parser.error("batch must be positive")
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     prop = torch.cuda.get_device_properties(0)
@@ -41,7 +44,7 @@ def main():
     n = args.size
     atom_count = round(n * n * 0.05)
     layer = BlockStripLinear((n, n), (64, 64), atom_count, device="cuda")
-    x = torch.randn(128, n, device="cuda")
+    x = torch.randn(args.batch, n, device="cuda")
     prepared = prepare(layer.strip, layer.strip.atoms.p, support_layout=True)
     weight, canonical = mapped_control(layer, prepared, canonical_chunk=4)
     assert canonical["passed"], canonical
@@ -102,7 +105,7 @@ def main():
         "device": prop.name,
         "multiprocessors": prop.multi_processor_count,
         "mode": args.mode,
-        "shape": [128, n, n],
+        "shape": [args.batch, n, n],
         "atoms": atom_count,
         "canonical": canonical,
         "output_check": output_check,
