@@ -22,7 +22,8 @@ def main():
     parser.add_argument("--size", type=int, choices=(4096, 8192), required=True)
     parser.add_argument("--fast-decode", action="store_true")
     parser.add_argument(
-        "--sort-mode", choices=("sort_stable", "argsort_stable", "sort_unstable", "atomic_bucket"),
+        "--sort-mode",
+        choices=("sort_stable", "argsort_stable", "sort_unstable", "atomic_bucket"),
         default="sort_stable",
     )
     parser.add_argument("--output", type=Path, required=True)

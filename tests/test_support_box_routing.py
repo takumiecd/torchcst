@@ -8,6 +8,7 @@ pytest.importorskip("triton")
 
 from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.support_box_routing import (
+    atomic_bucket_sort,
     balanced_home_columns,
     boxed_prepare,
     decode_intrinsic_torus_compact,
@@ -17,7 +18,7 @@ from torchcst.nn._backends._preparation import execution_plan, prepare
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-def test_boxed_support_matches_exact_layout_and_graph_updates():
+def test_boxed_support_matches_exact_layout_and_graph_updates(monkeypatch):
     torch.manual_seed(563)
     layer = BlockStripLinear(
         (128, 128),
@@ -61,6 +62,22 @@ def test_boxed_support_matches_exact_layout_and_graph_updates():
                 fast_witness=True,
                 fast_decode=True,
             )
+            with monkeypatch.context() as patch:
+                patch.setattr(
+                    torch,
+                    "sort",
+                    lambda keys, **_kwargs: atomic_bucket_sort(
+                        keys, 2 * plan.routing.starts.numel() + 1
+                    ),
+                )
+                atomic = boxed_prepare(
+                    site,
+                    p,
+                    boxes=boxes,
+                    witness_cols=hints,
+                    fast_witness=True,
+                    fast_decode=True,
+                )
             decoded = decode_intrinsic_torus_compact(chart.geometry, p[:, 2:])
             torch.testing.assert_close(
                 decoded, chart.geometry.decode_centers(p[:, 2:]), atol=3e-5, rtol=3e-5
@@ -72,12 +89,21 @@ def test_boxed_support_matches_exact_layout_and_graph_updates():
             assert torch.equal(ordinary[3], fast_witnessed[3])
             assert torch.equal(ordinary[0], fast_witnessed[0])
             assert torch.equal(ordinary[3], compact[3])
+            assert torch.equal(ordinary[3], atomic[3])
             torch.testing.assert_close(ordinary[0], compact[0], atol=3e-5, rtol=3e-5)
             actual = layer(
                 x, backend="triton_streamed", prepared=boxed, weight_chunk_rows=64
             )
             torch.testing.assert_close(
                 actual, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
+            )
+            torch.testing.assert_close(
+                layer(
+                    x, backend="triton_streamed", prepared=atomic, weight_chunk_rows=64
+                ),
+                F.linear(x, layer.dense_weight()),
+                atol=3e-5,
+                rtol=3e-5,
             )
             return ordinary
 
@@ -114,3 +140,16 @@ def test_boxed_support_matches_exact_layout_and_graph_updates():
         torch.testing.assert_close(
             captured, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
         )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_atomic_bucket_sort_is_a_complete_bucket_permutation():
+    torch.manual_seed(812)
+    keys = torch.randint(0, 257, (10001,), device="cuda", dtype=torch.int32)
+    sorted_keys, order = atomic_bucket_sort(keys, 257)
+    assert torch.equal(sorted_keys, keys[order.long()])
+    assert bool((sorted_keys[1:] >= sorted_keys[:-1]).all())
+    assert torch.equal(
+        torch.sort(order).values,
+        torch.arange(keys.numel(), device="cuda", dtype=torch.int32),
+    )

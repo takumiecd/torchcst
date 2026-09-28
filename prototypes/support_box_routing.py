@@ -71,9 +71,7 @@ def _bucket_histogram(Keys, Counts, A: tl.constexpr, B: tl.constexpr):
 
 
 @tr.jit
-def _bucket_scatter(
-    Keys, Cursors, SortedKeys, Order, A: tl.constexpr, B: tl.constexpr
-):
+def _bucket_scatter(Keys, Cursors, SortedKeys, Order, A: tl.constexpr, B: tl.constexpr):
     atom = tl.program_id(0) * B + tl.arange(0, B)
     valid = atom < A
     key = tl.load(Keys + atom, valid, 0)

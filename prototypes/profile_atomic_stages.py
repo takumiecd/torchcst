@@ -63,13 +63,27 @@ def main():
 
     def materialize(target, *, bn=64, bk=32, ba=1, factored=True):
         materialize_logical[(math.ceil(chunk / bn), layer.column_groups, 64 // bk)](
-            p, circle, section, offsets, target,
-            N=n, K=n, S=64, T=64, CG=layer.column_groups,
-            G=site.chart.tile_count, D=4,
+            p,
+            circle,
+            section,
+            offsets,
+            target,
+            N=n,
+            K=n,
+            S=64,
+            T=64,
+            CG=layer.column_groups,
+            G=site.chart.tile_count,
+            D=4,
             PROFILE=PROFILE_KINDS[type(site.kernel.profile)],
-            BN=bn, BK=bk, BA=ba, FACTORED=factored,
-            ROW_GROUP_START=0, LOCAL_W=True,
-            num_warps=4, enable_fp_fusion=True,
+            BN=bn,
+            BK=bk,
+            BA=ba,
+            FACTORED=factored,
+            ROW_GROUP_START=0,
+            LOCAL_W=True,
+            num_warps=4,
+            enable_fp_fusion=True,
         )
 
     def materialize_one():
@@ -83,7 +97,9 @@ def main():
 
     times = {
         "prepare_ms": do_bench_cudagraph(prepare_atomic, rep=20, return_mode="median"),
-        "stream_prepared_ms": do_bench_cudagraph(streamed, rep=20, return_mode="median"),
+        "stream_prepared_ms": do_bench_cudagraph(
+            streamed, rep=20, return_mode="median"
+        ),
         "materialize_one_window_ms": do_bench_cudagraph(
             materialize_one, rep=20, return_mode="median"
         ),
@@ -93,17 +109,33 @@ def main():
     if args.scan_materialize:
         materialize_one()
         configs = [
-            (16, 32, 1, True), (32, 32, 1, True),
-            (32, 64, 1, True), (64, 64, 1, True),
-            (64, 32, 2, False), (64, 32, 4, False),
-            (64, 32, 8, False), (32, 32, 4, False),
+            (16, 32, 1, True),
+            (32, 32, 1, True),
+            (32, 64, 1, True),
+            (64, 64, 1, True),
+            (64, 32, 2, False),
+            (64, 32, 4, False),
+            (64, 32, 8, False),
+            (32, 32, 4, False),
             (16, 32, 8, False),
         ]
         for bn, bk, ba, factored in configs:
             candidate = torch.empty_like(w)
 
-            def candidate_fn():
-                materialize(candidate, bn=bn, bk=bk, ba=ba, factored=factored)
+            def candidate_fn(
+                target=candidate,
+                row_tile=bn,
+                col_tile=bk,
+                atom_tile=ba,
+                use_factored=factored,
+            ):
+                materialize(
+                    target,
+                    bn=row_tile,
+                    bk=col_tile,
+                    ba=atom_tile,
+                    factored=use_factored,
+                )
 
             candidate_fn()
             error = (candidate - w).abs()
@@ -112,7 +144,9 @@ def main():
             variants[name] = {
                 "passed": bool(valid.all().item()),
                 "max_abs": float(error.max().item()),
-                "time_ms": do_bench_cudagraph(candidate_fn, rep=20, return_mode="median"),
+                "time_ms": do_bench_cudagraph(
+                    candidate_fn, rep=20, return_mode="median"
+                ),
             }
     result = {
         "source_commit": args.source_commit,

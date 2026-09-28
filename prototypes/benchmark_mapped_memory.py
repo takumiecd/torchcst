@@ -33,7 +33,14 @@ def main():
     parser.add_argument("--weight-chunk-rows", type=int, default=1024)
     parser.add_argument(
         "--mode",
-        choices=("dense", "fused", "stream", "stream_fast", "stream_fast_decode", "stream_atomic"),
+        choices=(
+            "dense",
+            "fused",
+            "stream",
+            "stream_fast",
+            "stream_fast_decode",
+            "stream_atomic",
+        ),
         required=True,
     )
     parser.add_argument("--output", type=Path, required=True)
