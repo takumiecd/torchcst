@@ -13,6 +13,7 @@ from prototypes.block_streamed_backward import (
     build_listed_forward_candidates,
     trainable_boxed_prepare,
 )
+from prototypes.block_streamed_forward import weight_fp_fusion_enabled
 from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.bounded_gemm import bounded_gemm
 from prototypes.support_box_routing import balanced_home_columns, station_site_boxes
@@ -60,7 +61,7 @@ def main():
             STATION_START=start // 64 * layer.column_groups,
             ROW_START=start,
             num_warps=1,
-            enable_fp_fusion=True,
+            enable_fp_fusion=weight_fp_fusion_enabled(buffer.device),
         )
 
     def sequential():
