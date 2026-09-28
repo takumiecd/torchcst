@@ -27,3 +27,5 @@ Adaでは、局所W生成に `enable_fp_fusion=True` を指定すると、canoni
 Adaでの局所W生成単体は、全行分のlisted生成で融合時約3.69 ms、非融合時約4.30 ms、候補一覧生成約0.69 ms。共有中の概算だが、forward全体の約39 msをW生成だけで説明できない。TF32x3 GEMMタイル探索では現行 `(BM, BN, BK, warps)=(32,128,32,4)` の約1.01 ms/窓を明確に上回る候補はなかった。共有メモリ上限を超えるタイルは計測から除いた。Ada上のstreamed backward・forward既存テストは42件通過した。
 
 実測JSONは `output/triton-a100-20260928/ada-*.json` に保存。AdaのPyTorchは2.9.1+cu128、Tritonは3.5.1。次は`parc_final`の処理終了とGPUの空きを確認し、同じコミットの隔離snapshotでM=128/2048のCSTとdenseを再測定する。
+
+Colab Proで単独利用できたRTX PRO 6000 Blackwellの同じ5%学習ステップは[別記録](colab-blackwell-kaggle-gpu.ja.md)を参照。Colabの実測値と本稿のAda共有時の値を直接の世代間性能比として扱わない。
