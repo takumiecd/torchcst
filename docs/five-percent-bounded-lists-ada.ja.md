@@ -54,3 +54,5 @@ CUDA C++試作の実行にはCUDA Toolkitと`ninja`が必要だった。Ada側�
 最後にPyTorch AdamWの`foreach=True`を`fused=True`へ変えて比較した。同一プロセスの32回交互Graph再実行でCST完全ステップの中央値は38.341→38.236 ms、対応ペアのfused/foreach比中央値は0.993。明確な速度改善とは言えない。別プロセスのfused Graph captureピークは884,781,056バイトで、従来foreachと同値だった。CSTパラメータの32回後の相対L2差は1.07e-6、最大絶対差は0.133で、atom勾配のatomic加算順やoptimizer実装差を含む。denseとfused CSTの交互比較ではCST/dense比が1.314だったが、foreach時の1.262–1.272と同一runではないため直接の優劣判断に使わない。`foreach`を維持する。測定用CLIに`--optimizer-mode`を追加した。
 
 この追加検証後、RTX 6000 Adaで`tests/test_block_streamed_backward.py`と`tests/test_streamed_materialization.py`は61件通過した。結果JSONは`docs/data/ada-20260929/`にも保存した。次は局所W・atom縮約で実際に処理している候補atomとsiteの比率を測り、候補選別を強める余地を判断する。
+
+その後、32 stationを標本にして実際の支持域とbox候補を照合した。16×64 tileの26,208個のatom–tile対のうち、boxが残すのは18,809件（71.77%）、真に1サイト以上を支持するのは18,229件（69.56%）。**box候補内の偽陽性は3.08%**だった。8×64でもbox候補33,935件に対する偽陽性は4.26%で、より細かく分ける費用を正当化しにくい。これは標本・初期配置についての割合であり、atom移動後や別の密度での上限ではない。64×64 station内のatom–site対全体では約44.93%が支持域内にある。候補をさらに削る余地より、候補のうち支持域外の個別site約37%に費やす演算と、実際に支持するsiteの計算を減らす方が有望と判断した。診断コードは`prototypes.profile_backward_support`、集計JSONは`docs/data/ada-20260929/overnight-support-ratio-box.json`。

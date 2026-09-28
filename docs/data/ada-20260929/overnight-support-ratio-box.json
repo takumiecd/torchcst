@@ -1,0 +1,162 @@
+{
+  "device": "NVIDIA RTX 6000 Ada Generation",
+  "size": 8192,
+  "atoms": 3355443,
+  "sample_stations": [
+    0,
+    528,
+    1057,
+    1585,
+    2114,
+    2642,
+    3171,
+    3699,
+    4228,
+    4756,
+    5285,
+    5813,
+    6342,
+    6870,
+    7399,
+    7927,
+    8456,
+    8984,
+    9513,
+    10041,
+    10570,
+    11098,
+    11627,
+    12155,
+    12684,
+    13212,
+    13741,
+    14269,
+    14798,
+    15326,
+    15855,
+    16383
+  ],
+  "routed_atom_station_pairs": 6552,
+  "atom_site_pairs": 26836992,
+  "supported_pairs": 12056781,
+  "column_interval_visited_pairs": 12056781,
+  "column_active_pairs": 25715840,
+  "tiles": {
+    "4x4": {
+      "total": 1677312,
+      "outside": 807852,
+      "inside": 640339,
+      "boundary": 229121,
+      "supported_pairs_inside": 10245424,
+      "supported_pairs_boundary": 1811357,
+      "box_hit": 0
+    },
+    "8x8": {
+      "total": 419328,
+      "outside": 170663,
+      "inside": 119366,
+      "boundary": 129299,
+      "supported_pairs_inside": 7639424,
+      "supported_pairs_boundary": 4417357,
+      "box_hit": 0
+    },
+    "16x16": {
+      "total": 104832,
+      "outside": 32510,
+      "inside": 9258,
+      "boundary": 63064,
+      "supported_pairs_inside": 2370048,
+      "supported_pairs_boundary": 9686733,
+      "box_hit": 0
+    },
+    "32x32": {
+      "total": 26208,
+      "outside": 4801,
+      "inside": 61,
+      "boundary": 21346,
+      "supported_pairs_inside": 62464,
+      "supported_pairs_boundary": 11994317,
+      "box_hit": 0
+    },
+    "16x32": {
+      "total": 52416,
+      "outside": 16155,
+      "inside": 4538,
+      "boundary": 31723,
+      "supported_pairs_inside": 2323456,
+      "supported_pairs_boundary": 9733325,
+      "box_hit": 37498
+    },
+    "16x64": {
+      "total": 26208,
+      "outside": 7979,
+      "inside": 2132,
+      "boundary": 16097,
+      "supported_pairs_inside": 2183168,
+      "supported_pairs_boundary": 9873613,
+      "box_hit": 18809
+    },
+    "8x64": {
+      "total": 52416,
+      "outside": 19925,
+      "inside": 7518,
+      "boundary": 24973,
+      "supported_pairs_inside": 3849216,
+      "supported_pairs_boundary": 8207565,
+      "box_hit": 33935
+    },
+    "8x32": {
+      "total": 104832,
+      "outside": 40368,
+      "inside": 15646,
+      "boundary": 48818,
+      "supported_pairs_inside": 4005376,
+      "supported_pairs_boundary": 8051405,
+      "box_hit": 0
+    },
+    "8x16": {
+      "total": 209664,
+      "outside": 81258,
+      "inside": 31842,
+      "boundary": 96564,
+      "supported_pairs_inside": 4075776,
+      "supported_pairs_boundary": 7981005,
+      "box_hit": 134534
+    },
+    "4x16": {
+      "total": 419328,
+      "outside": 178910,
+      "inside": 77612,
+      "boundary": 162806,
+      "supported_pairs_inside": 4967168,
+      "supported_pairs_boundary": 7089613,
+      "box_hit": 0
+    }
+  },
+  "group_skips": {
+    "16x32": {
+      "packed": {
+        "groups": 6656,
+        "exact_outside": 1600,
+        "box_outside": 1463
+      },
+      "angle_sorted": {
+        "groups": 6656,
+        "exact_outside": 1940,
+        "box_outside": 1799
+      }
+    },
+    "8x16": {
+      "packed": {
+        "groups": 26624,
+        "exact_outside": 8241,
+        "box_outside": 7553
+      },
+      "angle_sorted": {
+        "groups": 26624,
+        "exact_outside": 9822,
+        "box_outside": 9048
+      }
+    }
+  }
+}

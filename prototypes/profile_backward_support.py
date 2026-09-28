@@ -49,6 +49,8 @@ def main():
         (16, 16),
         (32, 32),
         (16, 32),
+        (16, 64),
+        (8, 64),
         (8, 32),
         (8, 16),
         (4, 16),
@@ -61,6 +63,7 @@ def main():
             "boundary": 0,
             "supported_pairs_inside": 0,
             "supported_pairs_boundary": 0,
+            "box_hit": 0,
         }
     for shape in ("16x32", "8x16"):
         summary["group_skips"][shape] = {
@@ -126,7 +129,7 @@ def main():
             entry["supported_pairs_boundary"] += (
                 int(active.sum().item()) - inside * row_tile * col_tile
             )
-            if (row_tile, col_tile) in ((16, 32), (8, 16)):
+            if (row_tile, col_tile) in ((16, 32), (8, 16), (16, 64), (8, 64)):
                 sites_by_tile = sites.reshape(
                     64 // row_tile, row_tile, 64 // col_tile, col_tile, 4
                 ).permute(0, 2, 1, 3, 4)
@@ -137,6 +140,8 @@ def main():
                 box_dist = delta.clamp_min(0).square().sum(-1)
                 box_hit = box_dist * atoms[:, None, None, 1] <= 1.0
                 assert bool((any_tile & ~box_hit).any().item()) is False
+                entry["box_hit"] += int(box_hit.sum().item())
+            if (row_tile, col_tile) in ((16, 32), (8, 16)):
                 begin = 0
                 for bucket in buckets:
                     length = offsets_cpu[bucket + 1] - offsets_cpu[bucket]
