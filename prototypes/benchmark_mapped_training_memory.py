@@ -28,6 +28,7 @@ def main():
     parser.add_argument("--microbatch-rows", type=int, default=128)
     parser.add_argument("--window-rows", type=int, default=1024)
     parser.add_argument("--cache-windows", type=int, default=0)
+    parser.add_argument("--gemm-mode", choices=("ieee", "tf32x3"), default="ieee")
     parser.add_argument("--accumulation-steps", type=int, default=1)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
@@ -86,6 +87,7 @@ def main():
                 window_rows=args.window_rows,
                 cache_windows=args.cache_windows,
                 atom_kernel=args.atom_kernel,
+                gemm_mode=args.gemm_mode,
             )
             output_check = check(actual, expected)
             assert output_check["passed"], output_check
@@ -107,6 +109,7 @@ def main():
             window_rows=args.window_rows,
             cache_windows=args.cache_windows,
             atom_kernel=args.atom_kernel,
+            gemm_mode=args.gemm_mode,
         )
     del expected
     gc.collect()

@@ -15,6 +15,7 @@ from prototypes.block_tile_atom_lists import (
     build_tile_atom_lists,
     mapped_backward_atoms_listed,
 )
+from prototypes.bounded_gemm import bounded_gemm
 from prototypes.support_box_routing import atomic_bucket_sort
 from torchcst.nn._backends._preparation import PROFILE_KINDS, execution_plan
 from torchcst.nn._backends._triton_kernels import _profile, _sites, _values
@@ -357,10 +358,12 @@ class _MappedStreamed(torch.autograd.Function):
         window_rows,
         atom_kernel,
         cache_rows,
+        gemm_mode,
     ):
         ctx.layer = layer
         ctx.window_rows = window_rows
         ctx.atom_kernel = atom_kernel
+        ctx.gemm_mode = gemm_mode
         reuse_input_weight = ctx.needs_input_grad[0] and (
             atom_kernel != "fused" or not ctx.needs_input_grad[1]
         )
@@ -423,7 +426,15 @@ class _MappedStreamed(torch.autograd.Function):
                         num_warps=4,
                         enable_fp_fusion=True,
                     )
-                dx.addmm_(dy[:, start : start + rows], weight)
+                if ctx.gemm_mode == "tf32x3":
+                    bounded_gemm(
+                        dy[:, start : start + rows],
+                        weight,
+                        dx,
+                        add=start > 0,
+                    )
+                else:
+                    dx.addmm_(dy[:, start : start + rows], weight)
         ctx.cached_w = None
         del cached
         dp = torch.zeros_like(packed) if need_dp else None
@@ -503,7 +514,10 @@ class _MappedStreamed(torch.autograd.Function):
                         )
                 for start in range(0, n, chunk):
                     rows = min(chunk, n - start)
-                    torch.mm(dy[:, start : start + rows].T, x, out=w[:rows])
+                    if ctx.gemm_mode == "tf32x3":
+                        bounded_gemm(dy[:, start : start + rows].T, x, w[:rows])
+                    else:
+                        torch.mm(dy[:, start : start + rows].T, x, out=w[:rows])
                     if ctx.atom_kernel == "staged_listed":
                         mapped_backward_atoms_listed[
                             (rows // 64 * layer.column_groups * 4, 1)
@@ -654,7 +668,7 @@ class _MappedStreamed(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
-        return dx, dp, None, None, None, None, None, None, None
+        return dx, dp, None, None, None, None, None, None, None, None
 
 
 def mapped_streamed_trainable(
@@ -666,6 +680,7 @@ def mapped_streamed_trainable(
     window_rows=1024,
     atom_kernel="baseline",
     cache_windows=0,
+    gemm_mode="ieee",
 ):
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
         raise ValueError("trainable mapped prototype requires full 64x64 tiles")
@@ -691,9 +706,13 @@ def mapped_streamed_trainable(
     cache_rows = cache_windows * window_rows
     if cache_rows > layer.shape[0] // 2:
         raise ValueError("cached windows must cover no more than half of W")
+    if gemm_mode not in ("ieee", "tf32x3"):
+        raise ValueError("gemm_mode must be ieee or tf32x3")
+    if gemm_mode == "tf32x3" and atom_kernel != "staged_listed":
+        raise ValueError("tf32x3 GEMM is implemented for staged_listed only")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )
     return _MappedStreamed.apply(
-        x, *prepared, layer, window_rows, atom_kernel, cache_rows
+        x, *prepared, layer, window_rows, atom_kernel, cache_rows, gemm_mode
     )

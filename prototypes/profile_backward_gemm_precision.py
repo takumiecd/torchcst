@@ -102,6 +102,27 @@ def main():
     }
     results.append(row)
     print(json.dumps(row), flush=True)
+
+    def dw_four():
+        dw_three()
+        dw.addmm_(dy_lo.T, x_lo)
+
+    def dx_four():
+        dx_three()
+        dx.addmm_(dy_lo, w_lo)
+
+    dw_four()
+    dx_four()
+    row = {
+        "mode": "four_tf32_products",
+        "allow_tf32": torch.backends.cuda.matmul.allow_tf32,
+        "dw_ms": milliseconds(dw_four),
+        "dx_ms": milliseconds(dx_four),
+        "dw_error": compare(dw, reference_dw),
+        "dx_error": compare(dx, reference_dx),
+    }
+    results.append(row)
+    print(json.dumps(row), flush=True)
     output = {
         "device": torch.cuda.get_device_name(),
         "size": n,

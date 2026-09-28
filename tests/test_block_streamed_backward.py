@@ -146,3 +146,34 @@ def test_cached_backward_when_only_atom_gradient_is_required():
     (expected_dp,) = torch.autograd.grad(expected, (site.atoms.p,), upstream)
     torch.testing.assert_close(y, expected, atol=3e-5, rtol=3e-5)
     torch.testing.assert_close(dp, expected_dp, atol=3e-4, rtol=3e-4)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("size", (128, 192))
+def test_tf32x3_window_gemm_matches_reference(size):
+    torch.manual_seed(825)
+    layer = BlockStripLinear(
+        (size, size), (64, 64), round(size * size * 0.05), device="cuda"
+    )
+    site = layer.strip
+    plan = execution_plan(site)
+    x = torch.randn(32, size, device="cuda", requires_grad=True)
+    upstream = torch.randn(32, size, device="cuda")
+    actual = mapped_streamed_trainable(
+        layer,
+        x,
+        boxes=station_site_boxes(plan.circle, plan.section, 64),
+        witness_cols=balanced_home_columns(site),
+        window_rows=64,
+        cache_windows=1,
+        atom_kernel="staged_listed",
+        gemm_mode="tf32x3",
+    )
+    dx, dp = torch.autograd.grad(actual, (x, site.atoms.p), upstream)
+    expected = layer.reference(x)
+    expected_dx, expected_dp = torch.autograd.grad(
+        expected, (x, site.atoms.p), upstream
+    )
+    torch.testing.assert_close(actual, expected, atol=3e-5, rtol=3e-5)
+    torch.testing.assert_close(dx, expected_dx, atol=3e-5, rtol=3e-5)
+    torch.testing.assert_close(dp, expected_dp, atol=3e-4, rtol=3e-4)
