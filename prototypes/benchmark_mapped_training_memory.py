@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--mode", choices=("dense", "cst"), required=True)
     parser.add_argument("--microbatch-rows", type=int, default=128)
     parser.add_argument("--window-rows", type=int, default=1024)
+    parser.add_argument("--cache-windows", type=int, default=0)
     parser.add_argument("--accumulation-steps", type=int, default=1)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
@@ -50,6 +51,8 @@ def main():
         parser.error("microbatch-rows, accumulation-steps and repeats must be positive")
     if args.window_rows < 64 or args.window_rows % 64:
         parser.error("window-rows must be a positive multiple of 64")
+    if args.cache_windows < 0:
+        parser.error("cache-windows must be nonnegative")
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     prop = torch.cuda.get_device_properties(0)
@@ -81,6 +84,7 @@ def main():
                 boxes=boxes,
                 witness_cols=hints,
                 window_rows=args.window_rows,
+                cache_windows=args.cache_windows,
                 atom_kernel=args.atom_kernel,
             )
             output_check = check(actual, expected)
@@ -101,6 +105,7 @@ def main():
             boxes=boxes,
             witness_cols=hints,
             window_rows=args.window_rows,
+            cache_windows=args.cache_windows,
             atom_kernel=args.atom_kernel,
         )
     del expected
@@ -205,6 +210,7 @@ def main():
         "cst_window_rows": (
             min(args.window_rows, (n // 128) * 64) if args.mode == "cst" else None
         ),
+        "cst_cached_windows": args.cache_windows if args.mode == "cst" else None,
         "shape": [args.microbatch_rows, n, n],
         "atoms": atom_count,
         "microbatch_rows": args.microbatch_rows,

@@ -114,6 +114,7 @@ def test_mapped_backward_after_atom_movement_and_boundary_support(atom_kernel):
         witness_cols=hints,
         window_rows=64,
         atom_kernel=atom_kernel,
+        cache_windows=1 if atom_kernel == "staged_listed" else 0,
     )
     dx, dp = torch.autograd.grad(y, (x, p), upstream)
     expected = layer.reference(x)

@@ -347,23 +347,35 @@ def reduce_mapped_backward_partials(
 class _MappedStreamed(torch.autograd.Function):
     @staticmethod
     def forward(
-        ctx, x, packed, circle, section, offsets, layer, window_rows, atom_kernel
+        ctx,
+        x,
+        packed,
+        circle,
+        section,
+        offsets,
+        layer,
+        window_rows,
+        atom_kernel,
+        cache_rows,
     ):
-        ctx.save_for_backward(x, packed, circle, section, offsets)
         ctx.layer = layer
         ctx.window_rows = window_rows
         ctx.atom_kernel = atom_kernel
-        return streamed_forward(
+        output, cached = streamed_forward(
             layer,
             x,
             prepared=(packed, circle, section, offsets),
             weight_chunk_rows=window_rows,
+            cache_weight_rows=cache_rows,
+            return_cache=True,
         )
+        ctx.save_for_backward(x, packed, circle, section, offsets, cached)
+        return output
 
     @staticmethod
     @once_differentiable
     def backward(ctx, dy):
-        x, packed, circle, section, offsets = ctx.saved_tensors
+        x, packed, circle, section, offsets, cached = ctx.saved_tensors
         layer = ctx.layer
         n, k = layer.shape
         m = x.shape[0]
@@ -377,30 +389,36 @@ class _MappedStreamed(torch.autograd.Function):
             w = x.new_empty((chunk, k))
             for start in range(0, n, chunk):
                 rows = min(chunk, n - start)
-                materialize_logical[(math.ceil(rows / 64), layer.column_groups, 2)](
-                    packed,
-                    circle,
-                    section,
-                    offsets,
-                    w,
-                    N=n,
-                    K=k,
-                    S=64,
-                    T=64,
-                    CG=layer.column_groups,
-                    G=layer.strip.chart.tile_count,
-                    D=4,
-                    PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-                    BN=64,
-                    BK=32,
-                    BA=1,
-                    FACTORED=True,
-                    ROW_GROUP_START=start // 64,
-                    LOCAL_W=True,
-                    num_warps=4,
-                    enable_fp_fusion=True,
+                weight = (
+                    cached[start : start + rows]
+                    if start < cached.shape[0]
+                    else w[:rows]
                 )
-                dx.addmm_(dy[:, start : start + rows], w[:rows])
+                if start >= cached.shape[0]:
+                    materialize_logical[(math.ceil(rows / 64), layer.column_groups, 2)](
+                        packed,
+                        circle,
+                        section,
+                        offsets,
+                        weight,
+                        N=n,
+                        K=k,
+                        S=64,
+                        T=64,
+                        CG=layer.column_groups,
+                        G=layer.strip.chart.tile_count,
+                        D=4,
+                        PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                        BN=64,
+                        BK=32,
+                        BA=1,
+                        FACTORED=True,
+                        ROW_GROUP_START=start // 64,
+                        LOCAL_W=True,
+                        num_warps=4,
+                        enable_fp_fusion=True,
+                    )
+                dx.addmm_(dy[:, start : start + rows], weight)
         if dp is not None and m:
             kernel = (
                 mapped_backward_atoms_factored
@@ -628,11 +646,18 @@ class _MappedStreamed(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
-        return dx, dp, None, None, None, None, None, None
+        return dx, dp, None, None, None, None, None, None, None
 
 
 def mapped_streamed_trainable(
-    layer, x, *, boxes, witness_cols, window_rows=1024, atom_kernel="baseline"
+    layer,
+    x,
+    *,
+    boxes,
+    witness_cols,
+    window_rows=1024,
+    atom_kernel="baseline",
+    cache_windows=0,
 ):
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
         raise ValueError("trainable mapped prototype requires full 64x64 tiles")
@@ -653,7 +678,14 @@ def mapped_streamed_trainable(
         raise ValueError("unknown atom_kernel")
     # Keep every temporary W/dW window strictly smaller than the logical matrix.
     window_rows = min(window_rows, (layer.shape[0] // 128) * 64)
+    if type(cache_windows) is not int or cache_windows < 0:
+        raise ValueError("cache_windows must be a nonnegative integer")
+    cache_rows = cache_windows * window_rows
+    if cache_rows > layer.shape[0] // 2:
+        raise ValueError("cached windows must cover no more than half of W")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )
-    return _MappedStreamed.apply(x, *prepared, layer, window_rows, atom_kernel)
+    return _MappedStreamed.apply(
+        x, *prepared, layer, window_rows, atom_kernel, cache_rows
+    )
