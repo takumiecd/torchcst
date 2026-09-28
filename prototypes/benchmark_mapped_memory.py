@@ -29,6 +29,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, choices=(4096, 8192), required=True)
     parser.add_argument("--batch", type=int, default=128)
+    parser.add_argument("--weight-chunk-rows", type=int, default=1024)
     parser.add_argument(
         "--mode", choices=("dense", "fused", "stream", "stream_fast"), required=True
     )
@@ -37,6 +38,8 @@ def main():
     args = parser.parse_args()
     if args.batch < 1:
         parser.error("batch must be positive")
+    if args.weight_chunk_rows < 64 or args.weight_chunk_rows % 64:
+        parser.error("weight-chunk-rows must be a positive multiple of 64")
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     prop = torch.cuda.get_device_properties(0)
@@ -63,7 +66,11 @@ def main():
         if args.mode == "fused":
             fn = lambda: layer(x, backend="triton_fused")
         elif args.mode == "stream":
-            fn = lambda: layer(x, backend="triton_streamed")
+            fn = lambda: layer(
+                x,
+                backend="triton_streamed",
+                weight_chunk_rows=args.weight_chunk_rows,
+            )
         else:
             site = layer.strip
             plan = execution_plan(site)
@@ -82,7 +89,12 @@ def main():
                     witness_cols=hints,
                     fast_witness=True,
                 )
-                return layer(x, backend="triton_streamed", prepared=packed)
+                return layer(
+                    x,
+                    backend="triton_streamed",
+                    prepared=packed,
+                    weight_chunk_rows=args.weight_chunk_rows,
+                )
 
     output_check = check(fn(), expected)
     assert output_check["passed"], output_check
@@ -107,6 +119,7 @@ def main():
         "mode": args.mode,
         "shape": [args.batch, n, n],
         "atoms": atom_count,
+        "weight_chunk_rows": args.weight_chunk_rows,
         "canonical": canonical,
         "output_check": output_check,
         "parameter_bytes": parameter_bytes,
