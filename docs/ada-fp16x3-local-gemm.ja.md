@@ -25,6 +25,17 @@ seed 21/22/23、M=2048のIEEE学習経路との比較では、出力・`dX`の�
 
 交互実行でも実行時間は揺れる。独立プロセスの5回中央値は`fp16x3_dx`が43.62 msで、反復中に51.85→38.47 msへ変動した。したがって性能判断には交互実行を優先する。M=128はIEEEを維持し、M=2048をAda向け新方式の候補とする。M=2048の新方式を通した単独ステップの`torch.cuda.max_memory_allocated()`は839,612,416バイト（約801 MiB）。従来のAda dense対照の約1561 MBより低い。学習実装は全W・全dWを作らない。メモリ測定用スクリプトは開始前に正しさ確認用のdense oracleを一度作り、削除後にピーク統計をリセットする。
 
+## denseとの直接比較
+
+追加で`prototypes.profile_paired_dense_cst`を実行し、同じRTX 6000 Ada上でdenseとCSTの完全なAdamWステップを10回ずつ交互に計測した。denseはCSTから一度生成した全Wをパラメータとして保持し、CSTはM=128でIEEE、M=2048で上記`fp16x3_dx`を使用。両モデルとoptimizer状態が共存する**速度比較**なので、このプロセスのメモリ値は比較に使わない。初回の全出力は3e-5基準で一致した。
+
+| M | dense中央値 | CST中央値 | 各回のCST/dense比の中央値 | CSTピーク / denseピーク |
+| ---: | ---: | ---: | ---: | ---: |
+| 128 | 8.10 ms | 18.28 ms | 2.26倍 | 588.37 / 1371.80 MB |
+| 2048 | 30.86 ms | 41.98 ms | 1.29倍 | 839.61 / 1560.54 MB |
+
+M=2048では個別中央値の比は1.36倍で、対応する各回の比の中央値1.29倍と異なる。CSTの各回は34.65–54.24 ms、denseは29.02–36.41 msに揺れた。従って「約1.3–1.4倍遅い」がこの実行に見合う精度。メモリ列は別プロセスの単独測定から採った割当ピークで、M=128は従来の同条件IEEE経路、M=2048は新方式の単独測定である。CSTの削減率はそれぞれ約57%・46%。dense Wの生成時間は含めない。
+
 ## 再現
 
 単一窓比較: `python -m prototypes.profile_bounded_gemm_fp16x3 --size 8192 --rows 2048 --output ...`。
@@ -33,4 +44,7 @@ seed 21/22/23、M=2048のIEEE学習経路との比較では、出力・`dX`の�
 
 交互学習ステップ: `python -m prototypes.profile_paired_step_gemm --size 8192 --rows 2048 --rounds 10 --output ...`。M=128比較では`--rows 128 --control-mode ieee`。
 
+denseとの交互比較: `python -m prototypes.profile_paired_dense_cst --size 8192 --rows 2048 --rounds 10 --output ...`。M=128も同じコマンドで`--rows 128`。
+
 測定JSONは`output/ada-20260928/cache-hypotheses/`に保存した。`full-fp16x3-dx-gradients-seed22.json`、`full-fp16x3-dx-gradients-seed23.json`、`ieee-repeat-gradients-seed22.json`、`paired-full-step-fp16x3-dx-m2048.json`、`paired-full-step-fp16x3-dx-m128.json`、`full-step-fp16x3-dx-m2048.json`を参照。
+直接比較は`paired-dense-cst-m128.json`と`paired-dense-cst-m2048.json`。
