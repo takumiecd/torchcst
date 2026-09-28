@@ -98,6 +98,8 @@ def mapped_backward_atoms_listed(
     PIPE_STAGES: tl.constexpr = 1,
     LOOP_UNROLL: tl.constexpr = 1,
     OPT_TRIWEIGHT: tl.constexpr = False,
+    WRITE_PARTIAL: tl.constexpr = False,
+    Partial=None,
 ):
     program = tl.program_id(0)
     station = STATION_START + program // (64 // BR)
@@ -179,8 +181,16 @@ def mapped_backward_atoms_listed(
             dcy = tl.sum(scale * dy, 0)
             dcz = tl.sum(scale * dz, 0)
             dcw = tl.sum(scale * dw_site, 0)
-        tl.atomic_add(DP + atom * 6, da, active, sem="relaxed")
-        tl.atomic_add(DP + atom * 6 + 2, dcx, active, sem="relaxed")
-        tl.atomic_add(DP + atom * 6 + 3, dcy, active, sem="relaxed")
-        tl.atomic_add(DP + atom * 6 + 4, dcz, active, sem="relaxed")
-        tl.atomic_add(DP + atom * 6 + 5, dcw, active, sem="relaxed")
+        if WRITE_PARTIAL:
+            partial_base = (program * MAX_CANDIDATES + lanes) * 5
+            tl.store(Partial + partial_base, da, active)
+            tl.store(Partial + partial_base + 1, dcx, active)
+            tl.store(Partial + partial_base + 2, dcy, active)
+            tl.store(Partial + partial_base + 3, dcz, active)
+            tl.store(Partial + partial_base + 4, dcw, active)
+        else:
+            tl.atomic_add(DP + atom * 6, da, active, sem="relaxed")
+            tl.atomic_add(DP + atom * 6 + 2, dcx, active, sem="relaxed")
+            tl.atomic_add(DP + atom * 6 + 3, dcy, active, sem="relaxed")
+            tl.atomic_add(DP + atom * 6 + 4, dcz, active, sem="relaxed")
+            tl.atomic_add(DP + atom * 6 + 5, dcw, active, sem="relaxed")

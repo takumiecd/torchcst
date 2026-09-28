@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--triweight-sweep", action="store_true")
     parser.add_argument("--lane-sweep", action="store_true")
+    parser.add_argument("--partial-sweep", action="store_true")
     args = parser.parse_args()
     n = args.size
     torch.manual_seed(21)
@@ -69,17 +70,27 @@ def main():
     dy = torch.randn(128, 1024, device="cuda")
     dw = torch.mm(dy.T, x)
     dp = torch.zeros_like(packed)
+    partial = (
+        torch.empty(
+            (1024 // 64 * layer.column_groups * 4, max_candidates, 5),
+            device="cuda",
+        )
+        if args.partial_sweep
+        else None
+    )
     results = []
     reference = None
-    if args.lane_sweep:
+    if args.partial_sweep:
+        configs = ((1, 1, True, 1, 1, False), (1, 1, True, 1, 1, True))
+    elif args.lane_sweep:
         configs = tuple(
-            (1, 1, True, ba, warps) for ba in (1, 2, 4, 8) for warps in (1, 2, 4)
+            (1, 1, True, ba, warps, False) for ba in (1, 2, 4, 8) for warps in (1, 2, 4)
         )
     elif args.triweight_sweep:
-        configs = ((1, 1, False, 1, 1), (1, 1, True, 1, 1))
+        configs = ((1, 1, False, 1, 1, False), (1, 1, True, 1, 1, False))
     else:
         configs = tuple(
-            (stages, unroll, False, 1, 1)
+            (stages, unroll, False, 1, 1, False)
             for stages, unroll in (
                 (1, 1),
                 (2, 1),
@@ -90,9 +101,16 @@ def main():
                 (2, 2),
             )
         )
-    for stages, unroll, triweight, ba, warps in configs:
+    for stages, unroll, triweight, ba, warps, write_partial in configs:
 
-        def run(stages=stages, unroll=unroll, triweight=triweight, ba=ba, warps=warps):
+        def run(
+            stages=stages,
+            unroll=unroll,
+            triweight=triweight,
+            ba=ba,
+            warps=warps,
+            write_partial=write_partial,
+        ):
             dp.zero_()
             return mapped_backward_atoms_listed[
                 (1024 // 64 * layer.column_groups * 4, 1)
@@ -119,6 +137,8 @@ def main():
                 PIPE_STAGES=stages,
                 LOOP_UNROLL=unroll,
                 OPT_TRIWEIGHT=triweight,
+                WRITE_PARTIAL=write_partial,
+                Partial=partial,
                 num_warps=warps,
                 enable_fp_fusion=True,
             )
@@ -128,10 +148,18 @@ def main():
             torch.cuda.synchronize()
             if reference is None:
                 reference = dp.clone()
-            error = float(
-                (dp - reference).abs().sum().item() / reference.abs().sum().item()
+            error = (
+                float(
+                    (dp - reference).abs().sum().item() / reference.abs().sum().item()
+                )
+                if not write_partial
+                else None
             )
-            max_abs = float((dp - reference).abs().max().item())
+            max_abs = (
+                float((dp - reference).abs().max().item())
+                if not write_partial
+                else None
+            )
             ms = milliseconds(run)
             row = {
                 "stages": stages,
@@ -139,6 +167,7 @@ def main():
                 "optimized_triweight": triweight,
                 "ba": ba,
                 "warps": warps,
+                "write_partial": write_partial,
                 "ms": ms,
                 "relative_l1": error,
                 "max_abs_diff": max_abs,
@@ -152,6 +181,7 @@ def main():
                 "optimized_triweight": triweight,
                 "ba": ba,
                 "warps": warps,
+                "write_partial": write_partial,
                 "error": str(exc)[:300],
             }
         results.append(row)
