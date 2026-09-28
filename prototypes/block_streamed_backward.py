@@ -10,6 +10,7 @@ from torch.autograd.function import once_differentiable
 from prototypes.block_atom_major_backward import mapped_backward_atoms_station
 from prototypes.block_interval_backward import mapped_backward_atoms_interval
 from prototypes.block_materialize_kernel import materialize_logical
+from prototypes.block_materialize_listed import materialize_listed
 from prototypes.block_streamed_forward import streamed_forward
 from prototypes.block_tile_atom_lists import (
     build_tile_atom_lists,
@@ -345,6 +346,50 @@ def reduce_mapped_backward_partials(
         tl.atomic_add(DP + atom * 6 + target, summed, active, sem="relaxed")
 
 
+def build_listed_forward_candidates(layer, packed, circle, section, offsets):
+    """Build conservative site-tile atom lists once for forward and backward."""
+    g = layer.strip.chart.tile_count
+    counts = offsets[1:] - offsets[:-1]
+    stations = torch.arange(g, device=offsets.device)
+    if g == 1:
+        max_candidates = int(counts[0].item())
+    else:
+        candidate_counts = (
+            counts[2 * ((stations + g - 1) % g) + 1]
+            + counts[2 * stations]
+            + counts[2 * stations + 1]
+        )
+        max_candidates = int(candidate_counts.max().item())
+    list_dtype = (
+        torch.uint8
+        if max_candidates <= 256
+        else torch.uint16
+        if max_candidates <= 65536
+        else torch.int32
+    )
+    atom_lists = torch.empty(
+        (g, 4, max_candidates), device=packed.device, dtype=list_dtype
+    )
+    list_counts = torch.empty((g, 4), device=packed.device, dtype=torch.int32)
+    build_tile_atom_lists[(g, 4)](
+        packed,
+        circle,
+        section,
+        offsets,
+        atom_lists,
+        list_counts,
+        G=g,
+        MAX_CANDIDATES=max_candidates,
+        BA=8,
+        COMPACT=True,
+        BR=16,
+        BC=64,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    return atom_lists, list_counts, max_candidates
+
+
 class _MappedStreamed(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -359,11 +404,18 @@ class _MappedStreamed(torch.autograd.Function):
         atom_kernel,
         cache_rows,
         gemm_mode,
+        forward_gemm_mode,
+        materialize_mode,
     ):
         ctx.layer = layer
         ctx.window_rows = window_rows
         ctx.atom_kernel = atom_kernel
         ctx.gemm_mode = gemm_mode
+        ctx.listed_data = (
+            build_listed_forward_candidates(layer, packed, circle, section, offsets)
+            if materialize_mode == "listed"
+            else None
+        )
         reuse_input_weight = ctx.needs_input_grad[0] and (
             atom_kernel != "fused" or not ctx.needs_input_grad[1]
         )
@@ -374,6 +426,9 @@ class _MappedStreamed(torch.autograd.Function):
             weight_chunk_rows=window_rows,
             cache_weight_rows=cache_rows if reuse_input_weight else 0,
             return_cache=True,
+            gemm_mode=forward_gemm_mode,
+            materialize_mode=materialize_mode,
+            listed_data=ctx.listed_data,
         )
         ctx.save_for_backward(x, packed, circle, section, offsets)
         ctx.cached_w = cached
@@ -403,29 +458,52 @@ class _MappedStreamed(torch.autograd.Function):
                     else w[:rows]
                 )
                 if start >= cached.shape[0]:
-                    materialize_logical[(math.ceil(rows / 64), layer.column_groups, 2)](
-                        packed,
-                        circle,
-                        section,
-                        offsets,
-                        weight,
-                        N=n,
-                        K=k,
-                        S=64,
-                        T=64,
-                        CG=layer.column_groups,
-                        G=layer.strip.chart.tile_count,
-                        D=4,
-                        PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-                        BN=64,
-                        BK=32,
-                        BA=1,
-                        FACTORED=True,
-                        ROW_GROUP_START=start // 64,
-                        LOCAL_W=True,
-                        num_warps=4,
-                        enable_fp_fusion=True,
-                    )
+                    if ctx.listed_data is not None:
+                        atom_lists, list_counts, max_candidates = ctx.listed_data
+                        materialize_listed[(rows // 64 * layer.column_groups * 4,)](
+                            packed,
+                            circle,
+                            section,
+                            atom_lists,
+                            list_counts,
+                            offsets,
+                            weight,
+                            K=k,
+                            CG=layer.column_groups,
+                            G=layer.strip.chart.tile_count,
+                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            MAX_CANDIDATES=max_candidates,
+                            STATION_START=start // 64 * layer.column_groups,
+                            ROW_START=start,
+                            num_warps=1,
+                            enable_fp_fusion=True,
+                        )
+                    else:
+                        materialize_logical[
+                            (math.ceil(rows / 64), layer.column_groups, 2)
+                        ](
+                            packed,
+                            circle,
+                            section,
+                            offsets,
+                            weight,
+                            N=n,
+                            K=k,
+                            S=64,
+                            T=64,
+                            CG=layer.column_groups,
+                            G=layer.strip.chart.tile_count,
+                            D=4,
+                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            BN=64,
+                            BK=32,
+                            BA=1,
+                            FACTORED=True,
+                            ROW_GROUP_START=start // 64,
+                            LOCAL_W=True,
+                            num_warps=4,
+                            enable_fp_fusion=True,
+                        )
                 if ctx.gemm_mode in ("tf32x3", "tf32x3_dx"):
                     bounded_gemm(
                         dy[:, start : start + rows],
@@ -466,51 +544,29 @@ class _MappedStreamed(torch.autograd.Function):
                 if dx is None or ctx.atom_kernel == "fused":
                     w = x.new_empty((chunk, k))
                 if ctx.atom_kernel in ("staged_partial", "staged_listed"):
-                    g = layer.strip.chart.tile_count
-                    counts = offsets[1:] - offsets[:-1]
-                    stations = torch.arange(g, device=offsets.device)
-                    if g == 1:
-                        max_candidates = int(counts[0].item())
-                    else:
-                        candidate_counts = (
-                            counts[2 * ((stations + g - 1) % g) + 1]
-                            + counts[2 * stations]
-                            + counts[2 * stations + 1]
+                    if ctx.atom_kernel == "staged_listed":
+                        atom_lists, list_counts, max_candidates = (
+                            ctx.listed_data
+                            if ctx.listed_data is not None
+                            else build_listed_forward_candidates(
+                                layer, packed, circle, section, offsets
+                            )
                         )
-                        max_candidates = int(candidate_counts.max().item())
-                    if ctx.atom_kernel == "staged_partial":
+                    else:
+                        g = layer.strip.chart.tile_count
+                        counts = offsets[1:] - offsets[:-1]
+                        stations = torch.arange(g, device=offsets.device)
+                        if g == 1:
+                            max_candidates = int(counts[0].item())
+                        else:
+                            candidate_counts = (
+                                counts[2 * ((stations + g - 1) % g) + 1]
+                                + counts[2 * stations]
+                                + counts[2 * stations + 1]
+                            )
+                            max_candidates = int(candidate_counts.max().item())
                         partial = x.new_empty(
                             (chunk // 64 * layer.column_groups, 8, max_candidates, 5)
-                        )
-                    else:
-                        list_dtype = (
-                            torch.uint8
-                            if max_candidates <= 256
-                            else torch.uint16
-                            if max_candidates <= 65536
-                            else torch.int32
-                        )
-                        atom_lists = torch.empty(
-                            (g, 4, max_candidates), device=x.device, dtype=list_dtype
-                        )
-                        list_counts = torch.empty(
-                            (g, 4), device=x.device, dtype=torch.int32
-                        )
-                        build_tile_atom_lists[(g, 4)](
-                            packed,
-                            circle,
-                            section,
-                            offsets,
-                            atom_lists,
-                            list_counts,
-                            G=g,
-                            MAX_CANDIDATES=max_candidates,
-                            BA=8,
-                            COMPACT=True,
-                            BR=16,
-                            BC=64,
-                            num_warps=4,
-                            enable_fp_fusion=False,
                         )
                 for start in range(0, n, chunk):
                     rows = min(chunk, n - start)
@@ -668,7 +724,8 @@ class _MappedStreamed(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
-        return dx, dp, None, None, None, None, None, None, None, None
+        ctx.listed_data = None
+        return dx, dp, None, None, None, None, None, None, None, None, None, None
 
 
 def mapped_streamed_trainable(
@@ -681,6 +738,8 @@ def mapped_streamed_trainable(
     atom_kernel="baseline",
     cache_windows=0,
     gemm_mode="ieee",
+    forward_gemm_mode="ieee",
+    materialize_mode="default",
 ):
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
         raise ValueError("trainable mapped prototype requires full 64x64 tiles")
@@ -710,9 +769,23 @@ def mapped_streamed_trainable(
         raise ValueError("unknown gemm_mode")
     if gemm_mode != "ieee" and atom_kernel != "staged_listed":
         raise ValueError("tf32x3 GEMM is implemented for staged_listed only")
+    if forward_gemm_mode not in ("ieee", "tf32x3"):
+        raise ValueError("unknown forward_gemm_mode")
+    if materialize_mode not in ("default", "listed"):
+        raise ValueError("unknown materialize_mode")
+    if materialize_mode == "listed" and atom_kernel != "staged_listed":
+        raise ValueError("listed materialization requires staged_listed backward")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )
     return _MappedStreamed.apply(
-        x, *prepared, layer, window_rows, atom_kernel, cache_rows, gemm_mode
+        x,
+        *prepared,
+        layer,
+        window_rows,
+        atom_kernel,
+        cache_rows,
+        gemm_mode,
+        forward_gemm_mode,
+        materialize_mode,
     )

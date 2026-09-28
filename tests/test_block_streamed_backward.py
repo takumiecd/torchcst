@@ -115,6 +115,7 @@ def test_mapped_backward_after_atom_movement_and_boundary_support(atom_kernel):
         window_rows=64,
         atom_kernel=atom_kernel,
         cache_windows=1 if atom_kernel == "staged_listed" else 0,
+        materialize_mode="listed" if atom_kernel == "staged_listed" else "default",
     )
     dx, dp = torch.autograd.grad(y, (x, p), upstream)
     expected = layer.reference(x)
@@ -140,6 +141,7 @@ def test_cached_backward_when_only_atom_gradient_is_required():
         window_rows=64,
         atom_kernel="staged_listed",
         cache_windows=1,
+        materialize_mode="listed",
     )
     (dp,) = torch.autograd.grad(y, (site.atoms.p,), upstream)
     expected = layer.reference(x)
@@ -151,7 +153,11 @@ def test_cached_backward_when_only_atom_gradient_is_required():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("size", (128, 192))
 @pytest.mark.parametrize("gemm_mode", ("tf32x3", "tf32x3_dx"))
-def test_tf32x3_window_gemm_matches_reference(size, gemm_mode):
+@pytest.mark.parametrize("forward_gemm_mode", ("ieee", "tf32x3"))
+@pytest.mark.parametrize("materialize_mode", ("default", "listed"))
+def test_tf32x3_window_gemm_matches_reference(
+    size, gemm_mode, forward_gemm_mode, materialize_mode
+):
     torch.manual_seed(825)
     layer = BlockStripLinear(
         (size, size), (64, 64), round(size * size * 0.05), device="cuda"
@@ -169,6 +175,8 @@ def test_tf32x3_window_gemm_matches_reference(size, gemm_mode):
         cache_windows=1,
         atom_kernel="staged_listed",
         gemm_mode=gemm_mode,
+        forward_gemm_mode=forward_gemm_mode,
+        materialize_mode=materialize_mode,
     )
     dx, dp = torch.autograd.grad(actual, (x, site.atoms.p), upstream)
     expected = layer.reference(x)

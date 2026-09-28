@@ -31,6 +31,12 @@ def main():
     parser.add_argument(
         "--compare-mode", choices=("ieee", "tf32x3", "tf32x3_dx"), default="tf32x3"
     )
+    parser.add_argument(
+        "--forward-gemm-mode", choices=("ieee", "tf32x3"), default="ieee"
+    )
+    parser.add_argument(
+        "--materialize-mode", choices=("default", "listed"), default="default"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(21)
@@ -43,7 +49,9 @@ def main():
     x = torch.randn(m, n, device="cuda", requires_grad=True)
     gradient = torch.randn(m, n, device="cuda")
     gradients = []
+    outputs = []
     for gemm_mode in ("ieee", args.compare_mode):
+        experimental = len(gradients) == 1
         y = mapped_streamed_trainable(
             layer,
             x,
@@ -52,15 +60,19 @@ def main():
             atom_kernel="staged_listed",
             cache_windows=2,
             gemm_mode=gemm_mode,
+            forward_gemm_mode=args.forward_gemm_mode if experimental else "ieee",
+            materialize_mode=args.materialize_mode if experimental else "default",
         )
         dx, dp = torch.autograd.grad(y, (x, layer.strip.atoms.p), gradient)
         torch.cuda.synchronize()
         gradients.append((dx, dp))
+        outputs.append(y.detach())
         print(json.dumps({"stage": gemm_mode}), flush=True)
     ieee, x3 = gradients
     result = {
         "size": n,
         "rows": m,
+        "output": compare(outputs[1], outputs[0]),
         "dx": compare(x3[0], ieee[0]),
         "dp": compare(x3[1], ieee[1]),
     }

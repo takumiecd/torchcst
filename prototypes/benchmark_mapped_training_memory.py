@@ -31,6 +31,12 @@ def main():
     parser.add_argument(
         "--gemm-mode", choices=("ieee", "tf32x3", "tf32x3_dx"), default="ieee"
     )
+    parser.add_argument(
+        "--forward-gemm-mode", choices=("ieee", "tf32x3"), default="ieee"
+    )
+    parser.add_argument(
+        "--materialize-mode", choices=("default", "listed"), default="default"
+    )
     parser.add_argument("--accumulation-steps", type=int, default=1)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
@@ -90,6 +96,8 @@ def main():
                 cache_windows=args.cache_windows,
                 atom_kernel=args.atom_kernel,
                 gemm_mode=args.gemm_mode,
+                forward_gemm_mode=args.forward_gemm_mode,
+                materialize_mode=args.materialize_mode,
             )
             output_check = check(actual, expected)
             assert output_check["passed"], output_check
@@ -112,6 +120,8 @@ def main():
             cache_windows=args.cache_windows,
             atom_kernel=args.atom_kernel,
             gemm_mode=args.gemm_mode,
+            forward_gemm_mode=args.forward_gemm_mode,
+            materialize_mode=args.materialize_mode,
         )
     del expected
     gc.collect()
@@ -212,6 +222,9 @@ def main():
         "torch": torch.__version__,
         "mode": args.mode,
         "atom_kernel": args.atom_kernel,
+        "backward_gemm_mode": args.gemm_mode if args.mode == "cst" else None,
+        "forward_gemm_mode": args.forward_gemm_mode if args.mode == "cst" else None,
+        "materialize_mode": args.materialize_mode if args.mode == "cst" else None,
         "cst_window_rows": (
             min(args.window_rows, (n // 128) * 64) if args.mode == "cst" else None
         ),

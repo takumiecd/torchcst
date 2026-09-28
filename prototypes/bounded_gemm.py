@@ -16,6 +16,8 @@ def bounded_gemm_kernel(
     ASK: tl.constexpr,
     BSK: tl.constexpr,
     BSN: tl.constexpr,
+    CSM: tl.constexpr,
+    CSN: tl.constexpr,
     BM: tl.constexpr,
     BN: tl.constexpr,
     BK: tl.constexpr,
@@ -38,7 +40,7 @@ def bounded_gemm_kernel(
             0,
         )
         acc = tl.dot(a, b, acc, input_precision="tf32x3")
-    ptr = C + rows[:, None] * N + cols[None, :]
+    ptr = C + rows[:, None] * CSM + cols[None, :] * CSN
     mask = (rows[:, None] < M) & (cols[None, :] < N)
     if ADD:
         acc += tl.load(ptr, mask, 0)
@@ -46,10 +48,10 @@ def bounded_gemm_kernel(
 
 
 def bounded_gemm(a, b, out, *, add=False):
-    """Multiply two 2D FP32 tensors; out must be contiguous row-major."""
+    """Multiply two 2D FP32 tensors into a row-major view."""
     if a.ndim != 2 or b.ndim != 2 or out.shape != (a.shape[0], b.shape[1]):
         raise ValueError("invalid bounded GEMM shapes")
-    if a.shape[1] != b.shape[0] or not out.is_contiguous():
+    if a.shape[1] != b.shape[0] or out.stride(1) != 1:
         raise ValueError("invalid bounded GEMM strides")
     bm, bn, bk = 32, 128, 32
     bounded_gemm_kernel[(tr.cdiv(a.shape[0], bm), tr.cdiv(b.shape[1], bn))](
@@ -61,6 +63,7 @@ def bounded_gemm(a, b, out, *, add=False):
         a.shape[1],
         *a.stride(),
         *b.stride(),
+        *out.stride(),
         bm,
         bn,
         bk,

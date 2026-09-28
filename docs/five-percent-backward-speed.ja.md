@@ -2,6 +2,8 @@
 
 2026-09-28。前段の[学習メモリ測定](five-percent-mapped-training-memory.ja.md)と同じ5% atom密度、FP32、TF32無効、A100 80GB PCIe MIG 3g.40gb（42 SM）、64×64 CST tileを使った。Mは線形層へ入る総行数。単層のAdamWステップでforward、入力勾配、atom勾配、更新を含む。全重みWと全重み勾配dWはCST経路で保持しない。
 
+この後にforwardの局所Tensor Core GEMMと候補atom一覧のforward・backward共有を追加した。最新の学習ステップは[forwardと一覧共有の測定](five-percent-forward-tensor-core.ja.md)を参照。
+
 ## 時間を使う場所
 
 4096²・M=128の旧backwardを個別に計時すると、入力勾配は9.74 ms、atom勾配は49.64 msだった。旧atom勾配は16×16の論理サイトタイルで局所dWを計算し、そのタイルの候補atomを評価してglobal gradientへatomic加算する。forwardで使っていた列方向の幾何情報共有は、この経路では使っていなかった。
