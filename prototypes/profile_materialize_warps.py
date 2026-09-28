@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--unroll-sweep", action="store_true")
     parser.add_argument("--pipeline-sweep", action="store_true")
+    parser.add_argument("--distance-sweep", action="store_true")
     args = parser.parse_args()
     torch.manual_seed(21)
     n = args.size
@@ -51,7 +52,9 @@ def main():
     errors = {}
     reference = None
     for mode, data in candidates.items():
-        if (args.unroll_sweep or args.pipeline_sweep) and mode != "bounded":
+        if (
+            args.unroll_sweep or args.pipeline_sweep or args.distance_sweep
+        ) and mode != "bounded":
             continue
         if mode == "csr":
             lists, counts, bases, _ = data
@@ -60,14 +63,16 @@ def main():
             lists, counts, cap = data
             bases = None
         configurations = (
-            ((1, 4, stages) for stages in (1, 2, 3, 4))
+            ((1, 4, stages, False) for stages in (1, 2, 3, 4))
             if args.pipeline_sweep
-            else ((1, unroll, 1) for unroll in (1, 2, 4, 8))
+            else ((1, 4, 1, expanded) for expanded in (False, True))
+            if args.distance_sweep
+            else ((1, unroll, 1, False) for unroll in (1, 2, 4, 8))
             if args.unroll_sweep
-            else ((warps, 1, 1) for warps in (1, 2, 4, 8))
+            else ((warps, 1, 1, False) for warps in (1, 2, 4, 8))
         )
-        for warps, unroll, stages in configurations:
-            name = f"{mode}-{warps}-unroll{unroll}-stages{stages}"
+        for warps, unroll, stages, expanded in configurations:
+            name = f"{mode}-{warps}-unroll{unroll}-stages{stages}-expanded{expanded}"
 
             def run(
                 lists=lists,
@@ -78,6 +83,7 @@ def main():
                 warps=warps,
                 unroll=unroll,
                 stages=stages,
+                expanded=expanded,
             ):
                 materialize_listed[grid](
                     packed,
@@ -99,6 +105,7 @@ def main():
                     Bases=bases,
                     LOOP_UNROLL=unroll,
                     PIPE_STAGES=stages,
+                    EXPANDED_DISTANCE=expanded,
                     num_warps=warps,
                     enable_fp_fusion=False,
                 )
@@ -132,6 +139,7 @@ def main():
         "window_rows": rows,
         "unroll_sweep": args.unroll_sweep,
         "pipeline_sweep": args.pipeline_sweep,
+        "distance_sweep": args.distance_sweep,
         "bounded_capacity": candidates["bounded"][2],
         "max_abs_vs_first_configuration": errors,
         "median_ms": {name: statistics.median(v) for name, v in samples.items()},

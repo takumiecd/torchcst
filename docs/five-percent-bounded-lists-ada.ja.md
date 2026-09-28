@@ -95,3 +95,9 @@ Adaが引き続き空いていることを前後に確認した。`materialize_l
 試作APIに`listed_builder_ba=32, listed_builder_warps=1`を明示指定できるようにした。既定値`BA8・4 warp`と公開backendは変更していない。8192²・M=2048・5%・AdamW完全ステップでは、従来builderと新builderとdenseのGraphを同一プロセスで交互に32回、別runで48回測定した。新/従来の対応ペア比中央値は**0.96016／0.95356**（約4.0／4.6%短縮）、新/denseは1.2269／1.2378。単独中央値はGPUの時間変動を含むため、改善率には対応ペア比を使う。新builderの別プロセスGraph capture割当ピークは**884,781,056 bytes**で従来と同じ、denseの以前の1,577,585,152 bytesより43.9%低い。出力の3e-5基準違反0、Graph/eagerの12更新後のパラメータ最大差7.63e-6、強制overflowとGraph再実行を含むGPUテスト67件が通過した。新builderは候補一覧の作り方だけを変え、全W・全dWを作らない。
 
 現時点でAda大形状の推奨試作設定は前節の設定に`listed_builder_ba=32, listed_builder_warps=1`を追加する。再現コードは`prototypes.profile_bounded_list_builder`、`prototypes.profile_paired_dense_cst --compare-builder --listed-builder-ba 32 --listed-builder-warps 1 --graph`、`prototypes.probe_csr_graph_step --listed-builder-ba 32 --listed-builder-warps 1`。JSONは`docs/data/ada-20260929/overnight-list-builder-sweep2.json`、`overnight-builder-paired-32.json`、`overnight-builder-paired-48.json`、`overnight-builder-peak.json`。
+
+## 06:40 JST：距離式の反証と保持窓の選択
+
+引き続きAda profile、使用率0%、割当39 MiBを確認して測定した。局所Wで`||site-atom||²`を`||site||²+||atom||²-2 site·atom`へ展開し、site側のノルムをatomループ外へ出す案を試した。1024×8192窓のGraph交互測定は従来0.485 ms、展開版0.607 ms。生成Wの最大絶対差も0.00292と大きく、浮動小数点の相殺誤差がある。速度・精度の両方で不採用。再現用の`EXPANDED_DISTANCE`診断分岐は既定`False`で、通常経路は変えていない。JSONは`docs/data/ada-20260929/overnight-w-distance.json`。
+
+新builderとunroll4のまま1024行窓のW保持を4窓から2窓へ減らす案も測った。8192²・M=2048の完全AdamWステップで同一プロセスの32回交互Graph測定では、2窓/4窓の対応ペア比中央値は**1.0508**（約5.1%遅い）。別プロセスの2窓Graph capture割当ピークは**839,613,952 bytes**で、4窓の884,781,056 bytesより45.17 MB低く、denseより46.8%低い。出力の3e-5基準違反0、Graph/eagerの4更新後パラメータ最大差4.19e-8。2窓はメモリ優先の選択肢として残すが、速度優先の推奨は4窓を維持する。JSONは`overnight-cache2-paired.json`と`overnight-cache2-peak.json`。

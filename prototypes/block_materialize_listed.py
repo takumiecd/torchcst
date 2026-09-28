@@ -28,6 +28,7 @@ def materialize_listed(
     BR: tl.constexpr = 16,
     LOOP_UNROLL: tl.constexpr = 1,
     PIPE_STAGES: tl.constexpr = 1,
+    EXPANDED_DISTANCE: tl.constexpr = False,
 ):
     program = tl.program_id(0)
     row_tiles = 64 // BR
@@ -45,6 +46,8 @@ def materialize_listed(
     w = tl.load(Section + local_cols * 3 + 2)
     sx = cosine[:, None] * rho[None, :]
     sy = sine[:, None] * rho[None, :]
+    if EXPANDED_DISTANCE:
+        site_norm = (sx * sx + sy * sy) + (z * z + w * w)[None, :]
     weight = tl.full((BR, 64), 0.0, tl.float32)
     count = tl.load(Counts + station * row_tiles + row_tile)
     if CSR:
@@ -95,11 +98,16 @@ def materialize_listed(
         cy = tl.load(P + atom * 6 + 3)
         cz = tl.load(P + atom * 6 + 4)
         cw = tl.load(P + atom * 6 + 5)
-        dx = sx - cx
-        dy = sy - cy
-        dz = z - cz
-        dw = w - cw
-        squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
+        if EXPANDED_DISTANCE:
+            atom_norm = (cx * cx + cy * cy) + (cz * cz + cw * cw)
+            dot = ((sx * cx + sy * cy) + z[None, :] * cz) + w[None, :] * cw
+            squared = tl.maximum(site_norm + atom_norm - 2.0 * dot, 0.0)
+        else:
+            dx = sx - cx
+            dy = sy - cy
+            dz = z - cz
+            dw = w - cw
+            squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)[None, :]
         precision = tl.load(P + atom * 6 + 1)
         value, _ = _profile(squared, precision, PROFILE)
         amplitude = tl.load(P + atom * 6)
