@@ -95,6 +95,8 @@ def mapped_backward_atoms_listed(
     BC: tl.constexpr,
     STATION_START,
     ROW_START,
+    PIPE_STAGES: tl.constexpr = 1,
+    LOOP_UNROLL: tl.constexpr = 1,
 ):
     program = tl.program_id(0)
     station = STATION_START + program // (64 // BR)
@@ -122,7 +124,9 @@ def mapped_backward_atoms_listed(
             begin1 = tl.load(Offsets + 2 * station)
             length1 = tl.load(Offsets + 2 * station + 1) - begin1
             begin2 = tl.load(Offsets + 2 * station + 1)
-    for atom_start in range(0, count, BA):
+    for atom_start in tl.range(
+        0, count, BA, num_stages=PIPE_STAGES, loop_unroll_factor=LOOP_UNROLL
+    ):
         lanes = atom_start + tl.arange(0, BA)
         active = lanes < count
         atom = tl.load(
