@@ -291,7 +291,8 @@ class _MappedStreamed(torch.autograd.Function):
                 if ctx.atom_kernel == "factored"
                 else mapped_backward_atoms
             )
-            kernel[(layer.strip.chart.tile_count * 4, 4)](
+            atom_bk = 32 if ctx.atom_kernel == "factored" else 16
+            kernel[(layer.strip.chart.tile_count * 4, 64 // atom_bk)](
                 x,
                 dy,
                 packed,
@@ -309,7 +310,7 @@ class _MappedStreamed(torch.autograd.Function):
                 PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                 BM=16,
                 BN=16,
-                BK=16,
+                BK=atom_bk,
                 BA=8,
                 num_warps=4,
                 enable_fp_fusion=False,

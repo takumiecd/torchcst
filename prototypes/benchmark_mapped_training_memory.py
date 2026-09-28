@@ -30,6 +30,9 @@ def main():
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
+    parser.add_argument(
+        "--atom-kernel", choices=("baseline", "factored"), default="baseline"
+    )
     args = parser.parse_args()
     if min(args.microbatch_rows, args.accumulation_steps, args.repeats) < 1:
         parser.error("microbatch-rows, accumulation-steps and repeats must be positive")
@@ -59,7 +62,7 @@ def main():
             boxes = station_site_boxes(plan.circle, plan.section, 64)
             hints = balanced_home_columns(layer.strip)
             actual = mapped_streamed_trainable(
-                layer, x, boxes=boxes, witness_cols=hints
+                layer, x, boxes=boxes, witness_cols=hints, atom_kernel=args.atom_kernel
             )
             output_check = check(actual, expected)
             assert output_check["passed"], output_check
@@ -74,7 +77,11 @@ def main():
         parameter = layer.strip.atoms.p
         del weight
         forward = lambda: mapped_streamed_trainable(
-            layer, x, boxes=boxes, witness_cols=hints
+            layer,
+            x,
+            boxes=boxes,
+            witness_cols=hints,
+            atom_kernel=args.atom_kernel,
         )
     del expected
     gc.collect()
@@ -174,6 +181,7 @@ def main():
         "multiprocessors": prop.multi_processor_count,
         "torch": torch.__version__,
         "mode": args.mode,
+        "atom_kernel": args.atom_kernel,
         "shape": [args.microbatch_rows, n, n],
         "atoms": atom_count,
         "microbatch_rows": args.microbatch_rows,
