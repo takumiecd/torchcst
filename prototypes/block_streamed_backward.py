@@ -495,13 +495,13 @@ class _MappedStreamed(torch.autograd.Function):
                             G=layer.strip.chart.tile_count,
                             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                             MAX_CANDIDATES=max_candidates,
-                            BA=8,
+                            BA=1,
                             COMPACT=True,
                             BR=16,
                             BC=32,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
-                            num_warps=4,
+                            num_warps=1,
                             enable_fp_fusion=True,
                         )
                     elif ctx.atom_kernel == "atom_major":
