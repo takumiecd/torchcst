@@ -59,12 +59,14 @@ def mapped_backward_atoms_moments(
     BK: tl.constexpr,
     STATION_START,
     ROW_START,
+    LANES: tl.constexpr = 1,
     USE_SCRATCH: tl.constexpr = False,
     Scratch=None,
 ):
     """Build local dW prefix moments and contract exact supported row intervals."""
     station = STATION_START + tl.program_id(0)
     cb = tl.program_id(1)
+    lane = tl.program_id(2)
     cols = cb * BK + tl.arange(0, BK)
     rows = tl.arange(0, 64)
     rho = tl.load(Section + cols * 3)
@@ -124,7 +126,7 @@ def mapped_backward_atoms_moments(
                 2 * station + neighbor - 1,
             )
         begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
-        for atom in range(begin, end):
+        for atom in range(begin + lane, end, LANES):
             amplitude = tl.load(P + atom * 6)
             precision = tl.load(P + atom * 6 + 1)
             cx = tl.load(P + atom * 6 + 2)

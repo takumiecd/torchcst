@@ -88,7 +88,7 @@ def main():
     direct_ms = milliseconds(baseline)
     reference = dp.clone()
     variants = []
-    for bk in (4, 8, 16):
+    for bk, lanes in ((16, 1), (16, 4), (16, 8), (16, 16), (16, 32)):
         scratch = torch.empty(
             (station_count, 64 // bk, 20, 64, bk), device="cuda", dtype=torch.float32
         )
@@ -111,9 +111,9 @@ def main():
         try:
             elapsed = milliseconds(run)
 
-            def contract(bk=bk, scratch=scratch):
+            def contract(bk=bk, lanes=lanes, scratch=scratch):
                 dp.zero_()
-                mapped_backward_atoms_moments[(station_count, 64 // bk)](
+                mapped_backward_atoms_moments[(station_count, 64 // bk, lanes)](
                     dw,
                     packed,
                     circle,
@@ -126,6 +126,7 @@ def main():
                     BK=bk,
                     STATION_START=0,
                     ROW_START=0,
+                    LANES=lanes,
                     USE_SCRATCH=True,
                     Scratch=scratch,
                     num_warps=4,
@@ -137,6 +138,7 @@ def main():
             variants.append(
                 {
                     "bk": bk,
+                    "lanes": lanes,
                     "prefix_ms": elapsed,
                     "contract_ms": contract_ms,
                     "scratch_bytes": scratch.numel() * scratch.element_size(),
@@ -148,7 +150,7 @@ def main():
                 }
             )
         except Exception as error:  # noqa: BLE001 - report variants independently
-            variants.append({"bk": bk, "error": str(error)[:500]})
+            variants.append({"bk": bk, "lanes": lanes, "error": str(error)[:500]})
     result = {
         "device": torch.cuda.get_device_name(),
         "size": n,
