@@ -37,6 +37,7 @@ def main():
             "factored",
             "staged",
             "staged_partial",
+            "staged_listed",
             "atom_major",
             "interval",
             "fused",

@@ -77,6 +77,7 @@ def mapped_backward_atoms_listed(
     K: tl.constexpr,
     CG: tl.constexpr,
     G: tl.constexpr,
+    PROFILE: tl.constexpr,
     MAX_CANDIDATES: tl.constexpr,
     BA: tl.constexpr,
     STATION_START,
@@ -113,7 +114,7 @@ def mapped_backward_atoms_listed(
         dz = sz[:, None] - cz[None, :]
         dw_site = sw[:, None] - cw[None, :]
         squared = (dx * dx + dy * dy) + (dz * dz + dw_site * dw_site)
-        value, slope = _profile(squared, precision[None, :], 1)
+        value, slope = _profile(squared, precision[None, :], PROFILE)
         value = tl.where(active[None, :], value, 0.0)
         slope = tl.where(active[None, :], slope, 0.0)
         da = tl.sum(gradient[:, None] * value, 0)

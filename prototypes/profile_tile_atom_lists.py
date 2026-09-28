@@ -134,6 +134,7 @@ def main():
             K=n,
             CG=layer.column_groups,
             G=g,
+            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
             MAX_CANDIDATES=max_candidates,
             BA=8,
             STATION_START=0,

@@ -11,6 +11,10 @@ from prototypes.block_atom_major_backward import mapped_backward_atoms_station
 from prototypes.block_interval_backward import mapped_backward_atoms_interval
 from prototypes.block_materialize_kernel import materialize_logical
 from prototypes.block_streamed_forward import streamed_forward
+from prototypes.block_tile_atom_lists import (
+    build_tile_atom_lists,
+    mapped_backward_atoms_listed,
+)
 from prototypes.support_box_routing import atomic_bucket_sort
 from torchcst.nn._backends._preparation import PROFILE_KINDS, execution_plan
 from torchcst.nn._backends._triton_kernels import _profile, _sites, _values
@@ -405,6 +409,7 @@ class _MappedStreamed(torch.autograd.Function):
                     "factored",
                     "staged",
                     "staged_partial",
+                    "staged_listed",
                     "atom_major",
                     "interval",
                     "fused",
@@ -415,6 +420,7 @@ class _MappedStreamed(torch.autograd.Function):
             if ctx.atom_kernel in (
                 "staged",
                 "staged_partial",
+                "staged_listed",
                 "atom_major",
                 "interval",
                 "fused",
@@ -422,7 +428,7 @@ class _MappedStreamed(torch.autograd.Function):
                 chunk = min(ctx.window_rows, n)
                 if dx is None or ctx.atom_kernel == "fused":
                     w = x.new_empty((chunk, k))
-                if ctx.atom_kernel == "staged_partial":
+                if ctx.atom_kernel in ("staged_partial", "staged_listed"):
                     g = layer.strip.chart.tile_count
                     counts = offsets[1:] - offsets[:-1]
                     stations = torch.arange(g, device=offsets.device)
@@ -435,13 +441,56 @@ class _MappedStreamed(torch.autograd.Function):
                             + counts[2 * stations + 1]
                         )
                         max_candidates = int(candidate_counts.max().item())
-                    partial = x.new_empty(
-                        (chunk // 64 * layer.column_groups, 8, max_candidates, 5)
-                    )
+                    if ctx.atom_kernel == "staged_partial":
+                        partial = x.new_empty(
+                            (chunk // 64 * layer.column_groups, 8, max_candidates, 5)
+                        )
+                    else:
+                        atom_lists = torch.empty(
+                            (g, 8, max_candidates), device=x.device, dtype=torch.int32
+                        )
+                        list_counts = torch.empty(
+                            (g, 8), device=x.device, dtype=torch.int32
+                        )
+                        build_tile_atom_lists[(g, 8)](
+                            packed,
+                            circle,
+                            section,
+                            offsets,
+                            atom_lists,
+                            list_counts,
+                            G=g,
+                            MAX_CANDIDATES=max_candidates,
+                            BA=8,
+                            num_warps=4,
+                            enable_fp_fusion=False,
+                        )
                 for start in range(0, n, chunk):
                     rows = min(chunk, n - start)
                     torch.mm(dy[:, start : start + rows].T, x, out=w[:rows])
-                    if ctx.atom_kernel == "atom_major":
+                    if ctx.atom_kernel == "staged_listed":
+                        mapped_backward_atoms_listed[
+                            (rows // 64 * layer.column_groups * 4, 2)
+                        ](
+                            w,
+                            packed,
+                            circle,
+                            section,
+                            atom_lists,
+                            list_counts,
+                            dp,
+                            K=k,
+                            CG=layer.column_groups,
+                            G=layer.strip.chart.tile_count,
+                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            MAX_CANDIDATES=max_candidates,
+                            BA=8,
+                            STATION_START=start // 64 * layer.column_groups,
+                            ROW_START=start,
+                            num_warps=4,
+                            enable_fp_fusion=True,
+                        )
+                    elif ctx.atom_kernel == "atom_major":
                         mapped_backward_atoms_station[
                             (rows // 64 * layer.column_groups, 16)
                         ](
@@ -581,6 +630,7 @@ def mapped_streamed_trainable(
         "factored",
         "staged",
         "staged_partial",
+        "staged_listed",
         "atom_major",
         "interval",
         "fused",
