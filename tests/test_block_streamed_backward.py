@@ -19,7 +19,8 @@ from torchcst.nn._backends._preparation import execution_plan
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("size", (128, 192))
-def test_mapped_streamed_backward_matches_torch_reference(size):
+@pytest.mark.parametrize("atom_kernel", ("baseline", "factored"))
+def test_mapped_streamed_backward_matches_torch_reference(size, atom_kernel):
     torch.manual_seed(916)
     layer = BlockStripLinear(
         (size, size), (64, 64), round(size * size * 0.05), device="cuda"
@@ -31,7 +32,12 @@ def test_mapped_streamed_backward_matches_torch_reference(size):
     x = torch.randn(3, size, device="cuda", requires_grad=True)
     upstream = torch.randn(3, size, device="cuda")
     y = mapped_streamed_trainable(
-        layer, x, boxes=boxes, witness_cols=hints, window_rows=64
+        layer,
+        x,
+        boxes=boxes,
+        witness_cols=hints,
+        window_rows=64,
+        atom_kernel=atom_kernel,
     )
     dx, dp = torch.autograd.grad(y, (x, site.atoms.p), upstream)
     expected = layer.reference(x)
@@ -44,7 +50,8 @@ def test_mapped_streamed_backward_matches_torch_reference(size):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-def test_mapped_backward_after_atom_movement_and_boundary_support():
+@pytest.mark.parametrize("atom_kernel", ("baseline", "factored"))
+def test_mapped_backward_after_atom_movement_and_boundary_support(atom_kernel):
     torch.manual_seed(563)
     layer = BlockStripLinear(
         (128, 128),
@@ -78,7 +85,12 @@ def test_mapped_backward_after_atom_movement_and_boundary_support():
     x = torch.randn(3, 128, device="cuda", requires_grad=True)
     upstream = torch.randn(3, 128, device="cuda")
     y = mapped_streamed_trainable(
-        layer, x, boxes=boxes, witness_cols=hints, window_rows=64
+        layer,
+        x,
+        boxes=boxes,
+        witness_cols=hints,
+        window_rows=64,
+        atom_kernel=atom_kernel,
     )
     dx, dp = torch.autograd.grad(y, (x, p), upstream)
     expected = layer.reference(x)

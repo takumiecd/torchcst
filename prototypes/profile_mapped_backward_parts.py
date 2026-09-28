@@ -11,6 +11,7 @@ import torch
 from prototypes.block_materialize_kernel import materialize_logical
 from prototypes.block_streamed_backward import (
     mapped_backward_atoms,
+    mapped_backward_atoms_factored,
     trainable_boxed_prepare,
 )
 from prototypes.block_strip_linear import BlockStripLinear
@@ -91,9 +92,10 @@ def main():
             )
             dx.addmm_(dy[:, row_start : row_start + rows], w[:rows])
 
-    def atom_gradient(bm=16, bn=16, bk=16, ba=8):
+    def atom_gradient(bm=16, bn=16, bk=16, ba=8, factored=False):
         dp.zero_()
-        mapped_backward_atoms[(g * (64 // bn), 64 // bk)](
+        kernel = mapped_backward_atoms_factored if factored else mapped_backward_atoms
+        kernel[(g * (64 // bn), 64 // bk)](
             x,
             dy,
             packed,
@@ -154,6 +156,34 @@ def main():
         except Exception as error:  # noqa: BLE001 - keep later variants running
             variants.append({"bn": bn, "bk": bk, "ba": ba, "error": str(error)[:300]})
     results["variants"] = variants
+    factored_variants = []
+    for bn, bk, ba in (
+        (16, 16, 4),
+        (16, 16, 8),
+        (16, 16, 16),
+        (16, 32, 8),
+        (32, 16, 8),
+    ):
+        try:
+            run = lambda bn=bn, bk=bk, ba=ba: atom_gradient(
+                bn=bn, bk=bk, ba=ba, factored=True
+            )
+            elapsed = milliseconds(run, repeats=3)
+            difference = (dp - baseline).abs().max().item()
+            factored_variants.append(
+                {
+                    "bn": bn,
+                    "bk": bk,
+                    "ba": ba,
+                    "ms": elapsed,
+                    "max_abs_diff": difference,
+                }
+            )
+        except Exception as error:  # noqa: BLE001 - keep later variants running
+            factored_variants.append(
+                {"bn": bn, "bk": bk, "ba": ba, "error": str(error)[:300]}
+            )
+    results["factored_variants"] = factored_variants
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(results, indent=2) + "\n")
     print(json.dumps(results), flush=True)
