@@ -31,7 +31,9 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument(
-        "--atom-kernel", choices=("baseline", "factored", "staged"), default="baseline"
+        "--atom-kernel",
+        choices=("baseline", "factored", "staged", "atom_major"),
+        default="baseline",
     )
     args = parser.parse_args()
     if min(args.microbatch_rows, args.accumulation_steps, args.repeats) < 1:

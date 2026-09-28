@@ -7,6 +7,7 @@ import triton as tr
 import triton.language as tl
 from torch.autograd.function import once_differentiable
 
+from prototypes.block_atom_major_backward import mapped_backward_atoms_station
 from prototypes.block_materialize_kernel import materialize_logical
 from prototypes.block_streamed_forward import streamed_forward
 from prototypes.support_box_routing import atomic_bucket_sort
@@ -299,44 +300,70 @@ class _MappedStreamed(torch.autograd.Function):
         if dp is not None and m:
             kernel = (
                 mapped_backward_atoms_factored
-                if ctx.atom_kernel in ("factored", "staged")
+                if ctx.atom_kernel in ("factored", "staged", "atom_major")
                 else mapped_backward_atoms
             )
             atom_bk = 32 if ctx.atom_kernel == "factored" else 16
-            if ctx.atom_kernel == "staged":
+            if ctx.atom_kernel in ("staged", "atom_major"):
                 chunk = min(ctx.window_rows, n)
                 if dx is None:
                     w = x.new_empty((chunk, k))
                 for start in range(0, n, chunk):
                     rows = min(chunk, n - start)
                     torch.mm(dy[:, start : start + rows].T, x, out=w[:rows])
-                    kernel[(rows // 64 * layer.column_groups * 4, 2)](
-                        w,
-                        x,
-                        dy,
-                        packed,
-                        circle,
-                        section,
-                        offsets,
-                        dp,
-                        M=m,
-                        N=n,
-                        K=k,
-                        S=64,
-                        T=64,
-                        CG=layer.column_groups,
-                        G=layer.strip.chart.tile_count,
-                        PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
-                        BM=16,
-                        BN=16,
-                        BK=32,
-                        BA=8,
-                        STAGED=True,
-                        STATION_START=start // 64 * layer.column_groups,
-                        ROW_START=start,
-                        num_warps=4,
-                        enable_fp_fusion=False,
-                    )
+                    if ctx.atom_kernel == "atom_major":
+                        mapped_backward_atoms_station[
+                            (rows // 64 * layer.column_groups, 16)
+                        ](
+                            w,
+                            packed,
+                            circle,
+                            section,
+                            offsets,
+                            dp,
+                            K=k,
+                            S=64,
+                            T=64,
+                            CG=layer.column_groups,
+                            G=layer.strip.chart.tile_count,
+                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            BN=16,
+                            BK=32,
+                            BA=4,
+                            LANES=16,
+                            STATION_START=start // 64 * layer.column_groups,
+                            ROW_START=start,
+                            num_warps=4,
+                            enable_fp_fusion=False,
+                        )
+                    else:
+                        kernel[(rows // 64 * layer.column_groups * 4, 2)](
+                            w,
+                            x,
+                            dy,
+                            packed,
+                            circle,
+                            section,
+                            offsets,
+                            dp,
+                            M=m,
+                            N=n,
+                            K=k,
+                            S=64,
+                            T=64,
+                            CG=layer.column_groups,
+                            G=layer.strip.chart.tile_count,
+                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            BM=16,
+                            BN=16,
+                            BK=32,
+                            BA=8,
+                            STAGED=True,
+                            STATION_START=start // 64 * layer.column_groups,
+                            ROW_START=start,
+                            num_warps=4,
+                            enable_fp_fusion=False,
+                        )
             else:
                 arguments = (x, dy, packed, circle, section, offsets, dp)
                 if ctx.atom_kernel == "factored":
@@ -370,8 +397,8 @@ def mapped_streamed_trainable(
         raise ValueError("trainable mapped prototype requires at least two row tiles")
     if type(window_rows) is not int or window_rows < 64 or window_rows % 64:
         raise ValueError("window_rows must be a positive multiple of 64")
-    if atom_kernel not in ("baseline", "factored", "staged"):
-        raise ValueError("atom_kernel must be baseline, factored or staged")
+    if atom_kernel not in ("baseline", "factored", "staged", "atom_major"):
+        raise ValueError("unknown atom_kernel")
     # Keep every temporary W/dW window strictly smaller than the logical matrix.
     window_rows = min(window_rows, (layer.shape[0] // 128) * 64)
     prepared = trainable_boxed_prepare(
