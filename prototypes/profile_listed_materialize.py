@@ -34,6 +34,7 @@ def milliseconds(fn):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, required=True)
+    parser.add_argument("--disable-fusion", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(21)
@@ -113,7 +114,7 @@ def main():
                     ROW_GROUP_START=start // 64,
                     LOCAL_W=True,
                     num_warps=4,
-                    enable_fp_fusion=True,
+                    enable_fp_fusion=not args.disable_fusion,
                 )
 
             def listed(start=start, rows=rows, warps=warps):
@@ -133,7 +134,7 @@ def main():
                     STATION_START=start // 64 * layer.column_groups,
                     ROW_START=start,
                     num_warps=warps,
-                    enable_fp_fusion=True,
+                    enable_fp_fusion=not args.disable_fusion,
                 )
 
             original_ms += milliseconds(original)
@@ -149,6 +150,7 @@ def main():
         results[str(warps)] = {"original_ms": original_ms, "listed_ms": listed_ms}
     result = {
         "size": n,
+        "enable_fp_fusion": not args.disable_fusion,
         "max_candidates": max_candidates,
         "list_ms": list_ms,
         "warps": results,

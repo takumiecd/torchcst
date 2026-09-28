@@ -7,6 +7,7 @@ from pathlib import Path
 
 import torch
 import triton as tr
+from triton.runtime.errors import OutOfResources
 
 from prototypes.bounded_gemm import bounded_gemm_kernel
 
@@ -80,7 +81,17 @@ def main():
                     num_warps=warps,
                 )
 
-            ms = milliseconds(run)
+            try:
+                ms = milliseconds(run)
+            except OutOfResources as exc:
+                row = {
+                    "name": name,
+                    "shape": [bm, bn, bk, warps],
+                    "error": str(exc),
+                }
+                results.append(row)
+                print(json.dumps(row), flush=True)
+                continue
             difference = (c - reference).abs()
             tolerance = 3e-4 + 3e-4 * reference.abs()
             row = {

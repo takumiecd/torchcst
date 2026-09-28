@@ -10,6 +10,11 @@ from prototypes.bounded_gemm import bounded_gemm
 from torchcst.nn._backends._preparation import PROFILE_KINDS, prepare
 
 
+def weight_fp_fusion_enabled(device):
+    """Use the fast W kernel on validated Ampere GPUs; preserve Ada accuracy."""
+    return torch.cuda.get_device_capability(device) < (8, 9)
+
+
 def streamed_forward(
     layer,
     x,
@@ -69,6 +74,7 @@ def streamed_forward(
         output = y.reshape(*x.shape[:-1], layer.shape[0])
         return (output, cached) if return_cache else output
     chunk = min(weight_chunk_rows, layer.shape[0])
+    fp_fusion = weight_fp_fusion_enabled(x.device)
     bn, bk = materialize_tile
     w = flat.new_empty((chunk, layer.shape[1]))
     for start in range(0, layer.shape[0], chunk):
@@ -92,7 +98,7 @@ def streamed_forward(
                 STATION_START=start // 64 * layer.column_groups,
                 ROW_START=start,
                 num_warps=1,
-                enable_fp_fusion=True,
+                enable_fp_fusion=fp_fusion,
             )
         else:
             materialize_logical[(math.ceil(rows / bn), layer.column_groups, 64 // bk)](
@@ -116,7 +122,7 @@ def streamed_forward(
                 ROW_GROUP_START=start // 64,
                 LOCAL_W=True,
                 num_warps=4,
-                enable_fp_fusion=True,
+                enable_fp_fusion=fp_fusion,
             )
         output_window = y[:, start : start + rows]
         if gemm_mode == "tf32x3":

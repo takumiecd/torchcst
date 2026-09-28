@@ -11,7 +11,7 @@ from prototypes.block_atom_major_backward import mapped_backward_atoms_station
 from prototypes.block_interval_backward import mapped_backward_atoms_interval
 from prototypes.block_materialize_kernel import materialize_logical
 from prototypes.block_materialize_listed import materialize_listed
-from prototypes.block_streamed_forward import streamed_forward
+from prototypes.block_streamed_forward import streamed_forward, weight_fp_fusion_enabled
 from prototypes.block_tile_atom_lists import (
     build_tile_atom_lists,
     mapped_backward_atoms_listed,
@@ -411,6 +411,7 @@ class _MappedStreamed(torch.autograd.Function):
         ctx.window_rows = window_rows
         ctx.atom_kernel = atom_kernel
         ctx.gemm_mode = gemm_mode
+        ctx.weight_fp_fusion = weight_fp_fusion_enabled(x.device)
         ctx.listed_data = (
             build_listed_forward_candidates(layer, packed, circle, section, offsets)
             if materialize_mode == "listed"
@@ -476,7 +477,7 @@ class _MappedStreamed(torch.autograd.Function):
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
                             num_warps=1,
-                            enable_fp_fusion=True,
+                            enable_fp_fusion=ctx.weight_fp_fusion,
                         )
                     else:
                         materialize_logical[
@@ -502,7 +503,7 @@ class _MappedStreamed(torch.autograd.Function):
                             ROW_GROUP_START=start // 64,
                             LOCAL_W=True,
                             num_warps=4,
-                            enable_fp_fusion=True,
+                            enable_fp_fusion=ctx.weight_fp_fusion,
                         )
                 if ctx.gemm_mode in ("tf32x3", "tf32x3_dx"):
                     bounded_gemm(
