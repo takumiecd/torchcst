@@ -42,8 +42,18 @@ def main():
         "column_active_pairs": 0,
         "tiles": {},
     }
-    for tile in (4, 8, 16, 32):
-        summary["tiles"][str(tile)] = {
+    tile_shapes = (
+        (4, 4),
+        (8, 8),
+        (16, 16),
+        (32, 32),
+        (16, 32),
+        (8, 32),
+        (8, 16),
+        (4, 16),
+    )
+    for row_tile, col_tile in tile_shapes:
+        summary["tiles"][f"{row_tile}x{col_tile}"] = {
             "total": 0,
             "outside": 0,
             "inside": 0,
@@ -92,21 +102,23 @@ def main():
         last = torch.where(active, row_indices, -1).amax(dim=1)
         span = (last - first + 1).clamp_min(0)
         summary["column_interval_visited_pairs"] += int(span.sum().item())
-        for tile in (4, 8, 16, 32):
-            t = active.reshape(count, 64 // tile, tile, 64 // tile, tile)
+        for row_tile, col_tile in tile_shapes:
+            t = active.reshape(
+                count, 64 // row_tile, row_tile, 64 // col_tile, col_tile
+            )
             any_tile = t.any(dim=(2, 4))
             all_tile = t.all(dim=(2, 4))
-            total = count * (64 // tile) ** 2
+            total = count * (64 // row_tile) * (64 // col_tile)
             inside = int(all_tile.sum().item())
             outside = total - int(any_tile.sum().item())
-            entry = summary["tiles"][str(tile)]
+            entry = summary["tiles"][f"{row_tile}x{col_tile}"]
             entry["total"] += total
             entry["outside"] += outside
             entry["inside"] += inside
             entry["boundary"] += total - outside - inside
-            entry["supported_pairs_inside"] += inside * tile * tile
+            entry["supported_pairs_inside"] += inside * row_tile * col_tile
             entry["supported_pairs_boundary"] += (
-                int(active.sum().item()) - inside * tile * tile
+                int(active.sum().item()) - inside * row_tile * col_tile
             )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(summary, indent=2) + "\n")
