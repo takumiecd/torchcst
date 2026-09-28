@@ -1,6 +1,7 @@
 # 5% mapped CST：学習ステップのピークメモリ
 
 backwardの後続速度改善は[こちら](five-percent-backward-speed.ja.md)に記録した。
+Adaで1024²を境界ケースとして測り直した結果と対象形状の優先順位は[こちら](five-percent-target-shapes.ja.md)。
 
 2026-09-28。`A = round(0.05 × N × K)` 個のatomを持つ `BlockStripLinear` で、forward、入力勾配、atom勾配、AdamW更新まで実行した。CST経路は全重み `W[N,K]` と全重み勾配 `dW[N,K]` を保持しない。forwardと入力勾配では最大1024行、かつWの行数の半分以下の局所重み窓を使い回す。atom勾配では各16×16 site tileの `dW` を局所的に計算し、現在のatomへ加算する。実装は[backward試作](../prototypes/block_streamed_backward.py)と[測定コード](../prototypes/benchmark_mapped_training_memory.py)。
 

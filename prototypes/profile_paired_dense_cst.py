@@ -42,8 +42,10 @@ def main():
     plan = execution_plan(layer.strip)
     boxes = station_site_boxes(plan.circle, plan.section, 64)
     hints = balanced_home_columns(layer.strip)
-    cst_mode = "ieee" if m == 128 else "fp16x3_dx"
-    forward_mode = "ieee" if m == 128 else "fp16x3"
+    window_rows = min(1024, n // 2)
+    cache_windows = 0 if n == 1024 else 2
+    cst_mode = "ieee" if m == 128 or n == 1024 else "fp16x3_dx"
+    forward_mode = "ieee" if cst_mode == "ieee" else "fp16x3"
     with torch.no_grad():
         expected = F.linear(x, dense_weight)
         actual = mapped_streamed_trainable(
@@ -52,7 +54,8 @@ def main():
             boxes=boxes,
             witness_cols=hints,
             atom_kernel="staged_listed",
-            cache_windows=2,
+            window_rows=window_rows,
+            cache_windows=cache_windows,
             gemm_mode=cst_mode,
             forward_gemm_mode=forward_mode,
             materialize_mode="listed",
@@ -77,7 +80,8 @@ def main():
                 boxes=boxes,
                 witness_cols=hints,
                 atom_kernel="staged_listed",
-                cache_windows=2,
+                window_rows=window_rows,
+                cache_windows=cache_windows,
                 gemm_mode=cst_mode,
                 forward_gemm_mode=forward_mode,
                 materialize_mode="listed",
@@ -101,6 +105,9 @@ def main():
         "device": torch.cuda.get_device_name(),
         "size": n,
         "rows": m,
+        "cst_mode": cst_mode,
+        "window_rows": window_rows,
+        "cache_windows": cache_windows,
         "scope": "complete AdamW steps; dense and CST weights and optimizer states coexist for timing; separate-process peaks required for memory",
         "accuracy": accuracy,
         "cases": {
