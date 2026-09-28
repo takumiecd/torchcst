@@ -19,6 +19,7 @@ from torchcst.nn._backends._preparation import execution_plan
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, choices=(4096, 8192), required=True)
+    parser.add_argument("--fast-decode", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
     args = parser.parse_args()
@@ -71,7 +72,12 @@ def main():
     geometry_type.decode_centers = measured_decode
     try:
         prepared = boxed_prepare(
-            site, site.atoms.p, boxes=boxes, witness_cols=hints, fast_witness=True
+            site,
+            site.atoms.p,
+            boxes=boxes,
+            witness_cols=hints,
+            fast_witness=True,
+            fast_decode=args.fast_decode,
         )
     finally:
         torch.sort = original_sort
@@ -84,6 +90,7 @@ def main():
         "device": torch.cuda.get_device_name(),
         "shape": [128, n, n],
         "atoms": site.atoms.p.shape[0],
+        "fast_decode": args.fast_decode,
         "input_bytes": x.numel() * x.element_size(),
         "atom_parameter_bytes": site.atoms.p.numel() * site.atoms.p.element_size(),
         "prepared_payload_bytes": sum(
@@ -97,7 +104,7 @@ def main():
         "completed": True,
     }
     assert len(sort_events) == 1, sort_events
-    assert len(decode_events) == 1, decode_events
+    assert len(decode_events) == (0 if args.fast_decode else 1), decode_events
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(
