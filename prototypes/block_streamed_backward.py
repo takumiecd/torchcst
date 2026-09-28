@@ -454,12 +454,12 @@ class _MappedStreamed(torch.autograd.Function):
                             else torch.int32
                         )
                         atom_lists = torch.empty(
-                            (g, 8, max_candidates), device=x.device, dtype=list_dtype
+                            (g, 4, max_candidates), device=x.device, dtype=list_dtype
                         )
                         list_counts = torch.empty(
-                            (g, 8), device=x.device, dtype=torch.int32
+                            (g, 4), device=x.device, dtype=torch.int32
                         )
-                        build_tile_atom_lists[(g, 8)](
+                        build_tile_atom_lists[(g, 4)](
                             packed,
                             circle,
                             section,
@@ -471,7 +471,7 @@ class _MappedStreamed(torch.autograd.Function):
                             BA=8,
                             COMPACT=True,
                             BR=16,
-                            BC=32,
+                            BC=64,
                             num_warps=4,
                             enable_fp_fusion=False,
                         )
@@ -480,7 +480,7 @@ class _MappedStreamed(torch.autograd.Function):
                     torch.mm(dy[:, start : start + rows].T, x, out=w[:rows])
                     if ctx.atom_kernel == "staged_listed":
                         mapped_backward_atoms_listed[
-                            (rows // 64 * layer.column_groups * 4, 2)
+                            (rows // 64 * layer.column_groups * 4, 1)
                         ](
                             w,
                             packed,
@@ -498,7 +498,7 @@ class _MappedStreamed(torch.autograd.Function):
                             BA=1,
                             COMPACT=True,
                             BR=16,
-                            BC=32,
+                            BC=64,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
                             num_warps=1,
