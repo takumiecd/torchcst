@@ -19,6 +19,9 @@ def main():
     parser.add_argument("--size", type=int, choices=(1024, 8192), required=True)
     parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
     parser.add_argument("--rounds", type=int, default=20)
+    parser.add_argument(
+        "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(21)
@@ -35,7 +38,9 @@ def main():
     del layer, dense
     x = torch.randn((m, n), device="cuda", requires_grad=True)
     dy = torch.randn((m, n), device="cuda")
-    optimizer = torch.optim.AdamW([weight], lr=1e-3, foreach=True, capturable=True)
+    optimizer = torch.optim.AdamW(
+        [weight], lr=1e-3, capturable=True, **{args.optimizer_mode: True}
+    )
 
     def step():
         optimizer.zero_grad(set_to_none=True)
@@ -49,6 +54,7 @@ def main():
     result = {
         "shape": [m, n, n],
         "device": torch.cuda.get_device_name(),
+        "optimizer_mode": args.optimizer_mode,
         "allocated_after_warmup": torch.cuda.memory_allocated(),
     }
     graph = torch.cuda.CUDAGraph()

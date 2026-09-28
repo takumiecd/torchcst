@@ -618,7 +618,7 @@ class _MappedStreamed(torch.autograd.Function):
                         dx,
                         add=start > 0,
                     )
-                elif ctx.gemm_mode in ("fp16x3", "fp16x3_dx"):
+                elif ctx.gemm_mode in ("fp16x3", "fp16x3_dx", "fp16x4_dw"):
                     bounded_gemm_fp16x3(
                         dy[:, start : start + rows],
                         weight,
@@ -693,8 +693,13 @@ class _MappedStreamed(torch.autograd.Function):
                     rows = min(chunk, n - start)
                     if ctx.gemm_mode == "tf32x3":
                         bounded_gemm(dy[:, start : start + rows].T, x, w[:rows])
-                    elif ctx.gemm_mode == "fp16x3":
-                        bounded_gemm_fp16x3(dy[:, start : start + rows].T, x, w[:rows])
+                    elif ctx.gemm_mode in ("fp16x3", "fp16x4_dw"):
+                        bounded_gemm_fp16x3(
+                            dy[:, start : start + rows].T,
+                            x,
+                            w[:rows],
+                            residual_product=ctx.gemm_mode == "fp16x4_dw",
+                        )
                     else:
                         torch.mm(dy[:, start : start + rows].T, x, out=w[:rows])
                     if ctx.atom_kernel == "staged_listed":
@@ -891,7 +896,14 @@ def mapped_streamed_trainable(
     cache_rows = cache_windows * window_rows
     if cache_rows > layer.shape[0] // 2:
         raise ValueError("cached windows must cover no more than half of W")
-    if gemm_mode not in ("ieee", "tf32x3", "tf32x3_dx", "fp16x3", "fp16x3_dx"):
+    if gemm_mode not in (
+        "ieee",
+        "tf32x3",
+        "tf32x3_dx",
+        "fp16x3",
+        "fp16x3_dx",
+        "fp16x4_dw",
+    ):
         raise ValueError("unknown gemm_mode")
     if gemm_mode != "ieee" and atom_kernel != "staged_listed":
         raise ValueError("bounded GEMM is implemented for staged_listed only")

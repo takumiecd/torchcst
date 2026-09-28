@@ -38,6 +38,9 @@ def main():
     parser.add_argument("--compare-csr", action="store_true")
     parser.add_argument("--baseline-same-gemm", action="store_true")
     parser.add_argument("--graph", action="store_true")
+    parser.add_argument(
+        "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     compare_alternate = args.alt_window_rows is not None
@@ -92,13 +95,10 @@ def main():
         accuracy = check(actual, expected)
         assert accuracy["passed"], accuracy
     del actual, expected
+    optimizer_kwargs = {args.optimizer_mode: True, "capturable": args.graph}
     optimizers = {
-        "dense": torch.optim.AdamW(
-            [dense_weight], lr=1e-3, foreach=True, capturable=args.graph
-        ),
-        "cst": torch.optim.AdamW(
-            [layer.strip.atoms.p], lr=1e-3, foreach=True, capturable=args.graph
-        ),
+        "dense": torch.optim.AdamW([dense_weight], lr=1e-3, **optimizer_kwargs),
+        "cst": torch.optim.AdamW([layer.strip.atoms.p], lr=1e-3, **optimizer_kwargs),
     }
 
     def step(mode):
@@ -174,6 +174,7 @@ def main():
         "cst_mode": cst_mode,
         "materialize_mode": args.materialize_mode,
         "graph": args.graph,
+        "optimizer_mode": args.optimizer_mode,
         "window_rows": window_rows,
         "cache_windows": cache_windows,
         "scope": "complete AdamW steps; dense and CST weights and optimizer states coexist for timing; separate-process peaks required for memory",

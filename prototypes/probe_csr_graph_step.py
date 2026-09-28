@@ -24,6 +24,9 @@ def main():
     parser.add_argument("--cache-windows", type=int, default=None)
     parser.add_argument("--verify-steps", type=int, default=0)
     parser.add_argument(
+        "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
+    )
+    parser.add_argument(
         "--materialize-mode",
         choices=("listed", "listed_csr", "listed_bounded"),
         default="listed_csr",
@@ -38,9 +41,8 @@ def main():
     hints = balanced_home_columns(layer.strip)
     x = torch.randn((m, n), device="cuda", requires_grad=True)
     dy = torch.randn((m, n), device="cuda")
-    optimizer = torch.optim.AdamW(
-        [layer.strip.atoms.p], lr=1e-3, foreach=True, capturable=True
-    )
+    optimizer_kwargs = {args.optimizer_mode: True, "capturable": True}
+    optimizer = torch.optim.AdamW([layer.strip.atoms.p], lr=1e-3, **optimizer_kwargs)
     mode = "ieee" if m == 128 else "fp16x3_dx"
     forward_mode = "ieee" if m == 128 else "fp16x3"
     window_rows = min(1024, n // 2) if args.window_rows is None else args.window_rows
@@ -74,6 +76,7 @@ def main():
         "shape": [m, n, n],
         "device": torch.cuda.get_device_name(),
         "materialize_mode": args.materialize_mode,
+        "optimizer_mode": args.optimizer_mode,
         "cache_windows": cache_windows,
         "window_rows": window_rows,
         "allocated_after_warmup": torch.cuda.memory_allocated(),
@@ -107,7 +110,7 @@ def main():
             eager_layer = copy.deepcopy(layer)
             eager_x = x.detach().clone().requires_grad_()
             eager_optimizer = torch.optim.AdamW(
-                [eager_layer.strip.atoms.p], lr=1e-3, foreach=True, capturable=True
+                [eager_layer.strip.atoms.p], lr=1e-3, **optimizer_kwargs
             )
             eager_optimizer.load_state_dict(copy.deepcopy(optimizer.state_dict()))
             deviations = []

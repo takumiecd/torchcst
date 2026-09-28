@@ -42,3 +42,15 @@
 再現コードは`prototypes.block_streamed_backward`、`prototypes.block_tile_atom_lists`、`prototypes.block_materialize_listed`、`prototypes.profile_candidate_csr`、`prototypes.probe_csr_graph_step`、`prototypes.profile_paired_dense_cst`。生JSONは`output/ada-20260929/overnight/`。CUDA C++反証は`prototypes/cuda/materialize_bounded.cu`と`prototypes.profile_cuda_materialize`。結果はRTX 6000 Adaが空いていることを確認してから測った。
 
 CUDA C++試作の実行にはCUDA Toolkitと`ninja`が必要だった。Ada側では作業ディレクトリだけに`python -m pip install --target .probe-deps ninja`で入れ、`PATH="$PWD/.probe-deps/bin:$PATH" PYTHONPATH=src:. python -m prototypes.profile_cuda_materialize --size 8192 --output results/cuda-w.json`で測った。PyTorch環境全体への依存追加はしていない。
+
+## 02:30 JSTの追加検証（採用なし）
+
+同じ空き状態のRTX 6000 Adaで、最終8 bit版のGraphを再プロファイルした。GPU kernel合計34.93 ms中、FP16x3の局所GEMMが9.02 ms、局所W生成6.35 ms、atom勾配5.97 ms、IEEE FP32の局所dW GEMM5.82 ms、routing1.35 ms、候補一覧構築1.00 msだった。単一ステップのprofile値で、交互Graph再実行の中央値とは測定対象が異なる。
+
+局所dWのTensor Core化では、従来の3項FP16分解へ残差同士の積を加えた4項版`fp16x4_dw`を試した。M=2048、seed 21でforwardと入力勾配は3e-5基準に合格したが、atom勾配は3e-4基準を **10,387 / 16,777,215要素**で超えた。3項版の10,421件からほぼ改善しておらず、省略した4項目だけが原因ではない。完全ステップへ採用しない。試作コードは`prototypes/bounded_gemm_fp16x3.py`、再現は`prototypes.compare_bounded_gemm_gradients --compare-mode fp16x4_dw`。
+
+候補一覧と計算タイルの行数を16から8、32へ変更した。最初の1024行窓で、8行版のW生成は0.696→0.686 msとほぼ同じだが、候補構築は0.884→1.657 ms、一覧領域は12.58→25.17 MB、atom勾配は1.099→1.126 msとなった。32行版は候補構築0.689→0.376 ms、一覧領域12.58→6.29 MBだが、W生成0.541→0.631 ms、atom勾配0.909→0.971 msへ悪化した。各値は別々の交互測定runで、そのrun内の16行版と比較する。Wは両方とも16行版とビット一致した。一方atom勾配は3e-4基準で8行版216,147件、32行版177,508件の差があり、縮約順の違いを含むので採用しない。試作は`prototypes.profile_bounded_tile_rows`に残した。既定の16行経路は変更していない。
+
+最後にPyTorch AdamWの`foreach=True`を`fused=True`へ変えて比較した。同一プロセスの32回交互Graph再実行でCST完全ステップの中央値は38.341→38.236 ms、対応ペアのfused/foreach比中央値は0.993。明確な速度改善とは言えない。別プロセスのfused Graph captureピークは884,781,056バイトで、従来foreachと同値だった。CSTパラメータの32回後の相対L2差は1.07e-6、最大絶対差は0.133で、atom勾配のatomic加算順やoptimizer実装差を含む。denseとfused CSTの交互比較ではCST/dense比が1.314だったが、foreach時の1.262–1.272と同一runではないため直接の優劣判断に使わない。`foreach`を維持する。測定用CLIに`--optimizer-mode`を追加した。
+
+この追加検証後、RTX 6000 Adaで`tests/test_block_streamed_backward.py`と`tests/test_streamed_materialization.py`は61件通過した。結果JSONは`docs/data/ada-20260929/`にも保存した。次は局所W・atom縮約で実際に処理している候補atomとsiteの比率を測り、候補選別を強める余地を判断する。

@@ -22,12 +22,15 @@ def bounded_gemm_fp16x3_kernel(
     BN: tl.constexpr,
     BK: tl.constexpr,
     ADD: tl.constexpr,
+    RESIDUAL_PRODUCT: tl.constexpr,
 ):
     rows = tl.program_id(0) * BM + tl.arange(0, BM)
     cols = tl.program_id(1) * BN + tl.arange(0, BN)
     inner = tl.arange(0, BK)
     acc = tl.full((BM, BN), 0, tl.float32)
     correction = tl.full((BM, BN), 0, tl.float32)
+    if RESIDUAL_PRODUCT:
+        low_product = tl.full((BM, BN), 0, tl.float32)
     for offset in range(tr.cdiv(K, BK)):
         ks = offset * BK + inner
         a = tl.load(
@@ -47,7 +50,11 @@ def bounded_gemm_fp16x3_kernel(
         acc = tl.dot(ah, bh, acc)
         correction = tl.dot(ah, bl, correction)
         correction = tl.dot(al, bh, correction)
+        if RESIDUAL_PRODUCT:
+            low_product = tl.dot(al, bl, low_product)
     acc += correction * (1.0 / 4096.0)
+    if RESIDUAL_PRODUCT:
+        acc += low_product * (1.0 / 16777216.0)
     ptr = C + rows[:, None] * CSM + cols[None, :] * CSN
     mask = (rows[:, None] < M) & (cols[None, :] < N)
     if ADD:
@@ -55,7 +62,7 @@ def bounded_gemm_fp16x3_kernel(
     tl.store(ptr, acc, mask)
 
 
-def bounded_gemm_fp16x3(a, b, out, *, add=False):
+def bounded_gemm_fp16x3(a, b, out, *, add=False, residual_product=False):
     """Multiply two FP32 tensors using only register-local FP16 splits."""
     if a.ndim != 2 or b.ndim != 2 or out.shape != (a.shape[0], b.shape[1]):
         raise ValueError("invalid bounded GEMM shapes")
@@ -76,5 +83,6 @@ def bounded_gemm_fp16x3(a, b, out, *, add=False):
         bn,
         bk,
         add,
+        residual_product,
         num_warps=4,
     )

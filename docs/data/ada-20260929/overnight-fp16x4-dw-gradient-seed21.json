@@ -1,0 +1,29 @@
+{
+  "size": 8192,
+  "rows": 2048,
+  "seed": 21,
+  "output": {
+    "max_abs": 1.8253922462463379e-06,
+    "relative_l1": 1.2860760762123391e-05,
+    "relative_l2": 1.3109548490319867e-05,
+    "violations_3e_5": 0,
+    "violations_3e_4": 0,
+    "elements": 16777216
+  },
+  "dx": {
+    "max_abs": 2.3096799850463867e-07,
+    "relative_l1": 1.7536621044200729e-06,
+    "relative_l2": 1.7675777144177118e-06,
+    "violations_3e_5": 0,
+    "violations_3e_4": 0,
+    "elements": 16777216
+  },
+  "dp": {
+    "max_abs": 0.014404296875,
+    "relative_l1": 3.458630317254574e-06,
+    "relative_l2": 3.4581369163788622e-06,
+    "violations_3e_5": 131540,
+    "violations_3e_4": 10387,
+    "elements": 16777215
+  }
+}

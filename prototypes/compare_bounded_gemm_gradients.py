@@ -33,14 +33,16 @@ def main():
     parser.add_argument("--seed", type=int, default=21)
     parser.add_argument(
         "--compare-mode",
-        choices=("ieee", "tf32x3", "tf32x3_dx", "fp16x3", "fp16x3_dx"),
+        choices=("ieee", "tf32x3", "tf32x3_dx", "fp16x3", "fp16x3_dx", "fp16x4_dw"),
         default="tf32x3",
     )
     parser.add_argument(
         "--forward-gemm-mode", choices=("ieee", "tf32x3", "fp16x3"), default="ieee"
     )
     parser.add_argument(
-        "--materialize-mode", choices=("default", "listed"), default="default"
+        "--materialize-mode",
+        choices=("default", "listed", "listed_bounded"),
+        default="default",
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

@@ -25,11 +25,13 @@ def materialize_listed(
     CSR: tl.constexpr = False,
     BOUNDED: tl.constexpr = False,
     Bases=None,
+    BR: tl.constexpr = 16,
 ):
     program = tl.program_id(0)
-    station = STATION_START + program // 4
-    row_tile = program % 4
-    local_rows = row_tile * 16 + tl.arange(0, 16)
+    row_tiles = 64 // BR
+    station = STATION_START + program // row_tiles
+    row_tile = program % row_tiles
+    local_rows = row_tile * BR + tl.arange(0, BR)
     local_cols = tl.arange(0, 64)
     site_rows = station * 64 + local_rows
     logical_rows = (station // CG) * 64 + local_rows
@@ -41,12 +43,12 @@ def materialize_listed(
     w = tl.load(Section + local_cols * 3 + 2)
     sx = cosine[:, None] * rho[None, :]
     sy = sine[:, None] * rho[None, :]
-    weight = tl.full((16, 64), 0.0, tl.float32)
-    count = tl.load(Counts + station * 4 + row_tile)
+    weight = tl.full((BR, 64), 0.0, tl.float32)
+    count = tl.load(Counts + station * row_tiles + row_tile)
     if CSR:
-        list_base = tl.load(Bases + station * 4 + row_tile)
+        list_base = tl.load(Bases + station * row_tiles + row_tile)
     else:
-        list_base = (station * 4 + row_tile) * MAX_CANDIDATES
+        list_base = (station * row_tiles + row_tile) * MAX_CANDIDATES
     if G == 1:
         begin0 = tl.load(Offsets)
     else:
