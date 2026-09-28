@@ -11,6 +11,7 @@ from prototypes.block_atom_major_backward import mapped_backward_atoms_station
 from prototypes.block_interval_backward import mapped_backward_atoms_interval
 from prototypes.block_materialize_kernel import materialize_logical
 from prototypes.block_materialize_listed import materialize_listed
+from prototypes.block_materialize_parallel import materialize_listed_parallel
 from prototypes.block_streamed_forward import streamed_forward, weight_fp_fusion_enabled
 from prototypes.block_tile_atom_lists import (
     build_tile_atom_lists,
@@ -411,11 +412,12 @@ class _MappedStreamed(torch.autograd.Function):
         ctx.layer = layer
         ctx.window_rows = window_rows
         ctx.atom_kernel = atom_kernel
+        ctx.materialize_mode = materialize_mode
         ctx.gemm_mode = gemm_mode
         ctx.weight_fp_fusion = weight_fp_fusion_enabled(x.device)
         ctx.listed_data = (
             build_listed_forward_candidates(layer, packed, circle, section, offsets)
-            if materialize_mode == "listed"
+            if materialize_mode in ("listed", "listed_parallel")
             else None
         )
         reuse_input_weight = ctx.needs_input_grad[0] and (
@@ -462,7 +464,12 @@ class _MappedStreamed(torch.autograd.Function):
                 if start >= cached.shape[0]:
                     if ctx.listed_data is not None:
                         atom_lists, list_counts, max_candidates = ctx.listed_data
-                        materialize_listed[(rows // 64 * layer.column_groups * 4,)](
+                        kernel = (
+                            materialize_listed_parallel
+                            if ctx.materialize_mode == "listed_parallel"
+                            else materialize_listed
+                        )
+                        kernel[(rows // 64 * layer.column_groups * 4,)](
                             packed,
                             circle,
                             section,
@@ -477,7 +484,14 @@ class _MappedStreamed(torch.autograd.Function):
                             MAX_CANDIDATES=max_candidates,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
-                            num_warps=1,
+                            num_warps=4
+                            if ctx.materialize_mode == "listed_parallel"
+                            else 1,
+                            **(
+                                {"BA": 2}
+                                if ctx.materialize_mode == "listed_parallel"
+                                else {}
+                            ),
                             enable_fp_fusion=ctx.weight_fp_fusion,
                         )
                     else:
@@ -782,10 +796,8 @@ def mapped_streamed_trainable(
         raise ValueError("bounded GEMM is implemented for staged_listed only")
     if forward_gemm_mode not in ("ieee", "tf32x3", "fp16x3"):
         raise ValueError("unknown forward_gemm_mode")
-    if materialize_mode not in ("default", "listed"):
+    if materialize_mode not in ("default", "listed", "listed_parallel"):
         raise ValueError("unknown materialize_mode")
-    if materialize_mode == "listed" and atom_kernel != "staged_listed":
-        raise ValueError("listed materialization requires staged_listed backward")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )

@@ -35,3 +35,31 @@ forward専用の既存融合候補をM=128で比較した。局所W＋GEMMが0.1
 `CSTLinear`には既に`_IMPLEMENTATIONS`のbackend登録と`auto`選択がある。ただし現行`auto`は入力のM、GPU、学習時のメモリ上限を見ず、単一chartでは全Wを作る`materialized`を選ぶ。mapped試作の学習経路もこの登録表の外にある。**新しいPyTorch dispatcherを先に設けても、今の1024²を速くするkernelは増えない。** 次の実装順は、全W相当の一時領域を避ける1024²用forward/backward経路を試作・検証し、実測で勝った時にshape・M・dtype・device・学習モードを受ける小さな実行ポリシーへ登録すること。明示的なbackend指定を残し、自動選択が全Wへ戻らない条件をテストする。
 
 内訳とforward比較のJSONは`output/ada-20260928/cache-hypotheses/kernels-1024-m128.json`、`kernels-1024-m2048.json`、`forward-alternatives-1024-m128.json`。計測コードは`prototypes.profile_mapped_training_kernels`と`prototypes.profile_ada_forward_alternatives`。
+
+## dispatch前の1024²計算方式比較
+
+同じRTX 6000 Ada、5% atom、FP32、全W未満の局所窓で、AdamWステップを交互測定した。下表の時間は各実験内の中央値であり、実験間ではGPU・ホスト負荷による変動がある。局所W窓を小さくする案は、forwardで保持するWを増やしてbackwardでの再生成を減らす場合も試した。括弧内は`(窓行数, forwardから保持する窓数)`。
+
+| 方式 | M=128 | M=2048 | 判断 |
+| --- | ---: | ---: | --- |
+| listed、(512, 0) | 1.610 ms | 1.648 ms | 各実験の基準 |
+| listed、(256, 1) | 1.789 ms | 2.069 ms | 遅い |
+| listed、(256, 2) | 1.734 ms | 2.015 ms | 遅い |
+| listed、(128, 4) | 2.539 ms | 2.811 ms | 遅い |
+
+小さい窓ではピークがM=128で最大約1 MB下がるが、W生成とGEMMの呼び出し回数が増え、速度の利益はない。M=2048の窓変更によるatom勾配の相対L2差は最大約`5.1e-7`。行列積の分割順でFP32の丸めが変わるため、個別要素に設定した`3e-4 + 3e-4*|基準|`を最大23個超えたが、forwardと入力勾配は同じ要素別許容内だった。
+
+atomを2個並列化し4 warpで512行窓を生成するkernelは、交互GPU event測定で`0.0753→0.0726 ms`。全Wを作らず、生成Wの最大要素差は`4.7e-9`、出力違反0。学習ステップへ組み込んだ再測定ではM=128が`1.490→1.466 ms`、M=2048が`1.672→1.642 ms`で、ピークは変わらなかった。約2%の小改善なので試作モード`listed_parallel`として残し、自動選択にはまだ入れない。M=128の最初の測定には外部負荷と見られる大きな時間変動があり、上記は空き状態での再測定値。
+
+atom勾配の別方式を同じlisted forward/入力勾配経路で比較した。M=128では基準`staged_listed`が`1.483 ms`、`atom_major`が`1.509 ms`、`staged`が`1.736 ms`、`fused`が`1.862 ms`。M=2048では順に`1.671/1.789/2.021/2.126 ms`。`interval`は両方約3 ms。別方式のatom勾配は基準に対する相対L2差が約`5e-6`で、要素別許容を数百箇所超えた。速度も精度も基準を上回らず、採用しない。
+
+Tensor Coreを使う既存のFP16x3 GEMMも1024²で試した。forwardと入力勾配をFP16x3、局所dWとatom勾配をIEEE FP32にする。M=2048では、これと2-atom並列W生成の併用が最も速かった。同じプロセスでdense、従来CST、新CSTを24回ずつ交互に測り直した結果は以下。各CST方式は局所W窓512行、保持0枚で、ピーク割当も同じだった。
+
+| M | dense | 従来CST | FP16x3＋並列W生成 | 新/従来の対応ペア比 | 新CST/denseの対応ペア比 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 128 | 0.311 ms | 1.460 ms | 1.471 ms | 1.015倍 | 4.77倍 |
+| 2048 | 0.513 ms | 1.633 ms | 1.459 ms | 0.897倍 | 2.86倍 |
+
+M=2048では従来CST比約10.3%改善。新経路とdenseの全出力照合は`atol=rtol=3e-5`で違反0、最大絶対差`8.5e-7`。従来CSTとの比較でもforward、入力勾配、atom勾配の確認に通った。M=128は負荷の変動が大きく、対応ペアでは新経路が約1.5%遅い。小Mへの採用は見送る。**1024²でもMによって有利な計算方式が変わる**ことが実測できたが、denseとの速度差はM=2048でも約2.86倍残る。dispatch実装はまだ行わず、この2経路を試作のまま保持する。
+
+再現コードは`prototypes.profile_small_window_schedule`、`prototypes.profile_parallel_weight_atoms`、`prototypes.profile_paired_dense_cst`。JSONは`output/ada-20260928/cache-hypotheses/`の`small-window-schedule-m*.json`、`parallel-weight-atoms-1024-m128.json`、`parallel-weight-step-1024-m*.json`、`atom-comparison-1024-m*.json`、`gemm-comparison-1024-m*.json`、`combined-comparison-1024-m*.json`、`paired-dense-cst-1024-m*-threeway.json`。次はW生成とatom勾配にまたがる融合案を小形状で試し、Mの切替境界を測定してからdispatchへ載せる。

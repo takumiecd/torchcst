@@ -6,6 +6,7 @@ import torch
 
 from prototypes.block_materialize_kernel import materialize_logical
 from prototypes.block_materialize_listed import materialize_listed
+from prototypes.block_materialize_parallel import materialize_listed_parallel
 from prototypes.bounded_gemm import bounded_gemm
 from prototypes.bounded_gemm_fp16x3 import bounded_gemm_fp16x3
 from torchcst.nn._backends._preparation import PROFILE_KINDS, prepare
@@ -42,9 +43,9 @@ def streamed_forward(
         raise ValueError("unsupported materialization tile")
     if gemm_mode not in ("ieee", "tf32x3", "fp16x3"):
         raise ValueError("unknown forward gemm_mode")
-    if materialize_mode not in ("default", "listed"):
+    if materialize_mode not in ("default", "listed", "listed_parallel"):
         raise ValueError("unknown forward materialize_mode")
-    if materialize_mode == "listed" and listed_data is None:
+    if materialize_mode in ("listed", "listed_parallel") and listed_data is None:
         raise ValueError("listed forward requires candidate lists")
     if (
         type(cache_weight_rows) is not int
@@ -81,9 +82,14 @@ def streamed_forward(
     for start in range(0, layer.shape[0], chunk):
         rows = min(chunk, layer.shape[0] - start)
         target = cached[start : start + rows] if start < cache_weight_rows else w[:rows]
-        if materialize_mode == "listed":
+        if materialize_mode in ("listed", "listed_parallel"):
             atom_lists, list_counts, max_candidates = listed_data
-            materialize_listed[(rows // 64 * layer.column_groups * 4,)](
+            kernel = (
+                materialize_listed_parallel
+                if materialize_mode == "listed_parallel"
+                else materialize_listed
+            )
+            kernel[(rows // 64 * layer.column_groups * 4,)](
                 p,
                 circle,
                 section,
@@ -98,7 +104,8 @@ def streamed_forward(
                 MAX_CANDIDATES=max_candidates,
                 STATION_START=start // 64 * layer.column_groups,
                 ROW_START=start,
-                num_warps=1,
+                num_warps=4 if materialize_mode == "listed_parallel" else 1,
+                **({"BA": 2} if materialize_mode == "listed_parallel" else {}),
                 enable_fp_fusion=fp_fusion,
             )
         else:

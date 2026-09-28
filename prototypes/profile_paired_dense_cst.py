@@ -22,6 +22,13 @@ def main():
     parser.add_argument("--size", type=int, default=8192)
     parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
     parser.add_argument("--rounds", type=int, default=10)
+    parser.add_argument(
+        "--gemm-mode", choices=("auto", "ieee", "fp16x3_dx"), default="auto"
+    )
+    parser.add_argument(
+        "--materialize-mode", choices=("listed", "listed_parallel"), default="listed"
+    )
+    parser.add_argument("--compare-baseline", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(21)
@@ -44,7 +51,11 @@ def main():
     hints = balanced_home_columns(layer.strip)
     window_rows = min(1024, n // 2)
     cache_windows = 0 if n == 1024 else 2
-    cst_mode = "ieee" if m == 128 or n == 1024 else "fp16x3_dx"
+    cst_mode = (
+        ("ieee" if m == 128 or n == 1024 else "fp16x3_dx")
+        if args.gemm_mode == "auto"
+        else args.gemm_mode
+    )
     forward_mode = "ieee" if cst_mode == "ieee" else "fp16x3"
     with torch.no_grad():
         expected = F.linear(x, dense_weight)
@@ -58,7 +69,7 @@ def main():
             cache_windows=cache_windows,
             gemm_mode=cst_mode,
             forward_gemm_mode=forward_mode,
-            materialize_mode="listed",
+            materialize_mode=args.materialize_mode,
         )
         accuracy = check(actual, expected)
         assert accuracy["passed"], accuracy
@@ -69,11 +80,13 @@ def main():
     }
 
     def step(mode):
-        optimizers[mode].zero_grad(set_to_none=True)
+        key = "dense" if mode == "dense" else "cst"
+        optimizers[key].zero_grad(set_to_none=True)
         x.grad = None
         if mode == "dense":
             output = F.linear(x, dense_weight)
         else:
+            baseline = mode == "cst_baseline"
             output = mapped_streamed_trainable(
                 layer,
                 x,
@@ -82,19 +95,22 @@ def main():
                 atom_kernel="staged_listed",
                 window_rows=window_rows,
                 cache_windows=cache_windows,
-                gemm_mode=cst_mode,
-                forward_gemm_mode=forward_mode,
-                materialize_mode="listed",
+                gemm_mode="ieee" if baseline else cst_mode,
+                forward_gemm_mode="ieee" if baseline else forward_mode,
+                materialize_mode="listed" if baseline else args.materialize_mode,
             )
         output.backward(gradient)
-        optimizers[mode].step()
+        optimizers[key].step()
 
-    for mode in ("dense", "cst", "cst", "dense"):
+    modes = (
+        ("dense", "cst_baseline", "cst") if args.compare_baseline else ("dense", "cst")
+    )
+    for mode in (*modes, *reversed(modes)):
         step(mode)
     torch.cuda.synchronize()
-    samples = {"dense": [], "cst": []}
+    samples = {mode: [] for mode in modes}
     for round_index in range(args.rounds):
-        order = ("dense", "cst") if round_index % 2 == 0 else ("cst", "dense")
+        order = modes[round_index % len(modes) :] + modes[: round_index % len(modes)]
         for mode in order:
             torch.cuda.synchronize()
             start = time.perf_counter()
@@ -106,6 +122,7 @@ def main():
         "size": n,
         "rows": m,
         "cst_mode": cst_mode,
+        "materialize_mode": args.materialize_mode,
         "window_rows": window_rows,
         "cache_windows": cache_windows,
         "scope": "complete AdamW steps; dense and CST weights and optimizer states coexist for timing; separate-process peaks required for memory",
@@ -118,6 +135,11 @@ def main():
             cst / dense for cst, dense in zip(samples["cst"], samples["dense"])
         ),
     }
+    if args.compare_baseline:
+        result["paired_cst_vs_baseline_ratio_median"] = statistics.median(
+            cst / baseline
+            for cst, baseline in zip(samples["cst"], samples["cst_baseline"])
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result), flush=True)

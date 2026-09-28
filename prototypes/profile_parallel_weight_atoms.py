@@ -28,6 +28,7 @@ def main():
     args = parser.parse_args()
     torch.manual_seed(21)
     n, m = args.size, args.rows
+    window_rows = min(1024, n // 2)
     layer = BlockStripLinear((n, n), (64, 64), round(n * n * 0.05), device="cuda")
     plan = execution_plan(layer.strip)
     packed, circle, section, offsets = trainable_boxed_prepare(
@@ -39,10 +40,10 @@ def main():
     lists, counts, max_candidates = build_listed_forward_candidates(
         layer, packed, circle, section, offsets
     )
-    reference = torch.empty((1024, n), device="cuda")
+    reference = torch.empty((window_rows, n), device="cuda")
     actual = torch.empty_like(reference)
     profile = PROFILE_KINDS[type(layer.strip.kernel.profile)]
-    grid = (1024 // 64 * layer.column_groups * 4,)
+    grid = (window_rows // 64 * layer.column_groups * 4,)
     common = {
         "K": n,
         "CG": layer.column_groups,
@@ -124,15 +125,33 @@ def main():
                 row = {"ba": ba, "warps": warps, "error": str(exc)[:400]}
             results.append(row)
             print(json.dumps(row), flush=True)
+    paired = {"serial": [], "ba2_warps4": []}
+    for index in range(12):
+        for name, fn in (
+            (("serial", baseline), ("ba2_warps4", lambda: variant(2, 4)))
+            if index % 2 == 0
+            else (("ba2_warps4", lambda: variant(2, 4)), ("serial", baseline))
+        ):
+            begin = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            begin.record()
+            fn()
+            end.record()
+            end.synchronize()
+            paired[name].append(begin.elapsed_time(end))
     result = {
         "device": torch.cuda.get_device_name(),
         "size": n,
         "rows": m,
-        "window_rows": 1024,
+        "window_rows": window_rows,
         "baseline_ms": baseline_ms,
         "baseline_samples_ms": baseline_times,
         "baseline_registers": compiled.n_regs,
         "baseline_spills": compiled.n_spills,
+        "paired_medians_ms": {
+            key: statistics.median(value) for key, value in paired.items()
+        },
+        "paired_samples_ms": paired,
         "cases": results,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
