@@ -54,16 +54,13 @@ def main():
     stations = rows // 64 * layer.column_groups
     variants = []
     reference = None
-    for warps, fusion in (
-        (4, False),
-        (4, True),
-        (8, False),
-        (8, True),
-        (16, False),
-        (16, True),
+    for warps, fusion, cull_box in (
+        (4, False, False),
+        (4, True, False),
+        (4, True, True),
     ):
 
-        def run(warps=warps, fusion=fusion):
+        def run(warps=warps, fusion=fusion, cull_box=cull_box):
             dp.zero_()
             mapped_backward_atoms_factored[(stations * 4, 2)](
                 dw,
@@ -87,6 +84,7 @@ def main():
                 BK=32,
                 BA=8,
                 STAGED=True,
+                CULL_BOX=cull_box,
                 STATION_START=0,
                 ROW_START=0,
                 num_warps=warps,
@@ -101,13 +99,19 @@ def main():
                 {
                     "warps": warps,
                     "fusion": fusion,
+                    "cull_box": cull_box,
                     "ms": elapsed,
                     "max_abs_diff": float((dp - reference).abs().max().item()),
                 }
             )
         except Exception as error:  # noqa: BLE001 - report variants independently
             variants.append(
-                {"warps": warps, "fusion": fusion, "error": str(error)[:400]}
+                {
+                    "warps": warps,
+                    "fusion": fusion,
+                    "cull_box": cull_box,
+                    "error": str(error)[:400],
+                }
             )
     result = {
         "device": torch.cuda.get_device_name(),

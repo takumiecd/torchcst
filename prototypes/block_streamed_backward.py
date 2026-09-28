@@ -155,6 +155,7 @@ def mapped_backward_atoms_factored(
     BA: tl.constexpr,
     STAGED: tl.constexpr = False,
     WRITE_WEIGHT: tl.constexpr = False,
+    CULL_BOX: tl.constexpr = False,
     STATION_START=0,
     ROW_START=0,
 ):
@@ -195,6 +196,11 @@ def mapped_backward_atoms_factored(
     sx, sy = _sites(Circle, Section, rows, cols, valid, 4)
     sz = tl.load(Section + cols * 3 + 1, valid, 0.0)
     sw = tl.load(Section + cols * 3 + 2, valid, 0.0)
+    if CULL_BOX:
+        lx, hx = tl.min(sx, 0), tl.max(sx, 0)
+        ly, hy = tl.min(sy, 0), tl.max(sy, 0)
+        lz, hz = tl.min(sz, 0), tl.max(sz, 0)
+        lw, hw = tl.min(sw, 0), tl.max(sw, 0)
     gradient = tl.reshape(dw, (BN * BK,))
     if WRITE_WEIGHT:
         weight = tl.full((BN * BK,), 0.0, tl.float32)
@@ -215,36 +221,57 @@ def mapped_backward_atoms_factored(
             cy = tl.load(P + atoms * 6 + 3, active, 0.0)
             cz = tl.load(P + atoms * 6 + 4, active, 0.0)
             cw = tl.load(P + atoms * 6 + 5, active, 0.0)
-            dx = sx[:, None] - cx[None, :]
-            dy = sy[:, None] - cy[None, :]
-            dz = sz[:, None] - cz[None, :]
-            dw_site = sw[:, None] - cw[None, :]
-            squared = (dx * dx + dy * dy) + (dz * dz + dw_site * dw_site)
             precision = tl.load(P + atoms * 6 + 1, active, 0.0)
-            value, slope = _profile(squared, precision[None, :], PROFILE)
-            value = tl.where(valid[:, None] & active[None, :], value, 0.0)
-            slope = tl.where(valid[:, None] & active[None, :], slope, 0.0)
-            amplitude = tl.load(P + atoms * 6, active, 0.0)
-            if WRITE_WEIGHT:
-                weight += tl.sum(value * amplitude[None, :], axis=1)
-            da = tl.sum(gradient[:, None] * value, axis=0)
-            tl.atomic_add(DP + atoms * 6, da, active, sem="relaxed")
-            scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
-            tl.atomic_add(
-                DP + atoms * 6 + 2, tl.sum(scale * dx, axis=0), active, sem="relaxed"
-            )
-            tl.atomic_add(
-                DP + atoms * 6 + 3, tl.sum(scale * dy, axis=0), active, sem="relaxed"
-            )
-            tl.atomic_add(
-                DP + atoms * 6 + 4, tl.sum(scale * dz, axis=0), active, sem="relaxed"
-            )
-            tl.atomic_add(
-                DP + atoms * 6 + 5,
-                tl.sum(scale * dw_site, axis=0),
-                active,
-                sem="relaxed",
-            )
+            if CULL_BOX:
+                ex = tl.maximum(tl.maximum(lx - cx, cx - hx), 0.0)
+                ey = tl.maximum(tl.maximum(ly - cy, cy - hy), 0.0)
+                ez = tl.maximum(tl.maximum(lz - cz, cz - hz), 0.0)
+                ew = tl.maximum(tl.maximum(lw - cw, cw - hw), 0.0)
+                lower_bound = ex * ex + ey * ey + ez * ez + ew * ew
+                possible = active & (lower_bound * precision <= 1.0001)
+                compute = tl.sum(possible.to(tl.int32), 0) > 0
+            else:
+                possible = active
+                compute = True
+            if compute:
+                dx = sx[:, None] - cx[None, :]
+                dy = sy[:, None] - cy[None, :]
+                dz = sz[:, None] - cz[None, :]
+                dw_site = sw[:, None] - cw[None, :]
+                squared = (dx * dx + dy * dy) + (dz * dz + dw_site * dw_site)
+                value, slope = _profile(squared, precision[None, :], PROFILE)
+                value = tl.where(valid[:, None] & possible[None, :], value, 0.0)
+                slope = tl.where(valid[:, None] & possible[None, :], slope, 0.0)
+                amplitude = tl.load(P + atoms * 6, active, 0.0)
+                if WRITE_WEIGHT:
+                    weight += tl.sum(value * amplitude[None, :], axis=1)
+                da = tl.sum(gradient[:, None] * value, axis=0)
+                tl.atomic_add(DP + atoms * 6, da, possible, sem="relaxed")
+                scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
+                tl.atomic_add(
+                    DP + atoms * 6 + 2,
+                    tl.sum(scale * dx, axis=0),
+                    possible,
+                    sem="relaxed",
+                )
+                tl.atomic_add(
+                    DP + atoms * 6 + 3,
+                    tl.sum(scale * dy, axis=0),
+                    possible,
+                    sem="relaxed",
+                )
+                tl.atomic_add(
+                    DP + atoms * 6 + 4,
+                    tl.sum(scale * dz, axis=0),
+                    possible,
+                    sem="relaxed",
+                )
+                tl.atomic_add(
+                    DP + atoms * 6 + 5,
+                    tl.sum(scale * dw_site, axis=0),
+                    possible,
+                    sem="relaxed",
+                )
     if WRITE_WEIGHT:
         tl.store(
             DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :],
