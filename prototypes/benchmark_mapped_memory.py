@@ -31,7 +31,9 @@ def main():
     parser.add_argument("--batch", type=int, default=128)
     parser.add_argument("--weight-chunk-rows", type=int, default=1024)
     parser.add_argument(
-        "--mode", choices=("dense", "fused", "stream", "stream_fast"), required=True
+        "--mode",
+        choices=("dense", "fused", "stream", "stream_fast", "stream_fast_decode"),
+        required=True,
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
@@ -88,6 +90,7 @@ def main():
                     boxes=boxes,
                     witness_cols=hints,
                     fast_witness=True,
+                    fast_decode=args.mode == "stream_fast_decode",
                 )
                 return layer(
                     x,

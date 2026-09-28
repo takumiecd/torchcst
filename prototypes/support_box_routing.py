@@ -3,6 +3,63 @@
 import torch
 import triton as tr
 import triton.language as tl
+from triton.language.extra.cuda import libdevice
+
+
+@tr.jit
+def _decode_intrinsic_torus(
+    Center,
+    Major,
+    Minor,
+    Decoded,
+    A: tl.constexpr,
+    CS0: tl.constexpr,
+    CS1: tl.constexpr,
+    B: tl.constexpr,
+):
+    atom = tl.program_id(0) * B + tl.arange(0, B)
+    valid = atom < A
+    arc = tl.load(Center + atom * CS0, valid, 0.0)
+    u = tl.load(Center + atom * CS0 + CS1, valid, 0.0)
+    v = tl.load(Center + atom * CS0 + 2 * CS1, valid, 0.0)
+    major = tl.load(Major)
+    minor = tl.load(Minor)
+    angle = tl.sqrt(u * u + v * v) / minor
+    sinc = tl.where(angle == 0.0, 1.0, libdevice.sin(angle) / angle)
+    radial = major + minor * libdevice.cos(angle)
+    theta = arc / major
+    tl.store(Decoded + atom * 4, radial * libdevice.cos(theta), valid)
+    tl.store(Decoded + atom * 4 + 1, radial * libdevice.sin(theta), valid)
+    tl.store(Decoded + atom * 4 + 2, sinc * u, valid)
+    tl.store(Decoded + atom * 4 + 3, sinc * v, valid)
+
+
+@torch.no_grad()
+def decode_intrinsic_torus_compact(geometry, center):
+    """Forward-only fused center decode without intermediate A-sized tensors."""
+    if (
+        geometry.representation != "intrinsic"
+        or center.shape[1] != 3
+        or center.device.type != "cuda"
+        or center.dtype != torch.float32
+    ):
+        raise ValueError("compact decoder requires intrinsic 4D CUDA FP32 centers")
+    decoded = torch.empty(
+        (center.shape[0], 4), device=center.device, dtype=center.dtype
+    )
+    if center.shape[0]:
+        _decode_intrinsic_torus[(tr.cdiv(center.shape[0], 256),)](
+            center,
+            geometry.major_radius,
+            geometry.minor_radius,
+            decoded,
+            center.shape[0],
+            *center.stride(),
+            256,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+    return decoded
 
 
 @torch.no_grad()
@@ -43,7 +100,15 @@ def balanced_home_columns(site):
 
 
 @torch.no_grad()
-def boxed_prepare(site, p, *, boxes=None, witness_cols=None, fast_witness=False):
+def boxed_prepare(
+    site,
+    p,
+    *,
+    boxes=None,
+    witness_cols=None,
+    fast_witness=False,
+    fast_decode=False,
+):
     """Prepare current atom values with exact fallback for box-overlapping stations."""
     from torchcst.nn._backends._preparation import execution_plan
     from torchcst.nn._backends._triton_preparation import (
@@ -57,7 +122,11 @@ def boxed_prepare(site, p, *, boxes=None, witness_cols=None, fast_witness=False)
     if boxes is None:
         boxes = station_site_boxes(plan.circle, plan.section, station_rows)
     center, amplitude, precision = tile_parameters(site.kernel, p)
-    decoded = site.chart.geometry.decode_centers(center)
+    decoded = (
+        decode_intrinsic_torus_compact(site.chart.geometry, center)
+        if fast_decode
+        else site.chart.geometry.decode_centers(center)
+    )
     _, order, offsets = route_and_layout(
         plan.routing,
         decoded,

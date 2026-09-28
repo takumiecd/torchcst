@@ -10,6 +10,7 @@ from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.support_box_routing import (
     balanced_home_columns,
     boxed_prepare,
+    decode_intrinsic_torus_compact,
     station_site_boxes,
 )
 from torchcst.nn._backends._preparation import execution_plan, prepare
@@ -52,12 +53,26 @@ def test_boxed_support_matches_exact_layout_and_graph_updates():
             fast_witnessed = boxed_prepare(
                 site, p, boxes=boxes, witness_cols=hints, fast_witness=True
             )
+            compact = boxed_prepare(
+                site,
+                p,
+                boxes=boxes,
+                witness_cols=hints,
+                fast_witness=True,
+                fast_decode=True,
+            )
+            decoded = decode_intrinsic_torus_compact(chart.geometry, p[:, 2:])
+            torch.testing.assert_close(
+                decoded, chart.geometry.decode_centers(p[:, 2:]), atol=3e-5, rtol=3e-5
+            )
             assert torch.equal(ordinary[3], boxed[3])
             assert torch.equal(ordinary[0], boxed[0])
             assert torch.equal(ordinary[3], witnessed[3])
             assert torch.equal(ordinary[0], witnessed[0])
             assert torch.equal(ordinary[3], fast_witnessed[3])
             assert torch.equal(ordinary[0], fast_witnessed[0])
+            assert torch.equal(ordinary[3], compact[3])
+            torch.testing.assert_close(ordinary[0], compact[0], atol=3e-5, rtol=3e-5)
             actual = layer(
                 x, backend="triton_streamed", prepared=boxed, weight_chunk_rows=64
             )
