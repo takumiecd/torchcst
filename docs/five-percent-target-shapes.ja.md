@@ -1,5 +1,7 @@
 # 5% CST学習の対象形状
 
+候補リストのGPU予約と完全ステップCUDA Graphを含む後続の検証は[ブレイクスルー探索](five-percent-breakthrough-research.ja.md)を参照。
+
 2026-09-28。atom数を`round(0.05*N*N)`に固定し、重み幅を変える。Mは線形層へ渡す入力の総行数であり、系列モデルのmicrobatch sizeそのものではない。
 
 ## 優先順位

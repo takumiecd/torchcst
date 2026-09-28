@@ -9,6 +9,7 @@ import torch
 
 from prototypes.block_materialize_listed import materialize_listed
 from prototypes.block_materialize_parallel import materialize_listed_parallel
+from prototypes.block_materialize_subtile import materialize_listed_subtile
 from prototypes.block_streamed_backward import (
     build_listed_forward_candidates,
     trainable_boxed_prepare,
@@ -25,6 +26,7 @@ def main():
     parser.add_argument("--size", type=int, default=8192)
     parser.add_argument("--rows", type=int, default=2048)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--subtile", action="store_true")
     args = parser.parse_args()
     torch.manual_seed(21)
     n, m = args.size, args.rows
@@ -99,6 +101,69 @@ def main():
     baseline_ms, baseline_times, compiled = measure(baseline)
     x = torch.randn((m, n), device="cuda")
     expected = x @ reference.T
+    if args.subtile:
+        cases = []
+        for br, bc, ba, warps in (
+            (4, 16, 16, 4),
+            (4, 16, 32, 4),
+            (8, 16, 8, 4),
+            (8, 16, 16, 4),
+        ):
+            per_station = 4 * (16 // br) * (64 // bc)
+
+            def subtile(per_station=per_station, br=br, bc=bc, ba=ba, warps=warps):
+                return materialize_listed_subtile[
+                    (window_rows // 64 * layer.column_groups * per_station,)
+                ](
+                    packed,
+                    circle,
+                    section,
+                    lists,
+                    counts,
+                    offsets,
+                    actual,
+                    BR=br,
+                    BC=bc,
+                    BA=ba,
+                    num_warps=warps,
+                    **common,
+                )
+
+            try:
+                ms, times, kernel = measure(subtile)
+                error = (actual - reference).abs()
+                output = x @ actual.T
+                output_error = (output - expected).abs()
+                tolerance = 3e-5 + 3e-5 * expected.abs()
+                row = {
+                    "br": br,
+                    "bc": bc,
+                    "ba": ba,
+                    "warps": warps,
+                    "median_ms": ms,
+                    "samples_ms": times,
+                    "weight_max_abs": error.max().item(),
+                    "output_max_abs": output_error.max().item(),
+                    "output_violations": (output_error > tolerance).sum().item(),
+                    "registers": kernel.n_regs,
+                    "spills": kernel.n_spills,
+                }
+            except Exception as exc:  # noqa: BLE001 - keep remaining candidates
+                row = {"br": br, "bc": bc, "ba": ba, "error": str(exc)[:400]}
+            cases.append(row)
+            print(json.dumps(row), flush=True)
+        result = {
+            "device": torch.cuda.get_device_name(),
+            "size": n,
+            "rows": m,
+            "window_rows": window_rows,
+            "baseline_ms": baseline_ms,
+            "baseline_samples_ms": baseline_times,
+            "cases": cases,
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(result, indent=2) + "\n")
+        return
     results = []
     for ba in (2, 4, 8):
         for warps in (1, 2, 4):

@@ -123,6 +123,21 @@ def test_mapped_backward_after_atom_movement_and_boundary_support(atom_kernel):
     torch.testing.assert_close(y, expected, atol=3e-5, rtol=3e-5)
     torch.testing.assert_close(dx, expected_dx, atol=3e-5, rtol=3e-5)
     torch.testing.assert_close(dp, expected_dp, atol=3e-4, rtol=3e-4)
+    if atom_kernel == "staged_listed":
+        csr = mapped_streamed_trainable(
+            layer,
+            x,
+            boxes=boxes,
+            witness_cols=hints,
+            window_rows=64,
+            atom_kernel="staged_listed",
+            cache_windows=1,
+            materialize_mode="listed_csr",
+        )
+        csr_dx, csr_dp = torch.autograd.grad(csr, (x, p), upstream)
+        torch.testing.assert_close(csr, expected, atol=3e-5, rtol=3e-5)
+        torch.testing.assert_close(csr_dx, expected_dx, atol=3e-5, rtol=3e-5)
+        torch.testing.assert_close(csr_dp, expected_dp, atol=3e-4, rtol=3e-4)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
@@ -154,7 +169,7 @@ def test_cached_backward_when_only_atom_gradient_is_required():
 @pytest.mark.parametrize("size", (128, 192))
 @pytest.mark.parametrize("gemm_mode", ("tf32x3", "tf32x3_dx"))
 @pytest.mark.parametrize("forward_gemm_mode", ("ieee", "tf32x3"))
-@pytest.mark.parametrize("materialize_mode", ("default", "listed"))
+@pytest.mark.parametrize("materialize_mode", ("default", "listed", "listed_csr"))
 def test_tf32x3_window_gemm_matches_reference(
     size, gemm_mode, forward_gemm_mode, materialize_mode
 ):

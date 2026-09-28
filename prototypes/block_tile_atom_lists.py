@@ -20,6 +20,9 @@ def build_tile_atom_lists(
     COMPACT: tl.constexpr,
     BR: tl.constexpr,
     BC: tl.constexpr,
+    CSR: tl.constexpr = False,
+    Bases=None,
+    Cursor=None,
 ):
     station = tl.program_id(0)
     tile = tl.program_id(1)
@@ -35,6 +38,21 @@ def build_tile_atom_lists(
     ly, hy = tl.min(sy, 0), tl.max(sy, 0)
     lz, hz = tl.min(sz, 0), tl.max(sz, 0)
     lw, hw = tl.min(sw, 0), tl.max(sw, 0)
+    if CSR:
+        if G == 1:
+            capacity = tl.load(Offsets + 1) - tl.load(Offsets)
+        else:
+            prev = 2 * ((station + G - 1) % G) + 1
+            capacity = (
+                tl.load(Offsets + prev + 1)
+                - tl.load(Offsets + prev)
+                + tl.load(Offsets + 2 * station + 2)
+                - tl.load(Offsets + 2 * station)
+            )
+        base = tl.atomic_add(Cursor, capacity, sem="relaxed")
+        tl.store(Bases + station * (4096 // (BR * BC)) + tile, base)
+    else:
+        base = (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES
     count = 0
     bucket_rank = 0
     for neighbor in tl.static_range(1 if G == 1 else 3):
@@ -63,9 +81,7 @@ def build_tile_atom_lists(
             possible = active & (lower_bound * precision <= 1.0001)
             position = count + tl.cumsum(possible.to(tl.int32), 0) - 1
             tl.store(
-                Lists
-                + (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES
-                + position,
+                Lists + base + position,
                 bucket_rank + atom - begin if COMPACT else atom,
                 possible,
             )
@@ -101,6 +117,13 @@ def mapped_backward_atoms_listed(
     WRITE_PARTIAL: tl.constexpr = False,
     WRITE_WEIGHT: tl.constexpr = False,
     Partial=None,
+    X=None,
+    DY=None,
+    M: tl.constexpr = 0,
+    N: tl.constexpr = 0,
+    FUSED_DW: tl.constexpr = False,
+    CSR: tl.constexpr = False,
+    Bases=None,
 ):
     # Experimental in-place W output; only the listed 16x64, one-atom path
     # has been checked against the separate materializer.
@@ -112,7 +135,27 @@ def mapped_backward_atoms_listed(
     tile = row_tile * (64 // BC) + col_tile
     logical_rows = (station // CG) * 64 + row_tile * BR + tl.arange(0, BR)
     logical_cols = (station % CG) * 64 + col_tile * BC + tl.arange(0, BC)
-    dw = tl.load(DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :])
+    if FUSED_DW:
+        tl.static_assert(BR == 16 and BC == 64 and M > 0 and N > 0)
+        reduction = tl.arange(0, 32)
+        dw = tl.full((BR, BC), 0.0, tl.float32)
+        for offset in range(0, M, 32):
+            sample = offset + reduction
+            lhs = tl.load(
+                DY + sample[None, :] * N + logical_rows[:, None],
+                sample[None, :] < M,
+                0.0,
+            )
+            rhs = tl.load(
+                X + sample[:, None] * K + logical_cols[None, :],
+                sample[:, None] < M,
+                0.0,
+            )
+            dw = tl.dot(lhs, rhs, dw, input_precision="tf32x3")
+    else:
+        dw = tl.load(
+            DW + (logical_rows[:, None] - ROW_START) * K + logical_cols[None, :]
+        )
     sites = tl.arange(0, BR * BC)
     rows = station * 64 + row_tile * BR + sites // BC
     cols = col_tile * BC + sites % BC
@@ -123,6 +166,10 @@ def mapped_backward_atoms_listed(
     if WRITE_WEIGHT:
         weight = tl.full((BR * BC,), 0.0, tl.float32)
     count = tl.load(Counts + station * (4096 // (BR * BC)) + tile)
+    if CSR:
+        list_base = tl.load(Bases + station * (4096 // (BR * BC)) + tile)
+    else:
+        list_base = (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES
     if COMPACT:
         if G == 1:
             begin0 = tl.load(Offsets)
@@ -139,7 +186,7 @@ def mapped_backward_atoms_listed(
         lanes = atom_start + tl.arange(0, BA)
         active = lanes < count
         atom = tl.load(
-            Lists + (station * (4096 // (BR * BC)) + tile) * MAX_CANDIDATES + lanes,
+            Lists + list_base + lanes,
             active,
             0,
         )

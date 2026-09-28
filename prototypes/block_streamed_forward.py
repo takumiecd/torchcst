@@ -43,9 +43,12 @@ def streamed_forward(
         raise ValueError("unsupported materialization tile")
     if gemm_mode not in ("ieee", "tf32x3", "fp16x3"):
         raise ValueError("unknown forward gemm_mode")
-    if materialize_mode not in ("default", "listed", "listed_parallel"):
+    if materialize_mode not in ("default", "listed", "listed_parallel", "listed_csr"):
         raise ValueError("unknown forward materialize_mode")
-    if materialize_mode in ("listed", "listed_parallel") and listed_data is None:
+    if (
+        materialize_mode in ("listed", "listed_parallel", "listed_csr")
+        and listed_data is None
+    ):
         raise ValueError("listed forward requires candidate lists")
     if (
         type(cache_weight_rows) is not int
@@ -82,8 +85,14 @@ def streamed_forward(
     for start in range(0, layer.shape[0], chunk):
         rows = min(chunk, layer.shape[0] - start)
         target = cached[start : start + rows] if start < cache_weight_rows else w[:rows]
-        if materialize_mode in ("listed", "listed_parallel"):
-            atom_lists, list_counts, max_candidates = listed_data
+        if materialize_mode in ("listed", "listed_parallel", "listed_csr"):
+            csr = materialize_mode == "listed_csr"
+            if csr:
+                atom_lists, list_counts, list_bases, _ = listed_data
+                max_candidates = 0
+            else:
+                atom_lists, list_counts, max_candidates = listed_data
+                list_bases = None
             kernel = (
                 materialize_listed_parallel
                 if materialize_mode == "listed_parallel"
@@ -102,6 +111,8 @@ def streamed_forward(
                 G=layer.strip.chart.tile_count,
                 PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                 MAX_CANDIDATES=max_candidates,
+                CSR=csr,
+                Bases=list_bases,
                 STATION_START=start // 64 * layer.column_groups,
                 ROW_START=start,
                 num_warps=4 if materialize_mode == "listed_parallel" else 1,

@@ -37,7 +37,9 @@ def main():
         "--forward-gemm-mode", choices=("ieee", "tf32x3", "fp16x3"), default="ieee"
     )
     parser.add_argument(
-        "--materialize-mode", choices=("default", "listed"), default="default"
+        "--materialize-mode",
+        choices=("default", "listed", "listed_csr"),
+        default="default",
     )
     parser.add_argument("--accumulation-steps", type=int, default=1)
     parser.add_argument("--warmup-steps", type=int, default=1)

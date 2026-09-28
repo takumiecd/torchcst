@@ -348,20 +348,25 @@ def reduce_mapped_backward_partials(
         tl.atomic_add(DP + atom * 6 + target, summed, active, sem="relaxed")
 
 
-def build_listed_forward_candidates(layer, packed, circle, section, offsets):
-    """Build conservative site-tile atom lists once for forward and backward."""
+def build_listed_forward_candidates(
+    layer, packed, circle, section, offsets, *, unchecked_fixed_capacity=None
+):
+    """Build lists; unchecked capacity is only for fixed-offset diagnostics."""
     g = layer.strip.chart.tile_count
-    counts = offsets[1:] - offsets[:-1]
-    stations = torch.arange(g, device=offsets.device)
-    if g == 1:
-        max_candidates = int(counts[0].item())
+    if unchecked_fixed_capacity is not None:
+        max_candidates = unchecked_fixed_capacity
     else:
-        candidate_counts = (
-            counts[2 * ((stations + g - 1) % g) + 1]
-            + counts[2 * stations]
-            + counts[2 * stations + 1]
-        )
-        max_candidates = int(candidate_counts.max().item())
+        counts = offsets[1:] - offsets[:-1]
+        stations = torch.arange(g, device=offsets.device)
+        if g == 1:
+            max_candidates = int(counts[0].item())
+        else:
+            candidate_counts = (
+                counts[2 * ((stations + g - 1) % g) + 1]
+                + counts[2 * stations]
+                + counts[2 * stations + 1]
+            )
+            max_candidates = int(candidate_counts.max().item())
     list_dtype = (
         torch.uint8
         if max_candidates <= 256
@@ -392,6 +397,40 @@ def build_listed_forward_candidates(layer, packed, circle, section, offsets):
     return atom_lists, list_counts, max_candidates
 
 
+def build_listed_forward_candidates_csr(layer, packed, circle, section, offsets):
+    """Build device-reserved tile lists with a provable 8*A entry bound."""
+    g = layer.strip.chart.tile_count
+    atoms = packed.shape[0]
+    if atoms > (2**31 - 1) // 8:
+        raise ValueError("CSR candidate cursor exceeds int32 capacity")
+    # A packed atom belongs to at most two station neighborhoods and each
+    # station reserves at most four site-tile spans of that neighborhood.
+    atom_lists = torch.empty((8 * atoms,), device=packed.device, dtype=torch.int32)
+    list_counts = torch.empty((g, 4), device=packed.device, dtype=torch.int32)
+    list_bases = torch.empty_like(list_counts)
+    cursor = torch.zeros((), device=packed.device, dtype=torch.int32)
+    build_tile_atom_lists[(g, 4)](
+        packed,
+        circle,
+        section,
+        offsets,
+        atom_lists,
+        list_counts,
+        G=g,
+        MAX_CANDIDATES=0,
+        BA=8,
+        COMPACT=True,
+        BR=16,
+        BC=64,
+        CSR=True,
+        Bases=list_bases,
+        Cursor=cursor,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    return atom_lists, list_counts, list_bases, cursor
+
+
 class _MappedStreamed(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -415,11 +454,16 @@ class _MappedStreamed(torch.autograd.Function):
         ctx.materialize_mode = materialize_mode
         ctx.gemm_mode = gemm_mode
         ctx.weight_fp_fusion = weight_fp_fusion_enabled(x.device)
-        ctx.listed_data = (
-            build_listed_forward_candidates(layer, packed, circle, section, offsets)
-            if materialize_mode in ("listed", "listed_parallel")
-            else None
-        )
+        if materialize_mode == "listed_csr":
+            ctx.listed_data = build_listed_forward_candidates_csr(
+                layer, packed, circle, section, offsets
+            )
+        elif materialize_mode in ("listed", "listed_parallel"):
+            ctx.listed_data = build_listed_forward_candidates(
+                layer, packed, circle, section, offsets
+            )
+        else:
+            ctx.listed_data = None
         reuse_input_weight = ctx.needs_input_grad[0] and (
             atom_kernel != "fused" or not ctx.needs_input_grad[1]
         )
@@ -463,7 +507,13 @@ class _MappedStreamed(torch.autograd.Function):
                 )
                 if start >= cached.shape[0]:
                     if ctx.listed_data is not None:
-                        atom_lists, list_counts, max_candidates = ctx.listed_data
+                        csr = ctx.materialize_mode == "listed_csr"
+                        if csr:
+                            atom_lists, list_counts, list_bases, _ = ctx.listed_data
+                            max_candidates = 0
+                        else:
+                            atom_lists, list_counts, max_candidates = ctx.listed_data
+                            list_bases = None
                         kernel = (
                             materialize_listed_parallel
                             if ctx.materialize_mode == "listed_parallel"
@@ -482,6 +532,8 @@ class _MappedStreamed(torch.autograd.Function):
                             G=layer.strip.chart.tile_count,
                             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                             MAX_CANDIDATES=max_candidates,
+                            CSR=csr,
+                            Bases=list_bases,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
                             num_warps=4
@@ -568,13 +620,20 @@ class _MappedStreamed(torch.autograd.Function):
                     w = x.new_empty((chunk, k))
                 if ctx.atom_kernel in ("staged_partial", "staged_listed"):
                     if ctx.atom_kernel == "staged_listed":
-                        atom_lists, list_counts, max_candidates = (
+                        listed_data = (
                             ctx.listed_data
                             if ctx.listed_data is not None
                             else build_listed_forward_candidates(
                                 layer, packed, circle, section, offsets
                             )
                         )
+                        csr = ctx.materialize_mode == "listed_csr"
+                        if csr:
+                            atom_lists, list_counts, list_bases, _ = listed_data
+                            max_candidates = 0
+                        else:
+                            atom_lists, list_counts, max_candidates = listed_data
+                            list_bases = None
                     else:
                         g = layer.strip.chart.tile_count
                         counts = offsets[1:] - offsets[:-1]
@@ -616,6 +675,8 @@ class _MappedStreamed(torch.autograd.Function):
                             G=layer.strip.chart.tile_count,
                             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                             MAX_CANDIDATES=max_candidates,
+                            CSR=csr,
+                            Bases=list_bases,
                             BA=1,
                             COMPACT=True,
                             BR=16,
@@ -796,7 +857,7 @@ def mapped_streamed_trainable(
         raise ValueError("bounded GEMM is implemented for staged_listed only")
     if forward_gemm_mode not in ("ieee", "tf32x3", "fp16x3"):
         raise ValueError("unknown forward_gemm_mode")
-    if materialize_mode not in ("default", "listed", "listed_parallel"):
+    if materialize_mode not in ("default", "listed", "listed_parallel", "listed_csr"):
         raise ValueError("unknown materialize_mode")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols

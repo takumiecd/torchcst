@@ -22,6 +22,8 @@ def materialize_listed(
     MAX_CANDIDATES: tl.constexpr,
     STATION_START,
     ROW_START,
+    CSR: tl.constexpr = False,
+    Bases=None,
 ):
     program = tl.program_id(0)
     station = STATION_START + program // 4
@@ -40,6 +42,10 @@ def materialize_listed(
     sy = sine[:, None] * rho[None, :]
     weight = tl.full((16, 64), 0.0, tl.float32)
     count = tl.load(Counts + station * 4 + row_tile)
+    if CSR:
+        list_base = tl.load(Bases + station * 4 + row_tile)
+    else:
+        list_base = (station * 4 + row_tile) * MAX_CANDIDATES
     if G == 1:
         begin0 = tl.load(Offsets)
     else:
@@ -50,7 +56,7 @@ def materialize_listed(
         length1 = tl.load(Offsets + 2 * station + 1) - begin1
         begin2 = tl.load(Offsets + 2 * station + 1)
     for i in range(count):
-        rank = tl.load(Lists + (station * 4 + row_tile) * MAX_CANDIDATES + i)
+        rank = tl.load(Lists + list_base + i)
         rank = rank.to(tl.int32)
         if G == 1:
             atom = begin0 + rank

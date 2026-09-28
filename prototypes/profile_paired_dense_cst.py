@@ -26,9 +26,13 @@ def main():
         "--gemm-mode", choices=("auto", "ieee", "fp16x3_dx"), default="auto"
     )
     parser.add_argument(
-        "--materialize-mode", choices=("listed", "listed_parallel"), default="listed"
+        "--materialize-mode",
+        choices=("listed", "listed_parallel", "listed_csr"),
+        default="listed",
     )
     parser.add_argument("--compare-baseline", action="store_true")
+    parser.add_argument("--baseline-same-gemm", action="store_true")
+    parser.add_argument("--graph", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(21)
@@ -75,8 +79,12 @@ def main():
         assert accuracy["passed"], accuracy
     del actual, expected
     optimizers = {
-        "dense": torch.optim.AdamW([dense_weight], lr=1e-3, foreach=True),
-        "cst": torch.optim.AdamW([layer.strip.atoms.p], lr=1e-3, foreach=True),
+        "dense": torch.optim.AdamW(
+            [dense_weight], lr=1e-3, foreach=True, capturable=args.graph
+        ),
+        "cst": torch.optim.AdamW(
+            [layer.strip.atoms.p], lr=1e-3, foreach=True, capturable=args.graph
+        ),
     }
 
     def step(mode):
@@ -95,8 +103,12 @@ def main():
                 atom_kernel="staged_listed",
                 window_rows=window_rows,
                 cache_windows=cache_windows,
-                gemm_mode="ieee" if baseline else cst_mode,
-                forward_gemm_mode="ieee" if baseline else forward_mode,
+                gemm_mode="ieee"
+                if baseline and not args.baseline_same_gemm
+                else cst_mode,
+                forward_gemm_mode=(
+                    "ieee" if baseline and not args.baseline_same_gemm else forward_mode
+                ),
                 materialize_mode="listed" if baseline else args.materialize_mode,
             )
         output.backward(gradient)
@@ -108,13 +120,21 @@ def main():
     for mode in (*modes, *reversed(modes)):
         step(mode)
     torch.cuda.synchronize()
+    graphs = {}
+    if args.graph:
+        for mode in modes:
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                step(mode)
+            graphs[mode] = graph
+        torch.cuda.synchronize()
     samples = {mode: [] for mode in modes}
     for round_index in range(args.rounds):
         order = modes[round_index % len(modes) :] + modes[: round_index % len(modes)]
         for mode in order:
             torch.cuda.synchronize()
             start = time.perf_counter()
-            step(mode)
+            graphs[mode].replay() if args.graph else step(mode)
             torch.cuda.synchronize()
             samples[mode].append((time.perf_counter() - start) * 1000)
     result = {
@@ -123,6 +143,7 @@ def main():
         "rows": m,
         "cst_mode": cst_mode,
         "materialize_mode": args.materialize_mode,
+        "graph": args.graph,
         "window_rows": window_rows,
         "cache_windows": cache_windows,
         "scope": "complete AdamW steps; dense and CST weights and optimizer states coexist for timing; separate-process peaks required for memory",

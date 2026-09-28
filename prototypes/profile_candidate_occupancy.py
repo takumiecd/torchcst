@@ -28,7 +28,8 @@ def main():
     layer = BlockStripLinear((n, n), (64, 64), round(n * n * 0.05), device="cuda")
     plan = execution_plan(layer.strip)
     packed, circle, section, offsets = trainable_boxed_prepare(
-        layer.strip, layer.strip.atoms.p,
+        layer.strip,
+        layer.strip.atoms.p,
         boxes=station_site_boxes(plan.circle, plan.section, 64),
         witness_cols=balanced_home_columns(layer.strip),
     )
@@ -74,7 +75,8 @@ def main():
         length1 = int((offsets[2 * station + 1] - offsets[2 * station]).item())
         begin2 = int(offsets[2 * station + 1].item())
         atoms = torch.where(
-            ranks < length0, begin0 + ranks,
+            ranks < length0,
+            begin0 + ranks,
             torch.where(
                 ranks < length0 + length1,
                 begin1 + ranks - length0,
@@ -87,11 +89,15 @@ def main():
         sine = circle[local_rows, 1]
         sx = cosine[:, None] * section[col, 0][None, :]
         sy = sine[:, None] * section[col, 0][None, :]
-        sites = torch.stack((
-            sx, sy,
-            section[col, 1].expand_as(sx),
-            section[col, 2].expand_as(sx),
-        ), dim=-1)
+        sites = torch.stack(
+            (
+                sx,
+                sy,
+                section[col, 1].expand_as(sx),
+                section[col, 2].expand_as(sx),
+            ),
+            dim=-1,
+        )
         centers = packed[atoms, 2:6]
         precision = packed[atoms, 1]
         scaled = ((sites[None] - centers[:, None, None, :]) ** 2).sum(-1)
@@ -122,12 +128,20 @@ def main():
             "boundary_fraction": record["boundary"] / total,
             "fully_outside_fraction": record["outside"] / total,
         }
-    rows = 1024
+    rows = min(1024, n // 2)
     w = torch.empty((rows, n), device="cuda")
     for start in (0, n // 2):
         materialize_listed[(rows // 64 * layer.column_groups * 4,)](
-            packed, circle, section, lists, counts, offsets, w,
-            K=n, CG=layer.column_groups, G=layer.strip.chart.tile_count,
+            packed,
+            circle,
+            section,
+            lists,
+            counts,
+            offsets,
+            w,
+            K=n,
+            CG=layer.column_groups,
+            G=layer.strip.chart.tile_count,
             PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
             MAX_CANDIDATES=max_candidates,
             STATION_START=start // 64 * layer.column_groups,
@@ -136,11 +150,13 @@ def main():
             enable_fp_fusion=weight_fp_fusion_enabled(w.device),
         )
         tile_nonzero = w.view(rows // 16, 16, n // 64, 64).ne(0).any(dim=(1, 3))
-        result["windows"].append({
-            "row_start": start,
-            "nonzero_16x64_fraction": tile_nonzero.float().mean().item(),
-            "nonzero_element_fraction": w.ne(0).float().mean().item(),
-        })
+        result["windows"].append(
+            {
+                "row_start": start,
+                "nonzero_16x64_fraction": tile_nonzero.float().mean().item(),
+                "nonzero_element_fraction": w.ne(0).float().mean().item(),
+            }
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result), flush=True)

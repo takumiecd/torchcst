@@ -1,4 +1,4 @@
-"""Experimental atom-parallel materialization of one listed W tile."""
+"""Experimental 2D site-by-atom materialization for listed CST tiles."""
 
 import triton as tr
 import triton.language as tl
@@ -7,7 +7,7 @@ from torchcst.nn._backends._triton_kernels import _profile
 
 
 @tr.jit
-def materialize_listed_parallel(
+def materialize_listed_subtile(
     P,
     Circle,
     Section,
@@ -20,17 +20,26 @@ def materialize_listed_parallel(
     G: tl.constexpr,
     PROFILE: tl.constexpr,
     MAX_CANDIDATES: tl.constexpr,
+    BR: tl.constexpr,
+    BC: tl.constexpr,
     BA: tl.constexpr,
     STATION_START,
     ROW_START,
-    CSR: tl.constexpr = False,
-    Bases=None,
 ):
+    tl.static_assert(16 % BR == 0 and 64 % BC == 0)
+    subrows: tl.constexpr = 16 // BR
+    subcols: tl.constexpr = 64 // BC
+    per_parent: tl.constexpr = subrows * subcols
+    per_station: tl.constexpr = 4 * per_parent
     program = tl.program_id(0)
-    station = STATION_START + program // 4
-    row_tile = program % 4
-    local_rows = row_tile * 16 + tl.arange(0, 16)
-    local_cols = tl.arange(0, 64)
+    station = STATION_START + program // per_station
+    remainder = program % per_station
+    row_tile = remainder // per_parent
+    subtile = remainder % per_parent
+    row_sub = subtile // subcols
+    col_sub = subtile % subcols
+    local_rows = row_tile * 16 + row_sub * BR + tl.arange(0, BR)
+    local_cols = col_sub * BC + tl.arange(0, BC)
     site_rows = station * 64 + local_rows
     logical_rows = (station // CG) * 64 + local_rows
     logical_cols = (station % CG) * 64 + local_cols
@@ -41,12 +50,8 @@ def materialize_listed_parallel(
     w = tl.load(Section + local_cols * 3 + 2)
     sx = cosine[:, None] * rho[None, :]
     sy = sine[:, None] * rho[None, :]
-    weight = tl.full((16, 64), 0.0, tl.float32)
+    weight = tl.full((BR, BC), 0.0, tl.float32)
     count = tl.load(Counts + station * 4 + row_tile)
-    if CSR:
-        list_base = tl.load(Bases + station * 4 + row_tile)
-    else:
-        list_base = (station * 4 + row_tile) * MAX_CANDIDATES
     if G == 1:
         begin0 = tl.load(Offsets)
     else:
@@ -60,7 +65,7 @@ def materialize_listed_parallel(
         lanes = atom_start + tl.arange(0, BA)
         active = lanes < count
         rank = tl.load(
-            Lists + list_base + lanes,
+            Lists + (station * 4 + row_tile) * MAX_CANDIDATES + lanes,
             active,
             0,
         ).to(tl.int32)
