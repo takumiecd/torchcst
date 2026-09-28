@@ -22,6 +22,9 @@ def bounded_gemm_kernel(
     BN: tl.constexpr,
     BK: tl.constexpr,
     ADD: tl.constexpr,
+    A_EVICT: tl.constexpr = "",
+    B_EVICT: tl.constexpr = "",
+    C_EVICT: tl.constexpr = "",
 ):
     rows = tl.program_id(0) * BM + tl.arange(0, BM)
     cols = tl.program_id(1) * BN + tl.arange(0, BN)
@@ -33,18 +36,20 @@ def bounded_gemm_kernel(
             A + rows[:, None] * ASM + ks[None, :] * ASK,
             (rows[:, None] < M) & (ks[None, :] < K),
             0,
+            eviction_policy=A_EVICT,
         )
         b = tl.load(
             B + ks[:, None] * BSK + cols[None, :] * BSN,
             (ks[:, None] < K) & (cols[None, :] < N),
             0,
+            eviction_policy=B_EVICT,
         )
         acc = tl.dot(a, b, acc, input_precision="tf32x3")
     ptr = C + rows[:, None] * CSM + cols[None, :] * CSN
     mask = (rows[:, None] < M) & (cols[None, :] < N)
     if ADD:
         acc += tl.load(ptr, mask, 0)
-    tl.store(ptr, acc, mask)
+    tl.store(ptr, acc, mask, eviction_policy=C_EVICT)
 
 
 def bounded_gemm(a, b, out, *, add=False):
