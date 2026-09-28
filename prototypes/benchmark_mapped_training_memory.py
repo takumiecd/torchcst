@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--size", type=int, choices=(1024, 4096, 8192), required=True)
     parser.add_argument("--mode", choices=("dense", "cst"), required=True)
     parser.add_argument("--microbatch-rows", type=int, default=128)
+    parser.add_argument("--window-rows", type=int, default=1024)
     parser.add_argument("--accumulation-steps", type=int, default=1)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
@@ -47,6 +48,8 @@ def main():
     args = parser.parse_args()
     if min(args.microbatch_rows, args.accumulation_steps, args.repeats) < 1:
         parser.error("microbatch-rows, accumulation-steps and repeats must be positive")
+    if args.window_rows < 64 or args.window_rows % 64:
+        parser.error("window-rows must be a positive multiple of 64")
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     prop = torch.cuda.get_device_properties(0)
@@ -73,7 +76,12 @@ def main():
             boxes = station_site_boxes(plan.circle, plan.section, 64)
             hints = balanced_home_columns(layer.strip)
             actual = mapped_streamed_trainable(
-                layer, x, boxes=boxes, witness_cols=hints, atom_kernel=args.atom_kernel
+                layer,
+                x,
+                boxes=boxes,
+                witness_cols=hints,
+                window_rows=args.window_rows,
+                atom_kernel=args.atom_kernel,
             )
             output_check = check(actual, expected)
             assert output_check["passed"], output_check
@@ -92,6 +100,7 @@ def main():
             x,
             boxes=boxes,
             witness_cols=hints,
+            window_rows=args.window_rows,
             atom_kernel=args.atom_kernel,
         )
     del expected
@@ -193,7 +202,9 @@ def main():
         "torch": torch.__version__,
         "mode": args.mode,
         "atom_kernel": args.atom_kernel,
-        "cst_window_rows": min(1024, (n // 128) * 64) if args.mode == "cst" else None,
+        "cst_window_rows": (
+            min(args.window_rows, (n // 128) * 64) if args.mode == "cst" else None
+        ),
         "shape": [args.microbatch_rows, n, n],
         "atoms": atom_count,
         "microbatch_rows": args.microbatch_rows,
