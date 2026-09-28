@@ -152,6 +152,8 @@ class _MappedStreamed(torch.autograd.Function):
         dy = dy.contiguous()
         dx = torch.zeros_like(x) if ctx.needs_input_grad[0] else None
         dp = torch.zeros_like(packed) if ctx.needs_input_grad[1] else None
+        if dp is not None and torch.are_deterministic_algorithms_enabled():
+            raise RuntimeError("mapped atom backward uses atomic accumulation")
         if dx is not None and m:
             chunk = min(ctx.window_rows, n)
             w = x.new_empty((chunk, k))

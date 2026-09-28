@@ -86,6 +86,8 @@ def main():
         x.grad = None
         phases = []
         for microstep in range(args.accumulation_steps):
+            if record_phases:
+                phase_start = time.perf_counter()
             output = forward()
             if record_phases:
                 torch.cuda.synchronize()
@@ -95,8 +97,10 @@ def main():
                         "phase": "forward",
                         "live_bytes": torch.cuda.memory_allocated(),
                         "peak_bytes": torch.cuda.max_memory_allocated(),
+                        "wall_ms": (time.perf_counter() - phase_start) * 1000,
                     }
                 )
+                phase_start = time.perf_counter()
             output.backward(gradient)
             if record_phases:
                 torch.cuda.synchronize()
@@ -106,9 +110,12 @@ def main():
                         "phase": "backward",
                         "live_bytes": torch.cuda.memory_allocated(),
                         "peak_bytes": torch.cuda.max_memory_allocated(),
+                        "wall_ms": (time.perf_counter() - phase_start) * 1000,
                     }
                 )
             del output
+        if record_phases:
+            phase_start = time.perf_counter()
         optimizer.step()
         if record_phases:
             torch.cuda.synchronize()
@@ -118,6 +125,7 @@ def main():
                     "phase": "optimizer",
                     "live_bytes": torch.cuda.memory_allocated(),
                     "peak_bytes": torch.cuda.max_memory_allocated(),
+                    "wall_ms": (time.perf_counter() - phase_start) * 1000,
                 }
             )
         return phases
