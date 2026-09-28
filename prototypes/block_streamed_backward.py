@@ -501,6 +501,7 @@ class _MappedStreamed(torch.autograd.Function):
                             BC=64,
                             STATION_START=start // 64 * layer.column_groups,
                             ROW_START=start,
+                            OPT_TRIWEIGHT=True,
                             num_warps=1,
                             enable_fp_fusion=True,
                         )
