@@ -79,3 +79,11 @@ Adaが引き続き空いていることを前後に確認した。`materialize_l
 推奨する実験設定は`mapped_streamed_trainable(..., materialize_mode="listed_bounded", listed_unroll=4, window_rows=1024, cache_windows=4, gemm_mode="fp16x3_dx", forward_gemm_mode="fp16x3", atom_kernel="staged_listed")`。unroll4は大形状Adaで検証した明示的な試作オプションである。測定CLIは`prototypes.profile_paired_dense_cst --compare-unroll --listed-unroll 4 --graph`と`prototypes.probe_csr_graph_step --listed-unroll 4`。JSONは`docs/data/ada-20260929/overnight-unroll4-*.json`、単独カーネル比較は`overnight-w-unroll.json`、反証は`overnight-bounded-lanes.json`と`overnight-presplit-weight-gemm.json`。
 
 同じ展開をatom勾配kernelへ移す案もboundedリストで別途測った。1段・展開1回の局所0.901 msに対し、2～4段のpipelineは1.010～1.042 ms。展開2回は0.949 ms、4回は1.007 msと遅く、両方で3e-4基準を約228,730要素で超えた。展開の有無がatomの縮約・atomic更新順を変えるため、局所W生成と同じ判断はできない。atom勾配側は現行1段・展開1回を維持する。JSONは`docs/data/ada-20260929/overnight-bounded-atom-pipeline.json`。
+
+## 04:30 JST：パイプライン、GEMMタイル、dW配置
+
+開始時に大学VPNが切れておりHubへの接続が2回タイムアウトした。FortiClientの切断表示を確認し、保存済み設定の「接続」を一度押した。接続済み表示とHub側の正しいRTX 6000 Ada profile、GPU使用率0%・割当39 MiBを確認してから実験を再開した。授業用RTX A6000は使用していない。
+
+4回展開済みの局所W生成へTritonのsoftware pipelineを加えた。1/2/3/4段の1024行窓中央値は0.500/0.554/0.554/0.545 ms。Wはすべてビット一致したが、段数を増やすと遅い。1段を維持する。FP16x3局所GEMMでは9種類の追加tileをforwardと入力勾配で調べた。現行 `(BM,BN,BK,warps)=(64,128,32,4)` が0.544/0.577 msで、追加tileに両方を上回るものはなかった。例えば`(64,256,32,8)`は0.544/0.584 ms、`(128,128,32,8)`は0.574/0.624 ms。どの結果も人工入力に対する3e-5基準違反0だった。
+
+局所dWのIEEE FP32 GEMMへ転置連続化した`dY`を渡す案も測った。全8窓の交互GPU event測定で、現行の転置viewは8.50 ms、`dY.T.contiguous()`を64 MiBの追加バッファへコピーしてから計算すると9.54 ms、対応ペア比1.124だった。最初の窓のdW差は3e-4基準違反0だが、遅くメモリも増えるため完全ステップへ接続しない。これらは局所測定であり、完全ステップの改善を主張しない。既定の4回展開・1段・元のGEMM配置を維持する。GPUテスト63件を再確認した。JSONは`docs/data/ada-20260929/overnight-w-pipeline.json`、`overnight-fp16x3-tiles-extended.json`、`overnight-dw-layout.json`。

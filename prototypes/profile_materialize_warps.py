@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--size", type=int, choices=(1024, 8192), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--unroll-sweep", action="store_true")
+    parser.add_argument("--pipeline-sweep", action="store_true")
     args = parser.parse_args()
     torch.manual_seed(21)
     n = args.size
@@ -50,7 +51,7 @@ def main():
     errors = {}
     reference = None
     for mode, data in candidates.items():
-        if args.unroll_sweep and mode != "bounded":
+        if (args.unroll_sweep or args.pipeline_sweep) and mode != "bounded":
             continue
         if mode == "csr":
             lists, counts, bases, _ = data
@@ -59,12 +60,14 @@ def main():
             lists, counts, cap = data
             bases = None
         configurations = (
-            ((1, unroll) for unroll in (1, 2, 4, 8))
+            ((1, 4, stages) for stages in (1, 2, 3, 4))
+            if args.pipeline_sweep
+            else ((1, unroll, 1) for unroll in (1, 2, 4, 8))
             if args.unroll_sweep
-            else ((warps, 1) for warps in (1, 2, 4, 8))
+            else ((warps, 1, 1) for warps in (1, 2, 4, 8))
         )
-        for warps, unroll in configurations:
-            name = f"{mode}-{warps}-unroll{unroll}"
+        for warps, unroll, stages in configurations:
+            name = f"{mode}-{warps}-unroll{unroll}-stages{stages}"
 
             def run(
                 lists=lists,
@@ -74,6 +77,7 @@ def main():
                 bases=bases,
                 warps=warps,
                 unroll=unroll,
+                stages=stages,
             ):
                 materialize_listed[grid](
                     packed,
@@ -94,6 +98,7 @@ def main():
                     BOUNDED=mode == "bounded",
                     Bases=bases,
                     LOOP_UNROLL=unroll,
+                    PIPE_STAGES=stages,
                     num_warps=warps,
                     enable_fp_fusion=False,
                 )
@@ -126,6 +131,7 @@ def main():
         "size": n,
         "window_rows": rows,
         "unroll_sweep": args.unroll_sweep,
+        "pipeline_sweep": args.pipeline_sweep,
         "bounded_capacity": candidates["bounded"][2],
         "max_abs_vs_first_configuration": errors,
         "median_ms": {name: statistics.median(v) for name, v in samples.items()},

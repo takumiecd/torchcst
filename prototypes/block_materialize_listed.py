@@ -27,6 +27,7 @@ def materialize_listed(
     Bases=None,
     BR: tl.constexpr = 16,
     LOOP_UNROLL: tl.constexpr = 1,
+    PIPE_STAGES: tl.constexpr = 1,
 ):
     program = tl.program_id(0)
     row_tiles = 64 // BR
@@ -69,7 +70,9 @@ def materialize_listed(
         loop_count = tl.where(count < 0, total_candidates, count)
     else:
         loop_count = count
-    for i in tl.range(0, loop_count, loop_unroll_factor=LOOP_UNROLL):
+    for i in tl.range(
+        0, loop_count, loop_unroll_factor=LOOP_UNROLL, num_stages=PIPE_STAGES
+    ):
         listed_rank = tl.load(
             Lists + list_base + i,
             mask=count >= 0 if BOUNDED else True,

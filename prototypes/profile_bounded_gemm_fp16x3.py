@@ -55,6 +55,7 @@ def launch(kernel, a, b, c, bm, bn, bk, warps, mode):
         bn,
         bk,
         False,
+        *((False,) if mode == "fp16x3" else ()),
         num_warps=warps,
     )
 
@@ -64,6 +65,7 @@ def main():
     parser.add_argument("--size", type=int, default=8192)
     parser.add_argument("--rows", type=int, default=2048)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--extended", action="store_true")
     args = parser.parse_args()
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -75,16 +77,35 @@ def main():
         "forward": (x, w.T),
         "input_gradient": (dy, w),
     }
-    shapes = ((32, 128, 32, 4), (32, 128, 64, 4), (64, 128, 32, 4), (64, 128, 64, 8))
+    shapes = (
+        (
+            (64, 128, 32, 4),
+            (64, 256, 32, 4),
+            (64, 256, 32, 8),
+            (128, 128, 32, 4),
+            (128, 128, 32, 8),
+            (128, 256, 32, 8),
+            (32, 256, 32, 4),
+            (64, 64, 32, 4),
+            (64, 128, 64, 4),
+        )
+        if args.extended
+        else ((32, 128, 32, 4), (32, 128, 64, 4), (64, 128, 32, 4), (64, 128, 64, 8))
+    )
     rows = []
     for name, (a, b) in cases.items():
         reference = a @ b
         c = torch.empty_like(reference)
         for bm, bn, bk, warps in shapes:
-            for mode, kernel in (
-                ("tf32x3", bounded_gemm_kernel),
-                ("fp16x3", bounded_gemm_fp16x3_kernel),
-            ):
+            modes = (
+                (("fp16x3", bounded_gemm_fp16x3_kernel),)
+                if args.extended
+                else (
+                    ("tf32x3", bounded_gemm_kernel),
+                    ("fp16x3", bounded_gemm_fp16x3_kernel),
+                )
+            )
+            for mode, kernel in modes:
                 run = partial(launch, kernel, a, b, c, bm, bn, bk, warps, mode)
 
                 try:
@@ -107,7 +128,10 @@ def main():
                 print(json.dumps(row), flush=True)
                 rows.append(row)
     args.output.write_text(
-        json.dumps({"size": n, "rows": m, "cases": rows}, indent=2) + "\n"
+        json.dumps(
+            {"size": n, "rows": m, "extended": args.extended, "cases": rows}, indent=2
+        )
+        + "\n"
     )
 
 
