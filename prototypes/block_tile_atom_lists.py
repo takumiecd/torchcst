@@ -97,6 +97,7 @@ def mapped_backward_atoms_listed(
     ROW_START,
     PIPE_STAGES: tl.constexpr = 1,
     LOOP_UNROLL: tl.constexpr = 1,
+    OPT_TRIWEIGHT: tl.constexpr = False,
 ):
     program = tl.program_id(0)
     station = STATION_START + program // (64 // BR)
@@ -159,15 +160,25 @@ def mapped_backward_atoms_listed(
         dz = sz[:, None] - cz[None, :]
         dw_site = sw[:, None] - cw[None, :]
         squared = (dx * dx + dy * dy) + (dz * dz + dw_site * dw_site)
-        value, slope = _profile(squared, precision[None, :], PROFILE)
-        value = tl.where(active[None, :], value, 0.0)
-        slope = tl.where(active[None, :], slope, 0.0)
-        da = tl.sum(gradient[:, None] * value, 0)
-        scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
-        dcx = tl.sum(scale * dx, 0)
-        dcy = tl.sum(scale * dy, 0)
-        dcz = tl.sum(scale * dz, 0)
-        dcw = tl.sum(scale * dw_site, 0)
+        if OPT_TRIWEIGHT and PROFILE == 1:
+            gap = tl.maximum(1.0 - squared * precision[None, :], 0.0)
+            weighted = tl.where(active[None, :], gradient[:, None] * gap * gap, 0.0)
+            da = tl.sum(weighted * gap, 0)
+            multiplier = 6.0 * precision * amplitude
+            dcx = multiplier * tl.sum(weighted * dx, 0)
+            dcy = multiplier * tl.sum(weighted * dy, 0)
+            dcz = multiplier * tl.sum(weighted * dz, 0)
+            dcw = multiplier * tl.sum(weighted * dw_site, 0)
+        else:
+            value, slope = _profile(squared, precision[None, :], PROFILE)
+            value = tl.where(active[None, :], value, 0.0)
+            slope = tl.where(active[None, :], slope, 0.0)
+            da = tl.sum(gradient[:, None] * value, 0)
+            scale = -2.0 * gradient[:, None] * slope * amplitude[None, :]
+            dcx = tl.sum(scale * dx, 0)
+            dcy = tl.sum(scale * dy, 0)
+            dcz = tl.sum(scale * dz, 0)
+            dcw = tl.sum(scale * dw_site, 0)
         tl.atomic_add(DP + atom * 6, da, active, sem="relaxed")
         tl.atomic_add(DP + atom * 6 + 2, dcx, active, sem="relaxed")
         tl.atomic_add(DP + atom * 6 + 3, dcy, active, sem="relaxed")

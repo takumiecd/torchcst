@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--triweight-sweep", action="store_true")
     args = parser.parse_args()
     n = args.size
     torch.manual_seed(21)
@@ -69,9 +70,22 @@ def main():
     dp = torch.zeros_like(packed)
     results = []
     reference = None
-    for stages, unroll in ((1, 1), (2, 1), (3, 1), (4, 1), (1, 2), (1, 4), (2, 2)):
+    configs = (
+        ((1, 1, False), (1, 1, True))
+        if args.triweight_sweep
+        else (
+            (1, 1, False),
+            (2, 1, False),
+            (3, 1, False),
+            (4, 1, False),
+            (1, 2, False),
+            (1, 4, False),
+            (2, 2, False),
+        )
+    )
+    for stages, unroll, triweight in configs:
 
-        def run(stages=stages, unroll=unroll):
+        def run(stages=stages, unroll=unroll, triweight=triweight):
             dp.zero_()
             return mapped_backward_atoms_listed[
                 (1024 // 64 * layer.column_groups * 4, 1)
@@ -97,6 +111,7 @@ def main():
                 ROW_START=0,
                 PIPE_STAGES=stages,
                 LOOP_UNROLL=unroll,
+                OPT_TRIWEIGHT=triweight,
                 num_warps=1,
                 enable_fp_fusion=True,
             )
@@ -109,17 +124,25 @@ def main():
             error = float(
                 (dp - reference).abs().sum().item() / reference.abs().sum().item()
             )
+            max_abs = float((dp - reference).abs().max().item())
             ms = milliseconds(run)
             row = {
                 "stages": stages,
                 "unroll": unroll,
+                "optimized_triweight": triweight,
                 "ms": ms,
                 "relative_l1": error,
+                "max_abs_diff": max_abs,
                 "registers": kernel.n_regs,
                 "spills": kernel.n_spills,
             }
         except Exception as exc:  # noqa: BLE001 - retain valid variants
-            row = {"stages": stages, "unroll": unroll, "error": str(exc)[:300]}
+            row = {
+                "stages": stages,
+                "unroll": unroll,
+                "optimized_triweight": triweight,
+                "error": str(exc)[:300],
+            }
         results.append(row)
         print(json.dumps(row), flush=True)
     args.output.write_text(json.dumps({"size": n, "cases": results}, indent=2) + "\n")
