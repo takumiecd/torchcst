@@ -1,4 +1,4 @@
-"""Conservative atom lists for 16x32 station sites and their staged gradient."""
+"""Conservative atom lists for station site tiles and their staged gradient."""
 
 import triton as tr
 import triton.language as tl
