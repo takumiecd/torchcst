@@ -28,9 +28,11 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--microbatch-rows", type=int, default=128)
+    parser.add_argument("--accumulation-steps", type=int, default=1)
     args = parser.parse_args()
-    if args.repeats < 1:
-        parser.error("repeats must be positive")
+    if min(args.repeats, args.microbatch_rows, args.accumulation_steps) < 1:
+        parser.error("repeats, microbatch-rows and accumulation-steps must be positive")
     torch.manual_seed(21)
     torch.backends.cuda.matmul.allow_tf32 = False
     prop = torch.cuda.get_device_properties(0)
@@ -47,8 +49,9 @@ def main():
         weight, canonical = dense_control(layer, prepared)
     assert canonical["passed"], canonical
     del prepared
-    x = torch.randn(128, n, device="cuda", requires_grad=True)
-    gradient = torch.randn(128, n, device="cuda")
+    x = torch.randn(args.microbatch_rows, n, device="cuda", requires_grad=True)
+    gradient = torch.randn(args.microbatch_rows, n, device="cuda")
+    gradient.div_(args.accumulation_steps)
     with torch.no_grad():
         expected = F.linear(x, weight)
         if args.mode == "cst":
@@ -68,11 +71,46 @@ def main():
     gc.collect()
     optimizer = torch.optim.AdamW([parameter], lr=1e-3, foreach=True)
 
-    def step():
+    def step(*, record_phases=False):
         optimizer.zero_grad(set_to_none=True)
         x.grad = None
-        forward().backward(gradient)
+        phases = []
+        for microstep in range(args.accumulation_steps):
+            output = forward()
+            if record_phases:
+                torch.cuda.synchronize()
+                phases.append(
+                    {
+                        "microstep": microstep,
+                        "phase": "forward",
+                        "live_bytes": torch.cuda.memory_allocated(),
+                        "peak_bytes": torch.cuda.max_memory_allocated(),
+                    }
+                )
+            output.backward(gradient)
+            if record_phases:
+                torch.cuda.synchronize()
+                phases.append(
+                    {
+                        "microstep": microstep,
+                        "phase": "backward",
+                        "live_bytes": torch.cuda.memory_allocated(),
+                        "peak_bytes": torch.cuda.max_memory_allocated(),
+                    }
+                )
+            del output
         optimizer.step()
+        if record_phases:
+            torch.cuda.synchronize()
+            phases.append(
+                {
+                    "microstep": args.accumulation_steps - 1,
+                    "phase": "optimizer",
+                    "live_bytes": torch.cuda.memory_allocated(),
+                    "peak_bytes": torch.cuda.max_memory_allocated(),
+                }
+            )
+        return phases
 
     # Include the first optimizer state creation in the report, then measure
     # steady-state steps separately. Each mode starts from the same seed.
@@ -97,7 +135,7 @@ def main():
     torch.cuda.synchronize()
     baseline = torch.cuda.memory_allocated()
     torch.cuda.reset_peak_memory_stats()
-    step()
+    phases = step(record_phases=True)
     torch.cuda.synchronize()
     peak = torch.cuda.max_memory_allocated()
     result = {
@@ -106,7 +144,10 @@ def main():
         "multiprocessors": prop.multi_processor_count,
         "torch": torch.__version__,
         "mode": args.mode,
-        "shape": [128, n, n],
+        "shape": [args.microbatch_rows, n, n],
+        "microbatch_rows": args.microbatch_rows,
+        "accumulation_steps": args.accumulation_steps,
+        "effective_rows_per_step": args.microbatch_rows * args.accumulation_steps,
         "atoms": atom_count,
         "atom_parameter_count_fraction": atom_count / (n * n),
         "canonical": canonical,
@@ -122,6 +163,7 @@ def main():
         "warmed_baseline_allocated_bytes": baseline,
         "warmed_step_peak_allocated_bytes": peak,
         "warmed_step_peak_increment_bytes": peak - baseline,
+        "warmed_step_phases": phases,
         "memory_scope": "Run one mode per process. Baseline includes model, input and initialized AdamW state; step peak includes gradients and temporaries. CUDA allocator reserved bytes are excluded.",
         "completed": True,
     }
