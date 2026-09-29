@@ -1,0 +1,20 @@
+{
+  "device": "NVIDIA RTX 6000 Ada Generation",
+  "size": 8192,
+  "window_rows": 1024,
+  "unroll_sweep": false,
+  "pipeline_sweep": true,
+  "bounded_capacity": 192,
+  "max_abs_vs_first_configuration": {
+    "bounded-1-unroll4-stages1": 0.0,
+    "bounded-1-unroll4-stages2": 0.0,
+    "bounded-1-unroll4-stages3": 0.0,
+    "bounded-1-unroll4-stages4": 0.0
+  },
+  "median_ms": {
+    "bounded-1-unroll4-stages1": 0.49990399181842804,
+    "bounded-1-unroll4-stages2": 0.5540800094604492,
+    "bounded-1-unroll4-stages3": 0.5538400113582611,
+    "bounded-1-unroll4-stages4": 0.5451520085334778
+  }
+}

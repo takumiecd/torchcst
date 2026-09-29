@@ -11,8 +11,7 @@ from torchcst.geometry import Chart
 from torchcst.kernels import Kernel
 from torchcst.profiling import cst_span
 
-from .._layout import initial_layout
-from .._strip_torus import route_atoms, tiled_linear
+from .._strip_torus import tiled_linear
 from .._strip_torus import validate_tiled as validate_strip_torus
 
 if TYPE_CHECKING:
@@ -57,7 +56,14 @@ def factored(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
 
 def tiled(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
     with cst_span("cst.linear.route_atoms"):
-        owners = route_atoms(site.chart, site.kernel, p)
-        layout = initial_layout(owners, site.chart.tile_count)
+        from .._support_layout import support_layout
+        from ._preparation import execution_plan
+
+        plan = execution_plan(site)
+        encoded, _, precision = site.kernel.tile_parameters(site.chart, p)
+        decoded = site.chart.geometry.decode_centers(encoded)
+        layout = support_layout(plan, decoded, precision, site.chart.tile_shape[0])
     with cst_span("cst.linear.tiled_matmul"):
-        return tiled_linear(site.chart, site.kernel, inputs, p, layout)
+        return tiled_linear(
+            site.chart, site.kernel, inputs, p, layout, support_layout=True
+        )

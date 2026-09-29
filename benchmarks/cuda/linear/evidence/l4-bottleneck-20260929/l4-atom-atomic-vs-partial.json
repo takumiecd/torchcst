@@ -1,0 +1,34 @@
+{
+  "size": 1024,
+  "bounded": true,
+  "cases": [
+    {
+      "stages": 1,
+      "unroll": 1,
+      "optimized_triweight": true,
+      "ba": 1,
+      "warps": 1,
+      "write_partial": false,
+      "ms": 0.46694400906562805,
+      "relative_l1": 0.0,
+      "max_abs_diff": 0.0,
+      "violations_3e_4": 0,
+      "registers": 168,
+      "spills": 0
+    },
+    {
+      "stages": 1,
+      "unroll": 1,
+      "optimized_triweight": true,
+      "ba": 1,
+      "warps": 1,
+      "write_partial": true,
+      "ms": 0.43007999658584595,
+      "relative_l1": null,
+      "max_abs_diff": null,
+      "violations_3e_4": null,
+      "registers": 168,
+      "spills": 0
+    }
+  ]
+}

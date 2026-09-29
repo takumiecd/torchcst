@@ -1,0 +1,13 @@
+{
+  "device": "NVIDIA L4",
+  "kernel": "atoms",
+  "rows": 16,
+  "registers_per_thread": 168,
+  "spills": 0,
+  "candidate_capacity": 192,
+  "candidate_mean": 146.7666015625,
+  "candidate_max": 176,
+  "candidate_overflows": 0,
+  "tiles": 1024,
+  "candidate_site_visits": 76947456
+}

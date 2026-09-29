@@ -1,0 +1,30 @@
+[
+  {
+    "rows": 16,
+    "algorithm": "separate",
+    "us": 271.6541731438669,
+    "max_gradient_delta": 6.866455078125e-05,
+    "gradient_allclose": true
+  },
+  {
+    "rows": 16,
+    "algorithm": "fused",
+    "us": 262.6094962455131,
+    "max_gradient_delta": 6.866455078125e-05,
+    "gradient_allclose": true
+  },
+  {
+    "rows": 128,
+    "algorithm": "separate",
+    "us": 282.8659079048071,
+    "max_gradient_delta": 0.00025177001953125,
+    "gradient_allclose": true
+  },
+  {
+    "rows": 128,
+    "algorithm": "fused",
+    "us": 359.1874637364343,
+    "max_gradient_delta": 0.00025177001953125,
+    "gradient_allclose": true
+  }
+]

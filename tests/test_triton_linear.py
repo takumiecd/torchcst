@@ -21,6 +21,7 @@ from torchcst import (
     WendlandC2,
 )
 from torchcst.nn._backends._preparation import execution_plan, geometry_factors, prepare
+from torchcst.nn._backends._triton import forward as triton_forward
 from torchcst.optim import LinearJGAtomGrad
 
 GPU = pytest.mark.skipif(
@@ -105,11 +106,21 @@ def test_backend_switch_is_validated():
 @pytest.mark.parametrize("profile", [Biweight, Triweight, WendlandC2, Triangle])
 @pytest.mark.parametrize("representation", ["intrinsic", "ambient"])
 @pytest.mark.parametrize("sigma_min", [0.3, 3.5])
-def test_triton_matches_dense_forward_and_gradients(profile, representation, sigma_min):
+@pytest.mark.parametrize("atoms", [13, 67])
+def test_triton_matches_dense_forward_and_gradients(
+    profile, representation, sigma_min, atoms
+):
     torch.manual_seed(31)
-    dense = _model(profile, representation, device="cuda", sigma_min=sigma_min)
+    dense = _model(
+        profile, representation, device="cuda", sigma_min=sigma_min, atoms=atoms
+    )
     fused = _model(
-        profile, representation, device="cuda", backend="triton", sigma_min=sigma_min
+        profile,
+        representation,
+        device="cuda",
+        backend="triton",
+        sigma_min=sigma_min,
+        atoms=atoms,
     )
     with torch.no_grad():
         dense.atoms.p[:, 0].uniform_(-0.7, 0.7)
@@ -123,7 +134,8 @@ def test_triton_matches_dense_forward_and_gradients(profile, representation, sig
     x = torch.randn(21, 33, device="cuda").T.requires_grad_()
     x_fused = x.detach().clone().requires_grad_()
     grad = torch.randn(19, 33, device="cuda").T
-    expected, actual = dense(x), fused(x_fused)
+    expected = dense(x)
+    actual = triton_forward(fused, x_fused, fused.atoms.p, split_reductions=atoms == 67)
     torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-5)
     expected.backward(grad)
     actual.backward(grad)
@@ -139,7 +151,15 @@ def test_triton_matches_dense_forward_and_gradients(profile, representation, sig
 @GPU
 @pytest.mark.parametrize(
     "rows,station_rows,atoms",
-    [(5, 5, 1), (9, 5, 1), (19, 5, 1), (19, 5, 37), (37, 20, 13)],
+    [
+        (5, 5, 1),
+        (9, 5, 1),
+        (19, 5, 1),
+        (19, 5, 37),
+        (37, 20, 13),
+        (37, 20, 67),
+        (21, 5, 67),
+    ],
 )
 def test_triton_small_station_counts_and_empty_blocks(rows, station_rows, atoms):
     torch.manual_seed(9)
@@ -152,7 +172,7 @@ def test_triton_small_station_counts_and_empty_blocks(rows, station_rows, atoms)
     )
     inputs = torch.randn(2, 3, 21, device="cuda", requires_grad=True)
     expected = torch.nn.functional.linear(inputs, model.dense_weight())
-    actual = model(inputs)
+    actual = triton_forward(model, inputs, model.atoms.p, split_reductions=True)
     torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-5)
     grad = torch.randn_like(actual)
     expected_grads = torch.autograd.grad(expected, (inputs, model.atoms.p), grad)
@@ -329,18 +349,22 @@ def test_warm_preparation_does_not_read_tensor_values_on_the_host():
 @GPU
 def test_triton_warm_forward_captures_updated_inputs_and_atoms():
     torch.manual_seed(74)
-    model = _model(device="cuda", backend="triton", sigma_min=0.3)
+    model = _model(device="cuda", backend="triton", sigma_min=0.3, atoms=67)
     x = torch.randn(7, 21, device="cuda")
+
+    def run():
+        return triton_forward(model, x, model.atoms.p, split_reductions=True)
+
     with torch.no_grad():
         stream = torch.cuda.Stream()
         stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(stream):
             for _ in range(3):
-                model(x)
+                run()
         torch.cuda.current_stream().wait_stream(stream)
         graph = torch.cuda.CUDAGraph()
         with torch.cuda.graph(graph):
-            actual = model(x)
+            actual = run()
         for _ in range(2):
             x.normal_()
             model.atoms.p[:, 0].add_(0.01)
@@ -348,3 +372,78 @@ def test_triton_warm_forward_captures_updated_inputs_and_atoms():
             graph.replay()
             expected = torch.nn.functional.linear(x, model.dense_weight())
             torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-5)
+
+
+@GPU
+@pytest.mark.parametrize("rows,station_rows", [(1, 1), (9, 5), (21, 5), (64, 4)])
+@pytest.mark.parametrize("count", [0, 37, 257])
+def test_fused_routing_matches_reference_including_seams(rows, station_rows, count):
+    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from torchcst.nn._layout import _station_layout
+
+    torch.manual_seed(91)
+    model = _model(rows=rows, station_rows=station_rows, device="cuda")
+    routing = execution_plan(model).routing
+    arcs = torch.linspace(-20, 100, count, device="cuda")
+    angle = arcs / routing.major_radius
+    decoded = torch.stack((angle.cos(), angle.sin()), dim=1)
+    # Includes both signs of zero and the circle seam.
+    if count:
+        decoded[:4] = decoded.new_tensor([[1, 0], [1, -0.0], [-1, 0], [-1, -0.0]])
+    owners, order, offsets = route_and_layout(routing, decoded)
+    expected = routing.owners(decoded)
+    layout = _station_layout(expected, model.chart.tile_count)
+    assert torch.equal(owners, expected)
+    assert torch.equal(order, layout.order)
+    assert torch.equal(offsets, layout.offsets)
+
+
+@GPU
+@pytest.mark.parametrize("representation", ["intrinsic", "ambient"])
+def test_fused_preparation_matches_values_and_gradients(representation):
+    torch.manual_seed(93)
+    model = _model(
+        representation=representation, atoms=67, device="cuda", sigma_min=0.3
+    )
+    p = model.atoms.p
+    reference = prepare(model, p, use_triton=False)
+    actual = prepare(model, p)
+    torch.testing.assert_close(actual[0][:, 0], reference[0][:, 0], atol=0, rtol=0)
+    torch.testing.assert_close(actual[0][:, 2:], reference[0][:, 2:], atol=0, rtol=0)
+    torch.testing.assert_close(
+        actual[0][:, 1], reference[0][:, 1], atol=1e-6, rtol=1e-6
+    )
+    assert torch.equal(actual[3], reference[3])
+    gradient = torch.randn_like(actual[0].T).T  # noncontiguous upstream gradient
+    expected = torch.autograd.grad(reference[0], p, gradient)[0]
+    got = torch.autograd.grad(actual[0], p, gradient)[0]
+    torch.testing.assert_close(got, expected, atol=1e-6, rtol=1e-6)
+
+
+@GPU
+@pytest.mark.parametrize("power,floor,birth", [(1.0, 0.3, 3.5), (0.4, 1.1, 2.2)])
+def test_fused_bandwidth_preserves_envelopes_and_stop_gradient(power, floor, birth):
+    from torchcst.nn._backends._triton_preparation import tile_parameters
+
+    torch.manual_seed(94)
+    model = _model(atoms=259, device="cuda", sigma_min=0.3)
+    kernel = model.kernel
+    with torch.no_grad():
+        kernel.upper_decay_power.fill_(power)
+        kernel.upper_floor_input.fill_(floor)
+        kernel.sigma_birth_input.fill_(birth)
+        kernel.lower_kappa.fill_(5.0)
+    p = torch.randn(7, 259, device="cuda").T.requires_grad_()
+    with torch.no_grad():
+        p[:, 0].uniform_(-2, 2)
+        p[:, 1].uniform_(-2, 7)
+        p[:5, 0] = p.new_tensor([-1, 1, 0, -2, 2])
+        p[:5, 1] = p.new_tensor([1, 4, 1, 4, 2.5])
+    _, amplitude, precision = tile_parameters(kernel, p)
+    _, expected_amplitude, expected_precision = kernel._tile_parameters(p)
+    torch.testing.assert_close(amplitude, expected_amplitude, atol=0, rtol=0)
+    torch.testing.assert_close(precision, expected_precision, atol=2e-6, rtol=1e-6)
+    assert not precision.requires_grad
+    actual_grad = torch.autograd.grad(amplitude.sum(), p)[0]
+    expected_grad = torch.autograd.grad(expected_amplitude.sum(), p)[0]
+    assert torch.equal(actual_grad, expected_grad)

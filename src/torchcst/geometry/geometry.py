@@ -580,7 +580,12 @@ class TorusGeometry(Geometry):
             dim=-1,
         )
         minor = self.minor_radius.to(points)
-        tolerance = minor.clamp_min(1) * 1e-5
+        # Recovering the tube radius subtracts two values on the major-radius
+        # scale. Account for embedding/norm rounding at that scale, especially
+        # for long Strip charts whose major radius grows with the tile count.
+        coordinate_scale = torch.maximum(radial, self.major_radius.to(points))
+        roundoff = 4 * torch.finfo(points.dtype).eps * coordinate_scale
+        tolerance = minor.clamp_min(1) * 1e-5 + roundoff
         if not bool(
             torch.all(
                 (torch.linalg.vector_norm(tube, dim=-1) - minor).abs() <= tolerance

@@ -1,0 +1,10 @@
+{
+  "device": "NVIDIA L4",
+  "torch": "2.11.0+cu128",
+  "size": 8192,
+  "rows": 2048,
+  "mode": "anchor",
+  "capture_start_allocated_mib": 485.8271484375,
+  "peak_allocated_mib": 1020.05712890625,
+  "current_allocated_mib": 502.078125
+}

@@ -1,0 +1,13 @@
+{
+  "device": "NVIDIA L4",
+  "size": 128,
+  "seed": 37,
+  "anchor_rows_per_block": 16,
+  "anchor_cols_per_block": 32,
+  "reference": "all packed atoms evaluated at all anchor sites by differentiable PyTorch",
+  "sample_relative_l2": 2.0133829536916892e-7,
+  "sample_max_abs": 1.4901161193847656e-8,
+  "packed_grad_relative_l2": 1.3604923765342392e-7,
+  "packed_grad_max_abs": 3.814697265625e-6,
+  "packed_width_grad_max_abs": 0.0
+}

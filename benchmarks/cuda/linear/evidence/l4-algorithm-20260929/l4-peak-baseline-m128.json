@@ -1,0 +1,52 @@
+{
+  "shape": [
+    128,
+    1024,
+    1024
+  ],
+  "device": "NVIDIA L4",
+  "materialize_mode": "listed_bounded",
+  "listed_unroll": 4,
+  "listed_builder_ba": 32,
+  "listed_builder_warps": 1,
+  "optimizer_mode": "foreach",
+  "cache_windows": 1,
+  "cache_weight_dtype": "fp32",
+  "window_rows": 512,
+  "allocated_after_warmup": 23176192,
+  "capture_peak_allocated": 47239680,
+  "allocated_after_capture": 40216576,
+  "first_replay_peak_allocated": 42314752,
+  "capture_success": true,
+  "parameters_changed": true,
+  "median_graph_replay_ms": 1.2657650004257448,
+  "samples_ms": [
+    1.2921309971716255,
+    1.2784669997927267,
+    1.277611001569312,
+    1.2748919980367646,
+    1.2665510002989322,
+    1.2697919992206153,
+    1.2649790005525574,
+    1.2580429975059815,
+    1.2554540007840842,
+    1.2518929979705717,
+    1.2446850014384836,
+    1.2426379980752245
+  ],
+  "steady_replay_peak_allocated": 42578944,
+  "parameter_deviations_vs_eager": [
+    {
+      "max_abs": 1.4901161193847656e-08,
+      "relative_l2": 6.027834481558969e-13
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.1897906704999572e-12
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.9233807255214508e-12
+    }
+  ]
+}

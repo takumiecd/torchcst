@@ -1,0 +1,26 @@
+{
+  "shape": [
+    2048,
+    8192,
+    8192
+  ],
+  "device": "NVIDIA RTX 6000 Ada Generation",
+  "optimizer_mode": "foreach",
+  "allocated_after_warmup": 1292108288,
+  "capture_peak_allocated": 1577585152,
+  "allocated_after_capture": 1309148672,
+  "median_graph_replay_ms": 35.200586542487144,
+  "steady_replay_peak_allocated": 1309148672,
+  "samples_ms": [
+    27.31579588726163,
+    32.29136113077402,
+    34.50461709871888,
+    35.055805929005146,
+    37.68273210152984,
+    36.58407321199775,
+    35.88874638080597,
+    35.34536715596914,
+    34.79925403371453,
+    37.42101974785328
+  ]
+}

@@ -68,6 +68,44 @@ def test_torus_has_three_degrees_of_freedom_in_four_dimensions() -> None:
     )
 
 
+@pytest.mark.parametrize("size", [2048, 4096, 8192])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_large_torus_accepts_embedded_sites_but_rejects_off_surface(
+    size: int, dtype: torch.dtype, device: str
+) -> None:
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("CUDA required")
+    chart = StripChart(
+        shape=(size, size),
+        tile_shape=(16, size),
+        axes=(
+            LinePattern(size, spacing=0.1),
+            GridPattern((size // 16, 16), spacing=0.05),
+        ),
+        axis=0,
+        tile_pitch=4.1,
+        geometry=TorusGeometry(
+            3,
+            major_radius=(size // 16) * 4.1 / (2 * math.pi),
+            minor_radius=0.4,
+            representation="intrinsic",
+        ),
+    ).to(device=device, dtype=dtype)
+    sites = chart.positions(
+        torch.linspace(0, size * size - 1, size * 2, device=device, dtype=torch.float64)
+        .round()
+        .long()
+    )
+    chart.geometry.validate_points(sites)
+    centers = chart.initialize_centers(size * 2, mode="balanced")
+    chart.geometry.validate_centers(centers)
+    # Move the section pole radially by 0.01: well above representation noise.
+    bad = sites.new_tensor([[float(chart.geometry.major_radius) + 0.41, 0, 0, 0]])
+    with pytest.raises(ValueError, match="torus surface"):
+        chart.geometry.validate_points(bad)
+
+
 def test_torus_distance_matches_closed_form_and_gemm_identity() -> None:
     geometry = TorusGeometry(3, major_radius=8.0, minor_radius=2.0).double()
     sites = geometry.lift_chart_coordinates(

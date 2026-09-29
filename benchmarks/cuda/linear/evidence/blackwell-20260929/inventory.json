@@ -1,0 +1,13 @@
+{
+  "source_commit": "dd10ecf6ae35b438331faa2e9fd1fed547e1bf14",
+  "source_archive_sha256": "0ff90ca646809b14c82fd0762583947db181e96c2549cad374d8e5354b5d0f34",
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "capability": [
+    12,
+    0
+  ],
+  "gpu_memory_bytes": 101974081536,
+  "torch": "2.11.0+cu128",
+  "triton": "3.6.0",
+  "cuda": "12.8"
+}

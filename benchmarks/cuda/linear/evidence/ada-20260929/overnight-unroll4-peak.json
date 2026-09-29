@@ -1,0 +1,89 @@
+{
+  "shape": [
+    2048,
+    8192,
+    8192
+  ],
+  "device": "NVIDIA RTX 6000 Ada Generation",
+  "materialize_mode": "listed_bounded",
+  "listed_unroll": 4,
+  "optimizer_mode": "foreach",
+  "cache_windows": 4,
+  "window_rows": 1024,
+  "allocated_after_warmup": 500893184,
+  "capture_peak_allocated": 884781056,
+  "allocated_after_capture": 509413888,
+  "first_replay_peak_allocated": 643631616,
+  "capture_success": true,
+  "parameters_changed": true,
+  "median_graph_replay_ms": 38.91341364942491,
+  "samples_ms": [
+    43.15425921231508,
+    39.86948123201728,
+    37.00529504567385,
+    35.42232792824507,
+    36.38335503637791,
+    34.77163519710302,
+    34.188691060990095,
+    37.38632472231984,
+    38.71098114177585,
+    39.25550915300846,
+    40.30005494132638,
+    40.30857793986797,
+    40.032712277024984,
+    39.66147778555751,
+    39.115846157073975,
+    38.0724030546844
+  ],
+  "steady_replay_peak_allocated": 660410368,
+  "parameter_deviations_vs_eager": [
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 6.242958081915939e-15
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 9.8781600642848e-15
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.3290369611860652e-14
+    },
+    {
+      "max_abs": 3.725290298461914e-08,
+      "relative_l2": 1.655478122750305e-14
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.979542763974433e-14
+    },
+    {
+      "max_abs": 7.62939453125e-06,
+      "relative_l2": 2.1607131502846683e-13
+    },
+    {
+      "max_abs": 7.62939453125e-06,
+      "relative_l2": 2.1644157007037063e-13
+    },
+    {
+      "max_abs": 7.62939453125e-06,
+      "relative_l2": 2.1688026537441257e-13
+    },
+    {
+      "max_abs": 7.62939453125e-06,
+      "relative_l2": 2.1736762780347196e-13
+    },
+    {
+      "max_abs": 7.62939453125e-06,
+      "relative_l2": 2.1796536201369038e-13
+    },
+    {
+      "max_abs": 7.62939453125e-06,
+      "relative_l2": 2.1850030736559473e-13
+    },
+    {
+      "max_abs": 7.62939453125e-06,
+      "relative_l2": 2.1916270068287474e-13
+    }
+  ]
+}

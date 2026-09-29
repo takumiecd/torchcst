@@ -1,0 +1,74 @@
+{
+  "device": "NVIDIA L4",
+  "torch": "2.11.0+cu128",
+  "training_seeds": [
+    21,
+    37
+  ],
+  "holdout_seeds": [
+    53,
+    71
+  ],
+  "shape": [
+    1024,
+    1024
+  ],
+  "atom_density": 0.05,
+  "row_rank": 8,
+  "column_rank_per_segment": 4,
+  "row_indices": [
+    36,
+    16,
+    52,
+    5,
+    61,
+    26,
+    44,
+    0
+  ],
+  "column_indices": [
+    8,
+    2,
+    15,
+    11,
+    24,
+    18,
+    31,
+    27,
+    40,
+    34,
+    47,
+    43,
+    56,
+    50,
+    63,
+    59
+  ],
+  "row_condition": 2.2389893531799316,
+  "column_conditions": [
+    2.500005006790161,
+    2.483293056488037,
+    2.484447479248047,
+    2.5034263134002686
+  ],
+  "holdout": {
+    "53": {
+      "projection_weight_l2": 0.0155717171728611,
+      "pod_weight_l2": 0.025171799585223198,
+      "polynomial_weight_l2": 0.10801107436418533,
+      "pod_output_l2_m16": 0.024036001414060593,
+      "pod_output_l2_m128": 0.024724572896957397,
+      "polynomial_output_l2_m16": 0.10933360457420349,
+      "polynomial_output_l2_m128": 0.10869941860437393
+    },
+    "71": {
+      "projection_weight_l2": 0.01629405841231346,
+      "pod_weight_l2": 0.02644350379705429,
+      "polynomial_weight_l2": 0.10983719676733017,
+      "pod_output_l2_m16": 0.02824227511882782,
+      "pod_output_l2_m128": 0.026127735152840614,
+      "polynomial_output_l2_m16": 0.12014200538396835,
+      "polynomial_output_l2_m128": 0.10844282060861588
+    }
+  }
+}

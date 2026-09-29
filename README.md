@@ -395,6 +395,10 @@ is available through `pip install -e '.[cuda]'` on Linux.
 | `tiled` | PyTorch reference using chart-defined weight tiles |
 | `triton` | Generated-weight GPU GEMM and custom first-order backward |
 
+`auto` continues to use the exact CST operator. The fixed-anchor approximation
+is [development code](experiments/cuda/linear/README.md) and is not selected by
+the public backend policy.
+
 Backend assignment is validated, so `layer.backend = "triton"` selects the
 implementation without changing parameters or checkpoint format. Execution
 block sizes are internal; they do not alter `StripChart.tile_shape`. The
@@ -405,12 +409,38 @@ forward can be captured in a CUDA Graph with fixed shapes and configuration;
 inputs and atom values may change between replays. Rebuild the graph after
 changing the chart or kernel configuration.
 
+For NVIDIA float32 execution with up to 1,024 stations, preparation uses
+dedicated Triton kernels for routing, offset lookup, packing and the inverse
+gradient permutation. Built-in `DirectAmpWidth` also evaluates detached
+bandwidths in one kernel. Center decoding and amplitude-clamp derivatives
+remain in PyTorch, and the station permutation still uses a stable Torch sort.
+Other configurations retain the Torch preparation path.
+
 The initial Triton kernels use fixed 16×16 blocks and IEEE float32 dot products;
 hardware autotuning and mixed precision are not enabled yet. Atom-gradient
 accumulation uses floating-point atomics, so deterministic-algorithm mode is
 rejected when those gradients are requested. Higher-order differentiation
-uses the PyTorch backends. See the [execution notes](docs/strip-torus-gemm-prototype.ja.md)
+uses the PyTorch backends. See the [execution notes](src/torchcst/nn/_backends/notes/strip-torus-gemm-prototype.ja.md)
 for layout, tests and the fused-versus-split benchmark.
+
+An experimental A100 schedule splits forward and input-gradient reductions
+across multiple programs with a final sum. It uses the available
+SM count, workload shape and atom count, with at most eight partials and a
+32 MiB workspace limit per operation. It improves measured GPU time, but
+ordinary forward timings varied between small gains and regressions across runs.
+It remains an internal benchmark option; `backend="triton"` keeps the
+single-part schedule. The experiment does not change the chart or materialize
+weights. Run `python -m benchmarks.cuda.linear.benchmark_triton_split --output paired.json`
+to compare both paths, including alternating wall-time measurements.
+
+The primary performance target is a conventional dense Linear with an already
+stored weight, measured with `benchmarks.cuda.linear.benchmark_dense_reference`. Dense
+weight creation is outside timing; CST preparation and on-the-fly tile
+generation stay inside. Report CST/dense time ratios (1 means parity), forward
+and forward+backward separately, and parameter storage plus peak extra tensor
+allocations. Equal-precision FP32 results and the BF16 dense speed target are
+reported separately. The older `materialized` CST baseline includes weight
+reconstruction and is not a conventional dense Linear baseline.
 
 ```python
 import math
@@ -569,7 +599,10 @@ pytest -q
 python -m build
 ```
 
-Design and experiment notes are indexed in [docs/README.md](docs/README.md).
+Design notes are indexed in [docs/README.md](docs/README.md). CUDA kernel
+notes and measurements live beside the [backend](src/torchcst/nn/_backends/notes/README.md),
+[experiments](experiments/cuda/linear/README.md), and
+[benchmarks](benchmarks/cuda/linear/README.md).
 The Direct coordinate design and paired kernel comparison are documented in
 [docs/direct-amplitude-bandwidth.ja.md](docs/direct-amplitude-bandwidth.ja.md).
 The optimizer comparison and selected MNIST configuration are in

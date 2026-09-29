@@ -1,0 +1,110 @@
+{
+  "device": "NVIDIA L4",
+  "torch": "2.11.0+cu128",
+  "rows": 128,
+  "weight_size": [
+    8192,
+    8192
+  ],
+  "size": 8192,
+  "atoms": 3355443,
+  "anchor_shape": [
+    384,
+    768
+  ],
+  "anchor_sites_fraction": 0.28125,
+  "basis_mode": "block",
+  "optimizer_mode": "fused",
+  "include_dense": true,
+  "forward_lanes": 1,
+  "backward_lanes": 4,
+  "decode_mode": "torch",
+  "list_mode": "anchors",
+  "initial": {
+    "samples": {
+      "relative_l2": 2.158487433234768e-07,
+      "max_abs": 6.984919309616089e-10
+    },
+    "output": {
+      "relative_l2": 0.004506909288465977,
+      "max_abs": 0.0011615902185440063
+    },
+    "input_gradient": {
+      "relative_l2": 0.00448198989033699,
+      "max_abs": 0.0004480276256799698
+    },
+    "atom_gradient": {
+      "relative_l2": 0.004478164948523045,
+      "max_abs": 8.108001708984375
+    },
+    "dense_output": {
+      "relative_l2": 7.454922297256417e-07,
+      "max_abs": 9.313225746154785e-08
+    }
+  },
+  "graph_rounds": 8,
+  "updates_per_mode": 11,
+  "seed": 21,
+  "calibration": null,
+  "objective": "fixed random MSE target",
+  "graph_ms": {
+    "baseline": {
+      "median": 60.23757549996844,
+      "samples": [
+        73.65526400008093,
+        74.59349700002349,
+        71.0549059999721,
+        62.38647099962691,
+        58.08868000030998,
+        56.5686990003087,
+        50.45367999991868,
+        54.19608300007894
+      ]
+    },
+    "anchor": {
+      "median": 43.69438500020806,
+      "samples": [
+        50.36253599973861,
+        47.89514000003692,
+        46.118689000195445,
+        44.760919000054855,
+        42.62785100036126,
+        41.29265000028681,
+        40.731196999786334,
+        40.97341599981519
+      ]
+    },
+    "dense": {
+      "median": 12.662801500027854,
+      "samples": [
+        12.574336999932711,
+        12.603019999914977,
+        12.782822999724885,
+        12.660074999985227,
+        12.66552800007048,
+        12.866519999988668,
+        12.694811000073969,
+        12.60429599960844
+      ]
+    }
+  },
+  "paired_anchor_vs_baseline": 0.7237168890488024,
+  "paired_anchor_vs_dense": 3.4506279410091523,
+  "after_updates": {
+    "output": {
+      "relative_l2": 0.016965655609965324,
+      "max_abs": 0.40167689323425293
+    },
+    "baseline_loss": 2.394704818725586,
+    "anchor_loss": 2.394867181777954,
+    "atom_parameters": {
+      "relative_l2": 2.0248464238648012e-08,
+      "max_abs": 0.017578125
+    },
+    "dense_loss": 0.0924723669886589,
+    "anchor_vs_dense_output": {
+      "relative_l2": 1.9358115196228027,
+      "max_abs": 20.37278938293457
+    }
+  }
+}

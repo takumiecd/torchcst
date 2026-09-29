@@ -1,0 +1,1 @@
+{'device': 'NVIDIA L4', 'forward_lanes': 1, 'backward_lanes': 8, 'list_mode': 'anchors', 'sample_relative_l2': 1.947049383943522e-07, 'sample_max_abs': 1.30385160446167e-08, 'packed_grad_relative_l2': 1.3667803955286217e-07, 'packed_grad_max_abs': 2.86102294921875e-06, 'packed_width_grad_max_abs': 0.0}

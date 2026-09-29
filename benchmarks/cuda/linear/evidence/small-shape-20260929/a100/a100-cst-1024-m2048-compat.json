@@ -1,0 +1,40 @@
+{
+  "shape": [
+    2048,
+    1024,
+    1024
+  ],
+  "device": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+  "materialize_mode": "listed_bounded",
+  "listed_unroll": 4,
+  "listed_builder_ba": 32,
+  "listed_builder_warps": 1,
+  "optimizer_mode": "foreach",
+  "cache_windows": 1,
+  "window_rows": 512,
+  "allocated_after_warmup": 40345600,
+  "capture_peak_allocated": 63544320,
+  "allocated_after_capture": 49704960,
+  "first_replay_peak_allocated": 52850176,
+  "capture_success": true,
+  "parameters_changed": true,
+  "median_graph_replay_ms": 3.3493544906377792,
+  "samples_ms": [
+    3.3493544906377792
+  ],
+  "steady_replay_peak_allocated": 53114368,
+  "parameter_deviations_vs_eager": [
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.033882940197628e-12
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.3667325734698088e-12
+    },
+    {
+      "max_abs": 4.0978193283081055e-08,
+      "relative_l2": 1.954969389497685e-12
+    }
+  ]
+}

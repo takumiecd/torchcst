@@ -1,0 +1,5 @@
+{"device": "NVIDIA L4", "forward_relative_l2": 1.0654208892901806e-07, "forward_max_abs": 4.57763671875e-05, "gradient_relative_l2": 1.0493732816030388e-07, "gradient_max_abs": 7.152557373046875e-07, "zero_section_gradient_max_abs": 1.1920928955078125e-07}
+
+/content/torchcst-anchor-325acab/prototypes/check_torus_decode_trainable.py:24: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:836.)
+  "forward_relative_l2": float((actual - reference).norm() / reference.norm()),

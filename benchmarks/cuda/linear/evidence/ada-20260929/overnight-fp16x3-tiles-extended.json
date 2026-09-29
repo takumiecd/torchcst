@@ -1,0 +1,313 @@
+{
+  "size": 8192,
+  "rows": 2048,
+  "extended": true,
+  "cases": [
+    {
+      "case": "forward",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        128,
+        32,
+        4
+      ],
+      "ms": 0.5436800122261047,
+      "check": {
+        "max_abs": 7.343292236328125e-05,
+        "relative_l2": 1.306495050812373e-05,
+        "violations_3e_5": 0,
+        "elements": 2097152
+      }
+    },
+    {
+      "case": "forward",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        256,
+        32,
+        4
+      ],
+      "ms": 1.7666560411453247,
+      "check": {
+        "max_abs": 7.343292236328125e-05,
+        "relative_l2": 1.306495050812373e-05,
+        "violations_3e_5": 0,
+        "elements": 2097152
+      }
+    },
+    {
+      "case": "forward",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        256,
+        32,
+        8
+      ],
+      "ms": 0.5436800122261047,
+      "check": {
+        "max_abs": 7.343292236328125e-05,
+        "relative_l2": 1.306495050812373e-05,
+        "violations_3e_5": 0,
+        "elements": 2097152
+      }
+    },
+    {
+      "case": "forward",
+      "mode": "fp16x3",
+      "tile": [
+        128,
+        128,
+        32,
+        4
+      ],
+      "ms": 1.7220159769058228,
+      "check": {
+        "max_abs": 7.343292236328125e-05,
+        "relative_l2": 1.306495050812373e-05,
+        "violations_3e_5": 0,
+        "elements": 2097152
+      }
+    },
+    {
+      "case": "forward",
+      "mode": "fp16x3",
+      "tile": [
+        128,
+        128,
+        32,
+        8
+      ],
+      "ms": 0.5736640095710754,
+      "check": {
+        "max_abs": 7.343292236328125e-05,
+        "relative_l2": 1.306495050812373e-05,
+        "violations_3e_5": 0,
+        "elements": 2097152
+      }
+    },
+    {
+      "case": "forward",
+      "mode": "fp16x3",
+      "tile": [
+        128,
+        256,
+        32,
+        8
+      ],
+      "ms": 1.6608959436416626,
+      "check": {
+        "max_abs": 7.343292236328125e-05,
+        "relative_l2": 1.306495050812373e-05,
+        "violations_3e_5": 0,
+        "elements": 2097152
+      }
+    },
+    {
+      "case": "forward",
+      "mode": "fp16x3",
+      "tile": [
+        32,
+        256,
+        32,
+        4
+      ],
+      "ms": 0.653984010219574,
+      "check": {
+        "max_abs": 7.343292236328125e-05,
+        "relative_l2": 1.306495050812373e-05,
+        "violations_3e_5": 0,
+        "elements": 2097152
+      }
+    },
+    {
+      "case": "forward",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        64,
+        32,
+        4
+      ],
+      "ms": 0.6647040247917175,
+      "check": {
+        "max_abs": 7.343292236328125e-05,
+        "relative_l2": 1.306495050812373e-05,
+        "violations_3e_5": 0,
+        "elements": 2097152
+      }
+    },
+    {
+      "case": "forward",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        128,
+        64,
+        4
+      ],
+      "ms": 0.7289919853210449,
+      "check": {
+        "max_abs": 7.343292236328125e-05,
+        "relative_l2": 1.3064949598629028e-05,
+        "violations_3e_5": 0,
+        "elements": 2097152
+      }
+    },
+    {
+      "case": "input_gradient",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        128,
+        32,
+        4
+      ],
+      "ms": 0.5765119791030884,
+      "check": {
+        "max_abs": 5.364418029785156e-06,
+        "relative_l2": 1.7603165360924322e-06,
+        "violations_3e_5": 0,
+        "elements": 16777216
+      }
+    },
+    {
+      "case": "input_gradient",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        256,
+        32,
+        4
+      ],
+      "ms": 2.1679680347442627,
+      "check": {
+        "max_abs": 5.364418029785156e-06,
+        "relative_l2": 1.7603165360924322e-06,
+        "violations_3e_5": 0,
+        "elements": 16777216
+      }
+    },
+    {
+      "case": "input_gradient",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        256,
+        32,
+        8
+      ],
+      "ms": 0.5835840106010437,
+      "check": {
+        "max_abs": 5.364418029785156e-06,
+        "relative_l2": 1.7603165360924322e-06,
+        "violations_3e_5": 0,
+        "elements": 16777216
+      }
+    },
+    {
+      "case": "input_gradient",
+      "mode": "fp16x3",
+      "tile": [
+        128,
+        128,
+        32,
+        4
+      ],
+      "ms": 0.9671040177345276,
+      "check": {
+        "max_abs": 5.364418029785156e-06,
+        "relative_l2": 1.7603165360924322e-06,
+        "violations_3e_5": 0,
+        "elements": 16777216
+      }
+    },
+    {
+      "case": "input_gradient",
+      "mode": "fp16x3",
+      "tile": [
+        128,
+        128,
+        32,
+        8
+      ],
+      "ms": 0.6241919994354248,
+      "check": {
+        "max_abs": 5.364418029785156e-06,
+        "relative_l2": 1.7603165360924322e-06,
+        "violations_3e_5": 0,
+        "elements": 16777216
+      }
+    },
+    {
+      "case": "input_gradient",
+      "mode": "fp16x3",
+      "tile": [
+        128,
+        256,
+        32,
+        8
+      ],
+      "ms": 2.3309121131896973,
+      "check": {
+        "max_abs": 5.364418029785156e-06,
+        "relative_l2": 1.7603165360924322e-06,
+        "violations_3e_5": 0,
+        "elements": 16777216
+      }
+    },
+    {
+      "case": "input_gradient",
+      "mode": "fp16x3",
+      "tile": [
+        32,
+        256,
+        32,
+        4
+      ],
+      "ms": 0.6675519943237305,
+      "check": {
+        "max_abs": 5.364418029785156e-06,
+        "relative_l2": 1.7603165360924322e-06,
+        "violations_3e_5": 0,
+        "elements": 16777216
+      }
+    },
+    {
+      "case": "input_gradient",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        64,
+        32,
+        4
+      ],
+      "ms": 0.7254400253295898,
+      "check": {
+        "max_abs": 5.364418029785156e-06,
+        "relative_l2": 1.7603165360924322e-06,
+        "violations_3e_5": 0,
+        "elements": 16777216
+      }
+    },
+    {
+      "case": "input_gradient",
+      "mode": "fp16x3",
+      "tile": [
+        64,
+        128,
+        64,
+        4
+      ],
+      "ms": 0.7713279724121094,
+      "check": {
+        "max_abs": 5.364418029785156e-06,
+        "relative_l2": 1.760316990839783e-06,
+        "violations_3e_5": 0,
+        "elements": 16777216
+      }
+    }
+  ]
+}

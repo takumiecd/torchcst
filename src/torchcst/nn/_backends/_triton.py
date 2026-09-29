@@ -15,12 +15,21 @@ from torch.autograd.function import once_differentiable
 from torchcst.profiling import cst_span
 
 from ._preparation import PROFILE_KINDS, prepare
+from ._schedule import split_count
 
 if TYPE_CHECKING:
     from ..linear import CSTLinear
 
 
-def forward(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
+def forward(
+    site: CSTLinear,
+    inputs: Tensor,
+    p: Tensor,
+    *,
+    split_reductions: bool = False,
+    support_layout: bool = True,
+    batch_tile: int = 16,
+) -> Tensor:
     if inputs.device.type != "cuda" or p.device != inputs.device or torch.version.hip:
         raise ValueError(
             "triton backend requires inputs and atoms on the same NVIDIA CUDA device"
@@ -38,7 +47,7 @@ def forward(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
             "triton backend requires the optional torchcst[cuda] dependencies"
         ) from error
 
-    packed, circle, section, offsets = prepare(site, p)
+    packed, circle, section, offsets = prepare(site, p, support_layout=support_layout)
     flat = inputs.reshape(-1, site.in_features).contiguous()
     with cst_span("cst.linear.triton_matmul"):
         output = _FusedLinear.apply(
@@ -49,6 +58,9 @@ def forward(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
             offsets,
             site.chart.tile_shape[0],
             PROFILE_KINDS[type(site.kernel.profile)],
+            split_reductions,
+            support_layout,
+            batch_tile,
         )
     return output.reshape(*inputs.shape[:-1], site.out_features)
 
@@ -59,50 +71,87 @@ def _ceildiv(value: int, divisor: int) -> int:
 
 class _FusedLinear(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, inputs, packed, circle, section, offsets, station_rows, profile):
-        from ._triton_kernels import fused_forward
+    def forward(
+        ctx,
+        inputs,
+        packed,
+        circle,
+        section,
+        offsets,
+        station_rows,
+        profile,
+        split_reductions=False,
+        support_layout=False,
+        batch_tile=16,
+    ):
+        from ._triton_kernels import fused_forward, reduce_partials
 
         output = torch.empty(
             (inputs.shape[0], circle.shape[0]), device=inputs.device, dtype=inputs.dtype
         )
         ctx.save_for_backward(inputs, packed, circle, section, offsets)
+        stations = _ceildiv(circle.shape[0], station_rows)
+        if batch_tile not in (16, 32, 64):
+            raise ValueError("batch_tile must be 16, 32 or 64")
         ctx.options = {
             "M": inputs.shape[0],
             "N": circle.shape[0],
             "K": inputs.shape[1],
             "D": packed.shape[1] - 2,
-            "G": offsets.numel() - 1,
+            "G": stations,
+            "SUPPORT_LAYOUT": support_layout,
             "STATION_ROWS": station_rows,
             "PROFILE": profile,
-            "BM": 16,
+            "BM": batch_tile,
             "BN": 16,
             "BK": 16,
             "BA": 8,
         }
         bm, bn = ctx.options["BM"], ctx.options["BN"]
+        # Keep the production path unchanged until the extra allocation and
+        # launch overhead also improves ordinary (uncaptured) execution.
+        ctx.multiprocessors = 0
+        if split_reductions:
+            properties = torch.cuda.get_device_properties(inputs.device)
+            if "A100" in properties.name:
+                ctx.multiprocessors = properties.multi_processor_count
         if inputs.shape[0]:
             grid = (
                 _ceildiv(inputs.shape[0], bm),
-                (offsets.numel() - 1) * _ceildiv(station_rows, bn),
+                stations * _ceildiv(station_rows, bn),
             )
+            parts = split_count(
+                reduction_tiles=_ceildiv(inputs.shape[1], ctx.options["BK"]),
+                elements=output.numel(),
+                programs=grid[0] * grid[1],
+                multiprocessors=ctx.multiprocessors,
+                atoms=packed.shape[0],
+                stations=ctx.options["G"],
+            )
+            partial = output if parts == 1 else output.new_empty((parts, *output.shape))
             with torch.cuda.device(inputs.device):
-                fused_forward[grid](
+                fused_forward[(*grid, parts)](
                     inputs,
                     packed,
                     circle,
                     section,
                     offsets,
-                    output,
+                    partial,
                     **ctx.options,
+                    SPLIT_K=parts,
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
+                if parts > 1:
+                    reduce_partials[(_ceildiv(output.numel(), 256),)](
+                        partial, output, output.numel(), parts, 256
+                    )
         return output
 
     @staticmethod
     @once_differentiable
     def backward(ctx, output_gradient):
-        from ._triton_kernels import backward_atoms, backward_inputs
+        from ._triton_kernels import backward_atoms, backward_inputs, reduce_partials
 
         inputs, packed, circle, section, offsets = ctx.saved_tensors
         gradient = output_gradient.contiguous()
@@ -125,21 +174,34 @@ class _FusedLinear(torch.autograd.Function):
                         _ceildiv(inputs.shape[0], bm),
                         _ceildiv(inputs.shape[1], bk),
                     )
-                    backward_inputs[grid](
+                    parts = split_count(
+                        reduction_tiles=ctx.options["G"],
+                        elements=dx.numel(),
+                        programs=grid[0] * grid[1],
+                        multiprocessors=ctx.multiprocessors,
+                        atoms=packed.shape[0],
+                        stations=ctx.options["G"],
+                    )
+                    partial = dx if parts == 1 else dx.new_empty((parts, *dx.shape))
+                    backward_inputs[(*grid, parts)](
                         gradient,
                         packed,
                         circle,
                         section,
                         offsets,
-                        dx,
+                        partial,
                         **ctx.options,
+                        SPLIT_N=parts,
                         num_warps=4,
                         enable_fp_fusion=False,
                     )
+                    if parts > 1:
+                        reduce_partials[(_ceildiv(dx.numel(), 256),)](
+                            partial, dx, dx.numel(), parts, 256
+                        )
                 if dp is not None:
                     grid = (
-                        (offsets.numel() - 1)
-                        * _ceildiv(ctx.options["STATION_ROWS"], bn),
+                        ctx.options["G"] * _ceildiv(ctx.options["STATION_ROWS"], bn),
                         _ceildiv(inputs.shape[1], bk),
                     )
                     backward_atoms[grid](
@@ -154,4 +216,4 @@ class _FusedLinear(torch.autograd.Function):
                         num_warps=4,
                         enable_fp_fusion=False,
                     )
-        return dx, dp, None, None, None, None, None
+        return (dx, dp) + (None,) * (len(ctx.needs_input_grad) - 2)

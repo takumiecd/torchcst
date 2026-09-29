@@ -1,0 +1,151 @@
+{
+  "device": "NVIDIA RTX 6000 Ada Generation",
+  "size": 8192,
+  "rounds": 24,
+  "baseline": "ba8-w4",
+  "median_ms": {
+    "ba2-w1": 0.6448479890823364,
+    "ba2-w2": 1.086736023426056,
+    "ba2-w4": 2.1417120695114136,
+    "ba2-w8": 4.351583957672119,
+    "ba4-w1": 0.39763200283050537,
+    "ba4-w2": 0.7217600047588348,
+    "ba4-w4": 1.3944799900054932,
+    "ba4-w8": 2.8006560802459717,
+    "ba8-w1": 0.24753600358963013,
+    "ba8-w2": 0.4946559965610504,
+    "ba8-w4": 0.9422079920768738,
+    "ba8-w8": 1.8715680241584778,
+    "ba16-w1": 0.16865599900484085,
+    "ba16-w2": 0.3520960062742233,
+    "ba16-w4": 0.6606079936027527,
+    "ba16-w8": 1.3079999685287476,
+    "ba32-w1": 0.12479999661445618,
+    "ba32-w2": 0.2396799996495247,
+    "ba32-w4": 0.4421600103378296,
+    "ba32-w8": 0.8765279948711395,
+    "ba64-w1": 0.1276319995522499,
+    "ba64-w2": 0.24620800465345383,
+    "ba64-w4": 0.4447360038757324,
+    "ba64-w8": 0.8687839806079865,
+    "ba128-w1": 0.12988800555467606,
+    "ba128-w2": 0.22628799825906754,
+    "ba128-w4": 0.36163198947906494,
+    "ba128-w8": 0.7038400173187256
+  },
+  "checks": {
+    "ba2-w1": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba2-w2": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba2-w4": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba2-w8": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba4-w1": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba4-w2": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba4-w4": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba4-w8": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba8-w1": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba8-w2": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba8-w4": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba8-w8": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba16-w1": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba16-w2": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba16-w4": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba16-w8": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba32-w1": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba32-w2": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba32-w4": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba32-w8": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba64-w1": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba64-w2": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba64-w4": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba64-w8": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba128-w1": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba128-w2": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba128-w4": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    },
+    "ba128-w8": {
+      "count_mismatches": 0,
+      "list_mismatches": 0
+    }
+  },
+  "overflow_tiles": 0
+}

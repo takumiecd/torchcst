@@ -1,0 +1,55 @@
+{
+  "shape": [
+    2048,
+    8192,
+    8192
+  ],
+  "device": "NVIDIA RTX 6000 Ada Generation",
+  "materialize_mode": "listed_bounded",
+  "listed_unroll": 4,
+  "listed_builder_ba": 32,
+  "listed_builder_warps": 1,
+  "optimizer_mode": "foreach",
+  "cache_windows": 2,
+  "window_rows": 1024,
+  "allocated_after_warmup": 500893184,
+  "capture_peak_allocated": 839613952,
+  "allocated_after_capture": 509413888,
+  "first_replay_peak_allocated": 643631616,
+  "capture_success": true,
+  "parameters_changed": true,
+  "median_graph_replay_ms": 36.89542831853032,
+  "samples_ms": [
+    43.02815720438957,
+    40.88200116530061,
+    37.33299067243934,
+    35.27313005179167,
+    35.47726199030876,
+    36.131415981799364,
+    36.457865964621305,
+    35.71637021377683,
+    35.85193771868944,
+    38.9757938683033,
+    39.68282463029027,
+    39.918818045407534
+  ],
+  "steady_replay_peak_allocated": 660410368,
+  "parameter_deviations_vs_eager": [
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 6.784848256954825e-15
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.135381512521209e-14
+    },
+    {
+      "max_abs": 3.725290298461914e-08,
+      "relative_l2": 1.5424231106209683e-14
+    },
+    {
+      "max_abs": 4.190951585769653e-08,
+      "relative_l2": 1.9244923986664816e-14
+    }
+  ]
+}
