@@ -21,7 +21,7 @@ from torchcst.nn._backends._preparation import PROFILE_KINDS, execution_plan
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, choices=(1024, 8192), required=True)
-    parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
+    parser.add_argument("--rows", type=int, choices=(16, 128, 2048), required=True)
     parser.add_argument("--rounds", type=int, default=10)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

@@ -54,6 +54,17 @@ def main():
     lists, counts, capacity = build_listed_forward_candidates_bounded(
         layer, packed, circle, section, offsets, max_candidates=192, ba=32, warps=1
     )
+    small_lists, small_counts, small_capacity = build_listed_forward_candidates_bounded(
+        layer,
+        packed,
+        circle,
+        section,
+        offsets,
+        max_candidates=192,
+        ba=32,
+        warps=1,
+        br=8,
+    )
     weight, canonical = mapped_control(
         layer,
         prepare(layer.strip, layer.strip.atoms.p, support_layout=True),
@@ -67,8 +78,8 @@ def main():
     resources = {}
     runners = {}
 
-    def baseline():
-        outputs["materialize_gemm"] = streamed_forward(
+    def baseline(tile_rows, listed_data, name):
+        outputs[name] = streamed_forward(
             layer,
             x,
             prepared=(packed, circle, section, offsets),
@@ -76,20 +87,28 @@ def main():
             cache_weight_rows=0,
             gemm_mode="ieee",
             materialize_mode="listed_bounded",
-            listed_data=(lists, counts, capacity),
-            listed_tile_shape=(16, 64),
+            listed_data=listed_data,
+            listed_tile_shape=(tile_rows, 64),
             listed_unroll=4,
         )
 
-    runners["materialize_gemm"] = baseline
-    for chunks in (1, 2, 4):
+    runners["materialize_gemm_16"] = lambda: baseline(
+        16, (lists, counts, capacity), "materialize_gemm_16"
+    )
+    runners["materialize_gemm_8"] = lambda: baseline(
+        8, (small_lists, small_counts, small_capacity), "materialize_gemm_8"
+    )
+    variants = [(16, chunks) for chunks in (1, 2, 4)]
+    if args.rows == 128:
+        variants.extend((bm, 1) for bm in (32, 64, 128))
+    for bm, chunks in variants:
         splits = 16 // chunks
         partial = torch.empty((splits, args.rows, n), device="cuda")
         y = torch.empty_like(reference)
-        name = f"flash_chunks_{chunks}"
+        name = f"flash_bm{bm}_chunks_{chunks}"
 
-        def run(chunks=chunks, splits=splits, partial=partial, y=y, name=name):
-            compiled = flash_listed_forward[(n // 16, splits, tr.cdiv(args.rows, 16))](
+        def run(bm=bm, chunks=chunks, splits=splits, partial=partial, y=y, name=name):
+            compiled = flash_listed_forward[(n // 16, splits, tr.cdiv(args.rows, bm))](
                 x,
                 packed,
                 circle,
@@ -106,15 +125,17 @@ def main():
                 PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
                 MAX_CANDIDATES=capacity,
                 CHUNKS_PER_PROGRAM=chunks,
+                BM=bm,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
-            reduce_flash_partials[(tr.cdiv(args.rows, 16), n // 16)](
+            reduce_flash_partials[(tr.cdiv(args.rows, bm), n // 16)](
                 partial,
                 y,
                 M=args.rows,
                 N=n,
                 SPLITS=splits,
+                BM=bm,
                 num_warps=4,
             )
             outputs[name] = y
