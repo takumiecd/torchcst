@@ -363,14 +363,16 @@ class _AnchorSamples(torch.autograd.Function):
 
 
 def anchor_samples(
-    layer, layout, *, boxes, witness_cols, forward_lanes=1, backward_lanes=1
+    layer, layout, *, boxes, witness_cols, forward_lanes=1, backward_lanes=1,
+    decode_mode="torch",
 ):
     if forward_lanes not in (1, 2, 4, 8):
         raise ValueError("forward_lanes must be 1, 2, 4, or 8")
     if backward_lanes not in (1, 2, 4, 8):
         raise ValueError("backward_lanes must be 1, 2, 4, or 8")
     packed, circle, section, offsets = trainable_boxed_prepare(
-        layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
+        layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols,
+        decode_mode=decode_mode,
     )
     return _AnchorSamples.apply(
         packed, circle, section, offsets, layer, layout, forward_lanes, backward_lanes
@@ -387,6 +389,7 @@ def anchor_trainable(
     basis_mode="dense",
     forward_lanes=1,
     backward_lanes=1,
+    decode_mode="torch",
 ):
     samples = anchor_samples(
         layer,
@@ -395,6 +398,7 @@ def anchor_trainable(
         witness_cols=witness_cols,
         forward_lanes=forward_lanes,
         backward_lanes=backward_lanes,
+        decode_mode=decode_mode,
     )
     if basis_mode == "dense":
         return ((x @ layout.input_basis) @ samples.T) @ layout.output_basis.T

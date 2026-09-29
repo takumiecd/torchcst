@@ -29,12 +29,19 @@ from torchcst.nn._backends._triton_preparation import (
 )
 
 
-def trainable_boxed_prepare(site, p, *, boxes, witness_cols):
+def trainable_boxed_prepare(site, p, *, boxes, witness_cols, decode_mode="torch"):
     """Keep the amplitude and Torus decode graph while routing without gradients."""
     plan = execution_plan(site)
     station_rows = site.chart.tile_shape[0]
     center, amplitude, precision = tile_parameters(site.kernel, p)
-    decoded = site.chart.geometry.decode_centers(center)
+    if decode_mode == "torch":
+        decoded = site.chart.geometry.decode_centers(center)
+    elif decode_mode == "fused":
+        from prototypes.torus_decode_trainable import trainable_decode_intrinsic_torus
+
+        decoded = trainable_decode_intrinsic_torus(site.chart.geometry, center)
+    else:
+        raise ValueError("decode_mode must be torch or fused")
     original_sort = torch.sort
 
     def bucket_sort(keys, **_kwargs):
