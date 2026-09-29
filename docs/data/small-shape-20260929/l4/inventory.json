@@ -1,0 +1,13 @@
+{
+  "source_commit": "6ae9c49b34c8d8da6be02ad2bc7ebff4aed5f8bf",
+  "source_archive_sha256": "c311d0a365e32281dd5dda977c2bcab13703192406d17c7c01fbdf5dbd1548e0",
+  "gpu": "NVIDIA L4",
+  "capability": [
+    8,
+    9
+  ],
+  "gpu_memory_bytes": 23659151360,
+  "torch": "2.11.0+cu128",
+  "triton": "3.6.0",
+  "cuda": "12.8"
+}

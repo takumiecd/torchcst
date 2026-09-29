@@ -1,0 +1,14 @@
+{
+  "device": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+  "source_commit": "6ae9c49b34c8d8da6be02ad2bc7ebff4aed5f8bf",
+  "source_archive_sha256": "c311d0a365e32281dd5dda977c2bcab13703192406d17c7c01fbdf5dbd1548e0",
+  "compatibility_patch_file": "prototypes/block_tile_atom_lists.py",
+  "compatibility_patch_sha256": "841f3c30a5d25464452ed7afb344323be7d1aa8ed8a7027ca80feb4f0cce9125",
+  "torch": "2.6.0+cu126",
+  "triton": "3.2.0",
+  "free_gpu_bytes_before_check": 21677539328,
+  "total_mig_bytes": 42144366592,
+  "speed_comparison_valid": false,
+  "reason": "A pre-existing long-running Jupyter kernel held about 20 GB of the MIG partition; each Graph replay was run once for compatibility only.",
+  "overflow_graph_gpu_tests_passed": 8
+}

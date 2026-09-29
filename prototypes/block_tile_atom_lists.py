@@ -151,7 +151,10 @@ def mapped_backward_atoms_listed(
 ):
     # Experimental in-place W output; only the listed 16x64, one-atom path
     # has been checked against the separate materializer.
-    tl.static_assert(not WRITE_WEIGHT or (BR == 16 and BC == 64 and BA == 1))
+    if WRITE_WEIGHT:
+        tl.static_assert(BR == 16)
+        tl.static_assert(BC == 64)
+        tl.static_assert(BA == 1)
     program = tl.program_id(0)
     station = STATION_START + program // (64 // BR)
     row_tile = program % (64 // BR)
@@ -160,7 +163,10 @@ def mapped_backward_atoms_listed(
     logical_rows = (station // CG) * 64 + row_tile * BR + tl.arange(0, BR)
     logical_cols = (station % CG) * 64 + col_tile * BC + tl.arange(0, BC)
     if FUSED_DW:
-        tl.static_assert(BR == 16 and BC == 64 and M > 0 and N > 0)
+        tl.static_assert(BR == 16)
+        tl.static_assert(BC == 64)
+        tl.static_assert(M > 0)
+        tl.static_assert(N > 0)
         reduction = tl.arange(0, 32)
         dw = tl.full((BR, BC), 0.0, tl.float32)
         for offset in range(0, M, 32):

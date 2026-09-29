@@ -35,3 +35,21 @@ AdaのM=128・保持1枚のGPU profilerではkernel合計0.667 ms。atom勾配0.
 生JSONは[`data/small-shape-20260929/`](data/small-shape-20260929/)に保存した。速度用`cache-*.json`、ピーク用`peak-*.json`、optimizer用`optimizer-*.json`、Ada内訳`profile-1024-m128-c1.json`。計測コードは`prototypes.profile_paired_dense_cst`、`prototypes.probe_csr_graph_step`、`prototypes.probe_dense_graph_step`、`prototypes.profile_small_optimizer_modes`。
 
 次の速度改善には局所W生成・atom勾配の計算方式を変える必要がある。512行窓の保持は再生成1回を省くが、atom勾配2回と残りのW生成3回は残る。公開backendの既定dispatchは変更していない。
+
+## Colab L4での同じ1024²比較
+
+Colab Proで要求したL4が実機**NVIDIA L4**として割り当てられたことを確認した。PyTorch 2.11.0+cu128、Triton 3.6.0。コミット`6ae9c49`のGit archive（SHA256 `c311d0a365e32281dd5dda977c2bcab13703192406d17c7c01fbdf5dbd1548e0`）を使用し、上と同じseed・精度・Graph交互32回・別プロセスのピーク測定を実行した。L4のL2容量はRTX 6000 Adaより小さいため、GPU内の対応ペア比を重視する。
+
+| M | dense中央値 | CST保持0枚 | CST保持1枚 | 保持1／0対応ペア比 | 保持1／dense対応ペア比 | CST保持1枚／dense Graphピーク |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 0.140 ms | 1.218 ms | 1.105 ms | **0.9084** | 7.58 | 45.40／55.96 MB |
+| 128 | 0.212 ms | 1.312 ms | 1.208 ms | **0.9184** | 5.69 | 47.24／57.33 MB |
+| 2048 | 1.206 ms | 2.278 ms | 2.060 ms | **0.9409** | 1.70 | 64.59／85.25 MB |
+
+全forwardのdense照合、Graph capture、Graph／eagerの3更新照合に合格した。強制overflowとGraph再実行を含むGPUテスト8件も通過。L4では保持1枚が約5.9～9.2%速いが、M=16は依然denseの7.58倍である。測定JSONと機種情報は[`data/small-shape-20260929/l4/`](data/small-shape-20260929/l4/)に保存し、Colab VMは結果回収後に停止して割当0件を確認した。
+
+## A100 MIGの互換性確認
+
+A100 80GB PCIe MIG 3g.40gbは測定前の空きが約21.68／42.14 GBで、別の長時間Jupyter kernelが区画の約20 GBを保持していた。この状態では速度比を判定しない。コミット`6ae9c49`の同じarchiveを隔離展開し、`M=16/128/2048`で**各1回だけGraph再実行する互換性確認**を行った。
+
+PyTorch 2.6.0+cu126／Triton 3.2.0では、atom勾配kernelの`tl.static_assert`に書いた連続真偽条件をコンパイルできなかった。3個または4個の独立した同値条件へ分ける修正を施した。数値計算の経路は変更していない。修正後、3形状ともGraph captureとパラメータ更新に成功し、Graph／eagerの3更新後の最大差は4.10e-8以下。強制overflow関連のGPUテスト8件がA100で通過し、同じ修正後のRTX 3070でも8件が通過した。A100のJSONには再実行時間が1個記録されるが、**性能値として使用しない**。結果と使用中メモリの文脈は[`data/small-shape-20260929/a100/`](data/small-shape-20260929/a100/)に保存した。A100が空いた状態での同一プロセス交互速度比較は未実施。
