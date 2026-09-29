@@ -209,6 +209,7 @@ def backward_anchor_listed(
     RP: tl.constexpr,
     CP: tl.constexpr,
     MAX_CANDIDATES: tl.constexpr,
+    BA: tl.constexpr,
 ):
     program = tl.program_id(0)
     station = program // 4
@@ -224,39 +225,47 @@ def backward_anchor_listed(
     count = tl.load(Counts + program)
     _, capacity = _rank_to_atom(0, Offsets, station, G)
     limit = tl.where(count < 0, capacity, count)
-    for i in range(limit):
-        rank = tl.load(Lists + program * MAX_CANDIDATES + i, count >= 0, 0).to(tl.int32)
-        rank = tl.where(count < 0, i, rank)
+    for start in range(0, limit, BA):
+        lanes = start + tl.arange(0, BA)
+        active = lanes < limit
+        rank = tl.load(
+            Lists + program * MAX_CANDIDATES + lanes,
+            active & (count >= 0),
+            0,
+        ).to(tl.int32)
+        rank = tl.where(count < 0, lanes, rank)
         atom, _ = _rank_to_atom(rank, Offsets, station, G)
-        cx = tl.load(P + atom * 6 + 2)
-        cy = tl.load(P + atom * 6 + 3)
-        cz = tl.load(P + atom * 6 + 4)
-        cw = tl.load(P + atom * 6 + 5)
-        precision = tl.load(P + atom * 6 + 1)
-        amplitude = tl.load(P + atom * 6)
-        dx = sx - cx
-        dy = sy - cy
-        dz = sz - cz
-        dw = sw - cw
+        cx = tl.load(P + atom * 6 + 2, active, 0.0)
+        cy = tl.load(P + atom * 6 + 3, active, 0.0)
+        cz = tl.load(P + atom * 6 + 4, active, 0.0)
+        cw = tl.load(P + atom * 6 + 5, active, 0.0)
+        precision = tl.load(P + atom * 6 + 1, active, 0.0)
+        amplitude = tl.load(P + atom * 6, active, 0.0)
+        dx = sx[:, :, None] - cx[None, None, :]
+        dy = sy[:, :, None] - cy[None, None, :]
+        dz = sz[:, :, None] - cz[None, None, :]
+        dw = sw[:, :, None] - cw[None, None, :]
         squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)
-        gap = tl.maximum(1.0 - squared * precision, 0.0)
-        weighted = gradient * gap * gap
-        da = tl.sum(weighted * gap)
+        gap = tl.maximum(1.0 - squared * precision[None, None, :], 0.0)
+        weighted = tl.where(
+            active[None, None, :], gradient[:, :, None] * gap * gap, 0.0
+        )
+        da = tl.sum(tl.sum(weighted * gap, 0), 0)
         multiplier = 6.0 * precision * amplitude
-        dcx = multiplier * tl.sum(weighted * dx)
-        dcy = multiplier * tl.sum(weighted * dy)
-        dcz = multiplier * tl.sum(weighted * dz)
-        dcw = multiplier * tl.sum(weighted * dw)
-        tl.atomic_add(DP + atom * 6, da, sem="relaxed")
-        tl.atomic_add(DP + atom * 6 + 2, dcx, sem="relaxed")
-        tl.atomic_add(DP + atom * 6 + 3, dcy, sem="relaxed")
-        tl.atomic_add(DP + atom * 6 + 4, dcz, sem="relaxed")
-        tl.atomic_add(DP + atom * 6 + 5, dcw, sem="relaxed")
+        dcx = multiplier * tl.sum(tl.sum(weighted * dx, 0), 0)
+        dcy = multiplier * tl.sum(tl.sum(weighted * dy, 0), 0)
+        dcz = multiplier * tl.sum(tl.sum(weighted * dz, 0), 0)
+        dcw = multiplier * tl.sum(tl.sum(weighted * dw, 0), 0)
+        tl.atomic_add(DP + atom * 6, da, active, sem="relaxed")
+        tl.atomic_add(DP + atom * 6 + 2, dcx, active, sem="relaxed")
+        tl.atomic_add(DP + atom * 6 + 3, dcy, active, sem="relaxed")
+        tl.atomic_add(DP + atom * 6 + 4, dcz, active, sem="relaxed")
+        tl.atomic_add(DP + atom * 6 + 5, dcw, active, sem="relaxed")
 
 
 class _AnchorSamples(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, packed, circle, section, offsets, layer, layout):
+    def forward(ctx, packed, circle, section, offsets, layer, layout, backward_lanes):
         if type(layer.strip.kernel.profile) is not Triweight:
             raise ValueError("anchor prototype requires Triweight")
         lists, counts, capacity = build_listed_forward_candidates_bounded(
@@ -296,6 +305,7 @@ class _AnchorSamples(torch.autograd.Function):
         ctx.layer = layer
         ctx.layout = layout
         ctx.capacity = capacity
+        ctx.backward_lanes = backward_lanes
         return samples
 
     @staticmethod
@@ -326,21 +336,34 @@ class _AnchorSamples(torch.autograd.Function):
             RP=layout.row_pad,
             CP=layout.col_pad,
             MAX_CANDIDATES=ctx.capacity,
+            BA=ctx.backward_lanes,
             num_warps=1,
             enable_fp_fusion=True,
         )
-        return dp, None, None, None, None, None
+        return dp, None, None, None, None, None, None
 
 
-def anchor_samples(layer, layout, *, boxes, witness_cols):
+def anchor_samples(layer, layout, *, boxes, witness_cols, backward_lanes=1):
+    if backward_lanes not in (1, 2, 4, 8):
+        raise ValueError("backward_lanes must be 1, 2, 4, or 8")
     packed, circle, section, offsets = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )
-    return _AnchorSamples.apply(packed, circle, section, offsets, layer, layout)
+    return _AnchorSamples.apply(
+        packed, circle, section, offsets, layer, layout, backward_lanes
+    )
 
 
-def anchor_trainable(layer, x, layout, *, boxes, witness_cols, basis_mode="dense"):
-    samples = anchor_samples(layer, layout, boxes=boxes, witness_cols=witness_cols)
+def anchor_trainable(
+    layer, x, layout, *, boxes, witness_cols, basis_mode="dense", backward_lanes=1
+):
+    samples = anchor_samples(
+        layer,
+        layout,
+        boxes=boxes,
+        witness_cols=witness_cols,
+        backward_lanes=backward_lanes,
+    )
     if basis_mode == "dense":
         return ((x @ layout.input_basis) @ samples.T) @ layout.output_basis.T
     if basis_mode == "block":

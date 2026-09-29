@@ -41,6 +41,7 @@ def main():
         "--anchor-column-segments", type=int, choices=(4, 8, 12), default=8
     )
     parser.add_argument("--basis-mode", choices=("dense", "block"), default="dense")
+    parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--rounds", type=int, default=24)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -107,6 +108,7 @@ def main():
             boxes=boxes,
             witness_cols=hints,
             basis_mode=args.basis_mode,
+            backward_lanes=args.backward_lanes,
         )
 
     baseline_y = baseline_output()
@@ -183,6 +185,7 @@ def main():
         "anchor_shape": [16 * args.anchor_rows, 16 * len(col_anchors)],
         "anchor_sites_fraction": args.anchor_rows * len(col_anchors) / 4096,
         "basis_mode": args.basis_mode,
+        "backward_lanes": args.backward_lanes,
         "initial": initial,
         "graph_rounds": args.rounds,
         "updates_per_mode": args.rounds + 3,

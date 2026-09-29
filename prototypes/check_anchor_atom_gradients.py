@@ -1,5 +1,7 @@
 """Check the anchor atom kernel against differentiable all-atom PyTorch sums."""
 
+import argparse
+
 import torch
 
 from prototypes.anchor_atom_training import _AnchorSamples, make_anchor_layout
@@ -9,6 +11,9 @@ from prototypes.diagnose_cst_sampled_blocks import column_basis, evenly_spaced_i
 from prototypes.support_box_routing import balanced_home_columns, station_site_boxes
 from torchcst.nn._backends._preparation import execution_plan
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
+args = parser.parse_args()
 torch.manual_seed(37)
 torch.backends.cuda.matmul.allow_tf32 = False
 n = 128
@@ -21,7 +26,9 @@ packed, circle, section, offsets = trainable_boxed_prepare(
     layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=hints
 )
 packed = packed.detach().clone().requires_grad_()
-samples = _AnchorSamples.apply(packed, circle, section, offsets, layer, layout)
+samples = _AnchorSamples.apply(
+    packed, circle, section, offsets, layer, layout, args.backward_lanes
+)
 ds = torch.randn_like(samples)
 (custom_grad,) = torch.autograd.grad((samples * ds).sum(), packed)
 
@@ -57,6 +64,7 @@ g_custom = custom_grad.index_select(1, indices)
 print(
     {
         "device": torch.cuda.get_device_name(),
+        "backward_lanes": args.backward_lanes,
         "sample_relative_l2": float(((samples - ref).norm() / ref.norm()).detach()),
         "sample_max_abs": float((samples - ref).abs().max().detach()),
         "packed_grad_relative_l2": float(
