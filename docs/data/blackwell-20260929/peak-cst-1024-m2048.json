@@ -1,0 +1,51 @@
+{
+  "shape": [
+    2048,
+    1024,
+    1024
+  ],
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "materialize_mode": "listed_bounded",
+  "listed_unroll": 4,
+  "listed_builder_ba": 32,
+  "listed_builder_warps": 1,
+  "optimizer_mode": "foreach",
+  "cache_windows": 0,
+  "window_rows": 512,
+  "allocated_after_warmup": 39296512,
+  "capture_peak_allocated": 62704640,
+  "allocated_after_capture": 48026624,
+  "first_replay_peak_allocated": 50124800,
+  "capture_success": true,
+  "parameters_changed": true,
+  "median_graph_replay_ms": 0.9454750002078072,
+  "samples_ms": [
+    0.9535700000924408,
+    0.9485900000072434,
+    0.9463199994570459,
+    0.9446899994145497,
+    0.9451610003452515,
+    0.9438500001124339,
+    0.9453000002395129,
+    0.9454399996684515,
+    0.9461999998165993,
+    0.9455100007471628,
+    0.9468700000070385,
+    0.9446499998375657
+  ],
+  "steady_replay_peak_allocated": 50388992,
+  "parameter_deviations_vs_eager": [
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 8.588922216674899e-13
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.2846220398196606e-12
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.699701902661832e-12
+    }
+  ]
+}

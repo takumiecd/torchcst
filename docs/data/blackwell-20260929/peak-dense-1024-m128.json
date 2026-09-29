@@ -1,0 +1,28 @@
+{
+  "shape": [
+    128,
+    1024,
+    1024
+  ],
+  "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "optimizer_mode": "foreach",
+  "allocated_after_warmup": 36096512,
+  "capture_peak_allocated": 57332224,
+  "allocated_after_capture": 53136896,
+  "median_graph_replay_ms": 0.1340200005870429,
+  "steady_replay_peak_allocated": 53136896,
+  "samples_ms": [
+    0.15814000016689533,
+    0.13624999974126695,
+    0.1352500003122259,
+    0.134779999825696,
+    0.13465100073517533,
+    0.13403000048128888,
+    0.1340100006927969,
+    0.1324500008195173,
+    0.1326100000369479,
+    0.130909999825235,
+    0.13164000029064482,
+    0.13037000007898314
+  ]
+}
