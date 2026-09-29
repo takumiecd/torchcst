@@ -36,10 +36,11 @@ def comparison(actual, reference):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rows", type=int, choices=(16, 128), required=True)
-    parser.add_argument("--anchor-rows", type=int, choices=(16, 24), default=16)
+    parser.add_argument("--anchor-rows", type=int, choices=(8, 12, 16, 24), default=16)
     parser.add_argument(
-        "--anchor-column-segments", type=int, choices=(8, 12), default=8
+        "--anchor-column-segments", type=int, choices=(4, 8, 12), default=8
     )
+    parser.add_argument("--basis-mode", choices=("dense", "block"), default="dense")
     parser.add_argument("--rounds", type=int, default=24)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -100,7 +101,12 @@ def main():
 
     def anchor_output():
         return anchor_trainable(
-            anchor, x_anchor, layout, boxes=boxes, witness_cols=hints
+            anchor,
+            x_anchor,
+            layout,
+            boxes=boxes,
+            witness_cols=hints,
+            basis_mode=args.basis_mode,
         )
 
     baseline_y = baseline_output()
@@ -176,6 +182,7 @@ def main():
         "atoms": round(0.05 * n * n),
         "anchor_shape": [16 * args.anchor_rows, 16 * len(col_anchors)],
         "anchor_sites_fraction": args.anchor_rows * len(col_anchors) / 4096,
+        "basis_mode": args.basis_mode,
         "initial": initial,
         "graph_rounds": args.rounds,
         "updates_per_mode": args.rounds + 3,

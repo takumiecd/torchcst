@@ -23,6 +23,8 @@ from torchcst.kernels.compact import Triweight
 class AnchorLayout:
     output_basis: torch.Tensor
     input_basis: torch.Tensor
+    local_output_basis: torch.Tensor
+    local_input_basis: torch.Tensor
     row_sites: torch.Tensor
     row_positions: torch.Tensor
     col_sites: torch.Tensor
@@ -60,6 +62,8 @@ def make_anchor_layout(layer, row_count=16, column_segments=8):
     return AnchorLayout(
         output_basis=torch.block_diag(*([local_output] * (n // 64))).to(device),
         input_basis=torch.block_diag(*([local_input] * (k // 64))).to(device),
+        local_output_basis=local_output.to(device),
+        local_input_basis=local_input.to(device),
         row_sites=sites.to(device),
         row_positions=positions.to(device),
         col_sites=cols.to(device),
@@ -335,6 +339,19 @@ def anchor_samples(layer, layout, *, boxes, witness_cols):
     return _AnchorSamples.apply(packed, circle, section, offsets, layer, layout)
 
 
-def anchor_trainable(layer, x, layout, *, boxes, witness_cols):
+def anchor_trainable(layer, x, layout, *, boxes, witness_cols, basis_mode="dense"):
     samples = anchor_samples(layer, layout, boxes=boxes, witness_cols=witness_cols)
-    return ((x @ layout.input_basis) @ samples.T) @ layout.output_basis.T
+    if basis_mode == "dense":
+        return ((x @ layout.input_basis) @ samples.T) @ layout.output_basis.T
+    if basis_mode == "block":
+        m, k = x.shape
+        n = layer.shape[0]
+        projected = (x.reshape(m, k // 64, 64) @ layout.local_input_basis).reshape(
+            m, -1
+        )
+        hidden = projected @ samples.T
+        return (
+            hidden.reshape(m, n // 64, layout.rows_per_block)
+            @ layout.local_output_basis.T
+        ).reshape(m, n)
+    raise ValueError("basis_mode must be dense or block")
