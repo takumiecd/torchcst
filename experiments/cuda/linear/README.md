@@ -1,18 +1,22 @@
-# CUDA Linear 開発候補
+# CUDA Linear の開発用カーネル
 
-このディレクトリは未昇格の実装置き場。`torchcst` の配布 wheel や
-`CSTLinear(backend="auto")` に含まれない。現在残す候補は、正確な mapped
-学習経路 (`block_streamed_backward.py`) と、別演算である固定アンカー近似
-(`anchor_atom_training.py`)。どちらも移植・採用の判断は
-[kernel 選別表](../../../docs/cuda-kernel-shortlist.ja.md)と
-[dispatch 設計](../../../docs/cuda-dispatch-design.ja.md)に記録する。
-旧 wrapper の静的 import とテストが参照する比較実装も残っている。
-このディレクトリ内の全 kernel を採用候補とみなす意味ではない。
+ここは `CSTLinear` の新しい計算方式を試す場所。配布 wheel と公開
+`backend="auto"` からは使わない。現行の `auto` は正確な CST 演算を選ぶ。
+採否と制約は実装の隣に記録し、測定は [benchmark](../../../benchmarks/cuda/linear/README.md)
+から再現する。
 
-アンカーは開発途中。近似品質と長期学習の検証が終わるまで既定にはしない。
-8192²では融合 Torus decode の精度問題があるため、対応する測定は PyTorch
-decode を使う。古い探索コードの参照方法は
-[旧 `prototypes/` 索引](../../../docs/legacy-prototypes.ja.md)を参照。
+| 方式 | 主な実装 | 意味と状態 | 測定・判断 |
+| --- | --- | --- | --- |
+| Mapped streamed | [学習経路](block_streamed_backward.py)、[局所 W](block_materialize_listed.py)、[候補リストと atom 勾配](block_tile_atom_lists.py) | Exact CST の候補。bounded list の overflow、勾配、メモリを検証してから本体へ昇格する。 | [選別](cuda-kernel-shortlist.ja.md)、[Ada 実測](notes/five-percent-bounded-lists-ada.ja.md) |
+| Fixed anchor | [学習経路](anchor_atom_training.py)、[基底](anchor_basis.py)、[Torus decode](torus_decode_trainable.py) | atom×site 評価を減らす近似演算。品質と長期学習が未確定なので開発用。融合 decode は 8192² で精度上の問題があり、通常の測定では PyTorch decode を使う。 | [L4 8192²](notes/l4-anchor-8192-dispatch-handoff-20260929.ja.md) |
+| 比較用の旧方式 | 同じディレクトリのその他の実装 | 既存テストや比較から参照するため保持。採用予定を意味しない。 | [過去の記録](notes/README.md) |
 
-このディレクトリのコードはCUDA/Tritonを要する。GPU のない環境では
-関連テストが skip されるため、GPU 上の正確性・速度は別途測る。
+新しい方式を追加するときは、演算の意味、対応形状・dtype・勾配、workspace、
+既知の失敗例をこの近くの README に記す。kernel 単体と完全学習ステップを
+区別して測る。[配置と昇格の方針](repository-layout.ja.md)と
+[dispatch 提案](../../../src/torchcst/nn/_backends/notes/cuda-dispatch-design.ja.md)は
+未実装の部分を明示している。削除済みの探索コードは
+[Git 履歴から参照](legacy-prototypes.ja.md)できる。
+
+このディレクトリの GPU コードは CUDA/Triton を要する。GPU のない環境では
+関連テストが skip されるため、GPU 上の正確性・速度を別途確認する。

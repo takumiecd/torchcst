@@ -35,6 +35,8 @@ reproducible measurements. Neither belongs in the wheel, and `src/torchcst/`
 must not import either. The public `backend="auto"` continues to select exact
 CST implementations. Fixed-anchor CST is a separate approximate development
 path until its semantics and quality policy are explicitly established.
+Keep kernel contracts and decisions beside the implementation, measured evidence
+beside the benchmark, and only cross-cutting architecture in `docs/`.
 
 The canonical operator is `sum(kernel(p[a], charts))`. A factored matrix
 expression is an optional kernel capability and must not become the model

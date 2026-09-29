@@ -420,7 +420,7 @@ The initial Triton kernels use fixed 16×16 blocks and IEEE float32 dot products
 hardware autotuning and mixed precision are not enabled yet. Atom-gradient
 accumulation uses floating-point atomics, so deterministic-algorithm mode is
 rejected when those gradients are requested. Higher-order differentiation
-uses the PyTorch backends. See the [execution notes](docs/strip-torus-gemm-prototype.ja.md)
+uses the PyTorch backends. See the [execution notes](src/torchcst/nn/_backends/notes/strip-torus-gemm-prototype.ja.md)
 for layout, tests and the fused-versus-split benchmark.
 
 An experimental A100 schedule splits forward and input-gradient reductions
@@ -599,7 +599,10 @@ pytest -q
 python -m build
 ```
 
-Design and experiment notes are indexed in [docs/README.md](docs/README.md).
+Design notes are indexed in [docs/README.md](docs/README.md). CUDA kernel
+notes and measurements live beside the [backend](src/torchcst/nn/_backends/notes/README.md),
+[experiments](experiments/cuda/linear/README.md), and
+[benchmarks](benchmarks/cuda/linear/README.md).
 The Direct coordinate design and paired kernel comparison are documented in
 [docs/direct-amplitude-bandwidth.ja.md](docs/direct-amplitude-bandwidth.ja.md).
 The optimizer comparison and selected MNIST configuration are in

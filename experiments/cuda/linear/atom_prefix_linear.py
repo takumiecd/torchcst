@@ -2,7 +2,7 @@
 
 Strip+Torus distances give phi[a,n,k] = e[a,k]^3 (t[a,k]-s[a,n])_+^3.
 Sorting t and taking four prefix moments of X replaces the N*K evaluation
-per atom with K prefix scans and N lookups. See docs/atom-prefix-linear.ja.md.
+per atom with K prefix scans and N lookups. See notes/atom-prefix-linear.ja.md.
 This is an autograd oracle/prototype, not a registered production backend.
 """
 
