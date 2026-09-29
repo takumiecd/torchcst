@@ -10,6 +10,7 @@ the supported continuous-only optimizer surface. Experiment runners and reports 
 - [optimizer-selection.ja.md](optimizer-selection.ja.md) — purpose-based optimizer choice, the Triweight + Polar MNIST comparison, fixed-LR best practices, and retained optimizer API;
 - [parameter-adam.ja.md](parameter-adam.ja.md) — parameter-coordinate AdamW path and its bounded state;
 - [direct-amplitude-bandwidth.ja.md](direct-amplitude-bandwidth.ja.md) — `(w, q)`座標、physical-displacement `q` 更新、Adam state、Polar checkpointとの非互換性、paired A100 evidence.
+- [cst-1024-algorithm-redesign-20260929.ja.md](cst-1024-algorithm-redesign-20260929.ja.md) — L4の1024²小バッチで、アンカー補間と直接低ランク因子を比較した設計レビュー、実測速度、誤差、未検証事項.
 
 Removed optimizer experiments and their derivations remain available in Git
 history but are not part of the package or current architecture.

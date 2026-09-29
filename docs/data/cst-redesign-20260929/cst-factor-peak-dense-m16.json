@@ -1,0 +1,11 @@
+{
+  "device": "NVIDIA L4",
+  "mode": "dense",
+  "rows": 16,
+  "rank": null,
+  "trainable_parameters": 1048576,
+  "allocated_after_warmup": 34013696,
+  "capture_peak_allocated": 55314944,
+  "steady_replay_peak_allocated": 51054080,
+  "scope": "mode isolated after one-time dense/SVD initialization; PyTorch allocated bytes"
+}
