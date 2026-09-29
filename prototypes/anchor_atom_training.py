@@ -84,7 +84,8 @@ def make_calibrated_anchor_layout(layer, calibration, row_rank, column_rank):
     """Use fixed POD/DEIM bases calibrated outside the training step."""
     records = json.loads(Path(calibration).read_text())["results"]
     matches = [
-        record for record in records
+        record
+        for record in records
         if record["row_rank"] == row_rank
         and record["column_rank_per_segment"] == column_rank
         and "row_matrix" in record
@@ -101,7 +102,11 @@ def make_calibrated_anchor_layout(layer, calibration, row_rank, column_rank):
     if row_matrix.shape != (64, row_rank) or col_matrix.shape != (64, 4 * column_rank):
         raise ValueError("calibration basis has the wrong shape")
     row_groups = [
-        [(position, row) for position, row in enumerate(row_indices) if row // 16 == tile]
+        [
+            (position, row)
+            for position, row in enumerate(row_indices)
+            if row // 16 == tile
+        ]
         for tile in range(4)
     ]
     row_pad = tr.next_power_of_2(max(map(len, row_groups)))
@@ -116,8 +121,12 @@ def make_calibrated_anchor_layout(layer, calibration, row_rank, column_rank):
     cols[: len(col_indices)] = torch.tensor(col_indices, dtype=torch.int32)
     device = layer.strip.atoms.p.device
     return AnchorLayout(
-        output_basis=torch.block_diag(*([row_matrix] * (layer.shape[0] // 64))).to(device),
-        input_basis=torch.block_diag(*([col_matrix] * (layer.shape[1] // 64))).to(device),
+        output_basis=torch.block_diag(*([row_matrix] * (layer.shape[0] // 64))).to(
+            device
+        ),
+        input_basis=torch.block_diag(*([col_matrix] * (layer.shape[1] // 64))).to(
+            device
+        ),
         local_output_basis=row_matrix.to(device),
         local_input_basis=col_matrix.to(device),
         row_sites=sites.to(device),
@@ -193,9 +202,20 @@ def _rank_to_atom(rank, Offsets, station, G: tl.constexpr):
 
 @tr.jit
 def build_anchor_candidate_lists(
-    P, Circle, Section, Offsets, RowSites, RowPositions, ColSites,
-    Lists, Counts, G: tl.constexpr, RP: tl.constexpr, CP: tl.constexpr,
-    MAX_CANDIDATES: tl.constexpr, BA: tl.constexpr,
+    P,
+    Circle,
+    Section,
+    Offsets,
+    RowSites,
+    RowPositions,
+    ColSites,
+    Lists,
+    Counts,
+    G: tl.constexpr,
+    RP: tl.constexpr,
+    CP: tl.constexpr,
+    MAX_CANDIDATES: tl.constexpr,
+    BA: tl.constexpr,
 ):
     station = tl.program_id(0)
     row_tile = tl.program_id(1)
@@ -247,8 +267,10 @@ def build_anchor_candidate_lists(
             )
             count += tl.sum(possible.to(tl.int32), 0)
         bucket_rank += end - begin
-    tl.store(Counts + station * 4 + row_tile,
-             tl.where((count <= MAX_CANDIDATES) & (capacity <= 256), count, -1))
+    tl.store(
+        Counts + station * 4 + row_tile,
+        tl.where((count <= MAX_CANDIDATES) & (capacity <= 256), count, -1),
+    )
 
 
 @tr.jit
@@ -413,18 +435,31 @@ class _AnchorSamples(torch.autograd.Function):
             capacity = 192
             lists = torch.empty(
                 (layer.strip.chart.tile_count, 4, capacity),
-                device=packed.device, dtype=torch.uint8,
+                device=packed.device,
+                dtype=torch.uint8,
             )
             counts = torch.empty(
                 (layer.strip.chart.tile_count, 4),
-                device=packed.device, dtype=torch.int32,
+                device=packed.device,
+                dtype=torch.int32,
             )
             build_anchor_candidate_lists[(layer.strip.chart.tile_count, 4)](
-                packed, circle, section, offsets, layout.row_sites,
-                layout.row_positions, layout.col_sites, lists, counts,
-                G=layer.strip.chart.tile_count, RP=layout.row_pad,
-                CP=layout.col_pad, MAX_CANDIDATES=capacity, BA=32,
-                num_warps=1, enable_fp_fusion=False,
+                packed,
+                circle,
+                section,
+                offsets,
+                layout.row_sites,
+                layout.row_positions,
+                layout.col_sites,
+                lists,
+                counts,
+                G=layer.strip.chart.tile_count,
+                RP=layout.row_pad,
+                CP=layout.col_pad,
+                MAX_CANDIDATES=capacity,
+                BA=32,
+                num_warps=1,
+                enable_fp_fusion=False,
             )
         else:
             raise ValueError("list_mode must be full_tile or anchors")
@@ -502,20 +537,37 @@ class _AnchorSamples(torch.autograd.Function):
 
 
 def anchor_samples(
-    layer, layout, *, boxes, witness_cols, forward_lanes=1, backward_lanes=1,
-    decode_mode="torch", list_mode="full_tile",
+    layer,
+    layout,
+    *,
+    boxes,
+    witness_cols,
+    forward_lanes=1,
+    backward_lanes=1,
+    decode_mode="torch",
+    list_mode="full_tile",
 ):
     if forward_lanes not in (1, 2, 4, 8):
         raise ValueError("forward_lanes must be 1, 2, 4, or 8")
     if backward_lanes not in (1, 2, 4, 8):
         raise ValueError("backward_lanes must be 1, 2, 4, or 8")
     packed, circle, section, offsets = trainable_boxed_prepare(
-        layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols,
+        layer.strip,
+        layer.strip.atoms.p,
+        boxes=boxes,
+        witness_cols=witness_cols,
         decode_mode=decode_mode,
     )
     return _AnchorSamples.apply(
-        packed, circle, section, offsets, layer, layout, forward_lanes,
-        backward_lanes, list_mode,
+        packed,
+        circle,
+        section,
+        offsets,
+        layer,
+        layout,
+        forward_lanes,
+        backward_lanes,
+        list_mode,
     )
 
 

@@ -18,10 +18,6 @@ from prototypes.anchor_atom_training import (
 from prototypes.benchmark_tile_study import mapped_control
 from prototypes.block_streamed_backward import mapped_streamed_trainable
 from prototypes.block_strip_linear import BlockStripLinear
-from prototypes.diagnose_cst_sampled_blocks import (
-    column_basis,
-    evenly_spaced_indices,
-)
 from prototypes.support_box_routing import balanced_home_columns, station_site_boxes
 from torchcst.nn._backends._preparation import execution_plan, prepare
 
@@ -47,7 +43,9 @@ def main():
     parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--decode-mode", choices=("torch", "fused"), default="torch")
-    parser.add_argument("--list-mode", choices=("full_tile", "anchors"), default="full_tile")
+    parser.add_argument(
+        "--list-mode", choices=("full_tile", "anchors"), default="full_tile"
+    )
     parser.add_argument(
         "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
     )
@@ -81,7 +79,9 @@ def main():
         )
         if not canonical["passed"]:
             raise RuntimeError(f"CST control failed: {canonical}")
-        dense_weight = torch.nn.Parameter(weight.detach().clone()) if args.include_dense else None
+        dense_weight = (
+            torch.nn.Parameter(weight.detach().clone()) if args.include_dense else None
+        )
         blocks = weight.reshape(16, 64, 16, 64).permute(0, 2, 1, 3)
         expected_samples = (
             blocks.index_select(2, torch.tensor(row_anchors, device="cuda"))
@@ -101,7 +101,9 @@ def main():
 
     x_baseline = torch.randn(args.rows, n, device="cuda", requires_grad=True)
     x_anchor = x_baseline.detach().clone().requires_grad_()
-    x_dense = x_baseline.detach().clone().requires_grad_() if args.include_dense else None
+    x_dense = (
+        x_baseline.detach().clone().requires_grad_() if args.include_dense else None
+    )
     dy = torch.randn(args.rows, n, device="cuda")
     target = torch.randn(args.rows, n, device="cuda")
 
@@ -197,7 +199,11 @@ def main():
         (output - target).square().mean().backward()
         optimizers[mode].step()
 
-    modes = ("baseline", "anchor", "dense") if args.include_dense else ("baseline", "anchor")
+    modes = (
+        ("baseline", "anchor", "dense")
+        if args.include_dense
+        else ("baseline", "anchor")
+    )
     for mode in (*modes, *reversed(modes)):
         step(mode)
     torch.cuda.synchronize()
@@ -266,7 +272,9 @@ def main():
         "paired_anchor_vs_dense": (
             statistics.median(
                 a / b for a, b in zip(samples["anchor"], samples["dense"])
-            ) if args.include_dense else None
+            )
+            if args.include_dense
+            else None
         ),
         "after_updates": final,
     }

@@ -8,7 +8,16 @@ from triton.language.extra.cuda import libdevice
 
 
 @tr.jit
-def _decode(Center, Major, Minor, Out, A: tl.constexpr, S0: tl.constexpr, S1: tl.constexpr, B: tl.constexpr):
+def _decode(
+    Center,
+    Major,
+    Minor,
+    Out,
+    A: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    B: tl.constexpr,
+):
     atom = tl.program_id(0) * B + tl.arange(0, B)
     valid = atom < A
     arc = tl.load(Center + atom * S0, valid, 0.0)
@@ -27,9 +36,19 @@ def _decode(Center, Major, Minor, Out, A: tl.constexpr, S0: tl.constexpr, S1: tl
 
 
 @tr.jit
-def _decode_grad(Center, Major, Minor, GradOut, GradCenter,
-                 A: tl.constexpr, S0: tl.constexpr, S1: tl.constexpr,
-                 G0: tl.constexpr, G1: tl.constexpr, B: tl.constexpr):
+def _decode_grad(
+    Center,
+    Major,
+    Minor,
+    GradOut,
+    GradCenter,
+    A: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    G0: tl.constexpr,
+    G1: tl.constexpr,
+    B: tl.constexpr,
+):
     atom = tl.program_id(0) * B + tl.arange(0, B)
     valid = atom < A
     arc = tl.load(Center + atom * S0, valid, 0.0)
@@ -71,8 +90,15 @@ class _TrainableDecode(torch.autograd.Function):
         ctx.save_for_backward(center, major, minor)
         if count:
             _decode[(tr.cdiv(count, 256),)](
-                center, major, minor, decoded, count, *center.stride(), 256,
-                num_warps=4, enable_fp_fusion=False,
+                center,
+                major,
+                minor,
+                decoded,
+                count,
+                *center.stride(),
+                256,
+                num_warps=4,
+                enable_fp_fusion=False,
             )
         return decoded
 
@@ -84,9 +110,17 @@ class _TrainableDecode(torch.autograd.Function):
         grad_center = torch.empty((count, 3), device=center.device, dtype=center.dtype)
         if count:
             _decode_grad[(tr.cdiv(count, 256),)](
-                center, major, minor, grad_out, grad_center, count,
-                *center.stride(), *grad_out.stride(), 256,
-                num_warps=4, enable_fp_fusion=False,
+                center,
+                major,
+                minor,
+                grad_out,
+                grad_center,
+                count,
+                *center.stride(),
+                *grad_out.stride(),
+                256,
+                num_warps=4,
+                enable_fp_fusion=False,
             )
         return grad_center, None, None
 

@@ -52,17 +52,20 @@ def main():
                 column_conditions.append(condition)
             column_basis = torch.block_diag(*column_bases)
             column_matrix = torch.block_diag(*column_matrices)
-            col_indices = torch.cat([
-                indices + segment * 16
-                for segment, indices in enumerate(column_indices)
-            ])
+            col_indices = torch.cat(
+                [
+                    indices + segment * 16
+                    for segment, indices in enumerate(column_indices)
+                ]
+            )
             checks = {}
             for seed, reference in holdouts.items():
                 pod = reconstruct(
                     reference, row_indices, col_indices, row_matrix, column_matrix
                 )
                 projection = (
-                    row_basis @ (row_basis.T @ reference @ column_basis)
+                    row_basis
+                    @ (row_basis.T @ reference @ column_basis)
                     @ column_basis.T
                 )
                 x = inputs[seed]

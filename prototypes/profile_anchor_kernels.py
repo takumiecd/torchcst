@@ -24,7 +24,9 @@ def main():
     parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--decode-mode", choices=("torch", "fused"), default="torch")
-    parser.add_argument("--list-mode", choices=("full_tile", "anchors"), default="full_tile")
+    parser.add_argument(
+        "--list-mode", choices=("full_tile", "anchors"), default="full_tile"
+    )
     parser.add_argument(
         "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
     )

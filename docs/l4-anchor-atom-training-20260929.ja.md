@@ -1,5 +1,7 @@
 # L4・1024²でatom×site評価を減らす学習試作（2026-09-29）
 
+同日の後続最適化、denseとの比較、PODアンカー実験は[更新版](l4-anchor-optimization-20260929.ja.md)を参照。
+
 ## 方式
 
 既存のCST atom、Triweight、Strip＋Torus、AdamWを維持する。64×64ブロック内の固定アンカーだけで真のCST重みを評価し、三次Lagrange基底で近似演算子を組み立てる。学習経路は全W・全dWを生成せず、アンカー行列 `S` のみを生成する。`Y=(X B_i) Sᵀ B_oᵀ` なので、逆伝播で得る `dS=(dY B_o)ᵀ(X B_i)` をアンカーのatom勾配に縮約する。基底とアンカー位置は固定し、atom振幅と中心は毎ステップ更新する。幅の勾配は現行DirectAmpWidth経路と同じく切る。

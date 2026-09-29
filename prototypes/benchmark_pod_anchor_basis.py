@@ -26,10 +26,13 @@ def dense(block_weights):
 
 def get_weight(seed):
     torch.manual_seed(seed)
-    layer = BlockStripLinear((1024, 1024), (64, 64), round(0.05 * 1024**2), device="cuda")
+    layer = BlockStripLinear(
+        (1024, 1024), (64, 64), round(0.05 * 1024**2), device="cuda"
+    )
     with torch.no_grad():
         weight, canonical = mapped_control(
-            layer, prepare(layer.strip, layer.strip.atoms.p, support_layout=True),
+            layer,
+            prepare(layer.strip, layer.strip.atoms.p, support_layout=True),
             canonical_chunk=4,
         )
     if not canonical["passed"]:
@@ -62,7 +65,9 @@ def basis_from_covariance(covariance, rank):
     return basis, indices, reconstruction, condition
 
 
-def reconstruct(original, row_indices, col_indices, row_reconstruction, col_reconstruction):
+def reconstruct(
+    original, row_indices, col_indices, row_reconstruction, col_reconstruction
+):
     sample = original.index_select(1, row_indices).index_select(2, col_indices)
     return row_reconstruction @ sample @ col_reconstruction.T
 
@@ -83,7 +88,9 @@ def main():
         for segment in range(4):
             part = batch[:, :, segment * 16 : (segment + 1) * 16]
             col_covariance[segment] += torch.einsum("bri,brj->ij", part, part)
-    row_basis, row_indices, row_matrix, row_cond = basis_from_covariance(row_covariance, 8)
+    row_basis, row_indices, row_matrix, row_cond = basis_from_covariance(
+        row_covariance, 8
+    )
     column_bases = []
     column_indices = []
     column_matrices = []
@@ -96,10 +103,14 @@ def main():
         column_conditions.append(condition)
     column_basis_full = torch.block_diag(*column_bases)
     column_reconstruction = torch.block_diag(*column_matrices)
-    col_indices = torch.cat([indices + segment * 16 for segment, indices in enumerate(column_indices)])
+    col_indices = torch.cat(
+        [indices + segment * 16 for segment, indices in enumerate(column_indices)]
+    )
 
     polynomial_row_indices = torch.tensor(evenly_spaced_indices(64, 8), device="cuda")
-    polynomial_row_matrix = interpolation_matrix(64, polynomial_row_indices.tolist()).to("cuda")
+    polynomial_row_matrix = interpolation_matrix(
+        64, polynomial_row_indices.tolist()
+    ).to("cuda")
     polynomial_column_matrix, polynomial_column_indices = column_basis(4)
     polynomial_column_matrix = polynomial_column_matrix.to("cuda")
     polynomial_column_indices = torch.tensor(polynomial_column_indices, device="cuda")
@@ -107,14 +118,20 @@ def main():
     holdout = {}
     for seed in (53, 71):
         reference = get_weight(seed)
-        pod = reconstruct(reference, row_indices, col_indices, row_matrix, column_reconstruction)
+        pod = reconstruct(
+            reference, row_indices, col_indices, row_matrix, column_reconstruction
+        )
         projection = (
-            row_basis @ (row_basis.T @ reference @ column_basis_full)
+            row_basis
+            @ (row_basis.T @ reference @ column_basis_full)
             @ column_basis_full.T
         )
         polynomial = reconstruct(
-            reference, polynomial_row_indices, polynomial_column_indices,
-            polynomial_row_matrix, polynomial_column_matrix,
+            reference,
+            polynomial_row_indices,
+            polynomial_column_indices,
+            polynomial_row_matrix,
+            polynomial_column_matrix,
         )
         torch.manual_seed(seed + 1000)
         x16 = torch.randn(16, 1024, device="cuda")
@@ -124,9 +141,15 @@ def main():
             "pod_weight_l2": relative(pod, reference),
             "polynomial_weight_l2": relative(polynomial, reference),
             "pod_output_l2_m16": relative(x16 @ dense(pod).T, x16 @ dense(reference).T),
-            "pod_output_l2_m128": relative(x128 @ dense(pod).T, x128 @ dense(reference).T),
-            "polynomial_output_l2_m16": relative(x16 @ dense(polynomial).T, x16 @ dense(reference).T),
-            "polynomial_output_l2_m128": relative(x128 @ dense(polynomial).T, x128 @ dense(reference).T),
+            "pod_output_l2_m128": relative(
+                x128 @ dense(pod).T, x128 @ dense(reference).T
+            ),
+            "polynomial_output_l2_m16": relative(
+                x16 @ dense(polynomial).T, x16 @ dense(reference).T
+            ),
+            "polynomial_output_l2_m128": relative(
+                x128 @ dense(polynomial).T, x128 @ dense(reference).T
+            ),
         }
         print(seed, holdout[str(seed)], flush=True)
     result = {
