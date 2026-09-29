@@ -1,5 +1,9 @@
 # 5% atom：学習ステップの基準値と重み再利用
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 後続の[同一mapped幾何での学習測定](five-percent-mapped-training-memory.ja.md)で、局所重み窓を使うbackwardとAdamWのピークを比較した。以下のnative Strip結果は別幾何の先行測定として残す。
 
 メモリ削減を必須条件とする場合は、追加の[実測ピークメモリ判定](five-percent-memory-first.ja.md)を参照。本資料の全重み再利用は速度の診断であり、実装候補ではない。

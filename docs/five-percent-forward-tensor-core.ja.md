@@ -29,4 +29,4 @@
 
 局所Wを完全に消してatom計算とGEMMを単一カーネルにすると、複数の入力バッチタイルが同じWタイルを必要とする。現行の生成一回・複数入力行で利用する順序に比べ、atom評価の重複が増える可能性がある。M=2048ではTensor Core化後のGEMMが23.4 ms、候補一覧を使うW生成が27.0 msなので、単純な融合では生成費用を繰り返す危険がある。融合案は同じピーク・出力精度・学習ステップ時間で比較してから採用する。
 
-今回の実装は[局所forward](../prototypes/block_streamed_forward.py)、[候補一覧W生成](../prototypes/block_materialize_listed.py)、[局所Tensor Core GEMM](../prototypes/bounded_gemm.py)、[共有候補一覧を使うbackward](../prototypes/block_streamed_backward.py)。結果JSONは `output/triton-a100-20260928/` に保存した。
+今回の実装は[局所forward](../experiments/cuda/linear/block_streamed_forward.py)、[候補一覧W生成](../experiments/cuda/linear/block_materialize_listed.py)、[局所Tensor Core GEMM](../experiments/cuda/linear/bounded_gemm.py)、[共有候補一覧を使うbackward](../experiments/cuda/linear/block_streamed_backward.py)。結果JSONは `output/triton-a100-20260928/` に保存した。

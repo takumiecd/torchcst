@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
 def test_compact_layout_matches_legacy(
     rows, station_rows, columns, atoms, with_support
 ):
-    from prototypes.benchmark_triton_linear import model
+    from benchmarks.cuda.linear.benchmark_triton_linear import model
     from torchcst.nn._backends._triton_preparation import (
         route_and_layout,
         tile_parameters,

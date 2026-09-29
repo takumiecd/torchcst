@@ -19,6 +19,7 @@ from torchcst import (
     StripChart,
     Triweight,
 )
+from torchcst.nn._backends import resolve_backend
 
 
 def direct_kernel(
@@ -37,6 +38,18 @@ def direct_kernel(
         site_chunk=site_chunk,
         atom_chunk=atom_chunk,
     )
+
+
+def test_auto_keeps_the_exact_single_chart_backend() -> None:
+    chart = ProductChart(
+        shape=(2, 3),
+        axes=(LinePattern(2, spacing=0.5), LinePattern(3, spacing=0.5)),
+    )
+    model = CSTLinear(chart=chart, atoms=2, kernel=direct_kernel(1.0), backend="auto")
+    assert resolve_backend(model) == "materialized"
+    expected = model.dense_weight()
+    x = torch.randn(4, model.in_features)
+    torch.testing.assert_close(model(x), torch.nn.functional.linear(x, expected))
 
 
 def test_chart_contract_and_shape_axes_product():

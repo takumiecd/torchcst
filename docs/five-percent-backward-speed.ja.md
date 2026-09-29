@@ -1,5 +1,9 @@
 # 5% mapped CST：backwardの計算順序と速度
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-28。前段の[学習メモリ測定](five-percent-mapped-training-memory.ja.md)と同じ5% atom密度、FP32、TF32無効、A100 80GB PCIe MIG 3g.40gb（42 SM）、64×64 CST tileを使った。Mは線形層へ入る総行数。単層のAdamWステップでforward、入力勾配、atom勾配、更新を含む。全重みWと全重み勾配dWはCST経路で保持しない。
 
 この後にforwardの局所Tensor Core GEMMと候補atom一覧のforward・backward共有を追加した。最新の学習ステップは[forwardと一覧共有の測定](five-percent-forward-tensor-core.ja.md)を参照。
@@ -50,7 +54,7 @@
 
 atom勾配は既定1024行の局所dW窓を読み、1 warpが1 atomずつサイトの勾配を縮約する。16×64タイルで局所atom勾配は1024行窓当たり4096²で3.47 ms、8192²で6.75 msだった。従来の8 atomレーン・4 warp構成では6.15/12.18 ms。Triweightについては `gradient × gap²` を振幅勾配と4中心勾配で共有し、`6 × precision × amplitude` をサイト縮約後に掛けると2.71/5.27 msになった。レジスタ数も168→127に減った。局所勾配差は相対L1で約1.2×10⁻⁷、最大絶対差1.83×10⁻⁴。2 atomレーン以上はレジスタ退避や占有率低下で遅い。小さい8×64タイルは局所kernelだけなら約2.68/5.23 msだが、一覧生成が0.82/3.14→1.51/5.88 msへ増えるため、学習全体では16×64を選んだ。全重みW・全dWは一度も保持せず、局所dW窓を行ごとに上書きする。
 
-候補一覧の32 bit絶対番号版は4096²・M=128で50.71 ms、ピーク199.35 MB。8 bit局所番号にすると50.21 ms、ピーク178.39 MB。さらに1 warp化で39.85 ms、16×64化で39.22 ms、ピーク174.96 MBとなった。8192²・M=128は同じ順に190.92→189.77→152.19→148.09 ms、ピーク683.22→603.00→603.00→589.32 MB。大きいバッチでも表のとおり改善し、denseよりピークは低い。`staged_listed` は[試作の選択肢](../prototypes/block_streamed_backward.py)と[測定CLI](../prototypes/benchmark_mapped_training_memory.py)の `--atom-kernel staged_listed` で選ぶ。既定のbackendはまだ変更していない。
+候補一覧の32 bit絶対番号版は4096²・M=128で50.71 ms、ピーク199.35 MB。8 bit局所番号にすると50.21 ms、ピーク178.39 MB。さらに1 warp化で39.85 ms、16×64化で39.22 ms、ピーク174.96 MBとなった。8192²・M=128は同じ順に190.92→189.77→152.19→148.09 ms、ピーク683.22→603.00→603.00→589.32 MB。大きいバッチでも表のとおり改善し、denseよりピークは低い。`staged_listed` は[試作の選択肢](../experiments/cuda/linear/block_streamed_backward.py)と[測定CLI](../benchmarks/cuda/linear/benchmark_mapped_training_memory.py)の `--atom-kernel staged_listed` で選ぶ。既定のbackendはまだ変更していない。
 
 Triweightの係数共有で、学習ステップは4096²・M=128で39.22→36.16 ms、8192²・M=128で148.09→136.38 ms。M=2048でも66.92→64.00 ms、256.98→244.85 msになった。ピークは変わらない。対照的にサイトとatomの大きな4次元座標からノルムの差で距離二乗を求める案は、トーラスの大半径に起因する桁落ちで勾配差が大きく、局所原点へ平行移動しても遅く、採用しなかった。5成分のatomic加算を一時バッファ書き込みへ置き換える診断でも局所kernelは2.82→2.77 ms（4096²）、5.25→5.36 ms（8192²）で、後段縮約の費用を吸収できる余地はない。
 
@@ -88,4 +92,4 @@ Triton `tl.dot(input_precision="tf32x3")` なら入力の分割バッファな�
 
 Triweight共有前の `aef67b6` をGPU eventで分けると、4096²・M=128は重み窓生成9.0 ms、入力勾配GEMM0.7 ms、一覧生成0.8 ms、局所dW GEMM0.7 ms、atom縮約13.5 msだった。8192²・M=128は順に35.9、2.6、3.1、2.5、52.4 ms。M=2048では4096²の二つのGEMMが各約9.5 ms、8192²では各約38 msに増え、重み窓生成とatom縮約はほぼ一定だった。GPU eventの合計はPython側の同期や準備時間を含む学習ステップ時間とは一致しない。重み生成のwarp数を1/2/4/8、タイル形状を数種類比較したが、現行64×32・4 warpの1024行窓当たり2.31/4.53 ms（4096²/8192²）から有意に改善しなかった。1 warpではregister spillが起き、2.63/5.04 msに悪化した。atomループのソフトウェアパイプライン化も、基準3.46/6.74 msに対して2段で3.84/7.46 ms、2回展開で3.93/7.68 msと遅くなった。
 
-実装は[backward試作](../prototypes/block_streamed_backward.py)、[forward窓](../prototypes/block_streamed_forward.py)、[候補一覧カーネル](../prototypes/block_tile_atom_lists.py)、[学習ステップ測定](../prototypes/benchmark_mapped_training_memory.py)、[backward内訳測定](../prototypes/profile_listed_backward_parts.py)、[支持域診断](../prototypes/profile_backward_support.py)、[勾配テスト](../tests/test_block_streamed_backward.py)。A100で検証した初期版 `98ce184` のgit archive SHA256は `bc17e0c3051af286dbe21070bc31cdc7a1ae7f6c0f956238217755f81f35d181`。区間試作 `18a0924` は `24a0434a06c0a3158fa48bd6aa00a13f1cb5aa760acbc6e9592072a3612451fb`。FMA版 `23bf5a9` は `5f778b7fc1e8941cbac18e8767e60e7d280a9eb9f179fb0b73b53dac73b3b962`。候補一覧版 `aef67b6` は `5c05f294c64a733645d44c0a94399a00b88a90166f7365e3f6212cddeb7f4de9`。Triweight共有版 `a758496` は `acb5b94a8c8dc75c4a1da91152f784086ae0443941636bdf59e84813de88b252`、窓キャッシュ保持期間を短縮した版 `6de447a` は `cbaf6128572da6d80e97edbceb0d97b5d77425f6930243c53bcbb1cfcb7191af`。結果JSONは `output/triton-a100-20260928/` に保存した。
+実装は[backward試作](../experiments/cuda/linear/block_streamed_backward.py)、[forward窓](../experiments/cuda/linear/block_streamed_forward.py)、[候補一覧カーネル](../experiments/cuda/linear/block_tile_atom_lists.py)、[学習ステップ測定](../benchmarks/cuda/linear/benchmark_mapped_training_memory.py)、[backward内訳測定](legacy-prototypes.ja.md)、[支持域診断](legacy-prototypes.ja.md)、[勾配テスト](../tests/test_block_streamed_backward.py)。A100で検証した初期版 `98ce184` のgit archive SHA256は `bc17e0c3051af286dbe21070bc31cdc7a1ae7f6c0f956238217755f81f35d181`。区間試作 `18a0924` は `24a0434a06c0a3158fa48bd6aa00a13f1cb5aa760acbc6e9592072a3612451fb`。FMA版 `23bf5a9` は `5f778b7fc1e8941cbac18e8767e60e7d280a9eb9f179fb0b73b53dac73b3b962`。候補一覧版 `aef67b6` は `5c05f294c64a733645d44c0a94399a00b88a90166f7365e3f6212cddeb7f4de9`。Triweight共有版 `a758496` は `acb5b94a8c8dc75c4a1da91152f784086ae0443941636bdf59e84813de88b252`、窓キャッシュ保持期間を短縮した版 `6de447a` は `cbaf6128572da6d80e97edbceb0d97b5d77425f6930243c53bcbb1cfcb7191af`。結果JSONは `output/triton-a100-20260928/` に保存した。

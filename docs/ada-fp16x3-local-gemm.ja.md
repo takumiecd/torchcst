@@ -1,6 +1,10 @@
 # Adaの局所Wに対するFP16分解GEMM
 
-2026-09-28。RTX 6000 Ada、CST 8192×8192、atom密度5%、64×64幾何タイル、1024行の局所W窓。学習経路は全W・全dWを保持しない。試作コードは`prototypes/bounded_gemm_fp16x3.py`。既定のdispatchは変更していない。
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
+2026-09-28。RTX 6000 Ada、CST 8192×8192、atom密度5%、64×64幾何タイル、1024行の局所W窓。学習経路は全W・全dWを保持しない。試作コードは`experiments/cuda/linear/bounded_gemm_fp16x3.py`。既定のdispatchは変更していない。
 
 ## 計算方法
 
@@ -27,7 +31,7 @@ seed 21/22/23、M=2048のIEEE学習経路との比較では、出力・`dX`の�
 
 ## denseとの直接比較
 
-追加で`prototypes.profile_paired_dense_cst`を実行し、同じRTX 6000 Ada上でdenseとCSTの完全なAdamWステップを10回ずつ交互に計測した。denseはCSTから一度生成した全Wをパラメータとして保持し、CSTはM=128でIEEE、M=2048で上記`fp16x3_dx`を使用。両モデルとoptimizer状態が共存する**速度比較**なので、このプロセスのメモリ値は比較に使わない。初回の全出力は3e-5基準で一致した。
+追加で`benchmarks.cuda.linear.profile_paired_dense_cst`を実行し、同じRTX 6000 Ada上でdenseとCSTの完全なAdamWステップを10回ずつ交互に計測した。denseはCSTから一度生成した全Wをパラメータとして保持し、CSTはM=128でIEEE、M=2048で上記`fp16x3_dx`を使用。両モデルとoptimizer状態が共存する**速度比較**なので、このプロセスのメモリ値は比較に使わない。初回の全出力は3e-5基準で一致した。
 
 | M | dense中央値 | CST中央値 | 各回のCST/dense比の中央値 | CSTピーク / denseピーク |
 | ---: | ---: | ---: | ---: | ---: |
@@ -44,7 +48,7 @@ M=2048では個別中央値の比は1.36倍で、対応する各回の比の中�
 
 交互学習ステップ: `python -m prototypes.profile_paired_step_gemm --size 8192 --rows 2048 --rounds 10 --output ...`。M=128比較では`--rows 128 --control-mode ieee`。
 
-denseとの交互比較: `python -m prototypes.profile_paired_dense_cst --size 8192 --rows 2048 --rounds 10 --output ...`。M=128も同じコマンドで`--rows 128`。
+denseとの交互比較: `python -m benchmarks.cuda.linear.profile_paired_dense_cst --size 8192 --rows 2048 --rounds 10 --output ...`。M=128も同じコマンドで`--rows 128`。
 
 測定JSONは`output/ada-20260928/cache-hypotheses/`に保存した。`full-fp16x3-dx-gradients-seed22.json`、`full-fp16x3-dx-gradients-seed23.json`、`ieee-repeat-gradients-seed22.json`、`paired-full-step-fp16x3-dx-m2048.json`、`paired-full-step-fp16x3-dx-m128.json`、`full-step-fp16x3-dx-m2048.json`を参照。
 直接比較は`paired-dense-cst-m128.json`と`paired-dense-cst-m2048.json`。

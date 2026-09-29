@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from test_triton_linear import GPU, _model
 
-from prototypes.local_atom_linear import forward, reference
+from experiments.cuda.linear.local_atom_linear import forward, reference
 from torchcst import Biweight, Triangle, Triweight, WendlandC2
 
 

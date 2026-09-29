@@ -30,6 +30,12 @@ Public objects are re-exported from `torchcst`; internal placement must not leak
 into the README API. Keep module ownership separate from derivative evaluation,
 and keep optimizer logic independent of the concrete Linear or Conv family.
 
+`experiments/` holds development-only kernels; `benchmarks/` holds their
+reproducible measurements. Neither belongs in the wheel, and `src/torchcst/`
+must not import either. The public `backend="auto"` continues to select exact
+CST implementations. Fixed-anchor CST is a separate approximate development
+path until its semantics and quality policy are explicitly established.
+
 The canonical operator is `sum(kernel(p[a], charts))`. A factored matrix
 expression is an optional kernel capability and must not become the model
 definition. Amplitude and every other trainable kernel property belong in each

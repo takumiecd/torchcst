@@ -1,5 +1,9 @@
 # RTX 6000 Adaでの5% CST学習: 重み精度と共有時の暫定測定
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-28。8192×8192、atom数3,355,443（5%）、単層AdamW、FP32、seed 21。`39c0d66` の隔離snapshotに本記録のコード差分を転送して測った。RTX 6000 Ada 48GBは `parc_final` と同時使用中だったため、以下の時間は探索用であり、空き状態での性能比較として扱わない。授業用RTX A6000は使用していない。
 
 ## 正確性
@@ -12,7 +16,7 @@ Adaでは、局所W生成に `enable_fp_fusion=True` を指定すると、canoni
 
 ## 共有GPUでの学習ステップ
 
-`prototypes.benchmark_mapped_training_memory` を使用。10ステップのウォームアップ後、同期wall時間7回の中央値。M=128はIEEE FP32、M=2048はforwardと入力勾配にTF32x3。CSTはlisted生成とatom勾配のlisted経路、1024行窓、AdamW。denseは同じCSTから生成したWを常駐させ、生成時間を含めない。各モードは別プロセス。
+`benchmarks.cuda.linear.benchmark_mapped_training_memory` を使用。10ステップのウォームアップ後、同期wall時間7回の中央値。M=128はIEEE FP32、M=2048はforwardと入力勾配にTF32x3。CSTはlisted生成とatom勾配のlisted経路、1024行窓、AdamW。denseは同じCSTから生成したWを常駐させ、生成時間を含めない。各モードは別プロセス。
 
 | M | 方式 | 窓キャッシュ | 中央値 ms | 学習ステップ割当ピーク MB |
 | ---: | --- | ---: | ---: | ---: |
@@ -68,4 +72,4 @@ M=128のforward単体では既存の局所W＋GEMMが5.24 ms、既存のA100向�
 
 M=2048のTF32x3 GEMMタイルを単窓で再探索しても、現行`(32,128,32,4)`のforward 0.972 ms、入力勾配0.994 msを明確に上回る構成はなかった。候補によっては共有メモリ上限超過が起きた。これは単窓のカーネル時間であり、ステップ全体の優劣ではない。
 
-診断コードは`prototypes.profile_ada_forward_alternatives`、`prototypes.profile_mapped_training_kernels`、`prototypes.profile_overlap_forward`。結果JSONは`output/ada-20260928/free-bff1ab3/`に保存。次の改善ではM=2048のGEMMと局所W生成、M=128のW生成とatom勾配を個別に狙い、学習ステップ全体・ピーク・勾配精度で採否を決める。
+診断コードは`prototypes.profile_ada_forward_alternatives`、`benchmarks.cuda.linear.profile_mapped_training_kernels`、`prototypes.profile_overlap_forward`。結果JSONは`output/ada-20260928/free-bff1ab3/`に保存。次の改善ではM=2048のGEMMと局所W生成、M=128のW生成とatom勾配を個別に狙い、学習ステップ全体・ピーク・勾配精度で採否を決める。

@@ -1,6 +1,6 @@
 # RTX 3070とA100 MIGの5% CST学習比較
 
-2026-09-28。コミット `1f0d7b8` の同じGit archive（SHA256 `c2804232c63a7b505ff710c98fd685783024115247e0f5707ba757bca9411ac0`）を両GPUへ転送し、`prototypes.benchmark_mapped_training_memory` で測った。Wは8192×8192、atom数3,355,443（5%）、単層AdamW、FP32、seed 21。CSTは全Wと全dWを保持せず、1024行の局所W窓、候補atom一覧共有、atom勾配のlisted経路を使用する。M=128はIEEE FP32 GEMM・窓2枚、M=2048はforwardと入力勾配にTF32x3・局所dWにIEEE FP32・窓4枚。denseは同じCSTから生成したWを常駐させ、W生成時間は測定に含めない。各モードは別プロセスで、最初のステップを含む10ステップをウォームアップした後、同期wall時間7回の中央値を取った。
+2026-09-28。コミット `1f0d7b8` の同じGit archive（SHA256 `c2804232c63a7b505ff710c98fd685783024115247e0f5707ba757bca9411ac0`）を両GPUへ転送し、`benchmarks.cuda.linear.benchmark_mapped_training_memory` で測った。Wは8192×8192、atom数3,355,443（5%）、単層AdamW、FP32、seed 21。CSTは全Wと全dWを保持せず、1024行の局所W窓、候補atom一覧共有、atom勾配のlisted経路を使用する。M=128はIEEE FP32 GEMM・窓2枚、M=2048はforwardと入力勾配にTF32x3・局所dWにIEEE FP32・窓4枚。denseは同じCSTから生成したWを常駐させ、W生成時間は測定に含めない。各モードは別プロセスで、最初のステップを含む10ステップをウォームアップした後、同期wall時間7回の中央値を取った。
 
 | GPU | M | dense ms | CST ms | CST / dense | denseピーク MB | CSTピーク MB |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |

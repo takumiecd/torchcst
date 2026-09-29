@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from prototypes.block_strip_linear import BlockStripLinear
+from experiments.cuda.linear.block_strip_linear import BlockStripLinear
 
 
 @pytest.mark.parametrize(
@@ -123,7 +123,10 @@ def test_boundary_seam_and_graph_updates(backend, execution=None):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_diagnostic_modes_and_counts():
-    from prototypes.direct_diagnostics import count_rows, diagnostic_forward
+    from experiments.cuda.linear.direct_diagnostics import (
+        count_rows,
+        diagnostic_forward,
+    )
     from torchcst.nn._backends._preparation import prepare
 
     layer = BlockStripLinear((32, 32), (16, 32), 16, device="cuda")
@@ -251,7 +254,7 @@ def test_support_culling_partial_and_seam(width, mode):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_support_counts_match_canonical_atom_sites():
-    from prototypes.block_support_diagnostics import diagnose_support
+    from experiments.cuda.linear.block_support_diagnostics import diagnose_support
     from torchcst.nn._backends._preparation import prepare
 
     layer = BlockStripLinear((17, 65), (16, 64), 12, device="cuda")

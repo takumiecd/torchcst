@@ -83,7 +83,7 @@ archive SHA256:
 リモート: `srv11/cst-lab/torchcst-current-profile-20260926/`。
 
 ```bash
-python -m prototypes.profile_current_paths --output-dir results --source-commit COMMIT
+python -m benchmarks.cuda.linear.profile_current_paths --output-dir results --source-commit COMMIT
 ```
 
 初回の集計はCUDA device eventにGPU annotationも含めて二重加算していた。

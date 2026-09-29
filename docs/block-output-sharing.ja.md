@@ -1,5 +1,9 @@
 # 複数出力特徴で入力を共有する直接計算
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-26。[入力のatom間再利用](block-direct-reuse.ja.md)に続く実験。
 
 続報: [support外の演算量と列区間省略](support-culling-study.ja.md)。
@@ -30,7 +34,7 @@ with torch.no_grad():
 
 ## 実装
 
-`prototypes/block_shared_kernel.py`の`block_direct_shared`を追加した。
+`experiments/cuda/linear/block_shared_kernel.py`の`block_direct_shared`を追加した。
 1ブロックがBM入力行×BN出力特徴を担当する。
 CST tileは64×64を維持し、BNはその内側のCUDA実行分割。
 同じCST stationに属する出力特徴で入力断片・atomの候補範囲を共有する。

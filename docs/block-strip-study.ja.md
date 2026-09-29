@@ -1,5 +1,9 @@
 # 小さな行列ブロックを使うStrip + Torusの測定
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-26。4096×4096の重み、入力行数M=128で、64×64・64×128・128×128を比較した。
 
 続報: [入力を再利用する直接計算の改善](block-direct-reuse.ja.md)。
@@ -17,7 +21,7 @@ atom総数8,192固定では、旧16×4096の直接版188.3msに対し、64×64�
 
 ## 実装した範囲
 
-`prototypes/block_strip_linear.py` は行列ブロック(r, c)を
+`experiments/cuda/linear/block_strip_linear.py` は行列ブロック(r, c)を
 `g = r * column_groups + c` の順で既存Stripのstationへ対応させる。
 Strip上の隣接関係をTorusの継ぎ目も含めて保持する。行列の上下左右すべてが隣接する構造ではない。
 最大2つの隣接stationを参照する既存I/B配置を使用する。
@@ -221,7 +225,7 @@ atom数が増える場合にはO(atoms×stations)の所属判定も別途改善�
 PYTHONPATH=src:. python -m pytest -q \
   tests/test_large_strip_preparation.py \
   tests/test_block_strip_linear.py tests/test_support_layout.py
-PYTHONPATH=src:. python -m prototypes.benchmark_tile_study \
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.benchmark_tile_study \
   --phase tiles --output-dir results \
   --source-commit 759ac4104b4c1e83c760534fc6adfe9b40c6a4fd
 PYTHONPATH=src:. python -m prototypes.profile_block_strip \

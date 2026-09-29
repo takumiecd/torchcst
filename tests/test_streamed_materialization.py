@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from prototypes.block_strip_linear import BlockStripLinear
+from experiments.cuda.linear.block_strip_linear import BlockStripLinear
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")

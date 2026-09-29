@@ -395,6 +395,10 @@ is available through `pip install -e '.[cuda]'` on Linux.
 | `tiled` | PyTorch reference using chart-defined weight tiles |
 | `triton` | Generated-weight GPU GEMM and custom first-order backward |
 
+`auto` continues to use the exact CST operator. The fixed-anchor approximation
+is [development code](experiments/cuda/linear/README.md) and is not selected by
+the public backend policy.
+
 Backend assignment is validated, so `layer.backend = "triton"` selects the
 implementation without changing parameters or checkpoint format. Execution
 block sizes are internal; they do not alter `StripChart.tile_shape`. The
@@ -426,11 +430,11 @@ SM count, workload shape and atom count, with at most eight partials and a
 ordinary forward timings varied between small gains and regressions across runs.
 It remains an internal benchmark option; `backend="triton"` keeps the
 single-part schedule. The experiment does not change the chart or materialize
-weights. Run `python -m prototypes.benchmark_triton_split --output paired.json`
+weights. Run `python -m benchmarks.cuda.linear.benchmark_triton_split --output paired.json`
 to compare both paths, including alternating wall-time measurements.
 
 The primary performance target is a conventional dense Linear with an already
-stored weight, measured with `prototypes.benchmark_dense_reference`. Dense
+stored weight, measured with `benchmarks.cuda.linear.benchmark_dense_reference`. Dense
 weight creation is outside timing; CST preparation and on-the-fly tile
 generation stay inside. Report CST/dense time ratios (1 means parity), forward
 and forward+backward separately, and parameter storage plus peak extra tensor

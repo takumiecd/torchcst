@@ -6,8 +6,8 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from prototypes.block_fused_config import FusedConfig, default_fused_config
-from prototypes.block_strip_linear import BlockStripLinear
+from experiments.cuda.linear.block_fused_config import FusedConfig, default_fused_config
+from experiments.cuda.linear.block_strip_linear import BlockStripLinear
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")

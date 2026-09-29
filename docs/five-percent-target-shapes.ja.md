@@ -1,5 +1,9 @@
 # 5% CST学習の対象形状
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 候補リストのGPU予約と完全ステップCUDA Graphを含む後続の検証は[ブレイクスルー探索](five-percent-breakthrough-research.ja.md)を参照。
 2026-09-29の小形状・Ampere再測定は[こちら](small-shape-ada-ampere-20260929.ja.md)を参照。
 
@@ -27,7 +31,7 @@ seed 21、単層AdamW、FP32、TF32無効、全出力の許容`atol=rtol=3e-5`�
 
 両方とも全出力照合は違反0。denseのM=128は各回0.230–0.365 msと短時間測定の揺れが大きく、保持窓1枚の別runでは4.07倍だった。速度比は概ね4–5倍の目安。M=2048ではactivation等がピークを支配し、1024²のCSTによる節約は約5.8 MBしか残らない。大形状のメモリ利益と小形状の速度差は別々の必須指標として評価する。
 
-再現コードは`prototypes.profile_paired_dense_cst`と`prototypes.benchmark_mapped_training_memory`。測定JSONは`output/ada-20260928/cache-hypotheses/paired-dense-cst-1024-m128-cache0.json`、`paired-dense-cst-1024-m2048-cache0.json`、`step-1024-m{128,2048}-cst-cache0.json`、`step-1024-m{128,2048}-dense.json`。旧A100測定との比較は[サイズ別メモリ記録](five-percent-mapped-training-memory.ja.md)を参照。
+再現コードは`benchmarks.cuda.linear.profile_paired_dense_cst`と`benchmarks.cuda.linear.benchmark_mapped_training_memory`。測定JSONは`output/ada-20260928/cache-hypotheses/paired-dense-cst-1024-m128-cache0.json`、`paired-dense-cst-1024-m2048-cache0.json`、`step-1024-m{128,2048}-cst-cache0.json`、`step-1024-m{128,2048}-dense.json`。旧A100測定との比較は[サイズ別メモリ記録](five-percent-mapped-training-memory.ja.md)を参照。
 
 ## 1024²向け経路とdispatchの判断
 
@@ -37,7 +41,7 @@ forward専用の既存融合候補をM=128で比較した。局所W＋GEMMが0.1
 
 `CSTLinear`には既に`_IMPLEMENTATIONS`のbackend登録と`auto`選択がある。ただし現行`auto`は入力のM、GPU、学習時のメモリ上限を見ず、単一chartでは全Wを作る`materialized`を選ぶ。mapped試作の学習経路もこの登録表の外にある。**新しいPyTorch dispatcherを先に設けても、今の1024²を速くするkernelは増えない。** 次の実装順は、全W相当の一時領域を避ける1024²用forward/backward経路を試作・検証し、実測で勝った時にshape・M・dtype・device・学習モードを受ける小さな実行ポリシーへ登録すること。明示的なbackend指定を残し、自動選択が全Wへ戻らない条件をテストする。
 
-内訳とforward比較のJSONは`output/ada-20260928/cache-hypotheses/kernels-1024-m128.json`、`kernels-1024-m2048.json`、`forward-alternatives-1024-m128.json`。計測コードは`prototypes.profile_mapped_training_kernels`と`prototypes.profile_ada_forward_alternatives`。
+内訳とforward比較のJSONは`output/ada-20260928/cache-hypotheses/kernels-1024-m128.json`、`kernels-1024-m2048.json`、`forward-alternatives-1024-m128.json`。計測コードは`benchmarks.cuda.linear.profile_mapped_training_kernels`と`prototypes.profile_ada_forward_alternatives`。
 
 ## dispatch前の1024²計算方式比較
 
@@ -65,4 +69,4 @@ Tensor Coreを使う既存のFP16x3 GEMMも1024²で試した。forwardと入力
 
 M=2048では従来CST比約10.3%改善。新経路とdenseの全出力照合は`atol=rtol=3e-5`で違反0、最大絶対差`8.5e-7`。従来CSTとの比較でもforward、入力勾配、atom勾配の確認に通った。M=128は負荷の変動が大きく、対応ペアでは新経路が約1.5%遅い。小Mへの採用は見送る。**1024²でもMによって有利な計算方式が変わる**ことが実測できたが、denseとの速度差はM=2048でも約2.86倍残る。dispatch実装はまだ行わず、この2経路を試作のまま保持する。
 
-再現コードは`prototypes.profile_small_window_schedule`、`prototypes.profile_parallel_weight_atoms`、`prototypes.profile_paired_dense_cst`。JSONは`output/ada-20260928/cache-hypotheses/`の`small-window-schedule-m*.json`、`parallel-weight-atoms-1024-m128.json`、`parallel-weight-step-1024-m*.json`、`atom-comparison-1024-m*.json`、`gemm-comparison-1024-m*.json`、`combined-comparison-1024-m*.json`、`paired-dense-cst-1024-m*-threeway.json`。次はW生成とatom勾配にまたがる融合案を小形状で試し、Mの切替境界を測定してからdispatchへ載せる。
+再現コードは`prototypes.profile_small_window_schedule`、`prototypes.profile_parallel_weight_atoms`、`benchmarks.cuda.linear.profile_paired_dense_cst`。JSONは`output/ada-20260928/cache-hypotheses/`の`small-window-schedule-m*.json`、`parallel-weight-atoms-1024-m128.json`、`parallel-weight-step-1024-m*.json`、`atom-comparison-1024-m*.json`、`gemm-comparison-1024-m*.json`、`combined-comparison-1024-m*.json`、`paired-dense-cst-1024-m*-threeway.json`。次はW生成とatom勾配にまたがる融合案を小形状で試し、Mの切替境界を測定してからdispatchへ載せる。

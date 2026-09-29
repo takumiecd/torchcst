@@ -1,5 +1,9 @@
 # CUTLASSからの5% mapped GEMM検討
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-27。CUTLASS checkout `0b55a2f691d69981583568fd9eb69687b1f0de8a`を参照し、A100上のatom密度5%（N=K=4096/8192、M=128、CST tile64×64）に移せる手法を調べた。CUTLASS自体は変更していない。
 
 ## 設計との対応

@@ -1,5 +1,9 @@
 # atom 密度 5%：小分け重み生成と GEMM の分離
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 更新後の[学習ステップ基準値と重み再利用の測定](five-percent-training-and-reuse.ja.md)も参照。
 [メモリ優先の判定](five-percent-memory-first.ja.md)では、現行の全重みなし経路もforwardピークで生成済みdenseを上回ることを確認した。
 [局所重みを先に作って入力に使い切る測定](five-percent-weight-first-streaming.ja.md)では、バッチをまとめた場合の速度とメモリを検証した。
@@ -19,13 +23,13 @@ CUDA Graph を使わない通常呼び出しの同期 wall time 中央値は、4
 
 生成済みdense重みを掛けるだけの同一run参考値は0.659/3.026 msで、陽性witness付き方式も重み生成に大きな時間を使っている。dense参考値には重み生成とそのメモリ確保を含まない。
 
-`triton_streamed` は `prototypes/block_strip_linear.py` から明示的に選択できる。既定の重み生成 tile は64×32、重み窓は1024行。4D の chart、64×64 tile、行数が64の倍数という条件に限定した forward-only 試作で、勾配が必要な呼び出しは拒否する。重み窓を生成して同じ buffer を使い回し、`torch.mm` で出力の該当列へ直接書く。atom 更新後の CUDA Graph 再実行を含む A100 テスト `tests/test_streamed_materialization.py` は 1 件合格した。これを既定 dispatch に組み込んでいない。
+`triton_streamed` は `experiments/cuda/linear/block_strip_linear.py` から明示的に選択できる。既定の重み生成 tile は64×32、重み窓は1024行。4D の chart、64×64 tile、行数が64の倍数という条件に限定した forward-only 試作で、勾配が必要な呼び出しは拒否する。重み窓を生成して同じ buffer を使い回し、`torch.mm` で出力の該当列へ直接書く。atom 更新後の CUDA Graph 再実行を含む A100 テスト `tests/test_streamed_materialization.py` は 1 件合格した。これを既定 dispatch に組み込んでいない。
 
 ## 固定site箱による準備の改善
 
 現在の支持域分類はatomごとにownerと隣接2 stationを調べる。固定したsiteの4D AABBと、現在のatom中心・現在のprecisionから距離下界を求め、支持半径を確実に超える隣接stationの64列走査を省く。重なる場合は従来どおり厳密な最近行×全列検査へ戻す。ownerは必ず厳密検査する。箱は固定幾何から一度作り、4096²で128 KiB、8192²で512 KiB。今回のfull測定には毎forwardのatom配置準備を含み、固定箱の一度限りの生成は含まない。
 
-初期配置の全atom診断では、除外可能な隣接走査が4096²で1,677,722/1,677,722、8192²で6,710,886/6,710,886だった。箱だけの診断値を速度とは見なしていない。実測の配置準備は4096²で2.770→2.471 ms、8192²で11.348→10.478 ms。両形状とも準備済みのatom配列・offsetsが従来方式と完全一致した。境界共有、seam、idle、atom移動とCUDA Graph更新を含むA100テスト `tests/test_support_box_routing.py` も合格した。箱付き準備は `prototypes/support_box_routing.py` の `boxed_prepare` を明示的に呼び、`triton_streamed` に `prepared` として渡す試作である。
+初期配置の全atom診断では、除外可能な隣接走査が4096²で1,677,722/1,677,722、8192²で6,710,886/6,710,886だった。箱だけの診断値を速度とは見なしていない。実測の配置準備は4096²で2.770→2.471 ms、8192²で11.348→10.478 ms。両形状とも準備済みのatom配列・offsetsが従来方式と完全一致した。境界共有、seam、idle、atom移動とCUDA Graph更新を含むA100テスト `tests/test_support_box_routing.py` も合格した。箱付き準備は `experiments/cuda/linear/support_box_routing.py` の `boxed_prepare` を明示的に呼び、`triton_streamed` に `prepared` として渡す試作である。
 
 ## owner の陽性 witness
 

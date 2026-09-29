@@ -1,5 +1,9 @@
 # 5% CST学習：固定長の圧縮候補リストと窓の選択
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-29。RTX 6000 Ada 48 GB、PyTorch 2.9.1+cu128、Triweight、64×64 tile、FP32、atom密度5%。主対象は8192²・入力行数M=2048の単層AdamW完全ステップ。CST側は全W・全dWを生成・保持しない。最も大きい試験窓は4096×8192で全Wの半分、採用候補の窓は1024×8192以下。速度は同一プロセスでGraphを交互再実行した結果を優先し、ピークは方式ごとに別プロセスで測ったPyTorch割当ピークとする。
 
 ## 実装した候補リスト
@@ -39,7 +43,7 @@
 
 小形状1024²・M=2048も8 bit版の512行・保持0窓を測った。Graph captureピーク62.70 MB、再実行中央値0.965 msで、5回のGraph/eager更新照合は最大絶対差2.98e-8。以前の同shape dense Graphは約85.25 MB、0.487 msであり、メモリは低いが速度差はなお約2倍ある。異なるrunの時間比は目安に留める。
 
-再現コードは`prototypes.block_streamed_backward`、`prototypes.block_tile_atom_lists`、`prototypes.block_materialize_listed`、`prototypes.profile_candidate_csr`、`prototypes.probe_csr_graph_step`、`prototypes.profile_paired_dense_cst`。生JSONは`output/ada-20260929/overnight/`。CUDA C++反証は`prototypes/cuda/materialize_bounded.cu`と`prototypes.profile_cuda_materialize`。結果はRTX 6000 Adaが空いていることを確認してから測った。
+再現コードは`experiments.cuda.linear.block_streamed_backward`、`experiments.cuda.linear.block_tile_atom_lists`、`experiments.cuda.linear.block_materialize_listed`、`benchmarks.cuda.linear.profile_candidate_csr`、`benchmarks.cuda.linear.probe_csr_graph_step`、`benchmarks.cuda.linear.profile_paired_dense_cst`。生JSONは`output/ada-20260929/overnight/`。CUDA C++反証は`prototypes/cuda/materialize_bounded.cu`と`prototypes.profile_cuda_materialize`。結果はRTX 6000 Adaが空いていることを確認してから測った。
 
 CUDA C++試作の実行にはCUDA Toolkitと`ninja`が必要だった。Ada側では作業ディレクトリだけに`python -m pip install --target .probe-deps ninja`で入れ、`PATH="$PWD/.probe-deps/bin:$PATH" PYTHONPATH=src:. python -m prototypes.profile_cuda_materialize --size 8192 --output results/cuda-w.json`で測った。PyTorch環境全体への依存追加はしていない。
 
@@ -47,7 +51,7 @@ CUDA C++試作の実行にはCUDA Toolkitと`ninja`が必要だった。Ada側�
 
 同じ空き状態のRTX 6000 Adaで、最終8 bit版のGraphを再プロファイルした。GPU kernel合計34.93 ms中、FP16x3の局所GEMMが9.02 ms、局所W生成6.35 ms、atom勾配5.97 ms、IEEE FP32の局所dW GEMM5.82 ms、routing1.35 ms、候補一覧構築1.00 msだった。単一ステップのprofile値で、交互Graph再実行の中央値とは測定対象が異なる。
 
-局所dWのTensor Core化では、従来の3項FP16分解へ残差同士の積を加えた4項版`fp16x4_dw`を試した。M=2048、seed 21でforwardと入力勾配は3e-5基準に合格したが、atom勾配は3e-4基準を **10,387 / 16,777,215要素**で超えた。3項版の10,421件からほぼ改善しておらず、省略した4項目だけが原因ではない。完全ステップへ採用しない。試作コードは`prototypes/bounded_gemm_fp16x3.py`、再現は`prototypes.compare_bounded_gemm_gradients --compare-mode fp16x4_dw`。
+局所dWのTensor Core化では、従来の3項FP16分解へ残差同士の積を加えた4項版`fp16x4_dw`を試した。M=2048、seed 21でforwardと入力勾配は3e-5基準に合格したが、atom勾配は3e-4基準を **10,387 / 16,777,215要素**で超えた。3項版の10,421件からほぼ改善しておらず、省略した4項目だけが原因ではない。完全ステップへ採用しない。試作コードは`experiments/cuda/linear/bounded_gemm_fp16x3.py`、再現は`prototypes.compare_bounded_gemm_gradients --compare-mode fp16x4_dw`。
 
 候補一覧と計算タイルの行数を16から8、32へ変更した。最初の1024行窓で、8行版のW生成は0.696→0.686 msとほぼ同じだが、候補構築は0.884→1.657 ms、一覧領域は12.58→25.17 MB、atom勾配は1.099→1.126 msとなった。32行版は候補構築0.689→0.376 ms、一覧領域12.58→6.29 MBだが、W生成0.541→0.631 ms、atom勾配0.909→0.971 msへ悪化した。各値は別々の交互測定runで、そのrun内の16行版と比較する。Wは両方とも16行版とビット一致した。一方atom勾配は3e-4基準で8行版216,147件、32行版177,508件の差があり、縮約順の違いを含むので採用しない。試作は`prototypes.profile_bounded_tile_rows`に残した。既定の16行経路は変更していない。
 
@@ -76,7 +80,7 @@ Adaが引き続き空いていることを前後に確認した。`materialize_l
 
 並行して二つの案を採否判定した。WをGEMM前に高位・低位のFP16へ分ける試作は局所forward 0.546→0.549 msで改善せず、入力勾配GEMM単体は0.578→0.547 msだったが、分割コストと2配列の生成・保持を含めていない。完全ステップへは接続しない。atom勾配で1 CTA当たりのatomレーンやwarp数を増やす試行は、最良のBA2・1 warpが局所0.897→0.874 msと小差に留まり、atom勾配の3e-4基準を228,724要素で外した。BA4以上はregister spillや低速化も発生したため採用しない。両方とも診断コードとJSONを保存した。
 
-推奨する実験設定は`mapped_streamed_trainable(..., materialize_mode="listed_bounded", listed_unroll=4, window_rows=1024, cache_windows=4, gemm_mode="fp16x3_dx", forward_gemm_mode="fp16x3", atom_kernel="staged_listed")`。unroll4は大形状Adaで検証した明示的な試作オプションである。測定CLIは`prototypes.profile_paired_dense_cst --compare-unroll --listed-unroll 4 --graph`と`prototypes.probe_csr_graph_step --listed-unroll 4`。JSONは`docs/data/ada-20260929/overnight-unroll4-*.json`、単独カーネル比較は`overnight-w-unroll.json`、反証は`overnight-bounded-lanes.json`と`overnight-presplit-weight-gemm.json`。
+推奨する実験設定は`mapped_streamed_trainable(..., materialize_mode="listed_bounded", listed_unroll=4, window_rows=1024, cache_windows=4, gemm_mode="fp16x3_dx", forward_gemm_mode="fp16x3", atom_kernel="staged_listed")`。unroll4は大形状Adaで検証した明示的な試作オプションである。測定CLIは`benchmarks.cuda.linear.profile_paired_dense_cst --compare-unroll --listed-unroll 4 --graph`と`benchmarks.cuda.linear.probe_csr_graph_step --listed-unroll 4`。JSONは`docs/data/ada-20260929/overnight-unroll4-*.json`、単独カーネル比較は`overnight-w-unroll.json`、反証は`overnight-bounded-lanes.json`と`overnight-presplit-weight-gemm.json`。
 
 同じ展開をatom勾配kernelへ移す案もboundedリストで別途測った。1段・展開1回の局所0.901 msに対し、2～4段のpipelineは1.010～1.042 ms。展開2回は0.949 ms、4回は1.007 msと遅く、両方で3e-4基準を約228,730要素で超えた。展開の有無がatomの縮約・atomic更新順を変えるため、局所W生成と同じ判断はできない。atom勾配側は現行1段・展開1回を維持する。JSONは`docs/data/ada-20260929/overnight-bounded-atom-pipeline.json`。
 
@@ -94,7 +98,7 @@ Adaが引き続き空いていることを前後に確認した。`materialize_l
 
 試作APIに`listed_builder_ba=32, listed_builder_warps=1`を明示指定できるようにした。既定値`BA8・4 warp`と公開backendは変更していない。8192²・M=2048・5%・AdamW完全ステップでは、従来builderと新builderとdenseのGraphを同一プロセスで交互に32回、別runで48回測定した。新/従来の対応ペア比中央値は**0.96016／0.95356**（約4.0／4.6%短縮）、新/denseは1.2269／1.2378。単独中央値はGPUの時間変動を含むため、改善率には対応ペア比を使う。新builderの別プロセスGraph capture割当ピークは**884,781,056 bytes**で従来と同じ、denseの以前の1,577,585,152 bytesより43.9%低い。出力の3e-5基準違反0、Graph/eagerの12更新後のパラメータ最大差7.63e-6、強制overflowとGraph再実行を含むGPUテスト67件が通過した。新builderは候補一覧の作り方だけを変え、全W・全dWを作らない。
 
-現時点でAda大形状の推奨試作設定は前節の設定に`listed_builder_ba=32, listed_builder_warps=1`を追加する。再現コードは`prototypes.profile_bounded_list_builder`、`prototypes.profile_paired_dense_cst --compare-builder --listed-builder-ba 32 --listed-builder-warps 1 --graph`、`prototypes.probe_csr_graph_step --listed-builder-ba 32 --listed-builder-warps 1`。JSONは`docs/data/ada-20260929/overnight-list-builder-sweep2.json`、`overnight-builder-paired-32.json`、`overnight-builder-paired-48.json`、`overnight-builder-peak.json`。
+現時点でAda大形状の推奨試作設定は前節の設定に`listed_builder_ba=32, listed_builder_warps=1`を追加する。再現コードは`benchmarks.cuda.linear.profile_bounded_list_builder`、`benchmarks.cuda.linear.profile_paired_dense_cst --compare-builder --listed-builder-ba 32 --listed-builder-warps 1 --graph`、`benchmarks.cuda.linear.probe_csr_graph_step --listed-builder-ba 32 --listed-builder-warps 1`。JSONは`docs/data/ada-20260929/overnight-list-builder-sweep2.json`、`overnight-builder-paired-32.json`、`overnight-builder-paired-48.json`、`overnight-builder-peak.json`。
 
 ## 06:40 JST：距離式の反証と保持窓の選択
 
@@ -104,4 +108,4 @@ Adaが引き続き空いていることを前後に確認した。`materialize_l
 
 ## 07:40 JST：改善後のカーネル内訳
 
-RTX 6000 Ada profile、使用率0%、割当39 MiBを確認した上で、推奨の4窓・unroll4・builder BA32/1 warpのGraph完全ステップを1回プロファイルした。GPU kernel合計33.31 ms中、FP16x3局所GEMMは16呼び出し8.79 ms、atom勾配は8呼び出し6.70 ms、IEEE局所dW GEMMは8呼び出し6.10 ms、局所W生成は12呼び出し5.08 ms、routingは1.04 ms、候補一覧構築は**0.160 ms**。この内訳はprofilerによる単一ステップであり、前節の交互Graph完全ステップの時間比とは直接比較しない。次の大きな改善には、atom勾配・局所dW・局所GEMMのいずれかで数ms単位を削る必要がある。再現は`prototypes.profile_mapped_training_kernels --graph --materialize-mode listed_bounded --listed-unroll 4 --listed-builder-ba 32 --listed-builder-warps 1 --cache-windows 4 --rows 2048`、JSONは`docs/data/ada-20260929/overnight-final-profile.json`。Chrome traceはAda側の同名`.trace.json`に保持した。
+RTX 6000 Ada profile、使用率0%、割当39 MiBを確認した上で、推奨の4窓・unroll4・builder BA32/1 warpのGraph完全ステップを1回プロファイルした。GPU kernel合計33.31 ms中、FP16x3局所GEMMは16呼び出し8.79 ms、atom勾配は8呼び出し6.70 ms、IEEE局所dW GEMMは8呼び出し6.10 ms、局所W生成は12呼び出し5.08 ms、routingは1.04 ms、候補一覧構築は**0.160 ms**。この内訳はprofilerによる単一ステップであり、前節の交互Graph完全ステップの時間比とは直接比較しない。次の大きな改善には、atom勾配・局所dW・局所GEMMのいずれかで数ms単位を削る必要がある。再現は`benchmarks.cuda.linear.profile_mapped_training_kernels --graph --materialize-mode listed_bounded --listed-unroll 4 --listed-builder-ba 32 --listed-builder-warps 1 --cache-windows 4 --rows 2048`、JSONは`docs/data/ada-20260929/overnight-final-profile.json`。Chrome traceはAda側の同名`.trace.json`に保持した。

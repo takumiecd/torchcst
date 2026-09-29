@@ -1,5 +1,9 @@
 # 1024²・小バッチCSTの計算方式調査（2026-09-29）
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 ## 対象と判断
 
 Colab ProのNVIDIA L4で、論理重み1024×1024、64×64ブロック、52,429 atoms（5%）、入力行数16/128を調べた。PyTorch 2.11.0+cu128、Triton 3.6.0。現行CSTの最良の実験経路は、候補リスト、8×64の重み生成タイル、FP16全行キャッシュ、16×64のatom勾配タイル、CUDA Graph、AdamWを使う。既存の[計算方式比較](l4-small-kernel-algorithms-20260929.ja.md)と[小タイル実験](l4-small-tiles-20260929.ja.md)から続く調査である。
@@ -81,4 +85,4 @@ Grok 4.7にも問い合わせたがタイムアウトし、今回の回答は得
 - **低ランク因子:** 別モデルの比較記録として保持する。CSTの改善案には数えない。
 - **他GPUへ移す条件:** L4でアルゴリズムと精度の可否が決まってからA100、RTX 6000 Ada、BlackwellでそれぞれタイルとGEMM精度を調整する。今回の新方式はこれらのGPUでは未測定。
 
-再現コードは `prototypes/diagnose_cst_sampled_blocks.py`、`prototypes/diagnose_cst_factor_rank.py`、`prototypes/profile_factor_surrogate_steps.py`、`prototypes/profile_factor_surrogate_memory.py`。測定JSONは [`data/cst-redesign-20260929/`](data/cst-redesign-20260929/) に保存した。
+再現コードは `benchmarks/cuda/linear/diagnose_cst_sampled_blocks.py`、`prototypes/diagnose_cst_factor_rank.py`、`prototypes/profile_factor_surrogate_steps.py`、`prototypes/profile_factor_surrogate_memory.py`。測定JSONは [`data/cst-redesign-20260929/`](data/cst-redesign-20260929/) に保存した。

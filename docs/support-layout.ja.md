@@ -1,5 +1,9 @@
 # 単独タイル・境界共有アトムの配置
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 ## 設計条件
 
 CSTの小さなパラメーター表現とcompact kernelの局所性を保ち、

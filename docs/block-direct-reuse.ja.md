@@ -1,5 +1,9 @@
 # 小ブロックの直接計算で入力を再利用する（A100）
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-26。[小ブロック比較](block-strip-study.ja.md)に続く実験。
 
 続報: [複数出力特徴で入力を共有する直接計算](block-output-sharing.ja.md)。

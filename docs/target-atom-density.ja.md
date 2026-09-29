@@ -1,5 +1,9 @@
 # Atom数をdense要素数の5%にした再測定
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-26。[support区間省略の測定](support-culling-study.ja.md)に続き、ユーザーの目標密度に測定条件を合わせた。
 
 後続の[所属探索の改善](local-strip-routing.ja.md)では、全station走査を局所候補検索へ変更した。

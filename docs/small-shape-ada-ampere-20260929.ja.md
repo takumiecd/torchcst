@@ -1,5 +1,9 @@
 # 1024²・小入力行数のCST学習をAdaとAmpereで比較
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-29。1024²を小形状の必須評価対象とし、全W・全dWを作らない5% Triweightの単層AdamW完全ステップを測った。`M`は線形層への入力総行数で、microbatch sizeそのものではない。主比較は`M=128/2048`、さらに小さい入力として`M=16`をRTX 3070で測った。
 
 同じコミット`bfac322`のGit archive（SHA256 `6d7913f75386098a40654ab7d68e7f531d300e5b835b9284a52cf71f1568426e`）を隔離展開した。比較用CLIへの`M=16`追加とoptimizer診断スクリプトだけを後から転送し、Tritonの学習kernelは変えていない。RTX 6000 AdaはPyTorch 2.9.1+cu128／Triton 3.5.1、GeForce RTX 3070はPyTorch 2.6.0+cu126／Triton 3.6.0。各速度測定前にGPU空きを確認し、別ジョブが約9～16 GBを使い始めてからはAdaの速度測定を行っていない。A100 MIGは約42 GB中約21 GBしか空いておらず、性能測定を重ねなかった。
@@ -32,7 +36,7 @@ Graph capture時のPyTorch割当ピークは、CSTとdenseを**別プロセス**
 
 AdaのM=128・保持1枚のGPU profilerではkernel合計0.667 ms。atom勾配0.210 ms、局所W生成0.131 msが大きく、GEMM数個の変更だけではdenseとの差を埋められない。小kernelの多いAdamWを`foreach`からPyTorchの`fused=True`へ変える案も完全ステップで交互測定したが、fused／foreach対応ペア比はAda **1.3265**、RTX 3070 **1.1870**で遅く、不採用。
 
-生JSONは[`data/small-shape-20260929/`](data/small-shape-20260929/)に保存した。速度用`cache-*.json`、ピーク用`peak-*.json`、optimizer用`optimizer-*.json`、Ada内訳`profile-1024-m128-c1.json`。計測コードは`prototypes.profile_paired_dense_cst`、`prototypes.probe_csr_graph_step`、`prototypes.probe_dense_graph_step`、`prototypes.profile_small_optimizer_modes`。
+生JSONは[`data/small-shape-20260929/`](data/small-shape-20260929/)に保存した。速度用`cache-*.json`、ピーク用`peak-*.json`、optimizer用`optimizer-*.json`、Ada内訳`profile-1024-m128-c1.json`。計測コードは`benchmarks.cuda.linear.profile_paired_dense_cst`、`benchmarks.cuda.linear.probe_csr_graph_step`、`prototypes.probe_dense_graph_step`、`prototypes.profile_small_optimizer_modes`。
 
 次の速度改善には局所W生成・atom勾配の計算方式を変える必要がある。512行窓の保持は再生成1回を省くが、atom勾配2回と残りのW生成3回は残る。公開backendの既定dispatchは変更していない。
 

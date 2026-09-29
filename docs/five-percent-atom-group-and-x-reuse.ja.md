@@ -1,5 +1,9 @@
 # 5% atom 密度での群判定と入力 X の再利用
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 この後の小分け重み生成・GEMM 分離実験は [別経路の検証](five-percent-alternate-dataflow.ja.md) に記録した。
 
 2026-09-27。Strip + Torus、Triweight、tile 64×64、入力 128 行の A100 前向き計算を調べた。目的は atom の並び替え・寄与判定と入力行列 X の再利用を、準備時間・実行時間・作業メモリを含めて判断すること。dispatch は変更していない。

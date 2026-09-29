@@ -1,5 +1,9 @@
 # L4での1024²・小バッチCST計算方式比較（2026-09-29）
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 ## 条件
 
 - Colab ProのNVIDIA L4、PyTorch 2.11.0+cu128、Triton 3.6.0。
@@ -32,4 +36,4 @@ L4の1ステップのCUDA kernel合計は入力16行で1,234 µs、128行で1,29
 - 小バッチではW生成とatom勾配が支配的であり、候補リストの少数レーン並列化だけでは十分でない。次はWやdWを一度も全窓へ書かずに済む表現、あるいは支持領域を使った演算回数削減を検討する。
 - この方式は1024²で検証した。8192²では全行FP16キャッシュが128 MiBになり、従来の有界メモリ目標とは別の判断が必要。L4で方式を選んだ後に、A100・Ada・Blackwellそれぞれで最適な閾値とタイルを測る。
 
-実測JSONは [`data/l4-algorithm-20260929/`](data/l4-algorithm-20260929/) に保存した。方式比較のコードは `prototypes/profile_small_materialization_algorithms.py` と `prototypes/profile_small_backward_algorithms.py`、完全ステップと精度確認は `prototypes/profile_paired_dense_cst.py`、`prototypes/probe_csr_graph_step.py`、`prototypes/check_fp16_full_cache.py`。
+実測JSONは [`data/l4-algorithm-20260929/`](data/l4-algorithm-20260929/) に保存した。方式比較のコードは `prototypes/profile_small_materialization_algorithms.py` と `prototypes/profile_small_backward_algorithms.py`、完全ステップと精度確認は `benchmarks/cuda/linear/profile_paired_dense_cst.py`、`benchmarks/cuda/linear/probe_csr_graph_step.py`、`benchmarks/cuda/linear/check_fp16_full_cache.py`。

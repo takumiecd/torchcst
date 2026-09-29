@@ -6,8 +6,8 @@ import torch.nn.functional as F
 
 pytest.importorskip("triton")
 
-from prototypes.block_strip_linear import BlockStripLinear
-from prototypes.support_box_routing import (
+from experiments.cuda.linear.block_strip_linear import BlockStripLinear
+from experiments.cuda.linear.support_box_routing import (
     atomic_bucket_sort,
     balanced_home_columns,
     boxed_prepare,

@@ -1,5 +1,9 @@
 # Strip + Torus Linear の実行設計
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 現在の標準tiled/Triton経路は、単独タイル用・境界共有アトムを分ける配置へ更新した。
 最新の配置、再利用実験と測定結果は [support-layout.ja.md](support-layout.ja.md) を参照。
 以下には旧所属方式を含む段階ごとの設計・実験履歴を残している。
@@ -25,7 +29,7 @@
   optimizer state は含めない。固定メモリと追加ピークを足した厳密な総VRAM比較ではない。
 
 ```bash
-python -m prototypes.benchmark_dense_reference --output dense-reference.json \
+python -m benchmarks.cuda.linear.benchmark_dense_reference --output dense-reference.json \
   --source-commit <measured-commit> --repeats 20
 ```
 
@@ -200,7 +204,7 @@ inference Tensor を設定に含むモデルでは計画をキャッシュしな
 .venv/bin/ruff check .
 # NVIDIA GPU + Triton 環境
 python -m pytest -q tests/test_triton_linear.py
-python -m prototypes.benchmark_triton_linear --output benchmark.json
+python -m benchmarks.cuda.linear.benchmark_triton_linear --output benchmark.json
 ```
 
 GPU テストは密な計算との出力・入力勾配・アトム勾配の照合、両中心表現、

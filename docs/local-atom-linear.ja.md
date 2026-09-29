@@ -1,9 +1,13 @@
 # I/B配置を使う局所的なアトム直接縮約
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 続く大規模forward比較（2048²〜8192²）は
 [大規模denseとの比較](large-forward-scaling.ja.md)を参照。
 
-`prototypes/local_atom_linear.py` と `local_atom_kernels.py` の試作。
+`experiments/cuda/linear/local_atom_linear.py` と `local_atom_kernels.py` の試作。
 公開backendや既存の標準経路は変更しない。
 単独用 `I[g]`・境界用 `B[g]` の配置をそのまま利用する。
 支持範囲の細かい位置に基づく再配置、列のsort、累積和は追加しない。

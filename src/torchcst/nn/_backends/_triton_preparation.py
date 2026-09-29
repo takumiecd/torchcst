@@ -116,9 +116,7 @@ def route_and_layout(
             if support_boxes is not None:
                 if not batched_support:
                     raise ValueError("boxed support requires batched support")
-                from prototypes.support_box_routing import support_buckets_batched_box
-
-                support_kernel = support_buckets_batched_box
+                support_kernel = kernels.support_buckets_batched_box
             else:
                 support_kernel = (
                     kernels.support_buckets_batched

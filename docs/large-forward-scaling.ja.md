@@ -1,6 +1,6 @@
 # 大規模denseとのforward比較（A100）
 
-2026-09-26。`prototypes/benchmark_large_forward.py` の測定結果。
+2026-09-26。`benchmarks/cuda/linear/benchmark_large_forward.py` の測定結果。
 
 続報: [小さな行列ブロックと準備処理の改善](block-strip-study.ja.md)。
 
@@ -148,7 +148,7 @@ Torusのmajor radiusがタイル数とともに増えるのに対し、表面判
 後者の独立snapshotで小規模の対照も含め全条件を再実行した。
 
 ```bash
-PYTHONPATH=src:. python -m prototypes.benchmark_large_forward \
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.benchmark_large_forward \
   --output results.json \
   --source-commit e04c4e79d8d4922d147c40c8c076c0c9c09a61c1 \
   --small-control

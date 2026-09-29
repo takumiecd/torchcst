@@ -1,5 +1,9 @@
 # 5% atom密度：メモリ優先の判定
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-28の[更新測定](five-percent-compact-native.ja.md)では、融合decodeと原子bucket配置により、128行入力でも全Wなしのforwardピークが生成済みdense未満になった。以下は改善前の測定記録。
 
 入力行をまとめて局所重み窓を使い切る[続きの測定](five-percent-weight-first-streaming.ja.md)では、大きい入力バッチに限って全Wなし経路がdenseより低いピークに達した。

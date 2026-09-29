@@ -1,5 +1,9 @@
 # 局所合算のatom方向の縮約と入力128行への再利用
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-26。[I/B分類と一時メモリの改善](batched-support-preparation.ja.md)に続き、計算本体を改善した。
 
 ## 結論

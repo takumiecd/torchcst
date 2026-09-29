@@ -5,7 +5,10 @@ import torch
 import torch.nn.functional as F
 from test_triton_linear import _model
 
-from prototypes.atom_prefix_linear import atom_prefix_linear, prepare_prefix
+from experiments.cuda.linear.atom_prefix_linear import (
+    atom_prefix_linear,
+    prepare_prefix,
+)
 from torchcst import Triangle
 
 

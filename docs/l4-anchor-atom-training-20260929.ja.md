@@ -1,5 +1,9 @@
 # L4・1024²でatom×site評価を減らす学習試作（2026-09-29）
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 同日の後続最適化、denseとの比較、PODアンカー実験は[更新版](l4-anchor-optimization-20260929.ja.md)を参照。
 
 ## 方式
@@ -8,7 +12,7 @@
 
 候補リストは従来の16×64 site tileで作る。アンカーkernelはその候補リストを再利用し、各候補を選択したsiteだけで評価する。候補リストは元tileの保守的な支持判定なので、アンカーの寄与を欠落させない。候補192枠を超えたtileは従来どおりbucket spanへフォールバックする。
 
-実装は [`prototypes/anchor_atom_training.py`](../prototypes/anchor_atom_training.py)。完全ステップ比較は [`prototypes/profile_anchor_atom_training.py`](../prototypes/profile_anchor_atom_training.py)。これは実験経路であり、公開backendの選択には追加していない。
+実装は [`experiments/cuda/linear/anchor_atom_training.py`](../experiments/cuda/linear/anchor_atom_training.py)。完全ステップ比較は [`benchmarks/cuda/linear/profile_anchor_atom_training.py`](../benchmarks/cuda/linear/profile_anchor_atom_training.py)。これは実験経路であり、公開backendの選択には追加していない。
 
 ## L4測定
 
@@ -23,9 +27,9 @@ Colab ProのNVIDIA L4、PyTorch 2.11.0+cu128、Triton 3.6.0。1024×1024、52,42
 
 16×32の完全ステップは現行CSTの約1.74倍速く、24×48は約1.38～1.41倍速い。16×32の初期アンカー値と真のCST重みの該当siteは相対L2約2.1×10⁻⁷、最大絶対差3.73×10⁻⁹で一致した。atom勾配も同じatomを学習する。一方、上表のatom勾配誤差は**近似演算子と真のCSTとの差**であり、カーネル実装誤差ではない。
 
-実装勾配を別途128²・seed 37で、全atom×アンカーsiteをPyTorchで直接評価・自動微分したものと照合した。アンカー値の相対L2差2.01×10⁻⁷、packed atomの振幅・中心勾配の相対L2差1.36×10⁻⁷、最大絶対差3.81×10⁻⁶。width列の実装勾配は0で、既存経路と同じdetach契約。再現コードは [`prototypes/check_anchor_atom_gradients.py`](../prototypes/check_anchor_atom_gradients.py)。
+実装勾配を別途128²・seed 37で、全atom×アンカーsiteをPyTorchで直接評価・自動微分したものと照合した。アンカー値の相対L2差2.01×10⁻⁷、packed atomの振幅・中心勾配の相対L2差1.36×10⁻⁷、最大絶対差3.81×10⁻⁶。width列の実装勾配は0で、既存経路と同じdetach契約。再現コードは [`benchmarks/cuda/linear/check_anchor_atom_gradients.py`](../benchmarks/cuda/linear/check_anchor_atom_gradients.py)。
 
-別プロセスで各方式をGraph capture・再実行したときのPyTorch最大割当は次の通り。初期化用の全Wは作らない測定であり、CUDA予約量ではない。再現コードは [`prototypes/profile_anchor_memory.py`](../prototypes/profile_anchor_memory.py)。
+別プロセスで各方式をGraph capture・再実行したときのPyTorch最大割当は次の通り。初期化用の全Wは作らない測定であり、CUDA予約量ではない。再現コードは [`prototypes/profile_anchor_memory.py`](legacy-prototypes.ja.md)。
 
 | M | 現行CST | 16×32 | 24×48 |
 | ---: | ---: | ---: | ---: |

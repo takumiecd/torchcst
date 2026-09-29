@@ -1,5 +1,9 @@
 # 5% CST 学習：新しい計算経路の探索
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 続くRTX 6000 Adaでの圧縮候補リスト、窓幅、CUDA C++の実測は[固定長の圧縮候補リストと窓の選択](five-percent-bounded-lists-ada.ja.md)に記録した。
 
 2026-09-29。対象は Triweight、64×64 tile、RTX 6000 Ada。全 W と全 dW を作らず、dense 学習より低いピークメモリを守る。1024²・M=128/2048 は小形状の反証試験、8192²・M=2048 は主目標。速度の基準は[対象形状と完全ステップの測定](five-percent-target-shapes.ja.md)。以下の時間は特記しない限り**局所窓の kernel 時間**で、AdamW 全ステップとは異なる。
@@ -36,7 +40,7 @@ Triweight は支持域内で `amp × (1 − precision × distance²)^3`。理想
 
 同じ prepared tensorsで、従来の候補リストと有効要素が完全一致し、生成 W はビット一致した。atom勾配の差はatomic加算順序によるもので、1024²で最大3.82e-6／相対L2 1.11e-8、8192²で最大7.63e-6／相対L2 2.24e-8。候補リスト生成wall中央値は1024²で0.100→0.040 ms、8192²で0.766→0.724 ms。1024²の完全AdamWステップはM=128で従来1.310→CSR1.229 ms、M=2048で1.558→1.478 ms。8192²・M=2048の24回交互測定は従来43.139→CSR40.399 ms、対応ペア比中央値0.979。後者の差は約2%なので、負荷変動の範囲を考慮して評価する。
 
-別プロセスで測った8192²・M=2048のPyTorch割当ピークは、dense 1,560.54 MB、従来listed 839.61 MB、CSR 933.41 MB。CSRは従来より93.80 MB増えるが、denseより40.2%低い。1024²・M=2048ではdense 68.21 MB、CSR 63.98 MBで、差は4.23 MBまで縮む。どちらも現時点の絶対条件は満たす。結果は`prototypes.profile_candidate_csr`、`prototypes.profile_paired_dense_cst`、`prototypes.benchmark_mapped_training_memory`と`output/ada-20260928/cache-hypotheses/{candidate-csr,paired-csr,memory-*}.json`にある。
+別プロセスで測った8192²・M=2048のPyTorch割当ピークは、dense 1,560.54 MB、従来listed 839.61 MB、CSR 933.41 MB。CSRは従来より93.80 MB増えるが、denseより40.2%低い。1024²・M=2048ではdense 68.21 MB、CSR 63.98 MBで、差は4.23 MBまで縮む。どちらも現時点の絶対条件は満たす。結果は`benchmarks.cuda.linear.profile_candidate_csr`、`benchmarks.cuda.linear.profile_paired_dense_cst`、`benchmarks.cuda.linear.benchmark_mapped_training_memory`と`output/ada-20260928/cache-hypotheses/{candidate-csr,paired-csr,memory-*}.json`にある。
 
 ## 完全ステップのCUDA Graph
 
@@ -44,7 +48,7 @@ GPU上の領域予約で候補幅のhost同期がなくなり、`listed_csr`の�
 
 8192²・M=2048のGraph同士を24回交互測定するとdense 32.408 ms、CSR 42.273 ms、対応ペア比1.266。CSRのcapture時ピーク933.83 MB、Graph denseは1,577.59 MB。3ステップのGraph対eagerパラメータ最大差4.66e-8。別々のプロセスで得たGraph速度は負荷変動で比が大きく変わったため、**交互測定の1.266倍**を採る。8192²ではGraph化そのものの速度効果は小さく、GPU kernelが主な費用として残る。
 
-1024²・M=128はGraph再実行約0.803 msだが、capture時ピーク47.89 MBがeager dense約40.29 MBを超える。メモリの絶対条件により、この形状ではGraph版を採用しない。Graphの初回capture時間、別shapeの再capture、複数層への拡張は測っていない。これらの結果は`prototypes.probe_csr_graph_step`と`prototypes.probe_dense_graph_step`、JSONは`output/ada-20260928/cache-hypotheses/graph-*.json`。
+1024²・M=128はGraph再実行約0.803 msだが、capture時ピーク47.89 MBがeager dense約40.29 MBを超える。メモリの絶対条件により、この形状ではGraph版を採用しない。Graphの初回capture時間、別shapeの再capture、複数層への拡張は測っていない。これらの結果は`benchmarks.cuda.linear.probe_csr_graph_step`と`prototypes.probe_dense_graph_step`、JSONは`output/ada-20260928/cache-hypotheses/graph-*.json`。
 
 decode、pack、optimizerの小kernel融合はなお候補だが、Graphでhost launch費用が消えた後に速度が残る分だけを対象にする。
 
@@ -56,7 +60,7 @@ decode、pack、optimizerの小kernel融合はなお候補だが、Graphでhost 
 
 ## dispatch と CUDA C++ の順序
 
-その後、8192²・M=2048の`listed_csr`完全AdamWステップをGraph再実行でプロファイルした。GPU kernel合計35.09 msのうち、局所W生成`materialize_listed`が7.52 ms（14回）、atom勾配`mapped_backward_atoms_listed`が5.69 ms（8回）、FP16x3 GEMMが8.92 ms（16回）、局所dW GEMMのCUTLASS kernelが5.85 ms（8回）。候補リスト生成は0.73 ms（1回）。1024²・M=2048でも局所W生成0.260 ms、atom勾配0.219 msがkernel時間約1.00 msの約48%を占めた。traceを含むJSONは`output/ada-20260928/cache-hypotheses/profile-graph-csr-{1024,8192}-m2048.json`、計測コードは`prototypes.profile_mapped_training_kernels`。
+その後、8192²・M=2048の`listed_csr`完全AdamWステップをGraph再実行でプロファイルした。GPU kernel合計35.09 msのうち、局所W生成`materialize_listed`が7.52 ms（14回）、atom勾配`mapped_backward_atoms_listed`が5.69 ms（8回）、FP16x3 GEMMが8.92 ms（16回）、局所dW GEMMのCUTLASS kernelが5.85 ms（8回）。候補リスト生成は0.73 ms（1回）。1024²・M=2048でも局所W生成0.260 ms、atom勾配0.219 msがkernel時間約1.00 msの約48%を占めた。traceを含むJSONは`output/ada-20260928/cache-hypotheses/profile-graph-csr-{1024,8192}-m2048.json`、計測コードは`benchmarks.cuda.linear.profile_mapped_training_kernels`。
 
 これに基づく実装順は、**小さな内部実行ポリシーを先に作り、CUDA C++は局所W生成の単独比較から始める**こと。ポリシーはshape、実効入力行数M、dtype、GPU、学習モード、ピークメモリ上限を入力にし、測定済みケースだけ`listed_csr`とGEMM精度、Graph適格性を選ぶ。Graph capture自体は学習ループの責務として分ける。1024²・M=128はGraphがメモリ条件に失敗したためeagerへ、未測定GPU・shapeは保守的な明示経路へ戻す。これはPyTorchのdevice/autograd dispatch key登録とは別の、CST内部の実行ポリシーである。
 

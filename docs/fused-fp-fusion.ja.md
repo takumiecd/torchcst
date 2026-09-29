@@ -1,5 +1,9 @@
 # 局所合算GEMMのFP32積和融合
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-26。前段の[局所合算の再利用改善](fused-compute-reuse.ja.md)に続き、A100でFP32の積和融合を調べた。
 
 ## 結論

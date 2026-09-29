@@ -1,8 +1,12 @@
 # L4・1024²小バッチCSTの現行ボトルネック（2026-09-29）
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 ## 測定条件
 
-Colab ProのNVIDIA L4、PyTorch 2.11.0+cu128、Triton 3.6.0。論理重み1024×1024、52,429 atoms（5%）、64×64 station、入力行数16/128、単層AdamW。現行の速い実験経路、すなわち**候補リスト付きW 8×64、atom勾配16×64、512行窓、FP16全行Wキャッシュ、CUDA Graph、IEEE FP32 GEMM**をプロファイルした。atomと入力はseed 21。`prototypes/profile_mapped_training_kernels.py`のGraph再実行1ステップをwarmup後に`torch.profiler`で採取した。
+Colab ProのNVIDIA L4、PyTorch 2.11.0+cu128、Triton 3.6.0。論理重み1024×1024、52,429 atoms（5%）、64×64 station、入力行数16/128、単層AdamW。現行の速い実験経路、すなわち**候補リスト付きW 8×64、atom勾配16×64、512行窓、FP16全行Wキャッシュ、CUDA Graph、IEEE FP32 GEMM**をプロファイルした。atomと入力はseed 21。`benchmarks/cuda/linear/profile_mapped_training_kernels.py`のGraph再実行1ステップをwarmup後に`torch.profiler`で採取した。
 
 下表は**GPU kernel実行時間の合計**であり、CPU時間やkernel間の隙間を含むwall時間ではない。Profiler実行の単発値である。別の交互測定では同じ方式の完全ステップ中央値がM=16で約1.03 ms、M=128で約1.11 msだったが、両測定の数値は直接加減しない。
 

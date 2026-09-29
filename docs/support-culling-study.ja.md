@@ -1,5 +1,9 @@
 # Compact support外の演算量と列区間の省略
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-26。[複数出力特徴で入力を共有する直接計算](block-output-sharing.ja.md)の続き。
 
 後続の[目標atom密度での再測定](target-atom-density.ja.md)では、atom数をdense要素数の5%に設定した。

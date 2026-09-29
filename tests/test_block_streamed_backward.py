@@ -5,14 +5,14 @@ import torch
 
 pytest.importorskip("triton")
 
-import prototypes.block_streamed_backward as streamed_backward
-from prototypes.block_streamed_backward import (
+import experiments.cuda.linear.block_streamed_backward as streamed_backward
+from experiments.cuda.linear.block_streamed_backward import (
     build_listed_forward_candidates_bounded,
     mapped_streamed_trainable,
     trainable_boxed_prepare,
 )
-from prototypes.block_strip_linear import BlockStripLinear
-from prototypes.support_box_routing import (
+from experiments.cuda.linear.block_strip_linear import BlockStripLinear
+from experiments.cuda.linear.support_box_routing import (
     balanced_home_columns,
     station_site_boxes,
 )

@@ -1,8 +1,12 @@
 # アトムから出力を直接求める Triweight 試作
 
+> この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 対象は既存の Strip＋Torus（行方向の station、入力軸全体を含む tile）、
 DirectAmpWidth、非正規化 Triweight。公開 backend には追加せず、
-`prototypes/atom_prefix_linear.py` に PyTorch/autograd の参照実装を置く。
+`experiments/cuda/linear/atom_prefix_linear.py` に PyTorch/autograd の参照実装を置く。
 入力 `X[M,K]`、出力 `Y[M,N]`。重み `[N,K]`、重みタイル、
 アトム別の `[A,N,K]` 寄与は作らない。
 

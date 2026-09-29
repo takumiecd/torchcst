@@ -1,5 +1,9 @@
 # RTX 6000 Adaのキャッシュを使う次の仮説
 
+> この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
+> 歴史的な再現手順です。削除したコードの参照方法は
+> [旧実験コード](legacy-prototypes.ja.md)を参照してください。
+
 2026-09-28。8192²、atom密度5%、seed 21、RTX 6000 Ada。学習経路は全dense W・dWを持たず、局所W窓を使う。基準の学習ステップは[既存の記録](ada-precision-and-shared-gpu.ja.md)を参照。
 
 ## Wの分割単位
