@@ -43,6 +43,9 @@ def main():
     parser.add_argument("--basis-mode", choices=("dense", "block"), default="dense")
     parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
+    parser.add_argument(
+        "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
+    )
     parser.add_argument("--rounds", type=int, default=24)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -136,10 +139,18 @@ def main():
 
     optimizers = {
         "baseline": torch.optim.AdamW(
-            [baseline.strip.atoms.p], lr=1e-3, foreach=True, capturable=True
+            [baseline.strip.atoms.p],
+            lr=1e-3,
+            foreach=args.optimizer_mode == "foreach",
+            fused=args.optimizer_mode == "fused",
+            capturable=True,
         ),
         "anchor": torch.optim.AdamW(
-            [anchor.strip.atoms.p], lr=1e-3, foreach=True, capturable=True
+            [anchor.strip.atoms.p],
+            lr=1e-3,
+            foreach=args.optimizer_mode == "foreach",
+            fused=args.optimizer_mode == "fused",
+            capturable=True,
         ),
     }
 
@@ -193,6 +204,7 @@ def main():
         "anchor_shape": [16 * args.anchor_rows, 16 * len(col_anchors)],
         "anchor_sites_fraction": args.anchor_rows * len(col_anchors) / 4096,
         "basis_mode": args.basis_mode,
+        "optimizer_mode": args.optimizer_mode,
         "forward_lanes": args.forward_lanes,
         "backward_lanes": args.backward_lanes,
         "initial": initial,
