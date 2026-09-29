@@ -19,6 +19,10 @@ def main():
     parser.add_argument("--rows", type=int, choices=(16, 128, 2048), required=True)
     parser.add_argument("--graph", action="store_true")
     parser.add_argument("--cache-windows", type=int, default=None)
+    parser.add_argument(
+        "--cache-weight-dtype", choices=("float32", "float16"), default="float32"
+    )
+    parser.add_argument("--weight-tile-rows", type=int, choices=(8, 16), default=16)
     parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--listed-builder-ba", type=int, default=8)
     parser.add_argument("--listed-builder-warps", type=int, default=4)
@@ -63,6 +67,8 @@ def main():
             listed_unroll=args.listed_unroll,
             listed_builder_ba=args.listed_builder_ba,
             listed_builder_warps=args.listed_builder_warps,
+            cache_weight_dtype=getattr(torch, args.cache_weight_dtype),
+            weight_tile_rows=args.weight_tile_rows,
         )
         y.backward(dy)
         optimizer.step()
@@ -100,6 +106,8 @@ def main():
         "listed_builder_warps": args.listed_builder_warps,
         "window_rows": window_rows,
         "cache_windows": cache_windows,
+        "cache_weight_dtype": args.cache_weight_dtype,
+        "weight_tile_rows": args.weight_tile_rows,
         "atoms": round(0.05 * n * n),
         "steps": 1,
         **kernel_summary(trace, steps=1),
