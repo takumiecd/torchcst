@@ -18,7 +18,7 @@ from torchcst.nn._backends._preparation import execution_plan
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, choices=(1024, 8192), required=True)
-    parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
+    parser.add_argument("--rows", type=int, choices=(16, 128, 2048), required=True)
     parser.add_argument("--rounds", type=int, default=20)
     parser.add_argument("--window-rows", type=int, default=None)
     parser.add_argument("--cache-windows", type=int, default=None)
@@ -46,8 +46,8 @@ def main():
     dy = torch.randn((m, n), device="cuda")
     optimizer_kwargs = {args.optimizer_mode: True, "capturable": True}
     optimizer = torch.optim.AdamW([layer.strip.atoms.p], lr=1e-3, **optimizer_kwargs)
-    mode = "ieee" if m == 128 else "fp16x3_dx"
-    forward_mode = "ieee" if m == 128 else "fp16x3"
+    mode = "ieee" if m <= 128 else "fp16x3_dx"
+    forward_mode = "ieee" if m <= 128 else "fp16x3"
     window_rows = min(1024, n // 2) if args.window_rows is None else args.window_rows
     cache_windows = (
         (0 if n == 1024 else 2) if args.cache_windows is None else args.cache_windows

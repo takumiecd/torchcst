@@ -17,7 +17,7 @@ from torchcst.nn._backends._preparation import prepare
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, choices=(1024, 8192), required=True)
-    parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
+    parser.add_argument("--rows", type=int, choices=(16, 128, 2048), required=True)
     parser.add_argument("--rounds", type=int, default=20)
     parser.add_argument(
         "--optimizer-mode", choices=("foreach", "fused"), default="foreach"

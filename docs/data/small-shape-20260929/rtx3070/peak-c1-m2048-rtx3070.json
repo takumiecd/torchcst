@@ -1,0 +1,51 @@
+{
+  "shape": [
+    2048,
+    1024,
+    1024
+  ],
+  "device": "NVIDIA GeForce RTX 3070",
+  "materialize_mode": "listed_bounded",
+  "listed_unroll": 4,
+  "listed_builder_ba": 32,
+  "listed_builder_warps": 1,
+  "optimizer_mode": "foreach",
+  "cache_windows": 1,
+  "window_rows": 512,
+  "allocated_after_warmup": 40345600,
+  "capture_peak_allocated": 63544320,
+  "allocated_after_capture": 49704960,
+  "first_replay_peak_allocated": 52850176,
+  "capture_success": true,
+  "parameters_changed": true,
+  "median_graph_replay_ms": 2.619869000000108,
+  "samples_ms": [
+    2.6047279999943385,
+    2.614957000005802,
+    2.614855000004468,
+    2.6107030000019904,
+    2.6080690000043205,
+    2.606044000003749,
+    2.6453420000080996,
+    2.6801839999990307,
+    2.643215000006194,
+    2.643114000008495,
+    2.628934000000527,
+    2.624780999994414
+  ],
+  "steady_replay_peak_allocated": 53114368,
+  "parameter_deviations_vs_eager": [
+    {
+      "max_abs": 1.4901161193847656e-08,
+      "relative_l2": 5.942354355976953e-13
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 1.355778119979667e-12
+    },
+    {
+      "max_abs": 2.9802322387695312e-08,
+      "relative_l2": 2.0901834950348697e-12
+    }
+  ]
+}
