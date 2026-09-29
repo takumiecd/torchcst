@@ -37,6 +37,11 @@ def trainable_boxed_prepare(site, p, *, boxes, witness_cols, decode_mode="torch"
     if decode_mode == "torch":
         decoded = site.chart.geometry.decode_centers(center)
     elif decode_mode == "fused":
+        if plan.routing.starts.numel() > 256:
+            raise ValueError(
+                "fused Torus decode is only validated through 256 stations; "
+                "use decode_mode='torch' for larger charts"
+            )
         from prototypes.torus_decode_trainable import trainable_decode_intrinsic_torus
 
         decoded = trainable_decode_intrinsic_torus(site.chart.geometry, center)

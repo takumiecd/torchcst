@@ -1,0 +1,12 @@
+{
+  "device": "NVIDIA L4",
+  "torch": "2.11.0+cu128",
+  "triton": "3.6.0",
+  "tile_count": 16384,
+  "atoms": 3355443,
+  "candidate_count_min": 108,
+  "candidate_count_mean": 140.22288513183594,
+  "candidate_count_max": 170,
+  "overflow_tiles": 0,
+  "allocated_mib": 187.67822265625
+}
