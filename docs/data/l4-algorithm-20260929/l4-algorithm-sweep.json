@@ -1,0 +1,54 @@
+{
+  "device": "NVIDIA L4",
+  "results": [
+    {
+      "algorithm": "listed",
+      "us": 158.59390707576975,
+      "max_delta": 0.0
+    },
+    {
+      "algorithm": "parallel-ba2-w4",
+      "us": 205.82498734997165,
+      "max_delta": 4.190951585769653e-09
+    },
+    {
+      "algorithm": "parallel-ba2-w8",
+      "us": 239.8863142918914,
+      "max_delta": 4.190951585769653e-09
+    },
+    {
+      "algorithm": "parallel-ba4-w4",
+      "us": 233.31755894411634,
+      "max_delta": 4.190951585769653e-09
+    },
+    {
+      "algorithm": "parallel-ba4-w8",
+      "us": 248.20274203431373,
+      "max_delta": 4.190951585769653e-09
+    },
+    {
+      "algorithm": "direct-16-32-1",
+      "us": 233.86939840113862,
+      "max_delta": 0.0
+    },
+    {
+      "algorithm": "direct-32-32-1",
+      "us": 195.78595019240026,
+      "max_delta": 0.0
+    },
+    {
+      "algorithm": "direct-64-32-1",
+      "us": 190.84201474343575,
+      "max_delta": 0.0
+    },
+    {
+      "algorithm": "direct-16-64-1",
+      "us": 197.1586761176003,
+      "max_delta": 0.0
+    },
+    {
+      "algorithm": "direct-16-32-2",
+      "error": "at 30:8:\n    ROW_GROUP_START=0,\n    LOCAL_W: tl.constexpr = False,\n):\n    tile = tl.program_id(0)\n    row_group = tile // triton.cdiv(S, BN) + ROW_GROUP_START\n    local = (tile % triton.cdiv(S, BN)) * BN\n    column_group = tl.program_id(1)\n    start = tl.program_id(2) * BK\n    station = row_group * CG + column_group\n    if FACTORED:\n        tl.static_assert(D == 4)\n        tl.static_assert(BA == 1)\n        ^"
+    }
+  ]
+}

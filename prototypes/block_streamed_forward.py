@@ -25,6 +25,7 @@ def streamed_forward(
     weight_chunk_rows=1024,
     materialize_tile=(64, 32),
     cache_weight_rows=0,
+    cache_weight_dtype=torch.float32,
     return_cache=False,
     gemm_mode="ieee",
     materialize_mode="default",
@@ -63,10 +64,14 @@ def streamed_forward(
     if (
         type(cache_weight_rows) is not int
         or cache_weight_rows < 0
-        or cache_weight_rows >= layer.shape[0]
+        or cache_weight_rows > layer.shape[0]
         or cache_weight_rows % weight_chunk_rows
     ):
-        raise ValueError("cache_weight_rows must contain complete windows below full W")
+        raise ValueError(
+            "cache_weight_rows must contain complete windows at most full W"
+        )
+    if cache_weight_dtype not in (torch.float32, torch.float16):
+        raise ValueError("cache_weight_dtype must be float32 or float16")
     if torch.is_grad_enabled() and (
         x.requires_grad or layer.strip.atoms.p.requires_grad
     ):
@@ -84,7 +89,11 @@ def streamed_forward(
         raise ValueError("streamed factored prototype requires four-dimensional sites")
     flat = x.reshape(-1, layer.shape[1]).contiguous()
     y = flat.new_empty((flat.shape[0], layer.shape[0]))
-    cached = flat.new_empty((cache_weight_rows, layer.shape[1]))
+    cached = torch.empty(
+        (cache_weight_rows, layer.shape[1]),
+        device=flat.device,
+        dtype=cache_weight_dtype,
+    )
     if not flat.shape[0]:
         output = y.reshape(*x.shape[:-1], layer.shape[0])
         return (output, cached) if return_cache else output
@@ -94,7 +103,11 @@ def streamed_forward(
     w = flat.new_empty((chunk, layer.shape[1]))
     for start in range(0, layer.shape[0], chunk):
         rows = min(chunk, layer.shape[0] - start)
-        target = cached[start : start + rows] if start < cache_weight_rows else w[:rows]
+        target = (
+            cached[start : start + rows]
+            if cache_weight_dtype == torch.float32 and start < cache_weight_rows
+            else w[:rows]
+        )
         if materialize_mode in (
             "listed",
             "listed_parallel",
@@ -164,6 +177,8 @@ def streamed_forward(
                 num_warps=4,
                 enable_fp_fusion=fp_fusion,
             )
+        if cache_weight_dtype == torch.float16 and start < cache_weight_rows:
+            cached[start : start + rows].copy_(target)
         output_window = y[:, start : start + rows]
         if gemm_mode == "tf32x3":
             bounded_gemm(flat, target.T, output_window)

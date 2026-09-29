@@ -22,6 +22,9 @@ def main():
     parser.add_argument("--rounds", type=int, default=20)
     parser.add_argument("--window-rows", type=int, default=None)
     parser.add_argument("--cache-windows", type=int, default=None)
+    parser.add_argument(
+        "--cache-weight-dtype", choices=("fp32", "fp16"), default="fp32"
+    )
     parser.add_argument("--verify-steps", type=int, default=0)
     parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--listed-builder-ba", type=int, default=8)
@@ -64,6 +67,9 @@ def main():
             atom_kernel="staged_listed",
             window_rows=window_rows,
             cache_windows=cache_windows,
+            cache_weight_dtype=torch.float16
+            if args.cache_weight_dtype == "fp16"
+            else torch.float32,
             gemm_mode=mode,
             forward_gemm_mode=forward_mode,
             materialize_mode=args.materialize_mode,
@@ -87,6 +93,7 @@ def main():
         "listed_builder_warps": args.listed_builder_warps,
         "optimizer_mode": args.optimizer_mode,
         "cache_windows": cache_windows,
+        "cache_weight_dtype": args.cache_weight_dtype,
         "window_rows": window_rows,
         "allocated_after_warmup": torch.cuda.memory_allocated(),
     }
@@ -135,6 +142,9 @@ def main():
                     atom_kernel="staged_listed",
                     window_rows=window_rows,
                     cache_windows=cache_windows,
+                    cache_weight_dtype=torch.float16
+                    if args.cache_weight_dtype == "fp16"
+                    else torch.float32,
                     gemm_mode=mode,
                     forward_gemm_mode=forward_mode,
                     materialize_mode=args.materialize_mode,

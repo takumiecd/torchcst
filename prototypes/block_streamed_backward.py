@@ -485,6 +485,7 @@ class _MappedStreamed(torch.autograd.Function):
         listed_unroll,
         listed_builder_ba,
         listed_builder_warps,
+        cache_weight_dtype,
     ):
         ctx.layer = layer
         ctx.window_rows = window_rows
@@ -527,6 +528,7 @@ class _MappedStreamed(torch.autograd.Function):
             prepared=(packed, circle, section, offsets),
             weight_chunk_rows=window_rows,
             cache_weight_rows=cache_rows if reuse_input_weight else 0,
+            cache_weight_dtype=cache_weight_dtype,
             return_cache=True,
             gemm_mode=forward_gemm_mode,
             materialize_mode=materialize_mode,
@@ -557,9 +559,11 @@ class _MappedStreamed(torch.autograd.Function):
                 rows = min(chunk, n - start)
                 weight = (
                     cached[start : start + rows]
-                    if start < cached.shape[0]
+                    if start < cached.shape[0] and cached.dtype == torch.float32
                     else w[:rows]
                 )
+                if start < cached.shape[0] and cached.dtype == torch.float16:
+                    weight.copy_(cached[start : start + rows])
                 if start >= cached.shape[0]:
                     if ctx.listed_data is not None:
                         csr = ctx.materialize_mode == "listed_csr"
@@ -878,7 +882,7 @@ class _MappedStreamed(torch.autograd.Function):
                     enable_fp_fusion=False,
                 )
         ctx.listed_data = None
-        return (dx, dp) + (None,) * 13
+        return (dx, dp) + (None,) * 14
 
 
 def mapped_streamed_trainable(
@@ -896,6 +900,7 @@ def mapped_streamed_trainable(
     listed_unroll=1,
     listed_builder_ba=8,
     listed_builder_warps=4,
+    cache_weight_dtype=torch.float32,
 ):
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
         raise ValueError("trainable mapped prototype requires full 64x64 tiles")
@@ -919,8 +924,12 @@ def mapped_streamed_trainable(
     if type(cache_windows) is not int or cache_windows < 0:
         raise ValueError("cache_windows must be a nonnegative integer")
     cache_rows = cache_windows * window_rows
-    if cache_rows > layer.shape[0] // 2:
-        raise ValueError("cached windows must cover no more than half of W")
+    if cache_weight_dtype == torch.float32 and cache_rows > layer.shape[0] // 2:
+        raise ValueError("float32 cached windows must cover no more than half of W")
+    if cache_weight_dtype == torch.float16 and cache_rows > layer.shape[0]:
+        raise ValueError("float16 cached windows must cover no more than full W")
+    if cache_weight_dtype not in (torch.float32, torch.float16):
+        raise ValueError("cache_weight_dtype must be float32 or float16")
     if gemm_mode not in (
         "ieee",
         "tf32x3",
@@ -964,4 +973,5 @@ def mapped_streamed_trainable(
         listed_unroll,
         listed_builder_ba,
         listed_builder_warps,
+        cache_weight_dtype,
     )

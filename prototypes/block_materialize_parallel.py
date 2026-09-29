@@ -24,6 +24,7 @@ def materialize_listed_parallel(
     STATION_START,
     ROW_START,
     CSR: tl.constexpr = False,
+    BOUNDED: tl.constexpr = False,
     Bases=None,
 ):
     program = tl.program_id(0)
@@ -56,14 +57,26 @@ def materialize_listed_parallel(
         begin1 = tl.load(Offsets + 2 * station)
         length1 = tl.load(Offsets + 2 * station + 1) - begin1
         begin2 = tl.load(Offsets + 2 * station + 1)
-    for atom_start in range(0, count, BA):
+    if BOUNDED:
+        if G == 1:
+            total_candidates = tl.load(Offsets + 1) - begin0
+        else:
+            total_candidates = (
+                length0 + length1 + tl.load(Offsets + 2 * station + 2) - begin2
+            )
+        loop_count = tl.where(count < 0, total_candidates, count)
+    else:
+        loop_count = count
+    for atom_start in range(0, loop_count, BA):
         lanes = atom_start + tl.arange(0, BA)
-        active = lanes < count
+        active = lanes < loop_count
         rank = tl.load(
             Lists + list_base + lanes,
-            active,
+            active & (count >= 0) if BOUNDED else active,
             0,
         ).to(tl.int32)
+        if BOUNDED:
+            rank = tl.where(count < 0, lanes, rank)
         if G == 1:
             atom = begin0 + rank
         else:

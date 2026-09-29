@@ -1,0 +1,19 @@
+{
+  "device": "NVIDIA L4",
+  "rows": 16,
+  "output": {
+    "max_abs": 5.960464477539063e-08,
+    "relative_l2": 2.1279208795021987e-07,
+    "allclose_1e3": true
+  },
+  "input_gradient": {
+    "max_abs": 5.268305540084839e-05,
+    "relative_l2": 0.00022106037067715079,
+    "allclose_1e3": true
+  },
+  "atom_gradient": {
+    "max_abs": 3.0517578125e-05,
+    "relative_l2": 2.1560905949513653e-08,
+    "allclose_1e3": true
+  }
+}

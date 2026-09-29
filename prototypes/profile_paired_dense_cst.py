@@ -27,6 +27,12 @@ def main():
     parser.add_argument("--alt-window-rows", type=int, default=None)
     parser.add_argument("--alt-cache-windows", type=int, default=None)
     parser.add_argument(
+        "--cache-weight-dtype", choices=("fp32", "fp16"), default="fp32"
+    )
+    parser.add_argument(
+        "--alt-cache-weight-dtype", choices=("fp32", "fp16"), default="fp32"
+    )
+    parser.add_argument(
         "--gemm-mode", choices=("auto", "ieee", "fp16x3_dx"), default="auto"
     )
     parser.add_argument(
@@ -110,6 +116,9 @@ def main():
             listed_unroll=args.listed_unroll,
             listed_builder_ba=args.listed_builder_ba,
             listed_builder_warps=args.listed_builder_warps,
+            cache_weight_dtype=torch.float16
+            if args.cache_weight_dtype == "fp16"
+            else torch.float32,
         )
         accuracy = check(actual, expected)
         assert accuracy["passed"], accuracy
@@ -139,6 +148,16 @@ def main():
                 ),
                 cache_windows=(
                     args.alt_cache_windows if mode == "cst_alt" else cache_windows
+                ),
+                cache_weight_dtype=(
+                    torch.float16
+                    if (
+                        args.alt_cache_weight_dtype
+                        if mode == "cst_alt"
+                        else args.cache_weight_dtype
+                    )
+                    == "fp16"
+                    else torch.float32
                 ),
                 gemm_mode="ieee"
                 if baseline and not args.baseline_same_gemm
@@ -210,6 +229,7 @@ def main():
         "optimizer_mode": args.optimizer_mode,
         "window_rows": window_rows,
         "cache_windows": cache_windows,
+        "cache_weight_dtype": args.cache_weight_dtype,
         "scope": "complete AdamW steps; dense and CST weights and optimizer states coexist for timing; separate-process peaks required for memory",
         "accuracy": accuracy,
         "cases": {
@@ -243,6 +263,7 @@ def main():
         result["alternate"] = {
             "window_rows": args.alt_window_rows,
             "cache_windows": args.alt_cache_windows,
+            "cache_weight_dtype": args.alt_cache_weight_dtype,
         }
         result["paired_alternate_vs_cst_ratio_median"] = statistics.median(
             alternate / cst

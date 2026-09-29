@@ -1,0 +1,170 @@
+{
+  "device": "NVIDIA L4",
+  "torch": "2.11.0+cu128",
+  "triton": "3.6.0",
+  "results": [
+    {
+      "kernel": "materialize",
+      "unroll": 1,
+      "warps": 1,
+      "stages": 1,
+      "us": 160.22296284520348,
+      "max_delta": 0.0
+    },
+    {
+      "kernel": "materialize",
+      "unroll": 2,
+      "warps": 1,
+      "stages": 1,
+      "us": 156.11697629201328,
+      "max_delta": 0.0
+    },
+    {
+      "kernel": "materialize",
+      "unroll": 4,
+      "warps": 1,
+      "stages": 1,
+      "us": 151.7280694915027,
+      "max_delta": 0.0
+    },
+    {
+      "kernel": "materialize",
+      "unroll": 8,
+      "warps": 1,
+      "stages": 1,
+      "us": 152.41732321494865,
+      "max_delta": 0.0
+    },
+    {
+      "kernel": "materialize",
+      "unroll": 4,
+      "warps": 2,
+      "stages": 1,
+      "us": 142.98871406954672,
+      "max_delta": 0.0
+    },
+    {
+      "kernel": "materialize",
+      "unroll": 4,
+      "warps": 4,
+      "stages": 1,
+      "us": 166.99028479714192,
+      "max_delta": 0.0
+    },
+    {
+      "kernel": "materialize",
+      "unroll": 4,
+      "warps": 1,
+      "stages": 2,
+      "us": 154.3577269645734,
+      "max_delta": 0.0
+    },
+    {
+      "kernel": "materialize",
+      "unroll": 4,
+      "warps": 1,
+      "stages": 3,
+      "us": 153.01092414445773,
+      "max_delta": 0.0
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 1,
+      "unroll": 1,
+      "warps": 1,
+      "us": 249.67064261436462,
+      "max_delta": 3.814697265625e-06,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 1,
+      "unroll": 2,
+      "warps": 1,
+      "us": 264.8224087419181,
+      "max_delta": 3.814697265625e-06,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 1,
+      "unroll": 4,
+      "warps": 1,
+      "us": 289.427070228421,
+      "max_delta": 7.62939453125e-06,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 2,
+      "unroll": 1,
+      "warps": 1,
+      "us": 246.90480148583129,
+      "max_delta": 1.71661376953125e-05,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 2,
+      "unroll": 2,
+      "warps": 1,
+      "us": 245.90205520195823,
+      "max_delta": 1.71661376953125e-05,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 2,
+      "unroll": 4,
+      "warps": 1,
+      "us": 261.21757578961723,
+      "max_delta": 1.71661376953125e-05,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 4,
+      "unroll": 1,
+      "warps": 1,
+      "us": 5358.872102436267,
+      "max_delta": 2.288818359375e-05,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 4,
+      "unroll": 2,
+      "warps": 1,
+      "us": 6104.639530181885,
+      "max_delta": 2.288818359375e-05,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 4,
+      "unroll": 1,
+      "warps": 2,
+      "us": 968.3651542663574,
+      "max_delta": 1.811981201171875e-05,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 2,
+      "unroll": 1,
+      "warps": 2,
+      "us": 362.9300099034463,
+      "max_delta": 1.1444091796875e-05,
+      "allclose": true
+    },
+    {
+      "kernel": "atom_grad",
+      "ba": 2,
+      "unroll": 1,
+      "warps": 4,
+      "us": 423.56077074170946,
+      "max_delta": 1.33514404296875e-05,
+      "allclose": true
+    }
+  ]
+}
