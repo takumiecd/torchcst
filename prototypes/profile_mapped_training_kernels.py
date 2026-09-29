@@ -16,7 +16,7 @@ from torchcst.nn._backends._preparation import execution_plan
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=int, default=8192)
-    parser.add_argument("--rows", type=int, choices=(128, 2048), required=True)
+    parser.add_argument("--rows", type=int, choices=(16, 128, 2048), required=True)
     parser.add_argument("--graph", action="store_true")
     parser.add_argument("--cache-windows", type=int, default=None)
     parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
