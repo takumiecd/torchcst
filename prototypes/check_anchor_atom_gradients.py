@@ -4,7 +4,11 @@ import argparse
 
 import torch
 
-from prototypes.anchor_atom_training import _AnchorSamples, make_anchor_layout
+from prototypes.anchor_atom_training import (
+    _AnchorSamples,
+    make_anchor_layout,
+    make_calibrated_anchor_layout,
+)
 from prototypes.block_streamed_backward import trainable_boxed_prepare
 from prototypes.block_strip_linear import BlockStripLinear
 from prototypes.diagnose_cst_sampled_blocks import column_basis, evenly_spaced_indices
@@ -15,12 +19,18 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
 parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
 parser.add_argument("--list-mode", choices=("full_tile", "anchors"), default="full_tile")
+parser.add_argument("--calibration")
+parser.add_argument("--row-rank", type=int, default=16)
+parser.add_argument("--column-rank", type=int, default=8)
 args = parser.parse_args()
 torch.manual_seed(37)
 torch.backends.cuda.matmul.allow_tf32 = False
 n = 128
 layer = BlockStripLinear((n, n), (64, 64), round(0.05 * n * n), device="cuda")
-layout = make_anchor_layout(layer, 16, 8)
+layout = (
+    make_calibrated_anchor_layout(layer, args.calibration, args.row_rank, args.column_rank)
+    if args.calibration else make_anchor_layout(layer, args.row_rank, args.column_rank)
+)
 plan = execution_plan(layer.strip)
 boxes = station_site_boxes(plan.circle, plan.section, 64)
 hints = balanced_home_columns(layer.strip)
@@ -42,9 +52,8 @@ samples = _AnchorSamples.apply(
 ds = torch.randn_like(samples)
 (custom_grad,) = torch.autograd.grad((samples * ds).sum(), packed)
 
-row_anchors = torch.tensor(evenly_spaced_indices(64, 16), device="cuda")
-_, cols_list = column_basis(8)
-col_anchors = torch.tensor(cols_list, device="cuda")
+row_anchors = torch.tensor(layout.row_indices, device="cuda")
+col_anchors = torch.tensor(layout.col_indices, device="cuda")
 rho = section[col_anchors, 0]
 z = section[col_anchors, 1]
 w = section[col_anchors, 2]
@@ -56,17 +65,22 @@ for station in range(layer.strip.chart.tile_count):
         (
             cosine[:, None] * rho[None, :],
             sine[:, None] * rho[None, :],
-            z[None, :].expand(16, -1),
-            w[None, :].expand(16, -1),
+        z[None, :].expand(layout.rows_per_block, -1),
+        w[None, :].expand(layout.rows_per_block, -1),
         ),
         dim=-1,
     ).reshape(-1, 4)
     squared = (coords[:, None, :] - packed[None, :, 2:6]).square().sum(-1)
     gap = (1.0 - squared * packed[None, :, 1]).clamp_min(0.0)
-    values = (gap * gap * gap * packed[None, :, 0]).sum(-1).reshape(16, 32)
+    values = (gap * gap * gap * packed[None, :, 0]).sum(-1).reshape(
+        layout.rows_per_block, layout.cols_per_block
+    )
     row = station // layer.column_groups
     col = station % layer.column_groups
-    ref[row * 16 : (row + 1) * 16, col * 32 : (col + 1) * 32] = values
+    ref[
+        row * layout.rows_per_block : (row + 1) * layout.rows_per_block,
+        col * layout.cols_per_block : (col + 1) * layout.cols_per_block,
+    ] = values
 (reference_grad,) = torch.autograd.grad((ref * ds).sum(), packed)
 indices = torch.tensor([0, 2, 3, 4, 5], device="cuda")
 g_ref = reference_grad.index_select(1, indices)

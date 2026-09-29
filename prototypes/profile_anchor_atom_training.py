@@ -13,6 +13,7 @@ from prototypes.anchor_atom_training import (
     anchor_samples,
     anchor_trainable,
     make_anchor_layout,
+    make_calibrated_anchor_layout,
 )
 from prototypes.benchmark_tile_study import mapped_control
 from prototypes.block_streamed_backward import mapped_streamed_trainable
@@ -36,10 +37,12 @@ def comparison(actual, reference):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rows", type=int, choices=(16, 128), required=True)
+    parser.add_argument("--seed", type=int, default=21)
     parser.add_argument("--anchor-rows", type=int, choices=(8, 12, 16, 24), default=16)
     parser.add_argument(
-        "--anchor-column-segments", type=int, choices=(4, 8, 12), default=8
+        "--anchor-column-segments", type=int, choices=(4, 6, 8, 12), default=8
     )
+    parser.add_argument("--calibration", type=Path)
     parser.add_argument("--basis-mode", choices=("dense", "block"), default="dense")
     parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
@@ -52,17 +55,23 @@ def main():
     parser.add_argument("--include-dense", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    torch.manual_seed(21)
+    torch.manual_seed(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
     n = 1024
     baseline = BlockStripLinear((n, n), (64, 64), round(0.05 * n * n), device="cuda")
     anchor = copy.deepcopy(baseline)
-    layout = make_anchor_layout(anchor, args.anchor_rows, args.anchor_column_segments)
+    layout = (
+        make_calibrated_anchor_layout(
+            anchor, args.calibration, args.anchor_rows, args.anchor_column_segments
+        )
+        if args.calibration is not None
+        else make_anchor_layout(anchor, args.anchor_rows, args.anchor_column_segments)
+    )
     plan = execution_plan(baseline.strip)
     boxes = station_site_boxes(plan.circle, plan.section, 64)
     hints = balanced_home_columns(baseline.strip)
-    row_anchors = evenly_spaced_indices(64, args.anchor_rows)
-    _, col_anchors = column_basis(args.anchor_column_segments)
+    row_anchors = layout.row_indices
+    col_anchors = layout.col_indices
 
     with torch.no_grad():
         weight, canonical = mapped_control(
@@ -241,7 +250,8 @@ def main():
         "initial": initial,
         "graph_rounds": args.rounds,
         "updates_per_mode": args.rounds + 3,
-        "seed": 21,
+        "seed": args.seed,
+        "calibration": str(args.calibration) if args.calibration else None,
         "objective": "fixed random MSE target",
         "graph_ms": {
             mode: {

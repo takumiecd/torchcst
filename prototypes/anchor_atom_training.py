@@ -1,6 +1,8 @@
 """Experimental trainable CST operator evaluated only at interpolation anchors."""
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import torch
 import triton as tr
@@ -32,6 +34,8 @@ class AnchorLayout:
     cols_per_block: int
     row_pad: int
     col_pad: int
+    row_indices: tuple[int, ...]
+    col_indices: tuple[int, ...]
 
 
 def make_anchor_layout(layer, row_count=16, column_segments=8):
@@ -71,6 +75,60 @@ def make_anchor_layout(layer, row_count=16, column_segments=8):
         cols_per_block=len(column_anchors),
         row_pad=row_pad,
         col_pad=col_pad,
+        row_indices=tuple(row_anchors),
+        col_indices=tuple(column_anchors),
+    )
+
+
+def make_calibrated_anchor_layout(layer, calibration, row_rank, column_rank):
+    """Use fixed POD/DEIM bases calibrated outside the training step."""
+    records = json.loads(Path(calibration).read_text())["results"]
+    matches = [
+        record for record in records
+        if record["row_rank"] == row_rank
+        and record["column_rank_per_segment"] == column_rank
+        and "row_matrix" in record
+    ]
+    if len(matches) != 1:
+        raise ValueError("calibration does not contain the requested bases")
+    record = matches[0]
+    row_indices = tuple(record["row_indices"])
+    col_indices = tuple(record["column_indices"])
+    if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
+        raise ValueError("calibrated anchors require complete 64x64 blocks")
+    row_matrix = torch.tensor(record["row_matrix"], dtype=torch.float32)
+    col_matrix = torch.tensor(record["column_matrix"], dtype=torch.float32)
+    if row_matrix.shape != (64, row_rank) or col_matrix.shape != (64, 4 * column_rank):
+        raise ValueError("calibration basis has the wrong shape")
+    row_groups = [
+        [(position, row) for position, row in enumerate(row_indices) if row // 16 == tile]
+        for tile in range(4)
+    ]
+    row_pad = tr.next_power_of_2(max(map(len, row_groups)))
+    col_pad = tr.next_power_of_2(len(col_indices))
+    sites = torch.full((4, row_pad), -1, dtype=torch.int32)
+    positions = torch.full_like(sites, -1)
+    for tile, group in enumerate(row_groups):
+        for lane, (position, site) in enumerate(group):
+            sites[tile, lane] = site
+            positions[tile, lane] = position
+    cols = torch.full((col_pad,), -1, dtype=torch.int32)
+    cols[: len(col_indices)] = torch.tensor(col_indices, dtype=torch.int32)
+    device = layer.strip.atoms.p.device
+    return AnchorLayout(
+        output_basis=torch.block_diag(*([row_matrix] * (layer.shape[0] // 64))).to(device),
+        input_basis=torch.block_diag(*([col_matrix] * (layer.shape[1] // 64))).to(device),
+        local_output_basis=row_matrix.to(device),
+        local_input_basis=col_matrix.to(device),
+        row_sites=sites.to(device),
+        row_positions=positions.to(device),
+        col_sites=cols.to(device),
+        rows_per_block=row_rank,
+        cols_per_block=len(col_indices),
+        row_pad=row_pad,
+        col_pad=col_pad,
+        row_indices=row_indices,
+        col_indices=col_indices,
     )
 
 

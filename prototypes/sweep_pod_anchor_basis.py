@@ -83,6 +83,9 @@ def main():
                 "column_indices": col_indices.tolist(),
                 "holdout": checks,
             }
+            if row_rank in (12, 16) and col_rank == 6:
+                item["row_matrix"] = row_matrix.tolist()
+                item["column_matrix"] = column_matrix.tolist()
             print(row_rank, col_rank, checks, flush=True)
             results.append(item)
     output = {
