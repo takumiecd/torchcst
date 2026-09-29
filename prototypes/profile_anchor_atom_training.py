@@ -1,4 +1,4 @@
-"""Compare sampled, trainable CST atoms with the current 1024-square path."""
+"""Compare trainable anchor CST atoms with the current mapped CST path."""
 
 import argparse
 import copy
@@ -32,7 +32,8 @@ def comparison(actual, reference):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--rows", type=int, choices=(16, 128), required=True)
+    parser.add_argument("--size", type=int, choices=(1024, 8192), default=1024)
+    parser.add_argument("--rows", type=int, choices=(16, 128, 2048), required=True)
     parser.add_argument("--seed", type=int, default=21)
     parser.add_argument("--anchor-rows", type=int, choices=(8, 12, 16, 24), default=16)
     parser.add_argument(
@@ -55,7 +56,8 @@ def main():
     args = parser.parse_args()
     torch.manual_seed(args.seed)
     torch.backends.cuda.matmul.allow_tf32 = False
-    n = 1024
+    n = args.size
+    groups = n // 64
     baseline = BlockStripLinear((n, n), (64, 64), round(0.05 * n * n), device="cuda")
     anchor = copy.deepcopy(baseline)
     layout = (
@@ -63,7 +65,12 @@ def main():
             anchor, args.calibration, args.anchor_rows, args.anchor_column_segments
         )
         if args.calibration is not None
-        else make_anchor_layout(anchor, args.anchor_rows, args.anchor_column_segments)
+        else make_anchor_layout(
+            anchor,
+            args.anchor_rows,
+            args.anchor_column_segments,
+            dense_bases=args.basis_mode == "dense",
+        )
     )
     plan = execution_plan(baseline.strip)
     boxes = station_site_boxes(plan.circle, plan.section, 64)
@@ -82,12 +89,12 @@ def main():
         dense_weight = (
             torch.nn.Parameter(weight.detach().clone()) if args.include_dense else None
         )
-        blocks = weight.reshape(16, 64, 16, 64).permute(0, 2, 1, 3)
+        blocks = weight.reshape(groups, 64, groups, 64).permute(0, 2, 1, 3)
         expected_samples = (
             blocks.index_select(2, torch.tensor(row_anchors, device="cuda"))
             .index_select(3, torch.tensor(col_anchors, device="cuda"))
             .permute(0, 2, 1, 3)
-            .reshape(16 * args.anchor_rows, 16 * len(col_anchors))
+            .reshape(groups * args.anchor_rows, groups * len(col_anchors))
         )
         sampled = anchor_samples(
             anchor,
@@ -95,6 +102,8 @@ def main():
             boxes=boxes,
             witness_cols=hints,
             forward_lanes=args.forward_lanes,
+            decode_mode=args.decode_mode,
+            list_mode=args.list_mode,
         )
         sample_check = comparison(sampled, expected_samples)
         del sampled, expected_samples, blocks, weight
@@ -113,13 +122,13 @@ def main():
             x_baseline,
             boxes=boxes,
             witness_cols=hints,
-            window_rows=512,
-            cache_windows=2,
+            window_rows=512 if n == 1024 else 1024,
+            cache_windows=2 if n == 1024 else 4,
             cache_weight_dtype=torch.float16,
             weight_tile_rows=8,
             atom_kernel="staged_listed",
-            gemm_mode="ieee",
-            forward_gemm_mode="ieee",
+            gemm_mode="tf32x3" if n == 8192 and args.rows == 2048 else "ieee",
+            forward_gemm_mode="tf32x3" if n == 8192 and args.rows == 2048 else "ieee",
             materialize_mode="listed_bounded",
             listed_unroll=4,
             listed_builder_ba=32,
@@ -243,6 +252,7 @@ def main():
         "torch": torch.__version__,
         "rows": args.rows,
         "weight_size": [n, n],
+        "size": n,
         "atoms": round(0.05 * n * n),
         "anchor_shape": [16 * args.anchor_rows, 16 * len(col_anchors)],
         "anchor_sites_fraction": args.anchor_rows * len(col_anchors) / 4096,

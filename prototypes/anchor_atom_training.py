@@ -38,7 +38,7 @@ class AnchorLayout:
     col_indices: tuple[int, ...]
 
 
-def make_anchor_layout(layer, row_count=16, column_segments=8):
+def make_anchor_layout(layer, row_count=16, column_segments=8, *, dense_bases=True):
     """Build fixed local cubic bases and their sampled-site lookup tables."""
     if layer.tile_shape != (64, 64):
         raise ValueError("anchor prototype requires 64x64 CST tiles")
@@ -64,8 +64,16 @@ def make_anchor_layout(layer, row_count=16, column_segments=8):
     cols[: len(column_anchors)] = torch.tensor(column_anchors, dtype=torch.int32)
     device = layer.strip.atoms.p.device
     return AnchorLayout(
-        output_basis=torch.block_diag(*([local_output] * (n // 64))).to(device),
-        input_basis=torch.block_diag(*([local_input] * (k // 64))).to(device),
+        output_basis=(
+            torch.block_diag(*([local_output] * (n // 64))).to(device)
+            if dense_bases
+            else None
+        ),
+        input_basis=(
+            torch.block_diag(*([local_input] * (k // 64))).to(device)
+            if dense_bases
+            else None
+        ),
         local_output_basis=local_output.to(device),
         local_input_basis=local_input.to(device),
         row_sites=sites.to(device),
@@ -595,6 +603,8 @@ def anchor_trainable(
         list_mode=list_mode,
     )
     if basis_mode == "dense":
+        if layout.input_basis is None or layout.output_basis is None:
+            raise ValueError("dense basis mode requires dense_bases=True")
         return ((x @ layout.input_basis) @ samples.T) @ layout.output_basis.T
     if basis_mode == "block":
         m, k = x.shape
