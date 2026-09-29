@@ -134,6 +134,66 @@ def _rank_to_atom(rank, Offsets, station, G: tl.constexpr):
 
 
 @tr.jit
+def build_anchor_candidate_lists(
+    P, Circle, Section, Offsets, RowSites, RowPositions, ColSites,
+    Lists, Counts, G: tl.constexpr, RP: tl.constexpr, CP: tl.constexpr,
+    MAX_CANDIDATES: tl.constexpr, BA: tl.constexpr,
+):
+    station = tl.program_id(0)
+    row_tile = tl.program_id(1)
+    sx, sy, sz, sw, _, valid = _anchor_sites(
+        Circle, Section, RowSites, RowPositions, ColSites, station, row_tile, RP, CP
+    )
+    inf = float("inf")
+    lx = tl.min(tl.where(valid, sx, inf))
+    hx = tl.max(tl.where(valid, sx, -inf))
+    ly = tl.min(tl.where(valid, sy, inf))
+    hy = tl.max(tl.where(valid, sy, -inf))
+    lz = tl.min(tl.where(valid, tl.broadcast_to(sz, (RP, CP)), inf))
+    hz = tl.max(tl.where(valid, tl.broadcast_to(sz, (RP, CP)), -inf))
+    lw = tl.min(tl.where(valid, tl.broadcast_to(sw, (RP, CP)), inf))
+    hw = tl.max(tl.where(valid, tl.broadcast_to(sw, (RP, CP)), -inf))
+    _, capacity = _rank_to_atom(0, Offsets, station, G)
+    base = (station * 4 + row_tile) * MAX_CANDIDATES
+    count = 0
+    bucket_rank = 0
+    for neighbor in tl.static_range(1 if G == 1 else 3):
+        if G == 1:
+            bucket = 0
+        else:
+            bucket = tl.where(
+                neighbor == 0,
+                2 * ((station + G - 1) % G) + 1,
+                2 * station + neighbor - 1,
+            )
+        begin, end = tl.load(Offsets + bucket), tl.load(Offsets + bucket + 1)
+        for atom_start in range(begin, end, BA):
+            atom = atom_start + tl.arange(0, BA)
+            active = atom < end
+            cx = tl.load(P + atom * 6 + 2, active, 0.0)
+            cy = tl.load(P + atom * 6 + 3, active, 0.0)
+            cz = tl.load(P + atom * 6 + 4, active, 0.0)
+            cw = tl.load(P + atom * 6 + 5, active, 0.0)
+            precision = tl.load(P + atom * 6 + 1, active, 0.0)
+            ex = tl.maximum(tl.maximum(lx - cx, cx - hx), 0.0)
+            ey = tl.maximum(tl.maximum(ly - cy, cy - hy), 0.0)
+            ez = tl.maximum(tl.maximum(lz - cz, cz - hz), 0.0)
+            ew = tl.maximum(tl.maximum(lw - cw, cw - hw), 0.0)
+            lower_bound = ex * ex + ey * ey + ez * ez + ew * ew
+            possible = active & (lower_bound * precision <= 1.0001)
+            position = count + tl.cumsum(possible.to(tl.int32), 0) - 1
+            tl.store(
+                Lists + base + position,
+                bucket_rank + atom - begin,
+                possible & (position < MAX_CANDIDATES) & (capacity <= 256),
+            )
+            count += tl.sum(possible.to(tl.int32), 0)
+        bucket_rank += end - begin
+    tl.store(Counts + station * 4 + row_tile,
+             tl.where((count <= MAX_CANDIDATES) & (capacity <= 256), count, -1))
+
+
+@tr.jit
 def materialize_anchor_listed(
     P,
     Circle,
@@ -283,12 +343,33 @@ class _AnchorSamples(torch.autograd.Function):
         layout,
         forward_lanes,
         backward_lanes,
+        list_mode,
     ):
         if type(layer.strip.kernel.profile) is not Triweight:
             raise ValueError("anchor prototype requires Triweight")
-        lists, counts, capacity = build_listed_forward_candidates_bounded(
-            layer, packed, circle, section, offsets, ba=32, warps=1
-        )
+        if list_mode == "full_tile":
+            lists, counts, capacity = build_listed_forward_candidates_bounded(
+                layer, packed, circle, section, offsets, ba=32, warps=1
+            )
+        elif list_mode == "anchors":
+            capacity = 192
+            lists = torch.empty(
+                (layer.strip.chart.tile_count, 4, capacity),
+                device=packed.device, dtype=torch.uint8,
+            )
+            counts = torch.empty(
+                (layer.strip.chart.tile_count, 4),
+                device=packed.device, dtype=torch.int32,
+            )
+            build_anchor_candidate_lists[(layer.strip.chart.tile_count, 4)](
+                packed, circle, section, offsets, layout.row_sites,
+                layout.row_positions, layout.col_sites, lists, counts,
+                G=layer.strip.chart.tile_count, RP=layout.row_pad,
+                CP=layout.col_pad, MAX_CANDIDATES=capacity, BA=32,
+                num_warps=1, enable_fp_fusion=False,
+            )
+        else:
+            raise ValueError("list_mode must be full_tile or anchors")
         n, k = layer.shape
         samples = packed.new_empty(
             (n // 64 * layout.rows_per_block, k // 64 * layout.cols_per_block)
@@ -359,12 +440,12 @@ class _AnchorSamples(torch.autograd.Function):
             num_warps=1,
             enable_fp_fusion=True,
         )
-        return dp, None, None, None, None, None, None, None
+        return dp, None, None, None, None, None, None, None, None
 
 
 def anchor_samples(
     layer, layout, *, boxes, witness_cols, forward_lanes=1, backward_lanes=1,
-    decode_mode="torch",
+    decode_mode="torch", list_mode="full_tile",
 ):
     if forward_lanes not in (1, 2, 4, 8):
         raise ValueError("forward_lanes must be 1, 2, 4, or 8")
@@ -375,7 +456,8 @@ def anchor_samples(
         decode_mode=decode_mode,
     )
     return _AnchorSamples.apply(
-        packed, circle, section, offsets, layer, layout, forward_lanes, backward_lanes
+        packed, circle, section, offsets, layer, layout, forward_lanes,
+        backward_lanes, list_mode,
     )
 
 
@@ -390,6 +472,7 @@ def anchor_trainable(
     forward_lanes=1,
     backward_lanes=1,
     decode_mode="torch",
+    list_mode="full_tile",
 ):
     samples = anchor_samples(
         layer,
@@ -399,6 +482,7 @@ def anchor_trainable(
         forward_lanes=forward_lanes,
         backward_lanes=backward_lanes,
         decode_mode=decode_mode,
+        list_mode=list_mode,
     )
     if basis_mode == "dense":
         return ((x @ layout.input_basis) @ samples.T) @ layout.output_basis.T

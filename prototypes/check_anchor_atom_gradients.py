@@ -14,6 +14,7 @@ from torchcst.nn._backends._preparation import execution_plan
 parser = argparse.ArgumentParser()
 parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
 parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
+parser.add_argument("--list-mode", choices=("full_tile", "anchors"), default="full_tile")
 args = parser.parse_args()
 torch.manual_seed(37)
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -36,6 +37,7 @@ samples = _AnchorSamples.apply(
     layout,
     args.forward_lanes,
     args.backward_lanes,
+    args.list_mode,
 )
 ds = torch.randn_like(samples)
 (custom_grad,) = torch.autograd.grad((samples * ds).sum(), packed)
@@ -74,6 +76,7 @@ print(
         "device": torch.cuda.get_device_name(),
         "forward_lanes": args.forward_lanes,
         "backward_lanes": args.backward_lanes,
+        "list_mode": args.list_mode,
         "sample_relative_l2": float(((samples - ref).norm() / ref.norm()).detach()),
         "sample_max_abs": float((samples - ref).abs().max().detach()),
         "packed_grad_relative_l2": float(
