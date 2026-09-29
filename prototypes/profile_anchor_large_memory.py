@@ -21,6 +21,11 @@ def main():
     parser.add_argument(
         "--mode", choices=("baseline", "anchor", "dense"), required=True
     )
+    parser.add_argument("--anchor-rows", type=int, choices=(16, 24), default=16)
+    parser.add_argument(
+        "--anchor-column-segments", type=int, choices=(8, 12), default=8
+    )
+    parser.add_argument("--backward-lanes", type=int, choices=(4, 8), default=8)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(21)
@@ -46,7 +51,12 @@ def main():
         boxes = station_site_boxes(plan.circle, plan.section, 64)
         hints = balanced_home_columns(layer.strip)
         layout = (
-            make_anchor_layout(layer, 16, 8, dense_bases=False)
+            make_anchor_layout(
+                layer,
+                args.anchor_rows,
+                args.anchor_column_segments,
+                dense_bases=False,
+            )
             if args.mode == "anchor"
             else None
         )
@@ -70,7 +80,7 @@ def main():
                 witness_cols=hints,
                 basis_mode="block",
                 forward_lanes=1,
-                backward_lanes=8,
+                backward_lanes=args.backward_lanes,
                 decode_mode="torch",
                 list_mode="anchors",
             )
@@ -112,6 +122,11 @@ def main():
         "size": n,
         "rows": args.rows,
         "mode": args.mode,
+        "anchor_shape": (
+            [args.anchor_rows, args.anchor_column_segments * 4]
+            if args.mode == "anchor"
+            else None
+        ),
         "capture_start_allocated_mib": start / 2**20,
         "peak_allocated_mib": torch.cuda.max_memory_allocated() / 2**20,
         "current_allocated_mib": torch.cuda.memory_allocated() / 2**20,
