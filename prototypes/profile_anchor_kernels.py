@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--basis-mode", choices=("dense", "block"), default="dense")
     parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
+    parser.add_argument("--decode-mode", choices=("torch", "fused"), default="torch")
     parser.add_argument(
         "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
     )
@@ -58,6 +59,7 @@ def main():
             basis_mode=args.basis_mode,
             forward_lanes=args.forward_lanes,
             backward_lanes=args.backward_lanes,
+            decode_mode=args.decode_mode,
         )
         (output - target).square().mean().backward()
         optimizer.step()
@@ -90,6 +92,7 @@ def main():
         "optimizer_mode": args.optimizer_mode,
         "forward_lanes": args.forward_lanes,
         "backward_lanes": args.backward_lanes,
+        "decode_mode": args.decode_mode,
         "steps": 1,
         **kernel_summary(trace, steps=1),
     }
