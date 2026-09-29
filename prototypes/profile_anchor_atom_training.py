@@ -49,6 +49,7 @@ def main():
         "--optimizer-mode", choices=("foreach", "fused"), default="foreach"
     )
     parser.add_argument("--rounds", type=int, default=24)
+    parser.add_argument("--include-dense", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(21)
@@ -71,6 +72,7 @@ def main():
         )
         if not canonical["passed"]:
             raise RuntimeError(f"CST control failed: {canonical}")
+        dense_weight = torch.nn.Parameter(weight.detach().clone()) if args.include_dense else None
         blocks = weight.reshape(16, 64, 16, 64).permute(0, 2, 1, 3)
         expected_samples = (
             blocks.index_select(2, torch.tensor(row_anchors, device="cuda"))
@@ -90,6 +92,7 @@ def main():
 
     x_baseline = torch.randn(args.rows, n, device="cuda", requires_grad=True)
     x_anchor = x_baseline.detach().clone().requires_grad_()
+    x_dense = x_baseline.detach().clone().requires_grad_() if args.include_dense else None
     dy = torch.randn(args.rows, n, device="cuda")
     target = torch.randn(args.rows, n, device="cuda")
 
@@ -126,6 +129,9 @@ def main():
             list_mode=args.list_mode,
         )
 
+    def dense_output():
+        return x_dense @ dense_weight.T
+
     baseline_y = baseline_output()
     baseline_y.backward(dy)
     reference_dx = x_baseline.grad.detach().clone()
@@ -138,6 +144,8 @@ def main():
         "input_gradient": comparison(x_anchor.grad, reference_dx),
         "atom_gradient": comparison(anchor.strip.atoms.p.grad, reference_dp),
     }
+    if args.include_dense:
+        initial["dense_output"] = comparison(dense_output(), baseline_y)
     del baseline_y, anchor_y, reference_dx, reference_dp
     torch.cuda.synchronize()
 
@@ -157,19 +165,30 @@ def main():
             capturable=True,
         ),
     }
+    if args.include_dense:
+        optimizers["dense"] = torch.optim.AdamW(
+            [dense_weight],
+            lr=1e-3,
+            foreach=args.optimizer_mode == "foreach",
+            fused=args.optimizer_mode == "fused",
+            capturable=True,
+        )
 
     def step(mode):
         optimizers[mode].zero_grad(set_to_none=True)
         if mode == "baseline":
             x_baseline.grad = None
             output = baseline_output()
-        else:
+        elif mode == "anchor":
             x_anchor.grad = None
             output = anchor_output()
+        else:
+            x_dense.grad = None
+            output = dense_output()
         (output - target).square().mean().backward()
         optimizers[mode].step()
 
-    modes = ("baseline", "anchor")
+    modes = ("baseline", "anchor", "dense") if args.include_dense else ("baseline", "anchor")
     for mode in (*modes, *reversed(modes)):
         step(mode)
     torch.cuda.synchronize()
@@ -182,7 +201,8 @@ def main():
     torch.cuda.synchronize()
     samples = {mode: [] for mode in modes}
     for index in range(args.rounds):
-        order = modes[index % 2 :] + modes[: index % 2]
+        offset = index % len(modes)
+        order = modes[offset:] + modes[:offset]
         for mode in order:
             torch.cuda.synchronize()
             start = time.perf_counter()
@@ -199,6 +219,10 @@ def main():
             "anchor_loss": float((after_anchor - target).square().mean()),
             "atom_parameters": comparison(anchor.strip.atoms.p, baseline.strip.atoms.p),
         }
+        if args.include_dense:
+            after_dense = dense_output()
+            final["dense_loss"] = float((after_dense - target).square().mean())
+            final["anchor_vs_dense_output"] = comparison(after_anchor, after_dense)
     result = {
         "device": torch.cuda.get_device_name(),
         "torch": torch.__version__,
@@ -209,6 +233,7 @@ def main():
         "anchor_sites_fraction": args.anchor_rows * len(col_anchors) / 4096,
         "basis_mode": args.basis_mode,
         "optimizer_mode": args.optimizer_mode,
+        "include_dense": args.include_dense,
         "forward_lanes": args.forward_lanes,
         "backward_lanes": args.backward_lanes,
         "decode_mode": args.decode_mode,
@@ -227,6 +252,11 @@ def main():
         },
         "paired_anchor_vs_baseline": statistics.median(
             a / b for a, b in zip(samples["anchor"], samples["baseline"])
+        ),
+        "paired_anchor_vs_dense": (
+            statistics.median(
+                a / b for a, b in zip(samples["anchor"], samples["dense"])
+            ) if args.include_dense else None
         ),
         "after_updates": final,
     }
