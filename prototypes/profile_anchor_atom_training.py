@@ -41,6 +41,7 @@ def main():
         "--anchor-column-segments", type=int, choices=(4, 8, 12), default=8
     )
     parser.add_argument("--basis-mode", choices=("dense", "block"), default="dense")
+    parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--rounds", type=int, default=24)
     parser.add_argument("--output", type=Path, required=True)
@@ -72,7 +73,13 @@ def main():
             .permute(0, 2, 1, 3)
             .reshape(16 * args.anchor_rows, 16 * len(col_anchors))
         )
-        sampled = anchor_samples(anchor, layout, boxes=boxes, witness_cols=hints)
+        sampled = anchor_samples(
+            anchor,
+            layout,
+            boxes=boxes,
+            witness_cols=hints,
+            forward_lanes=args.forward_lanes,
+        )
         sample_check = comparison(sampled, expected_samples)
         del sampled, expected_samples, blocks, weight
 
@@ -108,6 +115,7 @@ def main():
             boxes=boxes,
             witness_cols=hints,
             basis_mode=args.basis_mode,
+            forward_lanes=args.forward_lanes,
             backward_lanes=args.backward_lanes,
         )
 
@@ -185,6 +193,7 @@ def main():
         "anchor_shape": [16 * args.anchor_rows, 16 * len(col_anchors)],
         "anchor_sites_fraction": args.anchor_rows * len(col_anchors) / 4096,
         "basis_mode": args.basis_mode,
+        "forward_lanes": args.forward_lanes,
         "backward_lanes": args.backward_lanes,
         "initial": initial,
         "graph_rounds": args.rounds,

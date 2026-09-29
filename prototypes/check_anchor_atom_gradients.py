@@ -12,6 +12,7 @@ from prototypes.support_box_routing import balanced_home_columns, station_site_b
 from torchcst.nn._backends._preparation import execution_plan
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
 parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
 args = parser.parse_args()
 torch.manual_seed(37)
@@ -27,7 +28,14 @@ packed, circle, section, offsets = trainable_boxed_prepare(
 )
 packed = packed.detach().clone().requires_grad_()
 samples = _AnchorSamples.apply(
-    packed, circle, section, offsets, layer, layout, args.backward_lanes
+    packed,
+    circle,
+    section,
+    offsets,
+    layer,
+    layout,
+    args.forward_lanes,
+    args.backward_lanes,
 )
 ds = torch.randn_like(samples)
 (custom_grad,) = torch.autograd.grad((samples * ds).sum(), packed)
@@ -64,6 +72,7 @@ g_custom = custom_grad.index_select(1, indices)
 print(
     {
         "device": torch.cuda.get_device_name(),
+        "forward_lanes": args.forward_lanes,
         "backward_lanes": args.backward_lanes,
         "sample_relative_l2": float(((samples - ref).norm() / ref.norm()).detach()),
         "sample_max_abs": float((samples - ref).abs().max().detach()),

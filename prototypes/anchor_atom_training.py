@@ -153,6 +153,7 @@ def materialize_anchor_listed(
     RP: tl.constexpr,
     CP: tl.constexpr,
     MAX_CANDIDATES: tl.constexpr,
+    BA: tl.constexpr,
 ):
     program = tl.program_id(0)
     station = program // 4
@@ -164,23 +165,30 @@ def materialize_anchor_listed(
     count = tl.load(Counts + program)
     _, capacity = _rank_to_atom(0, Offsets, station, G)
     limit = tl.where(count < 0, capacity, count)
-    for i in tl.range(0, limit, loop_unroll_factor=4):
-        rank = tl.load(Lists + program * MAX_CANDIDATES + i, count >= 0, 0).to(tl.int32)
-        rank = tl.where(count < 0, i, rank)
+    for start in tl.range(0, limit, BA, loop_unroll_factor=4 if BA == 1 else 1):
+        lanes = start + tl.arange(0, BA)
+        active = lanes < limit
+        rank = tl.load(
+            Lists + program * MAX_CANDIDATES + lanes,
+            active & (count >= 0),
+            0,
+        ).to(tl.int32)
+        rank = tl.where(count < 0, lanes, rank)
         atom, _ = _rank_to_atom(rank, Offsets, station, G)
-        cx = tl.load(P + atom * 6 + 2)
-        cy = tl.load(P + atom * 6 + 3)
-        cz = tl.load(P + atom * 6 + 4)
-        cw = tl.load(P + atom * 6 + 5)
-        precision = tl.load(P + atom * 6 + 1)
-        amplitude = tl.load(P + atom * 6)
-        dx = sx - cx
-        dy = sy - cy
-        dz = sz - cz
-        dw = sw - cw
+        cx = tl.load(P + atom * 6 + 2, active, 0.0)
+        cy = tl.load(P + atom * 6 + 3, active, 0.0)
+        cz = tl.load(P + atom * 6 + 4, active, 0.0)
+        cw = tl.load(P + atom * 6 + 5, active, 0.0)
+        precision = tl.load(P + atom * 6 + 1, active, 0.0)
+        amplitude = tl.load(P + atom * 6, active, 0.0)
+        dx = sx[:, :, None] - cx[None, None, :]
+        dy = sy[:, :, None] - cy[None, None, :]
+        dz = sz[:, :, None] - cz[None, None, :]
+        dw = sw[:, :, None] - cw[None, None, :]
         squared = (dx * dx + dy * dy) + (dz * dz + dw * dw)
-        gap = tl.maximum(1.0 - squared * precision, 0.0)
-        weight += amplitude * gap * gap * gap
+        gap = tl.maximum(1.0 - squared * precision[None, None, :], 0.0)
+        contribution = amplitude[None, None, :] * gap * gap * gap
+        weight += tl.sum(contribution, 2)
     row_index = (station // CG) * R + row_position
     col_index = (station % CG) * C + tl.arange(0, CP)
     tl.store(
@@ -265,7 +273,17 @@ def backward_anchor_listed(
 
 class _AnchorSamples(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, packed, circle, section, offsets, layer, layout, backward_lanes):
+    def forward(
+        ctx,
+        packed,
+        circle,
+        section,
+        offsets,
+        layer,
+        layout,
+        forward_lanes,
+        backward_lanes,
+    ):
         if type(layer.strip.kernel.profile) is not Triweight:
             raise ValueError("anchor prototype requires Triweight")
         lists, counts, capacity = build_listed_forward_candidates_bounded(
@@ -295,6 +313,7 @@ class _AnchorSamples(torch.autograd.Function):
             "RP": layout.row_pad,
             "CP": layout.col_pad,
             "MAX_CANDIDATES": capacity,
+            "BA": forward_lanes,
             "num_warps": 1,
             "enable_fp_fusion": True,
         }
@@ -340,28 +359,41 @@ class _AnchorSamples(torch.autograd.Function):
             num_warps=1,
             enable_fp_fusion=True,
         )
-        return dp, None, None, None, None, None, None
+        return dp, None, None, None, None, None, None, None
 
 
-def anchor_samples(layer, layout, *, boxes, witness_cols, backward_lanes=1):
+def anchor_samples(
+    layer, layout, *, boxes, witness_cols, forward_lanes=1, backward_lanes=1
+):
+    if forward_lanes not in (1, 2, 4, 8):
+        raise ValueError("forward_lanes must be 1, 2, 4, or 8")
     if backward_lanes not in (1, 2, 4, 8):
         raise ValueError("backward_lanes must be 1, 2, 4, or 8")
     packed, circle, section, offsets = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )
     return _AnchorSamples.apply(
-        packed, circle, section, offsets, layer, layout, backward_lanes
+        packed, circle, section, offsets, layer, layout, forward_lanes, backward_lanes
     )
 
 
 def anchor_trainable(
-    layer, x, layout, *, boxes, witness_cols, basis_mode="dense", backward_lanes=1
+    layer,
+    x,
+    layout,
+    *,
+    boxes,
+    witness_cols,
+    basis_mode="dense",
+    forward_lanes=1,
+    backward_lanes=1,
 ):
     samples = anchor_samples(
         layer,
         layout,
         boxes=boxes,
         witness_cols=witness_cols,
+        forward_lanes=forward_lanes,
         backward_lanes=backward_lanes,
     )
     if basis_mode == "dense":

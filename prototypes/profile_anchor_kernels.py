@@ -21,6 +21,7 @@ def main():
         "--anchor-column-segments", type=int, choices=(4, 8, 12), default=8
     )
     parser.add_argument("--basis-mode", choices=("dense", "block"), default="dense")
+    parser.add_argument("--forward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--backward-lanes", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -48,6 +49,7 @@ def main():
             boxes=boxes,
             witness_cols=hints,
             basis_mode=args.basis_mode,
+            forward_lanes=args.forward_lanes,
             backward_lanes=args.backward_lanes,
         )
         (output - target).square().mean().backward()
@@ -78,6 +80,7 @@ def main():
         "anchor_rows": args.anchor_rows,
         "anchor_cols": args.anchor_column_segments * 4,
         "basis_mode": args.basis_mode,
+        "forward_lanes": args.forward_lanes,
         "backward_lanes": args.backward_lanes,
         "steps": 1,
         **kernel_summary(trace, steps=1),
