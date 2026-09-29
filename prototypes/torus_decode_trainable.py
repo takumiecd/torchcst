@@ -25,10 +25,10 @@ def _decode(
     v = tl.load(Center + atom * S0 + 2 * S1, valid, 0.0)
     major = tl.load(Major)
     minor = tl.load(Minor)
-    angle = tl.sqrt(u * u + v * v) / minor
+    angle = tl.div_rn(tl.sqrt(u * u + v * v), minor)
     sinc = tl.where(angle == 0.0, 1.0, libdevice.sin(angle) / angle)
     radial = major + minor * libdevice.cos(angle)
-    theta = arc / major
+    theta = tl.div_rn(arc, major)
     tl.store(Out + atom * 4, radial * libdevice.cos(theta), valid)
     tl.store(Out + atom * 4 + 1, radial * libdevice.sin(theta), valid)
     tl.store(Out + atom * 4 + 2, sinc * u, valid)
@@ -61,11 +61,11 @@ def _decode_grad(
     major = tl.load(Major)
     minor = tl.load(Minor)
     radius2 = u * u + v * v
-    angle = tl.sqrt(radius2) / minor
+    angle = tl.div_rn(tl.sqrt(radius2), minor)
     sine = libdevice.sin(angle)
     cosine = libdevice.cos(angle)
     sinc = tl.where(angle == 0.0, 1.0, sine / angle)
-    theta = arc / major
+    theta = tl.div_rn(arc, major)
     circle_cos = libdevice.cos(theta)
     circle_sin = libdevice.sin(theta)
     radial = major + minor * cosine
