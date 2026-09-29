@@ -29,8 +29,8 @@ def _decode(
     sinc = tl.where(angle == 0.0, 1.0, libdevice.sin(angle) / angle)
     radial = major + minor * libdevice.cos(angle)
     theta = tl.div_rn(arc, major)
-    tl.store(Out + atom * 4, radial * libdevice.cos(theta), valid)
-    tl.store(Out + atom * 4 + 1, radial * libdevice.sin(theta), valid)
+    tl.store(Out + atom * 4, radial * tl.cos(theta), valid)
+    tl.store(Out + atom * 4 + 1, radial * tl.sin(theta), valid)
     tl.store(Out + atom * 4 + 2, sinc * u, valid)
     tl.store(Out + atom * 4 + 3, sinc * v, valid)
 
