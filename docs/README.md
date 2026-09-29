@@ -12,6 +12,7 @@ the supported continuous-only optimizer surface. Experiment runners and reports 
 - [direct-amplitude-bandwidth.ja.md](direct-amplitude-bandwidth.ja.md) — `(w, q)`座標、physical-displacement `q` 更新、Adam state、Polar checkpointとの非互換性、paired A100 evidence.
 - [cst-1024-algorithm-redesign-20260929.ja.md](cst-1024-algorithm-redesign-20260929.ja.md) — L4の1024²小バッチでのCSTアンカー補間の初期誤差と、別モデルである直接低ランク因子の対照測定。CST自体の速度改善は未実証.
 - [flash-cst-l4-20260929.ja.md](flash-cst-l4-20260929.ja.md) — L4の1024²でCSTのW/dWタイルをon-chip融合した前向きとatom勾配の実測。現行分離経路より遅く、完全ステップへの採用を見送った.
+- [l4-current-bottleneck-20260929.ja.md](l4-current-bottleneck-20260929.ja.md) — L4の現行1024²小バッチCST完全ステップを工程・kernel・Nsight指標まで分解したボトルネック分析.
 
 Removed optimizer experiments and their derivations remain available in Git
 history but are not part of the package or current architecture.

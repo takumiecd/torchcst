@@ -1,0 +1,39 @@
+==WARNING== Note: Running with uncontrolled GPU caches. Profiling results may be inconsistent.
+==PROF== Connected to process 5992 (/usr/bin/python3.13)
+==PROF== Disconnected from process 5992
+"ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Block Size","Grid Size","Device","CC","Section Name","Metric Name","Metric Unit","Metric Value","Rule Name","Rule Type","Rule Description","Estimated Speedup Type","Estimated Speedup"
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","DRAM Frequency","hz","6,242,007,536.03",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","SM Frequency","hz","795,018,063.16",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","Elapsed Cycles","cycle","218,496",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","Memory Throughput","%","15.90",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","DRAM Throughput","%","1.06",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","Duration","ns","274,592",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","L1/TEX Cache Throughput","%","18.72",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","L2 Cache Throughput","%","2.42",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","SM Active Cycles","cycle","182,512.40",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","GPU Speed Of Light Throughput","Compute (SM) Throughput","%","67.32",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","SpeedOfLight","","","","SOLBottleneck","OPT","Compute is more heavily utilized than Memory: Look at the Compute Workload Analysis section to see what the compute pipelines are spending their time doing. Also, consider whether any computation is redundant and could be reduced or moved to look-up tables.","",""
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Memory Workload Analysis","Memory Throughput","byte/s","3,183,778,114.44",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Memory Workload Analysis","Mem Busy","%","8.31",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Memory Workload Analysis","Max Bandwidth","%","15.90",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Memory Workload Analysis","L1/TEX Hit Rate","%","88.40",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Memory Workload Analysis","L2 Compression Success Rate","%","0",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Memory Workload Analysis","L2 Compression Ratio","","0",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Memory Workload Analysis","L2 Compression Input Sectors","sector","0",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Memory Workload Analysis","L2 Hit Rate","%","98.98",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Memory Workload Analysis","Mem Pipes Busy","%","15.90",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Warp State Statistics","Warp Cycles Per Issued Instruction","cycle","3.53",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Warp State Statistics","Warp Cycles Per Executed Instruction","cycle","3.53",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Warp State Statistics","Avg. Active Threads Per Warp","","32",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Warp State Statistics","Avg. Not Predicated Off Threads Per Warp","","31.97",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","WarpStateStats","","","","CPIStall","WRN","The optional metric smsp__pcsamp_sample_count could not be found. Collecting it as an additional metric could enable the rule to provide more guidance.","",""
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","Block Limit SM","block","24",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","Block Limit Registers","block","16",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","Block Limit Shared Mem","block","21",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","Block Limit Warps","block","48",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","Theoretical Active Warps per SM","warp","16",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","Theoretical Occupancy","%","33.33",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","Achieved Occupancy","%","23.30",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","Achieved Active Warps Per SM","warp","11.18",
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","","","","AchievedOccupancy","OPT","The difference between calculated theoretical (33.3%) and measured achieved occupancy (23.3%) can be the result of warp scheduling overheads or workload imbalances during the kernel execution. Load imbalances can occur between warps within a block as well as across blocks of the same kernel. See the CUDA Best Practices Guide (https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#occupancy) for more details on optimizing occupancy.","local","30.1"
+"0","5992","python3.13","127.0.0.1","materialize_listed","1","7","(32, 1, 1)","(1024, 1, 1)","0","8.9","Occupancy","","","","TheoreticalOccupancy","OPT","The 4.00 theoretical warps per scheduler this kernel can issue according to its occupancy are below the hardware maximum of 12. This kernel's theoretical occupancy (33.3%) is limited by the number of required registers.","local","66.67"

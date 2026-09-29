@@ -1,0 +1,61 @@
+{
+  "device": "NVIDIA L4",
+  "size": 1024,
+  "atoms": 52429,
+  "candidate_tiles": 1024,
+  "candidate_count": {
+    "min": 115.0,
+    "median": 125.0,
+    "mean": 146.7666015625,
+    "max": 176.0,
+    "empty_fraction": 0.0,
+    "at_most_one_fraction": 0.0
+  },
+  "windows": [
+    {
+      "row_start": 0,
+      "nonzero_16x64_fraction": 1.0,
+      "nonzero_element_fraction": 1.0
+    },
+    {
+      "row_start": 512,
+      "nonzero_16x64_fraction": 1.0,
+      "nonzero_element_fraction": 1.0
+    }
+  ],
+  "sampled_candidate_support": {
+    "16x64": {
+      "sampled_parent_tiles": 64,
+      "atom_subtiles": 9491,
+      "fully_inside_fraction": 0.11115793910020019,
+      "boundary_fraction": 0.8488041302286377,
+      "fully_outside_fraction": 0.04003793067116215
+    },
+    "8x32": {
+      "sampled_parent_tiles": 64,
+      "atom_subtiles": 37964,
+      "fully_inside_fraction": 0.20443051311769045,
+      "boundary_fraction": 0.6464808766199558,
+      "fully_outside_fraction": 0.14908861026235382
+    },
+    "8x16": {
+      "sampled_parent_tiles": 64,
+      "atom_subtiles": 75928,
+      "fully_inside_fraction": 0.20880307659888314,
+      "boundary_fraction": 0.642108313138763,
+      "fully_outside_fraction": 0.14908861026235382
+    },
+    "4x16": {
+      "sampled_parent_tiles": 64,
+      "atom_subtiles": 151856,
+      "fully_inside_fraction": 0.25373380044252447,
+      "boundary_fraction": 0.542573227267938,
+      "fully_outside_fraction": 0.20369297228953745
+    }
+  },
+  "sampled_atom_site_pairs": {
+    "pairs": 9718784,
+    "inside_support_fraction": 0.6247578915222316,
+    "outside_support_fraction": 0.3752421084777684
+  }
+}
