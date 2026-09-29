@@ -25,6 +25,7 @@ def main():
     parser.add_argument(
         "--cache-weight-dtype", choices=("fp32", "fp16"), default="fp32"
     )
+    parser.add_argument("--weight-tile-rows", type=int, choices=(8, 16), default=16)
     parser.add_argument("--verify-steps", type=int, default=0)
     parser.add_argument("--listed-unroll", type=int, choices=(1, 2, 4, 8), default=1)
     parser.add_argument("--listed-builder-ba", type=int, default=8)
@@ -70,6 +71,7 @@ def main():
             cache_weight_dtype=torch.float16
             if args.cache_weight_dtype == "fp16"
             else torch.float32,
+            weight_tile_rows=args.weight_tile_rows,
             gemm_mode=mode,
             forward_gemm_mode=forward_mode,
             materialize_mode=args.materialize_mode,
@@ -94,6 +96,7 @@ def main():
         "optimizer_mode": args.optimizer_mode,
         "cache_windows": cache_windows,
         "cache_weight_dtype": args.cache_weight_dtype,
+        "weight_tile_rows": args.weight_tile_rows,
         "window_rows": window_rows,
         "allocated_after_warmup": torch.cuda.memory_allocated(),
     }
@@ -145,6 +148,7 @@ def main():
                     cache_weight_dtype=torch.float16
                     if args.cache_weight_dtype == "fp16"
                     else torch.float32,
+                    weight_tile_rows=args.weight_tile_rows,
                     gemm_mode=mode,
                     forward_gemm_mode=forward_mode,
                     materialize_mode=args.materialize_mode,

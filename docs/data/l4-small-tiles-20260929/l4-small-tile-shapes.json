@@ -1,0 +1,107 @@
+{
+  "device": "NVIDIA L4",
+  "results": [
+    {
+      "tile": [
+        16,
+        64
+      ],
+      "tiles_per_station": 4,
+      "candidate_count_min": 115,
+      "candidate_count_max": 176,
+      "candidate_count_mean": 146.7666015625,
+      "fallback_tiles": 0,
+      "w_max_abs": 0.0,
+      "dp_max_abs": 0.0,
+      "dp_relative_l2": 0.0,
+      "build_us": 7.164412572731659,
+      "materialize_us": 147.40051169637377,
+      "atom_backward_us": 238.18877005691164
+    },
+    {
+      "tile": [
+        8,
+        64
+      ],
+      "tiles_per_station": 8,
+      "candidate_count_min": 90,
+      "candidate_count_max": 173,
+      "candidate_count_mean": 132.26513671875,
+      "fallback_tiles": 0,
+      "w_max_abs": 0.0,
+      "dp_max_abs": 1.1444091796875e-05,
+      "dp_relative_l2": 1.4187793340170174e-07,
+      "build_us": 11.57450206223994,
+      "materialize_us": 133.68372339401802,
+      "atom_backward_us": 270.5710072334998
+    },
+    {
+      "tile": [
+        16,
+        32
+      ],
+      "tiles_per_station": 8,
+      "candidate_count_min": 115,
+      "candidate_count_max": 176,
+      "candidate_count_mean": 146.33349609375,
+      "fallback_tiles": 0,
+      "w_max_abs": 0.0,
+      "dp_max_abs": 1.33514404296875e-05,
+      "dp_relative_l2": 1.5840437583847233e-07,
+      "build_us": 11.826981288334059,
+      "materialize_us": 148.05361513231622,
+      "atom_backward_us": 271.5067721635868
+    },
+    {
+      "tile": [
+        8,
+        32
+      ],
+      "tiles_per_station": 16,
+      "candidate_count_min": 89,
+      "candidate_count_max": 172,
+      "candidate_count_mean": 131.71337890625,
+      "fallback_tiles": 0,
+      "w_max_abs": 0.0,
+      "dp_max_abs": 1.9073486328125e-05,
+      "dp_relative_l2": 1.6106878319988027e-07,
+      "build_us": 19.76963767522498,
+      "materialize_us": 143.50769500973476,
+      "atom_backward_us": 330.1776522681826
+    },
+    {
+      "tile": [
+        4,
+        32
+      ],
+      "tiles_per_station": 32,
+      "candidate_count_min": 77,
+      "candidate_count_max": 159,
+      "candidate_count_mean": 123.71240234375,
+      "fallback_tiles": 0,
+      "w_max_abs": 0.0,
+      "dp_max_abs": 1.52587890625e-05,
+      "dp_relative_l2": 1.6711250339085382e-07,
+      "build_us": 36.279237282811785,
+      "materialize_us": 168.25807454199764,
+      "atom_backward_us": 518.4598588674082
+    },
+    {
+      "tile": [
+        8,
+        16
+      ],
+      "tiles_per_station": 32,
+      "candidate_count_min": 89,
+      "candidate_count_max": 172,
+      "candidate_count_mean": 131.100830078125,
+      "fallback_tiles": 0,
+      "w_max_abs": 0.0,
+      "dp_max_abs": 1.9073486328125e-05,
+      "dp_relative_l2": 1.687490396307112e-07,
+      "build_us": 36.63452990443357,
+      "materialize_us": 177.56431439171538,
+      "atom_backward_us": 556.5496026015862
+    }
+  ]
+}

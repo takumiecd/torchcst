@@ -32,6 +32,8 @@ def main():
     parser.add_argument(
         "--alt-cache-weight-dtype", choices=("fp32", "fp16"), default="fp32"
     )
+    parser.add_argument("--weight-tile-rows", type=int, choices=(8, 16), default=16)
+    parser.add_argument("--alt-weight-tile-rows", type=int, choices=(8, 16), default=16)
     parser.add_argument(
         "--gemm-mode", choices=("auto", "ieee", "fp16x3_dx"), default="auto"
     )
@@ -119,6 +121,7 @@ def main():
             cache_weight_dtype=torch.float16
             if args.cache_weight_dtype == "fp16"
             else torch.float32,
+            weight_tile_rows=args.weight_tile_rows,
         )
         accuracy = check(actual, expected)
         assert accuracy["passed"], accuracy
@@ -158,6 +161,11 @@ def main():
                     )
                     == "fp16"
                     else torch.float32
+                ),
+                weight_tile_rows=(
+                    args.alt_weight_tile_rows
+                    if mode == "cst_alt"
+                    else args.weight_tile_rows
                 ),
                 gemm_mode="ieee"
                 if baseline and not args.baseline_same_gemm
@@ -230,6 +238,7 @@ def main():
         "window_rows": window_rows,
         "cache_windows": cache_windows,
         "cache_weight_dtype": args.cache_weight_dtype,
+        "weight_tile_rows": args.weight_tile_rows,
         "scope": "complete AdamW steps; dense and CST weights and optimizer states coexist for timing; separate-process peaks required for memory",
         "accuracy": accuracy,
         "cases": {
@@ -264,6 +273,7 @@ def main():
             "window_rows": args.alt_window_rows,
             "cache_windows": args.alt_cache_windows,
             "cache_weight_dtype": args.alt_cache_weight_dtype,
+            "weight_tile_rows": args.alt_weight_tile_rows,
         }
         result["paired_alternate_vs_cst_ratio_median"] = statistics.median(
             alternate / cst

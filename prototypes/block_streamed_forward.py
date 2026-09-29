@@ -31,6 +31,7 @@ def streamed_forward(
     materialize_mode="default",
     listed_data=None,
     listed_unroll=1,
+    listed_tile_shape=(16, 64),
 ):
     """Generate a row window of logical W and multiply it before reusing the buffer."""
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64:
@@ -47,6 +48,8 @@ def streamed_forward(
         raise ValueError("unknown forward gemm_mode")
     if listed_unroll not in (1, 2, 4, 8):
         raise ValueError("listed_unroll must be 1, 2, 4, or 8")
+    if listed_tile_shape not in ((16, 64), (8, 64)):
+        raise ValueError("unsupported listed tile shape")
     if materialize_mode not in (
         "default",
         "listed",
@@ -126,7 +129,7 @@ def streamed_forward(
                 if materialize_mode == "listed_parallel"
                 else materialize_listed
             )
-            kernel[(rows // 64 * layer.column_groups * 4,)](
+            kernel[(rows // 64 * layer.column_groups * (64 // listed_tile_shape[0]),)](
                 p,
                 circle,
                 section,
@@ -141,6 +144,11 @@ def streamed_forward(
                 MAX_CANDIDATES=max_candidates,
                 CSR=csr,
                 BOUNDED=materialize_mode == "listed_bounded",
+                **(
+                    {"BR": listed_tile_shape[0], "BC": listed_tile_shape[1]}
+                    if materialize_mode != "listed_parallel"
+                    else {}
+                ),
                 Bases=list_bases,
                 **(
                     {"LOOP_UNROLL": listed_unroll}

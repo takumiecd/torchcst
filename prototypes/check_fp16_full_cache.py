@@ -24,6 +24,7 @@ def metrics(actual, reference):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rows", type=int, choices=(16, 128), required=True)
+    parser.add_argument("--weight-tile-rows", type=int, choices=(8, 16), default=16)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     torch.manual_seed(21)
@@ -35,9 +36,9 @@ def main():
     x = torch.randn(args.rows, n, device="cuda")
     dy = torch.randn(args.rows, n, device="cuda")
     results = {}
-    for name, cache_windows, cache_dtype in (
-        ("fp32_half", 1, torch.float32),
-        ("fp16_full", 2, torch.float16),
+    for name, cache_windows, cache_dtype, weight_tile_rows in (
+        ("fp32_half", 1, torch.float32, 16),
+        ("fp16_full", 2, torch.float16, args.weight_tile_rows),
     ):
         layer.strip.atoms.p.grad = None
         xi = x.clone().requires_grad_()
@@ -49,6 +50,7 @@ def main():
             window_rows=512,
             cache_windows=cache_windows,
             cache_weight_dtype=cache_dtype,
+            weight_tile_rows=weight_tile_rows,
             atom_kernel="staged_listed",
             gemm_mode="ieee",
             forward_gemm_mode="ieee",
@@ -69,6 +71,7 @@ def main():
     summary = {
         "device": torch.cuda.get_device_name(),
         "rows": args.rows,
+        "candidate_weight_tile_rows": args.weight_tile_rows,
         "output": metrics(alternative["output"], reference["output"]),
         "input_gradient": metrics(
             alternative["input_gradient"], reference["input_gradient"]

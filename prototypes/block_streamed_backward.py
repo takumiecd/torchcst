@@ -432,20 +432,31 @@ def build_listed_forward_candidates_csr(layer, packed, circle, section, offsets)
 
 
 def build_listed_forward_candidates_bounded(
-    layer, packed, circle, section, offsets, *, max_candidates=192, ba=8, warps=4
+    layer,
+    packed,
+    circle,
+    section,
+    offsets,
+    *,
+    max_candidates=192,
+    ba=8,
+    warps=4,
+    br=16,
+    bc=64,
 ):
     """Graph-safe compact lists; overflow tiles scan their complete bucket span."""
     if type(max_candidates) is not int or not 1 <= max_candidates <= 65536:
         raise ValueError("bounded candidate capacity must be in [1, 65536]")
     g = layer.strip.chart.tile_count
+    tiles = 4096 // (br * bc)
     rank_limit = 256 if max_candidates <= 256 else 65536
     atom_lists = torch.empty(
-        (g, 4, max_candidates),
+        (g, tiles, max_candidates),
         device=packed.device,
         dtype=torch.uint8 if rank_limit == 256 else torch.uint16,
     )
-    list_counts = torch.empty((g, 4), device=packed.device, dtype=torch.int32)
-    build_tile_atom_lists[(g, 4)](
+    list_counts = torch.empty((g, tiles), device=packed.device, dtype=torch.int32)
+    build_tile_atom_lists[(g, tiles)](
         packed,
         circle,
         section,
@@ -456,8 +467,8 @@ def build_listed_forward_candidates_bounded(
         MAX_CANDIDATES=max_candidates,
         BA=ba,
         COMPACT=True,
-        BR=16,
-        BC=64,
+        BR=br,
+        BC=bc,
         BOUNDED=True,
         RANK_LIMIT=rank_limit,
         num_warps=warps,
@@ -486,12 +497,14 @@ class _MappedStreamed(torch.autograd.Function):
         listed_builder_ba,
         listed_builder_warps,
         cache_weight_dtype,
+        weight_tile_rows,
     ):
         ctx.layer = layer
         ctx.window_rows = window_rows
         ctx.atom_kernel = atom_kernel
         ctx.materialize_mode = materialize_mode
         ctx.listed_unroll = listed_unroll
+        ctx.weight_tile_rows = weight_tile_rows
         ctx.gemm_mode = gemm_mode
         ctx.weight_fp_fusion = weight_fp_fusion_enabled(x.device)
         if materialize_mode == "listed_csr":
@@ -519,6 +532,20 @@ class _MappedStreamed(torch.autograd.Function):
             )
         else:
             ctx.listed_data = None
+        ctx.weight_listed_data = (
+            build_listed_forward_candidates_bounded(
+                layer,
+                packed,
+                circle,
+                section,
+                offsets,
+                ba=listed_builder_ba,
+                warps=listed_builder_warps,
+                br=weight_tile_rows,
+            )
+            if materialize_mode == "listed_bounded" and weight_tile_rows != 16
+            else ctx.listed_data
+        )
         reuse_input_weight = ctx.needs_input_grad[0] and (
             atom_kernel != "fused" or not ctx.needs_input_grad[1]
         )
@@ -532,7 +559,8 @@ class _MappedStreamed(torch.autograd.Function):
             return_cache=True,
             gemm_mode=forward_gemm_mode,
             materialize_mode=materialize_mode,
-            listed_data=ctx.listed_data,
+            listed_data=ctx.weight_listed_data,
+            listed_tile_shape=(weight_tile_rows, 64),
             listed_unroll=listed_unroll,
         )
         ctx.save_for_backward(x, packed, circle, section, offsets)
@@ -565,20 +593,31 @@ class _MappedStreamed(torch.autograd.Function):
                 if start < cached.shape[0] and cached.dtype == torch.float16:
                     weight.copy_(cached[start : start + rows])
                 if start >= cached.shape[0]:
-                    if ctx.listed_data is not None:
+                    if ctx.weight_listed_data is not None:
                         csr = ctx.materialize_mode == "listed_csr"
                         if csr:
-                            atom_lists, list_counts, list_bases, _ = ctx.listed_data
+                            atom_lists, list_counts, list_bases, _ = (
+                                ctx.weight_listed_data
+                            )
                             max_candidates = 0
                         else:
-                            atom_lists, list_counts, max_candidates = ctx.listed_data
+                            atom_lists, list_counts, max_candidates = (
+                                ctx.weight_listed_data
+                            )
                             list_bases = None
                         kernel = (
                             materialize_listed_parallel
                             if ctx.materialize_mode == "listed_parallel"
                             else materialize_listed
                         )
-                        kernel[(rows // 64 * layer.column_groups * 4,)](
+                        kernel[
+                            (
+                                rows
+                                // 64
+                                * layer.column_groups
+                                * (64 // ctx.weight_tile_rows),
+                            )
+                        ](
                             packed,
                             circle,
                             section,
@@ -593,6 +632,11 @@ class _MappedStreamed(torch.autograd.Function):
                             MAX_CANDIDATES=max_candidates,
                             CSR=csr,
                             BOUNDED=ctx.materialize_mode == "listed_bounded",
+                            **(
+                                {"BR": ctx.weight_tile_rows, "BC": 64}
+                                if ctx.materialize_mode != "listed_parallel"
+                                else {}
+                            ),
                             Bases=list_bases,
                             **(
                                 {"LOOP_UNROLL": ctx.listed_unroll}
@@ -882,7 +926,8 @@ class _MappedStreamed(torch.autograd.Function):
                     enable_fp_fusion=False,
                 )
         ctx.listed_data = None
-        return (dx, dp) + (None,) * 14
+        ctx.weight_listed_data = None
+        return (dx, dp) + (None,) * 15
 
 
 def mapped_streamed_trainable(
@@ -901,6 +946,7 @@ def mapped_streamed_trainable(
     listed_builder_ba=8,
     listed_builder_warps=4,
     cache_weight_dtype=torch.float32,
+    weight_tile_rows=16,
 ):
     if layer.tile_shape != (64, 64) or layer.shape[0] % 64 or layer.shape[1] % 64:
         raise ValueError("trainable mapped prototype requires full 64x64 tiles")
@@ -957,6 +1003,10 @@ def mapped_streamed_trainable(
         raise ValueError("listed_builder_ba must be a supported power of two")
     if listed_builder_warps not in (1, 2, 4, 8):
         raise ValueError("listed_builder_warps must be 1, 2, 4, or 8")
+    if weight_tile_rows not in (8, 16):
+        raise ValueError("weight_tile_rows must be 8 or 16")
+    if weight_tile_rows != 16 and materialize_mode != "listed_bounded":
+        raise ValueError("8-row weight tiles require listed_bounded")
     prepared = trainable_boxed_prepare(
         layer.strip, layer.strip.atoms.p, boxes=boxes, witness_cols=witness_cols
     )
@@ -974,4 +1024,5 @@ def mapped_streamed_trainable(
         listed_builder_ba,
         listed_builder_warps,
         cache_weight_dtype,
+        weight_tile_rows,
     )

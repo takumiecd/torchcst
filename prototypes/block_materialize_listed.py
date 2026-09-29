@@ -26,16 +26,20 @@ def materialize_listed(
     BOUNDED: tl.constexpr = False,
     Bases=None,
     BR: tl.constexpr = 16,
+    BC: tl.constexpr = 64,
     LOOP_UNROLL: tl.constexpr = 1,
     PIPE_STAGES: tl.constexpr = 1,
     EXPANDED_DISTANCE: tl.constexpr = False,
 ):
     program = tl.program_id(0)
-    row_tiles = 64 // BR
-    station = STATION_START + program // row_tiles
-    row_tile = program % row_tiles
+    column_tiles = 64 // BC
+    tiles_per_station = (64 // BR) * column_tiles
+    station = STATION_START + program // tiles_per_station
+    tile = program % tiles_per_station
+    row_tile = tile // column_tiles
+    col_tile = tile % column_tiles
     local_rows = row_tile * BR + tl.arange(0, BR)
-    local_cols = tl.arange(0, 64)
+    local_cols = col_tile * BC + tl.arange(0, BC)
     site_rows = station * 64 + local_rows
     logical_rows = (station // CG) * 64 + local_rows
     logical_cols = (station % CG) * 64 + local_cols
@@ -48,12 +52,12 @@ def materialize_listed(
     sy = sine[:, None] * rho[None, :]
     if EXPANDED_DISTANCE:
         site_norm = (sx * sx + sy * sy) + (z * z + w * w)[None, :]
-    weight = tl.full((BR, 64), 0.0, tl.float32)
-    count = tl.load(Counts + station * row_tiles + row_tile)
+    weight = tl.full((BR, BC), 0.0, tl.float32)
+    count = tl.load(Counts + station * tiles_per_station + tile)
     if CSR:
-        list_base = tl.load(Bases + station * row_tiles + row_tile)
+        list_base = tl.load(Bases + station * tiles_per_station + tile)
     else:
-        list_base = (station * row_tiles + row_tile) * MAX_CANDIDATES
+        list_base = (station * tiles_per_station + tile) * MAX_CANDIDATES
     if G == 1:
         begin0 = tl.load(Offsets)
     else:
