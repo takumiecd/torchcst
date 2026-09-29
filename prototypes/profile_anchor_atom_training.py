@@ -178,6 +178,9 @@ def main():
         "anchor_sites_fraction": args.anchor_rows * len(col_anchors) / 4096,
         "initial": initial,
         "graph_rounds": args.rounds,
+        "updates_per_mode": args.rounds + 3,
+        "seed": 21,
+        "objective": "fixed random MSE target",
         "graph_ms": {
             mode: {
                 "median": statistics.median(samples[mode]),
