@@ -1,0 +1,56 @@
+{
+  "date": "2026-09-30",
+  "timezone": "Asia/Tokyo",
+  "host_python": "3.9.6",
+  "cpu_tests": "23 passed",
+  "skill_validation": "passed",
+  "live_workers": 1,
+  "multi_worker_validation": "1,2,3 tested with simulated Colab, real independent processes tested queue claims",
+  "jobs": [
+    {
+      "label": "pool-live-timeout",
+      "id": "l4job-864e828ab47244d0a87ced2793237799",
+      "returncode": -9,
+      "timed_out": true,
+      "started": 1790771981.3729262,
+      "finished": 1790771981.6246238,
+      "session": "cst-pool-15044f7c6de1-1"
+    },
+    {
+      "label": "pool-live-after-timeout",
+      "id": "l4job-04d3b6f2198d43ecaad5348d483fa85e",
+      "returncode": 0,
+      "timed_out": false,
+      "started": 1790771990.662568,
+      "finished": 1790771993.5356977,
+      "session": "cst-pool-15044f7c6de1-1"
+    },
+    {
+      "label": "pool-live-repeat-success",
+      "id": "l4job-5ff195b564b844259850819bc3b57a4e",
+      "returncode": 0,
+      "timed_out": false,
+      "started": 1790772003.331997,
+      "finished": 1790772005.8531432,
+      "session": "cst-pool-15044f7c6de1-1"
+    },
+    {
+      "label": "pool-live-failure-retry",
+      "id": "l4job-566c8afcb9af43da993ee923c36db9f5",
+      "returncode": 1,
+      "timed_out": false,
+      "started": 1790772014.7502637,
+      "finished": 1790772014.8645482,
+      "session": "cst-pool-15044f7c6de1-1"
+    }
+  ],
+  "nonoverlap_verified": true,
+  "all_downloaded_manifest_hashes_verified": true,
+  "cleanup": "owned runtime stopped; server lists no active sessions",
+  "network_incidents": [
+    "First live job completed remotely but download and stop could not connect through default routing; dispatch halted and slot quarantined.",
+    "After HTTP binding, a second attempt stalled on the Jupyter WebSocket; host execution timed out and dispatch halted.",
+    "Explicit recovery confirmed stop of each affected owned VM. Final socket-level en0 binding covers urllib auth, requests, WebSocket and keep-alive; final four jobs succeeded as expected."
+  ],
+  "scope": "GPU queue smoke tests; no CST performance claims"
+}
