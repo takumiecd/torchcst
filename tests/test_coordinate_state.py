@@ -216,3 +216,27 @@ def test_execution_reads_live_tensor_state_without_snapshots(monkeypatch):
     charts.squared_distance(state, centers, slice(0, 3)).sum().backward()
     assert torch.isfinite(centers.grad).all()
     assert patterns.positions(state.axes[0], torch.arange(3)).shape == (3, 1)
+
+
+@pytest.mark.parametrize("kind", ["explicit", "product", "strip"])
+def test_chart_compilation_checks_nested_pattern_revision(kind):
+    spec = layout.points(((0.0,), (1.0,))) if kind == "explicit" else matrix(kind)
+    future = replace(spec, axes=(replace(spec.axes[0], revision=2), *spec.axes[1:]))
+    with pytest.raises(ValueError, match="unsupported chart pattern"):
+        ChartState(future)
+
+
+def test_explicit_chart_rejects_custom_point_semantics():
+    from torchcst import ChartSpec, PointsPatternSpec
+
+    class CustomPoints(PointsPatternSpec):
+        pass
+
+    spec = ChartSpec(
+        kind="explicit",
+        shape=(1,),
+        geometry=layout.euclidean(1),
+        axes=(CustomPoints(coordinates=((0.0,),)),),
+    )
+    with pytest.raises(ValueError, match="unsupported chart pattern"):
+        ChartState(spec)

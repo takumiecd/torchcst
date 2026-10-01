@@ -167,6 +167,12 @@ class ChartState(nn.Module):
         super().__init__()
         if type(spec) is not ChartSpec or spec.revision != 1:
             raise ValueError("unsupported chart declaration or revision")
+        if any(
+            type(axis) not in (GridPatternSpec, LinePatternSpec, PointsPatternSpec)
+            or axis.revision != 1
+            for axis in spec.axes
+        ):
+            raise ValueError("unsupported chart pattern declaration or revision")
         dtype = _floating_dtype(dtype)
         self.register_load_state_dict_post_hook(_validate_loaded_state)
         self.spec = spec
