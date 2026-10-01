@@ -84,3 +84,46 @@ source archive SHA256 は
 `084b235b048ccd7686973d1bf596272faf64f4bd745033a860a44e40bc5c2901`。
 README の追加により archive は異なるが、全 Python ファイルの SHA256 は
 最初の job と一致する。測定実装は引き続き `0455e78` である。
+
+### 回収済み結果
+
+再提出は成功。driver returncode 0 / timeout false、配布 wheel の全テストは
+**788 passed / 2 skipped / 1 warning**、505.33 秒。skip は macOS socket binding と
+A100 専用 FP fusion の検証で、この L4 / Linux 環境では適用されない。warning は
+cuBLAS primary context の設定である。
+
+実機 NVIDIA L4（SM 8.9、58 SM、23034 MiB）、driver 580.82.07。
+Python 3.13.15、Torch 2.11.0+cu128、CUDA 12.8、Triton 3.6.0。
+結果 archive SHA256 は
+`1a3b109e9855ed23b13b068aaf5129342ced036acf6c620c95353a283be2d926`。
+receipt と結果 archive、source archive ID の一致を確認した。配布された全 Python
+module の SHA256 も提出した source_files と一致する。pool の全 slot が stopped
+になったことを確認し、source / receipt / results を ignored evidence に保存した。
+
+小さい混合 fixture の独立 FP64 oracle で normalized full / window の y、dX、
+全 atom gradient、weight、更新後の値・勾配を照合し、Graph / AdamW の検証も通った。
+最大 absolute error は y 2.88e-8、dX 3.46e-8、atom gradient 1.98e-4
+（relative L2 6.92e-5）で、既存の許容範囲を通る。更新後も既存の許容範囲を通る。
+
+完全ステップは N=1024（1024×1024 weight）、batch=128、atoms=52429（約5%）、
+FP32 / TF32 off、seed=21。AdamW lr=1e-4 / weight_decay=0.01、fused / capturable。
+通常の broad は初期 sigma=3、sharp は初期 sigma=0.199 で支持点に近い center の
+別 fixture。full と window の初期 atom hash と optimizer 契約は同じ。
+
+| fixture | implementation | eager median ms | Graph median ms | allocated peak MiB | reserved peak MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| broad | normalized_window | 2.865 | 1.511 | 46.16 | 86.00 |
+| broad | normalized_full | 1.641 | 0.625 | 51.85 | 106.00 |
+| broad | dense_linear | 0.743 | 0.126 | 50.50 | 106.00 |
+| sharp | normalized_window | 2.795 | 0.307 | 46.16 | 86.00 |
+| sharp | normalized_full | 1.596 | 0.544 | 51.85 | 106.00 |
+| sharp | dense_linear | 0.775 | 0.130 | 50.50 | 106.00 |
+
+時間は warmup 後の forward / backward / AdamW の完全ステップであり、初回 compile
+や準備時間は含めない。メモリ peak は warmup 済みの model・勾配・optimizer 状態を
+含み、capture / replay の前に peak を reset して測る。GPU process 全体の使用量は
+未測定。各方式は独立 process で順番に測っており、交互の paired timing ではない。
+
+1024×1024 の全 atom gradient を独立 oracle で網羅したという主張はしない。dense は
+別の weight parameterization の参考測定である。この記録は宣言分離の動作確認で、
+方式の承認、既定 dispatch への昇格、移動前からの速度改善を認定するものではない。
