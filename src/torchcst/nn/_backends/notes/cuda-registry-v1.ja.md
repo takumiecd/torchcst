@@ -16,9 +16,13 @@
 | WindowRecipe | id、window_rows、enable_fp_fusion | window の完全設定。初期版は rows512 の組のみを許可。N が小さい場合の実行窓は min(512,N)。 |
 | ExecutionPlan | schema_version、algorithm_id、algorithm_revision、recipe | 解決済みの不変な実行設定。algorithm_revision=v1 は実装契約の版であり、Git SHA の代替ではない。 |
 | DispatchDecision | plan、tree_revision、matched_path、reason、evidence_ids、workspace_upper_bound_bytes | 選択理由。互換ポリシーなので evidence_ids は空。 |
-| AlgorithmEntry | id/revision、operation_id/semantics_id、recipe_type、validate_recipe、supports、workspace_bound、load_executor | 実装への登録。入力や backward の保存状態は保持しない。 |
+| Algorithm ABC | id/revision、operation_id/semantics_id、recipe_type、validate_recipe、supports、workspace_bound、execute | recipe 型ごとの共通契約。入力や backward の保存状態は保持しない。 |
 
-登録表は `(algorithm_id, revision)` で参照する。重複登録、未知版、recipe の
+registry は Algorithm の instance だけを登録し、`(algorithm_id, revision)` で参照する。
+`NormalizedFullAlgorithm` / `NormalizedWindowAlgorithm` が既存二方式を実装する。
+metadata は frozen dataclass で、必須四メソッドが未実装の class は生成できない。
+旧 AlgorithmEntry と load_executor callback は削除し、GPU import は execute 内で行う。
+重複登録、未知版、recipe の
 型違い、非対応条件を拒否する。実行 adapter は Tensor と OperatorSpec を
 明示的に受け取り、既存の autograd Function を呼ぶ。backward は forward の
 設定・保存 Tensor をそのまま使用し、selector を再実行しない。
@@ -29,6 +33,7 @@ CUDA モジュールは executor を実行するときだけ import する。
 
 ## 配置
 
+- `../cuda/algorithm.py`: recipe 型に対応する Algorithm ABC。
 - `../cuda/schema.py`: 不変の contract。
 - `../cuda/context.py`: 実 Tensor から metadata を集める。
 - `../cuda/registry.py`: 登録と直接 plan 実行。
@@ -77,6 +82,17 @@ parameter 更新や独立勾配 oracle の代替ではない。
 同期 wall time の全sampleと中央値、capture/replay peak allocated/reserved を保存。
 GPU process usage は未測定として None。測定は同じfixtureの独立process比較で、
 交互の対応計時ではないため、微小差による勝者の認証には使わない。
+
+Algorithm ABC を追加するときは、次の手順で実装する。
+
+1. algorithm 固有の不変 recipe 型を定義する。
+2. Algorithm[その recipe 型] を継承し、ID・revision・演算契約・recipe_type を定義する。
+3. validate_recipe、supports、workspace_bound、execute を実装する。
+4. execute だけで GPU 実装を遅延 import し、既存または新しい autograd 接続を呼ぶ。
+5. registry.register(instance) で明示登録し、独立oracleとbenchmark adapterを追加する。
+
+execute の Tensor と saved state は呼び出しごとに所有する。Algorithm instance
+には model・optimizer・動的support・勾配を保存しない。
 
 ソースファイルhash、source commit、GPU実機、CUDA/PyTorch/Triton、recipe、seed、
 測定条件を JSON に残す。承認用の全形状suiteやケースファイルschemaは次の段階。

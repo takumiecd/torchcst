@@ -8,10 +8,11 @@ from dataclasses import FrozenInstanceError, replace
 import pytest
 import torch
 
+from torchcst.nn._backends.cuda.algorithm import Algorithm
 from torchcst.nn._backends.cuda.algorithms.normalized_strip import REGISTRY
 from torchcst.nn._backends.cuda.context import context_from_tensors
 from torchcst.nn._backends.cuda.dispatch.select import FULL, WINDOW, select_normalized
-from torchcst.nn._backends.cuda.registry import AlgorithmEntry, Registry
+from torchcst.nn._backends.cuda.registry import Registry
 from torchcst.nn._backends.cuda.schema import (
     DeviceInfo,
     DispatchContext,
@@ -124,20 +125,26 @@ def test_direct_execution_checks_metadata_and_preserves_autograd_per_invocation(
     # A CPU executor verifies the generic connection, independently of GPU availability.
     registry = Registry()
 
-    def load():
-        return lambda *, x, parameters, operator, recipe: x * parameters[0, 0]
+    class CpuConnectionAlgorithm(Algorithm[FullRecipe]):
+        def validate_recipe(self, recipe):
+            pass
+
+        def supports(self, context, recipe):
+            return SupportResult()
+
+        def workspace_bound(self, context, recipe):
+            return 0
+
+        def execute(self, *, x, parameters, operator, recipe):
+            return x * parameters[0, 0]
 
     registry.register(
-        AlgorithmEntry(
-            "cpu_connection_test",
-            "v1",
-            "normalized_strip_linear",
-            "normalized-strip-triweight-l2-v1",
-            FullRecipe,
-            lambda r: None,
-            lambda c, r: SupportResult(),
-            lambda c, r: 0,
-            load,
+        CpuConnectionAlgorithm(
+            id="cpu_connection_test",
+            revision="v1",
+            operation_id="normalized_strip_linear",
+            semantics_id="normalized-strip-triweight-l2-v1",
+            recipe_type=FullRecipe,
         )
     )
     plan = ExecutionPlan("cpu_connection_test", "v1", FullRecipe())
@@ -224,3 +231,42 @@ def test_cuda_direct_plan_grad_subsets_and_two_live_forwards(
                     assert actual.grad is None
     finally:
         torch.backends.cuda.matmul.allow_tf32 = previous
+
+
+def test_algorithm_requires_all_four_operations():
+    with pytest.raises(TypeError, match="abstract"):
+        Algorithm("incomplete", "v1", "op", "semantics", FullRecipe)
+
+    class MissingExecute(Algorithm[FullRecipe]):
+        def validate_recipe(self, recipe):
+            pass
+
+        def supports(self, context, recipe):
+            return SupportResult()
+
+        def workspace_bound(self, context, recipe):
+            return None
+
+    with pytest.raises(TypeError, match="execute"):
+        MissingExecute("incomplete", "v1", "op", "semantics", FullRecipe)
+
+
+def test_registry_accepts_only_algorithm_contract_and_identity_is_immutable():
+    registry = Registry()
+    with pytest.raises(TypeError, match="Algorithm instance"):
+        registry.register(object())
+    algorithm = REGISTRY.get("normalized_full", revision="v1")
+    assert isinstance(algorithm, Algorithm)
+    with pytest.raises(FrozenInstanceError):
+        algorithm.revision = "v2"
+
+
+def test_algorithm_identity_requires_valid_metadata():
+    from torchcst.nn._backends.cuda.algorithms.normalized_strip import (
+        NormalizedFullAlgorithm,
+    )
+
+    with pytest.raises(ValueError, match="revision"):
+        NormalizedFullAlgorithm(revision="")
+    with pytest.raises(TypeError, match="recipe_type"):
+        NormalizedFullAlgorithm(recipe_type="FullRecipe")

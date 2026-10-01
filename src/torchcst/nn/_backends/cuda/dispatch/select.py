@@ -17,14 +17,14 @@ def select_normalized(context, *, memory="full", registry=REGISTRY):
     preferred = WINDOW if memory == "window" else FULL
     fallback_reason = None
     try:
-        entry = registry.validate(preferred, context)
+        algorithm = registry.validate(preferred, context)
         plan = preferred
     except ValueError as error:
         if memory != "window":
             raise
         fallback_reason = str(error)
         plan = FULL
-        entry = registry.validate(plan, context)
+        algorithm = registry.validate(plan, context)
     return DispatchDecision(
         plan=plan,
         tree_revision=POLICY_REVISION,
@@ -36,5 +36,5 @@ def select_normalized(context, *, memory="full", registry=REGISTRY):
         reason=f"fallback to full: {fallback_reason}"
         if fallback_reason
         else f"requested {memory} route",
-        workspace_upper_bound_bytes=entry.workspace_bound(context, plan.recipe),
+        workspace_upper_bound_bytes=algorithm.workspace_bound(context, plan.recipe),
     )

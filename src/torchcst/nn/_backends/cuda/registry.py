@@ -2,42 +2,26 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Any
-
 import torch
 from torch import Tensor
 
-from .schema import DispatchContext, ExecutionPlan, OperatorSpec, SupportResult
-
-Executor = Callable[..., Tensor]
-
-
-@dataclass(frozen=True)
-class AlgorithmEntry:
-    id: str
-    revision: str
-    operation_id: str
-    semantics_id: str
-    recipe_type: type
-    validate_recipe: Callable[[Any], None]
-    supports: Callable[[DispatchContext, Any], SupportResult]
-    workspace_bound: Callable[[DispatchContext, Any], int | None]
-    load_executor: Callable[[], Executor]
+from .algorithm import Algorithm
+from .schema import DispatchContext, ExecutionPlan, OperatorSpec
 
 
 class Registry:
     def __init__(self):
-        self._entries: dict[tuple[str, str], AlgorithmEntry] = {}
+        self._entries: dict[tuple[str, str], Algorithm] = {}
 
-    def register(self, entry: AlgorithmEntry):
-        key = (entry.id, entry.revision)
+    def register(self, algorithm: Algorithm):
+        if not isinstance(algorithm, Algorithm):
+            raise TypeError("registry requires an Algorithm instance")
+        key = (algorithm.id, algorithm.revision)
         if key in self._entries:
             raise ValueError(f"duplicate algorithm registration: {key}")
-        self._entries[key] = entry
+        self._entries[key] = algorithm
 
-    def get(self, algorithm_id: str, *, revision: str) -> AlgorithmEntry:
+    def get(self, algorithm_id: str, *, revision: str) -> Algorithm:
         try:
             return self._entries[(algorithm_id, revision)]
         except KeyError:
@@ -45,24 +29,24 @@ class Registry:
                 f"unknown algorithm/revision: {algorithm_id}@{revision}"
             ) from None
 
-    def validate(self, plan: ExecutionPlan, context: DispatchContext) -> AlgorithmEntry:
+    def validate(self, plan: ExecutionPlan, context: DispatchContext) -> Algorithm:
         if type(plan.schema_version) is not int or plan.schema_version != 1:
             raise ValueError("unsupported execution plan schema version")
-        entry = self.get(plan.algorithm_id, revision=plan.algorithm_revision)
+        algorithm = self.get(plan.algorithm_id, revision=plan.algorithm_revision)
         if (
-            entry.operation_id != context.operator.operation_id
-            or entry.semantics_id != context.operator.semantics_id
+            algorithm.operation_id != context.operator.operation_id
+            or algorithm.semantics_id != context.operator.semantics_id
         ):
             raise ValueError("plan and operator mathematical contract differ")
-        if type(plan.recipe) is not entry.recipe_type:
+        if type(plan.recipe) is not algorithm.recipe_type:
             raise TypeError("recipe type does not match algorithm")
-        entry.validate_recipe(plan.recipe)
-        support = entry.supports(context, plan.recipe)
+        algorithm.validate_recipe(plan.recipe)
+        support = algorithm.supports(context, plan.recipe)
         if not support.supported:
             raise ValueError(
                 "unsupported execution plan: " + "; ".join(support.reasons)
             )
-        bound = entry.workspace_bound(context, plan.recipe)
+        bound = algorithm.workspace_bound(context, plan.recipe)
         if bound is not None and (type(bound) is not int or bound < 0):
             raise ValueError("invalid workspace upper bound")
         if context.workspace_limit_bytes is not None:
@@ -72,7 +56,7 @@ class Registry:
                 )
             if bound > context.workspace_limit_bytes:
                 raise ValueError("plan exceeds workspace limit")
-        return entry
+        return algorithm
 
     def execute(
         self,
@@ -121,7 +105,7 @@ class Registry:
                 or actual.device != context.device
             ):
                 raise ValueError("CUDA execution settings differ from dispatch context")
-        entry = self.validate(plan, context)
-        return entry.load_executor()(
+        algorithm = self.validate(plan, context)
+        return algorithm.execute(
             x=x, parameters=parameters, operator=operator, recipe=plan.recipe
         )
