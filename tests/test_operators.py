@@ -219,3 +219,175 @@ def test_operator_rebinds_after_replacing_module_state():
     model.atoms = copy.deepcopy(model.atoms)
     assert model.operator is not previous
     assert model.operator.atoms is model.atoms
+
+
+def test_normalized_strip_is_a_distinct_single_chart_contract():
+    from torchcst import GridPattern, NormalizedStripLinear, StripChart
+    from torchcst.nn._backends.cuda.schema import OperatorSpec as CudaOperatorSpec
+
+    chart = StripChart(
+        shape=(5, 6),
+        tile_shape=(2, 6),
+        axis=0,
+        tile_pitch=2.0,
+        axes=(LinePattern(5, spacing=1.0), GridPattern((2, 3), spacing=0.5)),
+    )
+    model = NormalizedStripLinear(chart, torch.tensor([[0.2, 0.0, 1.0, 0.2, 0.3]]))
+    spec = model.declaration()
+    assert isinstance(spec.layout, SingleChartSpec)
+    assert spec.shape == (5, 6)
+    assert spec.kernel.parameterization.id == "signed_amplitude_log_width"
+    assert spec.kernel.profiles[0].normalization.domain == "operator_sites"
+    adapted = CudaOperatorSpec.from_declaration(spec)
+    assert adapted.sizes == (5, 2, 3)
+    assert adapted.declaration() == spec
+    assert model._cuda_operator == adapted
+    # Tile storage is absent from the canonical contiguous observation sites.
+    physical = replace(spec, layout=SingleChartSpec(chart=chart.declaration()))
+    assert CudaOperatorSpec.from_declaration(physical) == adapted
+    discontinuous = replace(physical.layout.chart, tile_pitch=3.0)
+    with pytest.raises(ValueError, match="contiguous"):
+        CudaOperatorSpec.from_declaration(
+            replace(physical, layout=SingleChartSpec(chart=discontinuous))
+        )
+    before = spec
+    with torch.no_grad():
+        model.origin.add_(0.25)
+    after = model.declaration()
+    assert before != after
+    assert model._cuda_operator.declaration() == after
+    model.double()
+    assert model.declaration() == after
+
+
+def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
+    from torchcst.kernels import BiweightSpec, NormalizationSpec
+    from torchcst.nn._backends.cuda.schema import OperatorSpec as CudaOperatorSpec
+
+    original = CudaOperatorSpec((5, 2, 3), (0.0, 0.0, 0.0), (1.0, 0.5, 0.5))
+    spec = original.declaration()
+    binding = spec.kernel.profiles[0]
+    variants = [
+        make_single().declaration(),
+        make_pair().declaration(),
+        replace(
+            spec,
+            kernel=replace(
+                spec.kernel, profiles=(replace(binding, profile=BiweightSpec()),)
+            ),
+        ),
+        replace(
+            spec,
+            kernel=replace(
+                spec.kernel,
+                profiles=(replace(binding, normalization=NormalizationSpec()),),
+            ),
+        ),
+        replace(
+            spec,
+            kernel=replace(
+                spec.kernel,
+                profiles=(
+                    replace(
+                        binding,
+                        normalization=replace(
+                            binding.normalization, domain="chart_sites"
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        replace(
+            spec,
+            kernel=replace(
+                spec.kernel,
+                profiles=(
+                    replace(
+                        binding,
+                        normalization=replace(binding.normalization, floor=1e-5),
+                    ),
+                ),
+            ),
+        ),
+        replace(
+            spec,
+            kernel=replace(
+                spec.kernel,
+                parameterization=replace(spec.kernel.parameterization, sigma_max=4.0),
+            ),
+        ),
+    ]
+    for candidate in variants:
+        with pytest.raises(ValueError, match="contract"):
+            CudaOperatorSpec.from_declaration(candidate)
+
+
+def test_log_width_declaration_validates_finite_positive_bounds():
+    from torchcst.kernels import LogWidthSpec
+
+    for lo, hi in ((0, 1), (-1, 1), (1, float("inf")), (1, float("nan")), (2, 1)):
+        with pytest.raises(ValueError):
+            LogWidthSpec(sigma_min=lo, sigma_max=hi)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize(
+    "maker,algorithm",
+    [
+        (make_single, "materialized"),
+        (make_pair, "materialized"),
+        (make_pair, "factored"),
+    ],
+)
+def test_operator_live_cuda_state_matches_cpu_values_and_gradients(maker, algorithm):
+    cpu = maker()
+    gpu = copy.deepcopy(cpu).cuda()
+    x = torch.randn(2, cpu.in_features, dtype=torch.float64, requires_grad=True)
+    gx = x.detach().cuda().requires_grad_()
+    expected = cpu.operator.apply(x, algorithm=algorithm)
+    actual = gpu.operator.apply(gx, algorithm=algorithm)
+    expected.square().sum().backward()
+    actual.square().sum().backward()
+    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-6, atol=1e-8)
+    torch.testing.assert_close(gx.grad.cpu(), x.grad, rtol=1e-6, atol=1e-8)
+    torch.testing.assert_close(
+        gpu.atoms.p.grad.cpu(), cpu.atoms.p.grad, rtol=1e-6, atol=1e-8
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_pair_graph_reuses_operator_without_configuration_reads(monkeypatch):
+    model = make_pair(backend="factored").float().cuda()
+    bound = model.operator
+    x = torch.randn(2, model.in_features, device="cuda", requires_grad=True)
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(3):
+            model.zero_grad(set_to_none=True)
+            x.grad = None
+            model(x).square().sum().backward()
+    torch.cuda.current_stream().wait_stream(stream)
+    torch.cuda.synchronize()
+    expected = model(x).detach().clone()
+    expected_p = model.atoms.p.grad.detach().clone()
+    expected_x = x.grad.detach().clone()
+    model.zero_grad(set_to_none=True)
+    x.grad = None
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("configuration read during graph")
+
+    for obj in (model, model.kernel, *model.cst_charts()):
+        monkeypatch.setattr(obj, "declaration", forbidden)
+    monkeypatch.setattr(model.kernel, "parameter_dim", forbidden)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=stream):
+        actual = model(x)
+        actual.square().sum().backward()
+    graph.replay()
+    torch.cuda.synchronize()
+    assert model.operator is bound
+    torch.testing.assert_close(actual, expected)
+    torch.testing.assert_close(model.atoms.p.grad, expected_p)
+    torch.testing.assert_close(x.grad, expected_x)

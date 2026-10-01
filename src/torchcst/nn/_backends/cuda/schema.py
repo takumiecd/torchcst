@@ -12,7 +12,7 @@ SEMANTICS = "normalized-strip-triweight-l2-v1"
 
 
 @dataclass(frozen=True)
-class OperatorSpec:
+class NormalizedStripSpec:
     sizes: tuple[int, int, int]
     origin: tuple[float, float, float]
     spacing: tuple[float, float, float]
@@ -46,6 +46,25 @@ class OperatorSpec:
     def k(self):
         return math.prod(self.sizes[1:])
 
+    def declaration(self):
+        """Expose this legacy specialized metadata as a common operator contract."""
+        from torchcst.operators.normalized_strip import normalized_strip_declaration
+
+        return normalized_strip_declaration(
+            sizes=self.sizes, origin=self.origin, spacing=self.spacing
+        )
+
+    @classmethod
+    def from_declaration(cls, spec):
+        """Adapt only the exact normalized Strip meaning; keep launch guards separate."""
+        from torchcst.operators.normalized_strip import normalized_strip_metadata
+
+        sizes, origin, spacing = normalized_strip_metadata(spec)
+        return cls(sizes=sizes, origin=origin, spacing=spacing)
+
+
+# Compatibility for the first registry API; common OperatorSpec lives outside CUDA.
+OperatorSpec = NormalizedStripSpec
 
 @dataclass(frozen=True)
 class DeviceInfo:
@@ -70,7 +89,7 @@ class RequiredGrads:
 
 @dataclass(frozen=True)
 class DispatchContext:
-    operator: OperatorSpec
+    operator: NormalizedStripSpec
     input_shape: tuple[int, ...]
     input_strides: tuple[int, ...]
     dtype: torch.dtype

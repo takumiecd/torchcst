@@ -32,6 +32,7 @@ from .parameterizations import (
     BandwidthBounds,
     DirectAmpWidthSpec,
     FixedWidthSpec,
+    LogWidthSpec,
     ParameterizationSpec,
     PolarAmpWidthSpec,
 )
@@ -53,6 +54,7 @@ __all__ += [
     "FixedWidthSpec",
     "GaussianSpec",
     "KernelSpec",
+    "LogWidthSpec",
     "NormalizationSpec",
     "ParameterizationSpec",
     "PolarAmpWidthSpec",

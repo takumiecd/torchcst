@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 
 from .algorithm import Algorithm
-from .schema import DispatchContext, ExecutionPlan, OperatorSpec
+from .schema import DispatchContext, ExecutionPlan, NormalizedStripSpec
 
 
 class Registry:
@@ -65,7 +65,7 @@ class Registry:
         *,
         x: Tensor,
         parameters: Tensor,
-        operator: OperatorSpec,
+        operator: NormalizedStripSpec,
     ) -> Tensor:
         # Check tensor metadata against the context even for directly forced plans.
         if operator != context.operator:

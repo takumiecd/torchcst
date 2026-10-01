@@ -12,3 +12,4 @@ They are not additional public backend names.
 
 The public `backend="auto"` still selects the existing exact CST implementations.
 Candidate algorithms remain in [CUDA Linear experiments](../../../../../experiments/cuda/linear/README.md).
+- [単一 Chart を基本とする Operator 接続](operator-integration.ja.md)

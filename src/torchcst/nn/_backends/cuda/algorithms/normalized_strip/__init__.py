@@ -11,7 +11,7 @@ from ...schema import (
     SEMANTICS,
     DispatchContext,
     FullRecipe,
-    OperatorSpec,
+    NormalizedStripSpec,
     SupportResult,
     WindowRecipe,
 )
@@ -92,7 +92,7 @@ class NormalizedFullAlgorithm(_NormalizedAlgorithm[FullRecipe]):
         *,
         x: Tensor,
         parameters: Tensor,
-        operator: OperatorSpec,
+        operator: NormalizedStripSpec,
         recipe: FullRecipe,
     ) -> Tensor:
         from .impl import execute_full
@@ -123,7 +123,7 @@ class NormalizedWindowAlgorithm(_NormalizedAlgorithm[WindowRecipe]):
         *,
         x: Tensor,
         parameters: Tensor,
-        operator: OperatorSpec,
+        operator: NormalizedStripSpec,
         recipe: WindowRecipe,
     ) -> Tensor:
         from .impl import execute_window

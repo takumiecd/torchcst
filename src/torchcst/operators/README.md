@@ -23,15 +23,16 @@ from torchcst import CSTLinear
 # chart.shape == (out_features, in_features)
 single = CSTLinear(chart=chart, atoms=8, kernel=direct_kernel)
 single_spec = single.declaration()  # 設定時の不変な snapshot
-operator = single.operator         # 計算用の live view
-y = operator.apply(x)              # Torch の materialized 参照実装
+operator = single.operator  # 計算用の live view
+y = operator.apply(x)  # Torch の materialized 参照実装
 
 pair = CSTLinear(input_chart, output_chart, atoms=8, kernel=separable_kernel)
 y = pair.operator.apply(x, algorithm="factored")
 
 # Spec と既存の状態の整合を、設定時に確認して結びつける。
-bound = single_spec.bind(charts=single.cst_charts(),
-                         kernel=single.kernel, atoms=single.atoms)
+bound = single_spec.bind(
+    charts=single.cst_charts(), kernel=single.kernel, atoms=single.atoms
+)
 ```
 
 `CSTLinear` の Torch materialized / factored 実装、dense weight、atom の評価も
@@ -54,3 +55,19 @@ Spec だけから新しい Module を生成する factory はまだない。Trit
 既存実行と normalized Strip の CUDA registry は、既存の最適化入口を維持する。
 汎用宣言を受け入れる Algorithm は、その数学的・数値的契約に適合するものだけを
 登録する。入出力 Chart の組を将来なくす場合も、正規化領域と勾配を照合して移行する。
+
+## normalized Strip の CUDA 接続
+
+`NormalizedStripLinear.declaration()` も共通の `OperatorSpec` を返す。これは一枚の
+3D Euclidean Chart 上で、Triweight を operator 全体の点で L2 正規化する radial
+演算。座標は signed amplitude / clamped log width / center で、DirectAmpWidth の
+activity 座標や Chart ごとの正規化とは別の意味である。
+
+CUDA 内の `NormalizedStripSpec.from_declaration()` はこの固定の数学契約だけを
+受け入れる。Kernel、Profile、正規化領域・床、幅、Geometry、配置の異なる宣言を
+拒否し、対応 device / precision / Recipe の判定は既存 registry に任せる。
+以前の CUDA 内 `OperatorSpec` 名は互換 alias として残す。
+
+contiguous Strip は同じ点を表す Product Chart に canonicalize する。非連続な
+tile pitch は受け入れない。公開 NormalizedStripLinear は従来通り metadata を
+snapshot して所有し、CSTLinear の live Chart binding と区別する。

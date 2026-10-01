@@ -124,13 +124,23 @@ class NormalizedStripLinear(nn.Module):
         if not all(math.isfinite(v) for v in (*origin, *spacing)) or min(spacing) <= 0:
             raise RuntimeError("invalid chart metadata")
         self._plan = SimpleNamespace(origin=origin, spacing=spacing, sizes=sizes)
-        from ._backends.cuda.schema import OperatorSpec
+        from torchcst.operators.normalized_strip import normalized_strip_declaration
 
-        self._cuda_operator = OperatorSpec(sizes=sizes, origin=origin, spacing=spacing)
+        from ._backends.cuda.schema import NormalizedStripSpec
+
+        self._operator_spec = normalized_strip_declaration(
+            sizes=sizes, origin=origin, spacing=spacing
+        )
+        self._cuda_operator = NormalizedStripSpec.from_declaration(self._operator_spec)
         self._metadata_versions = tuple(
             (id(t), t._version)
             for t in (self.origin, self.spacing, self.sizes, self.sigma_bounds)
         )
+
+    def declaration(self):
+        """Snapshot the common single-chart contract at a configuration boundary."""
+        self._refresh_metadata()
+        return self._operator_spec
 
     def _apply(self, fn, recurse=True):
         expected = torch.tensor(

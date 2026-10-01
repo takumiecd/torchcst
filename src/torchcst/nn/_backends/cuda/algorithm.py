@@ -8,7 +8,7 @@ from typing import Generic, TypeVar
 
 from torch import Tensor
 
-from .schema import DispatchContext, OperatorSpec, SupportResult
+from .schema import DispatchContext, NormalizedStripSpec, SupportResult
 
 RecipeT = TypeVar("RecipeT")
 
@@ -62,7 +62,7 @@ class Algorithm(ABC, Generic[RecipeT]):
         *,
         x: Tensor,
         parameters: Tensor,
-        operator: OperatorSpec,
+        operator: NormalizedStripSpec,
         recipe: RecipeT,
     ) -> Tensor:
         """Return Y with the recipe's forward/backward autograd connection.
