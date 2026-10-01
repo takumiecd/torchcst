@@ -9,9 +9,21 @@ from collections.abc import Sequence
 import torch
 from torch import Tensor, nn
 
+from .spec import PatternSpec
+
 
 class SitePattern(nn.Module, ABC):
     """Map flattened site indices to coordinates in a local geometry."""
+
+    def declaration(self) -> PatternSpec:
+        """Snapshot configuration, outside forward/backward and Graph capture.
+
+        Device reads can synchronize; coordinate tables are copied into an
+        immutable declaration. Custom implementations must override this.
+        """
+        from ._declarations import pattern_declaration
+
+        return pattern_declaration(self)
 
     def get_extra_state(self) -> dict[str, object]:
         return {
@@ -125,27 +137,14 @@ class GridPattern(SitePattern):
         return self.start
 
     def positions(self, indices: Tensor) -> Tensor:
-        if indices.dtype != torch.long or indices.ndim != 1:
-            raise ValueError("indices must be a one-dimensional long tensor")
-        if indices.device != self.start.device:
-            raise ValueError("indices and pattern must be on the same device")
-        if bool(((indices < 0) | (indices >= self.features)).any()):
-            raise IndexError("site index out of bounds")
-        remainder = indices
-        axes = []
-        for size in reversed(self.shape):
-            axes.append(remainder % size)
-            remainder = torch.div(remainder, size, rounding_mode="floor")
-        axes.reverse()
-        return (
-            torch.stack(axes, dim=-1).to(self.start.dtype) * self.spacing + self.start
-        )
+        from torchcst._backends.torch.patterns.grid import positions
+
+        return positions(self, indices)
 
     def bounds(self) -> tuple[Tensor, Tensor]:
-        end = self.start + self.spacing * self.start.new_tensor(
-            [n - 1 for n in self.shape]
-        )
-        return self.start, end
+        from torchcst._backends.torch.patterns.grid import bounds
+
+        return bounds(self)
 
 
 class LinePattern(GridPattern):
@@ -190,7 +189,11 @@ class PointsPattern(SitePattern):
         return self.coordinates
 
     def positions(self, indices: Tensor) -> Tensor:
-        return self.coordinates.index_select(0, indices)
+        from torchcst._backends.torch.patterns.points import positions
+
+        return positions(self, indices)
 
     def bounds(self) -> tuple[Tensor, Tensor]:
-        return self.coordinates.amin(0), self.coordinates.amax(0)
+        from torchcst._backends.torch.patterns.points import bounds
+
+        return bounds(self)

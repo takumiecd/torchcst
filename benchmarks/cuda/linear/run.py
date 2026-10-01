@@ -54,11 +54,8 @@ def _metadata(args):
 
     import torchcst
 
-    source_files = sorted(
-        (Path(torchcst.__file__).parent / "nn" / "_backends").rglob("*.py")
-    )
+    source_files = sorted(Path(torchcst.__file__).parent.rglob("*.py"))
     source_files += [
-        Path(torchcst.__file__).parent / "nn" / "normalized_strip.py",
         Path(__file__),
         Path(args.tests_file),
     ]

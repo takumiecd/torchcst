@@ -10,11 +10,22 @@ from typing import Literal
 import torch
 from torch import Tensor, nn
 
-from .geometry import EuclideanGeometry, Geometry, SphereGeometry
+from .geometry import EuclideanGeometry, Geometry
+from .spec import ChartSpec
 
 
 class Chart(nn.Module, ABC):
     """Geometry-backed observation sites for a logical tensor shape."""
+
+    def declaration(self) -> ChartSpec:
+        """Snapshot configuration, outside forward/backward and Graph capture.
+
+        Device reads can synchronize; coordinate tables are copied into an
+        immutable declaration. Custom implementations must override this.
+        """
+        from ._declarations import chart_declaration
+
+        return chart_declaration(self)
 
     def get_extra_state(self) -> dict[str, object]:
         return {
@@ -37,7 +48,9 @@ class Chart(nn.Module, ABC):
         geometry: Geometry | None = None,
         trainable: bool = False,
     ) -> Chart:
-        return ExplicitChart.points(coordinates, geometry=geometry, trainable=trainable)
+        from torchcst._backends.torch.charts.base import points
+
+        return points(cls, coordinates, geometry=geometry, trainable=trainable)
 
     @classmethod
     def linspace(
@@ -50,7 +63,10 @@ class Chart(nn.Module, ABC):
         center: float | None = None,
         trainable: bool = False,
     ) -> Chart:
-        return ExplicitChart.linspace(
+        from torchcst._backends.torch.charts.base import linspace
+
+        return linspace(
+            cls,
             size,
             spacing=spacing,
             low=low,
@@ -70,7 +86,10 @@ class Chart(nn.Module, ABC):
         center: float | Sequence[float] | None = None,
         trainable: bool = False,
     ) -> Chart:
-        return ExplicitChart.grid(
+        from torchcst._backends.torch.charts.base import grid
+
+        return grid(
+            cls,
             shape,
             spacing=spacing,
             low=low,
@@ -90,7 +109,10 @@ class Chart(nn.Module, ABC):
         chart_margin: float = 0.05,
         trainable: bool = False,
     ) -> Chart:
-        return ExplicitChart.sphere(
+        from torchcst._backends.torch.charts.base import sphere
+
+        return sphere(
+            cls,
             features,
             intrinsic_dim=intrinsic_dim,
             radius=radius,
@@ -216,8 +238,9 @@ class ExplicitChart(Chart):
         trainable: bool = False,
     ) -> Chart:
         """Construct a chart from an explicit ``[features, dimensions]`` tensor."""
+        from torchcst._backends.torch.charts.explicit import points
 
-        return cls(coordinates, geometry=geometry, trainable=trainable)
+        return points(cls, coordinates, geometry=geometry, trainable=trainable)
 
     @classmethod
     def sphere(
@@ -231,16 +254,17 @@ class ExplicitChart(Chart):
         trainable: bool = False,
     ) -> Chart:
         """Construct points sampled uniformly on the intrinsic sphere ``S^d``."""
+        from torchcst._backends.torch.charts.explicit import sphere
 
-        cls._validate_size(features, name="features")
-        geometry = SphereGeometry(
-            intrinsic_dim,
+        return sphere(
+            cls,
+            features,
+            intrinsic_dim=intrinsic_dim,
             radius=radius,
             representation=representation,
             chart_margin=chart_margin,
+            trainable=trainable,
         )
-        coordinates = geometry.sample_sites(features)
-        return cls(coordinates, geometry=geometry, trainable=trainable)
 
     @classmethod
     def linspace(
@@ -254,19 +278,17 @@ class ExplicitChart(Chart):
         trainable: bool = False,
     ) -> Chart:
         """Construct a one-dimensional evenly spaced chart."""
+        from torchcst._backends.torch.charts.explicit import linspace
 
-        cls._validate_size(size, name="size")
-        axis, step = cls._axis(
+        return linspace(
+            cls,
             size,
             spacing=spacing,
             low=low,
             high=high,
             center=center,
-            name="linspace",
+            trainable=trainable,
         )
-        chart = cls(axis.unsqueeze(-1), trainable=trainable)
-        chart._set_spacing((step,) if step is not None else None)
-        return chart
 
     @classmethod
     def grid(
@@ -280,47 +302,17 @@ class ExplicitChart(Chart):
         trainable: bool = False,
     ) -> Chart:
         """Construct a Cartesian grid with one coordinate axis per shape entry."""
+        from torchcst._backends.torch.charts.explicit import grid
 
-        if not isinstance(shape, Sequence) or isinstance(shape, (str, bytes)):
-            raise TypeError("shape must be a non-empty sequence of integers")
-        shape = tuple(shape)
-        if not shape:
-            raise ValueError("shape must contain at least one dimension")
-        for index, size in enumerate(shape):
-            cls._validate_size(size, name=f"shape[{index}]")
-
-        dim = len(shape)
-        steps = cls._per_axis_values(spacing, dim=dim, name="spacing", allow_none=True)
-        centers = cls._per_axis_values(center, dim=dim, name="center", allow_none=True)
-        if steps is not None and (low is not None or high is not None):
-            raise ValueError("specify spacing or low/high, not both")
-        if (low is None) ^ (high is None):
-            raise ValueError("low and high must be passed together")
-        if steps is None and low is None:
-            raise ValueError("specify spacing or low and high")
-        if low is not None and center is not None:
-            raise ValueError("center is only used with spacing")
-
-        axes = []
-        stored_steps: list[float] = []
-        for index, size in enumerate(shape):
-            axis, step = cls._axis(
-                size,
-                spacing=None if steps is None else steps[index],
-                low=low,
-                high=high,
-                center=None if centers is None else centers[index],
-                name=f"grid[{index}]",
-            )
-            axes.append(axis)
-            if step is not None:
-                stored_steps.append(step)
-        coordinates = torch.stack(torch.meshgrid(*axes, indexing="ij"), dim=-1).reshape(
-            -1, dim
+        return grid(
+            cls,
+            shape,
+            spacing=spacing,
+            low=low,
+            high=high,
+            center=center,
+            trainable=trainable,
         )
-        chart = cls(coordinates, trainable=trainable)
-        chart._set_spacing(tuple(stored_steps) if len(stored_steps) == dim else None)
-        return chart
 
     @staticmethod
     def _validate_size(size: int, *, name: str) -> None:
@@ -389,28 +381,11 @@ class ExplicitChart(Chart):
         center: float | None,
         name: str,
     ) -> tuple[Tensor, float | None]:
-        if spacing is not None and (low is not None or high is not None):
-            raise ValueError("specify spacing or low/high, not both")
-        if (low is None) ^ (high is None):
-            raise ValueError("low and high must be passed together")
-        if spacing is None and low is None:
-            raise ValueError("specify spacing or low and high")
-        if spacing is not None:
-            step = cls._positive_float(spacing, name="spacing")
-            origin = 0.0 if center is None else cls._finite_float(center, name="center")
-            index = torch.arange(size, dtype=torch.get_default_dtype())
-            axis = (index - (size - 1) / 2) * step + origin
-            return axis, step
-        if center is not None:
-            raise ValueError("center is only used with spacing")
-        start = cls._finite_float(low, name="low")
-        end = cls._finite_float(high, name="high")
-        if size == 1:
-            return torch.tensor([start], dtype=torch.get_default_dtype()), None
-        if end < start:
-            raise ValueError("high must not be smaller than low")
-        axis = torch.linspace(start, end, size)
-        return axis, float(axis[1] - axis[0])
+        from torchcst._backends.torch.charts.explicit import _axis
+
+        return _axis(
+            cls, size, spacing=spacing, low=low, high=high, center=center, name=name
+        )
 
     def _set_spacing(self, steps: tuple[float, ...] | None) -> None:
         if steps is None:
@@ -446,8 +421,9 @@ class ExplicitChart(Chart):
 
     def positions(self, indices: Tensor) -> Tensor:
         """Return coordinates for requested flattened site indices."""
+        from torchcst._backends.torch.charts.explicit import positions
 
-        return self.coordinates.index_select(0, indices)
+        return positions(self, indices)
 
     @property
     def dim(self) -> int:
@@ -477,22 +453,23 @@ class ExplicitChart(Chart):
         self, centers: Tensor, selection: slice | Tensor | None = None
     ) -> Tensor:
         """Pairwise site-center squared distance in this chart's geometry."""
+        from torchcst._backends.torch.charts.explicit import squared_distance
 
-        sites = self.coordinates if selection is None else self.coordinates[selection]
-        return self.geometry.squared_distance(sites, centers)
+        return squared_distance(self, centers, selection)
 
     def center_offsets(
         self, centers: Tensor, selection: slice | Tensor | None = None
     ) -> Tensor:
         """Site-center offsets in each center's tangent space."""
+        from torchcst._backends.torch.charts.explicit import center_offsets
 
-        sites = self.coordinates if selection is None else self.coordinates[selection]
-        return self.geometry.center_offsets(sites, centers)
+        return center_offsets(self, centers, selection)
 
     def initialize_centers(self, atoms: int, *, mode: str) -> Tensor:
         """Initialize atom centers in the chart's geometry."""
+        from torchcst._backends.torch.charts.explicit import initialize_centers
 
-        return self.geometry.initialize_centers(self.coordinates, atoms, mode=mode)
+        return initialize_centers(self, atoms, mode=mode)
 
     @property
     def spacing(self) -> Tensor | None:

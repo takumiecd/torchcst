@@ -19,3 +19,27 @@ __all__ = [
     "StripChart",
     "TorusGeometry",
 ]
+
+from .spec import (
+    ChartSpec,
+    EuclideanGeometrySpec,
+    GeometrySpec,
+    GridPatternSpec,
+    LinePatternSpec,
+    PatternSpec,
+    PointsPatternSpec,
+    SphereGeometrySpec,
+    TorusGeometrySpec,
+)
+
+__all__ += [
+    "ChartSpec",
+    "EuclideanGeometrySpec",
+    "GeometrySpec",
+    "GridPatternSpec",
+    "LinePatternSpec",
+    "PatternSpec",
+    "PointsPatternSpec",
+    "SphereGeometrySpec",
+    "TorusGeometrySpec",
+]

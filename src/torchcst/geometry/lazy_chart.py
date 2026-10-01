@@ -9,7 +9,7 @@ import torch
 from torch import Tensor, nn
 
 from .chart import Chart
-from .geometry import EuclideanGeometry, Geometry, SphereGeometry, TorusGeometry
+from .geometry import EuclideanGeometry, Geometry, TorusGeometry
 from .pattern import LinePattern, SitePattern
 
 
@@ -52,82 +52,38 @@ class _LazyChart(Chart):
         return None
 
     def _indices(self, selection: slice | Tensor | None) -> Tensor:
-        if selection is None:
-            return torch.arange(self.features, device=self.device)
-        if isinstance(selection, slice):
-            start, stop, step = selection.indices(self.features)
-            return torch.arange(start, stop, step, device=self.device)
-        if (
-            not isinstance(selection, Tensor)
-            or selection.dtype != torch.long
-            or selection.ndim != 1
-        ):
-            raise TypeError("selection must be a slice or one-dimensional long tensor")
-        return selection
+        from torchcst._backends.torch.charts.lazy import _indices
+
+        return _indices(self, selection)
 
     def positions(self, indices: Tensor) -> Tensor:
-        raise NotImplementedError
+        from torchcst._backends.torch.charts.lazy import positions
+
+        return positions(self, indices)
 
     def _embed(self, coordinates: Tensor) -> Tensor:
-        return self.geometry.lift_chart_coordinates(coordinates)
+        from torchcst._backends.torch.charts.lazy import _embed
+
+        return _embed(self, coordinates)
 
     def squared_distance(
         self, centers: Tensor, selection: slice | Tensor | None = None
     ) -> Tensor:
-        sites = self.positions(self._indices(selection))
-        if not isinstance(self.geometry, EuclideanGeometry):
-            self.geometry.validate_points(sites, name="sites")
-        return self.geometry.squared_distance(sites, centers)
+        from torchcst._backends.torch.charts.lazy import squared_distance
+
+        return squared_distance(self, centers, selection)
 
     def center_offsets(
         self, centers: Tensor, selection: slice | Tensor | None = None
     ) -> Tensor:
-        sites = self.positions(self._indices(selection))
-        if not isinstance(self.geometry, EuclideanGeometry):
-            self.geometry.validate_points(sites, name="sites")
-        return self.geometry.center_offsets(sites, centers)
+        from torchcst._backends.torch.charts.lazy import center_offsets
+
+        return center_offsets(self, centers, selection)
 
     def initialize_centers(self, atoms: int, *, mode: str) -> Tensor:
-        if isinstance(atoms, bool) or not isinstance(atoms, int) or atoms < 1:
-            raise ValueError("atoms must be a positive integer")
-        if mode not in ("balanced", "uniform"):
-            raise ValueError("mode must be 'balanced' or 'uniform'")
-        if isinstance(self.geometry, EuclideanGeometry) and mode == "uniform":
-            low, high = self._bounds()
-            return low + torch.rand(
-                atoms, self.embedding_dim, device=self.device, dtype=self.dtype
-            ) * (high - low)
-        if mode == "balanced":
-            indices = (
-                torch.linspace(
-                    0,
-                    self.features - 1,
-                    atoms,
-                    device=self.device,
-                    dtype=torch.float64,
-                )
-                .round()
-                .long()
-            )
-            return self.geometry.initialize_centers(
-                self.positions(indices), atoms, mode="balanced"
-            )
-        # Other geometries receive a bounded representative site sample.
-        sample_count = min(self.features, max(atoms, 1024))
-        indices = (
-            torch.linspace(
-                0,
-                self.features - 1,
-                sample_count,
-                device=self.device,
-                dtype=torch.float64,
-            )
-            .round()
-            .long()
-        )
-        return self.geometry.initialize_centers(
-            self.positions(indices), atoms, mode=mode
-        )
+        from torchcst._backends.torch.charts.lazy import initialize_centers
+
+        return initialize_centers(self, atoms, mode=mode)
 
     def get_extra_state(self) -> dict[str, object]:
         return {
@@ -161,15 +117,6 @@ def _validate_axes(
     ):
         raise ValueError("axis patterns must share device and dtype")
     return shape, axes
-
-
-def _unravel(indices: Tensor, shape: tuple[int, ...]) -> tuple[Tensor, ...]:
-    remainder = indices
-    coordinates = []
-    for size in reversed(shape):
-        coordinates.append(remainder % size)
-        remainder = torch.div(remainder, size, rounding_mode="floor")
-    return tuple(reversed(coordinates))
 
 
 def _torus_line_axis(
@@ -223,33 +170,14 @@ class ProductChart(_LazyChart):
         return self.axes[0].reference
 
     def positions(self, indices: Tensor) -> Tensor:
-        if (
-            indices.dtype != torch.long
-            or indices.ndim != 1
-            or indices.device != self.device
-        ):
-            raise ValueError(
-                "indices must be a one-dimensional long tensor on the chart device"
-            )
-        if bool(((indices < 0) | (indices >= self.features)).any()):
-            raise IndexError("site index out of bounds")
-        return self._embed(
-            torch.cat(
-                tuple(
-                    axis.positions(axis_index)
-                    for axis, axis_index in zip(
-                        self.axes, _unravel(indices, self.shape)
-                    )
-                ),
-                dim=-1,
-            )
-        )
+        from torchcst._backends.torch.charts.product import positions
+
+        return positions(self, indices)
 
     def _bounds(self) -> tuple[Tensor, Tensor]:
-        bounds = [axis.bounds() for axis in self.axes]
-        return torch.cat(tuple(low for low, _ in bounds)), torch.cat(
-            tuple(high for _, high in bounds)
-        )
+        from torchcst._backends.torch.charts.product import _bounds
+
+        return _bounds(self)
 
     def _layout(self) -> tuple:
         return tuple(type(axis).__qualname__ for axis in self.axes)
@@ -324,139 +252,30 @@ class StripChart(_LazyChart):
 
     def tile_indices(self, station: int) -> tuple[Tensor, Tensor]:
         """Return logical and local flat indices for one physical tile."""
+        from torchcst._backends.torch.charts.strip import tile_indices
 
-        if type(station) is not int or not 0 <= station < self.tile_count:
-            raise IndexError("tile station out of bounds")
-        local_axes = torch.meshgrid(
-            *(torch.arange(size, device=self.device) for size in self.tile_shape),
-            indexing="ij",
-        )
-        valid = torch.ones(self.tile_shape, dtype=torch.bool, device=self.device)
-        logical = torch.zeros(self.tile_shape, dtype=torch.long, device=self.device)
-        local = torch.zeros_like(logical)
-        logical_stride = 1
-        local_stride = 1
-        for index in reversed(range(len(self.shape))):
-            coordinate = local_axes[index]
-            global_coordinate = (
-                coordinate + station * self.tile_shape[index]
-                if index == self.axis
-                else coordinate
-            )
-            valid &= global_coordinate < self.shape[index]
-            logical += global_coordinate * logical_stride
-            local += coordinate * local_stride
-            logical_stride *= self.shape[index]
-            local_stride *= self.tile_shape[index]
-        return logical[valid], local[valid]
+        return tile_indices(self, station)
 
     def validate_support(self, radius: float) -> None:
-        if not math.isfinite(radius) or radius <= 0:
-            raise ValueError("kernel support radius must be positive")
-        if self.tile_count <= 2:
-            return
-        if isinstance(self.geometry, TorusGeometry):
-            self._validate_torus_support(radius)
-            return
-        if not isinstance(self.geometry, (EuclideanGeometry, SphereGeometry)):
-            raise NotImplementedError(
-                "strip support bounds require Euclidean or Sphere geometry"
-            )
-        line = self.axes[self.axis]
-        span = float(line.spacing[0]) * (self.tile_shape[self.axis] - 1)
-        nonneighbor_gap = 2 * float(self.tile_pitch) - span
-        if isinstance(self.geometry, SphereGeometry):
-            low, high = self._bounds()
-            bound = torch.maximum(low.abs(), high.abs())
-            max_norm_squared = float(bound.square().sum())
-            sphere_radius = float(self.geometry.radius)
-            scale_floor = (
-                sphere_radius**3 / (sphere_radius**2 + max_norm_squared) ** 1.5
-            )
-            nonneighbor_gap *= scale_floor
-        if nonneighbor_gap <= 2 * radius:
-            raise ValueError("strip support radius reaches more than two tile stations")
+        from torchcst._backends.torch.charts.strip import validate_support
+
+        return validate_support(self, radius)
 
     def _validate_torus_support(self, radius: float) -> None:
         """Check second-neighbor stations, the nearest nonadjacent pairs."""
+        from torchcst._backends.torch.charts.strip import _validate_torus_support
 
-        geometry = self.geometry
-        assert isinstance(geometry, TorusGeometry)
-        line = self.axes[self.axis]
-        start = float(line.start[0])
-        spacing = float(line.spacing[0])
-        pitch = float(self.tile_pitch)
-        period = geometry.circumference
-        intervals = []
-        for station in range(self.tile_count):
-            count = min(
-                self.tile_shape[self.axis],
-                self.shape[self.axis] - station * self.tile_shape[self.axis],
-            )
-            low = start + station * pitch
-            intervals.append((low, low + (count - 1) * spacing))
-        # Ordered, disjoint intervals make cyclic second-neighbor gaps the
-        # smallest candidates among all nonadjacent station pairs.
-        for station in range(self.tile_count):
-            left, right = sorted((station, (station + 2) % self.tile_count))
-            direct_gap = intervals[right][0] - intervals[left][1]
-            wrapped_gap = period - (intervals[right][1] - intervals[left][0])
-            gap = min(direct_gap, wrapped_gap)
-            if geometry.axis_separation_lower_bound(gap) <= 2 * radius:
-                raise ValueError(
-                    "strip support radius reaches more than two tile stations"
-                )
+        return _validate_torus_support(self, radius)
 
     def positions(self, indices: Tensor) -> Tensor:
-        if (
-            indices.dtype != torch.long
-            or indices.ndim != 1
-            or indices.device != self.device
-        ):
-            raise ValueError(
-                "indices must be a one-dimensional long tensor on the chart device"
-            )
-        if bool(((indices < 0) | (indices >= self.features)).any()):
-            raise IndexError("site index out of bounds")
-        coordinates = []
-        for index, (pattern, axis_index) in enumerate(
-            zip(self.axes, _unravel(indices, self.shape))
-        ):
-            if index == self.axis:
-                station = torch.div(
-                    axis_index, self.tile_shape[index], rounding_mode="floor"
-                )
-                local_index = axis_index % self.tile_shape[index]
-                coordinates.append(
-                    pattern.positions(local_index)
-                    + station[:, None].to(self.dtype) * self.tile_pitch
-                )
-            else:
-                coordinates.append(pattern.positions(axis_index))
-        return self._embed(torch.cat(tuple(coordinates), dim=-1))
+        from torchcst._backends.torch.charts.strip import positions
+
+        return positions(self, indices)
 
     def _bounds(self) -> tuple[Tensor, Tensor]:
-        lows = []
-        highs = []
-        for index, pattern in enumerate(self.axes):
-            if index == self.axis:
-                start = pattern.positions(
-                    torch.zeros(1, dtype=torch.long, device=self.device)
-                )[0]
-                last_local = (self.shape[index] - 1) % self.tile_shape[index]
-                end = (
-                    pattern.positions(
-                        torch.tensor([last_local], dtype=torch.long, device=self.device)
-                    )[0]
-                    + (self.tile_count - 1) * self.tile_pitch
-                )
-                lows.append(start)
-                highs.append(end)
-            else:
-                low, high = pattern.bounds()
-                lows.append(low)
-                highs.append(high)
-        return torch.cat(tuple(lows)), torch.cat(tuple(highs))
+        from torchcst._backends.torch.charts.strip import _bounds
+
+        return _bounds(self)
 
     def _layout(self) -> tuple:
         return (

@@ -1,11 +1,21 @@
 """L4 pool driver: installed-wheel contracts, independent correctness and step peaks."""
 
+import argparse
 import json
 import os
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("source_commit")
+parser.add_argument(
+    "--full-suite",
+    action="store_true",
+    help="Validate all installed-wheel tests after declaration migration",
+)
+args = parser.parse_args()
 
 out = Path(os.environ["CST_JOB_OUTPUT"])
 repo = Path.cwd()
@@ -38,9 +48,16 @@ subprocess.run(
         "-q",
         "-o",
         "pythonpath=" + str(installed) + " .",
-        "tests/test_cuda_dispatch.py",
-        "tests/test_normalized_strip_public.py",
-        "tests/test_compact_profile.py",
+        "--junitxml=" + str(out / "pytest.xml"),
+        *(
+            ["tests"]
+            if args.full_suite
+            else [
+                "tests/test_cuda_dispatch.py",
+                "tests/test_normalized_strip_public.py",
+                "tests/test_compact_profile.py",
+            ]
+        ),
     ],
     check=True,
     env=env,
@@ -69,7 +86,7 @@ for profile in ("broad", "sharp"):
             profile,
             "--dense",
             "--source-commit",
-            sys.argv[1],
+            args.source_commit,
             "--output",
             str(out / f"plans-{profile}.json"),
         ],
@@ -80,11 +97,14 @@ for profile in ("broad", "sharp"):
     json.dumps(
         {
             "status": "PASS",
-            "source_commit": sys.argv[1],
+            "source_commit": args.source_commit,
             "wheel": wheel.name,
             "cases": ["broad", "sharp"],
             "size": 1024,
-            "scope": "initial dispatch contract; isolated complete steps including Graph peak; no performance promotion",
+            "scope": "installed-wheel full suite"
+            if args.full_suite
+            else "initial dispatch contract",
+            "measurement": "isolated complete steps including Graph peak; no performance promotion",
         },
         indent=2,
     )
