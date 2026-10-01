@@ -125,7 +125,7 @@ class NormalizedStripLinear(nn.Module):
             raise RuntimeError("invalid chart metadata")
         self._plan = SimpleNamespace(origin=origin, spacing=spacing, sizes=sizes)
         self._metadata_versions = tuple(
-            t._version
+            (id(t), t._version)
             for t in (self.origin, self.spacing, self.sizes, self.sigma_bounds)
         )
 
@@ -176,7 +176,7 @@ class NormalizedStripLinear(nn.Module):
         if self.memory not in ("full", "window"):
             raise ValueError("memory must be 'full' or 'window'")
         versions = tuple(
-            t._version
+            (id(t), t._version)
             for t in (self.origin, self.spacing, self.sizes, self.sigma_bounds)
         )
         if versions != self._metadata_versions:
