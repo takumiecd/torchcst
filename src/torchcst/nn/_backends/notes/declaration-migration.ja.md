@@ -71,3 +71,16 @@ N=1024 / M=128 の normalized full / window と dense の完全な AdamW 学習�
 測る。sigma-three と sharp は別 fixture とする。allocated peak は Graph capture
 を含み、reserved と分ける。process 全体の使用量を allocated と混同しない。
 この変更は方式の性能昇格や承認ポイントの導入ではない。
+
+### 回収障害と再提出
+
+最初の job は remote wrapper の `POOL_RESULT_READY` まで進んだが、Colab の
+結果ダウンロードが HTTP 503 で失敗した。receipt / manifest / driver の出力を
+回収できないため、正しさ・性能の成功とは扱わない。pool の `recover` を実行し、
+所有 runtime の停止を確認した。ソース・提出設定・転送ログは ignored evidence に保存。
+
+再提出 job は `l4job-b21c83263adc4ebd9265fa1819ca6111`。
+source archive SHA256 は
+`084b235b048ccd7686973d1bf596272faf64f4bd745033a860a44e40bc5c2901`。
+README の追加により archive は異なるが、全 Python ファイルの SHA256 は
+最初の job と一致する。測定実装は引き続き `0455e78` である。
