@@ -151,3 +151,43 @@ python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py serve --workers 1 --idle-s
 ```
 
 すでにsupervisorが稼働している場合は二重起動せず、submit後にwaitする。
+
+## Algorithm ABC への移行 checkpoint
+
+2026-10-01。source commit `53deb34dd458ba96b6266df49fb72c07f3ec4a2f`。
+Algorithm[RecipeT] の四つのabstract methodをfull/windowのclassで実装し、
+registryはAlgorithm instanceを直接保持する。旧callback descriptorは削除した。
+kernel、autogradの保存状態、recipe、選択条件は維持する。
+
+- CPU全体: 498 passed、189 skipped。lint、format、diff-checkもPASS。
+- pool job: `l4job-fcc9d4ae0c3e4c0fb16db37102bb9f1b`、succeeded。
+- frozen source SHA256: `3631a7984bf92dbf51520e0d3aeebf8745b0b15842444d111f30ed3aebd8e528`。
+- result archive SHA256: `cbd102e905fe3ed67c981bcc1f597ca310395170b3d13d2bc2fbcac36dab41d6`。
+- NVIDIA L4、GPU-e158dc4b-0f1b-6307-ca13-50e35ef83139、driver 580.82.07。
+  Python 3.13.15、PyTorch 2.11.0+cu128、CUDA 12.8、Triton 3.6.0。
+- installed wheel: 97 passed。ABCの必須実装・不変identity・登録の拒否も含む。
+  独立FP64 oracle、必要勾配の組合せ、二つのlive forward、更新後のsupport、
+  Graph/AdamW状態もPASS。候補とfull baselineの初期parameter hashが一致。
+- result archiveのローカルSHAをreceiptと照合し、source SHAもresult/spec間で一致。
+  owned L4 slotはstopped。
+
+同じN1024、M128、5% atom、FP32/TF32無効、fused/capturable AdamW。
+同期wallの7sample中央値とGraph capture/replayを含む実測peak。
+allocated/reservedを区別し、GPU process全体は未測定。
+
+| fixture | plan / reference | eager ms | Graph ms | peak allocated MiB | peak reserved MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 通常 sigma3 | normalized_full | 1.56897 | 0.61423 | 51.85 | 106 |
+| 通常 sigma3 | normalized_window | 2.79295 | 1.50607 | 46.16 | 86 |
+| 通常 sigma3 の性能参照 | dense Linear | 0.69455 | 0.12677 | 50.50 | 106 |
+| sharp-only fixture | normalized_full | 1.52674 | 0.53707 | 51.85 | 106 |
+| sharp-only fixture | normalized_window | 2.87883 | 0.30864 | 46.16 | 86 |
+| sharp fixture の性能参照 | dense Linear | 0.72068 | 0.12635 | 50.50 | 106 |
+
+通常sigma3でwindowはfullより遅い。ABCの導入によるアルゴリズム改善や、
+別セッションの過去結果との差による性能向上は主張しない。
+
+生ログ、wheel、展開ソース、source archive、全sampleはignoreされた
+`benchmarks/cuda/linear/evidence/algorithm-abc/l4job-fcc9d4ae0c3e4c0fb16db37102bb9f1b/`
+に保存し、poolの元のjob directoryも保持する。再現コマンドは上記driverを使い、
+labelをalgorithm-abc、source commitをこのcheckpointへ指定する。
