@@ -3,7 +3,10 @@
 import triton as tr
 import triton.language as tl
 
-from torchcst.nn._backends._triton_kernels import _profile, _sites
+from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import (
+    _profile,
+    _sites,
+)
 
 
 @tr.jit

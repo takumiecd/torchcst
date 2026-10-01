@@ -223,7 +223,7 @@ def test_operator_rebinds_after_replacing_module_state():
 
 def test_normalized_strip_is_a_distinct_single_chart_contract():
     from torchcst import GridPattern, NormalizedStripLinear, StripChart
-    from torchcst.nn._backends.cuda.schema import OperatorSpec as CudaOperatorSpec
+    from torchcst._backends.cuda.schema import OperatorSpec as CudaOperatorSpec
 
     chart = StripChart(
         shape=(5, 6),
@@ -261,8 +261,8 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
 
 
 def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
+    from torchcst._backends.cuda.schema import OperatorSpec as CudaOperatorSpec
     from torchcst.kernels import BiweightSpec, NormalizationSpec
-    from torchcst.nn._backends.cuda.schema import OperatorSpec as CudaOperatorSpec
 
     original = CudaOperatorSpec((5, 2, 3), (0.0, 0.0, 0.0), (1.0, 0.5, 0.5))
     spec = original.declaration()

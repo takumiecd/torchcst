@@ -5,19 +5,19 @@ from __future__ import annotations
 import torch
 from torch import Tensor, nn
 
-from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
-from torchcst.atoms import Atoms
-from torchcst.geometry import Chart, StripChart
-from torchcst.kernels import AtomInit, Kernel
-from torchcst.operators import Operator
-
-from ._backends import (
+from torchcst._backends.linear import (
     Backend,
     ResolvedBackend,
     linear_forward,
     resolve_backend,
     validate_backend,
 )
+from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
+from torchcst.atoms import Atoms
+from torchcst.geometry import Chart, StripChart
+from torchcst.kernels import AtomInit, Kernel
+from torchcst.operators import Operator
+
 from .module import CSTModule, RepulsionKind
 
 

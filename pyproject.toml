@@ -17,7 +17,6 @@ cuda = ["torch>=2.6", "triton>=3.2; sys_platform == 'linux'", "ninja"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/torchcst"]
-exclude = ["src/torchcst/nn/_backends/notes/**"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]

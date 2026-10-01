@@ -14,7 +14,7 @@
 新しい方式を追加するときは、演算の意味、対応形状・dtype・勾配、workspace、
 既知の失敗例をこの近くの README に記す。kernel 単体と完全学習ステップを
 区別して測る。[配置と昇格の方針](repository-layout.ja.md)と
-[dispatch 提案](../../../src/torchcst/nn/_backends/notes/cuda-dispatch-design.ja.md)は
+[dispatch 提案](../../../docs/backend-history/cuda-dispatch-design.ja.md)は
 未実装の部分を明示している。削除済みの探索コードは
 [Git 履歴から参照](legacy-prototypes.ja.md)できる。
 

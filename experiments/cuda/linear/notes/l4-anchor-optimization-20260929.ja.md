@@ -55,7 +55,7 @@ PODのアンカー値とそのatom VJPは、128²で全atomを直接評価した
 
 ## 複数モデルとの再相談と次の実験
 
-Grok 4.7、Gemini 3.1 Pro、Claude Opus 5.5へ現実測を渡して再相談した。各回答は未検証の提案として扱い、現行候補リストと計算量を突き合わせた。Geminiの空間hashは既存の局所候補リストと重複し、乱択atomは現行候補より多くなる。Claudeの一般4D多項式案は項数を過小評価しており、そのままでは使えない。Grokの近接atomクラスタを二次momentでまとめる案は検証余地があるが、中心・precisionの5次元moments、振幅重み、支持境界での直接評価が必要。まずクラスタ内部に入る実アンカーpairの割合を測らないと速度改善は主張できない。元回答には未検証の推論や誤りがあるため、[原文](l4-anchor-optimization-consultation/)と採否を分けて保存した。
+Grok 4.7、Gemini 3.1 Pro、Claude Opus 5.5へ現実測を渡して再相談した。各回答は未検証の提案として扱い、現行候補リストと計算量を突き合わせた。Geminiの空間hashは既存の局所候補リストと重複し、乱択atomは現行候補より多くなる。Claudeの一般4D多項式案は項数を過小評価しており、そのままでは使えない。Grokの近接atomクラスタを二次momentでまとめる案は検証余地があるが、中心・precisionの5次元moments、振幅重み、支持境界での直接評価が必要。まずクラスタ内部に入る実アンカーpairの割合を測らないと速度改善は主張できない。元回答には未検証の推論や誤りがあるため、[原文](l4-anchor-optimization-consultation)と採否を分けて保存した。
 
 特にTriweightの`max(q,0)^3`は支持境界で二階微分まで連続であり、「境界で一次勾配が不連続」という回答は誤り。dense完全ステップ時間も別のパラメータ化・学習則の実測値であって、CST算法の厳密な下界ではない。
 
@@ -63,4 +63,4 @@ Grok 4.7、Gemini 3.1 Pro、Claude Opus 5.5へ現実測を渡して再相談し�
 
 固定POD基底とsite位置はGPUに保持して再利用できる。atomパラメータが毎step動くのでアンカー値は再計算する。候補リストのstep間再利用には、前回除外した全atomが更新後も支持域外に留まる保証が必要であり、現時点では毎step再構築する。
 
-実装は [`anchor_atom_training.py`](../anchor_atom_training.py)、[`torus_decode_trainable.py`](../torus_decode_trainable.py)、[`sweep_pod_anchor_basis.py`](../../../../benchmarks/cuda/linear/sweep_pod_anchor_basis.py)。完全ステップ再現は [`profile_anchor_atom_training.py`](../../../../benchmarks/cuda/linear/profile_anchor_atom_training.py)。生JSON・Nsight CSV・POD校正基底は [`benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/`](../../../../benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/) に保存。代表実測ソースはcommit `d53086c`、Git archive SHA256 `4572c63e792ecb1afbe5841b8f9cf0965667f08255dc1cb0f4de350a76086f16`。Colab L4 sessionは停止し、active sessionなしを確認した。
+実装は [`anchor_atom_training.py`](../anchor_atom_training.py)、[`torus_decode_trainable.py`](../torus_decode_trainable.py)、[`sweep_pod_anchor_basis.py`](../../../../benchmarks/cuda/linear/sweep_pod_anchor_basis.py)。完全ステップ再現は [`profile_anchor_atom_training.py`](../../../../benchmarks/cuda/linear/profile_anchor_atom_training.py)。生JSON・Nsight CSV・POD校正基底は [`benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/`](../../../../benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929) に保存。代表実測ソースはcommit `d53086c`、Git archive SHA256 `4572c63e792ecb1afbe5841b8f9cf0965667f08255dc1cb0f4de350a76086f16`。Colab L4 sessionは停止し、active sessionなしを確認した。

@@ -20,7 +20,8 @@ from torchcst import (
     TorusGeometry,
     Triweight,
 )
-from torchcst.nn._backends._preparation import PROFILE_KINDS, prepare
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.operators.strip_torus.preparation import PROFILE_KINDS
 
 
 class BlockStripLinear(nn.Module):

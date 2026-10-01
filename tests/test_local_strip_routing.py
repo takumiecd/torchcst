@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from torchcst import LinePattern, StripChart, TorusGeometry
-from torchcst.nn._strip_torus import CircleRouting
+from torchcst._backends.torch.operators.strip_torus.tiled import CircleRouting
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
@@ -52,7 +52,9 @@ def decoded_arcs(plan, arcs):
 def test_local_candidates_match_exhaustive_all_station_boundaries(
     stations, start, spacing, extra
 ):
-    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
 
     plan = routing(stations, start=start, spacing=spacing, extra=extra)
     assert plan.local_candidates
@@ -85,7 +87,9 @@ def test_local_candidates_match_exhaustive_all_station_boundaries(
 
 
 def test_extreme_coordinate_scale_uses_exhaustive_fallback():
-    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
 
     plan = routing(31, start=1e6)
     assert not plan.local_candidates
@@ -96,7 +100,9 @@ def test_extreme_coordinate_scale_uses_exhaustive_fallback():
 
 
 def test_captured_routing_handles_unrestricted_atom_jumps():
-    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
 
     plan = routing(4096)
     decoded = decoded_arcs(plan, torch.zeros(257, device="cuda"))

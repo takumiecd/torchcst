@@ -14,7 +14,7 @@ from experiments.cuda.linear.support_box_routing import (
     balanced_home_columns,
     station_site_boxes,
 )
-from torchcst.nn._backends._preparation import execution_plan
+from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 
 
 @torch.inference_mode()

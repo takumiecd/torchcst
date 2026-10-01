@@ -14,12 +14,14 @@ from unittest.mock import patch
 import torch
 
 from benchmarks.cuda.linear.benchmark_triton_linear import model, timed
-from torchcst.nn._backends._triton import forward as triton_forward
+from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import (
+    forward as triton_forward,
+)
 
 
 def execution_mode(name):
     return patch(
-        "torchcst.nn._backends._triton.forward",
+        "torchcst._backends.cuda.algorithms.strip_torus.fused.executor.forward",
         partial(triton_forward, split_reductions=name == "optimized"),
     )
 

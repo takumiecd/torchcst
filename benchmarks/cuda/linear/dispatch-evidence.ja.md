@@ -1,6 +1,6 @@
 # Dispatch の実験台帳と知見
 
-2026-09-29。CUDA dispatch の[設計](../../../src/torchcst/nn/_backends/notes/cuda-dispatch-design.ja.md)が参照する、
+2026-09-29。CUDA dispatch の[設計](../../../docs/backend-history/cuda-dispatch-design.ja.md)が参照する、
 実験と採否の入口。性能の数値は測定条件付きの事実として扱い、異なる GPU、
 PyTorch / Triton 版、shape、M に無条件で外挿しない。この台帳は実行時に
 読み込まない。配布する選択木の各 plan は、ここから辿れる安定した evidence ID

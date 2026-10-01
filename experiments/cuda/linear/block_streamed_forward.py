@@ -11,7 +11,8 @@ from experiments.cuda.linear.block_materialize_parallel import (
 )
 from experiments.cuda.linear.bounded_gemm import bounded_gemm
 from experiments.cuda.linear.bounded_gemm_fp16x3 import bounded_gemm_fp16x3
-from torchcst.nn._backends._preparation import PROFILE_KINDS, prepare
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.operators.strip_torus.preparation import PROFILE_KINDS
 
 
 def weight_fp_fusion_enabled(device):

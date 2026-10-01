@@ -4,7 +4,7 @@ import triton as tr
 import triton.language as tl
 
 from experiments.cuda.linear.local_atom_kernels import _bucket, _row_possible
-from torchcst.nn._backends._triton_kernels import _profile
+from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import _profile
 
 
 @tr.jit

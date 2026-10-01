@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import torch
 
-from torchcst.nn._backends._preparation import PROFILE_KINDS
+from torchcst._backends.torch.operators.strip_torus.preparation import PROFILE_KINDS
 
 
 @dataclass(frozen=True)

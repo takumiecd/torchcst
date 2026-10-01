@@ -1,6 +1,6 @@
 # Blackwellでの5% CST学習試作の再測定
 
-2026-09-29。Colab Proの実機 **NVIDIA RTX PRO 6000 Blackwell Server Edition**（compute capability 12.0、PyTorch 2.11.0+cu128、Triton 3.6.0）で、コミット `dd10ecf6ae35b438331faa2e9fd1fed547e1bf14` をGit archiveから展開して測った。archive SHA256は`0ff90ca646809b14c82fd0762583947db181e96c2549cad374d8e5354b5d0f34`。結果JSONは[`benchmarks/cuda/linear/evidence/blackwell-20260929/`](../../../../benchmarks/cuda/linear/evidence/blackwell-20260929/)に保存した。測定後にColabセッションを停止し、割当0件を確認した。KyutechのAda profileは切り替えていない。
+2026-09-29。Colab Proの実機 **NVIDIA RTX PRO 6000 Blackwell Server Edition**（compute capability 12.0、PyTorch 2.11.0+cu128、Triton 3.6.0）で、コミット `dd10ecf6ae35b438331faa2e9fd1fed547e1bf14` をGit archiveから展開して測った。archive SHA256は`0ff90ca646809b14c82fd0762583947db181e96c2549cad374d8e5354b5d0f34`。結果JSONは[`benchmarks/cuda/linear/evidence/blackwell-20260929/`](../../../../benchmarks/cuda/linear/evidence/blackwell-20260929)に保存した。測定後にColabセッションを停止し、割当0件を確認した。KyutechのAda profileは切り替えていない。
 
 Triweight、64×64 tile、atom数`round(0.05*N*N)`、FP32、seed 21、単層AdamW `foreach=True`。CSTは`listed_bounded`の8 bit候補リスト、局所W生成`listed_unroll=4`、候補構築`listed_builder_ba=32, listed_builder_warps=1`を明示指定した。1024²では512行窓・保持0枚、8192²では1024行窓・保持2枚または4枚。M=2048のforwardと入力勾配はFP16x3、局所dWはIEEE FP32。M=128はIEEE FP32。CST学習ステップは全W・全dWを生成しない。
 

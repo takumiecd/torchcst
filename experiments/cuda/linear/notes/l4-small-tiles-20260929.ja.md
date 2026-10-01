@@ -36,4 +36,4 @@ NVIDIA L4、論理重み1024×1024、5%密度（52,429 atom）、512行の局所
 
 小タイル化の効果は場所ごとに異なる。L4の1024²では、W生成に8×64、atom勾配に16×64を使うのが測定した候補の中で最速。さらに小さいタイルや列分割は候補削減より並列仕事量の増加が大きい。これはL4での方式選別であり、A100などではこの非対称方式を起点に閾値と起動設定を検証する。
 
-実測JSONは [`benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/`](../../../../benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/) に保存。単独kernel比較は `benchmarks/cuda/linear/profile_small_tile_shapes.py`、完全ステップ比較は `benchmarks/cuda/linear/profile_paired_dense_cst.py` で再現できる。
+実測JSONは [`benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/`](../../../../benchmarks/cuda/linear/evidence/l4-small-tiles-20260929) に保存。単独kernel比較は `benchmarks/cuda/linear/profile_small_tile_shapes.py`、完全ステップ比較は `benchmarks/cuda/linear/profile_paired_dense_cst.py` で再現できる。

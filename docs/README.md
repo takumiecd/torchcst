@@ -13,7 +13,7 @@ Implementation notes live beside the relevant code:
 - [Kernel and Profile declarations](../src/torchcst/kernels/README.md)
 - [Geometry and Chart declarations](../src/torchcst/geometry/README.md)
 
-- [CUDA backend and dispatch notes](../src/torchcst/nn/_backends/notes/README.md)
+- [CUDA backend and dispatch notes](backend-history/README.md)
 - [CUDA Linear experiments and kernel decisions](../experiments/cuda/linear/README.md)
 - [CUDA Linear benchmarks and measurements](../benchmarks/cuda/linear/README.md)
 

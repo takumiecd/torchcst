@@ -8,12 +8,12 @@ from dataclasses import FrozenInstanceError, replace
 import pytest
 import torch
 
-from torchcst.nn._backends.cuda.algorithm import Algorithm
-from torchcst.nn._backends.cuda.algorithms.normalized_strip import REGISTRY
-from torchcst.nn._backends.cuda.context import context_from_tensors
-from torchcst.nn._backends.cuda.dispatch.select import FULL, WINDOW, select_normalized
-from torchcst.nn._backends.cuda.registry import Registry
-from torchcst.nn._backends.cuda.schema import (
+from torchcst._backends.cuda.algorithm import Algorithm
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.cuda.context import context_from_tensors
+from torchcst._backends.cuda.dispatch.select import FULL, WINDOW, select_normalized
+from torchcst._backends.cuda.registry import Registry
+from torchcst._backends.cuda.schema import (
     DeviceInfo,
     DispatchContext,
     ExecutionPlan,
@@ -111,10 +111,10 @@ def test_context_is_metadata_and_immutable():
 
 def test_import_does_not_load_triton_or_gpu_implementations():
     code = (
-        "import sys; from torchcst.nn._backends.cuda.dispatch.select import FULL; "
+        "import sys; from torchcst._backends.cuda.dispatch.select import FULL; "
         "assert 'triton' not in sys.modules; "
-        "assert 'torchcst.nn._backends.normalized_strip.full' not in sys.modules; "
-        "assert 'torchcst.nn._backends.cuda.algorithms.normalized_strip.impl' not in sys.modules"
+        "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.kernels' not in sys.modules; "
+        "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.impl' not in sys.modules"
     )
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(sys.path)
@@ -262,7 +262,7 @@ def test_registry_accepts_only_algorithm_contract_and_identity_is_immutable():
 
 
 def test_algorithm_identity_requires_valid_metadata():
-    from torchcst.nn._backends.cuda.algorithms.normalized_strip import (
+    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import (
         NormalizedFullAlgorithm,
     )
 

@@ -19,10 +19,14 @@ from triton.testing import do_bench_cudagraph
 from benchmarks.cuda.linear.benchmark_triton_linear import model
 from experiments.cuda.linear.local_atom_linear import LocalAtom
 from experiments.cuda.linear.local_atom_linear import forward as direct
-from torchcst.nn._backends._preparation import prepare
-from torchcst.nn._backends._triton import _FusedLinear
-from torchcst.nn._backends._triton import forward as fused
-from torchcst.nn._backends._triton_kernels import materialize_weights
+from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import _FusedLinear
+from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import (
+    forward as fused,
+)
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import (
+    materialize_weights,
+)
 
 
 def log(**values):

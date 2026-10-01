@@ -34,5 +34,5 @@ python -m benchmarks.cuda.linear.run --algorithm normalized_window --size 1024 -
 
 normalized の独立oracle検証、同じ演算のfull baseline、別参照のdenseを
 新しいprocessで測る。Graph capture/replayのallocated/reserved peakを記録する。
-[registry v1](../../../src/torchcst/nn/_backends/notes/cuda-registry-v1.ja.md)の範囲・制限に従う。
+[registry v1](../../../docs/backend-history/cuda-registry-v1.ja.md)の範囲・制限に従う。
 承認ポイントや全形状suiteは未実装。

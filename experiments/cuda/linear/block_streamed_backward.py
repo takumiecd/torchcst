@@ -29,12 +29,19 @@ from experiments.cuda.linear.block_tile_atom_lists import (
 from experiments.cuda.linear.bounded_gemm import bounded_gemm
 from experiments.cuda.linear.bounded_gemm_fp16x3 import bounded_gemm_fp16x3
 from experiments.cuda.linear.support_box_routing import atomic_bucket_sort
-from torchcst.nn._backends._preparation import PROFILE_KINDS, execution_plan
-from torchcst.nn._backends._triton_kernels import _profile, _sites, _values
-from torchcst.nn._backends._triton_preparation import (
+from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import (
+    _profile,
+    _sites,
+    _values,
+)
+from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
     Pack,
     route_and_layout,
     tile_parameters,
+)
+from torchcst._backends.torch.operators.strip_torus.preparation import (
+    PROFILE_KINDS,
+    execution_plan,
 )
 
 

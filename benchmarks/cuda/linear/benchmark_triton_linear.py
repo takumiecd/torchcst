@@ -26,8 +26,10 @@ from torchcst import (
     TorusGeometry,
     Triweight,
 )
-from torchcst.nn._backends._preparation import prepare as prepare_atoms
-from torchcst.nn._backends._triton import _FusedLinear
+from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import _FusedLinear
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import (
+    prepare as prepare_atoms,
+)
 
 
 def timed(fn, repeats):
@@ -82,7 +84,9 @@ def prepare(layer):
 def probe(batch, atoms, repeats):
     from triton.testing import do_bench_cudagraph
 
-    from torchcst.nn._backends._triton_kernels import materialize_weights
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import (
+        materialize_weights,
+    )
 
     torch.manual_seed(21)
     layer = model(atoms)

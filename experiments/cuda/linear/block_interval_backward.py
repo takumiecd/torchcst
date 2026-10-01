@@ -4,7 +4,7 @@ import triton as tr
 import triton.language as tl
 from triton.language.extra.cuda import libdevice
 
-from torchcst.nn._backends._triton_kernels import _profile
+from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import _profile
 
 
 @tr.jit

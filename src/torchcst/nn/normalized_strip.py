@@ -124,9 +124,8 @@ class NormalizedStripLinear(nn.Module):
         if not all(math.isfinite(v) for v in (*origin, *spacing)) or min(spacing) <= 0:
             raise RuntimeError("invalid chart metadata")
         self._plan = SimpleNamespace(origin=origin, spacing=spacing, sizes=sizes)
+        from torchcst._backends.cuda.schema import NormalizedStripSpec
         from torchcst.operators.normalized_strip import normalized_strip_declaration
-
-        from ._backends.cuda.schema import NormalizedStripSpec
 
         self._operator_spec = normalized_strip_declaration(
             sizes=sizes, origin=origin, spacing=spacing
@@ -218,9 +217,11 @@ class NormalizedStripLinear(nn.Module):
                 raise RuntimeError("normalized Strip CUDA does not support autocast")
             if torch.backends.cuda.matmul.allow_tf32:
                 raise RuntimeError("normalized Strip CUDA requires TF32 to be disabled")
-            from ._backends.cuda.algorithms.normalized_strip import REGISTRY
-            from ._backends.cuda.context import context_from_tensors
-            from ._backends.cuda.dispatch.select import select_normalized
+            from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import (
+                REGISTRY,
+            )
+            from torchcst._backends.cuda.context import context_from_tensors
+            from torchcst._backends.cuda.dispatch.select import select_normalized
 
             context = context_from_tensors(self._cuda_operator, flat, self.p)
             decision = select_normalized(context, memory=self.memory)

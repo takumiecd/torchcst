@@ -2,7 +2,10 @@
 
 import pytest
 
-from torchcst.nn._backends._schedule import WORKSPACE_BYTES, split_count
+from torchcst._backends.cuda.algorithms.strip_torus.fused.schedule import (
+    WORKSPACE_BYTES,
+    split_count,
+)
 
 
 @pytest.mark.parametrize("elements", [0, 1024, 8192, 1048576, 8388608, 16777216])

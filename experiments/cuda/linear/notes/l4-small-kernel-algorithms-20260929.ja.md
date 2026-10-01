@@ -36,4 +36,4 @@ L4の1ステップのCUDA kernel合計は入力16行で1,234 µs、128行で1,29
 - 小バッチではW生成とatom勾配が支配的であり、候補リストの少数レーン並列化だけでは十分でない。次はWやdWを一度も全窓へ書かずに済む表現、あるいは支持領域を使った演算回数削減を検討する。
 - この方式は1024²で検証した。8192²では全行FP16キャッシュが128 MiBになり、従来の有界メモリ目標とは別の判断が必要。L4で方式を選んだ後に、A100・Ada・Blackwellそれぞれで最適な閾値とタイルを測る。
 
-実測JSONは [`benchmarks/cuda/linear/evidence/l4-algorithm-20260929/`](../../../../benchmarks/cuda/linear/evidence/l4-algorithm-20260929/) に保存した。方式比較のコードは `prototypes/profile_small_materialization_algorithms.py` と `prototypes/profile_small_backward_algorithms.py`、完全ステップと精度確認は `benchmarks/cuda/linear/profile_paired_dense_cst.py`、`benchmarks/cuda/linear/probe_csr_graph_step.py`、`benchmarks/cuda/linear/check_fp16_full_cache.py`。
+実測JSONは [`benchmarks/cuda/linear/evidence/l4-algorithm-20260929/`](../../../../benchmarks/cuda/linear/evidence/l4-algorithm-20260929) に保存した。方式比較のコードは `prototypes/profile_small_materialization_algorithms.py` と `prototypes/profile_small_backward_algorithms.py`、完全ステップと精度確認は `benchmarks/cuda/linear/profile_paired_dense_cst.py`、`benchmarks/cuda/linear/probe_csr_graph_step.py`、`benchmarks/cuda/linear/check_fp16_full_cache.py`。

@@ -12,7 +12,7 @@ import torch
 from torch import Tensor
 
 from torchcst import DirectAmpWidth, Triweight
-from torchcst.nn._backends._preparation import execution_plan
+from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 
 
 @dataclass

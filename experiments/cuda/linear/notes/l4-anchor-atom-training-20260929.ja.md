@@ -42,4 +42,4 @@ Colab ProのNVIDIA L4、PyTorch 2.11.0+cu128、Triton 3.6.0。1024×1024、52,42
 
 ただしこれは近似した演算子の学習であり、真のCSTと同一の学習軌道ではない。23回の固定ランダムMSE更新で両方式のlossは近かったが、出力差は初期より増えた。データタスクでの精度、長い学習、atom移動後の誤差、複数seedでの安定性、近似の許容閾値は未検証。16×32を即採用せず、24×48を精度寄りの候補として残す。次は同じタスク上で学習曲線と最終精度を比べ、許容できるアンカー密度を決める。
 
-生JSONは [`benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/`](../../../../benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/)。測定ソースはコミット`3656244`のGit archive SHA256 `70fb247f447d80ea6227b50654d53fdc9f15ad7da12525dd07288ec4fcc3141a`。Colab session `torchcst-anchor-l4-20260929`は停止し、active sessionがないことを確認した。
+生JSONは [`benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/`](../../../../benchmarks/cuda/linear/evidence/l4-anchor-training-20260929)。測定ソースはコミット`3656244`のGit archive SHA256 `70fb247f447d80ea6227b50654d53fdc9f15ad7da12525dd07288ec4fcc3141a`。Colab session `torchcst-anchor-l4-20260929`は停止し、active sessionがないことを確認した。

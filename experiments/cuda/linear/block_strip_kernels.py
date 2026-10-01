@@ -8,7 +8,12 @@ from experiments.cuda.linear.local_atom_kernels import (
     _row_possible,
     _row_values,
 )
-from torchcst.nn._backends._triton_kernels import _profile, _sites, _values, _weight
+from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import (
+    _profile,
+    _sites,
+    _values,
+    _weight,
+)
 
 
 @tr.jit

@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 
 from benchmarks.cuda.linear.benchmark_triton_linear import model
-from torchcst.nn._backends._preparation import execution_plan
+from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 
 
 def interleaved(functions, repeats):

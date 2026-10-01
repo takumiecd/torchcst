@@ -23,10 +23,10 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from torchcst.nn._backends.cuda.algorithms.normalized_strip import REGISTRY
-from torchcst.nn._backends.cuda.context import context_from_tensors
-from torchcst.nn._backends.cuda.dispatch.select import FULL, WINDOW
-from torchcst.nn._backends.cuda.schema import OperatorSpec
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.cuda.context import context_from_tensors
+from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
+from torchcst._backends.cuda.schema import OperatorSpec
 
 PLANS = {"normalized_full": FULL, "normalized_window": WINDOW}
 

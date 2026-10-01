@@ -14,8 +14,11 @@ from torchcst import (
     TorusGeometry,
     Triweight,
 )
-from torchcst.nn._layout import initial_layout, plan_repack
-from torchcst.nn._strip_torus import (
+from torchcst._backends.torch.operators.strip_torus.layout import (
+    initial_layout,
+    plan_repack,
+)
+from torchcst._backends.torch.operators.strip_torus.tiled import (
     owners_from_support,
     route_atoms,
     support_mask,

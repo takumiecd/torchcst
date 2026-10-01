@@ -21,9 +21,13 @@ from benchmarks.cuda.linear.profile_current_paths import capture
 from experiments.cuda.linear.block_strip_linear import BlockStripLinear
 from experiments.cuda.linear.direct_diagnostics import count_rows, diagnostic_forward
 from experiments.cuda.linear.local_atom_linear import forward as direct
-from torchcst.nn._backends._preparation import prepare
-from torchcst.nn._backends._triton import forward as fused
-from torchcst.nn._backends._triton_kernels import materialize_weights
+from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import (
+    forward as fused,
+)
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import (
+    materialize_weights,
+)
 
 
 def log(**data):

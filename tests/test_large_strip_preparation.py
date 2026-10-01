@@ -3,7 +3,8 @@
 import pytest
 import torch
 
-from torchcst.nn._backends._preparation import execution_plan, prepare
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
@@ -11,7 +12,9 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
 @pytest.mark.parametrize("stations,atoms", [(1025, 1), (2048, 17), (4096, 65)])
 def test_chunked_owners_layout_and_gradients(stations, atoms):
     from benchmarks.cuda.linear.benchmark_triton_linear import model
-    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
 
     torch.manual_seed(33)
     # A partial final station also checks the per-station last-row limits.

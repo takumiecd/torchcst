@@ -7,9 +7,16 @@ canonical profile evaluation. The CUDA implementation has a direct backward.
 import torch
 from torch.autograd.function import once_differentiable
 
-from torchcst.nn._backends._preparation import PROFILE_KINDS, execution_plan, prepare
-from torchcst.nn._strip_torus import validate_tiled
-from torchcst.nn._support_layout import station_buckets, support_layout
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.operators.strip_torus.preparation import (
+    PROFILE_KINDS,
+    execution_plan,
+)
+from torchcst._backends.torch.operators.strip_torus.support import (
+    station_buckets,
+    support_layout,
+)
+from torchcst._backends.torch.operators.strip_torus.tiled import validate_tiled
 
 
 def reference(site, inputs, p):

@@ -5,7 +5,7 @@
 以下の CUDA 配置は先行する段階的移行案であり、`nn/_backends/cuda/` は将来
 `torchcst/_backends/cuda/` へ集約する。演算の契約は backend の外へ置く。
 
-2026-09-29。これは [CUDA dispatch 設計](../../../src/torchcst/nn/_backends/notes/cuda-dispatch-design.ja.md)を実装する際の
+2026-09-29。これは [CUDA dispatch 設計](../../../docs/backend-history/cuda-dispatch-design.ja.md)を実装する際の
 ディレクトリ規約。公開 API は `torchcst.nn` のままにし、内部の CUDA 最適化を
 アルゴリズム単位で読めるようにする。既存ファイルの一括移動は行わず、
 実装を昇格させる単位で移す。

@@ -4,7 +4,7 @@
 > 歴史的な再現手順です。削除したコードの参照方法は
 > [旧実験コード](../legacy-prototypes.ja.md)を参照してください。
 
-2026-09-26。[I/B分類と一時メモリの改善](../../../../src/torchcst/nn/_backends/notes/batched-support-preparation.ja.md)に続き、計算本体を改善した。
+2026-09-26。[I/B分類と一時メモリの改善](../../../../docs/backend-history/batched-support-preparation.ja.md)に続き、計算本体を改善した。
 
 ## 結論
 

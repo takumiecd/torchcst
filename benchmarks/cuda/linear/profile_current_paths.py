@@ -15,9 +15,11 @@ from benchmarks.cuda.linear._profile_trace import kernel_summary
 from benchmarks.cuda.linear.benchmark_triton_linear import model
 from experiments.cuda.linear.local_atom_kernels import direct_forward
 from experiments.cuda.linear.local_atom_linear import forward as direct
-from torchcst.nn._backends._preparation import prepare
-from torchcst.nn._backends._triton import forward as fused
-from torchcst.nn._backends._triton_kernels import fused_forward
+from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import (
+    forward as fused,
+)
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import fused_forward
 from torchcst.profiling import CSTProfiler
 
 

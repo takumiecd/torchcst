@@ -21,7 +21,10 @@ from experiments.cuda.linear.support_box_routing import (
     balanced_home_columns,
     station_site_boxes,
 )
-from torchcst.nn._backends._preparation import PROFILE_KINDS, execution_plan
+from torchcst._backends.torch.operators.strip_torus.preparation import (
+    PROFILE_KINDS,
+    execution_plan,
+)
 
 
 def main():

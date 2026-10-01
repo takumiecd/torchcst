@@ -20,8 +20,14 @@ from torchcst import (
     Triweight,
     WendlandC2,
 )
-from torchcst.nn._backends._preparation import execution_plan, geometry_factors, prepare
-from torchcst.nn._backends._triton import forward as triton_forward
+from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import (
+    forward as triton_forward,
+)
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.operators.strip_torus.preparation import (
+    execution_plan,
+    geometry_factors,
+)
 
 GPU = pytest.mark.skipif(
     not torch.cuda.is_available() or importlib.util.find_spec("triton") is None,
@@ -346,8 +352,10 @@ def test_triton_warm_forward_captures_updated_inputs_and_atoms():
 @pytest.mark.parametrize("rows,station_rows", [(1, 1), (9, 5), (21, 5), (64, 4)])
 @pytest.mark.parametrize("count", [0, 37, 257])
 def test_fused_routing_matches_reference_including_seams(rows, station_rows, count):
-    from torchcst.nn._backends._triton_preparation import route_and_layout
-    from torchcst.nn._layout import _station_layout
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
+    from torchcst._backends.torch.operators.strip_torus.layout import _station_layout
 
     torch.manual_seed(91)
     model = _model(rows=rows, station_rows=station_rows, device="cuda")
@@ -391,7 +399,9 @@ def test_fused_preparation_matches_values_and_gradients(representation):
 @GPU
 @pytest.mark.parametrize("power,floor,birth", [(1.0, 0.3, 3.5), (0.4, 1.1, 2.2)])
 def test_fused_bandwidth_preserves_envelopes_and_stop_gradient(power, floor, birth):
-    from torchcst.nn._backends._triton_preparation import tile_parameters
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        tile_parameters,
+    )
 
     torch.manual_seed(94)
     model = _model(atoms=259, device="cuda", sigma_min=0.3)

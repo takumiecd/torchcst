@@ -13,7 +13,7 @@ from experiments.cuda.linear.anchor_basis import (
     interpolation_matrix,
 )
 from experiments.cuda.linear.block_strip_linear import BlockStripLinear
-from torchcst.nn._backends._preparation import prepare
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
 
 
 def metrics(actual, reference):

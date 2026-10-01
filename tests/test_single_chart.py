@@ -18,7 +18,7 @@ from torchcst import (
     StripChart,
     Triweight,
 )
-from torchcst.nn._backends import resolve_backend
+from torchcst._backends.linear import resolve_backend
 
 
 def direct_kernel(

@@ -14,7 +14,7 @@ python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/mapped-
 これは**実装予定の case 方式の CLI**。現時点で `--case` / `--set` は未実装。
 2026-10-01 の研究 branch では、normalized full/window に限定した共通入口
 `run.py --algorithm ... --size ... --output ...` を追加した。
-[初期 registry と測定契約](../../../src/torchcst/nn/_backends/notes/cuda-registry-v1.ja.md)を参照。case には
+[初期 registry と測定契約](../../../docs/backend-history/cuda-registry-v1.ja.md)を参照。case には
 演算の意味、形状 `N/K/M`、atom 数、dtype、seed、device、比較対象の recipe ID、
 測定モード、warmup と反復数を書く。人が変更する値は `window_rows`、
 `cache_windows`、tile、warp、candidate list 方式など、そのアルゴリズムが

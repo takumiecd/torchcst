@@ -77,7 +77,7 @@ def test_mapped_gpu(shape, tile, backend):
 )
 def test_boundary_seam_and_graph_updates(backend, execution=None):
     execution = execution or {}
-    from torchcst.nn._backends._preparation import prepare
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
 
     layer = BlockStripLinear(
         (32, 32), (16, 16), 8, device="cuda", tile_pitch=2.6, sigma=0.8, sigma_min=0.8
@@ -127,7 +127,7 @@ def test_diagnostic_modes_and_counts():
         count_rows,
         diagnostic_forward,
     )
-    from torchcst.nn._backends._preparation import prepare
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
 
     layer = BlockStripLinear((32, 32), (16, 32), 16, device="cuda")
     with torch.no_grad():
@@ -255,7 +255,7 @@ def test_support_culling_partial_and_seam(width, mode):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_support_counts_match_canonical_atom_sites():
     from experiments.cuda.linear.block_support_diagnostics import diagnose_support
-    from torchcst.nn._backends._preparation import prepare
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
 
     layer = BlockStripLinear((17, 65), (16, 64), 12, device="cuda")
     with torch.no_grad():

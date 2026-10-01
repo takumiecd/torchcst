@@ -85,4 +85,4 @@ Grok 4.7にも問い合わせたがタイムアウトし、今回の回答は得
 - **低ランク因子:** 別モデルの比較記録として保持する。CSTの改善案には数えない。
 - **他GPUへ移す条件:** L4でアルゴリズムと精度の可否が決まってからA100、RTX 6000 Ada、BlackwellでそれぞれタイルとGEMM精度を調整する。今回の新方式はこれらのGPUでは未測定。
 
-再現コードは `benchmarks/cuda/linear/diagnose_cst_sampled_blocks.py`、`prototypes/diagnose_cst_factor_rank.py`、`prototypes/profile_factor_surrogate_steps.py`、`prototypes/profile_factor_surrogate_memory.py`。測定JSONは [`benchmarks/cuda/linear/evidence/cst-redesign-20260929/`](../../../../benchmarks/cuda/linear/evidence/cst-redesign-20260929/) に保存した。
+再現コードは `benchmarks/cuda/linear/diagnose_cst_sampled_blocks.py`、`prototypes/diagnose_cst_factor_rank.py`、`prototypes/profile_factor_surrogate_steps.py`、`prototypes/profile_factor_surrogate_memory.py`。測定JSONは [`benchmarks/cuda/linear/evidence/cst-redesign-20260929/`](../../../../benchmarks/cuda/linear/evidence/cst-redesign-20260929) に保存した。

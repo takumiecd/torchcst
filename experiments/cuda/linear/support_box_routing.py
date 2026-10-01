@@ -5,10 +5,6 @@ import triton as tr
 import triton.language as tl
 from triton.language.extra.cuda import libdevice
 
-from torchcst.nn._backends._triton_preparation_kernels import (
-    support_buckets_batched_box,  # noqa: F401 - preserve prototype import path
-)
-
 
 @tr.jit
 def _decode_intrinsic_torus(
@@ -152,11 +148,13 @@ def boxed_prepare(
     fast_decode=False,
 ):
     """Prepare current atom values with exact fallback for box-overlapping stations."""
-    from torchcst.nn._backends._preparation import execution_plan
-    from torchcst.nn._backends._triton_preparation import (
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
         Pack,
         route_and_layout,
         tile_parameters,
+    )
+    from torchcst._backends.torch.operators.strip_torus.preparation import (
+        execution_plan,
     )
 
     plan = execution_plan(site)
