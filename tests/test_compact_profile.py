@@ -321,3 +321,17 @@ def test_separable_accepts_compact_profiles() -> None:
     assert phi_input.shape == (4, 2)
     assert phi_output.shape == (3, 2)
     assert kernel.tangent_backend(input_chart, output_chart) is not None
+
+@pytest.mark.parametrize('dtype',[torch.float64,torch.float32])
+@pytest.mark.parametrize('center_value',[-(0.995**.5),-0.99,-2.])
+def test_triweight_normalized_tangent_matches_clamped_norm_autograd(dtype,center_value):
+    # Barely supported underfloor, ordinary normalized, and exactly empty.
+    chart=Chart.points(torch.tensor([[0.]],dtype=dtype))
+    profile=Triweight(1.).to(dtype=dtype)
+    p=torch.tensor([[center_value]],dtype=dtype,requires_grad=True)
+    precision=torch.ones(1,dtype=dtype,requires_grad=True)
+    values,centers,widths=profile.tangent_with_precision(chart,p,precision)
+    gc,gprec=torch.autograd.grad(values.sum(),(p,precision))
+    torch.testing.assert_close(centers.sum(0),gc,atol=2e-5 if dtype==torch.float32 else 2e-12,rtol=2e-5)
+    torch.testing.assert_close(widths.sum(0),gprec,atol=2e-5 if dtype==torch.float32 else 2e-12,rtol=2e-5)
+    assert torch.isfinite(centers).all() and torch.isfinite(widths).all()

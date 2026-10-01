@@ -132,9 +132,14 @@ class _CompactRadialProfile(Profile):
         scale = scale.reshape(1, -1)
         dpsi_dc = raw_centers * scale.unsqueeze(-1)
         dpsi_dprec = raw_widths * scale
+        # clamp_min has zero denominator derivative below the norm floor,
+        # and its ordinary derivative at equality. Keep that forward contract.
+        live_norm = (torch.linalg.vector_norm(raw, dim=0) >= _L2_FLOOR).reshape(1, -1)
         center_mean = (values.unsqueeze(-1) * dpsi_dc).sum(0, keepdim=True)
+        center_mean = center_mean * live_norm.unsqueeze(-1)
         centers = dpsi_dc - values.unsqueeze(-1) * center_mean
         precision_mean = (values * dpsi_dprec).sum(0, keepdim=True)
+        precision_mean = precision_mean * live_norm
         widths = dpsi_dprec - values * precision_mean
         return values, centers, widths
 

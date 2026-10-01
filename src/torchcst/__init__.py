@@ -30,7 +30,7 @@ from .kernels import (
     Triweight,
     WendlandC2,
 )
-from .nn import CSTConv2d, CSTLinear, CSTModule
+from .nn import CSTConv2d, CSTLinear, CSTModule, NormalizedStripLinear
 from .optim import (
     CSTSGD,
     AdamRConfig,
@@ -89,6 +89,7 @@ __all__ = [
     "Kernel",
     "LinePattern",
     "NormalizedOptimizerConfig",
+    "NormalizedStripLinear",
     "PointsPattern",
     "PolarAmpWidth",
     "ProductChart",

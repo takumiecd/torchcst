@@ -62,6 +62,16 @@ python -m pip install -e '.[dev]'
 
 The package requires Python 3.10+ and PyTorch 2.0+.
 
+## Globally normalized Strip linear layer
+
+`torchcst.nn.NormalizedStripLinear(chart, p, memory="full")` provides a fixed
+3D Euclidean Triweight operator with a global discrete L2 norm per atom.
+`memory="window"` trades extra computation for lower temporary matrix memory.
+This is a separate layer; existing `CSTLinear` APIs remain available.
+Install CUDA extras with `python -m pip install -e '.[cuda]'`.
+See the [Japanese usage and scope guide](docs/normalized-strip.ja.md) for the
+five-parameter model, training example, supported chart and measurement limits.
+
 ## Quick start: parameter Adam
 
 This is the low-memory starting point. The CST chart is fixed, the CST site

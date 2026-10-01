@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shared Colab L4 Pool"
+  short_description: "Queue isolated L4 experiments across research chats"
+  default_prompt: "Use $colab-l4-pool to submit and collect an isolated L4 experiment."

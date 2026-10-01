@@ -1,0 +1,551 @@
+{
+  "scope": "Historical research implementation measurements before public API promotion; not measurements of the packaged class. All ordinary-width dense2x goals remain unmet.",
+  "contract": {
+    "batch": 128,
+    "atom_fraction": 0.05,
+    "dtype": "FP32",
+    "tf32": false,
+    "step": "forward, dX, all five atom gradients, fused capturable AdamW",
+    "normalization": "whole operator discrete L2 Triweight, floor1e-6",
+    "sigma_bounds": [
+      0.03,
+      3.25
+    ]
+  },
+  "pairs": [
+    {
+      "cst": "l4job-056fdd467f594d7b9bcfb985b32728b1",
+      "dense": "l4job-066a6955c5eb4e228f2abe864dc750fb",
+      "scope": "window sharp8192",
+      "ratio": 1.8454398228056952,
+      "allocated_reduction_percent": 66.9653560119919
+    }
+  ],
+  "records": [
+    {
+      "job": "l4job-056fdd467f594d7b9bcfb985b32728b1",
+      "scope": "window sharp8192",
+      "args": [
+        "--candidate",
+        "experiments.cuda.linear.normalized_strip_atlas_window",
+        "--kind",
+        "atlasstream512",
+        "--size",
+        "8192",
+        "--support",
+        "ball",
+        "--warps",
+        "1",
+        "--fp-fusion",
+        "--saved-support-flags"
+      ],
+      "source_archive_sha256": "359856689d3215006a9ccbb7cde0c8f39105dc69538b6b29735a089f6e9a5140",
+      "receipt": {
+        "archive_sha256": "a71470bf06eb4e24e91ec8027c9238badc724ac6a46b20c028a409c4219c12b1"
+      },
+      "gpu": "NVIDIA L4, GPU-658ca9f9-aac3-ed24-9073-b7f16faf2061, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu128",
+        "cuda": "12.8",
+        "triton": "3.6.0"
+      },
+      "driver_returncode": 0,
+      "timed_out": false,
+      "accepted_complete_step": true,
+      "quality_stdout_counts": [
+        22,
+        28,
+        3
+      ],
+      "graph_ms": 23.611991000052512,
+      "graph_peak_bytes": 371507712,
+      "eager_peak_bytes": 355305984,
+      "correctness": {
+        "y_max": 9.5367431640625e-06,
+        "y_rel_l2": 1.6620839460301795e-07,
+        "dx_max": 3.814697265625e-06,
+        "dx_rel_l2": 2.7448251671557955e-08,
+        "dp_max": 2.288818359375e-05,
+        "dp_rel_l2": 1.0184598409068712e-07
+      },
+      "fixture": {
+        "initial": {
+          "atoms": 3355443,
+          "live_singleton": 3355443,
+          "underfloor_singleton": 0,
+          "empty": 0,
+          "max_nearest_distance": 0.0344918929040432,
+          "sigma_min": 0.19900000095367432,
+          "sigma_max": 0.19900000095367432
+        },
+        "initial_p_sha256": "aad6f59c293a453daa6e4a6935fbe1bb308df40452d16602282623969cca859c",
+        "sizes": [
+          8192,
+          64,
+          128
+        ],
+        "origin": [
+          -4095.5,
+          -15.75,
+          -31.75
+        ],
+        "final": {
+          "atoms": 3355443,
+          "live_singleton": 3355443,
+          "underfloor_singleton": 0,
+          "empty": 0,
+          "max_nearest_distance": 0.11045807600021362,
+          "sigma_min": 0.19900695979595184,
+          "sigma_max": 0.19900695979595184
+        },
+        "optimizer_updates_including_capture_and_warmup": 21,
+        "optimizer_storage_padding": 0,
+        "post_update_all_atoms_all_five": {
+          "y_max": 9.5367431640625e-06,
+          "dx_max": 5.7220458984375e-06,
+          "dp_max": 9.1552734375e-05
+        },
+        "label": "sharp-only constructive live one-hot fixture, distinct from sigma3 goal",
+        "mode": "packed",
+        "capture_stream_protocol": "original benchmark graph context",
+        "initialization": "sigma .199; original seed21 centers' nearest-site phase contracted to +/- .02 per axis at initialization only",
+        "model_execution": "unmodified continuous centers, global discrete L2 Triweight floor1e-6, all five parameters trainable"
+      },
+      "source_sha256": {
+        "experiments/cuda/linear/normalized_strip_atlas_table.py": "67ea6cecdb88f56520ae151d3a332acbc146ab9c383fc77c019adb9f79de2633",
+        "benchmarks/cuda/linear/profile_normalized_strip_atlas_stream.py": "95f28842062116bbd517a68943f98a17ee5392a7f1f73b7eb51f8a0b0901e8ad",
+        "experiments/cuda/linear/normalized_strip_atlas_packed.py": "a11dc2528f124bd09175c446255fcd500d15e045ed01b765a31113d9a482b2ba",
+        "experiments/cuda/linear/normalized_strip_narrow_table.py": "95df8904b686cb524ef45810f48ee99991df3c8fec74f5b8c3342bfed9d1a17a",
+        "benchmarks/cuda/linear/check_normalized_strip_packed.py": "e99907c3234fd6ed864240c0b1418a78c0b89ce93afc9d3b0a56aee5ff5e1fcf",
+        "benchmarks/cuda/linear/profile_normalized_strip_packed.py": "1e20c5cd8fd030cc07306b1f83568924c74d7c799243baab5467c302e7d3c82f",
+        "benchmarks/cuda/linear/profile_normalized_strip_sharp.py": "47ff8866320099c2aa6ef212cf0ae740f2949710281482ebec9ecec4d49c9e91",
+        "experiments/cuda/linear/normalized_strip_packed_window_backend.py": "dabd5d2a95d842d282ca3ced01fdece7a94bab40be0705404b1dc2ceaaa23792",
+        "experiments/cuda/linear/normalized_strip_atlas_window.py": "8a7367bf1026ff2ab6f5c516a70dfb2605b150d79c7d711481c955a1db6466c0",
+        "__pool_driver__.py": "08e491ed31610bde316bfd92757fa7ea3259cd8179bc62694dd43b44ab7d5bb8",
+        "experiments/cuda/linear/normalized_strip_window_gemm.py": "5f9b2be9d0a3af2881959cd67427dbf2a24b05f064a0bd7627fb84a938fc82bd"
+      },
+      "memory_scope": "Existing protocol resets: eager after warmup, Graph before capture; reserved includes cached eager allocations/private Graph pool. No empty_cache or reset changes. Not a process peak, nor isolated cold compilation/oracle allocation.",
+      "memory_peak_snapshots": [
+        {
+          "max_allocated": 355305984,
+          "max_reserved": 843055104,
+          "end_allocated": 302768640,
+          "end_reserved": 843055104
+        },
+        {
+          "max_allocated": 371507712,
+          "max_reserved": 843055104,
+          "end_allocated": 319809024,
+          "end_reserved": 534773760
+        }
+      ]
+    },
+    {
+      "job": "l4job-d7faca5598264499b02df0d4c6180d2b",
+      "scope": "fullW packed sharp8192 control",
+      "args": [
+        "--sharp-mode",
+        "packed",
+        "--kind",
+        "atlasstream512",
+        "--size",
+        "8192",
+        "--support",
+        "ball",
+        "--warps",
+        "1",
+        "--fp-fusion",
+        "--saved-support-flags"
+      ],
+      "source_archive_sha256": "30250ac9b2eca208bf50ba3608472f5e2e8380d614a78eb6e030b2e6f7a415ce",
+      "receipt": {
+        "archive_sha256": "f077201e480ec913e6d5d6c1624b825cccac9d35001aa37657e6e9efed22ffd6"
+      },
+      "gpu": "NVIDIA L4, GPU-658ca9f9-aac3-ed24-9073-b7f16faf2061, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu128",
+        "cuda": "12.8",
+        "triton": "3.6.0"
+      },
+      "driver_returncode": 0,
+      "timed_out": false,
+      "accepted_complete_step": true,
+      "quality_stdout_counts": [
+        27
+      ],
+      "graph_ms": 11.745006999717589,
+      "graph_peak_bytes": 891783168,
+      "eager_peak_bytes": 874035200,
+      "correctness": {
+        "y_max": 8.58306884765625e-06,
+        "y_rel_l2": 1.7818948094827647e-07,
+        "dx_max": 1.1444091796875e-05,
+        "dx_rel_l2": 2.0706302450435032e-07,
+        "dp_max": 2.288818359375e-05,
+        "dp_rel_l2": 1.0507241654522659e-07
+      },
+      "fixture": {
+        "initial": {
+          "atoms": 3355443,
+          "live_singleton": 3355443,
+          "underfloor_singleton": 0,
+          "empty": 0,
+          "max_nearest_distance": 0.0344918929040432,
+          "sigma_min": 0.19900000095367432,
+          "sigma_max": 0.19900000095367432
+        },
+        "initial_p_sha256": "aad6f59c293a453daa6e4a6935fbe1bb308df40452d16602282623969cca859c",
+        "sizes": [
+          8192,
+          64,
+          128
+        ],
+        "origin": [
+          -4095.5,
+          -15.75,
+          -31.75
+        ],
+        "final": {
+          "atoms": 3355443,
+          "live_singleton": 3355443,
+          "underfloor_singleton": 0,
+          "empty": 0,
+          "max_nearest_distance": 0.11045807600021362,
+          "sigma_min": 0.19900695979595184,
+          "sigma_max": 0.19900695979595184
+        },
+        "optimizer_updates_including_capture_and_warmup": 21,
+        "optimizer_storage_padding": 0,
+        "post_update_all_atoms_all_five": {
+          "y_max": 9.5367431640625e-06,
+          "dx_max": 1.1444091796875e-05,
+          "dp_max": 0.000152587890625
+        },
+        "label": "sharp-only constructive live one-hot fixture, distinct from sigma3 goal",
+        "mode": "packed",
+        "capture_stream_protocol": "original benchmark graph context",
+        "initialization": "sigma .199; original seed21 centers' nearest-site phase contracted to +/- .02 per axis at initialization only",
+        "model_execution": "unmodified continuous centers, global discrete L2 Triweight floor1e-6, all five parameters trainable"
+      },
+      "source_sha256": {
+        "experiments/cuda/linear/normalized_strip_atlas_table.py": "67ea6cecdb88f56520ae151d3a332acbc146ab9c383fc77c019adb9f79de2633",
+        "benchmarks/cuda/linear/profile_normalized_strip_atlas_stream.py": "6fe1594d4cc9ed2fc0007c30445c6049f130e1b63d84f14334ea28172c335cda",
+        "experiments/cuda/linear/normalized_strip_atlas_packed.py": "a11dc2528f124bd09175c446255fcd500d15e045ed01b765a31113d9a482b2ba",
+        "experiments/cuda/linear/normalized_strip_narrow_table.py": "95df8904b686cb524ef45810f48ee99991df3c8fec74f5b8c3342bfed9d1a17a",
+        "benchmarks/cuda/linear/check_normalized_strip_packed.py": "e99907c3234fd6ed864240c0b1418a78c0b89ce93afc9d3b0a56aee5ff5e1fcf",
+        "benchmarks/cuda/linear/profile_normalized_strip_packed.py": "1e20c5cd8fd030cc07306b1f83568924c74d7c799243baab5467c302e7d3c82f",
+        "benchmarks/cuda/linear/profile_normalized_strip_sharp.py": "47ff8866320099c2aa6ef212cf0ae740f2949710281482ebec9ecec4d49c9e91"
+      }
+    },
+    {
+      "job": "l4job-066a6955c5eb4e228f2abe864dc750fb",
+      "scope": "dense8192",
+      "args": [
+        "--kind",
+        "dense",
+        "--size",
+        "8192",
+        "--support",
+        "ball",
+        "--warps",
+        "1",
+        "--fp-fusion",
+        "--saved-support-flags"
+      ],
+      "source_archive_sha256": "5549a873e65cff7795bd2417cb319aff16549d42e6a7f781e7c7cf6c16a11abc",
+      "receipt": {
+        "archive_sha256": "5cc89a5114f927fbb2e59b4e8083b277b491cfd5bd50542a5492b1b3a0dfd369"
+      },
+      "gpu": "NVIDIA L4, GPU-658ca9f9-aac3-ed24-9073-b7f16faf2061, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu128",
+        "cuda": "12.8",
+        "triton": "3.6.0"
+      },
+      "driver_returncode": 0,
+      "timed_out": false,
+      "accepted_complete_step": true,
+      "quality_stdout_counts": [],
+      "graph_ms": 12.794777000181057,
+      "graph_peak_bytes": 1124600320,
+      "eager_peak_bytes": 1107559936,
+      "correctness": {},
+      "source_sha256": {
+        "experiments/cuda/linear/normalized_strip_atlas_stream.py": "34cc6f053c55f4c74ba02a734b134569dfd793826a2ce154971d7015de15abd6",
+        "experiments/cuda/linear/normalized_strip_atlas_table.py": "67ea6cecdb88f56520ae151d3a332acbc146ab9c383fc77c019adb9f79de2633",
+        "benchmarks/cuda/linear/profile_normalized_strip_atlas_stream.py": "6fe1594d4cc9ed2fc0007c30445c6049f130e1b63d84f14334ea28172c335cda"
+      }
+    },
+    {
+      "job": "l4job-ca39444d7d3948728c483d44fd0c1093",
+      "scope": "dense1024",
+      "args": [
+        "--kind",
+        "dense",
+        "--size",
+        "1024",
+        "--support",
+        "ball",
+        "--warps",
+        "1",
+        "--fp-fusion",
+        "--saved-support-flags"
+      ],
+      "source_archive_sha256": "35f20adeb98c48664387d0ef468fa3b96968cb6e2b42f9652e80e128ca4eabf6",
+      "receipt": {
+        "archive_sha256": "38251f25c1d033b11eb813965592b3eee4e4a392df77ebef2317c0424a5d3383"
+      },
+      "gpu": "NVIDIA L4, GPU-658ca9f9-aac3-ed24-9073-b7f16faf2061, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu128",
+        "cuda": "12.8",
+        "triton": "3.6.0"
+      },
+      "driver_returncode": 0,
+      "timed_out": false,
+      "accepted_complete_step": true,
+      "quality_stdout_counts": [],
+      "graph_ms": 0.14536599974235287,
+      "graph_peak_bytes": 52955648,
+      "eager_peak_bytes": 35915264,
+      "correctness": {},
+      "source_sha256": {
+        "experiments/cuda/linear/normalized_strip_atlas_stream.py": "34cc6f053c55f4c74ba02a734b134569dfd793826a2ce154971d7015de15abd6",
+        "experiments/cuda/linear/normalized_strip_atlas_table.py": "67ea6cecdb88f56520ae151d3a332acbc146ab9c383fc77c019adb9f79de2633",
+        "benchmarks/cuda/linear/profile_normalized_strip_atlas_stream.py": "6fe1594d4cc9ed2fc0007c30445c6049f130e1b63d84f14334ea28172c335cda"
+      }
+    },
+    {
+      "job": "l4job-e5456806893540e99785e17b03d3f55d",
+      "scope": "main AtlasStream ordinary sigma3 1024",
+      "args": [
+        "--kind",
+        "atlasstream512",
+        "--size",
+        "1024",
+        "--support",
+        "ball",
+        "--warps",
+        "1",
+        "--fp-fusion",
+        "--saved-support-flags"
+      ],
+      "source_archive_sha256": "758fe322a073b7518547de6542f17b31c03c4c0d9a6232a94246070da370cd8a",
+      "receipt": {
+        "archive_sha256": "306b455741d40d719299ec3d257533d3adedb2365f1325beade8cac7f5471203"
+      },
+      "gpu": "NVIDIA L4, GPU-658ca9f9-aac3-ed24-9073-b7f16faf2061, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu128",
+        "cuda": "12.8",
+        "triton": "3.6.0"
+      },
+      "driver_returncode": 0,
+      "timed_out": false,
+      "accepted_complete_step": true,
+      "quality_stdout_counts": [],
+      "graph_ms": 0.6304019998424337,
+      "graph_peak_bytes": 53467136,
+      "eager_peak_bytes": 36426752,
+      "correctness": {
+        "y_max": 4.291534423828125e-06,
+        "y_rel_l2": 2.986782305924862e-07,
+        "dx_max": 3.814697265625e-06,
+        "dx_rel_l2": 3.1483068596571684e-07,
+        "dp_max": 1.52587890625e-05,
+        "dp_rel_l2": 1.9283787366930483e-07
+      },
+      "source_sha256": {
+        "experiments/cuda/linear/normalized_strip_atlas_stream.py": "34cc6f053c55f4c74ba02a734b134569dfd793826a2ce154971d7015de15abd6",
+        "experiments/cuda/linear/normalized_strip_atlas_table.py": "4f2549a6d4742f0f1277415edb3c1c8ce418e38029ff9681ce01da8b5fb63e30",
+        "benchmarks/cuda/linear/profile_normalized_strip_atlas_stream.py": "debcb597b561f7422e4c44ab29cfc71aba023af720f6e4591f855f739c87aa35"
+      }
+    },
+    {
+      "job": "l4job-e72c1c5a4a564831bc6b5663d20eb97b",
+      "scope": "main AtlasStream ordinary sigma3 8192",
+      "args": [
+        "--kind",
+        "atlasstream512",
+        "--size",
+        "8192",
+        "--support",
+        "ball",
+        "--warps",
+        "1",
+        "--fp-fusion",
+        "--saved-support-flags"
+      ],
+      "source_archive_sha256": "758fe322a073b7518547de6542f17b31c03c4c0d9a6232a94246070da370cd8a",
+      "receipt": {
+        "archive_sha256": "6c83b1214dbf92e077fe0ac6d37a51404e01af1fc19708701b11188218f65375"
+      },
+      "gpu": "NVIDIA L4, GPU-658ca9f9-aac3-ed24-9073-b7f16faf2061, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu128",
+        "cuda": "12.8",
+        "triton": "3.6.0"
+      },
+      "driver_returncode": 0,
+      "timed_out": false,
+      "accepted_complete_step": true,
+      "quality_stdout_counts": [],
+      "graph_ms": 59.38919100026396,
+      "graph_peak_bytes": 891389440,
+      "eager_peak_bytes": 874349056,
+      "correctness": {
+        "y_max": 2.6226043701171875e-05,
+        "y_rel_l2": 6.263749128265772e-07,
+        "dx_max": 3.337860107421875e-05,
+        "dx_rel_l2": 7.934081622806843e-07,
+        "dp_max": 1.621246337890625e-05,
+        "dp_rel_l2": 1.9237552351114573e-07
+      },
+      "source_sha256": {
+        "experiments/cuda/linear/normalized_strip_atlas_stream.py": "34cc6f053c55f4c74ba02a734b134569dfd793826a2ce154971d7015de15abd6",
+        "experiments/cuda/linear/normalized_strip_atlas_table.py": "4f2549a6d4742f0f1277415edb3c1c8ce418e38029ff9681ce01da8b5fb63e30",
+        "benchmarks/cuda/linear/profile_normalized_strip_atlas_stream.py": "debcb597b561f7422e4c44ab29cfc71aba023af720f6e4591f855f739c87aa35"
+      }
+    },
+    {
+      "args": [
+        "--candidate",
+        "experiments.cuda.linear.normalized_strip_atlas_window",
+        "--trim-before-capture",
+        "--kind",
+        "atlasstream512",
+        "--size",
+        "8192",
+        "--support",
+        "ball",
+        "--warps",
+        "1",
+        "--fp-fusion",
+        "--saved-support-flags"
+      ],
+      "job": "l4job-fdc412d6610144eb9ccd27c1a0ea7f22",
+      "scope": "window sharp8192; optional inactive-cache trim before capture",
+      "source_archive_sha256": "1689da1183a22cdb4cf4f580d9fd4f0b765307b3236f7f5018ddc9ec2bb5d2af",
+      "receipt": {
+        "archive_sha256": "8ceacb699d8a3050067c2adbb10ddfdab5b3bff12cfd6e3c6db56315ef9450f0"
+      },
+      "gpu": "NVIDIA L4, GPU-3f5d7bdf-f7a2-1d87-9250-603d0d8b5f6b, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu128",
+        "cuda": "12.8",
+        "triton": "3.6.0"
+      },
+      "driver_returncode": 0,
+      "timed_out": false,
+      "accepted_complete_step": true,
+      "quality_stdout_counts": [
+        22,
+        28,
+        3
+      ],
+      "graph_ms": 23.5808669999642,
+      "graph_peak_bytes": 371507712,
+      "eager_peak_bytes": 355305984,
+      "correctness": {
+        "y_max": 9.5367431640625e-06,
+        "y_rel_l2": 1.6620670351130684e-07,
+        "dx_max": 3.814697265625e-06,
+        "dx_rel_l2": 2.751304251091824e-08,
+        "dp_max": 2.288818359375e-05,
+        "dp_rel_l2": 1.0184598409068712e-07
+      },
+      "fixture": {
+        "initial": {
+          "atoms": 3355443,
+          "live_singleton": 3355443,
+          "underfloor_singleton": 0,
+          "empty": 0,
+          "max_nearest_distance": 0.0344918929040432,
+          "sigma_min": 0.19900000095367432,
+          "sigma_max": 0.19900000095367432
+        },
+        "initial_p_sha256": "aad6f59c293a453daa6e4a6935fbe1bb308df40452d16602282623969cca859c",
+        "sizes": [
+          8192,
+          64,
+          128
+        ],
+        "origin": [
+          -4095.5,
+          -15.75,
+          -31.75
+        ],
+        "final": {
+          "atoms": 3355443,
+          "live_singleton": 3355443,
+          "underfloor_singleton": 0,
+          "empty": 0,
+          "max_nearest_distance": 0.11045807600021362,
+          "sigma_min": 0.19900695979595184,
+          "sigma_max": 0.19900695979595184
+        },
+        "optimizer_updates_including_capture_and_warmup": 21,
+        "optimizer_storage_padding": 0,
+        "post_update_all_atoms_all_five": {
+          "y_max": 9.5367431640625e-06,
+          "dx_max": 4.76837158203125e-06,
+          "dp_max": 9.1552734375e-05
+        },
+        "label": "sharp-only constructive live one-hot fixture, distinct from sigma3 goal",
+        "mode": "packed",
+        "capture_stream_protocol": "original benchmark graph context",
+        "initialization": "sigma .199; original seed21 centers' nearest-site phase contracted to +/- .02 per axis at initialization only",
+        "model_execution": "unmodified continuous centers, global discrete L2 Triweight floor1e-6, all five parameters trainable"
+      },
+      "source_sha256": {
+        "experiments/cuda/linear/normalized_strip_atlas_table.py": "67ea6cecdb88f56520ae151d3a332acbc146ab9c383fc77c019adb9f79de2633",
+        "benchmarks/cuda/linear/profile_normalized_strip_atlas_stream.py": "95f28842062116bbd517a68943f98a17ee5392a7f1f73b7eb51f8a0b0901e8ad",
+        "experiments/cuda/linear/normalized_strip_atlas_packed.py": "a11dc2528f124bd09175c446255fcd500d15e045ed01b765a31113d9a482b2ba",
+        "experiments/cuda/linear/normalized_strip_narrow_table.py": "95df8904b686cb524ef45810f48ee99991df3c8fec74f5b8c3342bfed9d1a17a",
+        "benchmarks/cuda/linear/check_normalized_strip_packed.py": "e99907c3234fd6ed864240c0b1418a78c0b89ce93afc9d3b0a56aee5ff5e1fcf",
+        "benchmarks/cuda/linear/profile_normalized_strip_packed.py": "1e20c5cd8fd030cc07306b1f83568924c74d7c799243baab5467c302e7d3c82f",
+        "benchmarks/cuda/linear/profile_normalized_strip_sharp.py": "47ff8866320099c2aa6ef212cf0ae740f2949710281482ebec9ecec4d49c9e91",
+        "experiments/cuda/linear/normalized_strip_packed_window_backend.py": "dabd5d2a95d842d282ca3ced01fdece7a94bab40be0705404b1dc2ceaaa23792",
+        "experiments/cuda/linear/normalized_strip_atlas_window.py": "8a7367bf1026ff2ab6f5c516a70dfb2605b150d79c7d711481c955a1db6466c0",
+        "__pool_driver__.py": "79323814969eaf54910336278a1eecc172f52b21a85b095a461e76b96bb6b6ab",
+        "experiments/cuda/linear/normalized_strip_window_gemm.py": "5f9b2be9d0a3af2881959cd67427dbf2a24b05f064a0bd7627fb84a938fc82bd"
+      },
+      "memory_peak_snapshots": [
+        {
+          "max_allocated": 355305984,
+          "max_reserved": 843055104,
+          "end_allocated": 302768640,
+          "end_reserved": 843055104
+        },
+        {
+          "max_allocated": 371507712,
+          "max_reserved": 534773760,
+          "end_allocated": 319809024,
+          "end_reserved": 534773760
+        }
+      ],
+      "memory_scope": "Existing protocol resets: eager after warmup, Graph before capture; reserved includes private Graph pool; optional one-time inactive-cache trim occurs before the second reset only. Not a process peak, nor isolated cold compilation/oracle allocation.",
+      "memory_trim_snapshots": [
+        {
+          "reset_index": 1,
+          "before": {
+            "allocated": 302768640,
+            "reserved": 843055104
+          },
+          "after": {
+            "allocated": 302768640,
+            "reserved": 375390208
+          }
+        }
+      ],
+      "trim_before_capture": true
+    }
+  ]
+}
