@@ -45,6 +45,10 @@ import torch
 from torchcst import EuclideanGeometry, GridPattern, LinePattern, StripChart
 from torchcst.nn import NormalizedStripLinear
 
+torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.cudnn.allow_tf32 = False
+torch.set_float32_matmul_precision("highest")
+
 rows, h, j = 64, 8, 8
 chart = StripChart(
     shape=(rows, h * j),
@@ -91,7 +95,8 @@ optimizer.step()
 CPU では FP32/FP64 の局所支持を列挙する PyTorch 参照経路を使います。これは
 CPU 用の機能経路で、CUDA の性能測定には含めません。CUDA 高速経路は FP32 と
 間隔 `(1, 0.5, 0.5)` に対応し、Triton を必要になった時点で import します。
-基本パッケージや CPU 利用の import に Triton は必要ありません。CUDA の
+基本パッケージや CPU 利用の import に Triton は必要ありません。CUDA 経路は
+一次微分を対象とし、autocast と TF32 を拒否します。CUDA の
 window 経路は行窓512を用い、対応する標準メタデータの条件を満たさない場合は
 full 経路へ戻ります。その場合に同じメモリ削減を保証するものではありません。
 
@@ -105,14 +110,19 @@ atom パラメータとして学習できます。
 必要な8行の halo を保持します。全体ノルムと全5パラメータの勾配は維持します。
 逆伝播で W を再生成するため、メモリ削減には追加計算が伴います。
 
-L4、FP32、TF32 無効、入力バッチ M128、atom 数が N² の5%、通常の AdamW を
-含む完全なステップで検証しました。N8192 の通常幅 sigma3 は既定経路で約59ms、
-窓経路で約131msでした。窓を通常幅の速度最適化として推奨する結果ではありません。
-鋭い単一サイト支持の別 fixture では、窓経路の Graph 最大 allocated が約354MiB、
-全行列経路は約850MiBでした。その窓経路の時間は同 GPU の dense ステップの
-約1.85倍です。これらは構成ごとの測定で、任意の幅、サイズ、学習状態で dense の
-2倍以内になる保証ではありません。鋭い fixture の結果を sigma3 の結果として
-扱わないでください。
+以下は公開クラスを計測する前の研究実装の結果です。公開クラスの性能として
+読み替えないでください。[履歴と対象ソース](../benchmarks/cuda/linear/results/normalized-strip-history-20261001.json)
+に記録した L4、FP32、TF32 無効、M128、atom 数 N² の5%、AdamW を含む完全な
+ステップの測定では、N8192 の通常幅 sigma3 が main Atlas 経路で約59ms、
+窓経路で約131msでした。通常幅の速度向上を示す窓経路の結果ではありません。
+別の鋭い単一サイト支持 fixture では、研究用窓経路の Graph 最大 allocated が
+約354MiB、研究用 packed 経路が約850MiBでした。この packed 経路は公開クラスの
+既定 full 経路と同一のクラスではありません。窓経路の時間は同 GPU の dense
+ステップの約1.85倍でした。公開クラスの比較は
+[公開 API 統合測定](../benchmarks/cuda/linear/results/normalized-strip-public-integration.json)
+を確認してください。統合測定の記録がない場合、公開クラスでの性能は未確認です。
+任意の幅、サイズ、学習状態で dense の2倍以内になる保証はありません。
+鋭い fixture の結果を sigma3 の結果として扱わないでください。
 
 `max_memory_allocated` は PyTorch の生きたテンソルに関する値です。
 `max_memory_reserved`、Graph private pool、CUDA コンテキスト、ライブラリの
