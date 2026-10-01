@@ -15,6 +15,7 @@ from torchcst import (
     Gaussian,
     LinePattern,
     Operator,
+    OperatorSpec,
     ProductChart,
     Separable,
     SingleChartSpec,
@@ -223,7 +224,9 @@ def test_operator_rebinds_after_replacing_module_state():
 
 def test_normalized_strip_is_a_distinct_single_chart_contract():
     from torchcst import GridPattern, NormalizedStripLinear, StripChart
-    from torchcst._backends.cuda.schema import OperatorSpec as CudaOperatorSpec
+    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
+        NormalizedStripGeometry,
+    )
 
     chart = StripChart(
         shape=(5, 6),
@@ -238,16 +241,16 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
     assert spec.shape == (5, 6)
     assert spec.kernel.parameterization.id == "signed_amplitude_log_width"
     assert spec.kernel.profiles[0].normalization.domain == "operator_sites"
-    adapted = CudaOperatorSpec.from_declaration(spec)
+    adapted = NormalizedStripGeometry.from_declaration(spec)
     assert adapted.sizes == (5, 2, 3)
-    assert adapted.declaration() == spec
-    assert model._cuda_operator == adapted
+    assert isinstance(model._operator_spec, OperatorSpec)
+    assert model._operator_spec == spec
     # Tile storage is absent from the canonical contiguous observation sites.
     physical = replace(spec, layout=SingleChartSpec(chart=chart.declaration()))
-    assert CudaOperatorSpec.from_declaration(physical) == adapted
+    assert NormalizedStripGeometry.from_declaration(physical) == adapted
     discontinuous = replace(physical.layout.chart, tile_pitch=3.0)
     with pytest.raises(ValueError, match="contiguous"):
-        CudaOperatorSpec.from_declaration(
+        NormalizedStripGeometry.from_declaration(
             replace(physical, layout=SingleChartSpec(chart=discontinuous))
         )
     before = spec
@@ -255,17 +258,21 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
         model.origin.add_(0.25)
     after = model.declaration()
     assert before != after
-    assert model._cuda_operator.declaration() == after
+    assert model._operator_spec == after
     model.double()
     assert model.declaration() == after
 
 
 def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
-    from torchcst._backends.cuda.schema import OperatorSpec as CudaOperatorSpec
+    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
+        NormalizedStripGeometry,
+    )
     from torchcst.kernels import BiweightSpec, NormalizationSpec
+    from torchcst.nn.normalized_strip import normalized_strip_declaration
 
-    original = CudaOperatorSpec((5, 2, 3), (0.0, 0.0, 0.0), (1.0, 0.5, 0.5))
-    spec = original.declaration()
+    spec = normalized_strip_declaration(
+        sizes=(5, 2, 3), origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5)
+    )
     binding = spec.kernel.profiles[0]
     variants = [
         make_single().declaration(),
@@ -317,9 +324,25 @@ def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
             ),
         ),
     ]
+    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+    from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
+    from torchcst._backends.cuda.schema import DeviceInfo, DispatchContext
+
     for candidate in variants:
         with pytest.raises(ValueError, match="contract"):
-            CudaOperatorSpec.from_declaration(candidate)
+            NormalizedStripGeometry.from_declaration(candidate)
+        context = DispatchContext(
+            operator=candidate,
+            input_shape=(2, candidate.in_features),
+            input_strides=(candidate.in_features, 1),
+            dtype=torch.float32,
+            atom_count=1,
+            parameter_dim=5,
+            device=DeviceInfo("cuda", 0),
+        )
+        for plan in (FULL, WINDOW):
+            with pytest.raises(ValueError, match="contract"):
+                REGISTRY.validate(plan, context)
 
 
 def test_log_width_declaration_validates_finite_positive_bounds():

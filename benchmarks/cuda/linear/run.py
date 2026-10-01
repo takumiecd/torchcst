@@ -24,9 +24,12 @@ import torch
 from torch import nn
 
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
+    geometry,
+)
 from torchcst._backends.cuda.context import context_from_tensors
 from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
-from torchcst._backends.cuda.schema import OperatorSpec
+from torchcst.nn.normalized_strip import normalized_strip_declaration
 
 PLANS = {"normalized_full": FULL, "normalized_window": WINDOW}
 
@@ -40,12 +43,12 @@ class PlanLinear(nn.Module):
         self.operator, self.plan = operator, plan
 
     def forward(self, x):
-        flat = x.reshape(-1, self.operator.k).contiguous()
+        flat = x.reshape(-1, self.operator.in_features).contiguous()
         context = context_from_tensors(self.operator, flat, self.p)
         y = REGISTRY.execute(
             self.plan, context, x=flat, parameters=self.p, operator=self.operator
         )
-        return y.reshape(*x.shape[:-1], self.operator.n)
+        return y.reshape(*x.shape[:-1], self.operator.out_features)
 
 
 def _metadata(args):
@@ -91,7 +94,9 @@ def correctness(args):
     p = helpers["mixed"](torch.float32, "cuda")
     p[0, 2], p[1, 2] = 511.25, 512.5
     p[2:4, 2] = 512.02978515625
-    op = OperatorSpec(sizes, (0.0, 0.0, 0.0), (1.0, 0.5, 0.5))
+    op = normalized_strip_declaration(
+        sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5)
+    )
     model = PlanLinear(p, op, PLANS[args.algorithm])
     gen = torch.Generator(device="cuda").manual_seed(args.seed)
     x = torch.randn(2, 3, 16, device="cuda", generator=gen, requires_grad=True)
@@ -120,16 +125,19 @@ def measure(args):
     h, j = (32, 32) if n == 1024 else (64, 128)
     sizes = (n, h, j)
     origin = (-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4)
-    op = OperatorSpec(sizes, origin, (1.0, 0.5, 0.5))
+    op = normalized_strip_declaration(
+        sizes=sizes, origin=origin, spacing=(1.0, 0.5, 0.5)
+    )
+    sites = geometry(op)
     gen = torch.Generator(device="cpu").manual_seed(args.seed)
     p = torch.empty(round(0.05 * n * n), 5)
     p[:, 0] = torch.rand(len(p), generator=gen) - 0.5
     p[:, 1] = math.log(3.0 if args.profile == "broad" else 0.199)
     p[:, 2:] = torch.rand(len(p), 3, generator=gen) * torch.tensor(
-        [(count - 1) * spacing for count, spacing in zip(sizes, op.spacing)]
+        [(count - 1) * spacing for count, spacing in zip(sizes, sites.spacing)]
     ) + torch.tensor(origin)
     if args.profile == "sharp":
-        for axis, (spacing, o) in enumerate(zip(op.spacing, op.origin)):
+        for axis, (spacing, o) in enumerate(zip(sites.spacing, sites.origin)):
             u = (p[:, axis + 2] - o) / spacing
             near = torch.floor(u + 0.5)
             p[:, axis + 2] = o + near * spacing + (u - near) * 0.04

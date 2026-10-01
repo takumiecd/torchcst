@@ -9,10 +9,36 @@ import torch
 from torch import Tensor, nn
 
 from torchcst.geometry import EuclideanGeometry, GridPattern, LinePattern, StripChart
+from torchcst.geometry.spec import (
+    ChartSpec,
+    EuclideanGeometrySpec,
+    GridPatternSpec,
+    LinePatternSpec,
+)
+from torchcst.kernels.presets import NORMALIZED_RADIAL_TRIWEIGHT
+from torchcst.operators.spec import OperatorSpec, SingleChartSpec
 
 _SIGMA_LOW = 0.03
 _SIGMA_HIGH = 3.25
 _FLOOR = 1e-6
+
+
+def normalized_strip_declaration(*, sizes, origin, spacing):
+    """Canonical contiguous sites; CUDA storage tiling is not mathematical state."""
+    chart = ChartSpec(
+        kind="product",
+        geometry=EuclideanGeometrySpec(intrinsic_dim=3),
+        shape=(sizes[0], math.prod(sizes[1:])),
+        axes=(
+            LinePatternSpec(
+                shape=(sizes[0],), start=(origin[0],), spacing=(spacing[0],)
+            ),
+            GridPatternSpec(shape=sizes[1:], start=origin[1:], spacing=spacing[1:]),
+        ),
+    )
+    return OperatorSpec(
+        layout=SingleChartSpec(chart=chart), kernel=NORMALIZED_RADIAL_TRIWEIGHT
+    )
 
 
 class NormalizedStripLinear(nn.Module):
@@ -124,13 +150,9 @@ class NormalizedStripLinear(nn.Module):
         if not all(math.isfinite(v) for v in (*origin, *spacing)) or min(spacing) <= 0:
             raise RuntimeError("invalid chart metadata")
         self._plan = SimpleNamespace(origin=origin, spacing=spacing, sizes=sizes)
-        from torchcst._backends.cuda.schema import NormalizedStripSpec
-        from torchcst.operators.normalized_strip import normalized_strip_declaration
-
         self._operator_spec = normalized_strip_declaration(
             sizes=sizes, origin=origin, spacing=spacing
         )
-        self._cuda_operator = NormalizedStripSpec.from_declaration(self._operator_spec)
         self._metadata_versions = tuple(
             (id(t), t._version)
             for t in (self.origin, self.spacing, self.sizes, self.sigma_bounds)
@@ -205,32 +227,24 @@ class NormalizedStripLinear(nn.Module):
                 + self.p.reshape(-1)[:1].mul(0).sum()
             )
         elif x.device.type == "cpu":
-            result = _reference(flat, self.p, self._plan)
+            from torchcst._backends.torch.operators.normalized_radial import apply
+
+            result = apply(flat, self.p, self._plan)
         elif x.device.type == "cuda":
-            if x.dtype != torch.float32:
-                raise TypeError("normalized Strip CUDA requires float32")
-            if torch.are_deterministic_algorithms_enabled():
-                raise RuntimeError(
-                    "normalized Strip CUDA requires nondeterministic atomic accumulation"
-                )
-            if torch.is_autocast_enabled():
-                raise RuntimeError("normalized Strip CUDA does not support autocast")
-            if torch.backends.cuda.matmul.allow_tf32:
-                raise RuntimeError("normalized Strip CUDA requires TF32 to be disabled")
             from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import (
                 REGISTRY,
             )
             from torchcst._backends.cuda.context import context_from_tensors
             from torchcst._backends.cuda.dispatch.select import select_normalized
 
-            context = context_from_tensors(self._cuda_operator, flat, self.p)
+            context = context_from_tensors(self._operator_spec, flat, self.p)
             decision = select_normalized(context, memory=self.memory)
             result = REGISTRY.execute(
                 decision.plan,
                 context,
                 x=flat,
                 parameters=self.p,
-                operator=self._cuda_operator,
+                operator=self._operator_spec,
             )
         else:
             raise ValueError("only CPU and CUDA devices are supported")
@@ -238,58 +252,3 @@ class NormalizedStripLinear(nn.Module):
 
     def extra_repr(self):
         return f"in_features={self.in_features}, out_features={self.out_features}, atoms={len(self.p)}, memory={self.memory!r}"
-
-
-def _reference(x, p, plan):
-    """Bounded temporary site chunks; never construct an operator-sized W."""
-    y = x.new_zeros((len(x), plan.sizes[0])) + p.reshape(-1)[:1].mul(0).sum()
-    eps = torch.finfo(p.dtype).eps
-    for atom in p:
-        center = atom[2:]
-        axes = []
-        for c, o, s, n in zip(
-            center.detach().tolist(), plan.origin, plan.spacing, plan.sizes
-        ):
-            margin = 32 * eps * (abs(c) + abs(o) + n * s + _SIGMA_HIGH + 1)
-            lo = max(0, min(n, math.ceil((c - _SIGMA_HIGH - margin - o) / s)))
-            hi = max(lo, min(n, math.floor((c + _SIGMA_HIGH + margin - o) / s) + 1))
-            axes.append((lo, hi))
-        lengths = tuple(hi - lo for lo, hi in axes)
-        total = math.prod(lengths)
-        if not total:
-            continue
-        precision = torch.exp(
-            -2 * atom[1].clamp(math.log(_SIGMA_LOW), math.log(_SIGMA_HIGH))
-        )
-
-        def chunk(
-            start,
-            total=total,
-            lengths=lengths,
-            axes=axes,
-            center=center,
-            precision=precision,
-        ):
-            index = torch.arange(start, min(start + 4096, total), device=p.device)
-            r2 = index % lengths[2] + axes[2][0]
-            r1 = index // lengths[2] % lengths[1] + axes[1][0]
-            r0 = index // (lengths[1] * lengths[2]) + axes[0][0]
-            d = [
-                o + r.to(p.dtype) * s - c
-                for o, r, s, c in zip(plan.origin, (r0, r1, r2), plan.spacing, center)
-            ]
-            q = ((d[0] * d[0] + d[1] * d[1]) + d[2] * d[2]) * precision
-            t = (1 - q).clamp_min(0)
-            return r0, r1 * plan.sizes[2] + r2, t * t * t
-
-        norm2 = atom.new_zeros(())
-        for start in range(0, total, 4096):
-            k = chunk(start)[2]
-            norm2 = norm2 + (k * k).sum()
-        # Safe zero-support derivative, retaining the inclusive floor tie.
-        norm = norm2.clamp_min(1e-30).sqrt().clamp_min(_FLOOR)
-        for start in range(0, total, 4096):
-            rows, cols, k = chunk(start)
-            values = x[:, cols] * (atom[0] * k / norm)
-            y = y.index_add(1, rows, values)
-    return y + x.reshape(-1)[:1].mul(0).sum()

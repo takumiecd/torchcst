@@ -26,5 +26,33 @@ Torch の tiled 実行は CUDA package に依存しない。Triton は実行時�
 linear facade から Torch evaluator を先行 import したこと。実行時の遅延接続へ
 修正し、境界テストを維持したまま全件通過した。
 
-次の checkpoint で CUDA 専用の意味の判定を Algorithm 内に移し、共通 OperatorSpec
-を Registry に渡す。GPU・wheel の検証はその完成 source で実施する。
+配置 checkpoint: `76abff7`。
+
+## 共通契約への接続
+
+`operators/normalized_strip.py` と CUDA schema の別 OperatorSpec / alias を削除。
+Kernel の固定 preset は `kernels/presets.py`、Chart の組立は公開 Module の設定境界、
+CUDA が対応する宣言の判定は Algorithm グループ内 `contract.py` に置く。
+Registry / Context は共通 OperatorSpec と実測した parameter dimension を受け取り、
+normalized Strip の 5 列という条件は Algorithm 側だけで確認する。
+異なる Profile・norm・domain・floor・width を forced plan に渡しても拒否する。
+
+full / window の Algorithm・Recipe・executor・Triton kernels を各ディレクトリに整理。
+full の autograd と window の provider は per-forward の state を保持する。
+旧 full の 8 定義、旧 window の 15 定義、Torch reference の本体は AST が一致する。
+Torch reference も `nn/` から Torch backend に移した。数学の変更はない。
+
+ローカル全テスト **483 passed / 196 skipped**（最終 GPU source の検証は以下に追記）。
+CPU-only fake Algorithm に 7 列の atom を渡すテストで Registry の 5 列固定を除いた
+ことを確認。正規化の変更に対する forced-plan 拒否も追加した。
+
+Strip + Torus は CUDA の正しい配置へ移したが、既存 live Module を使う接続を維持。
+共通 Spec の Registry への登録は次の段階。normalized Euclidean Strip は registry
+経由、Strip + Torus は linear facade から fused executor へ接続する。これは配置を
+統一しても数学契約が同一でないことと、設定 snapshot を forward に入れないための
+現時点の移行境界である。性能による既定選択の変更・承認制度は追加していない。
+
+local wheel は **140 Python modules** 全てが source と SHA256 一致。
+旧 `nn/_backends/` と `operators/normalized_strip.py` は wheel に含まれない。
+wheel 単体の import path で全テスト **483 passed / 196 skipped**。
+wheel SHA256: `5b5e891284e2e636b3abfdfdad243915281fb9be7c53708f487593b1495ea937`。

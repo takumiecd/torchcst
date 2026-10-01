@@ -4,12 +4,13 @@ This is a compatibility policy, not a learned performance tree or certification.
 """
 
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.schema import (
-    DispatchDecision,
-    ExecutionPlan,
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
     FullRecipe,
+)
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import (
     WindowRecipe,
 )
+from torchcst._backends.cuda.schema import DispatchDecision, ExecutionPlan
 
 FULL = ExecutionPlan("normalized_full", "v1", FullRecipe())
 WINDOW = ExecutionPlan("normalized_window", "v1", WindowRecipe())

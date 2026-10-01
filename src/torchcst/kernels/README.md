@@ -50,8 +50,8 @@ checkpoint load 後は必要に応じて作り直す。scalar buffer の参照�
 
 ## 段階的な移行
 
-この段階では Spec 単体を実行する factory や、KernelSpec を受け取る CUDA dispatch
-はまだ導入していない。公開クラスの削除や checkpoint 形式の変更も行っていない。
+この段階では Spec 単体を実行する factory はまだ導入していない。CUDA Registry は共通 OperatorSpec の KernelSpec を
+検査し、対応する既存の normalized Strip 計算へ接続する。公開クラスの削除や checkpoint 形式の変更も行っていない。
 [Operator](../operators/README.md) が単一 Chart / Chart の組と Kernel を束ね、
 既存 Module の実状態を参照する。Torch linear はその入口を使う。
 次は CUDA の契約への接続を整え、その後に互換メソッドを減らす。
@@ -59,4 +59,6 @@ checkpoint load 後は必要に応じて作り直す。scalar buffer の参照�
 Geometry / Chart の宣言は `../geometry/spec.py`、座標の計算は
 `../_backends/torch/geometry/`、`charts/`、`patterns/` に分ける。
 Torch 実装は CPU 限定ではなく、既存の Torch Tensor device 上で実行する。
-CUDA 専用の最適化は `nn/_backends/cuda/algorithms/` に引き続き置く。
+CUDA 専用の最適化は `../_backends/cuda/algorithms/` に置く。
+`presets.py` の固定 radial Triweight は Profile・operator-site L2 正規化・log width
+を組み合わせた純粋な KernelSpec。Strip の座標配置や CUDA の計算方式を含まない。

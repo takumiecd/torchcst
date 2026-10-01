@@ -7,64 +7,7 @@ from dataclasses import dataclass
 
 import torch
 
-OPERATION = "normalized_strip_linear"
-SEMANTICS = "normalized-strip-triweight-l2-v1"
-
-
-@dataclass(frozen=True)
-class NormalizedStripSpec:
-    sizes: tuple[int, int, int]
-    origin: tuple[float, float, float]
-    spacing: tuple[float, float, float]
-    operation_id: str = OPERATION
-    semantics_id: str = SEMANTICS
-
-    def __post_init__(self):
-        if self.operation_id != OPERATION or self.semantics_id != SEMANTICS:
-            raise ValueError("unknown normalized Strip mathematical contract")
-        if (
-            not isinstance(self.sizes, tuple)
-            or len(self.sizes) != 3
-            or any(type(n) is not int or n <= 0 for n in self.sizes)
-        ):
-            raise ValueError("sizes must contain three positive integers")
-        for name, values in (("origin", self.origin), ("spacing", self.spacing)):
-            if (
-                not isinstance(values, tuple)
-                or len(values) != 3
-                or not all(math.isfinite(v) for v in values)
-            ):
-                raise ValueError(f"{name} must contain three finite values")
-        if min(self.spacing) <= 0:
-            raise ValueError("spacing must be positive")
-
-    @property
-    def n(self):
-        return self.sizes[0]
-
-    @property
-    def k(self):
-        return math.prod(self.sizes[1:])
-
-    def declaration(self):
-        """Expose this legacy specialized metadata as a common operator contract."""
-        from torchcst.operators.normalized_strip import normalized_strip_declaration
-
-        return normalized_strip_declaration(
-            sizes=self.sizes, origin=self.origin, spacing=self.spacing
-        )
-
-    @classmethod
-    def from_declaration(cls, spec):
-        """Adapt only the exact normalized Strip meaning; keep launch guards separate."""
-        from torchcst.operators.normalized_strip import normalized_strip_metadata
-
-        sizes, origin, spacing = normalized_strip_metadata(spec)
-        return cls(sizes=sizes, origin=origin, spacing=spacing)
-
-
-# Compatibility for the first registry API; common OperatorSpec lives outside CUDA.
-OperatorSpec = NormalizedStripSpec
+from torchcst.operators import spec as operators
 
 
 @dataclass(frozen=True)
@@ -90,12 +33,13 @@ class RequiredGrads:
 
 @dataclass(frozen=True)
 class DispatchContext:
-    operator: NormalizedStripSpec
+    operator: operators.OperatorSpec
     input_shape: tuple[int, ...]
     input_strides: tuple[int, ...]
     dtype: torch.dtype
     atom_count: int
     device: DeviceInfo
+    parameter_dim: int
     required_grads: RequiredGrads = RequiredGrads()
     execution_mode: str = "eager"
     deterministic: bool = False
@@ -103,7 +47,11 @@ class DispatchContext:
     workspace_limit_bytes: int | None = None
 
     def __post_init__(self):
-        if not self.input_shape or self.input_shape[-1] != self.operator.k:
+        if not isinstance(self.operator, operators.OperatorSpec):
+            raise TypeError("operator must be a common OperatorSpec")
+        if type(self.parameter_dim) is not int or self.parameter_dim <= 0:
+            raise ValueError("parameter dimension must be positive")
+        if not self.input_shape or self.input_shape[-1] != self.operator.in_features:
             raise ValueError("input feature dimension differs from operator")
         if any(type(n) is not int or n < 0 for n in self.input_shape):
             raise ValueError("input shape must contain nonnegative integers")
@@ -127,29 +75,10 @@ class DispatchContext:
 
 
 @dataclass(frozen=True)
-class FullRecipe:
-    id: str = "normalized_full.default.v1"
-    atom_num_warps: int = 1
-    sorted_forward: bool = True
-    sorted_backward: bool = True
-    support: str = "ball"
-    enable_fp_fusion: bool = True
-    saved_support_flags: bool = True
-    tuple_grads: bool = False
-
-
-@dataclass(frozen=True)
-class WindowRecipe:
-    id: str = "normalized_window.rows512.v1"
-    window_rows: int = 512
-    enable_fp_fusion: bool = True
-
-
-@dataclass(frozen=True)
 class ExecutionPlan:
     algorithm_id: str
     algorithm_revision: str
-    recipe: FullRecipe | WindowRecipe
+    recipe: object
     schema_version: int = 1
 
     def __post_init__(self):

@@ -10,9 +10,9 @@ from torch import Tensor
 
 from torchcst._backends.cuda.schema import (
     DispatchContext,
-    NormalizedStripSpec,
     SupportResult,
 )
+from torchcst.operators.spec import OperatorSpec
 
 RecipeT = TypeVar("RecipeT")
 
@@ -51,7 +51,11 @@ class Algorithm(ABC, Generic[RecipeT]):
 
     @abstractmethod
     def supports(self, context: DispatchContext, recipe: RecipeT) -> SupportResult:
-        """Return compatibility and reasons, using metadata only."""
+        """Check the full Kernel/Chart mathematical contract and runtime metadata.
+
+        A matching operation ID alone does not establish mathematical support.
+        Reject unrecognized revisions, parameterizations and normalization here.
+        """
 
     @abstractmethod
     def workspace_bound(self, context: DispatchContext, recipe: RecipeT) -> int | None:
@@ -66,7 +70,7 @@ class Algorithm(ABC, Generic[RecipeT]):
         *,
         x: Tensor,
         parameters: Tensor,
-        operator: NormalizedStripSpec,
+        operator: OperatorSpec,
         recipe: RecipeT,
     ) -> Tensor:
         """Return Y with the recipe's forward/backward autograd connection.

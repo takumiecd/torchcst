@@ -10,6 +10,15 @@ import torch
 
 from torchcst._backends.cuda.algorithm import Algorithm
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
+    geometry,
+)
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
+    FullRecipe,
+)
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import (
+    WindowRecipe,
+)
 from torchcst._backends.cuda.context import context_from_tensors
 from torchcst._backends.cuda.dispatch.select import FULL, WINDOW, select_normalized
 from torchcst._backends.cuda.registry import Registry
@@ -17,22 +26,33 @@ from torchcst._backends.cuda.schema import (
     DeviceInfo,
     DispatchContext,
     ExecutionPlan,
-    FullRecipe,
-    OperatorSpec,
     PrecisionPolicy,
     RequiredGrads,
     SupportResult,
-    WindowRecipe,
 )
+from torchcst.nn.normalized_strip import normalized_strip_declaration
+
+
+def replace_sites(spec, **kwargs):
+    sites = geometry(spec)
+    return normalized_strip_declaration(
+        **(
+            {"sizes": sites.sizes, "origin": sites.origin, "spacing": sites.spacing}
+            | kwargs
+        )
+    )
 
 
 def context(**kwargs):
     defaults = {
-        "operator": OperatorSpec((1024, 4, 4), (0.0, 0.0, 0.0), (1.0, 0.5, 0.5)),
+        "operator": normalized_strip_declaration(
+            sizes=(1024, 4, 4), origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5)
+        ),
         "input_shape": (6, 16),
         "input_strides": (16, 1),
         "dtype": torch.float32,
         "atom_count": 8,
+        "parameter_dim": 5,
         "device": DeviceInfo("cuda", 1, "NVIDIA L4", (8, 9), 58),
         "required_grads": RequiredGrads(True, True),
     }
@@ -42,7 +62,7 @@ def context(**kwargs):
 def test_selection_preserves_legacy_routes_and_explains_fallback():
     assert select_normalized(context()).plan == FULL
     assert select_normalized(context(), memory="window").plan == WINDOW
-    op = replace(context().operator, origin=(0.1, 0.0, 0.0))
+    op = replace_sites(context().operator, origin=(0.1, 0.0, 0.0))
     decision = select_normalized(context(operator=op), memory="window")
     assert decision.plan == FULL
     assert "quarter-grid" in decision.reason
@@ -52,7 +72,7 @@ def test_selection_preserves_legacy_routes_and_explains_fallback():
 
 @pytest.mark.parametrize("rows", [1, 31, 33, 65])
 def test_window_row_guard_falls_back(rows):
-    op = replace(context().operator, sizes=(rows, 4, 4))
+    op = replace_sites(context().operator, sizes=(rows, 4, 4))
     assert select_normalized(context(operator=op), memory="window").plan == FULL
     with pytest.raises(ValueError, match="divisible by 32"):
         REGISTRY.validate(WINDOW, context(operator=op))
@@ -67,6 +87,7 @@ def test_window_row_guard_falls_back(rows):
         ({"precision": PrecisionPolicy(autocast=True)}, "autocast"),
         ({"deterministic": True}, "atomic"),
         ({"atom_count": 0}, "empty"),
+        ({"parameter_dim": 7}, r"\[atoms, 5\]"),
         ({"input_strides": (1, 6)}, "contiguous"),
         ({"workspace_limit_bytes": 100000000}, "unknown"),
     ],
@@ -100,13 +121,26 @@ def test_context_is_metadata_and_immutable():
     p = torch.randn(8, 5).requires_grad_()
     with torch.no_grad():
         ctx = context_from_tensors(context().operator, x, p)
-    assert ctx.m == 6 and ctx.operator.n == 1024 and ctx.operator.k == 16
+    assert (
+        ctx.m == 6
+        and ctx.operator.out_features == 1024
+        and ctx.operator.in_features == 16
+    )
     assert ctx.required_grads == RequiredGrads()
     assert ctx.device == DeviceInfo("cpu")
     with pytest.raises(FrozenInstanceError):
         ctx.atom_count = 9
-    with pytest.raises(ValueError, match="mathematical contract"):
-        replace(ctx.operator, semantics_id="approximate")
+    with pytest.raises(ValueError, match="contract"):
+        REGISTRY.validate(
+            FULL,
+            replace(
+                ctx,
+                operator=replace(
+                    ctx.operator, kernel=replace(ctx.operator.kernel, revision=2)
+                ),
+                device=context().device,
+            ),
+        )
 
 
 def test_import_does_not_load_triton_or_gpu_implementations():
@@ -114,7 +148,7 @@ def test_import_does_not_load_triton_or_gpu_implementations():
         "import sys; from torchcst._backends.cuda.dispatch.select import FULL; "
         "assert 'triton' not in sys.modules; "
         "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.kernels' not in sys.modules; "
-        "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.impl' not in sys.modules"
+        "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.executor' not in sys.modules; assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.provider' not in sys.modules"
     )
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(sys.path)
@@ -142,14 +176,14 @@ def test_direct_execution_checks_metadata_and_preserves_autograd_per_invocation(
         CpuConnectionAlgorithm(
             id="cpu_connection_test",
             revision="v1",
-            operation_id="normalized_strip_linear",
+            operation_id="linear",
             semantics_id="normalized-strip-triweight-l2-v1",
             recipe_type=FullRecipe,
         )
     )
     plan = ExecutionPlan("cpu_connection_test", "v1", FullRecipe())
     op = context().operator
-    p = torch.ones(1, 5, requires_grad=True)
+    p = torch.ones(1, 7, requires_grad=True)
     x1 = torch.ones(2, 16, requires_grad=True)
     x2 = torch.full((2, 16), 2.0, requires_grad=True)
     c1, c2 = [context_from_tensors(op, x, p) for x in (x1, x2)]
@@ -204,7 +238,9 @@ def test_cuda_direct_plan_grad_subsets_and_two_live_forwards(
     try:
         sizes = (1024, 4, 4)
         p = helpers["mixed"](torch.float32, "cuda").requires_grad_(parameter_grad)
-        op = OperatorSpec(sizes, (0.0, 0.0, 0.0), (1.0, 0.5, 0.5))
+        op = normalized_strip_declaration(
+            sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5)
+        )
         x1 = torch.randn(2, 16, device="cuda", requires_grad=input_grad)
         x2 = torch.randn(3, 16, device="cuda", requires_grad=input_grad)
         y1, y2 = [

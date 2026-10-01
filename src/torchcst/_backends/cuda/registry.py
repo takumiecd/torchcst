@@ -9,8 +9,8 @@ from torchcst._backends.cuda.algorithm import Algorithm
 from torchcst._backends.cuda.schema import (
     DispatchContext,
     ExecutionPlan,
-    NormalizedStripSpec,
 )
+from torchcst.operators.spec import OperatorSpec
 
 
 class Registry:
@@ -37,10 +37,7 @@ class Registry:
         if type(plan.schema_version) is not int or plan.schema_version != 1:
             raise ValueError("unsupported execution plan schema version")
         algorithm = self.get(plan.algorithm_id, revision=plan.algorithm_revision)
-        if (
-            algorithm.operation_id != context.operator.operation_id
-            or algorithm.semantics_id != context.operator.semantics_id
-        ):
+        if algorithm.operation_id != context.operator.operation_id:
             raise ValueError("plan and operator mathematical contract differ")
         if type(plan.recipe) is not algorithm.recipe_type:
             raise TypeError("recipe type does not match algorithm")
@@ -69,7 +66,7 @@ class Registry:
         *,
         x: Tensor,
         parameters: Tensor,
-        operator: NormalizedStripSpec,
+        operator: OperatorSpec,
     ) -> Tensor:
         # Check tensor metadata against the context even for directly forced plans.
         if operator != context.operator:
@@ -79,10 +76,10 @@ class Registry:
             or tuple(x.stride()) != context.input_strides
         ):
             raise ValueError("input metadata differs from dispatch context")
-        if parameters.shape != (context.atom_count, 5):
-            raise ValueError("parameters must have shape [atoms, 5]")
-        if parameters.stride() != (5, 1):
-            raise ValueError("parameters must be contiguous [atoms, 5]")
+        if parameters.shape != (context.atom_count, context.parameter_dim):
+            raise ValueError("parameters shape differs from dispatch context")
+        if parameters.stride() != (context.parameter_dim, 1):
+            raise ValueError("parameters must be contiguous [atoms, D]")
         if x.dtype != context.dtype or parameters.dtype != context.dtype:
             raise ValueError("tensor dtype differs from dispatch context")
         if x.device != parameters.device or x.device.type != context.device.type:

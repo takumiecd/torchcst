@@ -25,6 +25,18 @@ torchcst/
     spec.py                    単一 Chart / Chart の組 / linear Operator の宣言
     binding.py                 Module の live state を参照する Operator
   _backends/
+    linear.py                  Module の backend 選択・遅延接続
+    cuda/
+      algorithm.py             Algorithm ABC
+      context.py / schema.py   共通 OperatorSpec と実行条件・plan・診断
+      registry.py / dispatch/  登録・検証・現行の選択方針
+      algorithms/
+        normalized_euclidean_strip/
+          contract.py          対応する数学契約の判定・固定 site metadata
+          _shared/             full / window が実際に共用する計算
+          full/                algorithm / recipe / executor / kernels
+          window/              algorithm / recipe / executor / provider / kernels
+        strip_torus/fused/     現行の融合計算・準備・autograd・schedule
     torch/
       geometry/                埋め込み・距離・射影・更新・輸送
       patterns/                格子展開・点選択・bounds
@@ -36,8 +48,6 @@ torchcst/
       operators/               Operator を受け取る Torch linear 実行
   nn/
     公開 Module                Parameter / buffer / checkpoint の所有
-    _backends/                 現在の Linear 接続と既存 CUDA 実装
-      cuda/                    Algorithm ABC / registry / dispatch
 ```
 
 本体から `experiments/`、`benchmarks/`、`tests/` へ依存しない。Torch backend は
@@ -77,25 +87,17 @@ Spec 単体から Module を生成する factory はまだない。Operator は�
 宣言 snapshot を forward ごとに作らず、現在の Tensor / buffer を使う。
 詳細は [Operator](../operators/README.md)を参照。
 
-次は CUDA Algorithm に渡す契約を段階的に整え、Module 側の互換メソッドへの
-依存を減らす。単一 Chart を基本とし、入出力 Chart の組を恒久的な前提にしない。
+CUDA Registry も共通 `OperatorSpec` を受け取る。対応する数学契約の判定は
+各 Algorithm にあり、Registry 自体は normalized Strip の shape や 5 列の atom を
+前提にしない。Recipe は対応する Algorithm のディレクトリに置く。数学的な宣言は
+Kernel / Geometry / Chart にあり、`contract.py` はその対応判定と metadata 抽出だけを
+行う。`operators/` に normalized Strip 専用の実装や互換 adapter は置かない。
 
-backend の本体は最終的にこの `torchcst/_backends/` に集める。既存の
-`nn/_backends/cuda/` は数式・勾配・Graph・wheel を確認する単位で移行する。
-移行先を決めるために同じ実装を両方へコピーしない。
-
-```text
-_backends/cuda/
-  algorithm.py / context.py / registry.py
-  dispatch/
-  algorithms/
-    normalized_euclidean_strip/
-      _shared/
-      full/                    Algorithm / Recipe / executor / kernels
-      window/
-    strip_torus/
-      fused/
-```
+Strip + Torus の現行 `backend="triton"` は `_backends/linear.py` から fused executor
+へ接続する。Module の live Chart / Kernel を使う既存経路で、共通 Spec による
+Registry 登録はまだ行っていない。設定 snapshot を forward ごとに作らず、既存の
+buffer version による固定座標計画の invalidation と fresh な atom 準備を維持する。
+この接続は次の統一段階で扱う。新しい既定選択や性能による自動採用は行わない。
 
 演算の契約は backend の外に置く。Algorithm / Recipe の設定と kernel 技術の名前を
 区別し、Triton というだけの理由で複数の計算方式を一つのファイルへ集めない。

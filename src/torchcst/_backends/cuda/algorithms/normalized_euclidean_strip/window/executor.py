@@ -59,3 +59,22 @@ def window_linear(x, params, provider, *, rows, window=512):
 def scratch_bytes(rows, columns, window=512):
     """FP32 work+rolling halo, excluding state/output/vendor workspace."""
     return 4 * columns * (min(rows, window) + 8)
+
+
+def execute_window(*, x, parameters, operator, recipe):
+    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.provider import (
+        PackedWindowProvider,
+    )
+
+    from .._shared.geometry import _geometry
+
+    rows = min(recipe.window_rows, operator.out_features)
+    return window_linear(
+        x,
+        parameters,
+        PackedWindowProvider(
+            _geometry(operator, x.device), rows, recipe.enable_fp_fusion
+        ),
+        rows=operator.out_features,
+        window=rows,
+    )

@@ -65,11 +65,11 @@ Spec だけから新しい Module を生成する factory はまだない。Trit
 演算。座標は signed amplitude / clamped log width / center で、DirectAmpWidth の
 activity 座標や Chart ごとの正規化とは別の意味である。
 
-CUDA 内の `NormalizedStripSpec.from_declaration()` はこの固定の数学契約だけを
-受け入れる。Kernel、Profile、正規化領域・床、幅、Geometry、配置の異なる宣言を
-拒否し、対応 device / precision / Recipe の判定は既存 registry に任せる。
-以前の CUDA 内 `OperatorSpec` 名は互換 alias として残す。
+CUDA Registry もこの共通 `OperatorSpec` を受け取る。normalized Euclidean Strip の
+専用 adapter は `_backends/cuda/algorithms/normalized_euclidean_strip/contract.py`
+にあり、固定された Kernel・正規化・幅・Euclidean site の意味を厳密に判定する。
+CUDA 内の別 `OperatorSpec` と互換 alias は削除した。launch 設定は各 Algorithm の
+Recipe に置き、宣言の意味を Recipe で変更しない。
 
-contiguous Strip は同じ点を表す Product Chart に canonicalize する。非連続な
-tile pitch は受け入れない。公開 NormalizedStripLinear は従来通り metadata を
-snapshot して所有し、CSTLinear の live Chart binding と区別する。
+`NormalizedStripLinear` は現在も既存の `p` 所有 Module であり、CSTLinear の
+live `Operator` binding への統合は未実施。宣言と CUDA Registry の入口は共通になった。
