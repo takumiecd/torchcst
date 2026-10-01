@@ -18,6 +18,33 @@ For Colab L4 research experiments, read and use
 Other GPUs and sessions outside this pool retain their existing workflows.
 This queue coordinates one host; another computer must not operate its VMs.
 
+# Cross-generation experiment scope
+
+- The user authorized Blackwell/G4 and other GPU generations on 2026-10-01.
+  Keep the original L4 performance objective and record other devices separately.
+- G4 use is cost constrained. The orchestrator alone selects and allocates short
+  comparison runs for promising, validated candidates. Agents must not provision
+  G4 independently or run broad G4 parameter sweeps.
+- Measure a complete dense training step on each comparison GPU under the same
+  model, batch, dtype, precision settings and optimizer contract. Preserve kernel
+  normalization, sharp support/one-hot behavior, dX and all atom gradients.
+- Record actual hardware and runtime versions, retrieve verified results and stop
+  owned runtimes after the selected batch. A faster GPU is not evidence of an
+  algorithmic improvement on L4.
+
+# Complete-step memory objective
+
+- The user added low memory consumption as a requirement on 2026-10-01.
+  Evaluate time and memory together; retain normalization, support and gradient
+  correctness. There is no user-specified numerical memory ceiling.
+- Report peak allocated memory for the complete step including CUDA Graph
+  capture. Distinguish allocated bytes, allocator reserved bytes and total GPU
+  process usage; do not present a tensor budget as a measured GPU peak.
+- Prefer bounded weight/weight-gradient scratch and buffer reuse. Keep new
+  implementations on research branches until independent correctness checks
+  and actual GPU time/peak measurements pass. Label sharp-only fixtures separately
+  from the ordinary sigma-three performance objective.
+
 # Research Git checkpoints
 
 - Keep experiment worktrees on named `codex/` branches. Commit coherent source,
