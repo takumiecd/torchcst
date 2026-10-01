@@ -9,11 +9,23 @@ from torch import Tensor, nn
 
 from torchcst.geometry import Chart
 
+from .spec import KernelSpec, ProfileBinding
+
 AtomInit = Literal["balanced", "uniform"]
 
 
 class Profile(nn.Module, ABC):
     """A fixed scalar profile that interprets one slice of an atom coordinate."""
+
+    def declaration(self) -> ProfileBinding:
+        """Snapshot built-in mathematical settings at a configuration boundary.
+
+        This may read scalar buffers from the device. Do not call it in a
+        forward/backward or Graph capture. Custom profiles must override it.
+        """
+        from ._declarations import profile_declaration
+
+        return profile_declaration(self)
 
     def get_extra_state(self) -> dict[str, object]:
         """Record the profile type and non-buffer evaluation settings."""
@@ -106,6 +118,17 @@ class Profile(nn.Module, ABC):
 
 class Kernel(nn.Module, ABC):
     """Interpret each atom row on one chart or a legacy chart pair."""
+
+    def declaration(self, *, chart_count: int = 2) -> KernelSpec:
+        """Snapshot semantics, excluding runtime tuning and parameter values.
+
+        Use chart_count=1 for the supported single-chart DirectAmpWidth
+        contract. This is a configuration operation, not a hot-path lookup.
+        Custom kernels must override it to declare their own semantics.
+        """
+        from ._declarations import kernel_declaration
+
+        return kernel_declaration(self, chart_count=chart_count)
 
     def get_extra_state(self) -> dict[str, object]:
         """Record the kernel type and fixed non-buffer settings."""

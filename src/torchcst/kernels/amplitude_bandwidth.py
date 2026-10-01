@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import math
-
 import torch
 from torch import Tensor
-from torch.nn import functional as F
 
 from torchcst.geometry import Chart
 
@@ -119,13 +116,9 @@ class AmpWidth(Kernel):
         *,
         mode: AtomInit,
     ) -> Tensor:
-        if mode not in ("balanced", "uniform"):
-            raise ValueError("mode must be 'balanced' or 'uniform'")
-        input_p = self.profile.initialize(input_chart, atoms, mode="uniform")
-        output_p = self.profile.initialize(output_chart, atoms, mode=mode)
-        amplitude = input_p.new_empty(atoms, 1)
-        amplitude.normal_(mean=0.0, std=0.1 / math.sqrt(atoms))
-        return torch.cat((amplitude, input_p, output_p), dim=-1)
+        from torchcst._backends.torch.kernels.amp_width import initialize
+
+        return initialize(self, input_chart, output_chart, atoms, mode=mode)
 
     def materialize_atoms(
         self,
@@ -133,8 +126,9 @@ class AmpWidth(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> Tensor:
-        phi_input, phi_output = self.factors(input_chart, output_chart, p)
-        return torch.einsum("oa,ia->aoi", phi_output, phi_input)
+        from torchcst._backends.torch.kernels.amp_width import materialize_atoms
+
+        return materialize_atoms(self, input_chart, output_chart, p)
 
     @property
     def supports_factorization(self) -> bool:
@@ -146,20 +140,9 @@ class AmpWidth(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> tuple[Tensor, Tensor]:
-        amplitude, input_p, output_p = self._split(input_chart, output_chart, p)
-        precision, _ = self._precision_and_jacobian(amplitude)
-        phi_input = self.profile.evaluate_with_precision(
-            input_chart,
-            input_p,
-            precision,
-        )
-        phi_output = self.profile.evaluate_with_precision(
-            output_chart,
-            output_p,
-            precision,
-        )
-        phi_output = phi_output * amplitude.T
-        return phi_input, phi_output
+        from torchcst._backends.torch.kernels.amp_width import factors
+
+        return factors(self, input_chart, output_chart, p)
 
     def amplitude_gate(
         self,
@@ -168,9 +151,9 @@ class AmpWidth(Kernel):
         p: Tensor,
     ) -> Tensor:
         """Return the interpolating commitment gate for diagnostic use."""
+        from torchcst._backends.torch.parameterizations.amp_width import amplitude_gate
 
-        amplitude, _, _ = self._split(input_chart, output_chart, p)
-        return self._interpolating_gate(amplitude)
+        return amplitude_gate(self, input_chart, output_chart, p)
 
     def bandwidth_precision(
         self,
@@ -179,10 +162,11 @@ class AmpWidth(Kernel):
         p: Tensor,
     ) -> Tensor:
         """Return the shared input/output precision for each atom."""
+        from torchcst._backends.torch.parameterizations.amp_width import (
+            bandwidth_precision,
+        )
 
-        amplitude, _, _ = self._split(input_chart, output_chart, p)
-        precision, _ = self._precision_and_jacobian(amplitude)
-        return precision
+        return bandwidth_precision(self, input_chart, output_chart, p)
 
     def bandwidth_sigma(
         self,
@@ -191,9 +175,9 @@ class AmpWidth(Kernel):
         p: Tensor,
     ) -> Tensor:
         """Return the shared effective input/output sigma for diagnostics."""
+        from torchcst._backends.torch.parameterizations.amp_width import bandwidth_sigma
 
-        precision = self.bandwidth_precision(input_chart, output_chart, p)
-        return precision.clamp_min(torch.finfo(precision.dtype).tiny).rsqrt()
+        return bandwidth_sigma(self, input_chart, output_chart, p)
 
     def _split(
         self,
@@ -201,73 +185,50 @@ class AmpWidth(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        expected_dim = self.parameter_dim(input_chart, output_chart)
-        if p.ndim != 2 or p.shape[1] != expected_dim:
-            raise ValueError(f"p must have shape [atoms, {expected_dim}]")
-        input_dim = self.profile.parameter_dim(input_chart)
-        input_end = 1 + input_dim
-        return p[:, :1], p[:, 1:input_end], p[:, input_end:]
+        from torchcst._backends.torch.parameterizations.amp_width import _split
+
+        return _split(self, input_chart, output_chart, p)
 
     def _precision_and_jacobian(self, amplitude: Tensor) -> tuple[Tensor, Tensor]:
-        if self.law == "inverse":
-            precision, dprecision = self._inverse_precision_and_jacobian(amplitude)
-        else:
-            precision, dprecision = self._interpolating_precision_and_jacobian(
-                amplitude
-            )
-        if self.couple_bandwidth:
-            return precision, dprecision
-        return precision.detach(), torch.zeros_like(dprecision)
+        from torchcst._backends.torch.parameterizations.amp_width import (
+            _precision_and_jacobian,
+        )
+
+        return _precision_and_jacobian(self, amplitude)
 
     def _magnitude_square(self, amplitude: Tensor) -> Tensor:
-        return amplitude[:, 0].square() + self.gate_eps.square()
+        from torchcst._backends.torch.parameterizations.amp_width import (
+            _magnitude_square,
+        )
+
+        return _magnitude_square(self, amplitude)
 
     def _interpolating_gate(self, amplitude: Tensor) -> Tensor:
-        logit = (
-            self._magnitude_square(amplitude).log() - 2.0 * self.tau.log()
-        ) / self.temperature
-        return torch.sigmoid(logit)
+        from torchcst._backends.torch.parameterizations.amp_width import (
+            _interpolating_gate,
+        )
+
+        return _interpolating_gate(self, amplitude)
 
     def _interpolating_precision_and_jacobian(
         self,
         amplitude: Tensor,
     ) -> tuple[Tensor, Tensor]:
-        gate = self._interpolating_gate(amplitude)
-        narrow = self.sigma_min.reciprocal().square()
-        broad = self.sigma_max.reciprocal().square()
-        precision = broad + (narrow - broad) * gate
-        dprecision = (
-            (narrow - broad)
-            * gate
-            * (1 - gate)
-            * (
-                2
-                * amplitude[:, 0]
-                / (self.temperature * self._magnitude_square(amplitude))
-            )
+        from torchcst._backends.torch.parameterizations.amp_width import (
+            _interpolating_precision_and_jacobian,
         )
-        return precision, dprecision
+
+        return _interpolating_precision_and_jacobian(self, amplitude)
 
     def _inverse_precision_and_jacobian(
         self,
         amplitude: Tensor,
     ) -> tuple[Tensor, Tensor]:
-        log_raw = self._magnitude_square(amplitude).log() - 2.0 * self.tau.log()
-        log_lo = -2.0 * self.sigma_max.log()
-        log_hi = -2.0 * self.sigma_min.log()
-        inv_temperature = self.temperature.reciprocal()
-        z_lo = (log_raw - log_lo) * inv_temperature
-        z_hi = (log_raw - log_hi) * inv_temperature
-        log_precision = log_lo + self.temperature * (
-            F.softplus(z_lo) - F.softplus(z_hi)
+        from torchcst._backends.torch.parameterizations.amp_width import (
+            _inverse_precision_and_jacobian,
         )
-        precision = log_precision.exp()
-        dprecision = (
-            precision
-            * (torch.sigmoid(z_lo) - torch.sigmoid(z_hi))
-            * (2 * amplitude[:, 0] / self._magnitude_square(amplitude))
-        )
-        return precision, dprecision
+
+        return _inverse_precision_and_jacobian(self, amplitude)
 
     @staticmethod
     def _positive_scalar(value: float, *, name: str) -> Tensor:
@@ -280,9 +241,9 @@ class AmpWidth(Kernel):
         return result
 
     def tangent_backend(self, input_chart: Chart, output_chart: Chart):
-        from ._tangent import amplitude_bandwidth
+        from torchcst._backends.torch.kernels.amp_width import tangent_backend
 
-        return lambda p: amplitude_bandwidth(self, input_chart, output_chart, p)
+        return tangent_backend(self, input_chart, output_chart)
 
     def project_parameter_gradient(
         self,
@@ -291,18 +252,11 @@ class AmpWidth(Kernel):
         p: Tensor,
         gradient: Tensor,
     ) -> Tensor:
-        _, input_p, output_p = self._split(input_chart, output_chart, p)
-        amplitude_g, input_g, output_g = self._split(
-            input_chart, output_chart, gradient
+        from torchcst._backends.torch.updates.amp_width import (
+            project_parameter_gradient,
         )
-        return torch.cat(
-            (
-                amplitude_g,
-                self.profile.project_gradient(input_chart, input_p, input_g),
-                self.profile.project_gradient(output_chart, output_p, output_g),
-            ),
-            dim=-1,
-        )
+
+        return project_parameter_gradient(self, input_chart, output_chart, p, gradient)
 
     def apply_parameter_update(
         self,
@@ -313,18 +267,10 @@ class AmpWidth(Kernel):
         *,
         step_size: float,
     ) -> Tensor:
-        del step_size
-        amplitude, input_p, output_p = self._split(input_chart, output_chart, p)
-        amplitude_d, input_d, output_d = self._split(
-            input_chart, output_chart, displacement
-        )
-        return torch.cat(
-            (
-                amplitude + amplitude_d,
-                self.profile.apply_parameter_update(input_chart, input_p, input_d),
-                self.profile.apply_parameter_update(output_chart, output_p, output_d),
-            ),
-            dim=-1,
+        from torchcst._backends.torch.updates.amp_width import apply_parameter_update
+
+        return apply_parameter_update(
+            self, input_chart, output_chart, p, displacement, step_size=step_size
         )
 
     def transport_parameter_state(
@@ -335,16 +281,10 @@ class AmpWidth(Kernel):
         new: Tensor,
         state: Tensor,
     ) -> Tensor:
-        _, old_i, old_o = self._split(input_chart, output_chart, old)
-        _, new_i, new_o = self._split(input_chart, output_chart, new)
-        amplitude_s, state_i, state_o = self._split(input_chart, output_chart, state)
-        return torch.cat(
-            (
-                amplitude_s,
-                self.profile.transport_state(input_chart, old_i, new_i, state_i),
-                self.profile.transport_state(output_chart, old_o, new_o, state_o),
-            ),
-            dim=-1,
+        from torchcst._backends.torch.updates.amp_width import transport_parameter_state
+
+        return transport_parameter_state(
+            self, input_chart, output_chart, old, new, state
         )
 
     def extra_repr(self) -> str:

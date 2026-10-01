@@ -25,3 +25,41 @@ __all__ = [
     "Triweight",
     "WendlandC2",
 ]
+
+from .normalization import NormalizationSpec
+from .parameterizations import (
+    AmpWidthSpec,
+    BandwidthBounds,
+    DirectAmpWidthSpec,
+    FixedWidthSpec,
+    ParameterizationSpec,
+    PolarAmpWidthSpec,
+)
+from .profiles import (
+    BiweightSpec,
+    GaussianSpec,
+    ProfileSpec,
+    TriangleSpec,
+    TriweightSpec,
+    WendlandC2Spec,
+)
+from .spec import KernelSpec, ProfileBinding, StatePolicySpec
+
+__all__ += [
+    "AmpWidthSpec",
+    "BandwidthBounds",
+    "BiweightSpec",
+    "DirectAmpWidthSpec",
+    "FixedWidthSpec",
+    "GaussianSpec",
+    "KernelSpec",
+    "NormalizationSpec",
+    "ParameterizationSpec",
+    "PolarAmpWidthSpec",
+    "ProfileBinding",
+    "ProfileSpec",
+    "StatePolicySpec",
+    "TriangleSpec",
+    "TriweightSpec",
+    "WendlandC2Spec",
+]

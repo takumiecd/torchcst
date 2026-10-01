@@ -1,4 +1,4 @@
-"""Kernel-owned coordinate interpretation for exact first factor derivatives."""
+"""PyTorch coordinate interpretation for exact first factor derivatives."""
 
 import torch
 

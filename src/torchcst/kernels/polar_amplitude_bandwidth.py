@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from typing import Literal
 
 import torch
@@ -308,8 +307,11 @@ class PolarAmpWidth(Kernel):
     @property
     def lower_half_amplitude(self) -> Tensor:
         """Absolute amplitude where ``L(w)`` is halfway between its limits."""
+        from torchcst._backends.torch.kernels.polar_amp_width import (
+            lower_half_amplitude,
+        )
 
-        return self.w_c / self.lower_kappa.sqrt()
+        return lower_half_amplitude(self)
 
     def parameter_dim(self, input_chart: Chart, output_chart: Chart) -> int:
         return (
@@ -333,22 +335,9 @@ class PolarAmpWidth(Kernel):
         *,
         mode: AtomInit,
     ) -> Tensor:
-        if mode not in ("balanced", "uniform"):
-            raise ValueError("mode must be 'balanced' or 'uniform'")
-        input_p = self.profile.initialize(input_chart, atoms, mode="uniform")
-        output_p = self.profile.initialize(output_chart, atoms, mode=mode)
+        from torchcst._backends.torch.kernels.polar_amp_width import initialize
 
-        amplitude = input_p.new_empty(atoms)
-        amplitude.normal_(mean=0.0, std=0.1 / math.sqrt(atoms))
-        maximum = self.amplitude_max.to(amplitude)
-        # Keep initialization away from the angular critical points w = +/- W.
-        ratio = (amplitude / maximum).clamp(-1 + 1e-6, 1 - 1e-6)
-        polar = torch.stack((ratio, (1 - ratio.square()).sqrt()), dim=-1)
-        # Preserve the initialized angular amplitude while giving the
-        # bandwidth clock an optional, regularized exploration reserve.
-        initial_radius = (1.0 + 3.0 * self.alpha_init.to(polar)).sqrt()
-        polar = polar * initial_radius
-        return torch.cat((polar, input_p, output_p), dim=-1)
+        return initialize(self, input_chart, output_chart, atoms, mode=mode)
 
     def materialize_atoms(
         self,
@@ -356,8 +345,9 @@ class PolarAmpWidth(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> Tensor:
-        phi_input, phi_output = self.factors(input_chart, output_chart, p)
-        return torch.einsum("oa,ia->aoi", phi_output, phi_input)
+        from torchcst._backends.torch.kernels.polar_amp_width import materialize_atoms
+
+        return materialize_atoms(self, input_chart, output_chart, p)
 
     @property
     def supports_factorization(self) -> bool:
@@ -369,93 +359,85 @@ class PolarAmpWidth(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> tuple[Tensor, Tensor]:
-        polar, input_p, output_p = self._split(input_chart, output_chart, p)
-        amplitude, alpha = self._amplitude_and_alpha(polar)
-        sigma_input, sigma_output = self._bandwidth_sigmas(amplitude, alpha)
-        # Width is a state derived from update history, not a task-loss degree
-        # of freedom. Only the explicit radial regularizer may decrease alpha.
-        precision_input = sigma_input.reciprocal().square().detach()
-        precision_output = sigma_output.reciprocal().square().detach()
-        phi_input = self.profile.evaluate_with_precision(
-            input_chart, input_p, precision_input
-        )
-        phi_output = self.profile.evaluate_with_precision(
-            output_chart, output_p, precision_output
-        )
-        return phi_input, phi_output * amplitude.unsqueeze(0)
+        from torchcst._backends.torch.kernels.polar_amp_width import factors
+
+        return factors(self, input_chart, output_chart, p)
 
     def amplitude(self, input_chart: Chart, output_chart: Chart, p: Tensor) -> Tensor:
         """Return the bounded signed amplitude represented by each atom."""
+        from torchcst._backends.torch.parameterizations.polar_amp_width import amplitude
 
-        polar, _, _ = self._split(input_chart, output_chart, p)
-        amplitude, _ = self._amplitude_and_alpha(polar)
-        return amplitude
+        return amplitude(self, input_chart, output_chart, p)
 
     def bandwidth_alpha(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> Tensor:
         """Return the radial interpolation coordinate in ``[0, 1]``."""
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            bandwidth_alpha,
+        )
 
-        polar, _, _ = self._split(input_chart, output_chart, p)
-        _, alpha = self._amplitude_and_alpha(polar)
-        return alpha
+        return bandwidth_alpha(self, input_chart, output_chart, p)
 
     def bandwidth_bounds(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> tuple[Tensor, Tensor]:
         """Return ``(L(w), U(w))`` for diagnostic use."""
-
-        (input_bounds, output_bounds) = self.bandwidth_bounds_by_side(
-            input_chart, output_chart, p
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            bandwidth_bounds,
         )
-        self._require_shared_bandwidths()
-        del output_bounds
-        return input_bounds
+
+        return bandwidth_bounds(self, input_chart, output_chart, p)
 
     def bandwidth_bounds_by_side(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor]]:
         """Return ``((L_in, U_in), (L_out, U_out))``."""
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            bandwidth_bounds_by_side,
+        )
 
-        polar, _, _ = self._split(input_chart, output_chart, p)
-        amplitude, _ = self._amplitude_and_alpha(polar)
-        _, lower_input, upper_input = self._sigma_bounds(amplitude, side="input")
-        _, lower_output, upper_output = self._sigma_bounds(amplitude, side="output")
-        return (lower_input, upper_input), (lower_output, upper_output)
+        return bandwidth_bounds_by_side(self, input_chart, output_chart, p)
 
     def bandwidth_sigma(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> Tensor:
         """Return the shared effective input/output sigma for each atom."""
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            bandwidth_sigma,
+        )
 
-        sigma_input, _ = self.bandwidth_sigmas(input_chart, output_chart, p)
-        self._require_shared_bandwidths()
-        return sigma_input
+        return bandwidth_sigma(self, input_chart, output_chart, p)
 
     def bandwidth_sigmas(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> tuple[Tensor, Tensor]:
         """Return effective ``(sigma_input, sigma_output)`` for each atom."""
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            bandwidth_sigmas,
+        )
 
-        polar, _, _ = self._split(input_chart, output_chart, p)
-        amplitude, alpha = self._amplitude_and_alpha(polar)
-        return self._bandwidth_sigmas(amplitude, alpha)
+        return bandwidth_sigmas(self, input_chart, output_chart, p)
 
     def bandwidth_precision(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> Tensor:
         """Return the shared input/output precision for each atom."""
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            bandwidth_precision,
+        )
 
-        sigma = self.bandwidth_sigma(input_chart, output_chart, p)
-        return sigma.reciprocal().square()
+        return bandwidth_precision(self, input_chart, output_chart, p)
 
     def bandwidth_precisions(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> tuple[Tensor, Tensor]:
         """Return input and output precisions for split bandwidths."""
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            bandwidth_precisions,
+        )
 
-        sigma_input, sigma_output = self.bandwidth_sigmas(input_chart, output_chart, p)
-        return sigma_input.reciprocal().square(), sigma_output.reciprocal().square()
+        return bandwidth_precisions(self, input_chart, output_chart, p)
 
     def apply_parameter_update(
         self,
@@ -467,69 +449,13 @@ class PolarAmpWidth(Kernel):
         step_size: float,
     ) -> Tensor:
         """Project task motion tangentially, decay radius, then enforce 1<=q<=4."""
+        from torchcst._backends.torch.updates.polar_amp_width import (
+            apply_parameter_update,
+        )
 
-        self._split(input_chart, output_chart, p)
-        if displacement.shape != p.shape:
-            raise ValueError("displacement must match the atom parameter shape")
-        if not math.isfinite(step_size) or step_size <= 0:
-            raise ValueError("step_size must be finite and positive")
-
-        polar = self._project_polar(p[:, :2])
-        raw = displacement[:, :2]
-        radius_square = polar.square().sum(dim=-1, keepdim=True)
-        radial_coefficient = (raw * polar).sum(dim=-1, keepdim=True) / radius_square
-        tangent = raw - radial_coefficient * polar
-
-        # Preserve the optimizer's angular proposal while allowing the radial
-        # history clock to be calibrated independently. ``finite_chord`` is
-        # the original q' = q + gamma ||tangent||^2 rule. ``time_energy``
-        # interprets gamma as an activity rate and divides the squared motion
-        # by the optimizer's outer time step.
-        chord = polar + tangent
-        chord_q = chord.square().sum(dim=-1, keepdim=True)
-        direction = chord / chord_q.sqrt()
-        energy = tangent.square().sum(dim=-1, keepdim=True)
-        if self.activity_mode == "time_energy":
-            energy = energy / step_size
-        proposed_amplitude, _ = self._amplitude_and_alpha(direction)
-        dormant_weight = 1.0 / (1.0 + (proposed_amplitude / self.w_c.to(p)).square())
-        dormant_q = (
-            3.0
-            * self.dormant_expansion_rate.to(p)
-            * p.new_tensor(step_size)
-            * dormant_weight.unsqueeze(-1)
+        return apply_parameter_update(
+            self, input_chart, output_chart, p, displacement, step_size=step_size
         )
-        task_q = (radius_square + self.activity_gain.to(p) * energy + dormant_q).clamp(
-            1.0, 4.0
-        )
-        task_polar = direction * task_q.sqrt()
-
-        # Exact gradient flow for R(q)=lambda/2*(q-1)^2 over time step_size:
-        # y=(q-1)/q decays as exp(-4*lambda*t), keeping q in [1, 4].
-        decay = torch.exp(
-            -4.0 * self.radial_regularization.to(p) * p.new_tensor(step_size)
-        )
-        activity = (task_q - 1.0) / task_q
-        regularized_q = 1.0 / (1.0 - activity * decay)
-        regularized_polar = task_polar * (regularized_q / task_q).sqrt()
-
-        _, input_p, output_p = self._split(input_chart, output_chart, p)
-        _, input_d, output_d = self._split(
-            input_chart,
-            output_chart,
-            displacement,
-        )
-        updated_input = self.profile.apply_parameter_update(
-            input_chart,
-            input_p,
-            input_d,
-        )
-        updated_output = self.profile.apply_parameter_update(
-            output_chart,
-            output_p,
-            output_d,
-        )
-        return torch.cat((regularized_polar, updated_input, updated_output), dim=-1)
 
     def project_parameter_gradient(
         self,
@@ -538,20 +464,11 @@ class PolarAmpWidth(Kernel):
         p: Tensor,
         gradient: Tensor,
     ) -> Tensor:
-        _, input_p, output_p = self._split(input_chart, output_chart, p)
-        polar_g, input_g, output_g = self._split(
-            input_chart,
-            output_chart,
-            gradient,
+        from torchcst._backends.torch.updates.polar_amp_width import (
+            project_parameter_gradient,
         )
-        return torch.cat(
-            (
-                polar_g,
-                self.profile.project_gradient(input_chart, input_p, input_g),
-                self.profile.project_gradient(output_chart, output_p, output_g),
-            ),
-            dim=-1,
-        )
+
+        return project_parameter_gradient(self, input_chart, output_chart, p, gradient)
 
     def transport_parameter_state(
         self,
@@ -561,16 +478,12 @@ class PolarAmpWidth(Kernel):
         new: Tensor,
         state: Tensor,
     ) -> Tensor:
-        _, old_i, old_o = self._split(input_chart, output_chart, old)
-        _, new_i, new_o = self._split(input_chart, output_chart, new)
-        polar_s, state_i, state_o = self._split(input_chart, output_chart, state)
-        return torch.cat(
-            (
-                polar_s,
-                self.profile.transport_state(input_chart, old_i, new_i, state_i),
-                self.profile.transport_state(output_chart, old_o, new_o, state_o),
-            ),
-            dim=-1,
+        from torchcst._backends.torch.updates.polar_amp_width import (
+            transport_parameter_state,
+        )
+
+        return transport_parameter_state(
+            self, input_chart, output_chart, old, new, state
         )
 
     def _split(
@@ -579,38 +492,31 @@ class PolarAmpWidth(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        expected_dim = self.parameter_dim(input_chart, output_chart)
-        if p.ndim != 2 or p.shape[1] != expected_dim:
-            raise ValueError(f"p must have shape [atoms, {expected_dim}]")
-        input_dim = self.profile.parameter_dim(input_chart)
-        input_end = 2 + input_dim
-        return p[:, :2], p[:, 2:input_end], p[:, input_end:]
+        from torchcst._backends.torch.parameterizations.polar_amp_width import _split
+
+        return _split(self, input_chart, output_chart, p)
 
     def _amplitude_and_alpha(self, polar: Tensor) -> tuple[Tensor, Tensor]:
-        radius_square = polar.square().sum(dim=-1)
-        # The exact polar map is used everywhere except the singular origin.
-        safe_square = radius_square.clamp_min(torch.finfo(polar.dtype).tiny)
-        amplitude = self.amplitude_max.to(polar) * polar[:, 0] / safe_square.sqrt()
-        alpha = ((radius_square - 1.0) / 3.0).clamp(0.0, 1.0)
-        return amplitude, alpha
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            _amplitude_and_alpha,
+        )
+
+        return _amplitude_and_alpha(self, polar)
 
     @staticmethod
     def _project_polar(polar: Tensor) -> Tensor:
-        radius_square = polar.square().sum(dim=-1, keepdim=True)
-        tiny = torch.finfo(polar.dtype).tiny
-        safe_radius = radius_square.clamp_min(tiny).sqrt()
-        fallback = torch.zeros_like(polar)
-        fallback[:, 1] = 1.0
-        unit = torch.where(radius_square > tiny, polar / safe_radius, fallback)
-        radius = safe_radius.clamp(1.0, 2.0)
-        return unit * radius
+        from torchcst._backends.torch.updates.polar_amp_width import _project_polar
+
+        return _project_polar(polar)
 
     def _bandwidth_sigmas(
         self, amplitude: Tensor, alpha: Tensor
     ) -> tuple[Tensor, Tensor]:
-        sigma_input, _, _ = self._sigma_bounds(amplitude, alpha, side="input")
-        sigma_output, _, _ = self._sigma_bounds(amplitude, alpha, side="output")
-        return sigma_input, sigma_output
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            _bandwidth_sigmas,
+        )
+
+        return _bandwidth_sigmas(self, amplitude, alpha)
 
     def _sigma_bounds(
         self,
@@ -619,53 +525,18 @@ class PolarAmpWidth(Kernel):
         *,
         side: Literal["input", "output"] = "input",
     ) -> tuple[Tensor, Tensor, Tensor]:
-        if side == "input":
-            minimum = self.sigma_min_input
-            birth = self.sigma_birth_input
-            maximum = self.sigma_max_input
-            floor = self.upper_floor_input
-        elif side == "output":
-            minimum = self.sigma_min_output
-            birth = self.sigma_birth_output
-            maximum = self.sigma_max_output
-            floor = self.upper_floor_output
-        else:
-            raise ValueError("side must be 'input' or 'output'")
-        x = (amplitude / self.w_c.to(amplitude)).square()
-        lower_delta = birth.to(amplitude) - minimum.to(amplitude)
-        upper_delta = maximum.to(amplitude) - minimum.to(amplitude)
-        kappa = self.kappa.to(amplitude)
-        upper_x = x.pow(self.upper_decay_power.to(amplitude))
-        upper = minimum.to(amplitude) + upper_delta * kappa / (kappa + upper_x)
-        # Keep radial activity meaningful for high-amplitude atoms.  Without
-        # this floor U(w) converges to sigma_min, so alpha loses all authority
-        # precisely when a strong atom becomes trapped on a single site.
-        upper = torch.maximum(upper, floor.to(amplitude))
-        lower = minimum.to(amplitude) + lower_delta / (
-            1.0 + self.lower_kappa.to(amplitude) * x
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            _sigma_bounds,
         )
-        # Independent lower decay and upper decay can otherwise cross. The
-        # effective upper envelope must never narrow below the lower curve.
-        upper = torch.maximum(upper, lower)
-        if alpha is None:
-            sigma = lower
-        else:
-            # Width is a scale, so alpha advances a constant fraction of the
-            # multiplicative range rather than a constant absolute distance.
-            sigma = torch.exp((1.0 - alpha) * lower.log() + alpha * upper.log())
-            # exp(log(bound)) can round one ulp outside its closed interval.
-            sigma = sigma.clamp(min=lower, max=upper)
-        return sigma, lower, upper
+
+        return _sigma_bounds(self, amplitude, alpha, side=side)
 
     def _require_shared_bandwidths(self) -> None:
-        pairs = (
-            (self.sigma_min_input, self.sigma_min_output),
-            (self.sigma_birth_input, self.sigma_birth_output),
-            (self.sigma_max_input, self.sigma_max_output),
-            (self.upper_floor_input, self.upper_floor_output),
+        from torchcst._backends.torch.parameterizations.polar_amp_width import (
+            _require_shared_bandwidths,
         )
-        if not all(bool(torch.equal(left, right)) for left, right in pairs):
-            raise ValueError("input and output bandwidths differ; use the by-side API")
+
+        return _require_shared_bandwidths(self)
 
     @classmethod
     def _bandwidth_pair(

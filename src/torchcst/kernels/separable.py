@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import torch
 from torch import Tensor
 
 from torchcst.geometry import Chart
@@ -42,17 +41,16 @@ class Separable(Kernel):
         *,
         mode: AtomInit,
     ) -> Tensor:
-        if mode not in ("balanced", "uniform"):
-            raise ValueError("mode must be 'balanced' or 'uniform'")
-        input_p = self.input_profile.initialize(input_chart, atoms, mode="uniform")
-        output_p = self.output_profile.initialize(output_chart, atoms, mode=mode)
-        return torch.cat((input_p, output_p), dim=-1)
+        from torchcst._backends.torch.kernels.separable import initialize
+
+        return initialize(self, input_chart, output_chart, atoms, mode=mode)
 
     def materialize_atoms(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> Tensor:
-        phi_input, phi_output = self.factors(input_chart, output_chart, p)
-        return torch.einsum("oa,ia->aoi", phi_output, phi_input)
+        from torchcst._backends.torch.kernels.separable import materialize_atoms
+
+        return materialize_atoms(self, input_chart, output_chart, p)
 
     @property
     def supports_factorization(self) -> bool:
@@ -61,24 +59,14 @@ class Separable(Kernel):
     def factors(
         self, input_chart: Chart, output_chart: Chart, p: Tensor
     ) -> tuple[Tensor, Tensor]:
-        expected_dim = self.parameter_dim(input_chart, output_chart)
-        if p.ndim != 2 or p.shape[1] != expected_dim:
-            raise ValueError(f"p must have shape [atoms, {expected_dim}]")
-        input_dim = self.input_profile.parameter_dim(input_chart)
-        phi_input = self.input_profile.evaluate(input_chart, p[:, :input_dim])
-        phi_output = self.output_profile.evaluate(output_chart, p[:, input_dim:])
-        if phi_input.shape[1] != p.shape[0] or phi_output.shape[1] != p.shape[0]:
-            raise ValueError("profiles must preserve the atom dimension")
-        return phi_input, phi_output
+        from torchcst._backends.torch.kernels.separable import factors
+
+        return factors(self, input_chart, output_chart, p)
 
     def tangent_backend(self, input_chart: Chart, output_chart: Chart):
-        if not (
-            self.input_profile.supports_tangent and self.output_profile.supports_tangent
-        ):
-            return None
-        from ._tangent import separable
+        from torchcst._backends.torch.kernels.separable import tangent_backend
 
-        return lambda p: separable(self, input_chart, output_chart, p)
+        return tangent_backend(self, input_chart, output_chart)
 
     def project_parameter_gradient(
         self,
@@ -87,15 +75,11 @@ class Separable(Kernel):
         p: Tensor,
         gradient: Tensor,
     ) -> Tensor:
-        input_p, output_p = self._split(input_chart, output_chart, p)
-        input_g, output_g = self._split(input_chart, output_chart, gradient)
-        return torch.cat(
-            (
-                self.input_profile.project_gradient(input_chart, input_p, input_g),
-                self.output_profile.project_gradient(output_chart, output_p, output_g),
-            ),
-            dim=-1,
+        from torchcst._backends.torch.updates.separable import (
+            project_parameter_gradient,
         )
+
+        return project_parameter_gradient(self, input_chart, output_chart, p, gradient)
 
     def apply_parameter_update(
         self,
@@ -106,19 +90,10 @@ class Separable(Kernel):
         *,
         step_size: float,
     ) -> Tensor:
-        del step_size
-        input_p, output_p = self._split(input_chart, output_chart, p)
-        input_d, output_d = self._split(input_chart, output_chart, displacement)
-        return torch.cat(
-            (
-                self.input_profile.apply_parameter_update(
-                    input_chart, input_p, input_d
-                ),
-                self.output_profile.apply_parameter_update(
-                    output_chart, output_p, output_d
-                ),
-            ),
-            dim=-1,
+        from torchcst._backends.torch.updates.separable import apply_parameter_update
+
+        return apply_parameter_update(
+            self, input_chart, output_chart, p, displacement, step_size=step_size
         )
 
     def transport_parameter_state(
@@ -129,17 +104,10 @@ class Separable(Kernel):
         new: Tensor,
         state: Tensor,
     ) -> Tensor:
-        old_i, old_o = self._split(input_chart, output_chart, old)
-        new_i, new_o = self._split(input_chart, output_chart, new)
-        state_i, state_o = self._split(input_chart, output_chart, state)
-        return torch.cat(
-            (
-                self.input_profile.transport_state(input_chart, old_i, new_i, state_i),
-                self.output_profile.transport_state(
-                    output_chart, old_o, new_o, state_o
-                ),
-            ),
-            dim=-1,
+        from torchcst._backends.torch.updates.separable import transport_parameter_state
+
+        return transport_parameter_state(
+            self, input_chart, output_chart, old, new, state
         )
 
     def _split(
@@ -148,11 +116,9 @@ class Separable(Kernel):
         output_chart: Chart,
         p: Tensor,
     ) -> tuple[Tensor, Tensor]:
-        expected_dim = self.parameter_dim(input_chart, output_chart)
-        if p.ndim != 2 or p.shape[1] != expected_dim:
-            raise ValueError(f"p must have shape [atoms, {expected_dim}]")
-        input_dim = self.input_profile.parameter_dim(input_chart)
-        return p[:, :input_dim], p[:, input_dim:]
+        from torchcst._backends.torch.kernels.separable import _split
+
+        return _split(self, input_chart, output_chart, p)
 
     def extra_repr(self) -> str:
         return f"supports_factorization={self.supports_factorization}"
