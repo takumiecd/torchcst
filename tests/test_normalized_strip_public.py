@@ -131,7 +131,10 @@ def test_cuda_public_window_boundary_independent_all_five(memory):
         x=torch.randn(2,3,16,device='cuda',generator=g,requires_grad=True)
         dy=torch.randn(2,3,1024,device='cuda',generator=g)
         pp=model.p.detach().double().requires_grad_();xx=x.detach().double().requires_grad_()
-        actual=model(x);truth=xx@oracle(pp,sizes,stored_dtype=torch.float32).T
+        weight=oracle(pp,sizes,stored_dtype=torch.float32)
+        observed_weight=model(torch.eye(16,device='cuda')).T
+        torch.testing.assert_close(observed_weight.double(),weight,atol=2e-5,rtol=2e-5)
+        actual=model(x);truth=xx@weight.T
         a=torch.autograd.grad(actual,(x,model.p),dy)
         b=torch.autograd.grad(truth,(xx,pp),dy.double())
         for left,right in [(actual,truth),*zip(a,b)]:

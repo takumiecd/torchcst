@@ -41,7 +41,8 @@ def small_gate(helper):
         truth=tx@helper['oracle'](tp,sizes,stored_dtype=torch.float32).T
         ag=torch.autograd.grad(actual,(xx,model.p),dy)
         tg=torch.autograd.grad(truth,(tx,tp),dy.double())
-        reports[memory]={'y':check(actual,truth),'dx':check(ag[0],tg[0]),'dp':check(ag[1],tg[1])}
+        reports[memory]={'y':check(actual,truth),'dx':check(ag[0],tg[0]),'dp':check(ag[1],tg[1]),
+            'w':check(model(torch.eye(16,device='cuda')).T,helper['oracle'](tp,sizes,stored_dtype=torch.float32),tol=2e-5)}
         # Capture entire training step, then compare multiple replays from the
         # exact post-capture P/m/v/step state, with a current-centre mutation.
         opt=torch.optim.AdamW(model.parameters(),lr=1e-4,weight_decay=.01,fused=True,capturable=True)
@@ -69,7 +70,8 @@ def small_gate(helper):
         xx=x.clone().requires_grad_();y=model(xx);tp=model.p.detach().double().requires_grad_()
         tx=x.double().requires_grad_();truth=tx@helper['oracle'](tp,sizes,stored_dtype=torch.float32).T
         aa=torch.autograd.grad(y,(xx,model.p),dy);bb=torch.autograd.grad(truth,(tx,tp),dy.double())
-        reports[memory]['updated']={'y':check(y,truth),'dx':check(aa[0],bb[0]),'dp':check(aa[1],bb[1])}
+        reports[memory]['updated']={'y':check(y,truth),'dx':check(aa[0],bb[0]),'dp':check(aa[1],bb[1]),
+            'w':check(model(torch.eye(16,device='cuda')).T,helper['oracle'](tp,sizes,stored_dtype=torch.float32),tol=2e-5)}
     return reports
 
 
