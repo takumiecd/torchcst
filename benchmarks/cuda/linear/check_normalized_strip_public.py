@@ -9,6 +9,7 @@ import gc
 import hashlib
 import json
 import math
+import time
 from pathlib import Path
 import runpy
 import os
@@ -20,6 +21,7 @@ from torchcst.nn import NormalizedStripLinear
 
 
 def check(a,b,tol=3e-4):
+    assert torch.isfinite(a).all() and torch.isfinite(b).all()
     torch.testing.assert_close(a.double(),b.double(),atol=tol,rtol=tol)
     return {'max':float((a.double()-b.double()).abs().max()),
             'rel_l2':float((a.double()-b.double()).norm()/b.double().norm().clamp_min(1e-30))}
@@ -96,11 +98,13 @@ def benchmark(helper,n,profile,memory,dense=False):
         loss=(model(x)*target).sum()/(128*n);loss.backward();opt.step()
     for _ in range(3):step()
     def measured(call):
-        times=[]
+        samples=[]
         for _ in range(7):
-            begin=torch.cuda.Event(enable_timing=True);end=torch.cuda.Event(enable_timing=True)
-            begin.record();call();end.record();end.synchronize();times.append(begin.elapsed_time(end))
-        return sorted(times)[3]
+            torch.cuda.synchronize();begin=time.perf_counter()
+            call();torch.cuda.synchronize()
+            samples.append((time.perf_counter()-begin)*1000)
+        return {'median_ms':sorted(samples)[3],'samples_ms':samples,
+                'clock':'perf_counter with CUDA synchronization; no event instrumentation'}
     eager=measured(step)
     stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(stream):
@@ -111,7 +115,7 @@ def benchmark(helper,n,profile,memory,dense=False):
     with torch.cuda.graph(graph,stream=stream):step()
     ms=measured(graph.replay);torch.cuda.synchronize()
     return {'n':n,'a':a,'m':128,'profile':profile,'memory':memory,'dense':dense,
-        'initial_p_sha256':sha,'eager_ms':eager,'graph_ms':ms,
+        'initial_p_sha256':sha,'eager_ms':eager['median_ms'],'graph_ms':ms['median_ms'],'eager_wall':eager,'graph_wall':ms,
         'allocated_before_capture':baseline,'max_allocated_capture_replay':torch.cuda.max_memory_allocated(),
         'max_reserved_capture_replay':torch.cuda.max_memory_reserved(),
         'optimizer_steps':float(next(iter(opt.state.values()))['step']),
@@ -125,6 +129,7 @@ def main():
     ap.add_argument('--profiles',nargs='+',default=['broad','sharp']);ap.add_argument('--memory',nargs='+',default=['full','window'])
     ap.add_argument('--dense',action='store_true');ap.add_argument('--skip-small',action='store_true')
     args=ap.parse_args();torch.backends.cuda.matmul.allow_tf32=False;torch.backends.cudnn.allow_tf32=False
+    if torch.cuda.get_device_name()!='NVIDIA L4':raise RuntimeError('this protocol requires NVIDIA L4')
     helper=runpy.run_path(args.tests_file)
     import torchcst
     module_path=str(Path(torchcst.__file__).resolve())
@@ -145,7 +150,10 @@ def main():
                     result['benchmarks'].append(benchmark(helper,n,profile,memory))
                     gc.collect();torch.cuda.empty_cache()
                     Path(args.output).write_text(json.dumps(result,indent=2))
-            if args.dense:result['benchmarks'].append(benchmark(helper,n,'broad','full',True))
+            if args.dense:
+                result['benchmarks'].append(benchmark(helper,n,'broad','full',True))
+                gc.collect();torch.cuda.empty_cache()
+                Path(args.output).write_text(json.dumps(result,indent=2))
     Path(args.output).write_text(json.dumps(result,indent=2))
     print(json.dumps(result,indent=2))
 

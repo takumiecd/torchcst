@@ -25,7 +25,7 @@ def oracle(p,sizes=(64,4,4),origin=(0.,0.,0.),stored_dtype=None):
         for n,s,o in zip(sizes,(1.,.5,.5),origin)])
     delta=sites[None]-p[:,None,2:]
     k=(1-delta.square().sum(-1)/sigma[:,None].square()).clamp_min(0).pow(3)
-    norm=k.square().sum(1).sqrt().clamp_min(float(torch.tensor(1e-6,dtype=stored_dtype or p.dtype)))
+    norm=torch.linalg.vector_norm(k,dim=1).clamp_min(float(torch.tensor(1e-6,dtype=stored_dtype or p.dtype)))
     return (p[:,0,None]*k/norm[:,None]).sum(0).reshape(sizes[0],-1)
 
 
@@ -53,6 +53,7 @@ def test_public_cpu_independent_y_dx_all_five(memory,dtype):
     actual=model(x);truth=xx@oracle(truthp,stored_dtype=dtype).T
     ga=torch.autograd.grad(actual,(x,actualp),dy);ge=torch.autograd.grad(truth,(xx,truthp),dy.double())
     for a,b in [(actual,truth),*zip(ga,ge)]:
+        assert torch.isfinite(a).all() and torch.isfinite(b).all()
         torch.testing.assert_close(a.double(),b,atol=3e-4 if dtype==torch.float32 else 1e-9,
                                    rtol=3e-4 if dtype==torch.float32 else 1e-9)
     assert ga[1][2,2:].abs().max()>0
@@ -134,6 +135,7 @@ def test_cuda_public_window_boundary_independent_all_five(memory):
         a=torch.autograd.grad(actual,(x,model.p),dy)
         b=torch.autograd.grad(truth,(xx,pp),dy.double())
         for left,right in [(actual,truth),*zip(a,b)]:
+            assert torch.isfinite(left).all() and torch.isfinite(right).all()
             torch.testing.assert_close(left.double(),right,atol=3e-4,rtol=3e-4)
     finally:
         torch.backends.cuda.matmul.allow_tf32=previous
