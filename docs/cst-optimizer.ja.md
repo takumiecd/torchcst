@@ -30,8 +30,9 @@ atom 勾配を射影し、更新する atom table の旧座標を保存してか
 
 wrapper は atom の列を解釈しない。Polar の活動状態の時間単位は group の lr。
 optimizer を替えても同じ規則を使うが、学習軌道が同じになるという意味ではない。
-raw atom coordinates への weight decay も base の設定どおり働くため、必要に
-応じて CST group を `weight_decay=0` にする。
+raw atom coordinates への weight decay は base の proposal に含まれ、その後
+Kernel の規則で射影・調整される。Kernel の正則化とは別なので、必要に応じて
+CST group を `weight_decay=0` にする。
 
 ## State adapter
 
