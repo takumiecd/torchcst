@@ -294,9 +294,6 @@ class CSTConv2d(CSTModule):
                 f"expected input shape [N, {self.in_channels}, H, W], "
                 f"got {tuple(inputs.shape)}"
             )
-        atom_grad = self.atoms.grad
-        if atom_grad is not None and atom_grad.active:
-            raise TypeError("CSTConv2d does not yet support an active AtomGrad program")
         return self._forward_from_p(
             inputs,
             self.atoms.p,

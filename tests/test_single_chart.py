@@ -7,8 +7,7 @@ import torch
 from torchcst import (
     Chart,
     CSTLinear,
-    CSTNormalizedSGD,
-    CSTParameterAdam,
+    CSTOptimizer,
     DirectAmpWidth,
     ExplicitChart,
     GridPattern,
@@ -119,7 +118,7 @@ def test_spherical_product_lifts_sites_and_retracts_centers():
     model = CSTLinear(chart=chart, atoms=2, kernel=direct_kernel(2.5))
     loss = model(torch.randn(3, 4)).square().mean()
     loss.backward()
-    CSTParameterAdam(model).step()
+    CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.03, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model).step()
     chart.geometry.validate_centers(model.atoms.p[:, 2:])
 
 
@@ -264,7 +263,7 @@ def test_bandwidth_activity_and_strip_support_maximum():
         step_size=1.0,
     )
     assert bool((moved[:, 1] <= 4).all())
-    CSTParameterAdam(model).step()
+    CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.03, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model).step()
     assert bool((model.atoms.p[:, 1] >= 1).all())
     assert bool((model.atoms.p[:, 1] <= 4).all())
     strip = StripChart(
@@ -318,7 +317,7 @@ def test_strip_optimizer_and_checkpoint_round_trip():
         )
 
     model = make()
-    optimizer = CSTParameterAdam(model)
+    optimizer = CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.03, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model)
     before = model.atoms.p.detach().clone()
     model(torch.randn(6, 4, dtype=torch.float64)).square().mean().backward()
     optimizer.step()
@@ -329,20 +328,6 @@ def test_strip_optimizer_and_checkpoint_round_trip():
     torch.testing.assert_close(restored.dense_weight(), model.dense_weight())
 
 
-def test_single_chart_normalized_optimizer_step():
-    chart = ProductChart(
-        shape=(2, 2), axes=(LinePattern(2, spacing=1), LinePattern(2, spacing=1))
-    )
-    model = CSTLinear(
-        chart=chart, atoms=1, kernel=direct_kernel(2), dtype=torch.float64
-    )
-    optimizer = CSTNormalizedSGD(model, lr=0.01, trust_radius=0.2)
-    before = model.atoms.p.detach().clone()
-    optimizer.zero_grad()
-    model(torch.tensor([[1.0, -0.5]], dtype=torch.float64)).square().mean().backward()
-    optimizer.step()
-    assert optimizer.last_step is not None
-    assert not torch.equal(before, model.atoms.p)
 
 
 def test_checkpoint_rejects_different_grid_shape_with_same_site_count():

@@ -1,3 +1,5 @@
+from torchcst import CSTOptimizer
+
 """Toroidal site geometry and its Strip locality contract."""
 
 import copy
@@ -8,7 +10,6 @@ import torch
 
 from torchcst import (
     CSTLinear,
-    CSTParameterAdam,
     DirectAmpWidth,
     GridPattern,
     LinePattern,
@@ -289,7 +290,7 @@ def test_torus_strip_support_packing_optimizer_and_checkpoint(
         torch.testing.assert_close(packed[station].flatten()[local], dense[logical])
 
     model(torch.randn(2, 4, dtype=torch.float64)).square().mean().backward()
-    CSTParameterAdam(model).step()
+    CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.03, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model).step()
     chart.geometry.validate_centers(model.atoms.p[:, 2:])
     restored = CSTLinear(
         chart=_strip(representation), atoms=3, kernel=_kernel(10.0), dtype=torch.float64

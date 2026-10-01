@@ -1,3 +1,5 @@
+from torchcst import CSTOptimizer
+
 """The explicit tiled CSTLinear backend matches the canonical dense operator."""
 
 import math
@@ -7,18 +9,15 @@ import torch
 
 from torchcst import (
     CSTLinear,
-    CSTParameterAdam,
     DirectAmpWidth,
     Gaussian,
     GridPattern,
     LinePattern,
-    ParameterAdamConfig,
     ProductChart,
     StripChart,
     TorusGeometry,
     Triweight,
 )
-from torchcst.optim import LinearJGAtomGrad
 
 
 def _kernel(*, compact: bool = True) -> DirectAmpWidth:
@@ -86,9 +85,7 @@ def test_tiled_linear_survives_parameter_adam_update() -> None:
         chart=_chart(), atoms=5, kernel=_kernel(), backend="tiled",
         dtype=torch.float64,
     )
-    optimizer = CSTParameterAdam(
-        model, cst=ParameterAdamConfig(lr=0.001, decay_steps=None)
-    )
+    optimizer = CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.001, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model)
     inputs = torch.randn(3, 4, dtype=torch.float64)
     model(inputs).square().sum().backward()
     optimizer.step()
@@ -98,27 +95,6 @@ def test_tiled_linear_survives_parameter_adam_update() -> None:
     )
 
 
-def test_tiled_linear_supports_the_custom_atom_gradient_route() -> None:
-    model = CSTLinear(
-        chart=_chart(), atoms=5, kernel=_kernel(), backend="tiled",
-        dtype=torch.float64,
-    )
-    collector = LinearJGAtomGrad(mode="custom", factored=False)
-    model.atoms.set_grad(collector)
-    inputs = torch.randn(2, 4, dtype=torch.float64)
-    output_gradient = torch.randn(2, 16, dtype=torch.float64)
-    collector.begin()
-    (model(inputs) * output_gradient).sum().backward()
-    collector.complete()
-    assert collector.last_route == "custom"
-    oracle_p = model.atoms.p.detach().clone().requires_grad_()
-    oracle_output = torch.nn.functional.linear(
-        inputs, model.kernel.weight(model.chart, oracle_p)
-    )
-    expected = torch.autograd.grad(
-        (oracle_output * output_gradient).sum(), oracle_p
-    )[0]
-    torch.testing.assert_close(collector.snapshot().jg, expected)
 
 
 def test_weight_tile_matches_selected_dense_entries() -> None:

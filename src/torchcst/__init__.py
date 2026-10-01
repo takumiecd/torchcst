@@ -32,56 +32,20 @@ from .kernels import (
 )
 from .nn import CSTConv2d, CSTLinear, CSTModule, NormalizedStripLinear
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
-from .optim import (
-    CSTSGD,
-    AdamRConfig,
-    AdamWConfig,
-    CSTAdamR,
-    CSTImplicitAdam,
-    CSTMomentum,
-    CSTNormalizedAdam,
-    CSTNormalizedMomentum,
-    CSTNormalizedRMSProp,
-    CSTNormalizedSGD,
-    CSTQuadraticAdam,
-    CSTQuadraticMomentum,
-    CSTQuadraticRMSProp,
-    CSTQuadraticSGD,
-    CSTRMSProp,
-    CurvatureBlockMask,
-    CurvatureBlockMode,
-    NormalizedOptimizerConfig,
-    QuadraticOptimizerConfig,
-)
+from .optim import CSTOptimizer, OptimizerStateAdapter
 
 __all__ = [
-    "CSTSGD",
-    "AdamRConfig",
-    "AdamWConfig",
     "AmpWidth",
     "Amplitude",
     "AmplitudeBandwidthSeparable",
     "Atoms",
     "Biweight",
-    "CSTAdamR",
     "CSTConv2d",
-    "CSTImplicitAdam",
     "CSTLinear",
     "CSTModule",
-    "CSTMomentum",
-    "CSTNormalizedAdam",
-    "CSTNormalizedMomentum",
-    "CSTNormalizedRMSProp",
-    "CSTNormalizedSGD",
-    "CSTQuadraticAdam",
-    "CSTQuadraticMomentum",
-    "CSTQuadraticRMSProp",
-    "CSTQuadraticSGD",
-    "CSTRMSProp",
+    "CSTOptimizer",
     "Chart",
     "ChartPairSpec",
-    "CurvatureBlockMask",
-    "CurvatureBlockMode",
     "DirectAmpWidth",
     "EuclideanGeometry",
     "ExplicitChart",
@@ -90,15 +54,14 @@ __all__ = [
     "GridPattern",
     "Kernel",
     "LinePattern",
-    "NormalizedOptimizerConfig",
     "NormalizedStripLinear",
     "Operator",
     "OperatorSpec",
+    "OptimizerStateAdapter",
     "PointsPattern",
     "PolarAmpWidth",
     "ProductChart",
     "Profile",
-    "QuadraticOptimizerConfig",
     "Separable",
     "SingleChartSpec",
     "SitePattern",
@@ -109,7 +72,3 @@ __all__ = [
     "Triweight",
     "WendlandC2",
 ]
-
-from torchcst.optim.parameter import CSTParameterAdam, ParameterAdamConfig
-
-__all__ += ["CSTParameterAdam", "ParameterAdamConfig"]

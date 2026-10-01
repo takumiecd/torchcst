@@ -1,3 +1,5 @@
+from torchcst import CSTOptimizer
+
 """GPU parity gates for generated weights and their first-order gradients."""
 
 import importlib.util
@@ -9,11 +11,9 @@ import torch
 from torchcst import (
     Biweight,
     CSTLinear,
-    CSTParameterAdam,
     DirectAmpWidth,
     GridPattern,
     LinePattern,
-    ParameterAdamConfig,
     StripChart,
     TorusGeometry,
     Triangle,
@@ -22,7 +22,6 @@ from torchcst import (
 )
 from torchcst.nn._backends._preparation import execution_plan, geometry_factors, prepare
 from torchcst.nn._backends._triton import forward as triton_forward
-from torchcst.optim import LinearJGAtomGrad
 
 GPU = pytest.mark.skipif(
     not torch.cuda.is_available() or importlib.util.find_spec("triton") is None,
@@ -197,37 +196,6 @@ def test_triton_empty_batch_and_input_only_gradient():
         x.grad, model.dense_weight().sum(0), atol=2e-5, rtol=2e-5
     )
     torch.testing.assert_close(actual, expected, atol=2e-5, rtol=2e-5)
-
-
-@GPU
-def test_triton_training_and_custom_atom_gradient_route():
-    torch.manual_seed(4)
-    model = _model(device="cuda", backend="triton")
-    optimizer = CSTParameterAdam(
-        model, cst=ParameterAdamConfig(lr=0.001, decay_steps=None)
-    )
-    inputs = torch.randn(3, 21, device="cuda")
-    for _ in range(3):
-        optimizer.zero_grad()
-        model(inputs).square().mean().backward()
-        optimizer.step()
-        torch.testing.assert_close(
-            model(inputs),
-            torch.nn.functional.linear(inputs, model.dense_weight()),
-            atol=2e-5,
-            rtol=2e-5,
-        )
-    collector = LinearJGAtomGrad(mode="custom", factored=False)
-    model.atoms.set_grad(collector)
-    collector.begin()
-    model(inputs).sum().backward()
-    collector.complete()
-    p = model.atoms.p.detach().clone().requires_grad_()
-    oracle = torch.nn.functional.linear(
-        inputs, model.kernel.weight(model.chart, p)
-    ).sum()
-    expected = torch.autograd.grad(oracle, p)[0]
-    torch.testing.assert_close(collector.snapshot().jg, expected, atol=1e-4, rtol=1e-4)
 
 
 @GPU
@@ -447,3 +415,23 @@ def test_fused_bandwidth_preserves_envelopes_and_stop_gradient(power, floor, bir
     actual_grad = torch.autograd.grad(amplitude.sum(), p)[0]
     expected_grad = torch.autograd.grad(expected_amplitude.sum(), p)[0]
     assert torch.equal(actual_grad, expected_grad)
+
+
+@GPU
+def test_triton_training_with_cst_optimizer():
+    torch.manual_seed(4)
+    model = _model(device="cuda", backend="triton")
+    optimizer = CSTOptimizer(
+        torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.0), model=model
+    )
+    inputs = torch.randn(3, 21, device="cuda")
+    for _ in range(3):
+        optimizer.zero_grad()
+        model(inputs).square().mean().backward()
+        optimizer.step()
+        torch.testing.assert_close(
+            model(inputs),
+            torch.nn.functional.linear(inputs, model.dense_weight()),
+            atol=2e-5,
+            rtol=2e-5,
+        )

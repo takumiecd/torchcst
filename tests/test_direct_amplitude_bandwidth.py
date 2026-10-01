@@ -1,14 +1,7 @@
 import pytest
 import torch
 
-from torchcst import (
-    Chart,
-    CSTLinear,
-    CSTParameterAdam,
-    DirectAmpWidth,
-    ParameterAdamConfig,
-    PolarAmpWidth,
-)
+from torchcst import Chart, CSTLinear, CSTOptimizer, DirectAmpWidth, PolarAmpWidth
 
 
 def charts() -> tuple[Chart, Chart]:
@@ -172,14 +165,7 @@ def test_parameter_adam_moments_are_direct_w_moments() -> None:
         backend="factored",
         dtype=torch.float64,
     )
-    optimizer = CSTParameterAdam(
-        model,
-        cst=ParameterAdamConfig(
-            lr=0.01,
-            betas=(0.5, 0.9),
-            decay_steps=None,
-        ),
-    )
+    optimizer = CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.01, betas=(0.5, 0.9), eps=1e-8, weight_decay=0.0, foreach=False), model=model)
 
     optimizer.zero_grad(set_to_none=True)
     loss = model(torch.ones(2, input_chart.features, dtype=torch.float64)).sum()

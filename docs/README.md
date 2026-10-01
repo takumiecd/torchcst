@@ -5,10 +5,7 @@ cross-cutting design notes for charts, coordinates, and optimizers.
 
 - [Chart geometry](chart-geometry.ja.md)
 - [Direct amplitude and bandwidth coordinates](direct-amplitude-bandwidth.ja.md)
-- [Normalized optimizer](normalized-optimizer.ja.md)
-- [Optimizer selection](optimizer-selection.ja.md)
-- [Parameter Adam](parameter-adam.ja.md)
-- [Implicit projected moments](implicit-projected-moment-transport.ja.md) and [decisions](implicit-projected-adam-decisions.ja.md)
+- [CSTOptimizer](cst-optimizer.ja.md)
 
 Implementation notes live beside the relevant code:
 

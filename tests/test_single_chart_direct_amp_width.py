@@ -4,7 +4,7 @@ import torch
 from torchcst import (
     Biweight,
     CSTLinear,
-    CSTParameterAdam,
+    CSTOptimizer,
     DirectAmpWidth,
     Gaussian,
     LinePattern,
@@ -79,7 +79,7 @@ def test_one_chart_direct_kernel_updates_activity_and_rejects_normalized_profile
     updated = kernel.apply_parameter_update(chart, before, displacement, step_size=0.1)
     assert bool((updated[:, 1] > before[:, 1]).all())
     model(torch.randn(3, 2)).square().mean().backward()
-    CSTParameterAdam(model).step()
+    CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.03, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model).step()
     assert torch.isfinite(model.atoms.p).all()
 
 

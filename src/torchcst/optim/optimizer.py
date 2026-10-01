@@ -1,547 +1,229 @@
-"""Model-level coordinator for CST and dense optimization."""
+"""Wrap a PyTorch optimizer with CST coordinate update policies."""
 
 from __future__ import annotations
 
-import copy
-from dataclasses import dataclass, fields, is_dataclass
-from typing import Any
+import math
 
 import torch
-from torch import Tensor, nn
-from torch.optim import Optimizer
+from torch import nn
+from torch.optim import LBFGS, Optimizer
 
-from torchcst._runtime.validation import device_checks, require
-from torchcst.nn import CSTLinear, CSTModule
+from torchcst.geometry import EuclideanGeometry
+from torchcst.nn import CSTModule
 
-from .config import AdamWConfig
-from .dense import DenseAdamWProposal, FunctionalAdamW
-from .moments import (
-    MomentContext,
-)
+from .state import OptimizerStateAdapter, default_state_adapter
 
 
-@dataclass(frozen=True)
-class CSTStepResult:
-    """Diagnostics from the most recent optimizer step."""
+class CSTOptimizer(Optimizer):
+    """Delegate proposals to ``optimizer`` and apply Kernel update policies.
 
-    site_results: tuple[Any, ...]
-    device_valid: Tensor | None = None
-    compression_results: tuple = ()
-
-
-@dataclass
-class _CSTSite:
-    name: str
-    module: CSTLinear
-    moments: Any
-    atom_grad: Any
-    state: Any
-
-
-@dataclass(frozen=True)
-class _CSTProposal:
-    site: _CSTSite
-    context: MomentContext
-    expanded: Any
-    solve: Any
-
-
-class _ModelOptimizer(Optimizer):
-    """Own and update every trainable parameter in one coordinated step."""
-
-    _STATE_VERSION = 2
+    Parameters and state remain owned by the supplied optimizer. Ordinary
+    model parameters, including Euclidean chart coordinates, pass through.
+    Each managed atom table gets a parameter-sized old-point snapshot, never
+    a dense weight matrix. Use this wrapper for step/zero_grad/checkpoint and
+    scheduler/GradScaler integration; do not also step the base optimizer.
+    """
 
     def __init__(
         self,
-        model: nn.Module,
+        optimizer: Optimizer,
         *,
-        cst: Any | None = None,
-        dense: AdamWConfig | None = None,
-        strict: bool = True,
-        **options,
-    ) -> None:
+        model: nn.Module,
+        state_adapter: OptimizerStateAdapter | None = None,
+    ):
+        if not isinstance(optimizer, Optimizer) or isinstance(optimizer, CSTOptimizer):
+            raise TypeError("optimizer must be an unwrapped torch.optim.Optimizer")
         if not isinstance(model, nn.Module):
             raise TypeError("model must be a torch.nn.Module")
-        if cst is not None and options:
-            raise TypeError("pass either cst config or optimizer options, not both")
-        if cst is None:
-            cst = self.config_type(**options)
-        if not isinstance(cst, self.config_type):
-            raise TypeError(f"cst must be a {self.config_type.__name__}")
-        if dense is not None and not isinstance(dense, AdamWConfig):
-            raise TypeError("dense must be an AdamWConfig or None")
-        if not isinstance(strict, bool):
-            raise TypeError("strict must be a bool")
+        if isinstance(optimizer, LBFGS):
+            raise TypeError("LBFGS repeated proposals require a dedicated integration")
+        if state_adapter is not None and not isinstance(
+            state_adapter, OptimizerStateAdapter
+        ):
+            raise TypeError("state_adapter must be an OptimizerStateAdapter")
         self.model = model
-        self.cst_config = cst
-        self.dense_config = dense
-        self.strict = strict
-        self._stepping = False
-        self.last_step: CSTStepResult | None = None
-        self._device_valid: Tensor | None = None
+        self._sites = tuple(
+            module for module in model.modules() if isinstance(module, CSTModule)
+        )
+        self.state_adapter = state_adapter or (
+            default_state_adapter(optimizer) if self._sites else OptimizerStateAdapter()
+        )
+        self._validate_groups(optimizer.param_groups)
+        # Initialize PyTorch's scheduler and step-hook infrastructure, then
+        # share the actual groups and state rather than copying their contents.
+        super().__init__(optimizer.param_groups, optimizer.defaults)
+        self.base_optimizer = optimizer
+        self._sync_from_base()
+        self._bound_parameters = {site: site.atoms.p for site in self._sites}
 
-        all_cst_modules = [
-            (name or "<root>", module)
-            for name, module in model.named_modules()
-            if isinstance(module, CSTModule)
-        ]
-        unsupported = [
-            f"{name} ({type(module).__name__})"
-            for name, module in all_cst_modules
-            if not isinstance(module, CSTLinear)
-        ]
-        if unsupported:
-            raise ValueError(
-                "this N/D optimizer supports only CSTLinear; unsupported CST sites: "
-                + ", ".join(unsupported)
-            )
-        site_modules = all_cst_modules
-        if not site_modules:
-            raise ValueError("model does not contain a CSTLinear site")
+    def _sync_from_base(self):
+        self.param_groups = self.base_optimizer.param_groups
+        self.state = self.base_optimizer.state
+        self.defaults = self.base_optimizer.defaults
 
-        named_parameters = list(model.named_parameters())
-        trainable = [
-            (name, value) for name, value in named_parameters if value.requires_grad
-        ]
-        if cst.device_execution and len({value.device for _, value in trainable}) != 1:
-            raise ValueError(
-                "device_execution currently requires all parameters on one device"
-            )
-        aliases: dict[int, list[str]] = {}
-        for name, value in model.named_parameters(remove_duplicate=False):
-            if value.requires_grad:
-                aliases.setdefault(id(value), []).append(name)
-        if strict:
-            shared = [names for names in aliases.values() if len(names) > 1]
-            if shared:
-                names = ", ".join("/".join(group) for group in shared)
-                raise ValueError(f"strict ownership rejects shared parameters: {names}")
-
-        names_by_id = {id(value): name for name, value in trainable}
-        cst_owner_by_id: dict[int, str] = {}
-        for site_name, site in site_modules:
-            if any(chart.trainable for chart in site.cst_charts()):
-                raise ValueError("CST optimizer supports frozen charts only")
-            for parameter in site.cst_parameters():
-                if not parameter.requires_grad:
-                    raise ValueError(f"CST parameter owned by {site_name} is frozen")
-                identity = id(parameter)
-                if identity in cst_owner_by_id:
+    def _validate_groups(self, groups):
+        names = {id(p): name for name, p in self.model.named_parameters()}
+        seen = set()
+        for group in groups:
+            if group.get("differentiable", False):
+                raise ValueError(
+                    "CSTOptimizer does not support differentiable optimizer steps"
+                )
+            for p in group["params"]:
+                if id(p) not in names:
+                    raise ValueError("optimizer parameter is not owned by model")
+                if id(p) in seen:
+                    raise ValueError("optimizer parameters must be unique")
+                seen.add(id(p))
+        owners = set()
+        for site in self._sites:
+            if id(site.atoms.p) in owners:
+                raise ValueError("an atom table cannot have multiple CST policy owners")
+            owners.add(id(site.atoms.p))
+            for chart in site.cst_charts():
+                if chart.trainable and not isinstance(
+                    chart.geometry, EuclideanGeometry
+                ):
                     raise ValueError(
-                        "a trainable parameter is owned by multiple CST sites"
+                        "trainable non-Euclidean charts need a chart update policy"
                     )
-                if identity not in names_by_id:
-                    raise ValueError("a CST-owned parameter is absent from the model")
-                cst_owner_by_id[identity] = site_name
 
-        dense_parameters = [
-            value for _, value in trainable if id(value) not in cst_owner_by_id
-        ]
-        if dense is None and dense_parameters:
-            dense_names = [names_by_id[id(value)] for value in dense_parameters]
-            raise ValueError(
-                "dense=None cannot own dense trainable parameters: "
-                + ", ".join(dense_names)
-            )
-        for site_name, site in site_modules:
-            if site.atoms.grad is not None:
-                raise ValueError(f"CST site {site_name} already has an AtomGrad owner")
+    def add_param_group(self, param_group):
+        if not hasattr(self, "base_optimizer"):
+            return super().add_param_group(param_group)
+        group = dict(param_group)
+        params = group["params"]
+        group["params"] = [params] if isinstance(params, torch.Tensor) else list(params)
+        self._validate_groups([*self.param_groups, group])
+        self.base_optimizer.add_param_group(group)
+        self._sync_from_base()
 
-        super().__init__((value for _, value in trainable), defaults={})
-        self._parameter_names = names_by_id
-        self._trainable_parameters = tuple(value for _, value in trainable)
-        self._dense_parameters = tuple(dense_parameters)
-        self._dense_engine = FunctionalAdamW(dense) if dense is not None else None
-        self._dense_states = {
-            parameter: self._dense_engine.initialize(parameter)
-            for parameter in self._dense_parameters
-        }
+    def zero_grad(self, set_to_none: bool = True):
+        return self.base_optimizer.zero_grad(set_to_none=set_to_none)
 
-        sites: list[_CSTSite] = []
-        for site_name, site in site_modules:
-            moments = self._make_moments()
-            geometry = self._make_geometry(site)
-            context = MomentContext(geometry, geometry.current_point())
-            atom_grad = self._make_atom_grad(site, moments)
-            site.atoms.set_grad(atom_grad)
-            sites.append(
-                _CSTSite(
-                    name=site_name,
-                    module=site,
-                    moments=moments,
-                    atom_grad=atom_grad,
-                    state=moments.initialize(context),
+    @torch.no_grad()
+    def step(self, closure=None):
+        loss = None
+        if closure is not None:
+            # Evaluate once before projection/snapshot, at the current point.
+            # Standard SGD/Adam-family steps only use the closure's result.
+            with torch.enable_grad():
+                loss = closure()
+        self._validate_groups(self.param_groups)
+        groups = {id(p): group for group in self.param_groups for p in group["params"]}
+        active = []
+        for site, point in self._bound_parameters.items():
+            if site.atoms.p is not point:
+                raise RuntimeError("atom Parameter was replaced; rebuild CSTOptimizer")
+            group = groups.get(id(point))
+            if group is None or point.grad is None:
+                continue
+            rate = group["lr"]
+            if isinstance(rate, torch.Tensor) or not math.isfinite(rate) or rate < 0:
+                raise ValueError(
+                    "CST learning rates must be finite nonnegative Python scalars"
                 )
-            )
-        self._sites = tuple(sites)
-        self._manifest = self._make_manifest(cst_owner_by_id)
-
-    def _make_atom_grad(self, site: CSTLinear, moments):
-        """Create the observation program for one CST site."""
-
-        raise NotImplementedError
-
-    def zero_grad(self, set_to_none: bool = True) -> None:
-        """Clear gradients and begin the next CST observation scope."""
-
-        if self._stepping:
-            raise RuntimeError("CST optimizer zero_grad cannot run during step")
-        self._abort_capture()
-        super().zero_grad(set_to_none=set_to_none)
-        self._begin_capture()
-
-    def step(self) -> None:
-        """Consume one backward pass and commit its model-wide update."""
-
-        if self._stepping:
-            raise RuntimeError("CST optimizer step cannot be called recursively")
-        self._stepping = True
-        try:
-            if self.cst_config.device_execution:
-                with device_checks() as checks:
-                    self._step(checks)
-            else:
-                self._step()
-        finally:
-            self._stepping = False
-
-    def _step(self, checks=None) -> None:
-        try:
-            self._complete_capture()
-        except BaseException:
-            self._abort_capture()
-            raise
-
-        try:
-            cst_proposals = self._build_cst_proposals()
-            dense_proposals = self._build_dense_proposals()
-            cst_updates = tuple(
-                self._apply_kernel_update(proposal) for proposal in cst_proposals
-            )
-            next_cst_states = tuple(
-                proposal.site.moments.compress(
-                    proposal.expanded,
-                    actual_displacement,
-                    proposal.context,
+            if group.get("capturable", False):
+                raise ValueError(
+                    "CST coordinate policies do not yet support CUDA Graph capture"
                 )
-                for proposal, (_, actual_displacement) in zip(
-                    cst_proposals, cst_updates
+            if point.grad.is_sparse:
+                raise ValueError(
+                    "CST coordinate policies require strided atom gradients"
                 )
+            active.append((site, point, rate))
+        # Check before base optimizer mutates any parameter or state.
+        for group in self.param_groups:
+            for point in group["params"]:
+                if point.grad is not None:
+                    grad = point.grad
+                    values = grad.coalesce().values() if grad.is_sparse else grad
+                    if not bool(torch.isfinite(values).all()):
+                        raise FloatingPointError("non-finite parameter gradient")
+        old_points = []
+        for site, point, rate in active:
+            projected = site.kernel.project_parameter_gradient(
+                *site.cst_charts(), point, point.grad
             )
-        except BaseException:
-            self._abort_capture()
-            raise
-
-        valid = None
-        if checks is not None:
-            for proposal in dense_proposals.values():
-                require(
-                    torch.isfinite(proposal.displacement).all(),
-                    "non-finite dense update",
-                    FloatingPointError,
-                )
-            valid = torch.stack(checks).all()
-            if self._device_valid is not None:
-                valid = valid & self._device_valid
-            self._device_valid = valid
-            next_cst_states = tuple(
-                _select_device_state(valid, new, proposal.site.state)
-                for proposal, new in zip(cst_proposals, next_cst_states)
+            if projected.shape != point.shape:
+                raise ValueError("projected atom gradient has the wrong shape")
+            if not bool(torch.isfinite(projected).all()):
+                raise FloatingPointError("non-finite projected atom gradient")
+            point.grad.copy_(projected)
+            old_points.append((site, point, rate, point.detach().clone()))
+        if closure is None:
+            result = self.base_optimizer.step()
+        else:
+            result = self.base_optimizer.step(closure=lambda: loss)
+        self._sync_from_base()
+        for site, point, rate, old in old_points:
+            if rate == 0:
+                continue
+            new = site.kernel.apply_parameter_update(
+                *site.cst_charts(), old, point - old, step_size=rate
             )
-        with torch.no_grad():
-            for proposal, (updated, _) in zip(cst_proposals, cst_updates):
-                point = proposal.site.module.atoms.p
-                point.copy_(
-                    updated if valid is None else torch.where(valid, updated, point)
-                )
-            for parameter, proposal in dense_proposals.items():
-                delta = proposal.displacement
-                parameter.add_(delta if valid is None else torch.where(valid, delta, 0))
-        for proposal, state in zip(cst_proposals, next_cst_states):
-            proposal.site.state = state
-        for parameter, proposal in dense_proposals.items():
-            self._dense_states[parameter] = (
-                proposal.pending_state
-                if valid is None
-                else _select_device_state(
-                    valid, proposal.pending_state, self._dense_states[parameter]
-                )
-            )
+            if new.shape != point.shape:
+                raise ValueError("updated atom parameters have the wrong shape")
+            if not bool(torch.isfinite(new).all()):
+                raise FloatingPointError("non-finite CST parameter update")
+            self.state_adapter.transport(site, old, new, self.state.get(point, {}))
+            point.copy_(new)
+        return loss if closure is not None else result
 
-        self.last_step = CSTStepResult(
-            site_results=tuple(proposal.solve for proposal in cst_proposals),
-            device_valid=valid,
-            compression_results=tuple(
-                getattr(proposal.context.geometry, "compression_result", None)
-                for proposal in cst_proposals
-            ),
-        )
-
-    def _apply_kernel_update(self, proposal: _CSTProposal) -> tuple[Tensor, Tensor]:
-        module = proposal.site.module
-        point = proposal.context.current_point
-        kernel_step_size = getattr(self.cst_config, "kernel_step_size", None)
-        if kernel_step_size is None:
-            kernel_step_size = self.cst_config.lr
-        updated = module.kernel.apply_parameter_update(
-            *module.cst_charts(),
-            point,
-            proposal.solve.displacement,
-            step_size=kernel_step_size,
-        )
-        if updated.shape != point.shape:
-            raise ValueError("kernel parameter update has the wrong shape")
-        require(
-            torch.isfinite(updated).all(),
-            "kernel parameter update must be finite",
-            FloatingPointError,
-        )
-        return updated, updated - point
-
-    def check_errors(self) -> None:
-        """Explicit synchronization boundary for deferred errors.
-
-        Failure latches the optimizer: all subsequent parameter/tensor-state
-        commits are suppressed. Restore a valid checkpoint into a new optimizer
-        before resuming; this method never clears the latch.
-        """
-        if self._device_valid is not None and not bool(self._device_valid):
-            raise FloatingPointError(
-                "deferred CST validation failed; updates are disabled"
-            )
-
-    def _begin_capture(self) -> None:
-        begun = []
-        try:
-            for site in self._sites:
-                site.atom_grad.begin()
-                begun.append(site.atom_grad)
-        except BaseException:
-            for atom_grad in begun:
-                if atom_grad.active:
-                    atom_grad.cancel()
-            raise
-
-    def _complete_capture(self) -> None:
-        for site in self._sites:
-            site.atom_grad.complete()
-
-    def _abort_capture(self) -> None:
-        for site in self._sites:
-            if site.atom_grad.active:
-                site.atom_grad.cancel()
-            else:
-                site.atom_grad.clear()
-
-    def _build_cst_proposals(self) -> tuple[_CSTProposal, ...]:
-        proposals = []
-        for site in self._sites:
-            geometry = self._make_geometry(site.module)
-            context = MomentContext(geometry, geometry.current_point())
-            observation = self._prepare_observation(
-                site,
-                site.atom_grad.snapshot(),
-            )
-            expanded = site.moments.expand(
-                site.state,
-                observation,
-                context,
-            )
-            solve = self._solve(context, expanded)
-            self._validate_solve(solve, context)
-            proposals.append(_CSTProposal(site, context, expanded, solve))
-        return tuple(proposals)
-
-    def _prepare_observation(self, site: _CSTSite, observation):
-        """Transform a completed step-local observation before moment expansion."""
-
-        del site
-        return observation
-
-    def _validate_solve(
-        self,
-        solve: Any,
-        context: MomentContext,
-    ) -> None:
-        raise NotImplementedError
-
-    def _build_dense_proposals(self) -> dict[nn.Parameter, DenseAdamWProposal]:
-        if self._dense_engine is None:
-            return {}
+    def _manifest(self):
+        names = {id(p): name for name, p in self.model.named_parameters()}
         return {
-            parameter: self._dense_engine.expand(
-                parameter, self._dense_states[parameter]
-            )
-            for parameter in self._dense_parameters
-        }
-
-    def _make_manifest(
-        self, cst_owner_by_id: dict[int, str]
-    ) -> tuple[dict[str, Any], ...]:
-        manifest = []
-        for parameter in self._trainable_parameters:
-            identity = id(parameter)
-            site_name = cst_owner_by_id.get(identity)
-            manifest.append(
-                {
-                    "name": self._parameter_names[identity],
-                    "shape": tuple(parameter.shape),
-                    "owner": f"cst:{site_name}" if site_name else "dense",
-                }
-            )
-        return tuple(manifest)
-
-    def _moment_contract(self):
-        c = self.cst_config
-        return {
-            "betas": c.betas,
-            "eps": c.eps,
-            "second_moment": c.second_moment,
-            "first_moment_damping": c.first_moment_damping,
-            "tangent_rtol": getattr(c, "tangent_rtol", None),
-        }
-
-    @classmethod
-    def _validate_state_shape(cls, value, template):
-        if type(value) is not type(template):
-            raise TypeError("optimizer state component has the wrong type")
-        if isinstance(value, Tensor):
-            if value.shape != template.shape or not bool(torch.isfinite(value).all()):
-                raise ValueError("optimizer state tensor shape or values are invalid")
-        elif is_dataclass(value):
-            for field in fields(value):
-                cls._validate_state_shape(
-                    getattr(value, field.name), getattr(template, field.name)
+            "version": 1,
+            "optimizer_type": f"{type(self.base_optimizer).__module__}.{type(self.base_optimizer).__qualname__}",
+            "vector_keys": self.state_adapter.vector_keys,
+            "state_adapter_type": f"{type(self.state_adapter).__module__}.{type(self.state_adapter).__qualname__}",
+            "groups": [
+                [(names[id(p)], tuple(p.shape)) for p in group["params"]]
+                for group in self.param_groups
+            ],
+            "sites": [
+                (
+                    names[id(site.atoms.p)],
+                    f"{type(site.kernel).__module__}.{type(site.kernel).__qualname__}",
                 )
-
-    def state_dict(self) -> dict[str, Any]:
-        """Return compact optimizer state plus its exact ownership manifest."""
-
-        # Saving is an explicit host boundary: do not serialize a latched,
-        # partially advanced metadata state as a resumable checkpoint.
-        self.check_errors()
-        return {
-            "version": self._STATE_VERSION,
-            "algorithm": type(self).__name__,
-            "moment_contract": self._moment_contract(),
-            "manifest": copy.deepcopy(self._manifest),
-            "cst": {
-                site.name: self._map_state(site.state, clone=True)
                 for site in self._sites
-            },
-            "dense": {
-                self._parameter_names[id(parameter)]: self._map_state(state, clone=True)
-                for parameter, state in self._dense_states.items()
-            },
+            ],
         }
 
-    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
-        """Load state only when parameter names, shapes, and owners all match."""
+    def state_dict(self):
+        result = super().state_dict()
+        result["cst"] = self._manifest()
+        return result
 
-        if not isinstance(state_dict, dict):
-            raise TypeError("optimizer state_dict must be a dictionary")
-        if state_dict.get("version") != self._STATE_VERSION:
-            raise ValueError("unsupported CST optimizer state version")
-        if tuple(state_dict.get("manifest", ())) != self._manifest:
-            raise ValueError("optimizer state manifest does not match the model")
-        if state_dict.get("algorithm") != type(self).__name__:
-            raise ValueError("optimizer algorithm does not match the checkpoint")
-        if state_dict.get("moment_contract") != self._moment_contract():
-            raise ValueError("optimizer moment contract does not match the checkpoint")
-        cst_values = state_dict.get("cst")
-        dense_values = state_dict.get("dense")
-        if not isinstance(cst_values, dict) or not isinstance(dense_values, dict):
-            raise TypeError("optimizer state CST and dense blocks must be dictionaries")
-        if set(cst_values) != {site.name for site in self._sites}:
-            raise ValueError("optimizer CST state sites do not match the model")
-        expected_dense = {
-            self._parameter_names[id(parameter)] for parameter in self._dense_parameters
-        }
-        if set(dense_values) != expected_dense:
-            raise ValueError("optimizer dense state parameters do not match the model")
-
-        next_cst = []
-        for site in self._sites:
-            value = self._map_state(
-                cst_values[site.name],
-                reference=site.module.atoms.p,
-            )
-            if not isinstance(value, type(site.state)):
-                raise TypeError("loaded CST moment state has the wrong type")
-            self._validate_state_shape(value, site.state)
-            next_cst.append(value)
-        next_dense = {}
-        by_name = {
-            self._parameter_names[id(parameter)]: parameter
-            for parameter in self._dense_parameters
-        }
-        for name, parameter in by_name.items():
-            value = self._map_state(dense_values[name], reference=parameter)
-            FunctionalAdamW._validate_state(parameter, value)
-            next_dense[parameter] = value
-
-        for site, value in zip(self._sites, next_cst):
-            site.state = value
-        self._dense_states = next_dense
-
-    @classmethod
-    def _map_state(
-        cls,
-        value: Any,
-        *,
-        clone: bool = False,
-        reference: Tensor | None = None,
-    ) -> Any:
-        if isinstance(value, Tensor):
-            if reference is not None:
-                return (
-                    value.detach()
-                    .to(
-                        device=reference.device,
-                        dtype=reference.dtype,
-                    )
-                    .clone()
-                )
-            return value.detach().clone() if clone else value
-        if is_dataclass(value) and not isinstance(value, type):
-            return type(value)(
-                **{
-                    field.name: cls._map_state(
-                        getattr(value, field.name),
-                        clone=clone,
-                        reference=reference,
-                    )
-                    for field in fields(value)
-                }
-            )
-        if isinstance(value, dict):
-            return {
-                key: cls._map_state(item, clone=clone, reference=reference)
-                for key, item in value.items()
-            }
-        if isinstance(value, tuple):
-            return tuple(
-                cls._map_state(item, clone=clone, reference=reference) for item in value
-            )
-        if isinstance(value, list):
-            return [
-                cls._map_state(item, clone=clone, reference=reference) for item in value
-            ]
-        return copy.deepcopy(value) if clone else value
-
-
-def _select_device_state(valid, new, previous):
-    if isinstance(new, Tensor):
-        return torch.where(valid, new, previous)
-    if is_dataclass(new):
-        return type(new)(
-            **{
-                f.name: _select_device_state(
-                    valid, getattr(new, f.name), getattr(previous, f.name)
-                )
-                for f in fields(new)
-            }
-        )
-    # Counters/configuration are host metadata. After a failure the latch keeps
-    # every tensor frozen; the optimizer cannot resume without restoration.
-    return new
+    def load_state_dict(self, state_dict):
+        if state_dict.get("cst") != self._manifest():
+            raise ValueError("CST optimizer checkpoint contract differs")
+        saved_groups = state_dict["param_groups"]
+        if len(saved_groups) != len(self.param_groups) or any(
+            len(saved["params"]) != len(current["params"])
+            for saved, current in zip(saved_groups, self.param_groups)
+        ):
+            raise ValueError("optimizer parameter groups differ from checkpoint")
+        for saved, current in zip(saved_groups, self.param_groups):
+            for index, point in zip(saved["params"], current["params"]):
+                for key, value in state_dict["state"].get(index, {}).items():
+                    if (
+                        isinstance(value, torch.Tensor)
+                        and key
+                        in {
+                            *self.state_adapter.vector_keys,
+                            "exp_avg_sq",
+                            "max_exp_avg_sq",
+                            "exp_inf",
+                            "square_avg",
+                            "sum",
+                            "acc_delta",
+                            "step_size",
+                        }
+                        and value.shape != point.shape
+                    ):
+                        raise ValueError(f"optimizer state {key!r} has the wrong shape")
+        payload = {key: value for key, value in state_dict.items() if key != "cst"}
+        super().load_state_dict(payload)
+        self.base_optimizer.state = self.state
+        self.base_optimizer.param_groups = self.param_groups

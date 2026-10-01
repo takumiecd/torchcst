@@ -18,7 +18,6 @@ from ._backends import (
     resolve_backend,
     validate_backend,
 )
-from .atom_grad import LinearAtomGrad
 from .module import CSTModule, RepulsionKind
 
 
@@ -264,18 +263,9 @@ class CSTLinear(CSTModule):
                 f"got {tuple(inputs.shape)}"
             )
 
-        atom_grad = self.atoms.grad
-        if atom_grad is not None and atom_grad.active:
-            if not isinstance(atom_grad, LinearAtomGrad):
-                raise TypeError("CSTLinear requires an active LinearAtomGrad")
-            outputs = atom_grad.apply(self, inputs)
-        else:
-            outputs = self._forward_from_p(
-                inputs,
-                self.atoms.p,
-                backend=self._resolved_backend(),
-            )
-        return outputs
+        return self._forward_from_p(
+            inputs, self.atoms.p, backend=self._resolved_backend()
+        )
 
     def extra_repr(self) -> str:
         return (

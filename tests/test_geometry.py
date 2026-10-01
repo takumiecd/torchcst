@@ -3,9 +3,8 @@ import torch
 from torchcst import (
     Chart,
     CSTLinear,
-    CSTParameterAdam,
+    CSTOptimizer,
     Gaussian,
-    ParameterAdamConfig,
     PolarAmpWidth,
     Separable,
     SphereGeometry,
@@ -259,10 +258,7 @@ def test_parameter_adam_retracts_spherical_centers() -> None:
         backend="factored",
         dtype=torch.float64,
     )
-    optimizer = CSTParameterAdam(
-        model,
-        cst=ParameterAdamConfig(lr=0.1, decay_steps=None),
-    )
+    optimizer = CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.1, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model)
 
     inputs = torch.randn(4, input_chart.features, dtype=torch.float64)
     loss = model(inputs).square().mean()
@@ -318,10 +314,7 @@ def test_parameter_adam_uses_d_coordinate_spherical_centers() -> None:
         backend="factored",
         dtype=torch.float64,
     )
-    optimizer = CSTParameterAdam(
-        model,
-        cst=ParameterAdamConfig(lr=0.1, decay_steps=None),
-    )
+    optimizer = CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.1, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model)
 
     inputs = torch.randn(4, input_chart.features, dtype=torch.float64)
     model(inputs).square().mean().backward()

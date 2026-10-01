@@ -1,6 +1,5 @@
-"""Fixed-shape atom state."""
+"""Opaque fixed-shape atom state."""
 
 from .atoms import Atoms
-from .grad import AtomGrad, AtomGradMode
 
-__all__ = ["AtomGrad", "AtomGradMode", "Atoms"]
+__all__ = ["Atoms"]

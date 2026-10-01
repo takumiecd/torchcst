@@ -39,8 +39,8 @@ bound = single_spec.bind(
 この入口を使う。計算本体は `_backends/torch/operators/linear.py` に置く。
 Torch の autograd は入力、全 atom、学習可能な Chart の Tensor を追跡する。
 `p` を明示すれば、derivative engine の候補点や atom 部分集合も評価できる。
-`Operator.apply()` は通常の autograd を使う計算入口。optimizer 専用の AtomGrad
-hook を利用する学習では、引き続き `CSTLinear.forward()` を通す。
+`Operator.apply()` uses ordinary autograd. CSTOptimizer consumes the resulting
+Parameter gradients without installing an optimizer-specific backward route.
 
 `Operator` は nn.Module ではない。所有権、checkpoint の key、optimizer の
 Parameter 参照は既存 Module のまま。`atoms.p` の更新や置き換え、dtype / device

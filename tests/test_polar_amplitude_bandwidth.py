@@ -1,15 +1,7 @@
 import pytest
 import torch
 
-from torchcst import (
-    Chart,
-    CSTLinear,
-    CSTNormalizedSGD,
-    CSTParameterAdam,
-    NormalizedOptimizerConfig,
-    ParameterAdamConfig,
-    PolarAmpWidth,
-)
+from torchcst import Chart, CSTLinear, CSTOptimizer, PolarAmpWidth
 
 
 def charts() -> tuple[Chart, Chart]:
@@ -594,14 +586,7 @@ def test_parameter_adam_uses_kernel_update_geometry() -> None:
         backend="factored",
         dtype=torch.float64,
     )
-    optimizer = CSTParameterAdam(
-        model,
-        cst=ParameterAdamConfig(
-            lr=0.1,
-            betas=(0.0, 0.0),
-            decay_steps=None,
-        ),
-    )
+    optimizer = CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.1, betas=(0.0, 0.0), eps=1e-8, weight_decay=0.0, foreach=False), model=model)
     with torch.no_grad():
         model.atoms.p[0, :2] = torch.tensor([0.6, 0.8]) * 2.5**0.5
     before = value.amplitude(input_chart, output_chart, model.atoms.p).detach()
@@ -619,43 +604,6 @@ def test_parameter_adam_uses_kernel_update_geometry() -> None:
     assert torch.all(after_q >= 1)
 
 
-def test_model_optimizer_uses_kernel_update_geometry() -> None:
-    input_chart, output_chart = charts()
-    value = kernel()
-    model = CSTLinear(
-        input_chart,
-        output_chart,
-        atoms=1,
-        kernel=value,
-        backend="factored",
-        dtype=torch.float64,
-    )
-    optimizer = CSTNormalizedSGD(
-        model,
-        cst=NormalizedOptimizerConfig(
-            lr=0.1,
-            trust_radius=0.2,
-            initial_zero_step=True,
-            kernel_step_size=0.5,
-        ),
-        dense=None,
-    )
-    with torch.no_grad():
-        model.atoms.p[0, :2] = torch.tensor([0.6, 0.8]) * 2.5**0.5
-    before = value.amplitude(input_chart, output_chart, model.atoms.p).detach()
-    before_q = model.atoms.p[:, :2].square().sum(dim=-1).detach()
-
-    optimizer.zero_grad(set_to_none=True)
-    loss = model(torch.zeros(1, input_chart.features, dtype=torch.float64)).sum() * 0
-    loss.backward()
-    optimizer.step()
-
-    after = value.amplitude(input_chart, output_chart, model.atoms.p).detach()
-    after_q = model.atoms.p[:, :2].square().sum(dim=-1).detach()
-    decay = torch.exp(torch.tensor(-4 * 0.2 * 0.5, dtype=after_q.dtype))
-    expected_q = 1 / (1 - ((before_q - 1) / before_q) * decay)
-    torch.testing.assert_close(after, before)
-    torch.testing.assert_close(after_q, expected_q)
 
 
 @pytest.mark.parametrize(

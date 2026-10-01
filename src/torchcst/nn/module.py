@@ -13,14 +13,10 @@ RepulsionKind = Literal["cosine", "raw", "abs"]
 
 
 class CSTModule(nn.Module):
-    """A fixed-shape atom site.
+    """A fixed-shape atom site discovered by CSTOptimizer.
 
-    Family-specific backward stays on ``LinearAtomGrad`` or a future
-    ``ConvAtomGrad``. This type does not unify those programs. Subclasses own
-    one ``Atoms`` table, frozen charts, and the ``(S, κ)`` repulsion terms.
-    ``CSTParameterAdam`` discovers every site through this contract. The N/D
-    optimizer family supports ``CSTLinear`` through ``LinearAtomGrad`` and
-    rejects other site families until they have observation programs.
+    Subclasses own their atom table and charts; ordinary backend autograd
+    supplies gradients. The Kernel owns the coordinate update policy.
     """
 
     atoms: Atoms

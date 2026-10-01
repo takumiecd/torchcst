@@ -6,13 +6,10 @@ import torch
 import torch.nn.functional as F
 
 from torchcst import (
-    AdamWConfig,
     Amplitude,
     Chart,
     CSTConv2d,
-    CSTLinear,
-    CSTParameterAdam,
-    CSTQuadraticAdam,
+    CSTOptimizer,
     Gaussian,
     Separable,
 )
@@ -180,7 +177,7 @@ def test_constructor_and_forward_validate_flat_patch_shape() -> None:
 
 def test_parameter_adam_owns_factored_conv_atom_coordinates() -> None:
     model = make_model(backend="factored")
-    optimizer = CSTParameterAdam(model)
+    optimizer = CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.03, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model)
     before = model.atoms.p.detach().clone()
 
     optimizer.zero_grad()
@@ -189,32 +186,16 @@ def test_parameter_adam_owns_factored_conv_atom_coordinates() -> None:
 
     assert model.atoms.p.grad is not None
     assert not torch.equal(model.atoms.p, before)
-    assert optimizer.param_groups[0]["schedule_step"] == 1
+    assert optimizer.state[model.atoms.p]["step"] == 1
 
 
 def test_parameter_adam_accepts_auto_when_conv_resolves_to_factored() -> None:
     model = make_model(backend="auto")
 
     assert model._resolved_backend() == "factored"
-    CSTParameterAdam(model)
+    CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.03, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model)
 
 
-def test_nd_optimizer_rejects_conv_instead_of_treating_atoms_as_dense() -> None:
-    class MixedModel(torch.nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.linear = CSTLinear(
-                Chart.linspace(4, spacing=1.0),
-                Chart.linspace(2, spacing=1.0),
-                atoms=1,
-                kernel=make_kernel(),
-            )
-            self.conv = make_model()
-
-    model = MixedModel()
-    with pytest.raises(ValueError, match=r"unsupported CST sites: conv \(CSTConv2d\)"):
-        CSTQuadraticAdam(model, dense=AdamWConfig())
-    assert model.linear.atoms.grad is None
 
 
 def test_repulsion_energy_is_shape_invariant() -> None:
