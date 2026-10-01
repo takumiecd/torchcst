@@ -9,3 +9,8 @@ build/
 .ruff_cache/
 .DS_Store
 output/
+
+# Generated CUDA experiment logs, source snapshots, traces and tensors
+benchmarks/cuda/linear/evidence/**
+!benchmarks/cuda/linear/evidence/README.md
+experiments/**/evidence/**
