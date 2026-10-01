@@ -89,4 +89,49 @@ GPU: installed wheel の同じテスト、独立oracleの必要勾配の組合�
 Graph capture後の中心/幅変更、AdamW state、通常sigma3/sharp別の完全stepとpeak。
 GPU driver は `benchmarks/cuda/linear/validate_dispatch_registry.py`。
 
-実機検証の結果、job ID、source SHA と再現コマンドを実行後ここへ追記する。
+### 検証済み checkpoint
+
+- source commit: `ee4effd70822fd3287e8e6775e211e2ada7937dc`。
+- ローカル CPU 全体: 495 passed、189 skipped（CUDA 等）、PyTorch 2.13.0。
+- pool job: `l4job-1000bf47ff0c40c8ae73420ea4d8b158`、succeeded。
+- frozen source archive SHA256: `ab71a235e9bfd39ac43fdbaed975f559ebe03b901917213f3ce2a0cd75393544`。
+- result archive SHA256: `a921f181e8584e406d7b4e953a1adf638767efa399a7e7d1ba6f3200bc64cccc`。
+- NVIDIA L4、GPU-70468812-5019-6f2d-1e66-ca0bb8c6a823、driver 580.82.07、
+  PyTorch 2.11.0+cu128、CUDA 12.8、Triton 3.6.0、Python 3.13.15。
+- installed wheel の関連テスト: 94 passed。直接planの必要勾配の組合せと
+  複数live forwardを含む。独立oracleとGraph/AdamW状態検証もPASS。
+- full/windowの通常sigma3とsharp fixtureで、初期parameter hashの一致を確認。
+- 結果archiveはpoolでSHA照合済み。owned L4 slotのstoppedを確認。
+
+N1024、M128、atom 52429、FP32、TF32無効、fused/capturable AdamW。
+時間は同期wallの7sample中央値。peakはmodel/input/gradient/optimizerを含み、
+Graph capture/replayを含む。GPU process全体の使用量は未測定。
+
+| fixture | plan / reference | eager ms | Graph ms | peak allocated MiB | peak reserved MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 通常 sigma3 | normalized_full | 1.56768 | 0.63450 | 51.85 | 106 |
+| 通常 sigma3 | normalized_window | 3.30984 | 1.52948 | 46.16 | 86 |
+| 通常 sigma3 の性能参照 | dense Linear | 0.72651 | 0.12715 | 50.50 | 106 |
+| sharp-only fixture | normalized_full | 1.64341 | 0.54902 | 51.85 | 106 |
+| sharp-only fixture | normalized_window | 2.81897 | 0.30727 | 46.16 | 86 |
+| sharp fixture の性能参照 | dense Linear | 0.67416 | 0.12788 | 50.50 | 106 |
+
+通常sigma3ではwindowはfullより遅く、peak allocatedは小さい。
+今回の変更は選択・実行・測定の接続であり、L4のアルゴリズム改善の主張ではない。
+N8192はrunner対応だが今回未測定。別GPUの認証・性能、交互対応計時、
+全形状suite、kernel承認ポイント、学習済みdispatch木は未実施。
+
+生データ、wheel、展開ソース、ログ、frozen sourceはignoreされた
+`benchmarks/cuda/linear/evidence/registry-v1/l4job-1000bf47ff0c40c8ae73420ea4d8b158/`
+に保存した。元のpool job directoryにも保持している。raw evidenceはGitへ追加しない。
+
+再現（現在のcheckoutを固定して一台のL4 queueへ投入）:
+
+```bash
+python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py submit \
+  --source "$PWD" --script "$PWD/benchmarks/cuda/linear/validate_dispatch_registry.py" \
+  --label cuda-dispatch-registry-v1 --timeout 900 -- "$(git rev-parse HEAD)"
+python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py serve --workers 1 --idle-seconds 0
+```
+
+すでにsupervisorが稼働している場合は二重起動せず、submit後にwaitする。
