@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import asdict
 
 import torch
 from torch import nn
@@ -103,6 +104,8 @@ class CSTOptimizer(Optimizer):
 
     @torch.no_grad()
     def step(self, closure=None):
+        from torchcst._backends.torch.kernels import execution as _kernel
+
         loss = None
         if closure is not None:
             # Evaluate once before projection/snapshot, at the current point.
@@ -142,8 +145,8 @@ class CSTOptimizer(Optimizer):
                         raise FloatingPointError("non-finite parameter gradient")
         old_points = []
         for site, point, rate in active:
-            projected = site.kernel.project_parameter_gradient(
-                *site.cst_charts(), point, point.grad
+            projected = _kernel.project_parameter_gradient(
+                site.kernel, *site.cst_charts(), point, point.grad
             )
             if projected.shape != point.shape:
                 raise ValueError("projected atom gradient has the wrong shape")
@@ -159,8 +162,8 @@ class CSTOptimizer(Optimizer):
         for site, point, rate, old in old_points:
             if rate == 0:
                 continue
-            new = site.kernel.apply_parameter_update(
-                *site.cst_charts(), old, point - old, step_size=rate
+            new = _kernel.apply_parameter_update(
+                site.kernel, *site.cst_charts(), old, point - old, step_size=rate
             )
             if new.shape != point.shape:
                 raise ValueError("updated atom parameters have the wrong shape")
@@ -173,7 +176,7 @@ class CSTOptimizer(Optimizer):
     def _manifest(self):
         names = {id(p): name for name, p in self.model.named_parameters()}
         return {
-            "version": 1,
+            "version": 2,
             "optimizer_type": f"{type(self.base_optimizer).__module__}.{type(self.base_optimizer).__qualname__}",
             "vector_keys": self.state_adapter.vector_keys,
             "state_adapter_type": f"{type(self.state_adapter).__module__}.{type(self.state_adapter).__qualname__}",
@@ -184,7 +187,7 @@ class CSTOptimizer(Optimizer):
             "sites": [
                 (
                     names[id(site.atoms.p)],
-                    f"{type(site.kernel).__module__}.{type(site.kernel).__qualname__}",
+                    asdict(site.kernel.declaration()),
                 )
                 for site in self._sites
             ],

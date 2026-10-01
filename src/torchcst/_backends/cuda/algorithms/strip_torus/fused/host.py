@@ -9,7 +9,7 @@ from torch import Tensor
 
 from torchcst._backends.torch.operators.strip_torus.layout import _station_layout
 from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
-from torchcst.kernels import DirectAmpWidth
+from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
 from torchcst.profiling import cst_span
 
 if TYPE_CHECKING:
@@ -26,18 +26,14 @@ def prepare(
         use_triton and p.is_cuda and p.dtype == torch.float32 and not torch.version.hip
     )
     with cst_span("cst.linear.prepare_atoms"):
-        # Preserve overrides on custom kernels; the built-in evaluator can
-        # reuse the plan's configuration validation without GPU/CPU sync.
-        if fused and type(site.kernel) is DirectAmpWidth:
+        if fused:
             from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
                 tile_parameters,
             )
 
             center, amplitude, precision = tile_parameters(site.kernel, p)
-        elif type(site.kernel).tile_parameters is DirectAmpWidth.tile_parameters:
-            center, amplitude, precision = site.kernel._tile_parameters(p)
         else:
-            center, amplitude, precision = site.kernel.tile_parameters(site.chart, p)
+            center, amplitude, precision = _coordinates._tile_parameters(site.kernel, p)
         decoded = site.chart.geometry.decode_centers(center)
     if (
         fused

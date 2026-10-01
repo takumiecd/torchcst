@@ -17,12 +17,16 @@ from torchcst._backends.torch.operators.strip_torus.support import (
     support_layout,
 )
 from torchcst._backends.torch.operators.strip_torus.tiled import validate_tiled
+from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
+from torchcst._backends.torch.profiles import execution as _profiles
 
 
 def reference(site, inputs, p):
     validate_tiled(site.chart, site.kernel)
     plan = execution_plan(site)
-    encoded, amplitude, precision = site.kernel.tile_parameters(site.chart, p)
+    encoded, amplitude, precision = _coordinates.tile_parameters(
+        site.kernel, site.chart, p
+    )
     layout = support_layout(
         plan,
         site.chart.geometry.decode_centers(encoded),
@@ -45,7 +49,8 @@ def reference(site, inputs, p):
                     encoded[a : a + 1], selection
                 ).squeeze(-1)
                 selected = columns[(squared.detach() * precision[a]) < 1]
-                values = site.kernel.profile.evaluate_with_precision_slice(
+                values = _profiles.evaluate_with_precision_slice(
+                    site.kernel.profiles[0],
                     site.chart,
                     encoded[a : a + 1],
                     precision[a : a + 1],
@@ -76,7 +81,7 @@ def forward(site, inputs, p, *, batch_tile=4, column_tile=128):
         offsets,
         bounds,
         site.chart.tile_shape[0],
-        PROFILE_KINDS[type(site.kernel.profile)],
+        PROFILE_KINDS[site.kernel.profiles[0].binding.profile.id],
         batch_tile,
         column_tile,
     )

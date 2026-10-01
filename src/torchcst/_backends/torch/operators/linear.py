@@ -3,11 +3,12 @@
 import torch.nn.functional as F
 from torch import Tensor
 
+from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst.profiling import cst_span
 
 
 def materialize_atoms(operator, p):
-    represented = operator.kernel.materialize_atoms(*operator.charts, p)
+    represented = _kernel.materialize_atoms(operator.kernel, *operator.charts, p)
     expected = (p.shape[0], *operator.shape)
     if represented.shape != expected:
         raise ValueError(f"kernel.materialize_atoms must return shape {list(expected)}")
@@ -16,7 +17,7 @@ def materialize_atoms(operator, p):
 
 def weight(operator, p):
     if len(operator.charts) == 1:
-        result = operator.kernel.weight(operator.charts[0], p)
+        result = _kernel.weight(operator.kernel, operator.charts[0], p)
         if result.shape != operator.shape:
             raise ValueError("kernel.weight must match the operator shape")
         return result
@@ -24,9 +25,9 @@ def weight(operator, p):
 
 
 def factors(operator, p):
-    if len(operator.charts) != 2 or not operator.kernel.supports_factorization:
+    if len(operator.charts) != 2 or not _kernel.supports_factorization(operator.kernel):
         raise ValueError("this operator does not provide input/output factors")
-    phi_input, phi_output = operator.kernel.factors(*operator.charts, p)
+    phi_input, phi_output = _kernel.factors(operator.kernel, *operator.charts, p)
     if phi_input.shape != (operator.in_features, p.shape[0]) or phi_output.shape != (
         operator.out_features,
         p.shape[0],

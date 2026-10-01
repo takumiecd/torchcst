@@ -27,6 +27,8 @@ from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
 from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import (
     materialize_weights,
 )
+from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
+from torchcst._backends.torch.profiles import execution as _profiles
 
 
 def log(**values):
@@ -79,13 +81,13 @@ def dense_control(layer, prepared):
             selected_rows * k + peak_columns,
         )
     )
-    encoded, amplitude, precision = layer.kernel.tile_parameters(
-        layer.chart, layer.atoms.p
+    encoded, amplitude, precision = _coordinates.tile_parameters(
+        layer.kernel, layer.chart, layer.atoms.p
     )
     expected = []
     for chunk in selection.split(64):
-        values = layer.kernel.profile.evaluate_with_precision_slice(
-            layer.chart, encoded, precision, chunk
+        values = _profiles.evaluate_with_precision_slice(
+            layer.kernel.profiles[0], layer.chart, encoded, precision, chunk
         )
         expected.append((values * amplitude).sum(dim=-1))
     validation = check(weight.flatten()[selection], torch.cat(expected))

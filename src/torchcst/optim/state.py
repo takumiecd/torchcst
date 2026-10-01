@@ -28,14 +28,16 @@ class OptimizerStateAdapter:
             raise ValueError("vector_keys must be unique")
 
     def transport(self, site, old: Tensor, new: Tensor, state: dict) -> None:
+        from torchcst._backends.torch.kernels import execution as _kernel
+
         for key in self.vector_keys:
             vector = state.get(key)
             if vector is None:
                 continue
             if not isinstance(vector, Tensor) or vector.shape != old.shape:
                 raise ValueError(f"optimizer vector state {key!r} has the wrong shape")
-            transported = site.kernel.transport_parameter_state(
-                *site.cst_charts(), old, new, vector
+            transported = _kernel.transport_parameter_state(
+                site.kernel, *site.cst_charts(), old, new, vector
             )
             if transported.shape != vector.shape:
                 raise ValueError("transported optimizer state has the wrong shape")

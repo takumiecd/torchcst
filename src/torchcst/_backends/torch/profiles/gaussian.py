@@ -1,33 +1,36 @@
-"""PyTorch execution for legacy gaussian contracts."""
+"""PyTorch execution for declared gaussian contracts."""
 
 from __future__ import annotations
 
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.profiles import execution as _profile
 from torchcst.geometry import Chart
-from torchcst.kernels.base import AtomInit
+from torchcst.kernels.spec import AtomInit
 
 
-def initialize(self, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
+def initialize(state, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
     return chart.initialize_centers(atoms, mode=mode)
 
 
-def evaluate(self, chart: Chart, p: Tensor) -> Tensor:
-    precision = self.sigma.reciprocal().square()
-    return self.evaluate_with_precision(chart, p, precision)
+def evaluate(state, chart: Chart, p: Tensor) -> Tensor:
+    precision = state.sigma.reciprocal().square()
+    return _profile.evaluate_with_precision(state, chart, p, precision)
 
 
 def evaluate_with_precision(
-    self,
+    state,
     chart: Chart,
     p: Tensor,
     precision: Tensor,
 ) -> Tensor:
     """Evaluate normalized columns with scalar or per-atom precision."""
 
-    if p.ndim != 2 or p.shape[1] != self.parameter_dim(chart):
-        raise ValueError(f"p must have shape [atoms, {self.parameter_dim(chart)}]")
+    if p.ndim != 2 or p.shape[1] != _profile.parameter_dim(state, chart):
+        raise ValueError(
+            f"p must have shape [atoms, {_profile.parameter_dim(state, chart)}]"
+        )
     if precision.ndim not in (0, 1):
         raise ValueError("precision must be scalar or have shape [atoms]")
     if precision.ndim == 1 and precision.shape != (p.shape[0],):
@@ -35,22 +38,24 @@ def evaluate_with_precision(
     precision = precision.to(device=p.device, dtype=p.dtype)
     squared_distance = chart.squared_distance(p)
     log_squared_values = -squared_distance * precision
-    if not self.normalize_columns:
+    if state.binding.normalization.kind == "none":
         return torch.exp(0.5 * log_squared_values)
     return torch.exp(0.5 * torch.log_softmax(log_squared_values, dim=0))
 
 
 def evaluate_with_precision_slice(
-    self,
+    state,
     chart: Chart,
     p: Tensor,
     precision: Tensor,
     selection: slice | Tensor,
 ) -> Tensor:
-    if self.normalize_columns:
+    if state.binding.normalization.kind != "none":
         raise ValueError("sliced evaluation requires normalize_columns=False")
-    if p.ndim != 2 or p.shape[1] != self.parameter_dim(chart):
-        raise ValueError(f"p must have shape [atoms, {self.parameter_dim(chart)}]")
+    if p.ndim != 2 or p.shape[1] != _profile.parameter_dim(state, chart):
+        raise ValueError(
+            f"p must have shape [atoms, {_profile.parameter_dim(state, chart)}]"
+        )
     if precision.ndim not in (0, 1) or (
         precision.ndim == 1 and precision.shape != (p.shape[0],)
     ):
@@ -59,23 +64,23 @@ def evaluate_with_precision_slice(
     return torch.exp(-0.5 * squared * precision.to(device=p.device, dtype=p.dtype))
 
 
-def tangent(self, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
-    values, centers, _ = self.tangent_with_precision(
-        chart, p, self.sigma.reciprocal().square()
+def tangent(state, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
+    values, centers, _ = _profile.tangent_with_precision(
+        state, chart, p, state.sigma.reciprocal().square()
     )
     return values, centers
 
 
-def tangent_with_precision(self, chart: Chart, p: Tensor, precision: Tensor):
+def tangent_with_precision(state, chart: Chart, p: Tensor, precision: Tensor):
     """Analytic values, center derivatives and precision derivative.
 
     Includes the complete L2 normalization, with no amplitude division.
     """
     precision = precision.to(p)
-    values = self.evaluate_with_precision(chart, p, precision)
+    values = _profile.evaluate_with_precision(state, chart, p, precision)
     offset = chart.center_offsets(p)
     squared = chart.squared_distance(p)
-    if not self.normalize_columns:
+    if state.binding.normalization.kind == "none":
         centers = values[..., None] * precision.reshape(1, -1, 1) * offset
         widths = -0.5 * values * squared
         return values, centers, widths
@@ -88,12 +93,12 @@ def tangent_with_precision(self, chart: Chart, p: Tensor, precision: Tensor):
     return values, centers, widths
 
 
-def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
+def project_gradient(state, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
     return chart.geometry.project_tangent(p, gradient)
 
 
 def apply_parameter_update(
-    self,
+    state,
     chart: Chart,
     p: Tensor,
     displacement: Tensor,
@@ -102,7 +107,7 @@ def apply_parameter_update(
 
 
 def transport_state(
-    self,
+    kernel_state,
     chart: Chart,
     old: Tensor,
     new: Tensor,

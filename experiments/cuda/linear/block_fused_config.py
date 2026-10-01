@@ -117,7 +117,7 @@ def launch_fused(layer, x, prepared, y, config):
         CG=layer.column_groups,
         G=layer.strip.chart.tile_count,
         D=p.shape[1] - 2,
-        PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+        PROFILE=PROFILE_KINDS[layer.strip.kernel.profiles[0].binding.profile.id],
         BM=config.batch_rows,
         BN=config.output_rows,
         BK=config.columns,

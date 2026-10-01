@@ -18,7 +18,7 @@ from experiments.cuda.linear.block_streamed_backward import (
     build_listed_forward_candidates_bounded,
     trainable_boxed_prepare,
 )
-from torchcst.kernels.compact import Triweight
+from torchcst.kernels import TriweightSpec
 
 
 @dataclass(frozen=True)
@@ -433,7 +433,7 @@ class _AnchorSamples(torch.autograd.Function):
         backward_lanes,
         list_mode,
     ):
-        if type(layer.strip.kernel.profile) is not Triweight:
+        if type(layer.strip.kernel.profiles[0].binding.profile) is not TriweightSpec:
             raise ValueError("anchor prototype requires Triweight")
         if list_mode == "full_tile":
             lists, counts, capacity = build_listed_forward_candidates_bounded(

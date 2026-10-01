@@ -1,34 +1,42 @@
-"""PyTorch execution for legacy amplitude_bandwidth contracts."""
+"""PyTorch execution for declared amplitude_bandwidth contracts."""
 
 from __future__ import annotations
 
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.parameterizations import amp_width as _parameterizations
+from torchcst._backends.torch.profiles import execution as _profile
 from torchcst.geometry import Chart
 
 
 def project_parameter_gradient(
-    self,
+    state,
     input_chart: Chart,
     output_chart: Chart,
     p: Tensor,
     gradient: Tensor,
 ) -> Tensor:
-    _, input_p, output_p = self._split(input_chart, output_chart, p)
-    amplitude_g, input_g, output_g = self._split(input_chart, output_chart, gradient)
+    _, input_p, output_p = _parameterizations._split(
+        state, input_chart, output_chart, p
+    )
+    amplitude_g, input_g, output_g = _parameterizations._split(
+        state, input_chart, output_chart, gradient
+    )
     return torch.cat(
         (
             amplitude_g,
-            self.profile.project_gradient(input_chart, input_p, input_g),
-            self.profile.project_gradient(output_chart, output_p, output_g),
+            _profile.project_gradient(state.profiles[0], input_chart, input_p, input_g),
+            _profile.project_gradient(
+                state.profiles[1], output_chart, output_p, output_g
+            ),
         ),
         dim=-1,
     )
 
 
 def apply_parameter_update(
-    self,
+    state,
     input_chart: Chart,
     output_chart: Chart,
     p: Tensor,
@@ -37,36 +45,52 @@ def apply_parameter_update(
     step_size: float,
 ) -> Tensor:
     del step_size
-    amplitude, input_p, output_p = self._split(input_chart, output_chart, p)
-    amplitude_d, input_d, output_d = self._split(
-        input_chart, output_chart, displacement
+    amplitude, input_p, output_p = _parameterizations._split(
+        state, input_chart, output_chart, p
+    )
+    amplitude_d, input_d, output_d = _parameterizations._split(
+        state, input_chart, output_chart, displacement
     )
     return torch.cat(
         (
             amplitude + amplitude_d,
-            self.profile.apply_parameter_update(input_chart, input_p, input_d),
-            self.profile.apply_parameter_update(output_chart, output_p, output_d),
+            _profile.apply_parameter_update(
+                state.profiles[0], input_chart, input_p, input_d
+            ),
+            _profile.apply_parameter_update(
+                state.profiles[1], output_chart, output_p, output_d
+            ),
         ),
         dim=-1,
     )
 
 
 def transport_parameter_state(
-    self,
+    kernel_state,
     input_chart: Chart,
     output_chart: Chart,
     old: Tensor,
     new: Tensor,
     state: Tensor,
 ) -> Tensor:
-    _, old_i, old_o = self._split(input_chart, output_chart, old)
-    _, new_i, new_o = self._split(input_chart, output_chart, new)
-    amplitude_s, state_i, state_o = self._split(input_chart, output_chart, state)
+    _, old_i, old_o = _parameterizations._split(
+        kernel_state, input_chart, output_chart, old
+    )
+    _, new_i, new_o = _parameterizations._split(
+        kernel_state, input_chart, output_chart, new
+    )
+    amplitude_s, state_i, state_o = _parameterizations._split(
+        kernel_state, input_chart, output_chart, state
+    )
     return torch.cat(
         (
             amplitude_s,
-            self.profile.transport_state(input_chart, old_i, new_i, state_i),
-            self.profile.transport_state(output_chart, old_o, new_o, state_o),
+            _profile.transport_state(
+                kernel_state.profiles[0], input_chart, old_i, new_i, state_i
+            ),
+            _profile.transport_state(
+                kernel_state.profiles[1], output_chart, old_o, new_o, state_o
+            ),
         ),
         dim=-1,
     )

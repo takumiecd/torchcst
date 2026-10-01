@@ -3,10 +3,12 @@
 Continuous operators for PyTorch. A fixed atom-coordinate table represents a
 weight operator: `W = sum_k Kernel(p[k])`.
 
-Kernel and Profile define values, amplitude, width and normalization. Chart and
+KernelSpec and ProfileBinding declare shape, amplitude, width and normalization. Chart and
 Geometry define observation sites and distances. Operator exposes the operation;
 backend algorithms implement forward and backward. Atom count and parameter
-shapes stay fixed during training.
+shapes stay fixed during training. Models accept pure KernelSpec declarations and
+own a common KernelState; the former Kernel/Profile classes and checkpoint
+compatibility loaders have been removed.
 
 ## Installation
 
@@ -29,15 +31,16 @@ supplies Parameter gradients; there is no optimizer-specific backward route.
 ```python
 import torch
 from torch import nn
-from torchcst import Chart, CSTLinear, CSTOptimizer, PolarAmpWidth
+from torchcst import Chart, CSTLinear, CSTOptimizer, BandwidthBounds, presets
 
 layer = CSTLinear(
     Chart.linspace(16, spacing=0.2),
     Chart.linspace(8, spacing=0.3),
     atoms=12,
-    kernel=PolarAmpWidth(
+    kernel=presets.polar_activity(
         amplitude_max=1.0, w_c=0.1,
-        sigma_min=0.1, sigma_max=2.0,
+        input_bounds=BandwidthBounds(minimum=0.1, birth=2.0,
+                                     maximum=2.0, upper_floor=0.1),
         radial_regularization=0.2,
     ),
     backend="factored",
@@ -90,13 +93,13 @@ scheduler.load_state_dict(checkpoint["scheduler"])
 
 The wrapper shares parameter groups and state with the base optimizer. Its
 checkpoint also records optimizer type, vector-state keys, parameter names,
-shapes and policy ownership. Move the model to its target device before creating
+shapes, the mathematical KernelSpec and policy ownership. Move the model to its target device before creating
 the optimizer; rebuild after replacing an atom Parameter.
 
 ## Coordinates and execution
 
-PolarAmpWidth uses angular task motion, bounded radial activity,
-activity-dependent width and radial regularization. DirectAmpWidth uses bounded
+`presets.polar_activity` uses angular task motion, bounded radial activity,
+activity-dependent width and radial regularization. `presets.direct_activity` uses bounded
 signed amplitude and a separate activity state advanced by accepted amplitude
 motion. Sphere and Torus atom centers use Geometry projection, retraction and
 vector transport. Trainable non-Euclidean observation charts require a separate

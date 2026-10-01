@@ -59,7 +59,7 @@ def forward(
             section,
             offsets,
             site.chart.tile_shape[0],
-            PROFILE_KINDS[type(site.kernel.profile)],
+            PROFILE_KINDS[site.kernel.profiles[0].binding.profile.id],
             split_reductions,
             support_layout,
             batch_tile,

@@ -1,5 +1,9 @@
-"""Mapped block sites, oracle gradients, and forward GPU correctness."""
+from __future__ import annotations
 
+from torchcst._backends.torch.kernels import execution as _kernel
+from torchcst._backends.torch.profiles import execution as _profile
+
+"""Mapped block sites, oracle gradients, and forward GPU correctness."""
 import pytest
 import torch
 import torch.nn.functional as F
@@ -58,7 +62,7 @@ def test_mapped_gpu(shape, tile, backend):
         x = torch.randn(shape[1], 5, device="cuda").T
         expected = F.linear(x, layer.dense_weight())
         actual = layer(x, backend=backend)
-        torch.testing.assert_close(actual, expected, atol=3e-5, rtol=3e-5)
+        torch.testing.assert_close(actual, expected, atol=3e-05, rtol=3e-05)
         assert layer(x[:0], backend=backend).shape == (0, shape[0])
     with pytest.raises(NotImplementedError, match="forward only"):
         layer(x, backend=backend)
@@ -86,9 +90,7 @@ def test_boundary_seam_and_graph_updates(backend, execution=None):
         p = layer.strip.atoms.p
         chart = layer.strip.chart
         coord = p.new_zeros((8, 3))
-        coord[:, 0] = (
-            chart.axes[0].start[0] + (torch.arange(8, device="cuda") // 2) * 2.6
-        )
+        coord[:, 0] = chart.axes[0].start[0] + torch.arange(8, device="cuda") // 2 * 2.6
         coord[:, 0] += torch.where(torch.arange(8, device="cuda") % 2 == 0, 0.7, 2.05)
         p[:, 2:] = chart.geometry.encode_centers(
             chart.geometry.lift_chart_coordinates(coord)
@@ -101,8 +103,8 @@ def test_boundary_seam_and_graph_updates(backend, execution=None):
         torch.testing.assert_close(
             layer(x, backend=backend, **execution),
             F.linear(x, layer.dense_weight()),
-            atol=3e-5,
-            rtol=3e-5,
+            atol=3e-05,
+            rtol=3e-05,
         )
         stream = torch.cuda.Stream()
         stream.wait_stream(torch.cuda.current_stream())
@@ -117,7 +119,7 @@ def test_boundary_seam_and_graph_updates(backend, execution=None):
         p[:, 2] += 0.2
         graph.replay()
         torch.testing.assert_close(
-            y, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
+            y, F.linear(x, layer.dense_weight()), atol=3e-05, rtol=3e-05
         )
 
 
@@ -140,7 +142,7 @@ def test_diagnostic_modes_and_counts():
         weight = layer.dense_weight()
         opts = {"N": 32, "K": 32, "S": 16, "G": 2, "D": 4, "PROFILE": 1, "BK": 128}
         for mode in (0, 1, 2, 3):
-            diagnostic_forward[(1, 32)](
+            diagnostic_forward[1, 32](
                 x,
                 p,
                 circle,
@@ -156,9 +158,9 @@ def test_diagnostic_modes_and_counts():
                 enable_fp_fusion=False,
             )
             expected = F.linear(torch.ones_like(x) if mode == 1 else x, weight)
-            torch.testing.assert_close(y, expected, atol=3e-5, rtol=3e-5)
+            torch.testing.assert_close(y, expected, atol=3e-05, rtol=3e-05)
         counts = torch.empty((32, 4), device="cuda", dtype=torch.int32)
-        count_rows[(32,)](
+        count_rows[32,](
             p,
             circle,
             section,
@@ -169,11 +171,18 @@ def test_diagnostic_modes_and_counts():
             num_warps=4,
             enable_fp_fusion=False,
         )
-        center, amp, prec = layer.strip.kernel.tile_parameters(
-            layer.strip.chart, layer.strip.atoms.p
+        center, amp, prec = _kernel.coordinate(
+            layer.strip.kernel,
+            "tile_parameters",
+            layer.strip.chart,
+            layer.strip.atoms.p,
         )
-        values = layer.strip.kernel.profile.evaluate_with_precision_slice(
-            layer.strip.chart, center, prec, slice(0, 1024)
+        values = _profile.evaluate_with_precision_slice(
+            layer.strip.kernel.profiles[0],
+            layer.strip.chart,
+            center,
+            prec,
+            slice(0, 1024),
         )
         assert int(counts[:, 2].sum()) == int(((values != 0) & (amp != 0)).sum())
         assert bool((counts[:, 1] <= counts[:, 0]).all())
@@ -191,8 +200,8 @@ def test_reuse_tail_and_multiple_column_fragments(batch_tile):
         torch.testing.assert_close(
             layer(x, backend="triton_reuse", batch_tile=batch_tile),
             expected,
-            atol=3e-5,
-            rtol=3e-5,
+            atol=3e-05,
+            rtol=3e-05,
         )
 
 
@@ -218,16 +227,10 @@ def test_shared_partial_station_and_batch(backend, bm, bn, warps):
         layer.strip.atoms.p[::3, 0] = 0
         x = torch.randn(65, 197, device="cuda")
         torch.testing.assert_close(
-            layer(
-                x,
-                backend=backend,
-                batch_tile=bm,
-                output_tile=bn,
-                num_warps=warps,
-            ),
+            layer(x, backend=backend, batch_tile=bm, output_tile=bn, num_warps=warps),
             F.linear(x, layer.dense_weight()),
-            atol=3e-5,
-            rtol=3e-5,
+            atol=3e-05,
+            rtol=3e-05,
         )
 
 
@@ -244,8 +247,8 @@ def test_support_culling_partial_and_seam(width, mode):
         torch.testing.assert_close(
             layer(x, backend="triton_atom_dot", column_tile=width, support_cull=mode),
             F.linear(x, layer.dense_weight()),
-            atol=3e-5,
-            rtol=3e-5,
+            atol=3e-05,
+            rtol=3e-05,
         )
     test_boundary_seam_and_graph_updates(
         "triton_atom_dot", {"column_tile": width, "support_cull": mode}
@@ -264,10 +267,12 @@ def test_support_counts_match_canonical_atom_sites():
         result = diagnose_support(
             layer, prepare(layer.strip, p, support_layout=True), 65
         )
-        center, amp, prec = layer.strip.kernel.tile_parameters(layer.strip.chart, p)
+        center, amp, prec = _kernel.coordinate(
+            layer.strip.kernel, "tile_parameters", layer.strip.chart, p
+        )
         indices = layer.logical_to_virtual(torch.arange(17 * 65, device="cuda"))
-        values = layer.strip.kernel.profile.evaluate_with_precision_slice(
-            layer.strip.chart, center, prec, indices
+        values = _profile.evaluate_with_precision_slice(
+            layer.strip.kernel.profiles[0], layer.strip.chart, center, prec, indices
         )
         assert result["nonzero_sites_per_m_group"] == int(
             ((values != 0) & (amp != 0)).sum()

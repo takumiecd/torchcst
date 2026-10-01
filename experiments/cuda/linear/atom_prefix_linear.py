@@ -11,8 +11,9 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from torchcst import DirectAmpWidth, Triweight
+from torchcst import DirectAmpWidthSpec, TriweightSpec
 from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
+from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
 
 
 @dataclass
@@ -29,8 +30,8 @@ class PrefixPlan:
 
 def prepare_prefix(site, p: Tensor) -> PrefixPlan:
     if (
-        type(site.kernel) is not DirectAmpWidth
-        or type(site.kernel.profile) is not Triweight
+        type(site.kernel.spec.parameterization) is not DirectAmpWidthSpec
+        or type(site.kernel.profiles[0].binding.profile) is not TriweightSpec
     ):
         raise ValueError(
             "atom prefix prototype requires DirectAmpWidth and raw Triweight"
@@ -42,7 +43,7 @@ def prepare_prefix(site, p: Tensor) -> PrefixPlan:
         raise ValueError(f"p must have shape [atoms, {plan.parameter_dim}]")
     # execution_plan validates the fixed kernel configuration. As in the
     # existing backend, avoid repeating host-synchronizing checks in capture.
-    encoded, amplitude, precision = site.kernel._tile_parameters(p)
+    encoded, amplitude, precision = _coordinates._tile_parameters(site.kernel, p)
     centers = site.chart.geometry.decode_centers(encoded)
     radius = centers[:, :2].norm(dim=-1)
     direction = centers[:, :2] / radius[:, None]

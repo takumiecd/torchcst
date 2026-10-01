@@ -28,6 +28,8 @@ from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
 from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import (
     materialize_weights,
 )
+from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
+from torchcst._backends.torch.profiles import execution as _profiles
 
 
 def log(**data):
@@ -182,13 +184,13 @@ def mapped_control(layer, prepared, *, canonical_chunk=32):
         )
     )
     virtual_indices = layer.logical_to_virtual(chosen)
-    center, amp, prec = layer.strip.kernel.tile_parameters(
-        layer.strip.chart, layer.strip.atoms.p
+    center, amp, prec = _coordinates.tile_parameters(
+        layer.strip.kernel, layer.strip.chart, layer.strip.atoms.p
     )
     canonical = []
     for selection in virtual_indices.split(canonical_chunk):
-        values = layer.strip.kernel.profile.evaluate_with_precision_slice(
-            layer.strip.chart, center, prec, selection
+        values = _profiles.evaluate_with_precision_slice(
+            layer.strip.kernel.profiles[0], layer.strip.chart, center, prec, selection
         )
         canonical.append((values * amp).sum(-1))
     checked = check(w.flatten()[chosen], torch.cat(canonical))

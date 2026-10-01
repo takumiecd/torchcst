@@ -18,18 +18,21 @@ from time import perf_counter
 import torch
 
 from torchcst import (
+    BandwidthBounds,
     CSTLinear,
-    DirectAmpWidth,
     GridPattern,
     LinePattern,
     StripChart,
     TorusGeometry,
-    Triweight,
+    TriweightSpec,
+    presets,
 )
 from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import _FusedLinear
 from torchcst._backends.cuda.algorithms.strip_torus.fused.host import (
     prepare as prepare_atoms,
 )
+from torchcst._backends.torch.kernels.execution import KernelOptions
+from torchcst.kernels import ProfileBinding
 
 
 def timed(fn, repeats):
@@ -63,17 +66,21 @@ def model(atoms, *, rows=64, columns=128, station_rows=16):
             representation="intrinsic",
         ),
     )
-    kernel = DirectAmpWidth(
+    kernel = presets.direct_activity(
         amplitude_max=1.0,
-        sigma_min=0.2,
-        sigma_birth=0.5,
-        sigma_max=0.8,
+        input_bounds=BandwidthBounds(
+            minimum=0.2, birth=0.5, maximum=0.8, upper_floor=0.2
+        ),
         w_c=0.05,
-        profile=Triweight(0.2, normalize_columns=False),
-        checkpoint_blocks=False,
+        profile=ProfileBinding(profile=TriweightSpec()),
     )
     return CSTLinear(
-        chart=chart, atoms=atoms, kernel=kernel, backend="triton", device="cuda"
+        chart=chart,
+        atoms=atoms,
+        kernel=kernel,
+        kernel_options=KernelOptions(checkpoint_blocks=False),
+        backend="triton",
+        device="cuda",
     )
 
 

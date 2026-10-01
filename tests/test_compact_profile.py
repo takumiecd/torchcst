@@ -1,17 +1,21 @@
+from __future__ import annotations
+
 import pytest
 import torch
+from kernel_cases import (
+    amp_width_state,
+    biweight_state,
+    gaussian_state,
+    separable_state,
+    triangle_state,
+    triweight_state,
+    wendland_state,
+)
 from torch.func import hessian, vmap
 
-from torchcst import (
-    AmpWidth,
-    Biweight,
-    Chart,
-    Gaussian,
-    Separable,
-    Triangle,
-    Triweight,
-    WendlandC2,
-)
+from torchcst import Chart
+from torchcst._backends.torch.kernels import execution as _kernel
+from torchcst._backends.torch.profiles import execution as _profile
 
 
 def _double_profile(factory, sigma: float):
@@ -20,12 +24,10 @@ def _double_profile(factory, sigma: float):
 
 def test_wendland_columns_are_l2_normalized_or_zero() -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1).double())
-    profile = _double_profile(WendlandC2, 0.5)
+    profile = _double_profile(wendland_state, 0.5)
     p = torch.tensor([[0.0], [8.0]], dtype=torch.float64)
-
-    values = profile.evaluate(chart, p)
+    values = _profile.evaluate(profile, chart, p)
     norms = torch.linalg.vector_norm(values, dim=0)
-
     torch.testing.assert_close(norms[0], torch.tensor(1.0, dtype=torch.float64))
     torch.testing.assert_close(norms[1], torch.tensor(0.0, dtype=torch.float64))
     assert torch.equal(values[:, 1], torch.zeros(chart.features, dtype=torch.float64))
@@ -34,49 +36,44 @@ def test_wendland_columns_are_l2_normalized_or_zero() -> None:
 
 def test_wendland_matches_the_unnormalized_polynomial() -> None:
     chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
-    profile = _double_profile(WendlandC2, 1.0)
+    profile = _double_profile(wendland_state, 1.0)
     p = torch.tensor([[0.0]], dtype=torch.float64)
-
-    raw = torch.tensor([1.0, (0.5**4) * 3.0, 0.0], dtype=torch.float64)
+    raw = torch.tensor([1.0, 0.5**4 * 3.0, 0.0], dtype=torch.float64)
     expected = raw / torch.linalg.vector_norm(raw)
-    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
+    torch.testing.assert_close(_profile.evaluate(profile, chart, p)[:, 0], expected)
 
 
 def test_triweight_matches_the_unnormalized_polynomial() -> None:
     chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
-    profile = Triweight(1.0, normalize_columns=False).double()
+    profile = triweight_state(1.0, normalize_columns=False).double()
     p = torch.tensor([[0.0]], dtype=torch.float64)
-
     raw = torch.tensor([1.0, 0.75**3, 0.0], dtype=torch.float64)
-    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], raw)
+    torch.testing.assert_close(_profile.evaluate(profile, chart, p)[:, 0], raw)
 
 
 def test_triweight_defaults_to_legacy_l2_column_normalization() -> None:
     chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
-    profile = Triweight(1.0).double()
+    profile = triweight_state(1.0).double()
     p = torch.tensor([[0.0]], dtype=torch.float64)
-
     raw = torch.tensor([1.0, 0.75**3, 0.0], dtype=torch.float64)
     torch.testing.assert_close(
-        profile.evaluate(chart, p)[:, 0], raw / torch.linalg.vector_norm(raw)
+        _profile.evaluate(profile, chart, p)[:, 0], raw / torch.linalg.vector_norm(raw)
     )
 
 
 def test_triangle_matches_the_radial_hat() -> None:
     chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
-    profile = _double_profile(Triangle, 1.0)
+    profile = _double_profile(triangle_state, 1.0)
     p = torch.tensor([[0.0]], dtype=torch.float64)
-
     expected = torch.tensor(
-        [1.0 - torch.finfo(torch.float64).eps**0.5, 0.5, 0.0],
-        dtype=torch.float64,
+        [1.0 - torch.finfo(torch.float64).eps ** 0.5, 0.5, 0.0], dtype=torch.float64
     )
-    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
+    torch.testing.assert_close(_profile.evaluate(profile, chart, p)[:, 0], expected)
 
 
 def test_forward_skips_offsets_but_analytic_tangent_uses_them(monkeypatch) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1))
-    profile = Triweight(0.5)
+    profile = triweight_state(0.5)
     centers = torch.tensor([[0.1]])
     original = chart.center_offsets
     calls = 0
@@ -87,38 +84,36 @@ def test_forward_skips_offsets_but_analytic_tangent_uses_them(monkeypatch) -> No
         return original(p)
 
     monkeypatch.setattr(chart, "center_offsets", tracked)
-    profile.evaluate(chart, centers)
+    _profile.evaluate(profile, chart, centers)
     assert calls == 0
-    profile.tangent(chart, centers)
+    _profile.tangent(profile, chart, centers)
     assert calls == 1
 
 
 def test_biweight_matches_the_unnormalized_polynomial() -> None:
     chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
-    profile = _double_profile(Biweight, 1.0)
+    profile = _double_profile(biweight_state, 1.0)
     p = torch.tensor([[0.0]], dtype=torch.float64)
-
     expected = torch.tensor([1.0, 0.75**2, 0.0], dtype=torch.float64)
-    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
+    torch.testing.assert_close(_profile.evaluate(profile, chart, p)[:, 0], expected)
 
 
 def test_biweight_can_opt_into_discrete_column_normalization() -> None:
     chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
-    profile = Biweight(1.0, normalize_columns=True).double()
+    profile = biweight_state(1.0, normalize_columns=True).double()
     p = torch.tensor([[0.0]], dtype=torch.float64)
-
     raw = torch.tensor([1.0, 0.75**2, 0.0], dtype=torch.float64)
     expected = raw / torch.linalg.vector_norm(raw)
-    torch.testing.assert_close(profile.evaluate(chart, p)[:, 0], expected)
-    assert "normalize_columns=True" in repr(profile)
+    torch.testing.assert_close(_profile.evaluate(profile, chart, p)[:, 0], expected)
+    assert profile.binding.normalization.kind == "discrete_l2"
 
 
 def test_compact_normalization_override_must_be_boolean() -> None:
-    with pytest.raises(TypeError, match="bool or None"):
-        Biweight(1.0, normalize_columns=1)
+    with pytest.raises(TypeError, match="bool"):
+        biweight_state(1.0, normalize_columns=1)
 
 
-@pytest.mark.parametrize("factory", [Triangle, Biweight, Triweight])
+@pytest.mark.parametrize("factory", [triangle_state, biweight_state, triweight_state])
 def test_raw_compact_profile_retains_one_site_center_and_width_derivatives(
     factory,
 ) -> None:
@@ -126,11 +121,9 @@ def test_raw_compact_profile_retains_one_site_center_and_width_derivatives(
     profile = factory(1.0, normalize_columns=False).double()
     center = torch.tensor([[0.25]], dtype=torch.float64)
     precision = torch.ones(1, dtype=torch.float64)
-
-    values, centers, widths = profile.tangent_with_precision(
-        chart, center, precision
+    values, centers, widths = _profile.tangent_with_precision(
+        profile, chart, center, precision
     )
-
     assert torch.count_nonzero(values[:, 0]) == 1
     assert centers[0, 0, 0] != 0
     assert widths[0, 0] != 0
@@ -138,37 +131,34 @@ def test_raw_compact_profile_retains_one_site_center_and_width_derivatives(
     torch.testing.assert_close(widths[1], torch.zeros_like(widths[1]))
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
+@pytest.mark.parametrize(
+    "factory", [wendland_state, triangle_state, biweight_state, triweight_state]
+)
 def test_separated_compact_atoms_have_zero_inner_product(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
     compact = _double_profile(factory, 0.35)
-    gaussian = Gaussian(0.35).to(dtype=torch.float64)
+    gaussian = gaussian_state(0.35).to(dtype=torch.float64)
     p = torch.tensor([[-0.75], [0.75]], dtype=torch.float64)
-
-    compact_values = compact.evaluate(chart, p)
-    gaussian_values = gaussian.evaluate(chart, p)
+    compact_values = _profile.evaluate(compact, chart, p)
+    gaussian_values = _profile.evaluate(gaussian, chart, p)
     compact_gram = compact_values.T @ compact_values
     gaussian_gram = gaussian_values.T @ gaussian_values
-
     torch.testing.assert_close(
-        compact_gram[0, 1],
-        torch.zeros((), dtype=torch.float64),
-        atol=0,
-        rtol=0,
+        compact_gram[0, 1], torch.zeros((), dtype=torch.float64), atol=0, rtol=0
     )
-    assert gaussian_gram[0, 1].abs() > 1e-6
+    assert gaussian_gram[0, 1].abs() > 1e-06
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
+@pytest.mark.parametrize(
+    "factory", [wendland_state, triangle_state, biweight_state, triweight_state]
+)
 def test_compact_tangent_is_finite_on_the_support_boundary(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
     p = torch.tensor([[0.5], [-0.5]], dtype=torch.float64)
-
-    values, centers, widths = profile.tangent_with_precision(
-        chart, p, profile.sigma.reciprocal().square()
+    values, centers, widths = _profile.tangent_with_precision(
+        profile, chart, p, profile.sigma.reciprocal().square()
     )
-
     assert torch.isfinite(values).all()
     assert torch.isfinite(centers).all()
     assert torch.isfinite(widths).all()
@@ -176,20 +166,18 @@ def test_compact_tangent_is_finite_on_the_support_boundary(factory) -> None:
 
 def test_wendland_mnist_grid_tangent_is_finite_float32() -> None:
     chart = Chart.grid((28, 28), low=-1.0, high=1.0)
-    profile = WendlandC2(0.10)
+    profile = wendland_state(0.1)
     torch.manual_seed(17)
-    p = profile.initialize(chart, 256, mode="uniform")
-
-    values, centers, widths = profile.tangent_with_precision(
-        chart, p, profile.sigma.reciprocal().square()
+    p = _profile.initialize(profile, chart, 256, mode="uniform")
+    values, centers, widths = _profile.tangent_with_precision(
+        profile, chart, p, profile.sigma.reciprocal().square()
     )
-
     assert torch.isfinite(values).all()
     assert torch.isfinite(centers).all()
     assert torch.isfinite(widths).all()
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Biweight, Triweight])
+@pytest.mark.parametrize("factory", [wendland_state, biweight_state, triweight_state])
 def test_compact_autograd_hessian_is_finite_inside_boundary_and_outside(
     factory,
 ) -> None:
@@ -198,7 +186,7 @@ def test_compact_autograd_hessian_is_finite_inside_boundary_and_outside(
     p = torch.tensor([[0.0], [0.5], [3.0]], dtype=torch.float64)
 
     def scalar(coords):
-        return profile.evaluate(chart, coords.unsqueeze(0)).sum()
+        return _profile.evaluate(profile, chart, coords.unsqueeze(0)).sum()
 
     blocks = vmap(hessian(scalar))(p)
     assert torch.isfinite(blocks).all()
@@ -208,14 +196,12 @@ def test_compact_autograd_hessian_is_finite_inside_boundary_and_outside(
 
 
 def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
-    kernel = AmpWidth(
-        sigma_min=0.10,
-        sigma_max=10.0,
-        profile=Triweight(0.10),
+    kernel = amp_width_state(
+        sigma_min=0.1, sigma_max=10.0, profile=triweight_state(0.1)
     )
     input_chart = Chart.grid((28, 28), low=-1.0, high=1.0)
     output_chart = Chart.linspace(64, low=-1.0, high=1.0)
-    p = kernel.initialize(input_chart, output_chart, 3, mode="uniform")
+    p = _kernel.initialize(kernel, input_chart, output_chart, 3, mode="uniform")
     p = p.clone()
     p[:, 0] = 1.0
     p[1, 1:3] = 8.0
@@ -224,33 +210,37 @@ def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
     output_gradient = torch.randn(8, 64)
 
     def scalar(atom):
-        phi_in, phi_out = kernel.factors(
-            input_chart, output_chart, atom.unsqueeze(0)
+        phi_in, phi_out = _kernel.factors(
+            kernel, input_chart, output_chart, atom.unsqueeze(0)
         )
-        return ((inputs @ phi_in) * (output_gradient @ phi_out)).sum()
+        return (inputs @ phi_in * (output_gradient @ phi_out)).sum()
 
     blocks = vmap(hessian(scalar))(p)
     assert torch.isfinite(blocks).all()
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
+@pytest.mark.parametrize(
+    "factory", [wendland_state, triangle_state, biweight_state, triweight_state]
+)
 def test_compact_tangent_matches_autograd(factory) -> None:
     chart = Chart.points(torch.linspace(-1.0, 1.0, 11).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
     p = torch.tensor([[0.0], [0.25]], dtype=torch.float64)
     precision = torch.tensor([4.0, 9.0], dtype=torch.float64)
-
-    values, centers, widths = profile.tangent_with_precision(chart, p, precision)
-    torch.testing.assert_close(
-        values, profile.evaluate_with_precision(chart, p, precision)
+    values, centers, widths = _profile.tangent_with_precision(
+        profile, chart, p, precision
     )
-
+    torch.testing.assert_close(
+        values, _profile.evaluate_with_precision(profile, chart, p, precision)
+    )
     jacobian_p = torch.autograd.functional.jacobian(
-        lambda coords: profile.evaluate_with_precision(chart, coords, precision),
+        lambda coords: _profile.evaluate_with_precision(
+            profile, chart, coords, precision
+        ),
         p,
     )
     jacobian_prec = torch.autograd.functional.jacobian(
-        lambda prec: profile.evaluate_with_precision(chart, p, prec),
+        lambda prec: _profile.evaluate_with_precision(profile, chart, p, prec),
         precision,
     )
     for atom in range(p.shape[0]):
@@ -258,19 +248,21 @@ def test_compact_tangent_matches_autograd(factory) -> None:
         torch.testing.assert_close(widths[:, atom], jacobian_prec[:, atom, atom])
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
+@pytest.mark.parametrize(
+    "factory", [wendland_state, triangle_state, biweight_state, triweight_state]
+)
 def test_compact_sigma_must_be_finite_and_positive(factory) -> None:
     for sigma in (0.0, -1.0, float("inf")):
         with pytest.raises(ValueError, match="finite and positive"):
             factory(sigma)
 
 
-@pytest.mark.parametrize("factory", [WendlandC2, Triangle, Biweight, Triweight])
+@pytest.mark.parametrize(
+    "factory", [wendland_state, triangle_state, biweight_state, triweight_state]
+)
 def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
-    kernel = AmpWidth(
-        sigma_min=0.80,
-        sigma_max=2.0,
-        profile=factory(0.80),
+    kernel = amp_width_state(
+        sigma_min=0.8, sigma_max=2.0, profile=factory(0.8)
     ).double()
     input_chart = Chart.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1).double())
     output_chart = Chart.points(torch.linspace(-1.0, 1.0, 7).unsqueeze(-1).double())
@@ -278,60 +270,56 @@ def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
     p[:, 0] = torch.tensor([0.4, -0.3], dtype=torch.float64)
     p[:, 1] = torch.tensor([0.0, 0.2], dtype=torch.float64)
     p[:, 2] = torch.tensor([0.0, -0.1], dtype=torch.float64)
-    represented = kernel.materialize_atoms(input_chart, output_chart, p)
-    phi_input, phi_output = kernel.factors(input_chart, output_chart, p)
-
+    represented = _kernel.materialize_atoms(kernel, input_chart, output_chart, p)
+    phi_input, phi_output = _kernel.factors(kernel, input_chart, output_chart, p)
     torch.testing.assert_close(
-        represented,
-        torch.einsum("oa,ia->aoi", phi_output, phi_input),
+        represented, torch.einsum("oa,ia->aoi", phi_output, phi_input)
     )
-    if factory is WendlandC2:
+    if factory is wendland_state:
         torch.testing.assert_close(
-            torch.linalg.vector_norm(represented.flatten(1), dim=1),
-            p[:, 0].abs(),
+            torch.linalg.vector_norm(represented.flatten(1), dim=1), p[:, 0].abs()
         )
     hessian = torch.func.hessian(
-        lambda atom: kernel.materialize_atoms(
-            input_chart,
-            output_chart,
-            atom.unsqueeze(0),
+        lambda atom: _kernel.materialize_atoms(
+            kernel, input_chart, output_chart, atom.unsqueeze(0)
         ).sum()
     )(p[0])
     assert torch.isfinite(hessian).all()
 
 
-def test_bandwidth_profile_sigma_must_match_sigma_min() -> None:
-    with pytest.raises(ValueError, match="profile.sigma must match sigma_min"):
-        AmpWidth(
-            sigma_min=0.10,
-            sigma_max=1.0,
-            profile=WendlandC2(0.20),
-        )
-
-
 def test_separable_accepts_compact_profiles() -> None:
-    kernel = Separable(
-        input_profile=WendlandC2(0.4),
-        output_profile=Triweight(0.3),
+    kernel = separable_state(
+        input_profile=wendland_state(0.4), output_profile=triweight_state(0.3)
     )
     input_chart = Chart.linspace(4, low=-1.0, high=1.0)
     output_chart = Chart.linspace(3, low=-1.0, high=1.0)
-    p = kernel.initialize(input_chart, output_chart, 2, mode="balanced")
-    phi_input, phi_output = kernel.factors(input_chart, output_chart, p)
+    p = _kernel.initialize(kernel, input_chart, output_chart, 2, mode="balanced")
+    phi_input, phi_output = _kernel.factors(kernel, input_chart, output_chart, p)
     assert phi_input.shape == (4, 2)
     assert phi_output.shape == (3, 2)
-    assert kernel.tangent_backend(input_chart, output_chart) is not None
+    assert _kernel.tangent_backend(kernel, input_chart, output_chart) is not None
 
-@pytest.mark.parametrize('dtype',[torch.float64,torch.float32])
-@pytest.mark.parametrize('center_value',[-(0.995**.5),-0.99,-2.])
-def test_triweight_normalized_tangent_matches_clamped_norm_autograd(dtype,center_value):
-    # Barely supported underfloor, ordinary normalized, and exactly empty.
-    chart=Chart.points(torch.tensor([[0.]],dtype=dtype))
-    profile=Triweight(1.).to(dtype=dtype)
-    p=torch.tensor([[center_value]],dtype=dtype,requires_grad=True)
-    precision=torch.ones(1,dtype=dtype,requires_grad=True)
-    values,centers,widths=profile.tangent_with_precision(chart,p,precision)
-    gc,gprec=torch.autograd.grad(values.sum(),(p,precision))
-    torch.testing.assert_close(centers.sum(0),gc,atol=2e-5 if dtype==torch.float32 else 2e-12,rtol=2e-5)
-    torch.testing.assert_close(widths.sum(0),gprec,atol=2e-5 if dtype==torch.float32 else 2e-12,rtol=2e-5)
+
+@pytest.mark.parametrize("dtype", [torch.float64, torch.float32])
+@pytest.mark.parametrize("center_value", [-(0.995**0.5), -0.99, -2.0])
+def test_triweight_normalized_tangent_matches_clamped_norm_autograd(
+    dtype, center_value
+):
+    chart = Chart.points(torch.tensor([[0.0]], dtype=dtype))
+    profile = triweight_state(1.0).to(dtype=dtype)
+    p = torch.tensor([[center_value]], dtype=dtype, requires_grad=True)
+    precision = torch.ones(1, dtype=dtype, requires_grad=True)
+    values, centers, widths = _profile.tangent_with_precision(
+        profile, chart, p, precision
+    )
+    gc, gprec = torch.autograd.grad(values.sum(), (p, precision))
+    torch.testing.assert_close(
+        centers.sum(0), gc, atol=2e-05 if dtype == torch.float32 else 2e-12, rtol=2e-05
+    )
+    torch.testing.assert_close(
+        widths.sum(0),
+        gprec,
+        atol=2e-05 if dtype == torch.float32 else 2e-12,
+        rtol=2e-05,
+    )
     assert torch.isfinite(centers).all() and torch.isfinite(widths).all()

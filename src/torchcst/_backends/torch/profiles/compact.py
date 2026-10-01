@@ -1,35 +1,38 @@
-"""PyTorch execution for legacy compact contracts."""
+"""PyTorch execution for declared compact contracts."""
 
 from __future__ import annotations
 
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.profiles import execution as _profile
 from torchcst.geometry import Chart
-from torchcst.kernels.base import AtomInit
+from torchcst.kernels.spec import AtomInit
 from torchcst.profiling import cst_span
 
 
-def initialize(self, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
+def initialize(state, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
     return chart.initialize_centers(atoms, mode=mode)
 
 
-def evaluate(self, chart: Chart, p: Tensor) -> Tensor:
-    precision = self.sigma.reciprocal().square()
-    return self.evaluate_with_precision(chart, p, precision)
+def evaluate(state, chart: Chart, p: Tensor) -> Tensor:
+    precision = state.sigma.reciprocal().square()
+    return _profile.evaluate_with_precision(state, chart, p, precision)
 
 
 def evaluate_with_precision(
-    self,
+    state,
     chart: Chart,
     p: Tensor,
     precision: Tensor,
 ) -> Tensor:
     with cst_span("cst.profile.geometry"):
-        _, squared, precision = self._geometry(chart, p, precision, need_offsets=False)
+        _, squared, precision = _geometry(
+            state, chart, p, precision, need_offsets=False
+        )
     with cst_span("cst.profile.radial"):
-        raw = self._unnormalized_from_squared(squared, precision)
-    if not self.normalize_columns:
+        raw = _unnormalized_from_squared(state, squared, precision)
+    if state.binding.normalization.kind == "none":
         return raw
     with cst_span("cst.profile.normalize"):
         values, _ = _l2_column_scale(raw)
@@ -37,7 +40,7 @@ def evaluate_with_precision(
 
 
 def evaluate_with_precision_slice(
-    self,
+    state,
     chart: Chart,
     p: Tensor,
     precision: Tensor,
@@ -45,35 +48,37 @@ def evaluate_with_precision_slice(
 ) -> Tensor:
     """Evaluate raw compact values for a bounded set of operator sites."""
 
-    if self.normalize_columns:
+    if state.binding.normalization.kind != "none":
         raise ValueError("sliced evaluation requires normalize_columns=False")
-    if p.ndim != 2 or p.shape[1] != self.parameter_dim(chart):
-        raise ValueError(f"p must have shape [atoms, {self.parameter_dim(chart)}]")
+    if p.ndim != 2 or p.shape[1] != _profile.parameter_dim(state, chart):
+        raise ValueError(
+            f"p must have shape [atoms, {_profile.parameter_dim(state, chart)}]"
+        )
     if precision.ndim not in (0, 1) or (
         precision.ndim == 1 and precision.shape != (p.shape[0],)
     ):
         raise ValueError("precision must be scalar or have shape [atoms]")
     squared = chart.squared_distance(p, selection)
-    return self._unnormalized_from_squared(
-        squared, precision.to(device=p.device, dtype=p.dtype)
+    return _unnormalized_from_squared(
+        state, squared, precision.to(device=p.device, dtype=p.dtype)
     )
 
 
-def tangent(self, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
-    values, centers, _ = self.tangent_with_precision(
-        chart, p, self.sigma.reciprocal().square()
+def tangent(state, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
+    values, centers, _ = _profile.tangent_with_precision(
+        state, chart, p, state.sigma.reciprocal().square()
     )
     return values, centers
 
 
-def tangent_with_precision(self, chart: Chart, p: Tensor, precision: Tensor):
+def tangent_with_precision(state, chart: Chart, p: Tensor, precision: Tensor):
     """Analytic values, center derivatives and precision derivative."""
 
-    offset, squared, precision = self._geometry(chart, p, precision)
-    raw = self._unnormalized_from_squared(squared, precision)
-    raw_centers = self._d_raw_d_center(offset, squared, precision)
-    raw_widths = self._d_raw_d_precision(squared, precision)
-    if not self.normalize_columns:
+    offset, squared, precision = _geometry(state, chart, p, precision)
+    raw = _unnormalized_from_squared(state, squared, precision)
+    raw_centers = _d_raw_d_center(state, offset, squared, precision)
+    raw_widths = _d_raw_d_precision(state, squared, precision)
+    if state.binding.normalization.kind == "none":
         return raw, raw_centers, raw_widths
     # Project ∂u in the L2 gauge using 1/||u||, never 1/u. Compact
     # profiles vanish at r=1, so du/u ~ 1/gap diverges while
@@ -96,10 +101,12 @@ def tangent_with_precision(self, chart: Chart, p: Tensor, precision: Tensor):
 
 
 def _geometry(
-    self, chart: Chart, p: Tensor, precision: Tensor, *, need_offsets: bool = True
+    state, chart: Chart, p: Tensor, precision: Tensor, *, need_offsets: bool = True
 ) -> tuple[Tensor | None, Tensor, Tensor]:
-    if p.ndim != 2 or p.shape[1] != self.parameter_dim(chart):
-        raise ValueError(f"p must have shape [atoms, {self.parameter_dim(chart)}]")
+    if p.ndim != 2 or p.shape[1] != _profile.parameter_dim(state, chart):
+        raise ValueError(
+            f"p must have shape [atoms, {_profile.parameter_dim(state, chart)}]"
+        )
     if precision.ndim not in (0, 1):
         raise ValueError("precision must be scalar or have shape [atoms]")
     if precision.ndim == 1 and precision.shape != (p.shape[0],):
@@ -114,12 +121,12 @@ def _geometry(
     return offset, squared, precision
 
 
-def project_gradient(self, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
+def project_gradient(state, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
     return chart.geometry.project_tangent(p, gradient)
 
 
 def apply_parameter_update(
-    self,
+    state,
     chart: Chart,
     p: Tensor,
     displacement: Tensor,
@@ -128,7 +135,7 @@ def apply_parameter_update(
 
 
 def transport_state(
-    self,
+    kernel_state,
     chart: Chart,
     old: Tensor,
     new: Tensor,
@@ -137,20 +144,24 @@ def transport_state(
     return chart.geometry.transport(old, new, state)
 
 
-def _unnormalized_from_squared(self, squared: Tensor, precision: Tensor) -> Tensor:
-    raise NotImplementedError
+def _unnormalized_from_squared(state, squared: Tensor, precision: Tensor) -> Tensor:
+    return _profile.shape_function(
+        state, "unnormalized_from_squared", squared, precision
+    )
 
 
-def _d_raw_d_center(self, offset: Tensor, squared: Tensor, precision: Tensor) -> Tensor:
-    raise NotImplementedError
+def _d_raw_d_center(
+    state, offset: Tensor, squared: Tensor, precision: Tensor
+) -> Tensor:
+    return _profile.shape_function(state, "d_raw_d_center", offset, squared, precision)
 
 
-def _d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
-    raise NotImplementedError
+def _d_raw_d_precision(state, squared: Tensor, precision: Tensor) -> Tensor:
+    return _profile.shape_function(state, "d_raw_d_precision", squared, precision)
 
 
 def wendlandc2_unnormalized_from_squared(
-    self, squared: Tensor, precision: Tensor
+    state, squared: Tensor, precision: Tensor
 ) -> Tensor:
     radial = _radial_from_squared(squared, precision)
     gap = (1.0 - radial).clamp_min(0.0)
@@ -158,27 +169,27 @@ def wendlandc2_unnormalized_from_squared(
 
 
 def wendlandc2_d_raw_d_center(
-    self, offset: Tensor, squared: Tensor, precision: Tensor
+    state, offset: Tensor, squared: Tensor, precision: Tensor
 ) -> Tensor:
     prec = precision.reshape(1, -1)
     gap = (1.0 - _radial_from_squared(squared, precision)).clamp_min(0.0)
     return (20.0 * gap.pow(3) * prec).unsqueeze(-1) * offset
 
 
-def wendlandc2_d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
+def wendlandc2_d_raw_d_precision(state, squared: Tensor, precision: Tensor) -> Tensor:
     gap = (1.0 - _radial_from_squared(squared, precision)).clamp_min(0.0)
     return -10.0 * squared * gap.pow(3)
 
 
 def triangle_unnormalized_from_squared(
-    self, squared: Tensor, precision: Tensor
+    state, squared: Tensor, precision: Tensor
 ) -> Tensor:
     radial = _radial_from_squared(squared, precision)
     return (1.0 - radial).clamp_min(0.0)
 
 
 def triangle_d_raw_d_center(
-    self, offset: Tensor, squared: Tensor, precision: Tensor
+    state, offset: Tensor, squared: Tensor, precision: Tensor
 ) -> Tensor:
     prec = precision.reshape(1, -1)
     radial = _radial_from_squared(squared, precision)
@@ -187,7 +198,7 @@ def triangle_d_raw_d_center(
     return slope.unsqueeze(-1) * offset
 
 
-def triangle_d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
+def triangle_d_raw_d_precision(state, squared: Tensor, precision: Tensor) -> Tensor:
     radial = _radial_from_squared(squared, precision)
     active = radial < 1.0
     return torch.where(
@@ -198,39 +209,39 @@ def triangle_d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tens
 
 
 def biweight_unnormalized_from_squared(
-    self, squared: Tensor, precision: Tensor
+    state, squared: Tensor, precision: Tensor
 ) -> Tensor:
     return (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0).square()
 
 
 def biweight_d_raw_d_center(
-    self, offset: Tensor, squared: Tensor, precision: Tensor
+    state, offset: Tensor, squared: Tensor, precision: Tensor
 ) -> Tensor:
     prec = precision.reshape(1, -1)
     inside = (1.0 - squared * prec).clamp_min(0.0)
     return (4.0 * inside * prec).unsqueeze(-1) * offset
 
 
-def biweight_d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
+def biweight_d_raw_d_precision(state, squared: Tensor, precision: Tensor) -> Tensor:
     inside = (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0)
     return -2.0 * squared * inside
 
 
 def triweight_unnormalized_from_squared(
-    self, squared: Tensor, precision: Tensor
+    state, squared: Tensor, precision: Tensor
 ) -> Tensor:
     return (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0).pow(3)
 
 
 def triweight_d_raw_d_center(
-    self, offset: Tensor, squared: Tensor, precision: Tensor
+    state, offset: Tensor, squared: Tensor, precision: Tensor
 ) -> Tensor:
     prec = precision.reshape(1, -1)
     inside = (1.0 - squared * prec).clamp_min(0.0)
     return (6.0 * inside.square() * prec).unsqueeze(-1) * offset
 
 
-def triweight_d_raw_d_precision(self, squared: Tensor, precision: Tensor) -> Tensor:
+def triweight_d_raw_d_precision(state, squared: Tensor, precision: Tensor) -> Tensor:
     inside = (1.0 - squared * precision.reshape(1, -1)).clamp_min(0.0)
     return -3.0 * squared * inside.square()
 

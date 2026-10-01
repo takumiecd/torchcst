@@ -1,34 +1,36 @@
-from torchcst import CSTOptimizer
+from __future__ import annotations
 
-"""Toroidal site geometry and its Strip locality contract."""
+from torchcst import BandwidthBounds, CSTOptimizer
+from torchcst._backends.torch.profiles import execution as _profile
 
+"Toroidal site geometry and its Strip locality contract."
 import copy
 import math
 
 import pytest
 import torch
+from kernel_cases import direct_state, triweight_state
 
 from torchcst import (
     CSTLinear,
-    DirectAmpWidth,
     GridPattern,
     LinePattern,
     ProductChart,
     StripChart,
     TorusGeometry,
-    Triweight,
 )
 
 
-def _kernel(radius: float) -> DirectAmpWidth:
-    return DirectAmpWidth(
+def make_radial_state(radius: float) -> direct_state:
+    return direct_state(
         amplitude_max=1.0,
-        sigma_min=radius,
-        sigma_birth=radius,
-        sigma_max=radius,
         w_c=0.05,
         kappa=3.0,
-        profile=Triweight(radius, normalize_columns=False),
+        profile=triweight_state(radius, normalize_columns=False),
+        input_bounds=BandwidthBounds(
+            minimum=radius, maximum=radius, birth=radius, upper_floor=radius
+        ),
+        composition="radial",
     )
 
 
@@ -75,7 +77,7 @@ def test_torus_has_three_degrees_of_freedom_in_four_dimensions() -> None:
 def test_large_torus_accepts_embedded_sites_but_rejects_off_surface(
     size: int, dtype: torch.dtype, device: str
 ) -> None:
-    if device == "cuda" and not torch.cuda.is_available():
+    if device == "cuda" and (not torch.cuda.is_available()):
         pytest.skip("CUDA required")
     chart = StripChart(
         shape=(size, size),
@@ -88,7 +90,7 @@ def test_large_torus_accepts_embedded_sites_but_rejects_off_surface(
         tile_pitch=4.1,
         geometry=TorusGeometry(
             3,
-            major_radius=(size // 16) * 4.1 / (2 * math.pi),
+            major_radius=size // 16 * 4.1 / (2 * math.pi),
             minor_radius=0.4,
             representation="intrinsic",
         ),
@@ -101,7 +103,6 @@ def test_large_torus_accepts_embedded_sites_but_rejects_off_surface(
     chart.geometry.validate_points(sites)
     centers = chart.initialize_centers(size * 2, mode="balanced")
     chart.geometry.validate_centers(centers)
-    # Move the section pole radially by 0.01: well above representation noise.
     bad = sites.new_tensor([[float(chart.geometry.major_radius) + 0.41, 0, 0, 0]])
     with pytest.raises(ValueError, match="torus surface"):
         chart.geometry.validate_points(bad)
@@ -122,7 +123,7 @@ def test_torus_distance_matches_closed_form_and_gemm_identity() -> None:
     torch.testing.assert_close(squared, gemm, atol=1e-12, rtol=1e-12)
     for site_index in range(2):
         for center_index in range(2):
-            site, center = sites[site_index], centers[center_index]
+            site, center = (sites[site_index], centers[center_index])
             theta = torch.atan2(site[1], site[0])
             phi = torch.atan2(center[1], center[0])
             a = torch.linalg.vector_norm(site[:2])
@@ -158,18 +159,17 @@ def test_torus_retraction_transport_and_compact_tangent() -> None:
         atol=1e-12,
         rtol=0,
     )
-
     chart = ProductChart(
         shape=(2, 2),
         axes=(LinePattern(2, spacing=0.4), LinePattern(2, spacing=0.2)),
         geometry=geometry,
     ).double()
-    profile = Triweight(1.8).double()
+    profile = triweight_state(1.8).double()
     center = chart.positions(torch.tensor([0]))
     precision = torch.tensor([1 / 1.8**2], dtype=torch.float64)
-    _, tangent, _ = profile.tangent_with_precision(chart, center, precision)
+    _, tangent, _ = _profile.tangent_with_precision(profile, chart, center, precision)
     jacobian = torch.autograd.functional.jacobian(
-        lambda p: profile.evaluate_with_precision(chart, p, precision), center
+        lambda p: _profile.evaluate_with_precision(profile, chart, p, precision), center
     )
     torch.testing.assert_close(tangent[:, 0], jacobian[:, 0, 0], atol=1e-10, rtol=1e-10)
 
@@ -213,21 +213,23 @@ def test_intrinsic_torus_tangent_matches_autograd_and_retracts_across_seam() -> 
         axes=(LinePattern(2, spacing=0.4), GridPattern((2, 2), spacing=0.2)),
         geometry=geometry,
     ).double()
-    profile = Triweight(1.8).double()
+    profile = triweight_state(1.8).double()
     precision = torch.tensor([1 / 1.8**2], dtype=torch.float64)
     for center in (
         chart.initialize_centers(1, mode="balanced"),
         torch.zeros(1, 3, dtype=torch.float64),
         torch.tensor([[0.4, 0.7, -0.5]], dtype=torch.float64),
     ):
-        _, tangent, _ = profile.tangent_with_precision(chart, center, precision)
+        _, tangent, _ = _profile.tangent_with_precision(
+            profile, chart, center, precision
+        )
         jacobian = torch.autograd.functional.jacobian(
-            lambda p: profile.evaluate_with_precision(chart, p, precision), center
+            lambda p: _profile.evaluate_with_precision(profile, chart, p, precision),
+            center,
         )
         torch.testing.assert_close(
             tangent[:, 0], jacobian[:, 0, 0], atol=1e-10, rtol=1e-10
         )
-
     old = torch.tensor([[math.pi * 5 - 0.1, 0.1, -0.2]], dtype=torch.float64)
     updated = geometry.retract(
         old, torch.tensor([[4.0, 100.0, 100.0]], dtype=torch.float64)
@@ -274,12 +276,16 @@ def test_torus_strip_support_packing_optimizer_and_checkpoint(
         supported.any(dim=(1, 2)),
         torch.tensor([[True, True], [True, False], [False, False], [False, True]]),
     )
-    # The first and last stations are neighbors across the circle seam.
     positions = chart.positions(torch.tensor([0, 4, 32, 48]))
     assert torch.dist(positions[0], positions[3]) < torch.dist(
         positions[0], positions[2]
     )
-    model = CSTLinear(chart=chart, atoms=3, kernel=_kernel(10.0), dtype=torch.float64)
+    model = CSTLinear(
+        chart=chart,
+        atoms=3,
+        kernel=make_radial_state(10.0).declaration(),
+        dtype=torch.float64,
+    )
     assert model.atom_parameter_dof == 5
     packed = model.packed_weight()
     assert packed.is_contiguous()
@@ -288,20 +294,30 @@ def test_torus_strip_support_packing_optimizer_and_checkpoint(
     for station in range(chart.tile_count):
         logical, local = chart.tile_indices(station)
         torch.testing.assert_close(packed[station].flatten()[local], dense[logical])
-
     model(torch.randn(2, 4, dtype=torch.float64)).square().mean().backward()
-    CSTOptimizer(torch.optim.AdamW(model.parameters(), lr=0.03, betas=(0.5, 0.99), eps=1e-8, weight_decay=0.0, foreach=False), model=model).step()
+    CSTOptimizer(
+        torch.optim.AdamW(
+            model.parameters(),
+            lr=0.03,
+            betas=(0.5, 0.99),
+            eps=1e-08,
+            weight_decay=0.0,
+            foreach=False,
+        ),
+        model=model,
+    ).step()
     chart.geometry.validate_centers(model.atoms.p[:, 2:])
     restored = CSTLinear(
-        chart=_strip(representation), atoms=3, kernel=_kernel(10.0), dtype=torch.float64
+        chart=_strip(representation),
+        atoms=3,
+        kernel=make_radial_state(10.0).declaration(),
+        dtype=torch.float64,
     )
     restored.load_state_dict(copy.deepcopy(model.state_dict()))
     torch.testing.assert_close(restored.dense_weight(), model.dense_weight())
 
 
 def test_torus_support_rejects_nonlocal_wraparound() -> None:
-    # The direct gap between tile 0 and tile 2 is large; the nearly closed
-    # seam makes their wrapped chord too short for sigma_max=10.
     chart = StripChart(
         shape=(16, 4),
         tile_shape=(4, 4),

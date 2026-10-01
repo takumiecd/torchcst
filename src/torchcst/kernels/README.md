@@ -1,64 +1,91 @@
-# Kernel と Profile の宣言
+# Kernel の宣言と状態
 
-第一段階として、数学的な宣言と組み込みクラスの Torch 計算本体を分離した。
-公開 `Kernel` / `Profile` は、既存 constructor、buffer、checkpoint、custom subclass
-との互換入口として残す。新しい宣言は frozen dataclass で、Tensor 評価や device
-選択を持たない。Geometry、Chart、CUDA registry への接続は段階的に進める。
+利用者は `KernelSpec` を `CSTLinear` / `CSTConv2d` に渡す。preset は Spec を組み立てる
+関数で、演算するクラスではない。個別の Kernel / Profile Module、ABC、互換 alias、
+旧 checkpoint の読み替えは削除した。
 
 ## 配置と責務
 
 | 配置 | 責務 |
 | --- | --- |
-| `profiles/` | `TriweightSpec`、`GaussianSpec` などの無次元距離に対する関数の形。幅や正規化は含まない。 |
-| `parameterizations/` | 固定幅、振幅依存幅、Direct / Polar の座標解釈と数値制約。 |
-| `normalization.py` | 非正規化 / 離散 L2、対象領域、ノルム床。 |
-| `spec.py` | `ProfileBinding`、`KernelSpec`、初期化・座標更新の宣言。 |
-| `_declarations.py` | 既存クラスから宣言を作る設定用 adapter。 |
-| 既存の公開クラス | 設定と buffer の所有、checkpoint 検証、計算への遅延接続。 |
-| `../_backends/torch/profiles/` | Profile の評価と解析微分。 |
-| `../_backends/torch/parameterizations/` | 振幅・activity・幅の解釈。 |
+| `profiles/` | Gaussian、Triweight など関数の形の不変な宣言。幅・正規化・演算を持たない。 |
+| `parameterizations/` | atom 座標の解釈。固定幅、振幅依存幅、Direct / Polar activity、log width。 |
+| `normalization.py` | 正規化の規則、対象領域、ノルム床。 |
+| `spec.py` | ProfileBinding、radial / separable / amplitude の合成、初期化・更新方針。 |
+| `presets.py` | 宣言を組み合わせる利用者向けの関数。 |
+| `options.py` | site / atom chunk と checkpoint の実行設定。数学的な Spec と分離。 |
+| `state.py` | 共通 KernelState / ProfileState。固定 Tensor、device / dtype、checkpoint を管理。 |
+| `../_backends/torch/profiles/` | 関数の評価と解析微分。 |
+| `../_backends/torch/parameterizations/` | 振幅・activity・幅の計算。 |
 | `../_backends/torch/kernels/` | atom の合成、重み生成、初期化、factor 微分。 |
-| `../_backends/torch/updates/` | Kernel 座標の勾配射影、更新、optimizer 状態の輸送。 |
+| `../_backends/torch/updates/` | 勾配射影、座標更新、optimizer 状態輸送。 |
+| `../_backends/cuda/algorithms/` | 数学的な契約に対応する CUDA の計算方式。 |
 
-`KernelSpec.parameterization` が幅を定義する場合、各 `ProfileBinding` の固定幅は
-省く。幅を二重に宣言せず、入力・出力の幅の違いは parameterization の bounds に
-記録する。`AmpWidthSpec.couple_bandwidth` は微分の契約なので Recipe に移さない。
-`site_chunk`、`atom_chunk`、`checkpoint_blocks` は数学的な宣言に含めない。
+`KernelSpec` は Tensor を持たない。`KernelState` は演算メソッドを持たない。
+学習する `p` は `Atoms` が所有する。Layer が Spec から共通 State を作り、
+Operator / backend が State と現在の Chart / p を使って計算する。
 
-## 設定の参照
+## 宣言の作り方
 
 ```python
-from torchcst import AmpWidth, Triweight
+from torchcst import GaussianSpec, TriweightSpec, BandwidthBounds, presets
 
-kernel = AmpWidth(sigma_min=0.2, sigma_max=1.0, profile=Triweight(0.2))
-spec = kernel.declaration()
-assert spec.profiles[0].profile.id == "triweight"
-assert spec.profiles[0].normalization.domain == "chart_sites"
-assert spec.parameterization.id == "amplitude_dependent_width"
+# 固定幅：入力・出力それぞれの形、幅、正規化を宣言する。
+fixed = presets.amplitude(presets.separable(
+    input_profile=presets.fixed_profile(GaussianSpec(), 0.4),
+    output_profile=presets.fixed_profile(TriweightSpec(), 0.7),
+))
+
+# 動的幅：ProfileBinding に幅を入れず、parameterization が幅を定める。
+activity = presets.polar_activity(
+    amplitude_max=1.0,
+    input_bounds=BandwidthBounds(minimum=0.1, birth=2.0,
+                                 maximum=2.0, upper_floor=0.1),
+    w_c=0.1,
+    profile=presets.profile(TriweightSpec()),
+    radial_regularization=0.2,
+)
+
+# 単一 Chart：原則 radial。Direct activity は非正規化 profile を使う。
+radial = presets.direct_activity(
+    amplitude_max=1.0,
+    input_bounds=BandwidthBounds(minimum=0.2, birth=0.5,
+                                 maximum=0.8, upper_floor=0.2),
+    w_c=0.05,
+    profile=presets.profile(TriweightSpec(), normalize=False),
+)
 ```
 
-`DirectAmpWidth.declaration(chart_count=1)` は単一 chart の radial 演算、既定の
-`chart_count=2` は入力・出力 profile の積を宣言する。単一 chart の経路は従来通り
-非正規化 profile を要求する。custom subclass の演算を組み込み ID と誤認しない
-よう、宣言を使う custom class は `declaration()` を明示実装する。既存の計算
-メソッドによる拡張は引き続き使用できる。
+`direct_activity` の既定は radial。入力・出力を分ける場合は
+`composition="separable"` とし、必要なら `output_bounds` を指定する。
+`polar_activity` と `amplitude_width` は separable。固定幅 radial は
+`presets.radial(presets.fixed_profile(...))` とする。amplitude は両方に合成できる。
 
-`declaration()` は設定時点の独立した snapshot である。`.to()`、buffer の変更、
-checkpoint load 後は必要に応じて作り直す。scalar buffer の参照は GPU と同期し得る
-ため、forward / backward / CUDA Graph capture 内で呼ばない。従来の計算経路は
-この snapshot を読み戻さず、現在の buffer を使う。
+幅を二重に宣言すると拒否する。`profile()` は形と正規化、`fixed_profile()` は
+それに固定幅を追加する。profile の入力側と出力側を別々に宣言した場合、
+backend はそれぞれの形を使う。`couple_bandwidth` も微分の契約で、実行設定ではない。
 
-## 段階的な移行
+```python
+from torchcst import CSTLinear, KernelOptions
 
-この段階では Spec 単体を実行する factory はまだ導入していない。CUDA Registry は共通 OperatorSpec の KernelSpec を
-検査し、対応する既存の normalized Strip 計算へ接続する。公開クラスの削除や checkpoint 形式の変更も行っていない。
-[Operator](../operators/README.md) が単一 Chart / Chart の組と Kernel を束ね、
-既存 Module の実状態を参照する。Torch linear はその入口を使う。
-次は CUDA の契約への接続を整え、その後に互換メソッドを減らす。
+layer = CSTLinear(chart=chart, atoms=128, kernel=radial,
+                  kernel_options=KernelOptions(site_chunk=2048, atom_chunk=64))
+spec = layer.declaration()  # 現在の固定 Tensor 設定を明示的に snapshot
+```
 
-Geometry / Chart の宣言は `../geometry/spec.py`、座標の計算は
-`../_backends/torch/geometry/`、`charts/`、`patterns/` に分ける。
-Torch 実装は CPU 限定ではなく、既存の Torch Tensor device 上で実行する。
-CUDA 専用の最適化は `../_backends/cuda/algorithms/` に置く。
-`presets.py` の固定 radial Triweight は Profile・operator-site L2 正規化・log width
-を組み合わせた純粋な KernelSpec。Strip の座標配置や CUDA の計算方式を含まない。
+## 実行と checkpoint
+
+`Layer -> Operator -> backend` が演算の入口。State の固定 Tensor は `.to()` と
+checkpoint に従う。`declaration()` は設定境界の snapshot で、forward / backward /
+CUDA Graph capture では呼ばない。初期化・更新・状態輸送も backend が実行する。
+CSTOptimizer の checkpoint は、共通 State のクラス名だけでなく数学的な Spec を
+記録する。model / optimizer の state_dict は `torch.load(weights_only=True)` で読める。
+
+backend が未対応の形、版、parameterization、初期化・更新方針は拒否する。
+custom subclass が組み込み ID を引き継ぐ旧拡張方法は廃止した。新しい意味は宣言と
+対応する backend 実装を追加する。旧 API の利用例は Git revision `c21ea97` を参照する。
+
+`NORMALIZED_RADIAL_TRIWEIGHT` は operator 全体での離散 L2 正規化と log width の
+固定契約。`NormalizedStripLinear` の既存の CUDA full / window 実行に使う。
+任意の宣言が CUDA Registry に自動登録されるわけではなく、対応・検証・承認・
+既定 dispatch への採用は別の段階である。

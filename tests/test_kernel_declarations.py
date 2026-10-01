@@ -1,187 +1,86 @@
-"""Semantic boundaries for the first stage of kernel declaration migration."""
+"""Pure declarations, common state, strict contracts and numerical execution."""
 
+import copy
+import io
 import json
 import os
 import subprocess
 import sys
-from dataclasses import FrozenInstanceError, asdict
+from dataclasses import FrozenInstanceError, asdict, replace
 from pathlib import Path
 
 import pytest
 import torch
 
-from torchcst import (
-    Amplitude,
-    AmpWidth,
-    Biweight,
-    Chart,
-    DirectAmpWidth,
-    Gaussian,
-    Kernel,
-    PolarAmpWidth,
-    Separable,
-    Triangle,
-    Triweight,
-    WendlandC2,
-)
+import torchcst
+from torchcst import BandwidthBounds, Chart, CSTLinear, CSTOptimizer, presets
+from torchcst._backends.torch.kernels import execution as kernel_execution
+from torchcst._backends.torch.profiles import execution as profile_execution
 from torchcst.kernels import (
     AmpWidthSpec,
+    BiweightSpec,
     DirectAmpWidthSpec,
     GaussianSpec,
     KernelSpec,
     NormalizationSpec,
+    ParameterizationSpec,
     PolarAmpWidthSpec,
     ProfileBinding,
+    ProfileSpec,
+    StatePolicySpec,
+    TriangleSpec,
     TriweightSpec,
+    WendlandC2Spec,
 )
+from torchcst.kernels.options import KernelOptions
+from torchcst.kernels.state import KernelState, ProfileState
 
 
 @pytest.mark.parametrize(
-    "factory, identity, default_normalization",
+    "shape", [GaussianSpec, BiweightSpec, TriangleSpec, TriweightSpec, WendlandC2Spec]
+)
+def test_shape_width_normalization_are_independent(shape):
+    fixed = presets.fixed_profile(shape(), 0.2)
+    raw = presets.fixed_profile(shape(), 0.7, normalize=False)
+    assert fixed.profile == raw.profile
+    assert fixed.parameterization.sigma != raw.parameterization.sigma
+    assert fixed.normalization.domain == "chart_sites"
+    assert raw.normalization == NormalizationSpec()
+    json.dumps(asdict(fixed))
+    with pytest.raises(FrozenInstanceError):
+        fixed.profile.id = "changed"
+
+
+def test_amp_width_snapshot_tracks_tensor_configuration():
+    spec = presets.amplitude_width(
+        sigma_min=0.2, sigma_max=1.0, law="inverse", couple_bandwidth=False
+    )
+    state = KernelState(spec)
+    before = state.declaration()
+    state.scalar("sigma_max").fill_(1.5)
+    assert before.parameterization.sigma_max == 1.0
+    assert state.declaration().parameterization.sigma_max == 1.5
+    assert spec.parameterization.sigma_max == 1.0
+    assert isinstance(spec.parameterization, AmpWidthSpec)
+    assert all(p.parameterization is None for p in spec.profiles)
+
+
+@pytest.mark.parametrize(
+    "preset,coordinate",
     [
-        (Gaussian, "gaussian", True),
-        (Triweight, "triweight", True),
-        (WendlandC2, "wendland_c2", True),
-        (Triangle, "triangle", False),
-        (Biweight, "biweight", False),
+        (presets.direct_activity, DirectAmpWidthSpec),
+        (presets.polar_activity, PolarAmpWidthSpec),
     ],
 )
-def test_shape_width_and_normalization_are_independent(
-    factory, identity, default_normalization
-):
-    default = factory(0.2).declaration()
-    raw = factory(0.7, normalize_columns=False).declaration()
-    assert default.profile == raw.profile
-    assert default.profile.id == identity
-    assert default.parameterization.sigma != raw.parameterization.sigma
-    assert (default.normalization.kind == "discrete_l2") == default_normalization
-    assert raw.normalization == NormalizationSpec()
-    if default_normalization:
-        assert default.normalization.domain == "chart_sites"
-        assert default.normalization.floor == (None if factory is Gaussian else 1e-6)
-    with pytest.raises(FrozenInstanceError):
-        default.profile.id = "changed"
-
-
-def test_amp_width_derivative_law_is_declared_and_snapshot_is_independent():
-    kernel = AmpWidth(
-        sigma_min=0.2,
-        sigma_max=1.0,
-        profile=Triweight(0.2),
-        law="inverse",
-        couple_bandwidth=False,
-    )
-    spec = kernel.declaration()
-    assert isinstance(spec.parameterization, AmpWidthSpec)
-    assert spec.parameterization.law == "inverse"
-    assert spec.parameterization.couple_bandwidth is False
-    assert spec.composition == "separable"
-    assert len(spec.profiles) == 2
-    assert all(p.parameterization is None for p in spec.profiles)
-    assert all(p.normalization.domain == "chart_sites" for p in spec.profiles)
-    kernel.sigma_max.fill_(1.5)
-    assert spec.parameterization.sigma_max == 1.0
-    assert kernel.declaration().parameterization.sigma_max == 1.5
-    json.dumps(asdict(spec))
-
-
-@pytest.mark.parametrize(
-    "factory, spec_type",
-    [(DirectAmpWidth, DirectAmpWidthSpec), (PolarAmpWidth, PolarAmpWidthSpec)],
-)
-def test_activity_coordinates_are_distinct_from_execution_tuning(factory, spec_type):
-    kernel = factory(
-        amplitude_max=2.0,
-        input_sigma_min=0.2,
-        input_sigma_max=1.0,
-        output_sigma_min=0.3,
-        output_sigma_max=1.5,
-        w_c=0.5,
-    )
-    spec = kernel.declaration()
-    assert isinstance(spec.parameterization, spec_type)
-    assert spec.parameterization.input_bounds.minimum == pytest.approx(0.2)
-    assert spec.parameterization.output_bounds.minimum == pytest.approx(0.3)
-    assert spec.initialization.id != spec.update.id
-    if factory is DirectAmpWidth:
-        kernel.site_chunk = 5
-        kernel.atom_chunk = 2
-        kernel.checkpoint_blocks = False
-        assert kernel.declaration() == spec
-    else:
-        assert dict(spec.update.settings)["activity_mode"] == "finite_chord"
-    json.dumps(asdict(spec))
-
-
-def test_single_chart_requires_raw_profile_and_records_radial_composition():
-    kernel = DirectAmpWidth(
-        amplitude_max=2.0,
-        sigma_min=0.2,
-        sigma_max=1.0,
-        w_c=0.5,
-        profile=Triweight(0.2, normalize_columns=False),
-    )
-    assert kernel.declaration(chart_count=1).composition == "radial"
-    assert len(kernel.declaration(chart_count=1).profiles) == 1
-    kernel.profile.normalize_columns = True
-    with pytest.raises(ValueError, match="unnormalized"):
-        kernel.declaration(chart_count=1)
-    with pytest.raises(ValueError, match="chart_count"):
-        kernel.declaration(chart_count=True)
-
-
-def test_nested_amplitude_preserves_profile_order_and_widths():
-    kernel = Amplitude(
-        Separable(input_profile=Gaussian(0.2), output_profile=Triweight(0.4))
-    )
-    spec = kernel.declaration()
-    assert spec.composition == "amplitude"
-    assert spec.inner.profiles[0].profile == GaussianSpec()
-    assert spec.inner.profiles[1].profile == TriweightSpec()
-    assert spec.inner.profiles[1].parameterization.sigma == pytest.approx(0.4)
-
-
-def test_snapshot_tracks_checkpoint_load_without_changing_checkpoint_keys():
-    source = AmpWidth(sigma_min=0.2, sigma_max=1.5)
-    target = AmpWidth(sigma_min=0.2, sigma_max=1.0)
-    before = target.declaration()
-    keys = set(target.state_dict())
-    target.load_state_dict(source.state_dict())
-    assert target.declaration() == source.declaration()
-    assert before != target.declaration()
-    assert set(target.state_dict()) == keys
-
-
-def test_custom_profile_cannot_inherit_a_builtin_semantic_identity():
-    class ShiftedTriweight(Triweight):
-        def evaluate(self, chart, p):
-            return super().evaluate(chart, p) + 1
-
-    with pytest.raises(NotImplementedError, match="custom profiles"):
-        ShiftedTriweight(0.2).declaration()
-
-
-def test_custom_kernel_methods_remain_available_and_nonfactored_amplitude_rejects():
-    class Custom(Kernel):
-        def parameter_dim(self, *charts):
-            return 1
-
-        def initialize(self, *charts_and_atoms, mode):
-            return torch.zeros(charts_and_atoms[-1], 1)
-
-        def materialize_atoms(self, input_chart, output_chart, p):
-            return p[:, None].expand(-1, output_chart.features, input_chart.features)
-
-    kernel = Amplitude(Custom())
-    chart = Chart.linspace(3, low=-1, high=1)
-    p = torch.tensor([[2.0, 3.0]])
-    torch.testing.assert_close(
-        kernel.materialize_atoms(chart, chart, p), torch.full((1, 3, 3), 6.0)
-    )
-    with pytest.raises(NotImplementedError, match="factorized backend"):
-        kernel.factors(chart, chart, p)
-    with pytest.raises(NotImplementedError, match="custom kernels"):
-        kernel.declaration()
+def test_activity_spec_is_independent_of_execution_options(preset, coordinate):
+    bounds = BandwidthBounds(minimum=0.2, birth=0.4, maximum=1.0, upper_floor=0.2)
+    spec = preset(amplitude_max=2.0, input_bounds=bounds, w_c=0.5)
+    assert type(spec.parameterization) is coordinate
+    first = KernelState(spec, options=KernelOptions(site_chunk=3, atom_chunk=2))
+    second = KernelState(spec)
+    assert first.declaration() == second.declaration()
+    assert first.state_dict().keys() == second.state_dict().keys()
+    assert tuple(first.parameters()) == ()
 
 
 @pytest.mark.parametrize(
@@ -193,53 +92,254 @@ def test_custom_kernel_methods_remain_available_and_nonfactored_amplitude_reject
         {"kind": "discrete_l2", "domain": "operator_sites", "floor": float("nan")},
     ],
 )
-def test_invalid_normalization_contracts_reject(kwargs):
+def test_invalid_normalization_rejects(kwargs):
     with pytest.raises(ValueError):
         NormalizationSpec(**kwargs)
 
 
-def test_profile_width_required_without_kernel_parameterization():
+def test_width_is_declared_once():
     with pytest.raises(ValueError, match="bandwidth declaration"):
         KernelSpec(
             composition="radial", profiles=(ProfileBinding(profile=TriweightSpec()),)
         )
+    spec = presets.amplitude_width(sigma_min=0.2, sigma_max=1.0)
+    with pytest.raises(ValueError, match="once"):
+        replace(spec, profiles=(presets.fixed_profile(GaussianSpec(), 0.2),) * 2)
     with pytest.raises(ValueError, match="profile count"):
-        KernelSpec(composition="separable", profiles=())
-    with pytest.raises(TypeError):
-        TriweightSpec(id="gaussian")
+        KernelSpec(composition="separable")
 
 
-def test_declaration_import_and_snapshot_do_not_load_execution_modules():
+def test_pair_cannot_silently_use_operator_normalization():
+    p = replace(
+        presets.fixed_profile(TriweightSpec(), 0.2),
+        normalization=NormalizationSpec(
+            kind="discrete_l2", domain="operator_sites", floor=1e-6
+        ),
+    )
+    with pytest.raises(ValueError, match="chart_sites"):
+        presets.separable(input_profile=p, output_profile=p)
+
+
+@pytest.mark.parametrize(
+    "shape", [ProfileSpec(id="gaussian"), replace(GaussianSpec(), revision=2)]
+)
+def test_unknown_shape_or_revision_cannot_inherit_builtin_execution(shape):
+    state = ProfileState(presets.fixed_profile(shape, 0.2))
+    chart = Chart.linspace(3, spacing=0.2)
+    with pytest.raises(ValueError, match="unsupported profile"):
+        profile_execution.evaluate(state, chart, torch.zeros(1, 1))
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"revision": 2},
+        {"parameterization": ParameterizationSpec(id="amplitude_dependent_width")},
+        {"initialization": StatePolicySpec(id="unknown")},
+        {"update": StatePolicySpec(id="unknown")},
+    ],
+)
+def test_backend_rejects_unrecognized_kernel_contract(change):
+    spec = replace(presets.amplitude_width(sigma_min=0.2, sigma_max=1.0), **change)
+    chart = Chart.linspace(3, spacing=0.2)
+    with pytest.raises(ValueError, match="unsupported"):
+        kernel_execution.initialize(KernelState(spec), chart, chart, 2)
+
+
+def test_execution_never_reads_snapshots(monkeypatch):
+    state = KernelState(presets.amplitude_width(sigma_min=0.2, sigma_max=1.0))
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("snapshot inside execution")
+
+    monkeypatch.setattr(KernelState, "declaration", forbidden)
+    monkeypatch.setattr(ProfileState, "declaration", forbidden)
+    chart = Chart.linspace(3, spacing=0.2)
+    p = kernel_execution.initialize(state, chart, chart, 2).requires_grad_()
+    kernel_execution.materialize_atoms(state, chart, chart, p).square().sum().backward()
+    assert torch.isfinite(p.grad).all()
+
+
+def test_declaration_import_does_not_load_evaluators():
     root = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", str(root / "src"))}
     subprocess.run(
         [
             sys.executable,
             "-c",
             """
 import sys
-from torchcst import AmpWidth, Triweight
-from torchcst.kernels import TriweightSpec
-kernel = AmpWidth(sigma_min=0.2, sigma_max=1.0, profile=Triweight(0.2))
-kernel.declaration()
-assert not any(name.startswith('torchcst._backends.torch.') for name in sys.modules)
+from torchcst import presets, TriweightSpec
+p=presets.fixed_profile(TriweightSpec(),.2)
+s=presets.separable(input_profile=p,output_profile=p)
+assert not any(n.startswith('torchcst._backends.torch.') for n in sys.modules)
 assert 'triton' not in sys.modules
 """,
         ],
-        env=env,
+        env={**os.environ, "PYTHONPATH": str(root / "src")},
         check=True,
     )
 
 
-def test_execution_never_reads_a_declaration_snapshot(monkeypatch):
-    kernel = AmpWidth(sigma_min=0.2, sigma_max=1.0)
+def test_removed_public_classes_and_aliases_have_no_compatibility_entry():
+    for name in (
+        "Kernel",
+        "Profile",
+        "Gaussian",
+        "Triweight",
+        "Separable",
+        "Amplitude",
+        "AmpWidth",
+        "AmplitudeBandwidthSeparable",
+        "DirectAmpWidth",
+        "PolarAmpWidth",
+    ):
+        assert not hasattr(torchcst, name)
+    for name in (
+        "base",
+        "compact",
+        "gaussian",
+        "separable",
+        "amplitude",
+        "amplitude_bandwidth",
+        "direct_amplitude_bandwidth",
+        "polar_amplitude_bandwidth",
+        "_declarations",
+    ):
+        assert not (
+            Path(__file__).resolve().parents[1] / "src/torchcst/kernels" / f"{name}.py"
+        ).exists()
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError("configuration snapshots cannot enter execution")
 
-    monkeypatch.setattr(Kernel, "declaration", forbidden)
-    monkeypatch.setattr(type(kernel.profile), "declaration", forbidden)
-    chart = Chart.linspace(3, low=-1, high=1)
-    p = kernel.initialize(chart, chart, 2, mode="uniform").requires_grad_()
-    kernel.materialize_atoms(chart, chart, p).square().sum().backward()
-    assert torch.isfinite(p.grad).all()
+def test_radial_amplitude_updates_and_checkpoint_are_weights_only_safe():
+    from torchcst import LinePattern, ProductChart
+
+    chart = ProductChart(
+        shape=(3, 4), axes=(LinePattern(3, spacing=0.2), LinePattern(4, spacing=0.2))
+    )
+    spec = presets.amplitude(presets.radial(presets.fixed_profile(GaussianSpec(), 0.5)))
+    model = CSTLinear(chart=chart, atoms=3, kernel=spec, dtype=torch.float64)
+    optimizer = CSTOptimizer(torch.optim.AdamW(model.parameters()), model=model)
+    model(torch.randn(2, 4, dtype=torch.float64)).square().sum().backward()
+    optimizer.step()
+    stream = io.BytesIO()
+    torch.save(
+        {"model": model.state_dict(), "optimizer": optimizer.state_dict()}, stream
+    )
+    stream.seek(0)
+    saved = torch.load(stream, weights_only=True)
+    restored = copy.deepcopy(model)
+    restored.load_state_dict(saved["model"])
+    other = CSTOptimizer(torch.optim.AdamW(restored.parameters()), model=restored)
+    other.load_state_dict(saved["optimizer"])
+    torch.testing.assert_close(restored.dense_weight(), model.dense_weight())
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"amplitude_max": 0.0},
+        {"w_c": 0.0},
+        {"kappa": 1.0},
+        {"lower_kappa": 0.0},
+        {"upper_decay_power": 0.0},
+        {"upper_decay_power": 1.1},
+        {"alpha_init": 1.1},
+        {"radial_regularization": -1.0},
+    ],
+)
+def test_activity_declaration_validation(kwargs):
+    settings = {
+        "amplitude_max": 2.0,
+        "input_bounds": BandwidthBounds(
+            minimum=0.1, birth=1.0, maximum=1.0, upper_floor=0.1
+        ),
+        "w_c": 0.5,
+    }
+    settings.update(kwargs)
+    with pytest.raises(ValueError):
+        presets.direct_activity(**settings)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"activity_gain": 0.0},
+        {"activity_mode": "unknown"},
+        {"dormant_expansion_rate": -1.0},
+    ],
+)
+def test_polar_update_declaration_validation(kwargs):
+    with pytest.raises(ValueError):
+        presets.polar_activity(
+            amplitude_max=2.0,
+            input_bounds=BandwidthBounds(
+                minimum=0.1, birth=1.0, maximum=1.0, upper_floor=0.1
+            ),
+            w_c=0.5,
+            **kwargs,
+        )
+
+
+@pytest.mark.parametrize(
+    "preset", [presets.amplitude_width, presets.direct_activity, presets.polar_activity]
+)
+def test_output_profile_has_its_own_declared_shape(preset):
+    from torchcst.kernels.parameterizations import AmpWidthSpec
+
+    spec = (
+        preset(sigma_min=0.2, sigma_max=1.0)
+        if preset is presets.amplitude_width
+        else preset(
+            amplitude_max=2.0,
+            input_bounds=BandwidthBounds(
+                minimum=0.2, birth=1.0, maximum=1.0, upper_floor=0.2
+            ),
+            w_c=0.5,
+            **(
+                {"composition": "separable"}
+                if preset is presets.direct_activity
+                else {}
+            ),
+        )
+    )
+    spec = replace(
+        spec,
+        profiles=(
+            presets.profile(GaussianSpec(), normalize=False),
+            presets.profile(TriweightSpec(), normalize=False),
+        ),
+    )
+    state = KernelState(spec).double()
+    chart = Chart.linspace(5, spacing=0.3).double()
+    p = kernel_execution.initialize(state, chart, chart, 3).requires_grad_()
+    input_factor, output_factor = kernel_execution.factors(state, chart, chart, p)
+    if isinstance(spec.parameterization, AmpWidthSpec):
+        precision = kernel_execution.coordinate(
+            state, "bandwidth_precision", chart, chart, p
+        )
+        amplitude = p[:, 0]
+        source, target = p[:, 1:2], p[:, 2:]
+        pin, pout = precision, precision
+    else:
+        amplitude = kernel_execution.coordinate(state, "amplitude", chart, chart, p)
+        sigmas = kernel_execution.coordinate(state, "bandwidth_sigmas", chart, chart, p)
+        pin, pout = (s.reciprocal().square().detach() for s in sigmas)
+        source, target = p[:, 2:3], p[:, 3:]
+    expected_input = profile_execution.evaluate_with_precision(
+        state.profiles[0], chart, source, pin
+    )
+    expected_output = (
+        profile_execution.evaluate_with_precision(
+            state.profiles[1], chart, target, pout
+        )
+        * amplitude[None]
+    )
+    torch.testing.assert_close(input_factor, expected_input)
+    torch.testing.assert_close(output_factor, expected_output)
+    actual_grad = torch.autograd.grad(
+        (input_factor.sum() + output_factor.sum()), p, retain_graph=True
+    )[0]
+    expected_grad = torch.autograd.grad(
+        (expected_input.sum() + expected_output.sum()), p
+    )[0]
+    torch.testing.assert_close(actual_grad, expected_grad)

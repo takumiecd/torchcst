@@ -8,10 +8,18 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.operators.strip_torus.layout import AtomLayout
+from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
 from torchcst.geometry import StripChart, TorusGeometry
-from torchcst.kernels import DirectAmpWidth
-from torchcst.kernels.compact import _CompactRadialProfile
+from torchcst.kernels import DirectAmpWidthSpec
+from torchcst.kernels.profiles import (
+    BiweightSpec,
+    TriangleSpec,
+    TriweightSpec,
+    WendlandC2Spec,
+)
+from torchcst.kernels.state import KernelState
 
 
 def validate_tiled(chart: object, kernel: object) -> StripChart:
@@ -30,23 +38,30 @@ def validate_tiled(chart: object, kernel: object) -> StripChart:
             "tiled backend requires output-row stations and a full input axis"
         )
     if (
-        not isinstance(kernel, DirectAmpWidth)
-        or not isinstance(kernel.profile, _CompactRadialProfile)
-        or kernel.profile.normalize_columns
+        not isinstance(kernel, KernelState)
+        or type(kernel.spec.parameterization) is not DirectAmpWidthSpec
+        or kernel.spec.composition != "radial"
+        or type(kernel.profiles[0].binding.profile)
+        not in (BiweightSpec, TriweightSpec, WendlandC2Spec, TriangleSpec)
+        or kernel.profiles[0].binding.normalization.kind != "none"
     ):
         raise ValueError(
             "tiled backend requires DirectAmpWidth with a raw compact profile"
         )
-    chart.validate_support(float(kernel.sigma_max))
+    _kernel.family(kernel)
+    kernel.declaration()
+    if kernel.profiles[0].binding.profile.revision != 1:
+        raise ValueError("unsupported profile revision")
+    chart.validate_support(float(kernel.scalar("sigma_max_input")))
     return chart
 
 
 @torch.no_grad()
-def support_mask(chart: StripChart, kernel: DirectAmpWidth, p: Tensor) -> Tensor:
+def support_mask(chart: StripChart, kernel: KernelState, p: Tensor) -> Tensor:
     """Reference [station, atom] support oracle using actual site distances."""
 
     center = p[:, 2:]
-    radius_squared = kernel.bandwidth_sigma(chart, p).square()
+    radius_squared = _coordinates.bandwidth_sigma(kernel, chart, p).square()
     touched = []
     for station in range(chart.tile_count):
         sites, _ = chart.tile_indices(station)
@@ -56,7 +71,7 @@ def support_mask(chart: StripChart, kernel: DirectAmpWidth, p: Tensor) -> Tensor
 
 
 @torch.no_grad()
-def route_atoms(chart: StripChart, kernel: DirectAmpWidth, p: Tensor) -> Tensor:
+def route_atoms(chart: StripChart, kernel: KernelState, p: Tensor) -> Tensor:
     """Own each atom by its nearest sampled row on the circle, in O(A * G).
 
     Every station has the same column cross-sections. At any fixed column,
@@ -167,7 +182,7 @@ def owners_from_support(chart: StripChart, p: Tensor, touched: Tensor) -> Tensor
 
 def tiled_linear(
     chart: StripChart,
-    kernel: DirectAmpWidth,
+    kernel: KernelState,
     inputs: Tensor,
     p: Tensor,
     layout: AtomLayout,
@@ -202,7 +217,7 @@ def tiled_linear(
         row_stop = min(row_start + chart.tile_shape[0], chart.shape[0])
         rows = torch.arange(row_start, row_stop, device=p.device)
         if candidates.shape[0]:
-            weight = kernel.weight_tile(chart, candidates, rows, columns)
+            weight = _kernel.weight_tile(kernel, chart, candidates, rows, columns)
             result = flat_inputs @ weight.T
         else:
             # Empty support still has zero derivatives with respect to X and

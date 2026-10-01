@@ -1,6 +1,9 @@
-import torch
+from __future__ import annotations
 
-from torchcst import Amplitude, Chart, CSTLinear, Gaussian, Separable
+import torch
+from kernel_cases import amplitude_state, gaussian_state, separable_state
+
+from torchcst import Chart, CSTLinear
 from torchcst._derivatives import DenseDerivativeOracle
 
 
@@ -10,12 +13,11 @@ def make_site() -> CSTLinear:
         Chart.linspace(3, low=-1.0, high=1.0),
         Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
-        kernel=Amplitude(
-            Separable(
-                input_profile=Gaussian(0.8),
-                output_profile=Gaussian(0.6),
+        kernel=amplitude_state(
+            separable_state(
+                input_profile=gaussian_state(0.8), output_profile=gaussian_state(0.6)
             )
-        ),
+        ).declaration(),
         dtype=torch.float64,
         backend="factored",
     )
@@ -24,7 +26,6 @@ def make_site() -> CSTLinear:
 def test_current_point_is_atom_structured_and_opaque() -> None:
     site = make_site()
     derivatives = site.cst_derivatives()
-
     assert derivatives.current_point().shape == (
         site.atom_count,
         site.atoms.parameter_dim,
@@ -36,13 +37,11 @@ def test_represented_operator_is_the_sum_of_complete_kernel_atoms() -> None:
     site = make_site()
     derivatives = site.cst_derivatives()
     parameter_point = derivatives.current_point()
-
     torch.testing.assert_close(
         derivatives.represented(parameter_point), site.dense_weight()
     )
     torch.testing.assert_close(
-        derivatives.represented_atoms(parameter_point).sum(dim=0),
-        site.dense_weight(),
+        derivatives.represented_atoms(parameter_point).sum(dim=0), site.dense_weight()
     )
 
 
@@ -59,7 +58,6 @@ def test_matrix_free_derivatives_match_full_dense_oracle() -> None:
     )
     jacobian = oracle.jacobian(parameter_point=parameter_point)
     hessian = oracle.hessian(parameter_point=parameter_point)
-
     expected_jvp = torch.einsum("oikq,kq->oi", jacobian, right)
     expected_second = torch.einsum("oikqlr,kq,lr->oi", hessian, left, right)
     full_contracted = oracle.full_contracted_hessian(
@@ -68,7 +66,6 @@ def test_matrix_free_derivatives_match_full_dense_oracle() -> None:
     expected_blocks = torch.stack(
         [full_contracted[index, :, index, :] for index in range(site.atom_count)]
     )
-
     torch.testing.assert_close(
         actual.jvp(right, parameter_point=parameter_point), expected_jvp
     )
@@ -90,19 +87,12 @@ def test_materialized_local_derivatives_match_full_dense_oracle_blocks() -> None
     actual = site.cst_derivatives()
     oracle = DenseDerivativeOracle(site.atoms, site._materialize_atoms)
     point = actual.current_point()
-
-    jacobian, hessian = actual.materialized_local_derivatives(
-        parameter_point=point
-    )
+    jacobian, hessian = actual.materialized_local_derivatives(parameter_point=point)
     full_jacobian = oracle.jacobian(parameter_point=point)
     full_hessian = oracle.hessian(parameter_point=point)
     expected_hessian = torch.stack(
-        [
-            full_hessian[:, :, atom, :, atom, :]
-            for atom in range(site.atom_count)
-        ]
+        [full_hessian[:, :, atom, :, atom, :] for atom in range(site.atom_count)]
     )
-
     torch.testing.assert_close(jacobian, full_jacobian.permute(2, 0, 1, 3))
     torch.testing.assert_close(hessian, expected_hessian)
 
@@ -114,9 +104,7 @@ def test_distinct_atom_hessian_blocks_are_exactly_zero() -> None:
         site.out_features, site.in_features, dtype=site.atoms.p.dtype
     )
     full = oracle.full_contracted_hessian(cotangent)
-
     cross = full[0, :, 1, :]
-
     torch.testing.assert_close(cross, torch.zeros_like(cross))
 
 
@@ -129,7 +117,6 @@ def test_pushforward_and_pullback_are_adjoint() -> None:
     cotangent = torch.randn(
         site.out_features, site.in_features, dtype=parameter_point.dtype
     )
-
     visible_inner = (
         derivatives.pushforward(vector, at=at, parameter_point=parameter_point)
         * cotangent
@@ -137,7 +124,6 @@ def test_pushforward_and_pullback_are_adjoint() -> None:
     parameter_inner = (
         vector * derivatives.pullback(cotangent, at=at, parameter_point=parameter_point)
     ).sum()
-
     torch.testing.assert_close(visible_inner, parameter_inner)
 
 
@@ -146,16 +132,14 @@ def test_displacement_is_the_second_order_taylor_map() -> None:
     derivatives = site.cst_derivatives()
     parameter_point = derivatives.current_point()
     direction = torch.randn_like(parameter_point)
-    scale = 1e-3
-
+    scale = 0.001
     exact_change = derivatives.represented(
         parameter_point + scale * direction
     ) - derivatives.represented(parameter_point)
     quadratic_change = derivatives.displacement(
         scale * direction, parameter_point=parameter_point
     )
-
-    assert torch.linalg.vector_norm(exact_change - quadratic_change) < 1e-8
+    assert torch.linalg.vector_norm(exact_change - quadratic_change) < 1e-08
 
 
 def test_zero_displacement_pullback_matches_parameter_autograd() -> None:
@@ -164,10 +148,8 @@ def test_zero_displacement_pullback_matches_parameter_autograd() -> None:
     cotangent = torch.randn(
         site.out_features, site.in_features, dtype=site.atoms.p.dtype
     )
-
     (site.dense_weight() * cotangent).sum().backward()
     expected = site.atoms.p.grad
-
     torch.testing.assert_close(derivatives.pullback(cotangent), expected)
 
 
@@ -176,12 +158,10 @@ def test_derivatives_reject_trainable_charts_for_now() -> None:
         Chart.linspace(3, trainable=True, low=-1.0, high=1.0),
         Chart.linspace(2, low=-1.0, high=1.0),
         atoms=2,
-        kernel=Separable(
-            input_profile=Gaussian(0.5),
-            output_profile=Gaussian(0.5),
-        ),
+        kernel=separable_state(
+            input_profile=gaussian_state(0.5), output_profile=gaussian_state(0.5)
+        ).declaration(),
     )
-
     try:
         site.cst_derivatives()
     except ValueError as error:

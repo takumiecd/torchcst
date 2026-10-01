@@ -42,7 +42,7 @@ def main():
     )
     g = layer.strip.chart.tile_count
     cg = layer.column_groups
-    profile = PROFILE_KINDS[type(layer.strip.kernel.profile)]
+    profile = PROFILE_KINDS[layer.strip.kernel.profiles[0].binding.profile.id]
     w = torch.empty((512, n), device="cuda")
     dw = torch.randn_like(w)
     dp = torch.zeros_like(p)

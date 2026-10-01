@@ -143,7 +143,9 @@ def streamed_forward(
                 K=layer.shape[1],
                 CG=layer.column_groups,
                 G=layer.strip.chart.tile_count,
-                PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                PROFILE=PROFILE_KINDS[
+                    layer.strip.kernel.profiles[0].binding.profile.id
+                ],
                 MAX_CANDIDATES=max_candidates,
                 CSR=csr,
                 BOUNDED=materialize_mode == "listed_bounded",
@@ -178,7 +180,9 @@ def streamed_forward(
                 CG=layer.column_groups,
                 G=layer.strip.chart.tile_count,
                 D=4,
-                PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                PROFILE=PROFILE_KINDS[
+                    layer.strip.kernel.profiles[0].binding.profile.id
+                ],
                 BN=bn,
                 BK=bk,
                 BA=1,

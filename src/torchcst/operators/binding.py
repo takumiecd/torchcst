@@ -6,7 +6,7 @@ from torch import Tensor
 
 from torchcst.atoms import Atoms
 from torchcst.geometry import Chart
-from torchcst.kernels import Kernel
+from torchcst.kernels.state import KernelState
 
 from .spec import ChartPairSpec, OperatorSpec, SingleChartSpec
 
@@ -21,26 +21,27 @@ class Operator:
     """
 
     charts: tuple[Chart, ...]
-    kernel: Kernel
+    kernel: KernelState
     atoms: Atoms
 
     def __post_init__(self):
+        from torchcst._backends.torch.kernels import execution as _kernel
+
         if (
             not isinstance(self.charts, tuple)
             or len(self.charts) not in (1, 2)
             or not all(isinstance(c, Chart) for c in self.charts)
         ):
             raise TypeError("charts must be a tuple containing one or two Charts")
-        if not isinstance(self.kernel, Kernel) or not isinstance(self.atoms, Atoms):
+        if not isinstance(self.kernel, KernelState) or not isinstance(
+            self.atoms, Atoms
+        ):
             raise TypeError("kernel and atoms must implement their Module contracts")
-        if len(self.charts) == 1:
-            if len(getattr(self.charts[0], "shape", ())) != 2:
-                raise ValueError("a single chart must describe an [out, in] operator")
-            if not callable(getattr(self.kernel, "weight", None)):
-                raise TypeError("a single-chart kernel must implement weight(chart, p)")
+        if len(self.charts) == 1 and len(getattr(self.charts[0], "shape", ())) != 2:
+            raise ValueError("a single chart must describe an [out, in] operator")
         if tuple(self.kernel.parameters()):
             raise ValueError("a Kernel cannot own trainable state; put it in atom p")
-        if self.kernel.parameter_dim(*self.charts) != self.atoms.parameter_dim:
+        if _kernel.parameter_dim(self.kernel, *self.charts) != self.atoms.parameter_dim:
             raise ValueError("atom parameter width differs from the kernel contract")
 
     @property
@@ -69,9 +70,7 @@ class Operator:
             if len(charts) == 1
             else ChartPairSpec(input_chart=charts[0], output_chart=charts[1])
         )
-        return OperatorSpec(
-            layout=layout, kernel=self.kernel.declaration(chart_count=len(charts))
-        )
+        return OperatorSpec(layout=layout, kernel=self.kernel.declaration())
 
     def _parameters(self, p):
         p = self.p if p is None else p

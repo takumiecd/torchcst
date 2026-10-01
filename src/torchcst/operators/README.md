@@ -45,8 +45,8 @@ Parameter gradients without installing an optimizer-specific backward route.
 `Operator` は nn.Module ではない。所有権、checkpoint の key、optimizer の
 Parameter 参照は既存 Module のまま。`atoms.p` の更新や置き換え、dtype / device
 変換後も live view は現在の値を使う。Module 自体を差し替えたときは CSTLinear
-が view を再構成する。custom Kernel の既存実行は宣言を要求しないが、宣言を
-使う際には従来通り `declaration()` の明示実装が必要である。
+が view を再構成する。Kernel は共通 KernelState を参照する。利用者は Layer に
+KernelSpec を渡し、新しい意味には対応する backend 実装を用意する。
 
 `declaration()` と `spec.bind()` は設定境界の処理。scalar の読み戻しや明示点の
 snapshot は forward / backward / CUDA Graph capture 中に行わない。trainable な

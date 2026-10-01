@@ -1,19 +1,24 @@
+from __future__ import annotations
+
 import copy
 
 import pytest
 import torch
+from kernel_cases import (
+    amplitude_state,
+    direct_state,
+    gaussian_state,
+    polar_state,
+    separable_state,
+)
 from torch import nn
 
 from torchcst import (
-    Amplitude,
+    BandwidthBounds,
     Chart,
     CSTLinear,
     CSTOptimizer,
-    DirectAmpWidth,
-    Gaussian,
     OptimizerStateAdapter,
-    PolarAmpWidth,
-    Separable,
 )
 
 
@@ -26,10 +31,15 @@ def site(backend="materialized", *, sphere=False, kernel=None):
     return CSTLinear(
         *charts,
         atoms=3,
-        kernel=kernel
-        or Amplitude(
-            Separable(input_profile=Gaussian(0.7), output_profile=Gaussian(0.8))
-        ),
+        kernel=(
+            kernel
+            or amplitude_state(
+                separable_state(
+                    input_profile=gaussian_state(0.7),
+                    output_profile=gaussian_state(0.8),
+                )
+            )
+        ).declaration(),
         backend=backend,
         dtype=torch.float64,
     )
@@ -142,20 +152,22 @@ def test_activity_policy_advances_with_zero_gradient_but_skips_missing_gradient(
     kind, parameterization
 ):
     kernel = (
-        PolarAmpWidth(
+        polar_state(
             amplitude_max=1.0,
             w_c=0.1,
-            sigma_min=0.1,
-            sigma_max=2.0,
             radial_regularization=0.3,
+            input_bounds=BandwidthBounds(
+                minimum=0.1, maximum=2.0, birth=2.0, upper_floor=0.1
+            ),
         )
         if parameterization == "polar"
-        else DirectAmpWidth(
+        else direct_state(
             amplitude_max=1.0,
             w_c=0.1,
-            sigma_min=0.1,
-            sigma_max=2.0,
             radial_regularization=0.3,
+            input_bounds=BandwidthBounds(
+                minimum=0.1, maximum=2.0, birth=2.0, upper_floor=0.1
+            ),
         )
     )
     model = site(kernel=kernel)
@@ -178,7 +190,7 @@ def test_activity_policy_advances_with_zero_gradient_but_skips_missing_gradient(
     if parameterization == "polar":
         q = model.atoms.p[:, :2].square().sum(-1)
         expected = 1 / (
-            1 - (1.5 / 2.5) * torch.exp(torch.tensor(-4 * 0.3 * 0.01, dtype=q.dtype))
+            1 - 1.5 / 2.5 * torch.exp(torch.tensor(-4 * 0.3 * 0.01, dtype=q.dtype))
         )
     else:
         q = model.atoms.p[:, 1]
@@ -188,12 +200,13 @@ def test_activity_policy_advances_with_zero_gradient_but_skips_missing_gradient(
 
 def test_param_groups_use_their_own_rate_and_zero_rate_freezes_policy():
     first = site(
-        kernel=PolarAmpWidth(
+        kernel=polar_state(
             amplitude_max=1.0,
             w_c=0.1,
-            sigma_min=0.1,
-            sigma_max=2.0,
             radial_regularization=0.2,
+            input_bounds=BandwidthBounds(
+                minimum=0.1, maximum=2.0, birth=2.0, upper_floor=0.1
+            ),
         )
     )
     second = copy.deepcopy(first)
@@ -274,6 +287,7 @@ def test_checkpoint_rejects_wrong_optimizer_order_and_state_shape():
 
 
 def test_custom_optimizer_state_requires_explicit_adapter_and_lbfgs_is_rejected():
+
     class CustomSGD(torch.optim.SGD):
         pass
 
@@ -303,9 +317,11 @@ def test_trainable_euclidean_chart_and_parameter_subset_pass_through():
         Chart.linspace(5, spacing=0.3, trainable=True),
         Chart.linspace(4, spacing=0.4, trainable=True),
         atoms=3,
-        kernel=Amplitude(
-            Separable(input_profile=Gaussian(0.7), output_profile=Gaussian(0.8))
-        ),
+        kernel=amplitude_state(
+            separable_state(
+                input_profile=gaussian_state(0.7), output_profile=gaussian_state(0.8)
+            )
+        ).declaration(),
         dtype=torch.float64,
     )
     oracle = copy.deepcopy(model)

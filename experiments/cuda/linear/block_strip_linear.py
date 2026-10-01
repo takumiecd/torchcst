@@ -12,16 +12,21 @@ import torch.nn.functional as F
 from torch import nn
 
 from torchcst import (
+    BandwidthBounds,
     CSTLinear,
-    DirectAmpWidth,
     GridPattern,
     LinePattern,
     StripChart,
     TorusGeometry,
-    Triweight,
+    TriweightSpec,
+    presets,
 )
 from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.kernels import direct_amp_width as _direct
+from torchcst._backends.torch.kernels.execution import KernelOptions
 from torchcst._backends.torch.operators.strip_torus.preparation import PROFILE_KINDS
+from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
+from torchcst.kernels import ProfileBinding
 
 
 class BlockStripLinear(nn.Module):
@@ -66,19 +71,19 @@ class BlockStripLinear(nn.Module):
                 representation="intrinsic",
             ),
         )
-        kernel = DirectAmpWidth(
+        kernel = presets.direct_activity(
             amplitude_max=1,
-            sigma_min=sigma_min,
-            sigma_birth=sigma,
-            sigma_max=0.8,
+            input_bounds=BandwidthBounds(
+                minimum=sigma_min, birth=sigma, maximum=0.8, upper_floor=sigma_min
+            ),
             w_c=0.05,
-            profile=Triweight(sigma_min, normalize_columns=False),
-            checkpoint_blocks=False,
+            profile=ProfileBinding(profile=TriweightSpec()),
         )
         self.strip = CSTLinear(
             chart=chart,
             atoms=atoms,
             kernel=kernel,
+            kernel_options=KernelOptions(checkpoint_blocks=False),
             backend="tiled",
             device=device,
             dtype=dtype,
@@ -110,14 +115,17 @@ class BlockStripLinear(nn.Module):
         s, t = self.tile_shape
         layer = self.strip
         p = layer.atoms.p
-        center, amp, precision = layer.kernel.tile_parameters(layer.chart, p)
+        center, amp, precision = _coordinates.tile_parameters(
+            layer.kernel, layer.chart, p
+        )
         outputs = []
         for r in range(self.row_groups):
             width = min(s, self.shape[0] - r * s)
             acc = flat.sum(-1, keepdim=True).expand(-1, width) * 0 + p.sum() * 0
             for c in range(self.column_groups):
                 g = r * self.column_groups + c
-                w = layer.kernel._single_block(
+                w = _direct._single_block(
+                    layer.kernel,
                     layer.chart,
                     center,
                     amp,
@@ -232,7 +240,7 @@ class BlockStripLinear(nn.Module):
             "G": self.strip.chart.tile_count,
             "D": p.shape[1] - 2,
             "BM": bm,
-            "PROFILE": PROFILE_KINDS[type(self.strip.kernel.profile)],
+            "PROFILE": PROFILE_KINDS[self.strip.kernel.profiles[0].binding.profile.id],
         }
         if flat.shape[0]:
             if backend in ("triton_shared", "triton_atom_dot"):

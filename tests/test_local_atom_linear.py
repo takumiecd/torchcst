@@ -1,16 +1,19 @@
-"""Local contractions against the canonical dense operator and its gradients."""
+from __future__ import annotations
 
+"""Local contractions against the canonical dense operator and its gradients."""
 import pytest
 import torch
 import torch.nn.functional as F
+from kernel_cases import biweight_state, triangle_state, triweight_state, wendland_state
 from test_triton_linear import GPU, _model
 
 from experiments.cuda.linear.local_atom_linear import forward, reference
-from torchcst import Biweight, Triangle, Triweight, WendlandC2
 
 
 @pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
-@pytest.mark.parametrize("profile", [Biweight, Triweight, Triangle, WendlandC2])
+@pytest.mark.parametrize(
+    "profile", [biweight_state, triweight_state, triangle_state, wendland_state]
+)
 @pytest.mark.parametrize("representation", ["intrinsic", "ambient"])
 @pytest.mark.parametrize("sigma_min", [0.3, 3.5])
 def test_local_values_and_gradients(device, profile, representation, sigma_min):
@@ -25,7 +28,7 @@ def test_local_values_and_gradients(device, profile, representation, sigma_min):
     p = layer.atoms.p
     with torch.no_grad():
         p[:, 0].uniform_(-0.7, 0.7)
-        p[0, 0] = 0  # amplitude derivative must survive zero forward contribution
+        p[0, 0] = 0
         p[1, 0] = 1.4
         point = p.new_tensor([[38.2, 0.0, 0.0]])
         p[2, 2:] = layer.chart.geometry.encode_centers(
@@ -37,7 +40,7 @@ def test_local_values_and_gradients(device, profile, representation, sigma_min):
     grad = torch.randn_like(expected)
     wanted = torch.autograd.grad(expected, (x, p), grad)
     got = torch.autograd.grad(actual, (x, p), grad)
-    tolerance = 1e-10 if device == "cpu" else 1e-4
+    tolerance = 1e-10 if device == "cpu" else 0.0001
     torch.testing.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
     for a, b in zip(got, wanted, strict=True):
         torch.testing.assert_close(a, b, atol=tolerance, rtol=tolerance)
@@ -50,13 +53,13 @@ def test_small_station_counts_and_empty_batch(rows, station_rows, batch):
     x = torch.randn(batch, 21, device="cuda", requires_grad=True)
     expected = F.linear(x, layer.dense_weight())
     actual = forward(layer, x, layer.atoms.p)
-    torch.testing.assert_close(actual, expected, atol=3e-5, rtol=3e-5)
+    torch.testing.assert_close(actual, expected, atol=3e-05, rtol=3e-05)
     for a, b in zip(
         torch.autograd.grad(actual.sum(), (x, layer.atoms.p)),
         torch.autograd.grad(expected.sum(), (x, layer.atoms.p)),
         strict=True,
     ):
-        torch.testing.assert_close(a, b, atol=1e-4, rtol=1e-4)
+        torch.testing.assert_close(a, b, atol=0.0001, rtol=0.0001)
 
 
 @GPU
@@ -75,7 +78,6 @@ def test_idle_and_capture_observe_updated_atoms():
     for grad in torch.autograd.grad(y.sum(), (x, layer.atoms.p)):
         assert not grad.any()
     with torch.no_grad():
-        # Warm on another stream, then capture the full preparation and forward.
         stream = torch.cuda.Stream()
         stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(stream):
@@ -88,5 +90,5 @@ def test_idle_and_capture_observe_updated_atoms():
         layer.atoms.p[:, 2].sub_(1.5)
         graph.replay()
         torch.testing.assert_close(
-            output, F.linear(x, layer.dense_weight()), atol=3e-5, rtol=3e-5
+            output, F.linear(x, layer.dense_weight()), atol=3e-05, rtol=3e-05
         )

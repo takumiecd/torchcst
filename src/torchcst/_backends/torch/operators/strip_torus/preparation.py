@@ -13,27 +13,21 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor, nn
 
+from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.operators.dispatch import validate_tiled
 from torchcst._backends.torch.operators.strip_torus.tiled import CircleRouting
 from torchcst.geometry import Chart, StripChart
-from torchcst.kernels import (
-    Biweight,
-    DirectAmpWidth,
-    Kernel,
-    Triangle,
-    Triweight,
-    WendlandC2,
-)
+from torchcst.kernels.state import KernelState
 
 if TYPE_CHECKING:
     from torchcst.nn.linear import CSTLinear
 
-PROFILE_KINDS = {Biweight: 0, Triweight: 1, WendlandC2: 2, Triangle: 3}
+PROFILE_KINDS = {"biweight": 0, "triweight": 1, "wendland_c2": 2, "triangle": 3}
 
 
-def validate(charts: tuple[Chart, ...], kernel: Kernel) -> None:
+def validate(charts: tuple[Chart, ...], kernel: KernelState) -> None:
     validate_tiled(charts, kernel)
-    if type(kernel.profile) not in PROFILE_KINDS:
+    if kernel.profiles[0].binding.profile.id not in PROFILE_KINDS:
         raise ValueError(
             "triton backend requires Biweight, Triweight, WendlandC2 or Triangle"
         )
@@ -69,7 +63,7 @@ def geometry_factors(chart: StripChart) -> tuple[Tensor, Tensor]:
     return circle.contiguous(), section.contiguous()
 
 
-def _configuration_key(chart: StripChart, kernel: DirectAmpWidth) -> tuple | None:
+def _configuration_key(chart: StripChart, kernel: KernelState) -> tuple | None:
     parts = []
     for root in (chart, kernel):
         for name, module in root.named_modules():
@@ -115,7 +109,7 @@ def execution_plan(site: CSTLinear) -> _Plan:
     # same model is subsequently trained and autograd saves them for backward.
     with torch.inference_mode(False), torch.no_grad():
         validate(site.cst_charts(), site.kernel)
-        parameter_dim = site.kernel.parameter_dim(site.chart)
+        parameter_dim = _kernel.parameter_dim(site.kernel, site.chart)
         circle, section = geometry_factors(site.chart)
         plan = _Plan(
             key, parameter_dim, circle, section, CircleRouting.from_chart(site.chart)

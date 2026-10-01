@@ -1,4 +1,4 @@
-"""PyTorch execution for legacy polar_amplitude_bandwidth contracts."""
+"""PyTorch execution for declared polar_amplitude_bandwidth contracts."""
 
 from __future__ import annotations
 
@@ -7,11 +7,15 @@ import math
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.parameterizations import (
+    polar_amp_width as _parameterizations,
+)
+from torchcst._backends.torch.profiles import execution as _profile
 from torchcst.geometry import Chart
 
 
 def apply_parameter_update(
-    self,
+    state,
     input_chart: Chart,
     output_chart: Chart,
     p: Tensor,
@@ -21,13 +25,13 @@ def apply_parameter_update(
 ) -> Tensor:
     """Project task motion tangentially, decay radius, then enforce 1<=q<=4."""
 
-    self._split(input_chart, output_chart, p)
+    _parameterizations._split(state, input_chart, output_chart, p)
     if displacement.shape != p.shape:
         raise ValueError("displacement must match the atom parameter shape")
     if not math.isfinite(step_size) or step_size <= 0:
         raise ValueError("step_size must be finite and positive")
 
-    polar = self._project_polar(p[:, :2])
+    polar = _project_polar(p[:, :2])
     raw = displacement[:, :2]
     radius_square = polar.square().sum(dim=-1, keepdim=True)
     radial_coefficient = (raw * polar).sum(dim=-1, keepdim=True) / radius_square
@@ -42,86 +46,98 @@ def apply_parameter_update(
     chord_q = chord.square().sum(dim=-1, keepdim=True)
     direction = chord / chord_q.sqrt()
     energy = tangent.square().sum(dim=-1, keepdim=True)
-    if self.activity_mode == "time_energy":
+    if state.setting("activity_mode") == "time_energy":
         energy = energy / step_size
-    proposed_amplitude, _ = self._amplitude_and_alpha(direction)
-    dormant_weight = 1.0 / (1.0 + (proposed_amplitude / self.w_c.to(p)).square())
+    proposed_amplitude, _ = _parameterizations._amplitude_and_alpha(state, direction)
+    dormant_weight = 1.0 / (
+        1.0 + (proposed_amplitude / state.scalar("w_c").to(p)).square()
+    )
     dormant_q = (
         3.0
-        * self.dormant_expansion_rate.to(p)
+        * state.scalar("dormant_expansion_rate").to(p)
         * p.new_tensor(step_size)
         * dormant_weight.unsqueeze(-1)
     )
-    task_q = (radius_square + self.activity_gain.to(p) * energy + dormant_q).clamp(
-        1.0, 4.0
-    )
+    task_q = (
+        radius_square + state.scalar("activity_gain").to(p) * energy + dormant_q
+    ).clamp(1.0, 4.0)
     task_polar = direction * task_q.sqrt()
 
     # Exact gradient flow for R(q)=lambda/2*(q-1)^2 over time step_size:
     # y=(q-1)/q decays as exp(-4*lambda*t), keeping q in [1, 4].
-    decay = torch.exp(-4.0 * self.radial_regularization.to(p) * p.new_tensor(step_size))
+    decay = torch.exp(
+        -4.0 * state.scalar("radial_regularization").to(p) * p.new_tensor(step_size)
+    )
     activity = (task_q - 1.0) / task_q
     regularized_q = 1.0 / (1.0 - activity * decay)
     regularized_polar = task_polar * (regularized_q / task_q).sqrt()
 
-    _, input_p, output_p = self._split(input_chart, output_chart, p)
-    _, input_d, output_d = self._split(
-        input_chart,
-        output_chart,
-        displacement,
+    _, input_p, output_p = _parameterizations._split(
+        state, input_chart, output_chart, p
     )
-    updated_input = self.profile.apply_parameter_update(
-        input_chart,
-        input_p,
-        input_d,
+    _, input_d, output_d = _parameterizations._split(
+        state, input_chart, output_chart, displacement
     )
-    updated_output = self.profile.apply_parameter_update(
-        output_chart,
-        output_p,
-        output_d,
+    updated_input = _profile.apply_parameter_update(
+        state.profiles[0], input_chart, input_p, input_d
+    )
+    updated_output = _profile.apply_parameter_update(
+        state.profiles[1], output_chart, output_p, output_d
     )
     return torch.cat((regularized_polar, updated_input, updated_output), dim=-1)
 
 
 def project_parameter_gradient(
-    self,
+    state,
     input_chart: Chart,
     output_chart: Chart,
     p: Tensor,
     gradient: Tensor,
 ) -> Tensor:
-    _, input_p, output_p = self._split(input_chart, output_chart, p)
-    polar_g, input_g, output_g = self._split(
-        input_chart,
-        output_chart,
-        gradient,
+    _, input_p, output_p = _parameterizations._split(
+        state, input_chart, output_chart, p
+    )
+    polar_g, input_g, output_g = _parameterizations._split(
+        state, input_chart, output_chart, gradient
     )
     return torch.cat(
         (
             polar_g,
-            self.profile.project_gradient(input_chart, input_p, input_g),
-            self.profile.project_gradient(output_chart, output_p, output_g),
+            _profile.project_gradient(state.profiles[0], input_chart, input_p, input_g),
+            _profile.project_gradient(
+                state.profiles[1], output_chart, output_p, output_g
+            ),
         ),
         dim=-1,
     )
 
 
 def transport_parameter_state(
-    self,
+    kernel_state,
     input_chart: Chart,
     output_chart: Chart,
     old: Tensor,
     new: Tensor,
     state: Tensor,
 ) -> Tensor:
-    _, old_i, old_o = self._split(input_chart, output_chart, old)
-    _, new_i, new_o = self._split(input_chart, output_chart, new)
-    polar_s, state_i, state_o = self._split(input_chart, output_chart, state)
+    _, old_i, old_o = _parameterizations._split(
+        kernel_state, input_chart, output_chart, old
+    )
+    _, new_i, new_o = _parameterizations._split(
+        kernel_state, input_chart, output_chart, new
+    )
+    polar_s, state_i, state_o = _parameterizations._split(
+        kernel_state, input_chart, output_chart, state
+    )
     return torch.cat(
         (
             polar_s,
-            self.profile.transport_state(input_chart, old_i, new_i, state_i),
-            self.profile.transport_state(output_chart, old_o, new_o, state_o),
+            _profile.transport_state(
+                kernel_state.profiles[0], input_chart, old_i, new_i, state_i
+            ),
+            _profile.transport_state(
+                kernel_state.profiles[1], output_chart, old_o, new_o, state_o
+            ),
         ),
         dim=-1,
     )

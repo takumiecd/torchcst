@@ -11,8 +11,8 @@ from torchcst._backends.cuda.algorithms.strip_torus.fused import (
 
 def tile_parameters(kernel, p):
     # Keep clamp in Torch: its derivative includes the endpoints. Width is
-    # intentionally detached, matching DirectAmpWidth._tile_parameters.
-    maximum = kernel.amplitude_max
+    # intentionally detached, matching direct activity width preparation.
+    maximum = kernel.scalar("amplitude_max")
     amplitude = p[:, 0].clamp(-maximum, maximum)
     precision = torch.empty_like(amplitude)
     if p.shape[0]:
@@ -20,14 +20,14 @@ def tile_parameters(kernel, p):
             kernels.bandwidth[(tr.cdiv(p.shape[0], 128),)](
                 amplitude,
                 p,
-                kernel.sigma_min_input,
-                kernel.sigma_birth_input,
-                kernel.sigma_max_input,
-                kernel.upper_floor_input,
-                kernel.w_c,
-                kernel.kappa,
-                kernel.lower_kappa,
-                kernel.upper_decay_power,
+                kernel.scalar("sigma_min_input"),
+                kernel.scalar("sigma_birth_input"),
+                kernel.scalar("sigma_max_input"),
+                kernel.scalar("upper_floor_input"),
+                kernel.scalar("w_c"),
+                kernel.scalar("kappa"),
+                kernel.scalar("lower_kappa"),
+                kernel.scalar("upper_decay_power"),
                 precision,
                 p.shape[0],
                 *p.stride(),

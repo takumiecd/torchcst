@@ -42,8 +42,9 @@ class CSTModule(nn.Module):
     @property
     def atom_parameter_dof(self) -> int:
         """Intrinsic degrees of freedom in one stored atom row."""
+        from torchcst._backends.torch.kernels import execution as _kernel
 
-        return self.kernel.parameter_dof(*self.cst_charts())
+        return _kernel.parameter_dof(self.kernel, *self.cst_charts())
 
     @property
     def cst_degrees_of_freedom(self) -> int:

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Literal
 from torch import Tensor
 
 from torchcst.geometry import Chart
-from torchcst.kernels import Kernel
+from torchcst.kernels.state import KernelState
 
 if TYPE_CHECKING:
     from torchcst.nn.linear import CSTLinear
@@ -25,11 +25,11 @@ ResolvedBackend = Literal["factored", "materialized", "tiled", "triton"]
 
 @dataclass(frozen=True)
 class _Implementation:
-    validate: Callable[[tuple[Chart, ...], Kernel], None]
+    validate: Callable[[tuple[Chart, ...], KernelState], None]
     forward: Callable[[CSTLinear, Tensor, Tensor], Tensor]
 
 
-def _validate_triton(charts: tuple[Chart, ...], kernel: Kernel) -> None:
+def _validate_triton(charts: tuple[Chart, ...], kernel: KernelState) -> None:
     from torchcst._backends.torch.operators.strip_torus.preparation import validate
 
     validate(charts, kernel)
@@ -56,7 +56,9 @@ _IMPLEMENTATIONS = {
 _IMPLEMENTATIONS["triton"] = _Implementation(_validate_triton, _triton_forward)
 
 
-def validate_backend(name: Backend, charts: tuple[Chart, ...], kernel: Kernel) -> None:
+def validate_backend(
+    name: Backend, charts: tuple[Chart, ...], kernel: KernelState
+) -> None:
     if name == "auto":
         return
     if name not in _IMPLEMENTATIONS:
@@ -66,9 +68,11 @@ def validate_backend(name: Backend, charts: tuple[Chart, ...], kernel: Kernel) -
 
 
 def resolve_backend(site: CSTLinear) -> ResolvedBackend:
+    from torchcst._backends.torch.kernels import execution as _kernel
+
     if site.backend != "auto":
         return site.backend
-    if len(site.cst_charts()) == 1 or not site.kernel.supports_factorization:
+    if len(site.cst_charts()) == 1 or not _kernel.supports_factorization(site.kernel):
         return "materialized"
     factor_size = site.atom_count * (site.in_features + site.out_features)
     dense_size = site.in_features * site.out_features

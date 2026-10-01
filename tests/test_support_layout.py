@@ -1,5 +1,8 @@
-"""Dependency buckets must match full site support, including seam/idle atoms."""
+from __future__ import annotations
 
+from torchcst._backends.torch.kernels import execution as _kernel
+
+"""Dependency buckets must match full site support, including seam/idle atoms."""
 import pytest
 import torch
 from test_strip_torus_gemm_prototype import _model as seam_model
@@ -22,14 +25,16 @@ from torchcst._backends.torch.operators.strip_torus.tiled import (
 def test_buckets_equal_exact_support_and_preserve_each_atom_once(rows, station_rows):
     torch.manual_seed(71)
     layer = _model(rows=rows, station_rows=station_rows, atoms=97).double()
-    chart, p = layer.chart, layer.atoms.p
+    chart, p = (layer.chart, layer.atoms.p)
     with torch.no_grad():
         coordinates = torch.randn(97, 3, dtype=p.dtype)
         coordinates[:, 0] = torch.linspace(-100, 100, 97)
         p[:, 2:] = chart.geometry.encode_centers(
             chart.geometry.lift_chart_coordinates(coordinates)
         )
-    encoded, _, precision = layer.kernel.tile_parameters(chart, p)
+    encoded, _, precision = _kernel.coordinate(
+        layer.kernel, "tile_parameters", chart, p
+    )
     layout = support_layout(
         execution_plan(layer),
         chart.geometry.decode_centers(encoded),
@@ -70,22 +75,22 @@ def test_seam_shared_atom_is_stored_once_and_gpu_classification_matches(device):
     expected = prepare(layer, layer.atoms.p, use_triton=False, support_layout=True)
     actual = prepare(layer, layer.atoms.p, support_layout=True)
     for a, b in zip(actual, expected, strict=True):
-        torch.testing.assert_close(a, b, atol=1e-6, rtol=1e-6)
+        torch.testing.assert_close(a, b, atol=1e-06, rtol=1e-06)
     offsets = actual[-1]
-    assert offsets[8] > offsets[7]  # B[3] is the seam; stored only once.
+    assert offsets[8] > offsets[7]
     if device == "cuda":
         x = torch.randn(33, 4, device=device, requires_grad=True)
         reference = torch.nn.functional.linear(x, layer.dense_weight())
         for bm in (16, 32, 64):
             result = forward(layer, x, layer.atoms.p, batch_tile=bm)
-            torch.testing.assert_close(result, reference, atol=3e-5, rtol=3e-5)
+            torch.testing.assert_close(result, reference, atol=3e-05, rtol=3e-05)
             grad = torch.randn_like(result)
             got = torch.autograd.grad(result, (x, layer.atoms.p), grad)
             wanted = torch.autograd.grad(
                 reference, (x, layer.atoms.p), grad, retain_graph=True
             )
             for a, b in zip(got, wanted, strict=True):
-                torch.testing.assert_close(a, b, atol=1e-4, rtol=1e-4)
+                torch.testing.assert_close(a, b, atol=0.0001, rtol=0.0001)
 
 
 @pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
@@ -105,4 +110,4 @@ def test_all_idle_atoms_keep_zero_input_and_parameter_gradients(device):
     y = layer(x)
     assert not y.any()
     dx, dp = torch.autograd.grad(y.sum(), (x, layer.atoms.p))
-    assert not dx.any() and not dp.any()
+    assert not dx.any() and (not dp.any())

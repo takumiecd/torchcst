@@ -25,6 +25,10 @@ class ActivityWidthSpec(ParameterizationSpec):
             "upper_decay_power",
         ):
             positive(getattr(self, name), name)
+        if self.kappa <= 1:
+            raise ValueError("kappa must exceed 1")
+        if self.upper_decay_power > 1:
+            raise ValueError("upper_decay_power must not exceed 1")
         if not isinstance(self.input_bounds, BandwidthBounds) or not isinstance(
             self.output_bounds, BandwidthBounds
         ):

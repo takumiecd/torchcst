@@ -71,7 +71,7 @@ def main():
         "K": n,
         "CG": layer.column_groups,
         "G": layer.strip.chart.tile_count,
-        "PROFILE": PROFILE_KINDS[type(layer.strip.kernel.profile)],
+        "PROFILE": PROFILE_KINDS[layer.strip.kernel.profiles[0].binding.profile.id],
         "STATION_START": 0,
         "ROW_START": 0,
         "enable_fp_fusion": True,

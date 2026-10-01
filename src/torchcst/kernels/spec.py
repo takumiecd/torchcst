@@ -8,6 +8,8 @@ from .normalization import NormalizationSpec
 from .parameterizations import FixedWidthSpec, ParameterizationSpec
 from .profiles import ProfileSpec
 
+AtomInit = Literal["balanced", "uniform"]
+
 
 @dataclass(frozen=True, kw_only=True)
 class ProfileBinding:
@@ -33,8 +35,8 @@ class ProfileBinding:
 class StatePolicySpec:
     """Initialization or coordinate-update semantics; no execution settings.
 
-    The immutable scalar settings retain existing policy options while their
-    dedicated initializer/update interfaces are migrated in a later stage.
+    The identifier and immutable settings describe the coordinate policy.
+    A backend must recognize the complete contract before executing it.
     """
 
     id: str
@@ -110,5 +112,15 @@ class KernelSpec:
                 p.parameterization is None for p in self.profiles
             ):
                 raise ValueError("each profile needs a bandwidth declaration")
+            if self.parameterization is not None and any(
+                p.parameterization is not None for p in self.profiles
+            ):
+                raise ValueError(
+                    "bandwidth must be declared once, by the kernel parameterization"
+                )
+            if self.composition == "separable" and any(
+                p.normalization.domain == "operator_sites" for p in self.profiles
+            ):
+                raise ValueError("separable profiles normalize over chart_sites")
         else:
             raise ValueError("unknown kernel composition")

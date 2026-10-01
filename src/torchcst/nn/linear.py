@@ -15,7 +15,9 @@ from torchcst._backends.linear import (
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.geometry import Chart, StripChart
-from torchcst.kernels import AtomInit, Kernel
+from torchcst.kernels import AtomInit, KernelSpec
+from torchcst.kernels.options import KernelOptions
+from torchcst.kernels.state import KernelState
 from torchcst.operators import Operator
 
 from .module import CSTModule, RepulsionKind
@@ -31,12 +33,15 @@ class CSTLinear(CSTModule):
         *,
         chart: Chart | None = None,
         atoms: int,
-        kernel: Kernel,
+        kernel: KernelSpec,
+        kernel_options: KernelOptions | None = None,
         atom_init: AtomInit = "balanced",
         backend: Backend = "auto",
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
+        from torchcst._backends.torch.kernels import execution as _kernel
+
         super().__init__()
         if chart is not None:
             if input_chart is not None or output_chart is not None:
@@ -53,16 +58,12 @@ class CSTLinear(CSTModule):
             not hasattr(input_chart, "shape") or len(input_chart.shape) != 2
         ):
             raise ValueError("a single chart must describe an [out, in] operator")
-        if single_chart and not callable(getattr(kernel, "weight", None)):
-            raise TypeError("a single-chart kernel must implement weight(chart, p)")
         if isinstance(atoms, bool) or not isinstance(atoms, int):
             raise TypeError("atoms must be an integer")
         if atoms < 1:
             raise ValueError("atoms must be positive")
-        if not isinstance(kernel, Kernel):
-            raise TypeError("kernel must implement the Kernel contract")
-        if tuple(kernel.parameters()):
-            raise ValueError("a Kernel cannot own trainable state; put it in atom p")
+        if not isinstance(kernel, KernelSpec):
+            raise TypeError("kernel must be a KernelSpec")
         if atom_init not in ("balanced", "uniform"):
             raise ValueError("atom_init must be 'balanced' or 'uniform'")
         if single_chart:
@@ -70,7 +71,8 @@ class CSTLinear(CSTModule):
         else:
             self.input_chart = input_chart
             self.output_chart = output_chart
-        self.kernel = kernel
+        self.kernel = KernelState(kernel, options=kernel_options)
+        kernel = self.kernel
         self.atom_init = atom_init
         self.backend = backend
 
@@ -82,10 +84,10 @@ class CSTLinear(CSTModule):
         self.to(device=target_device, dtype=target_dtype)
 
         charts = self.cst_charts()
-        parameter_dim = kernel.parameter_dim(*charts)
+        parameter_dim = _kernel.parameter_dim(kernel, *charts)
         if parameter_dim < 1:
             raise ValueError("kernel.parameter_dim must be positive")
-        p = kernel.initialize(*charts, atoms, mode=atom_init)
+        p = _kernel.initialize(kernel, *charts, atoms, mode=atom_init)
         expected_shape = (atoms, parameter_dim)
         if p.shape != expected_shape:
             raise ValueError(
@@ -168,6 +170,7 @@ class CSTLinear(CSTModule):
 
     def cst_derivatives(self) -> AtomDerivatives:
         """Build the internal atom-structured derivative operator."""
+        from torchcst._backends.torch.kernels import execution as _kernel
 
         if any(chart.trainable for chart in self.cst_charts()):
             raise ValueError("the first derivative engine supports frozen charts only")
@@ -176,7 +179,8 @@ class CSTLinear(CSTModule):
             self._materialize_atoms,
             factor_atoms=(
                 self._factor_atoms
-                if len(self.cst_charts()) == 2 and self.kernel.supports_factorization
+                if len(self.cst_charts()) == 2
+                and _kernel.supports_factorization(self.kernel)
                 else None
             ),
         )
@@ -199,7 +203,7 @@ class CSTLinear(CSTModule):
         return (self.atoms.p,)
 
     def cst_charts(self) -> tuple[Chart, ...]:
-        """Return the chart or legacy chart pair observed by this site."""
+        """Return the chart or chart pair observed by this site."""
 
         return (
             (self.chart,)
@@ -214,12 +218,11 @@ class CSTLinear(CSTModule):
 
     def packed_weight(self) -> Tensor:
         """Return tile-major storage for a single StripChart operator."""
+        from torchcst._backends.torch.kernels import execution as _kernel
 
         if not hasattr(self, "chart") or not isinstance(self.chart, StripChart):
             raise TypeError("packed_weight requires a single StripChart")
-        if not callable(getattr(self.kernel, "packed_weight", None)):
-            raise TypeError("kernel does not provide tile-major materialization")
-        return self.kernel.packed_weight(self.chart, self.atoms.p)
+        return _kernel.packed_weight(self.kernel, self.chart, self.atoms.p)
 
     def repulsion_terms(
         self, *, kind: RepulsionKind = "cosine"

@@ -1,43 +1,50 @@
-"""Operator boundaries, live state and independent reference gradients."""
+from __future__ import annotations
 
+from torchcst import BandwidthBounds
+
+"Operator boundaries, live state and independent reference gradients."
 import copy
 from dataclasses import FrozenInstanceError, replace
 
 import pytest
 import torch
+from kernel_cases import (
+    amplitude_state,
+    direct_state,
+    gaussian_state,
+    separable_state,
+    triweight_state,
+)
 
 from torchcst import (
-    Amplitude,
     Chart,
     ChartPairSpec,
     CSTLinear,
-    DirectAmpWidth,
-    Gaussian,
     LinePattern,
     Operator,
     OperatorSpec,
     ProductChart,
-    Separable,
     SingleChartSpec,
-    Triweight,
 )
 
 
 def make_single():
     chart = ProductChart(
-        shape=(3, 4),
-        axes=(LinePattern(3, spacing=0.5), LinePattern(4, spacing=0.4)),
+        shape=(3, 4), axes=(LinePattern(3, spacing=0.5), LinePattern(4, spacing=0.4))
     )
-    kernel = DirectAmpWidth(
+    kernel = direct_state(
         amplitude_max=1.0,
-        sigma_min=0.5,
-        sigma_birth=1.0,
-        sigma_max=1.5,
         w_c=0.05,
         kappa=3.0,
-        profile=Triweight(0.5, normalize_columns=False),
+        profile=triweight_state(0.5, normalize_columns=False),
+        input_bounds=BandwidthBounds(
+            minimum=0.5, maximum=1.5, birth=1.0, upper_floor=0.5
+        ),
+        composition="radial",
     )
-    return CSTLinear(chart=chart, atoms=2, kernel=kernel, dtype=torch.float64)
+    return CSTLinear(
+        chart=chart, atoms=2, kernel=kernel.declaration(), dtype=torch.float64
+    )
 
 
 def make_pair(*, trainable=False, backend="materialized"):
@@ -45,9 +52,11 @@ def make_pair(*, trainable=False, backend="materialized"):
         Chart.linspace(4, low=-1, high=1, trainable=trainable),
         Chart.linspace(3, low=-0.8, high=0.8, trainable=trainable),
         atoms=2,
-        kernel=Amplitude(
-            Separable(input_profile=Gaussian(1.4), output_profile=Gaussian(1.2))
-        ),
+        kernel=amplitude_state(
+            separable_state(
+                input_profile=gaussian_state(1.4), output_profile=gaussian_state(1.2)
+            )
+        ).declaration(),
         backend=backend,
         dtype=torch.float64,
     )
@@ -84,7 +93,7 @@ def test_chart_pair_preserves_input_output_roles():
 
 
 def test_incompatible_layouts_fail_instead_of_reinterpreting_kernel():
-    single, pair = make_single().declaration(), make_pair().declaration()
+    single, pair = (make_single().declaration(), make_pair().declaration())
     for spec, layout in ((single, pair.layout), (pair, single.layout)):
         with pytest.raises(ValueError, match="composition"):
             replace(spec, layout=layout)
@@ -103,7 +112,7 @@ def test_binding_checks_settings_without_cloning_state(maker):
     bound = spec.bind(charts=model.cst_charts(), kernel=model.kernel, atoms=model.atoms)
     assert bound.p is model.atoms.p
     assert bound.kernel is model.kernel
-    assert all(a is b for a, b in zip(bound.charts, model.cst_charts()))
+    assert all((a is b for a, b in zip(bound.charts, model.cst_charts())))
     altered = replace(spec, kernel=replace(spec.kernel, revision=2))
     with pytest.raises(ValueError, match="settings differ"):
         altered.bind(charts=model.cst_charts(), kernel=model.kernel, atoms=model.atoms)
@@ -146,16 +155,15 @@ def test_pair_execution_matches_independent_oracle_with_live_chart_gradients(bac
     p = model.atoms.p.detach().clone().requires_grad_()
     ci = model.input_chart.coordinates.detach().clone().requires_grad_()
     co = model.output_chart.coordinates.detach().clone().requires_grad_()
-    # Gaussian profile coordinates are centers; each chart has its own L2 norm.
     u = torch.exp(-0.5 * (ci[:, None, 0] - p[None, :, 1]).square() / 1.4**2)
     v = torch.exp(-0.5 * (co[:, None, 0] - p[None, :, 2]).square() / 1.2**2)
     u = u / torch.linalg.vector_norm(u, dim=0)
     v = v / torch.linalg.vector_norm(v, dim=0)
-    w = (v * p[:, 0]) @ u.T
+    w = v * p[:, 0] @ u.T
     x = torch.randn(2, 5, 4, dtype=torch.float64, requires_grad=True)
     xo = x.detach().clone().requires_grad_()
-    actual, expected = model(x), torch.nn.functional.linear(xo, w)
-    torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-8)
+    actual, expected = (model(x), torch.nn.functional.linear(xo, w))
+    torch.testing.assert_close(actual, expected, rtol=1e-06, atol=1e-08)
     actual.square().sum().backward()
     expected.square().sum().backward()
     for a, b in (
@@ -164,7 +172,7 @@ def test_pair_execution_matches_independent_oracle_with_live_chart_gradients(bac
         (model.input_chart.coordinates.grad, ci.grad),
         (model.output_chart.coordinates.grad, co.grad),
     ):
-        torch.testing.assert_close(a, b, rtol=1e-6, atol=1e-8)
+        torch.testing.assert_close(a, b, rtol=1e-06, atol=1e-08)
 
 
 @pytest.mark.parametrize("maker", [make_single, make_pair])
@@ -200,20 +208,6 @@ def test_bound_operator_rejects_wrong_shapes_and_algorithms():
         )
 
 
-def test_existing_custom_kernel_requires_declaration_only_when_requested():
-    from test_cst_linear import NonFactorizedKernel
-
-    model = CSTLinear(
-        Chart.linspace(3, spacing=1),
-        Chart.linspace(2, spacing=1),
-        atoms=2,
-        kernel=NonFactorizedKernel(),
-    )
-    assert model(torch.randn(4, 3)).shape == (4, 2)
-    with pytest.raises(NotImplementedError, match="custom kernels"):
-        model.declaration()
-
-
 def test_operator_rebinds_after_replacing_module_state():
     model = make_single()
     previous = model.operator
@@ -245,7 +239,6 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
     assert adapted.sizes == (5, 2, 3)
     assert isinstance(model._operator_spec, OperatorSpec)
     assert model._operator_spec == spec
-    # Tile storage is absent from the canonical contiguous observation sites.
     physical = replace(spec, layout=SingleChartSpec(chart=chart.declaration()))
     assert NormalizedStripGeometry.from_declaration(physical) == adapted
     discontinuous = replace(physical.layout.chart, tile_pitch=3.0)
@@ -311,7 +304,7 @@ def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
                 profiles=(
                     replace(
                         binding,
-                        normalization=replace(binding.normalization, floor=1e-5),
+                        normalization=replace(binding.normalization, floor=1e-05),
                     ),
                 ),
             ),
@@ -371,10 +364,10 @@ def test_operator_live_cuda_state_matches_cpu_values_and_gradients(maker, algori
     actual = gpu.operator.apply(gx, algorithm=algorithm)
     expected.square().sum().backward()
     actual.square().sum().backward()
-    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-6, atol=1e-8)
-    torch.testing.assert_close(gx.grad.cpu(), x.grad, rtol=1e-6, atol=1e-8)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=1e-06, atol=1e-08)
+    torch.testing.assert_close(gx.grad.cpu(), x.grad, rtol=1e-06, atol=1e-08)
     torch.testing.assert_close(
-        gpu.atoms.p.grad.cpu(), cpu.atoms.p.grad, rtol=1e-6, atol=1e-8
+        gpu.atoms.p.grad.cpu(), cpu.atoms.p.grad, rtol=1e-06, atol=1e-08
     )
 
 

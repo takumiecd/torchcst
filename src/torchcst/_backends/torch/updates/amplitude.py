@@ -1,70 +1,47 @@
-"""PyTorch execution for legacy amplitude contracts."""
-
-from __future__ import annotations
+"""Amplitude proposals composed with the inner coordinate policy."""
 
 import torch
-from torch import Tensor
 
-from torchcst.geometry import Chart
+from ..kernels import amplitude as _amplitude
+from ..kernels import execution as _kernel
 
 
-def project_parameter_gradient(
-    self,
-    input_chart: Chart,
-    output_chart: Chart,
-    p: Tensor,
-    gradient: Tensor,
-) -> Tensor:
-    _, inner = self._split(input_chart, output_chart, p)
-    amplitude_gradient, inner_gradient = self._split(
-        input_chart, output_chart, gradient
+def project_parameter_gradient(state, *charts_p_gradient):
+    *charts, p, gradient = charts_p_gradient
+    _, inner = _amplitude._split(state, *charts, p)
+    head, tail = _amplitude._split(state, *charts, gradient)
+    return torch.cat(
+        (head, _kernel.project_parameter_gradient(state.inner, *charts, inner, tail)),
+        -1,
     )
-    projected = self.kernel.project_parameter_gradient(
-        input_chart,
-        output_chart,
-        inner,
-        inner_gradient,
+
+
+def apply_parameter_update(state, *charts_p_displacement, step_size):
+    *charts, p, displacement = charts_p_displacement
+    head, inner = _amplitude._split(state, *charts, p)
+    head_delta, tail_delta = _amplitude._split(state, *charts, displacement)
+    return torch.cat(
+        (
+            head + head_delta,
+            _kernel.apply_parameter_update(
+                state.inner, *charts, inner, tail_delta, step_size=step_size
+            ),
+        ),
+        -1,
     )
-    return torch.cat((amplitude_gradient, projected), dim=-1)
 
 
-def apply_parameter_update(
-    self,
-    input_chart: Chart,
-    output_chart: Chart,
-    p: Tensor,
-    displacement: Tensor,
-    *,
-    step_size: float,
-) -> Tensor:
-    amplitude, inner = self._split(input_chart, output_chart, p)
-    amplitude_delta, inner_delta = self._split(input_chart, output_chart, displacement)
-    updated = self.kernel.apply_parameter_update(
-        input_chart,
-        output_chart,
-        inner,
-        inner_delta,
-        step_size=step_size,
+def transport_parameter_state(state, *charts_old_new_vector):
+    *charts, old, new, vector = charts_old_new_vector
+    _, old_inner = _amplitude._split(state, *charts, old)
+    _, new_inner = _amplitude._split(state, *charts, new)
+    head, tail = _amplitude._split(state, *charts, vector)
+    return torch.cat(
+        (
+            head,
+            _kernel.transport_parameter_state(
+                state.inner, *charts, old_inner, new_inner, tail
+            ),
+        ),
+        -1,
     )
-    return torch.cat((amplitude + amplitude_delta, updated), dim=-1)
-
-
-def transport_parameter_state(
-    self,
-    input_chart: Chart,
-    output_chart: Chart,
-    old: Tensor,
-    new: Tensor,
-    state: Tensor,
-) -> Tensor:
-    _, old_inner = self._split(input_chart, output_chart, old)
-    _, new_inner = self._split(input_chart, output_chart, new)
-    amplitude_state, inner_state = self._split(input_chart, output_chart, state)
-    transported = self.kernel.transport_parameter_state(
-        input_chart,
-        output_chart,
-        old_inner,
-        new_inner,
-        inner_state,
-    )
-    return torch.cat((amplitude_state, transported), dim=-1)

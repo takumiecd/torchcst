@@ -19,8 +19,9 @@ torchcst/
     parameterizations/         振幅・幅・activity の座標解釈の宣言
     normalization.py           正規化の規則・領域・床
     spec.py                    ProfileBinding / KernelSpec / 状態方針
-    _declarations.py           既存クラスからの設定 snapshot
-    既存の公開クラス            設定・状態・checkpoint・互換入口
+    presets.py                 利用者向けの Spec 合成
+    options.py                 数学的な Spec と分離した実行設定
+    state.py                   共通の固定 Tensor 状態・checkpoint
   operators/
     spec.py                    単一 Chart / Chart の組 / linear Operator の宣言
     binding.py                 Module の live state を参照する Operator
@@ -80,10 +81,10 @@ Algorithm が実際に共用するものは、演算グループ内の `_shared/
 
 ## 次の移行境界
 
-公開クラスの既存の計算メソッドは、計算本体への遅延接続として残している。
-Spec 単体から Module を生成する factory はまだない。Operator は既存 Module が
-所有する Chart / Kernel / Atoms を参照し、Torch materialized / factored 実行の
-共通入口になる。単一 Chart と入出力 Chart の組は layout の型で区別する。
+CSTLinear / CSTConv2d は KernelSpec から共通 KernelState を作る。個別の Kernel /
+Profile Module、互換メソッド、旧 checkpoint loader はない。Operator は Module が
+所有する Chart / KernelState / Atoms を参照する。単一 Chart と入出力 Chart の組は
+layout の型で区別する。Torch の評価・更新は backend の関数で実行する。
 宣言 snapshot を forward ごとに作らず、現在の Tensor / buffer を使う。
 詳細は [Operator](../operators/README.md)を参照。
 

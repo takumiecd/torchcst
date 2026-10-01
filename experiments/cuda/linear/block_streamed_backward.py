@@ -658,7 +658,9 @@ class _MappedStreamed(torch.autograd.Function):
                             K=k,
                             CG=layer.column_groups,
                             G=layer.strip.chart.tile_count,
-                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            PROFILE=PROFILE_KINDS[
+                                layer.strip.kernel.profiles[0].binding.profile.id
+                            ],
                             MAX_CANDIDATES=max_candidates,
                             CSR=csr,
                             BOUNDED=ctx.materialize_mode == "listed_bounded",
@@ -701,7 +703,9 @@ class _MappedStreamed(torch.autograd.Function):
                             CG=layer.column_groups,
                             G=layer.strip.chart.tile_count,
                             D=4,
-                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            PROFILE=PROFILE_KINDS[
+                                layer.strip.kernel.profiles[0].binding.profile.id
+                            ],
                             BN=64,
                             BK=32,
                             BA=1,
@@ -817,7 +821,9 @@ class _MappedStreamed(torch.autograd.Function):
                             K=k,
                             CG=layer.column_groups,
                             G=layer.strip.chart.tile_count,
-                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            PROFILE=PROFILE_KINDS[
+                                layer.strip.kernel.profiles[0].binding.profile.id
+                            ],
                             MAX_CANDIDATES=max_candidates,
                             CSR=csr,
                             BOUNDED=ctx.materialize_mode == "listed_bounded",
@@ -847,7 +853,9 @@ class _MappedStreamed(torch.autograd.Function):
                             T=64,
                             CG=layer.column_groups,
                             G=layer.strip.chart.tile_count,
-                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            PROFILE=PROFILE_KINDS[
+                                layer.strip.kernel.profiles[0].binding.profile.id
+                            ],
                             BN=16,
                             BK=32,
                             BA=4,
@@ -872,7 +880,9 @@ class _MappedStreamed(torch.autograd.Function):
                             T=64,
                             CG=layer.column_groups,
                             G=layer.strip.chart.tile_count,
-                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            PROFILE=PROFILE_KINDS[
+                                layer.strip.kernel.profiles[0].binding.profile.id
+                            ],
                             BR=8,
                             BK=16,
                             LANES=16,
@@ -898,7 +908,9 @@ class _MappedStreamed(torch.autograd.Function):
                             T=64,
                             CG=layer.column_groups,
                             G=layer.strip.chart.tile_count,
-                            PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                            PROFILE=PROFILE_KINDS[
+                                layer.strip.kernel.profiles[0].binding.profile.id
+                            ],
                             BM=16,
                             BN=16,
                             BK=32,
@@ -947,7 +959,9 @@ class _MappedStreamed(torch.autograd.Function):
                     T=64,
                     CG=layer.column_groups,
                     G=layer.strip.chart.tile_count,
-                    PROFILE=PROFILE_KINDS[type(layer.strip.kernel.profile)],
+                    PROFILE=PROFILE_KINDS[
+                        layer.strip.kernel.profiles[0].binding.profile.id
+                    ],
                     BM=16,
                     BN=16,
                     BK=atom_bk,
