@@ -380,7 +380,7 @@ def test_pair_graph_reuses_operator_without_configuration_reads(monkeypatch):
 
     for obj in (model, model.kernel, *model.cst_charts()):
         monkeypatch.setattr(obj, "declaration", forbidden)
-    monkeypatch.setattr(model.kernel, "parameter_dim", forbidden)
+    monkeypatch.setattr(Operator, "__post_init__", forbidden)
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph, stream=stream):
         actual = model(x)

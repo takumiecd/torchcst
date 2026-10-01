@@ -10,10 +10,16 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("source_commit")
-parser.add_argument(
+suite = parser.add_mutually_exclusive_group()
+suite.add_argument(
     "--full-suite",
     action="store_true",
     help="Validate all installed-wheel tests after declaration migration",
+)
+suite.add_argument(
+    "--operator-suite",
+    action="store_true",
+    help="Validate Operator bindings and existing dispatch/profile contracts",
 )
 args = parser.parse_args()
 
@@ -56,6 +62,7 @@ subprocess.run(
                 "tests/test_cuda_dispatch.py",
                 "tests/test_normalized_strip_public.py",
                 "tests/test_compact_profile.py",
+                *(["tests/test_operators.py"] if args.operator_suite else []),
             ]
         ),
     ],
@@ -103,7 +110,11 @@ for profile in ("broad", "sharp"):
             "size": 1024,
             "scope": "installed-wheel full suite"
             if args.full_suite
-            else "initial dispatch contract",
+            else (
+                "installed-wheel operator and dispatch contracts"
+                if args.operator_suite
+                else "initial dispatch contract"
+            ),
             "measurement": "isolated complete steps including Graph peak; no performance promotion",
         },
         indent=2,
