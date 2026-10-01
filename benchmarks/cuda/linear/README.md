@@ -36,3 +36,11 @@ normalized の独立oracle検証、同じ演算のfull baseline、別参照のde
 新しいprocessで測る。Graph capture/replayのallocated/reserved peakを記録する。
 [registry v1](../../../docs/backend-history/cuda-registry-v1.ja.md)の範囲・制限に従う。
 承認ポイントや全形状suiteは未実装。
+
+## Kernel API cleanup validation
+
+[Kernel cleanup record](../../../docs/kernel-cleanup.ja.md) documents the common
+KernelSpec / KernelState API, numerical parity, installed-wheel GPU validation
+and complete-step memory measurements. [Structured results](results/kernel-cleanup-20261001.json)
+retain the source and job identities, including the initial failing test and its
+verified correction. Raw evidence is ignored.
