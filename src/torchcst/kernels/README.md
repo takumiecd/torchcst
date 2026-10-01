@@ -52,8 +52,9 @@ checkpoint load 後は必要に応じて作り直す。scalar buffer の参照�
 
 この段階では Spec 単体を実行する factory や、KernelSpec を受け取る CUDA dispatch
 はまだ導入していない。公開クラスの削除や checkpoint 形式の変更も行っていない。
-次は Module が宣言と実状態を束ねた Operator を作り、backend がその契約を受け取る
-入口を定義する。その後に互換メソッドを減らす。
+[Operator](../operators/README.md) が単一 Chart / Chart の組と Kernel を束ね、
+既存 Module の実状態を参照する。Torch linear はその入口を使う。
+次は CUDA の契約への接続を整え、その後に互換メソッドを減らす。
 
 Geometry / Chart の宣言は `../geometry/spec.py`、座標の計算は
 `../_backends/torch/geometry/`、`charts/`、`patterns/` に分ける。

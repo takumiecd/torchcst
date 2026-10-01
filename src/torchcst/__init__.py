@@ -31,6 +31,7 @@ from .kernels import (
     WendlandC2,
 )
 from .nn import CSTConv2d, CSTLinear, CSTModule, NormalizedStripLinear
+from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
 from .optim import (
     CSTSGD,
     AdamRConfig,
@@ -78,6 +79,7 @@ __all__ = [
     "CSTQuadraticSGD",
     "CSTRMSProp",
     "Chart",
+    "ChartPairSpec",
     "CurvatureBlockMask",
     "CurvatureBlockMode",
     "DirectAmpWidth",
@@ -90,6 +92,8 @@ __all__ = [
     "LinePattern",
     "NormalizedOptimizerConfig",
     "NormalizedStripLinear",
+    "Operator",
+    "OperatorSpec",
     "PointsPattern",
     "PolarAmpWidth",
     "ProductChart",
@@ -97,6 +101,7 @@ __all__ = [
     "QuadraticOptimizerConfig",
     "Separable",
     "SitePattern",
+    "SingleChartSpec",
     "SphereGeometry",
     "StripChart",
     "TorusGeometry",

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import torch.nn.functional as F
 from torch import Tensor
 
 from torchcst.geometry import Chart
@@ -34,24 +33,11 @@ def validate_tiled(charts: tuple[Chart, ...], kernel: Kernel) -> None:
 
 
 def materialized(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
-    with cst_span("cst.linear.materialize"):
-        charts = site.cst_charts()
-        weight = (
-            site.kernel.weight(charts[0], p)
-            if len(charts) == 1
-            else site._materialize_atoms(p).sum(dim=0)
-        )
-    with cst_span("cst.linear.dense_matmul"):
-        return F.linear(inputs, weight)
+    return site.operator.apply(inputs, p, algorithm="materialized")
 
 
 def factored(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
-    with cst_span("cst.linear.factors"):
-        phi_input, phi_output = site.kernel.factors(*site.cst_charts(), p)
-    with cst_span("cst.linear.input_matmul"):
-        atom_values = inputs @ phi_input
-    with cst_span("cst.linear.output_matmul"):
-        return atom_values @ phi_output.transpose(-2, -1)
+    return site.operator.apply(inputs, p, algorithm="factored")
 
 
 def tiled(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:

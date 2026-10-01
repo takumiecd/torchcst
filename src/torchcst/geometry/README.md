@@ -41,7 +41,8 @@ assert spec.features == 12
 勾配は元の Module が引き続き所有し、snapshot へ置き換えない。状態更新や
 checkpoint load 後は必要に応じて宣言を作り直す。
 
-Spec 単体から実行する factory と Operator への状態 binding は次の移行段階。
-現段階の組み込み Torch 計算は互換クラスの現在の Tensor / buffer を使う。
+Spec 単体から Module を生成する factory は次の移行段階。
+[Operator](../operators/README.md) の状態 binding は既存 Chart Module を参照し、
+Torch 計算は現在の Tensor / buffer を使う。
 custom Geometry / Chart / Pattern を宣言として利用する場合は `declaration()` を
 明示実装する。既存の計算メソッドによる拡張は維持する。

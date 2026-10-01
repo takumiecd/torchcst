@@ -21,6 +21,9 @@ torchcst/
     spec.py                    ProfileBinding / KernelSpec / 状態方針
     _declarations.py           既存クラスからの設定 snapshot
     既存の公開クラス            設定・状態・checkpoint・互換入口
+  operators/
+    spec.py                    単一 Chart / Chart の組 / linear Operator の宣言
+    binding.py                 Module の live state を参照する Operator
   _backends/
     torch/
       geometry/                埋め込み・距離・射影・更新・輸送
@@ -30,6 +33,7 @@ torchcst/
       parameterizations/       振幅・幅・activity の実際の解釈
       kernels/                 atom 合成・重み生成・初期化・factor 微分
       updates/                 Kernel 座標の更新と optimizer 状態輸送
+      operators/               Operator を受け取る Torch linear 実行
   nn/
     公開 Module                Parameter / buffer / checkpoint の所有
     _backends/                 現在の Linear 接続と既存 CUDA 実装
@@ -67,14 +71,14 @@ Algorithm が実際に共用するものは、演算グループ内の `_shared/
 ## 次の移行境界
 
 公開クラスの既存の計算メソッドは、計算本体への遅延接続として残している。
-Spec 単体から実行する factory や live Tensor 状態の binding はまだない。
-宣言 snapshot を forward ごとに作ることもせず、現在の互換経路は Module の
-現在の Tensor / buffer を使う。scalar の読み戻しや明示点表の snapshot は設定時
-のみ行う。学習可能な点の状態・勾配を snapshot で置き換えない。
+Spec 単体から Module を生成する factory はまだない。Operator は既存 Module が
+所有する Chart / Kernel / Atoms を参照し、Torch materialized / factored 実行の
+共通入口になる。単一 Chart と入出力 Chart の組は layout の型で区別する。
+宣言 snapshot を forward ごとに作らず、現在の Tensor / buffer を使う。
+詳細は [Operator](../operators/README.md)を参照。
 
-次に Operator が Geometry / Chart / Kernel の宣言と実状態を明示的に束ねる入口を
-定義する。その契約を Torch 参照実装と CUDA Algorithm が受け取るようにしてから、
-Module 側の互換メソッドへの依存を減らす。
+次は CUDA Algorithm に渡す契約を段階的に整え、Module 側の互換メソッドへの
+依存を減らす。単一 Chart を基本とし、入出力 Chart の組を恒久的な前提にしない。
 
 backend の本体は最終的にこの `torchcst/_backends/` に集める。既存の
 `nn/_backends/cuda/` は数式・勾配・Graph・wheel を確認する単位で移行する。

@@ -9,6 +9,7 @@ from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.geometry import Chart, StripChart
 from torchcst.kernels import AtomInit, Kernel
+from torchcst.operators import Operator
 
 from ._backends import (
     Backend,
@@ -99,6 +100,31 @@ class CSTLinear(CSTModule):
         if p.device != initialized_device or p.dtype != target_dtype:
             raise ValueError("kernel.initialize must match the module device and dtype")
         self.atoms = Atoms(p)
+        # A plain view keeps existing Parameter/buffer ownership and state keys.
+        self.__dict__["_operator"] = Operator(
+            charts=self.cst_charts(), kernel=self.kernel, atoms=self.atoms
+        )
+
+    @property
+    def operator(self) -> Operator:
+        """The live operator view; declaration snapshots remain explicit."""
+        operator = self.__dict__["_operator"]
+        charts = self.cst_charts()
+        if (
+            operator.kernel is not self.kernel
+            or operator.atoms is not self.atoms
+            or len(operator.charts) != len(charts)
+            or any(a is not b for a, b in zip(operator.charts, charts))
+        ):
+            # Replacing configuration is an explicit boundary, not a per-step
+            # scalar snapshot. Ordinary Tensor updates/conversions need no bind.
+            operator = Operator(charts=charts, kernel=self.kernel, atoms=self.atoms)
+            self.__dict__["_operator"] = operator
+        return operator
+
+    def declaration(self):
+        """Snapshot the complete linear contract outside forward/Graph capture."""
+        return self.operator.declaration()
 
     @property
     def backend(self) -> Backend:
@@ -139,15 +165,7 @@ class CSTLinear(CSTModule):
         return self._materialize_atoms(self.atoms.p)
 
     def _materialize_atoms(self, p: Tensor) -> Tensor:
-        represented = self.kernel.materialize_atoms(*self.cst_charts(), p)
-        if p.ndim != 2 or p.shape[1] != self.atoms.parameter_dim:
-            raise ValueError(f"p must have shape [atoms, {self.atoms.parameter_dim}]")
-        expected_shape = (p.shape[0], self.out_features, self.in_features)
-        if represented.shape != expected_shape:
-            raise ValueError(
-                f"kernel.materialize_atoms must return shape {list(expected_shape)}"
-            )
-        return represented
+        return self.operator.materialize_atoms(p)
 
     def cst_derivatives(self) -> AtomDerivatives:
         """Build the internal atom-structured derivative operator."""
@@ -169,7 +187,7 @@ class CSTLinear(CSTModule):
             raise NotImplementedError(
                 "single-chart kernels have no input/output factors"
             )
-        return self.kernel.factors(self.input_chart, self.output_chart, p)
+        return self.operator.factors(p)
 
     def cst_frame_geometry(self) -> AutogradFrameGeometry:
         """Build the optimizer-independent representation-frame geometry."""
@@ -193,9 +211,7 @@ class CSTLinear(CSTModule):
     def dense_weight(self) -> Tensor:
         """Materialize the canonical sum of complete kernel atoms."""
 
-        if hasattr(self, "chart"):
-            return self.kernel.weight(self.chart, self.atoms.p)
-        return self.materialized_atoms().sum(dim=0)
+        return self.operator.weight()
 
     def packed_weight(self) -> Tensor:
         """Return tile-major storage for a single StripChart operator."""
