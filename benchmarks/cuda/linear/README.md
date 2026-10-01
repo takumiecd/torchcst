@@ -25,3 +25,14 @@ CLI と構想中の CLI を区別して記している。
 
 [2026-09-29 の GPU 実機テスト](gpu-validation-20260929.ja.md)には、RTX 3070 の
 全体テストと A100 の関連テストを記録した。
+
+## Registry/plan による共通入口（初期版）
+
+```bash
+python -m benchmarks.cuda.linear.run --algorithm normalized_window --size 1024 --rows 128 --profile broad --dense --output output/registry-broad.json
+```
+
+normalized の独立oracle検証、同じ演算のfull baseline、別参照のdenseを
+新しいprocessで測る。Graph capture/replayのallocated/reserved peakを記録する。
+[registry v1](../../../src/torchcst/nn/_backends/notes/cuda-registry-v1.ja.md)の範囲・制限に従う。
+承認ポイントや全形状suiteは未実装。

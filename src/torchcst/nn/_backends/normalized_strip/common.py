@@ -28,20 +28,11 @@ def _norm_options(plan, low, high):
 
 
 def validate_norm_plan(plan):
-    # Guarantees static row/u counts, <=14 v samples, and at most one padded
-    # endpoint beyond the true sphere. Other charts require a separate route.
-    if plan.spacing != (1.0, 0.5, 0.5):
-        raise ValueError("normfast supports common spacing(1,.5,.5)")
-    ends = [o + (n - 1) * s for o, n, s in zip(plan.origin, plan.sizes, plan.spacing)]
-    if abs(plan.origin[0]) + abs(ends[0]) + plan.sizes[0] > 20000:
-        raise ValueError("row coordinate range exceeds supported FP32 routing regime")
-    if any(
-        abs(plan.origin[d]) + abs(ends[d]) + plan.sizes[d] * plan.spacing[d] > 1024
-        for d in (1, 2)
-    ):
-        raise ValueError(
-            "column coordinate range exceeds supported FP32 routing regime"
-        )
+    from ..cuda.algorithms.normalized_strip.constraints import routing_reasons
+
+    reasons = routing_reasons(plan)
+    if reasons:
+        raise ValueError(reasons[0])
 
 
 def ball_offsets(plan, device):

@@ -124,6 +124,9 @@ class NormalizedStripLinear(nn.Module):
         if not all(math.isfinite(v) for v in (*origin, *spacing)) or min(spacing) <= 0:
             raise RuntimeError("invalid chart metadata")
         self._plan = SimpleNamespace(origin=origin, spacing=spacing, sizes=sizes)
+        from ._backends.cuda.schema import OperatorSpec
+
+        self._cuda_operator = OperatorSpec(sizes=sizes, origin=origin, spacing=spacing)
         self._metadata_versions = tuple(
             (id(t), t._version)
             for t in (self.origin, self.spacing, self.sizes, self.sigma_bounds)
@@ -205,37 +208,19 @@ class NormalizedStripLinear(nn.Module):
                 raise RuntimeError("normalized Strip CUDA does not support autocast")
             if torch.backends.cuda.matmul.allow_tf32:
                 raise RuntimeError("normalized Strip CUDA requires TF32 to be disabled")
-            from ._backends.normalized_strip.common import validate_norm_plan
+            from ._backends.cuda.algorithms.normalized_strip import REGISTRY
+            from ._backends.cuda.context import context_from_tensors
+            from ._backends.cuda.dispatch.select import select_normalized
 
-            validate_norm_plan(self._plan)
-            eligible = (
-                self._sizes[0] >= 32
-                and self._sizes[0] % 32 == 0
-                and all(
-                    o * 4 == round(o * 4) and abs(o) + n * s <= 16384
-                    for o, n, s in zip(
-                        self._plan.origin, self._sizes, self._plan.spacing
-                    )
-                )
+            context = context_from_tensors(self._cuda_operator, flat, self.p)
+            decision = select_normalized(context, memory=self.memory)
+            result = REGISTRY.execute(
+                decision.plan,
+                context,
+                x=flat,
+                parameters=self.p,
+                operator=self._cuda_operator,
             )
-            if self.memory == "window" and eligible:
-                from ._backends.normalized_strip.window import PackedWindowProvider
-                from ._backends.normalized_strip.window_gemm import window_linear
-
-                window = min(512, self.out_features)
-                result = window_linear(
-                    flat,
-                    self.p,
-                    PackedWindowProvider(self._plan, window, True),
-                    rows=self.out_features,
-                    window=window,
-                )
-            else:
-                from ._backends.normalized_strip.full import _AtlasApply
-
-                result = _AtlasApply.apply(
-                    flat, self.p, self._plan, 1, True, True, "ball", True, True, False
-                )
         else:
             raise ValueError("only CPU and CUDA devices are supported")
         return result.reshape(*x.shape[:-1], self.out_features)
