@@ -93,3 +93,58 @@ receipt と結果archive SHA256 を照合して raw output を保存し、所有
 確認した。この条件修正はテストだけで、Operator / Kernel の計算は変えていない。
 他の全テストは既に通っているため、修正した Operator suite と既存のdispatch/profile
 契約を配布wheelから再実行し、独立oracle・Graph/AdamW・完全ステップ測定へ進む。
+
+### 修正後の回収済み結果
+
+測定 source commit `9432900e18724bf93e328f7e8f510fe5d5596039`。
+job `l4job-61b810060e264ca7ae83bf324926aff1`、driver returncode 0 / timeout false。
+source archive SHA256 は
+`56c8b775d10489871dc90f2994cef412cdfaf7fd7b8f4ecf73b5c762ae06d66a`。
+結果 archive SHA256 は
+`3909a5c3facf7c02657738317453484d6026162f1bec144c1752115b5f0fa8af`。
+receipt / archive、結果の source hash、配布 wheel の全 Python module と提出ソースの
+hash を照合した。結果を ignored evidence に保存し、pool の全 slot が stopped
+であることを確認した。
+
+Operator / dispatch / normalized Strip / compact Profile の配布 wheel テストは
+**119 passed / 0 skipped / 0 failed**（25.95 秒）。修正した pair Graph capture/replay
+テストも通り、宣言を作り直したり Operator を再構成したりせず、出力・dX・全 atom
+gradient が eager と一致した。単一 Chart と pair の CUDA 値・勾配の CPU 照合も通る。
+初回全テストの他809件は通っており、修正後に全812件を一括再実行したという
+主張はしない。計算 module 142件は初回全テストと同じ bytes、root の export 一覧のみ
+lint による並び順の変更。ローカル wheel からも Operator 18 passed / 4 skipped。
+
+```bash
+python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py submit \
+  --source "$PWD" --script "$PWD/benchmarks/cuda/linear/validate_dispatch_registry.py" \
+  --label operator-graph-contracts --timeout 600 \
+  -- 9432900e18724bf93e328f7e8f510fe5d5596039 --operator-suite
+```
+
+実機 NVIDIA L4 / driver 580.82.07 / 23034 MiB、Python 3.13.15、
+Torch 2.11.0+cu128、CUDA 12.8、Triton 3.6.0。小さい混合 fixture の独立 FP64 oracle で
+full/window の y・dX・全 atom gradient・weight・更新後の値/勾配を確認し、
+Graph/AdamW の検証も通る。最大 absolute error は y 2.88e-8、dX 3.46e-8、
+atom gradient 1.98e-4（relative L2 6.92e-5）、既存の許容範囲を通る。
+
+完全ステップは N=1024（1024×1024 weight）、batch=128、atoms=52429（約5%）。
+FP32 / TF32 off / seed=21、AdamW lr=1e-4 / weight_decay=0.01 / fused / capturable。
+broad は初期 sigma=3、sharp は初期 sigma=0.199 で支持点に近い center の別 fixture。
+
+| fixture | implementation | eager median ms | Graph median ms | allocated peak MiB | reserved peak MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| broad | normalized_window | 3.154 | 1.517 | 46.16 | 86.00 |
+| broad | normalized_full | 1.531 | 0.617 | 51.85 | 106.00 |
+| broad | dense_linear | 0.689 | 0.128 | 50.50 | 106.00 |
+| sharp | normalized_window | 2.736 | 0.308 | 46.16 | 86.00 |
+| sharp | normalized_full | 1.618 | 0.540 | 51.85 | 106.00 |
+| sharp | dense_linear | 0.733 | 0.127 | 50.50 | 106.00 |
+
+時間は warmup 後の forward/backward/AdamW の完全ステップ。初回 compile / 準備
+時間は含めない。allocated peak は warmup 済み model・勾配・optimizer 状態を含め、
+capture/replay を reset 後に測定する。process 全体の GPU 使用量は未測定。
+初回宣言分離の測定に対して、この fixture の allocated peak は同じ値だった。
+各方式は独立 process の順次測定で、paired alternating timing ではない。
+1024×1024 の全 atom gradient を独立 oracle で網羅したとは主張しない。dense は
+別の parameterization の参考値。この変更による速度改善、方式の承認や既定
+dispatch への昇格を認定するものではない。
