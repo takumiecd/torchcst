@@ -91,7 +91,7 @@ def test_capture_invalidates_when_kernel_buffer_changes():
     point = model.atoms.p.detach().clone()
     before = call("local_derivatives", materialize, point)
     saved = tuple(x.clone() for x in before)
-    model.kernel.profiles[0].sigma.mul_(1.5)
+    model.kernel.scalar("sigma_min").mul_(1.5)
     after = call("local_derivatives", materialize, point)
     torch.testing.assert_close(after, local_derivatives(materialize, point))
     torch.testing.assert_close(before, saved)
