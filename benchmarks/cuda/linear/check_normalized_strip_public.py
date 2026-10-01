@@ -29,6 +29,7 @@ from torchcst.nn import NormalizedStripLinear
 def check(a, b, tol=3e-4):
     assert torch.isfinite(a).all() and torch.isfinite(b).all()
     torch.testing.assert_close(a.double(), b.double(), atol=tol, rtol=tol)
+    a, b = a.detach(), b.detach()
     return {
         "max": float((a.double() - b.double()).abs().max()),
         "rel_l2": float(
@@ -68,6 +69,10 @@ def small_gate(helper):
                 tol=2e-5,
             ),
         }
+        # Release validation graphs before warming the captured training stream.
+        # Otherwise leaf AccumulateGrad nodes retain their previous stream.
+        del actual, truth, ag, tg, tp, tx, xx
+        gc.collect()
         # Capture entire training step, then compare multiple replays from the
         # exact post-capture P/m/v/step state, with a current-centre mutation.
         opt = torch.optim.AdamW(
