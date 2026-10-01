@@ -142,3 +142,45 @@ CUDA の atom 集約には atomic 加算を用います。浮動小数点の加�
 要求する設定では CUDA atomic 経路を拒否します。性能と精度の検証は上記の
 FP32/TF32 無効の条件で行っています。別の dtype、chart、GPU、入力形状の結果を
 同じ測定と見なさないでください。
+
+
+## 配布版の最終検証（2026-10-01）
+
+wheel を展開し、`experiments/` に依存しない実際の配布コードから実行しました。
+同じ L4（GPU-639ce143）、FP32/TF32 無効、M128、5% atom、forward・dX・全5勾配・
+fused capturable AdamW を含む step の同期 wall time 中央値です。各ケースを別の
+Python プロセスで測り、以前のケースの cuBLAS ストリーム作業領域を除外しました。
+
+| N | 条件・経路 | Graph ms | peak allocated MiB |
+|---|---|---:|---:|
+|1024|通常 sigma3 / full|0.63983|51.85|
+|1024|通常 sigma3 / window|1.52735|46.16|
+|1024|構成した鋭い支持 / window|0.30756|46.16|
+|1024|dense|0.12816|50.50|
+|8192|通常 sigma3 / full|59.97223|849.32|
+|8192|通常 sigma3 / window|134.59388|354.20|
+|8192|構成した鋭い支持 / window|23.62340|354.20|
+|8192|dense|12.80303|1072.50|
+
+window の鋭い条件では N8192 が dense 比1.845倍、N1024 が2.400倍です。
+通常幅の2倍目標は両サイズとも未達です。既定 full は通常幅向け、window は
+明示的なメモリ優先の選択として公開します。8192 window の max reserved は540 MiBで、
+354.20 MiBの allocated と区別してください。各ケースは20回の実 optimizer 更新を
+行い、capture/replayを含む peak と全7サンプルを記録しています。
+
+配布版の L4 テストは67件通過。小さい混合 fixture の独立 FP64 oracle で
+W（2e-5）、y/dX/全5勾配（3e-4）を照合し、512行境界、床、空支持、clip、
+Graph capture後の中心/幅の変更とAdamW状態を検証しました。大きいサイズの
+記録は完全stepの時間とpeakであり、全atomの独立勾配照合とは扱いません。
+[機械記録](../benchmarks/cuda/linear/results/normalized-strip-public-integration.json)
+にはGPU/runtime、source/result/wheel SHA、全サンプル、誤差、既知の測定失敗を保存しています。
+
+同じ検証を再実行するには、リポジトリのルートで共有 pool を使います。
+
+```bash
+python3 tools/colab-l4-pool/scripts/pool.py submit --source "$PWD" --script "$PWD/benchmarks/cuda/linear/validate_normalized_strip_wheel.py" --label normalized-strip-wheel --timeout 1800
+python3 tools/colab-l4-pool/scripts/pool.py serve --workers 1 --idle-seconds 0
+```
+
+runner は job 内で wheel をビルドし、公開 API のテストと各ケースの独立プロセス測定を
+実行します。結果は `CST_JOB_OUTPUT` へ保存され、pool がSHA検証して回収します。
