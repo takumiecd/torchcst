@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
@@ -28,7 +29,7 @@ def test_chunked_owners_layout_and_gradients(stations, atoms):
         # Exercise the circular seam and non-aligned positions.
         p[:, 2] += 0.123
     plan = execution_plan(layer)
-    decoded = layer.chart.geometry.decode_centers(p[:, 2:]).detach()
+    decoded = _geometry.decode_centers(layer.chart.geometry, p[:, 2:]).detach()
     actual_owner, _, _ = route_and_layout(plan.routing, decoded)
     torch.testing.assert_close(
         actual_owner, plan.routing.owners(decoded), atol=0, rtol=0

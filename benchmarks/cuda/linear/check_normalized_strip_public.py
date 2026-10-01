@@ -243,7 +243,11 @@ def main():
     ap.add_argument("--profiles", nargs="+", default=["broad", "sharp"])
     ap.add_argument("--memory", nargs="+", default=["full", "window"])
     ap.add_argument("--dense", action="store_true")
-    ap.add_argument("--dense-only", action="store_true", help="Skip CST cases for isolated dense measurement")
+    ap.add_argument(
+        "--dense-only",
+        action="store_true",
+        help="Skip CST cases for isolated dense measurement",
+    )
     ap.add_argument("--skip-small", action="store_true")
     args = ap.parse_args()
     torch.backends.cuda.matmul.allow_tf32 = False
@@ -272,7 +276,7 @@ def main():
         for n in args.sizes:
             if n not in (1024, 8192):
                 raise ValueError("sizes must be1024 or8192")
-            for profile in ([] if args.dense_only else args.profiles):
+            for profile in [] if args.dense_only else args.profiles:
                 if profile not in ("broad", "sharp"):
                     raise ValueError("unknown profile")
                 for memory in args.memory:

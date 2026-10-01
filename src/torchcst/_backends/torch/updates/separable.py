@@ -7,13 +7,13 @@ from torch import Tensor
 
 from torchcst._backends.torch.kernels import separable as _kernels
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 
 
 def project_parameter_gradient(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
     gradient: Tensor,
 ) -> Tensor:
@@ -32,8 +32,8 @@ def project_parameter_gradient(
 
 def apply_parameter_update(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
     displacement: Tensor,
     *,
@@ -57,8 +57,8 @@ def apply_parameter_update(
 
 def transport_parameter_state(
     kernel_state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     old: Tensor,
     new: Tensor,
     state: Tensor,

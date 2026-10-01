@@ -5,6 +5,8 @@ import triton as tr
 import triton.language as tl
 from triton.language.extra.cuda import libdevice
 
+from torchcst._backends.torch.geometry import execution as _geometry
+
 
 @tr.jit
 def _decode_intrinsic_torus(
@@ -165,7 +167,7 @@ def boxed_prepare(
     decoded = (
         decode_intrinsic_torus_compact(site.chart.geometry, center)
         if fast_decode
-        else site.chart.geometry.decode_centers(center)
+        else _geometry.decode_centers(site.chart.geometry, center)
     )
     _, order, offsets = route_and_layout(
         plan.routing,

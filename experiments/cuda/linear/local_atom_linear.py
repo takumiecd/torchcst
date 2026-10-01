@@ -8,6 +8,8 @@ import torch
 from torch.autograd.function import once_differentiable
 
 from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.charts import execution as _charts
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.operators.strip_torus.preparation import (
     PROFILE_KINDS,
     execution_plan,
@@ -29,7 +31,7 @@ def reference(site, inputs, p):
     )
     layout = support_layout(
         plan,
-        site.chart.geometry.decode_centers(encoded),
+        _geometry.decode_centers(site.chart.geometry, encoded),
         precision,
         site.chart.tile_shape[0],
     )
@@ -45,8 +47,8 @@ def reference(site, inputs, p):
                 layout.offsets[bucket] : layout.offsets[bucket + 1]
             ].tolist():
                 selection = row * k + columns
-                squared = site.chart.squared_distance(
-                    encoded[a : a + 1], selection
+                squared = _charts.squared_distance(
+                    site.chart, encoded[a : a + 1], selection
                 ).squeeze(-1)
                 selected = columns[(squared.detach() * precision[a]) < 1]
                 values = _profiles.evaluate_with_precision_slice(

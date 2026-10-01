@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 """Local contractions against the canonical dense operator and its gradients."""
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -8,6 +9,7 @@ from kernel_cases import biweight_state, triangle_state, triweight_state, wendla
 from test_triton_linear import GPU, _model
 
 from experiments.cuda.linear.local_atom_linear import forward, reference
+from torchcst._backends.torch.geometry import execution as _geometry
 
 
 @pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
@@ -31,8 +33,9 @@ def test_local_values_and_gradients(device, profile, representation, sigma_min):
         p[0, 0] = 0
         p[1, 0] = 1.4
         point = p.new_tensor([[38.2, 0.0, 0.0]])
-        p[2, 2:] = layer.chart.geometry.encode_centers(
-            layer.chart.geometry.lift_chart_coordinates(point)
+        p[2, 2:] = _geometry.encode_centers(
+            layer.chart.geometry,
+            _geometry.lift_chart_coordinates(layer.chart.geometry, point),
         )[0]
     x = torch.randn(21, 5, device=device, dtype=dtype).T.requires_grad_()
     expected = F.linear(x, layer.dense_weight())
@@ -70,8 +73,9 @@ def test_idle_and_capture_observe_updated_atoms():
         layer.atoms.p[:, 0] = 0.8
         layer.atoms.p[:, 1] = 1
         coord = layer.atoms.p.new_tensor([[8.5, 0, 0]])
-        layer.atoms.p[:, 2:] = layer.chart.geometry.encode_centers(
-            layer.chart.geometry.lift_chart_coordinates(coord)
+        layer.atoms.p[:, 2:] = _geometry.encode_centers(
+            layer.chart.geometry,
+            _geometry.lift_chart_coordinates(layer.chart.geometry, coord),
         )
     y = forward(layer, x, layer.atoms.p)
     assert not y.any()

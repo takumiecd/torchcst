@@ -8,7 +8,8 @@ import torch
 import torch.nn.functional as F
 from kernel_cases import amplitude_state, gaussian_state, separable_state
 
-from torchcst import Chart, CSTConv2d, CSTOptimizer
+from torchcst import CSTConv2d, CSTOptimizer
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.kernels import execution as _kernel
 
 
@@ -33,8 +34,8 @@ def make_model(
 ) -> CSTConv2d:
     patch_features = in_channels // groups * math.prod(kernel_size)
     return CSTConv2d(
-        Chart.linspace(patch_features, low=-1.0, high=1.0),
-        Chart.linspace(out_channels, low=-1.0, high=1.0),
+        _construction.linspace(patch_features, low=-1.0, high=1.0),
+        _construction.linspace(out_channels, low=-1.0, high=1.0),
         in_channels=in_channels,
         out_channels=out_channels,
         kernel_size=kernel_size,
@@ -144,8 +145,8 @@ def test_auto_uses_materialized_execution_for_groups() -> None:
 def test_constructor_and_forward_validate_flat_patch_shape() -> None:
     with pytest.raises(ValueError, match="flattened local patch"):
         CSTConv2d(
-            Chart.linspace(17, low=-1.0, high=1.0),
-            Chart.linspace(4, low=-1.0, high=1.0),
+            _construction.linspace(17, low=-1.0, high=1.0),
+            _construction.linspace(4, low=-1.0, high=1.0),
             in_channels=2,
             out_channels=4,
             kernel_size=3,

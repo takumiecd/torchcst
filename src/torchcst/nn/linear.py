@@ -14,7 +14,8 @@ from torchcst._backends.linear import (
 )
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
-from torchcst.geometry import Chart, StripChart
+from torchcst.geometry.spec import ChartSpec
+from torchcst.geometry.state import ChartState
 from torchcst.kernels import AtomInit, KernelSpec
 from torchcst.kernels.options import KernelOptions
 from torchcst.kernels.state import KernelState
@@ -28,10 +29,10 @@ class CSTLinear(CSTModule):
 
     def __init__(
         self,
-        input_chart: Chart | None = None,
-        output_chart: Chart | None = None,
+        input_chart: ChartSpec | ChartState | None = None,
+        output_chart: ChartSpec | ChartState | None = None,
         *,
-        chart: Chart | None = None,
+        chart: ChartSpec | ChartState | None = None,
         atoms: int,
         kernel: KernelSpec,
         kernel_options: KernelOptions | None = None,
@@ -49,10 +50,14 @@ class CSTLinear(CSTModule):
                     "chart cannot be combined with input_chart or output_chart"
                 )
             input_chart = chart
-        if not isinstance(input_chart, Chart) or (
-            output_chart is not None and not isinstance(output_chart, Chart)
+        if isinstance(input_chart, ChartSpec):
+            input_chart = ChartState(input_chart, device=device, dtype=dtype)
+        if isinstance(output_chart, ChartSpec):
+            output_chart = ChartState(output_chart, device=device, dtype=dtype)
+        if not isinstance(input_chart, ChartState) or (
+            output_chart is not None and not isinstance(output_chart, ChartState)
         ):
-            raise TypeError("charts must be Chart instances")
+            raise TypeError("charts must be ChartSpec or ChartState instances")
         single_chart = output_chart is None
         if single_chart and (
             not hasattr(input_chart, "shape") or len(input_chart.shape) != 2
@@ -76,7 +81,7 @@ class CSTLinear(CSTModule):
         self.atom_init = atom_init
         self.backend = backend
 
-        reference = input_chart.reference if single_chart else input_chart.coordinates
+        reference = input_chart.reference
         target_device = device or reference.device
         target_dtype = dtype or reference.dtype
         if not target_dtype.is_floating_point:
@@ -95,9 +100,7 @@ class CSTLinear(CSTModule):
             )
         # A device alias such as "cuda" resolves to an indexed device after
         # .to(); compare against the actual chart device, not the alias.
-        initialized_device = (
-            charts[0].reference.device if single_chart else charts[0].coordinates.device
-        )
+        initialized_device = charts[0].reference.device
         if p.device != initialized_device or p.dtype != target_dtype:
             raise ValueError("kernel.initialize must match the module device and dtype")
         self.atoms = Atoms(p)
@@ -202,7 +205,7 @@ class CSTLinear(CSTModule):
 
         return (self.atoms.p,)
 
-    def cst_charts(self) -> tuple[Chart, ...]:
+    def cst_charts(self) -> tuple[ChartState, ...]:
         """Return the chart or chart pair observed by this site."""
 
         return (
@@ -220,7 +223,9 @@ class CSTLinear(CSTModule):
         """Return tile-major storage for a single StripChart operator."""
         from torchcst._backends.torch.kernels import execution as _kernel
 
-        if not hasattr(self, "chart") or not isinstance(self.chart, StripChart):
+        if not hasattr(self, "chart") or not (
+            isinstance(self.chart, ChartState) and self.chart.spec.kind == "strip"
+        ):
             raise TypeError("packed_weight requires a single StripChart")
         return _kernel.packed_weight(self.kernel, self.chart, self.atoms.p)
 

@@ -11,17 +11,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from torchcst import (
-    BandwidthBounds,
-    CSTLinear,
-    GridPattern,
-    LinePattern,
-    StripChart,
-    TorusGeometry,
-    TriweightSpec,
-    presets,
-)
+from torchcst import BandwidthBounds, CSTLinear, TriweightSpec, presets
 from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.kernels import direct_amp_width as _direct
 from torchcst._backends.torch.kernels.execution import KernelOptions
 from torchcst._backends.torch.operators.strip_torus.preparation import PROFILE_KINDS
@@ -55,16 +47,18 @@ class BlockStripLinear(nn.Module):
         s, t = tile_shape
         g = self.row_groups * self.column_groups
         grid_width = math.gcd(t, 16)
-        chart = StripChart(
+        chart = _construction.strip(
             shape=(g * s, t),
             tile_shape=(s, t),
             axis=0,
             tile_pitch=tile_pitch,
             axes=(
-                LinePattern(g * s, spacing=min(0.1, 1.5 / max(s - 1, 1))),
-                GridPattern((t // grid_width, grid_width), spacing=0.05),
+                _construction.line_pattern(
+                    g * s, spacing=min(0.1, 1.5 / max(s - 1, 1))
+                ),
+                _construction.grid_pattern((t // grid_width, grid_width), spacing=0.05),
             ),
-            geometry=TorusGeometry(
+            geometry=_construction.torus(
                 3,
                 major_radius=max(2, g) * tile_pitch / (2 * math.pi),
                 minor_radius=0.4,

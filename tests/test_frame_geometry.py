@@ -3,15 +3,16 @@ from __future__ import annotations
 import torch
 from kernel_cases import amplitude_state, gaussian_state, separable_state
 
-from torchcst import Chart, CSTLinear
+from torchcst import CSTLinear
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._derivatives import AutogradFrameGeometry
 
 
 def make_geometry() -> tuple[CSTLinear, AutogradFrameGeometry]:
     torch.manual_seed(23)
     site = CSTLinear(
-        Chart.linspace(4, low=-1.0, high=1.0),
-        Chart.linspace(3, low=-1.0, high=1.0),
+        _construction.linspace(4, low=-1.0, high=1.0),
+        _construction.linspace(3, low=-1.0, high=1.0),
         atoms=2,
         kernel=amplitude_state(
             separable_state(

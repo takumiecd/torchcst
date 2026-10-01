@@ -10,14 +10,14 @@ from torch import Tensor
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.parameterizations import amp_width as _parameterizations
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.spec import AtomInit
 
 
 def initialize(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     atoms: int,
     *,
     mode: AtomInit,
@@ -33,8 +33,8 @@ def initialize(
 
 def materialize_atoms(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> Tensor:
     phi_input, phi_output = _kernel.factors(state, input_chart, output_chart, p)
@@ -43,8 +43,8 @@ def materialize_atoms(
 
 def factors(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor]:
     amplitude, input_p, output_p = _parameterizations._split(
@@ -61,7 +61,7 @@ def factors(
     return phi_input, phi_output
 
 
-def tangent_backend(state, input_chart: Chart, output_chart: Chart):
+def tangent_backend(state, input_chart: ChartState, output_chart: ChartState):
     from .tangent import amplitude_bandwidth
 
     return lambda p: amplitude_bandwidth(state, input_chart, output_chart, p)

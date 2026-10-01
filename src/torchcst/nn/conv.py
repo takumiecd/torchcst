@@ -12,7 +12,8 @@ from torch import Tensor, nn
 
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
-from torchcst.geometry import Chart
+from torchcst.geometry.spec import ChartSpec
+from torchcst.geometry.state import ChartState
 from torchcst.kernels import AtomInit, KernelSpec
 from torchcst.kernels.options import KernelOptions
 from torchcst.kernels.state import KernelState
@@ -52,8 +53,8 @@ class CSTConv2d(CSTModule):
 
     def __init__(
         self,
-        input_chart: Chart,
-        output_chart: Chart,
+        input_chart: ChartSpec | ChartState,
+        output_chart: ChartSpec | ChartState,
         *,
         in_channels: int,
         out_channels: int,
@@ -73,8 +74,16 @@ class CSTConv2d(CSTModule):
         from torchcst._backends.torch.kernels import execution as _kernel
 
         super().__init__()
-        if not isinstance(input_chart, Chart) or not isinstance(output_chart, Chart):
-            raise TypeError("input_chart and output_chart must be Chart instances")
+        if isinstance(input_chart, ChartSpec):
+            input_chart = ChartState(input_chart, device=device, dtype=dtype)
+        if isinstance(output_chart, ChartSpec):
+            output_chart = ChartState(output_chart, device=device, dtype=dtype)
+        if not isinstance(input_chart, ChartState) or not isinstance(
+            output_chart, ChartState
+        ):
+            raise TypeError(
+                "input_chart and output_chart must be ChartSpec or ChartState instances"
+            )
         for name, value in (
             ("in_channels", in_channels),
             ("out_channels", out_channels),
@@ -129,8 +138,8 @@ class CSTConv2d(CSTModule):
         self.atom_init = atom_init
         self.backend = backend
 
-        target_device = device or input_chart.coordinates.device
-        target_dtype = dtype or input_chart.coordinates.dtype
+        target_device = device or input_chart.reference.device
+        target_dtype = dtype or input_chart.reference.dtype
         if not target_dtype.is_floating_point:
             raise TypeError("CSTConv2d requires a floating-point dtype")
         self.to(device=target_device, dtype=target_dtype)
@@ -150,7 +159,7 @@ class CSTConv2d(CSTModule):
             raise ValueError(
                 f"kernel.initialize must return shape {list(expected_shape)}"
             )
-        if p.device != input_chart.coordinates.device or p.dtype != target_dtype:
+        if p.device != input_chart.reference.device or p.dtype != target_dtype:
             raise ValueError("kernel.initialize must match the module device and dtype")
         self.atoms = Atoms(p)
 
@@ -233,7 +242,7 @@ class CSTConv2d(CSTModule):
     def cst_parameters(self) -> tuple[nn.Parameter, ...]:
         return (self.atoms.p,)
 
-    def cst_charts(self) -> tuple[Chart, ...]:
+    def cst_charts(self) -> tuple[ChartState, ...]:
         return (self.input_chart, self.output_chart)
 
     def repulsion_terms(

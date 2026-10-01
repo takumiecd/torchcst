@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 import torch
 
-from torchcst import LinePattern, StripChart, TorusGeometry
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.operators.strip_torus.tiled import CircleRouting
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
@@ -14,16 +14,18 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
 
 def routing(stations, *, start=0.0, spacing=0.1, extra=0.0):
     rows = stations * 8 - 3
-    chart = StripChart(
+    chart = _construction.strip(
         shape=(rows, 1),
         tile_shape=(8, 1),
         axis=0,
         tile_pitch=4.1,
         axes=(
-            LinePattern(rows, low=start, high=start + (rows - 1) * spacing),
-            LinePattern(1, spacing=1.0),
+            _construction.line_pattern(
+                rows, low=start, high=start + (rows - 1) * spacing
+            ),
+            _construction.line_pattern(1, spacing=1.0),
         ),
-        geometry=TorusGeometry(
+        geometry=_construction.torus(
             2,
             major_radius=(stations * 4.1 + extra) / (2 * math.pi),
             minor_radius=0.4,

@@ -7,14 +7,14 @@ from torch import Tensor
 
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.spec import AtomInit
 
 
 def initialize(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     atoms: int,
     *,
     mode: AtomInit,
@@ -27,14 +27,14 @@ def initialize(
 
 
 def materialize_atoms(
-    state, input_chart: Chart, output_chart: Chart, p: Tensor
+    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
 ) -> Tensor:
     phi_input, phi_output = _kernel.factors(state, input_chart, output_chart, p)
     return torch.einsum("oa,ia->aoi", phi_output, phi_input)
 
 
 def factors(
-    state, input_chart: Chart, output_chart: Chart, p: Tensor
+    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
 ) -> tuple[Tensor, Tensor]:
     expected_dim = _kernel.parameter_dim(state, input_chart, output_chart)
     if p.ndim != 2 or p.shape[1] != expected_dim:
@@ -47,7 +47,7 @@ def factors(
     return phi_input, phi_output
 
 
-def tangent_backend(state, input_chart: Chart, output_chart: Chart):
+def tangent_backend(state, input_chart: ChartState, output_chart: ChartState):
     from .tangent import separable
 
     return lambda p: separable(state, input_chart, output_chart, p)
@@ -55,8 +55,8 @@ def tangent_backend(state, input_chart: Chart, output_chart: Chart):
 
 def _split(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor]:
     expected_dim = _kernel.parameter_dim(state, input_chart, output_chart)

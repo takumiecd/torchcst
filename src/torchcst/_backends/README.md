@@ -10,10 +10,8 @@ backend は宣言の意味を変えず、対応する Algorithm と Recipe で�
 torchcst/
   geometry/
     spec.py                    Geometry / Pattern / Chart の不変な宣言
-    _declarations.py           既存クラスからの設定 snapshot
-    geometry.py                Geometry の設定・状態・互換入口
-    chart.py / lazy_chart.py   Chart の設定・状態・互換入口
-    pattern.py                 SitePattern の設定・状態・互換入口
+    presets.py                 純粋な宣言の組み立て
+    state.py                   共通 GeometryState / PatternState / ChartState
   kernels/
     profiles/                  Triweight / Gaussian など関数の形の宣言
     parameterizations/         振幅・幅・activity の座標解釈の宣言
@@ -79,11 +77,11 @@ Algorithm が実際に共用するものは、演算グループ内の `_shared/
 将来の MPS / Radeon との共有を理由に、先回りして backend 共通の `shared/` を
 作らない。共通の数学的意味は宣言で共有し、計算実装の共有とは区別する。
 
-## 次の移行境界
+## 現在の接続
 
-CSTLinear / CSTConv2d は KernelSpec から共通 KernelState を作る。個別の Kernel /
-Profile Module、互換メソッド、旧 checkpoint loader はない。Operator は Module が
-所有する Chart / KernelState / Atoms を参照する。単一 Chart と入出力 Chart の組は
+CSTLinear / CSTConv2d は ChartSpec / KernelSpec から共通 ChartState / KernelState を作る。
+個別の Geometry / Chart / Pattern / Kernel / Profile Module、互換メソッド、旧 checkpoint
+loader はない。Operator は Module が所有する ChartState / KernelState / Atoms を参照する。単一 Chart と入出力 Chart の組は
 layout の型で区別する。Torch の評価・更新は backend の関数で実行する。
 宣言 snapshot を forward ごとに作らず、現在の Tensor / buffer を使う。
 詳細は [Operator](../operators/README.md)を参照。

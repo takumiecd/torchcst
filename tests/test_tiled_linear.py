@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from torchcst import BandwidthBounds, CSTOptimizer
+from torchcst._backends.torch.charts import construction as _construction
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.kernels.execution import KernelOptions
 
@@ -11,14 +13,8 @@ import pytest
 import torch
 from kernel_cases import direct_state, gaussian_state, triweight_state
 
-from torchcst import (
-    CSTLinear,
-    GridPattern,
-    LinePattern,
-    ProductChart,
-    StripChart,
-    TorusGeometry,
-)
+from torchcst import CSTLinear
+from torchcst.geometry.state import ChartState
 
 
 def make_radial_state(*, compact: bool = True) -> direct_state:
@@ -39,14 +35,17 @@ def make_radial_state(*, compact: bool = True) -> direct_state:
     )
 
 
-def _chart() -> StripChart:
-    return StripChart(
+def _chart() -> ChartState:
+    return _construction.strip(
         shape=(16, 4),
         tile_shape=(4, 4),
-        axes=(LinePattern(16, spacing=2.0), GridPattern((2, 2), spacing=0.2)),
+        axes=(
+            _construction.line_pattern(16, spacing=2.0),
+            _construction.grid_pattern((2, 2), spacing=0.2),
+        ),
         axis=0,
         tile_pitch=25.0,
-        geometry=TorusGeometry(
+        geometry=_construction.torus(
             3,
             major_radius=100 / (2 * math.pi),
             minor_radius=1.0,
@@ -72,8 +71,8 @@ def test_tiled_linear_matches_dense_forward_and_backward() -> None:
     )
     with torch.no_grad():
         point = torch.tensor([[75.5, 0.0, 0.0]], dtype=torch.float64)
-        center = dense.chart.geometry.lift_chart_coordinates(point)
-        dense.atoms.p[0, 2:] = dense.chart.geometry.encode_centers(center)[0]
+        center = _geometry.lift_chart_coordinates(dense.chart.geometry, point)
+        dense.atoms.p[0, 2:] = _geometry.encode_centers(dense.chart.geometry, center)[0]
         dense.atoms.p[0, 0] = 0.4
     tiled.load_state_dict(dense.state_dict())
     assert tiled._resolved_backend() == "tiled"
@@ -139,9 +138,12 @@ def test_weight_tile_matches_selected_dense_entries() -> None:
 def test_tiled_backend_rejects_unsupported_charts_and_profiles() -> None:
     with pytest.raises(TypeError, match="StripChart \\+ TorusGeometry"):
         CSTLinear(
-            chart=ProductChart(
+            chart=_construction.product(
                 shape=(2, 2),
-                axes=(LinePattern(2, spacing=0.2), LinePattern(2, spacing=0.2)),
+                axes=(
+                    _construction.line_pattern(2, spacing=0.2),
+                    _construction.line_pattern(2, spacing=0.2),
+                ),
             ),
             atoms=2,
             kernel=make_radial_state().declaration(),

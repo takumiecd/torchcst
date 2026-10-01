@@ -7,7 +7,7 @@ from typing import Literal
 from torch import Tensor, nn
 
 from torchcst.atoms import Atoms
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 
 RepulsionKind = Literal["cosine", "raw", "abs"]
 
@@ -57,7 +57,7 @@ class CSTModule(nn.Module):
 
         raise NotImplementedError
 
-    def cst_charts(self) -> tuple[Chart, ...]:
+    def cst_charts(self) -> tuple[ChartState, ...]:
         """Return the charts whose coordinates this site observes."""
 
         raise NotImplementedError

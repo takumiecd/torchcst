@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING
 
 from torch import Tensor
 
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.operators.strip_torus.tiled import tiled_linear
 from torchcst._backends.torch.operators.strip_torus.tiled import (
     validate_tiled as validate_strip_torus,
 )
 from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.state import KernelState
 from torchcst.profiling import cst_span
 
@@ -20,16 +21,16 @@ if TYPE_CHECKING:
     from torchcst.nn.linear import CSTLinear
 
 
-def validate_materialized(charts: tuple[Chart, ...], kernel: KernelState) -> None:
+def validate_materialized(charts: tuple[ChartState, ...], kernel: KernelState) -> None:
     pass
 
 
-def validate_factored(charts: tuple[Chart, ...], kernel: KernelState) -> None:
+def validate_factored(charts: tuple[ChartState, ...], kernel: KernelState) -> None:
     if len(charts) != 2 or not _kernel.supports_factorization(kernel):
         raise ValueError("the selected kernel does not support factorized execution")
 
 
-def validate_tiled(charts: tuple[Chart, ...], kernel: KernelState) -> None:
+def validate_tiled(charts: tuple[ChartState, ...], kernel: KernelState) -> None:
     if len(charts) != 1:
         raise ValueError("tiled backend requires a single operator chart")
     validate_strip_torus(charts[0], kernel)
@@ -54,7 +55,7 @@ def tiled(site: CSTLinear, inputs: Tensor, p: Tensor) -> Tensor:
 
         plan = execution_plan(site)
         encoded, _, precision = _coordinates.tile_parameters(site.kernel, site.chart, p)
-        decoded = site.chart.geometry.decode_centers(encoded)
+        decoded = _geometry.decode_centers(site.chart.geometry, encoded)
         layout = support_layout(plan, decoded, precision, site.chart.tile_shape[0])
     with cst_span("cst.linear.tiled_matmul"):
         return tiled_linear(

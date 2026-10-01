@@ -45,15 +45,15 @@ Parameter gradients without installing an optimizer-specific backward route.
 `Operator` は nn.Module ではない。所有権、checkpoint の key、optimizer の
 Parameter 参照は既存 Module のまま。`atoms.p` の更新や置き換え、dtype / device
 変換後も live view は現在の値を使う。Module 自体を差し替えたときは CSTLinear
-が view を再構成する。Kernel は共通 KernelState を参照する。利用者は Layer に
-KernelSpec を渡し、新しい意味には対応する backend 実装を用意する。
+が view を再構成する。Chart と Kernel は共通 ChartState / KernelState を参照する。
+利用者は Layer に ChartSpec / KernelSpec を渡し、新しい意味には対応する backend 実装を用意する。
 
 `declaration()` と `spec.bind()` は設定境界の処理。scalar の読み戻しや明示点の
 snapshot は forward / backward / CUDA Graph capture 中に行わない。trainable な
 座標の snapshot は固定の現在値であり、実行時の Tensor や勾配を置き換えない。
 view は live な設定を使うので、設定変更後に宣言を利用する場合は改めて取得する。
 
-Spec だけから新しい Module を生成する factory はまだない。Triton / tiled の
+CSTLinear / CSTConv2d は宣言から State を構築する。Triton / tiled の
 既存実行と normalized Strip の CUDA registry は、既存の最適化入口を維持する。
 汎用宣言を受け入れる Algorithm は、その数学的・数値的契約に適合するものだけを
 登録する。入出力 Chart の組を将来なくす場合も、正規化領域と勾配を照合して移行する。

@@ -3,6 +3,8 @@
 import pytest
 import torch
 
+from torchcst._backends.torch.geometry import execution as _geometry
+
 pytest.importorskip("triton")
 
 import experiments.cuda.linear.block_streamed_backward as streamed_backward
@@ -98,8 +100,8 @@ def test_mapped_backward_after_atom_movement_and_boundary_support(atom_kernel):
         coordinate = p.new_zeros((p.shape[0], 3))
         coordinate[:, 0] = chart.axes[0].start[0] + (atom % 4) * 2.6
         coordinate[:, 0] += torch.where(atom % 2 == 0, 0.7, 2.05)
-        p[:, 2:] = chart.geometry.encode_centers(
-            chart.geometry.lift_chart_coordinates(coordinate)
+        p[:, 2:] = _geometry.encode_centers(
+            chart.geometry, _geometry.lift_chart_coordinates(chart.geometry, coordinate)
         )
         p[:, 0] = 0.8
         p[::13, 4] += 4.0
@@ -282,8 +284,9 @@ def test_bounded_graph_replay_after_bucket_overflow(listed_unroll, builder):
     with torch.no_grad():
         coordinate = site.atoms.p.new_zeros((site.atoms.p.shape[0], 3))
         coordinate[:, 0] = site.chart.axes[0].start[0] + 0.7
-        site.atoms.p[:, 2:] = site.chart.geometry.encode_centers(
-            site.chart.geometry.lift_chart_coordinates(coordinate)
+        site.atoms.p[:, 2:] = _geometry.encode_centers(
+            site.chart.geometry,
+            _geometry.lift_chart_coordinates(site.chart.geometry, coordinate),
         )
     prepared = trainable_boxed_prepare(
         site, site.atoms.p, boxes=boxes, witness_cols=hints

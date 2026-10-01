@@ -11,13 +11,13 @@ from torchcst._backends.torch.parameterizations import (
     direct_amp_width as _parameterizations,
 )
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 
 
 def apply_parameter_update(
     state,
-    input_chart: Chart,
-    output_chart: Chart | Tensor,
+    input_chart: ChartState,
+    output_chart: ChartState | Tensor,
     p: Tensor,
     displacement: Tensor | None = None,
     *,
@@ -70,8 +70,8 @@ def apply_parameter_update(
 
 def project_parameter_gradient(
     state,
-    input_chart: Chart,
-    output_chart: Chart | Tensor,
+    input_chart: ChartState,
+    output_chart: ChartState | Tensor,
     p: Tensor,
     gradient: Tensor | None = None,
 ) -> Tensor:
@@ -116,8 +116,8 @@ def project_parameter_gradient(
 
 def transport_parameter_state(
     kernel_state,
-    input_chart: Chart,
-    output_chart: Chart | Tensor,
+    input_chart: ChartState,
+    output_chart: ChartState | Tensor,
     old: Tensor,
     new: Tensor,
     state: Tensor | None = None,
@@ -169,7 +169,7 @@ def transport_parameter_state(
 
 
 def _single_apply_update(
-    state, chart: Chart, p: Tensor, displacement: Tensor, step_size: float
+    state, chart: ChartState, p: Tensor, displacement: Tensor, step_size: float
 ) -> Tensor:
     direct, center = _parameterizations._single_split(state, chart, p)
     if displacement.shape != p.shape:

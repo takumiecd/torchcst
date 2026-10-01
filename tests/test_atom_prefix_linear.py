@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.kernels import execution as _kernel
 
 """Canonical dense/autograd checks for the experimental atom contraction."""
@@ -33,8 +34,8 @@ def test_prefix_matches_canonical_value_and_gradients(
         if atoms:
             p[0, 0] = 1.4
             point = p.new_tensor([[-0.031, 0.17, -0.13]])
-            center = layer.chart.geometry.lift_chart_coordinates(point)
-            p[0, 2:] = layer.chart.geometry.encode_centers(center)[0]
+            center = _geometry.lift_chart_coordinates(layer.chart.geometry, point)
+            p[0, 2:] = _geometry.encode_centers(layer.chart.geometry, center)[0]
     x = torch.randn(2, 21, 3, dtype=dtype).transpose(1, 2).requires_grad_()
     expected = F.linear(x, _kernel.weight(layer.kernel, layer.chart, p))
     actual = atom_prefix_linear(layer, x, p, atom_chunk=chunk)

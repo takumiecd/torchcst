@@ -8,13 +8,13 @@ from types import SimpleNamespace
 import torch
 from torch import Tensor, nn
 
-from torchcst.geometry import EuclideanGeometry, GridPattern, LinePattern, StripChart
 from torchcst.geometry.spec import (
     ChartSpec,
     EuclideanGeometrySpec,
     GridPatternSpec,
     LinePatternSpec,
 )
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.presets import NORMALIZED_RADIAL_TRIWEIGHT
 from torchcst.operators.spec import OperatorSpec, SingleChartSpec
 
@@ -58,12 +58,16 @@ class NormalizedStripLinear(nn.Module):
     apply. CUDA backends support first derivatives only.
     """
 
-    def __init__(self, chart: StripChart, p: Tensor, *, memory: str = "full"):
+    def __init__(
+        self, chart: ChartSpec | ChartState, p: Tensor, *, memory: str = "full"
+    ):
         super().__init__()
         if memory not in ("full", "window"):
             raise ValueError("memory must be 'full' or 'window'")
-        if not isinstance(chart, StripChart):
-            raise TypeError("chart must be a StripChart")
+        if isinstance(chart, ChartSpec):
+            chart = ChartState(chart)
+        if not (isinstance(chart, ChartState) and chart.spec.kind == "strip"):
+            raise TypeError("chart must declare a strip layout")
         if any(
             tensor.requires_grad for tensor in (*chart.parameters(), *chart.buffers())
         ):
@@ -71,13 +75,13 @@ class NormalizedStripLinear(nn.Module):
                 "NormalizedStripLinear requires a fixed, nontrainable chart"
             )
         if (
-            type(chart.geometry) is not EuclideanGeometry
+            type(chart.geometry.spec) is not EuclideanGeometrySpec
             or chart.geometry.embedding_dim != 3
             or len(chart.shape) != 2
             or chart.axis != 0
             or len(chart.axes) != 2
-            or type(chart.axes[0]) is not LinePattern
-            or type(chart.axes[1]) is not GridPattern
+            or type(chart.axes[0].spec) is not LinePatternSpec
+            or type(chart.axes[1].spec) is not GridPatternSpec
             or chart.axes[1].dim != 2
         ):
             raise ValueError("requires a regular 3D Euclidean Strip chart")

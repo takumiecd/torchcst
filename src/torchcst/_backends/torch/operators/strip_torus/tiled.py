@@ -8,10 +8,13 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.charts import execution as _charts
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.operators.strip_torus.layout import AtomLayout
 from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
-from torchcst.geometry import StripChart, TorusGeometry
+from torchcst.geometry.spec import TorusGeometrySpec
+from torchcst.geometry.state import ChartState
 from torchcst.kernels import DirectAmpWidthSpec
 from torchcst.kernels.profiles import (
     BiweightSpec,
@@ -22,11 +25,12 @@ from torchcst.kernels.profiles import (
 from torchcst.kernels.state import KernelState
 
 
-def validate_tiled(chart: object, kernel: object) -> StripChart:
+def validate_tiled(chart: object, kernel: object) -> ChartState:
     """Check the deliberately narrow first tiled backend."""
 
-    if not isinstance(chart, StripChart) or not isinstance(
-        chart.geometry, TorusGeometry
+    if (
+        not (isinstance(chart, ChartState) and chart.spec.kind == "strip")
+        or not type(chart.geometry.spec) is TorusGeometrySpec
     ):
         raise TypeError("tiled backend requires StripChart + TorusGeometry")
     if (
@@ -52,26 +56,26 @@ def validate_tiled(chart: object, kernel: object) -> StripChart:
     kernel.declaration()
     if kernel.profiles[0].binding.profile.revision != 1:
         raise ValueError("unsupported profile revision")
-    chart.validate_support(float(kernel.scalar("sigma_max_input")))
+    _charts.validate_support(chart, float(kernel.scalar("sigma_max_input")))
     return chart
 
 
 @torch.no_grad()
-def support_mask(chart: StripChart, kernel: KernelState, p: Tensor) -> Tensor:
+def support_mask(chart: ChartState, kernel: KernelState, p: Tensor) -> Tensor:
     """Reference [station, atom] support oracle using actual site distances."""
 
     center = p[:, 2:]
     radius_squared = _coordinates.bandwidth_sigma(kernel, chart, p).square()
     touched = []
     for station in range(chart.tile_count):
-        sites, _ = chart.tile_indices(station)
-        squared = chart.squared_distance(center, sites)
+        sites, _ = _charts.tile_indices(chart, station)
+        squared = _charts.squared_distance(chart, center, sites)
         touched.append((squared < radius_squared[None, :]).any(dim=0))
     return torch.stack(touched)
 
 
 @torch.no_grad()
-def route_atoms(chart: StripChart, kernel: KernelState, p: Tensor) -> Tensor:
+def route_atoms(chart: ChartState, kernel: KernelState, p: Tensor) -> Tensor:
     """Own each atom by its nearest sampled row on the circle, in O(A * G).
 
     Every station has the same column cross-sections. At any fixed column,
@@ -81,7 +85,7 @@ def route_atoms(chart: StripChart, kernel: KernelState, p: Tensor) -> Tensor:
     reading the owner and its two neighbors covers all contributions.
     """
 
-    decoded = chart.geometry.decode_centers(p[:, 2:])
+    decoded = _geometry.decode_centers(chart.geometry, p[:, 2:])
     return CircleRouting.from_chart(chart).owners(decoded)
 
 
@@ -99,7 +103,7 @@ class CircleRouting:
     local_candidates: bool = False
 
     @classmethod
-    def from_chart(cls, chart: StripChart) -> CircleRouting:
+    def from_chart(cls, chart: ChartState) -> CircleRouting:
         stations = torch.arange(chart.tile_count, device=chart.device)
         line = chart.axes[chart.axis]
         counts = (
@@ -157,7 +161,7 @@ class CircleRouting:
 
 
 @torch.no_grad()
-def owners_from_support(chart: StripChart, p: Tensor, touched: Tensor) -> Tensor:
+def owners_from_support(chart: ChartState, p: Tensor, touched: Tensor) -> Tensor:
     """Assign one owner from an exact support mask."""
 
     if touched.shape != (chart.tile_count, p.shape[0]):
@@ -165,12 +169,12 @@ def owners_from_support(chart: StripChart, p: Tensor, touched: Tensor) -> Tensor
     owners = touched.to(torch.int64).argmax(dim=0)
     idle = ~touched.any(dim=0)
     if bool(idle.any()):
-        centers = chart.geometry.decode_centers(p[idle, 2:])
+        centers = _geometry.decode_centers(chart.geometry, p[idle, 2:])
         center_angle = torch.atan2(centers[:, 1], centers[:, 0])
         midpoints = []
         for station in range(chart.tile_count):
-            sites, _ = chart.tile_indices(station)
-            endpoints = chart.positions(sites[[0, -1]])
+            sites, _ = _charts.tile_indices(chart, station)
+            endpoints = _charts.positions(chart, sites[[0, -1]])
             angle = torch.atan2(endpoints[:, 1], endpoints[:, 0])
             midpoints.append(torch.atan2(angle.sin().sum(), angle.cos().sum()))
         station_angle = torch.stack(midpoints)
@@ -181,7 +185,7 @@ def owners_from_support(chart: StripChart, p: Tensor, touched: Tensor) -> Tensor
 
 
 def tiled_linear(
-    chart: StripChart,
+    chart: ChartState,
     kernel: KernelState,
     inputs: Tensor,
     p: Tensor,

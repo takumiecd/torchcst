@@ -16,7 +16,8 @@ from torch import Tensor, nn
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.operators.dispatch import validate_tiled
 from torchcst._backends.torch.operators.strip_torus.tiled import CircleRouting
-from torchcst.geometry import Chart, StripChart
+from torchcst._backends.torch.patterns import execution as _patterns
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.state import KernelState
 
 if TYPE_CHECKING:
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
 PROFILE_KINDS = {"biweight": 0, "triweight": 1, "wendland_c2": 2, "triangle": 3}
 
 
-def validate(charts: tuple[Chart, ...], kernel: KernelState) -> None:
+def validate(charts: tuple[ChartState, ...], kernel: KernelState) -> None:
     validate_tiled(charts, kernel)
     if kernel.profiles[0].binding.profile.id not in PROFILE_KINDS:
         raise ValueError(
@@ -33,7 +34,7 @@ def validate(charts: tuple[Chart, ...], kernel: KernelState) -> None:
         )
 
 
-def geometry_factors(chart: StripChart) -> tuple[Tensor, Tensor]:
+def geometry_factors(chart: ChartState) -> tuple[Tensor, Tensor]:
     """Factor ambient sites into row circle directions and column sections.
 
     For row n and column k, the site is
@@ -43,7 +44,7 @@ def geometry_factors(chart: StripChart) -> tuple[Tensor, Tensor]:
 
     geometry = chart.geometry
     rows = torch.arange(chart.shape[0], device=chart.device)
-    arc = chart.axes[0].positions(rows % chart.tile_shape[0]).squeeze(-1)
+    arc = _patterns.positions(chart.axes[0], rows % chart.tile_shape[0]).squeeze(-1)
     arc = (
         arc
         + torch.div(rows, chart.tile_shape[0], rounding_mode="floor") * chart.tile_pitch
@@ -51,7 +52,7 @@ def geometry_factors(chart: StripChart) -> tuple[Tensor, Tensor]:
     angle = arc / geometry.major_radius
     circle = torch.stack((angle.cos(), angle.sin()), dim=-1)
     columns = torch.arange(chart.shape[1], device=chart.device)
-    cross = chart.axes[1].positions(columns)
+    cross = _patterns.positions(chart.axes[1], columns)
     section = torch.cat(
         (geometry.minor_radius.expand(cross.shape[0], 1), cross), dim=-1
     )
@@ -63,7 +64,7 @@ def geometry_factors(chart: StripChart) -> tuple[Tensor, Tensor]:
     return circle.contiguous(), section.contiguous()
 
 
-def _configuration_key(chart: StripChart, kernel: KernelState) -> tuple | None:
+def _configuration_key(chart: ChartState, kernel: KernelState) -> tuple | None:
     parts = []
     for root in (chart, kernel):
         for name, module in root.named_modules():

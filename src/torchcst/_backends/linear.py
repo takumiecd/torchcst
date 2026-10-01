@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Literal
 
 from torch import Tensor
 
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.state import KernelState
 
 if TYPE_CHECKING:
@@ -25,11 +25,11 @@ ResolvedBackend = Literal["factored", "materialized", "tiled", "triton"]
 
 @dataclass(frozen=True)
 class _Implementation:
-    validate: Callable[[tuple[Chart, ...], KernelState], None]
+    validate: Callable[[tuple[ChartState, ...], KernelState], None]
     forward: Callable[[CSTLinear, Tensor, Tensor], Tensor]
 
 
-def _validate_triton(charts: tuple[Chart, ...], kernel: KernelState) -> None:
+def _validate_triton(charts: tuple[ChartState, ...], kernel: KernelState) -> None:
     from torchcst._backends.torch.operators.strip_torus.preparation import validate
 
     validate(charts, kernel)
@@ -57,7 +57,7 @@ _IMPLEMENTATIONS["triton"] = _Implementation(_validate_triton, _triton_forward)
 
 
 def validate_backend(
-    name: Backend, charts: tuple[Chart, ...], kernel: KernelState
+    name: Backend, charts: tuple[ChartState, ...], kernel: KernelState
 ) -> None:
     if name == "auto":
         return

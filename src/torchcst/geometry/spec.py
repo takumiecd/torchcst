@@ -138,10 +138,13 @@ class TorusGeometrySpec(GeometrySpec):
 @dataclass(frozen=True, kw_only=True)
 class PatternSpec:
     id: str
+    revision: int = 1
 
     def __post_init__(self):
         if type(self) is PatternSpec:
             raise TypeError("choose a concrete pattern declaration")
+        if type(self.revision) is not int or self.revision < 1:
+            raise ValueError("pattern revision must be a positive integer")
 
     @property
     def features(self):
@@ -160,6 +163,7 @@ class GridPatternSpec(PatternSpec):
     id: str = field(default="grid", init=False)
 
     def __post_init__(self):
+        super().__post_init__()
         _shape(self.shape)
         for name in ("start", "spacing"):
             values = getattr(self, name)
@@ -200,6 +204,7 @@ class PointsPatternSpec(PatternSpec):
     id: str = field(default="points", init=False)
 
     def __post_init__(self):
+        super().__post_init__()
         _points(self.coordinates)
 
     @property
@@ -252,6 +257,7 @@ class ChartSpec:
             raise ValueError("invalid chart metadata")
         if self.spacing is not None and (
             not isinstance(self.spacing, tuple)
+            or len(self.spacing) != self.geometry.embedding_dim
             or any(
                 type(v) not in (int, float) or not math.isfinite(v) or v < 0
                 for v in self.spacing

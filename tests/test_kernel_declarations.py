@@ -13,7 +13,9 @@ import pytest
 import torch
 
 import torchcst
-from torchcst import BandwidthBounds, Chart, CSTLinear, CSTOptimizer, presets
+from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer, presets
+from torchcst._backends.torch.charts import construction as _construction
+from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.kernels import execution as kernel_execution
 from torchcst._backends.torch.profiles import execution as profile_execution
 from torchcst.kernels import (
@@ -125,7 +127,7 @@ def test_pair_cannot_silently_use_operator_normalization():
 )
 def test_unknown_shape_or_revision_cannot_inherit_builtin_execution(shape):
     state = ProfileState(presets.fixed_profile(shape, 0.2))
-    chart = Chart.linspace(3, spacing=0.2)
+    chart = _construction.linspace(3, spacing=0.2)
     with pytest.raises(ValueError, match="unsupported profile"):
         profile_execution.evaluate(state, chart, torch.zeros(1, 1))
 
@@ -141,7 +143,7 @@ def test_unknown_shape_or_revision_cannot_inherit_builtin_execution(shape):
 )
 def test_backend_rejects_unrecognized_kernel_contract(change):
     spec = replace(presets.amplitude_width(sigma_min=0.2, sigma_max=1.0), **change)
-    chart = Chart.linspace(3, spacing=0.2)
+    chart = _construction.linspace(3, spacing=0.2)
     with pytest.raises(ValueError, match="unsupported"):
         kernel_execution.initialize(KernelState(spec), chart, chart, 2)
 
@@ -154,7 +156,7 @@ def test_execution_never_reads_snapshots(monkeypatch):
 
     monkeypatch.setattr(KernelState, "declaration", forbidden)
     monkeypatch.setattr(ProfileState, "declaration", forbidden)
-    chart = Chart.linspace(3, spacing=0.2)
+    chart = _construction.linspace(3, spacing=0.2)
     p = kernel_execution.initialize(state, chart, chart, 2).requires_grad_()
     kernel_execution.materialize_atoms(state, chart, chart, p).square().sum().backward()
     assert torch.isfinite(p.grad).all()
@@ -211,10 +213,13 @@ def test_removed_public_classes_and_aliases_have_no_compatibility_entry():
 
 
 def test_radial_amplitude_updates_and_checkpoint_are_weights_only_safe():
-    from torchcst import LinePattern, ProductChart
 
-    chart = ProductChart(
-        shape=(3, 4), axes=(LinePattern(3, spacing=0.2), LinePattern(4, spacing=0.2))
+    chart = _construction.product(
+        shape=(3, 4),
+        axes=(
+            _construction.line_pattern(3, spacing=0.2),
+            _construction.line_pattern(4, spacing=0.2),
+        ),
     )
     spec = presets.amplitude(presets.radial(presets.fixed_profile(GaussianSpec(), 0.5)))
     model = CSTLinear(chart=chart, atoms=3, kernel=spec, dtype=torch.float64)
@@ -310,7 +315,7 @@ def test_output_profile_has_its_own_declared_shape(preset):
         ),
     )
     state = KernelState(spec).double()
-    chart = Chart.linspace(5, spacing=0.3).double()
+    chart = _construction.linspace(5, spacing=0.3).double()
     p = kernel_execution.initialize(state, chart, chart, 3).requires_grad_()
     input_factor, output_factor = kernel_execution.factors(state, chart, chart, p)
     if isinstance(spec.parameterization, AmpWidthSpec):
@@ -358,7 +363,7 @@ def test_output_profile_has_its_own_declared_shape(preset):
     ],
 )
 def test_log_width_clamps_before_exp_and_matches_independent_radial_oracle(device):
-    from torchcst import LinePattern, LogWidthSpec, ProductChart
+    from torchcst import LogWidthSpec
     from torchcst.kernels.presets import NORMALIZED_RADIAL_TRIWEIGHT
 
     spec = replace(
@@ -366,8 +371,12 @@ def test_log_width_clamps_before_exp_and_matches_independent_radial_oracle(devic
         parameterization=LogWidthSpec(sigma_min=0.2, sigma_max=1.0),
     )
     state = KernelState(spec).to(device=device, dtype=torch.float64)
-    chart = ProductChart(
-        shape=(3, 4), axes=(LinePattern(3, spacing=0.2), LinePattern(4, spacing=0.2))
+    chart = _construction.product(
+        shape=(3, 4),
+        axes=(
+            _construction.line_pattern(3, spacing=0.2),
+            _construction.line_pattern(4, spacing=0.2),
+        ),
     ).to(device=device, dtype=torch.float64)
     p = torch.tensor(
         [[-1.0, -1000.0, 0.2, 0.2], [0.5, 0.0, 0.1, 0.3], [1.0, 1000.0, 0.2, 0.4]],
@@ -376,7 +385,7 @@ def test_log_width_clamps_before_exp_and_matches_independent_radial_oracle(devic
         requires_grad=True,
     )
     oracle_p = p.detach().clone().requires_grad_()
-    sites = chart.positions(torch.arange(chart.features, device=device))
+    sites = _charts.positions(chart, torch.arange(chart.features, device=device))
     precision = (
         -2
         * oracle_p[:, 1].clamp(

@@ -5,9 +5,9 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from torchcst.geometry.geometry import (
-    EuclideanGeometry,
-)
+from torchcst._backends.torch.charts import execution as _charts
+from torchcst._backends.torch.geometry import execution as _geometry
+from torchcst.geometry.spec import EuclideanGeometrySpec
 
 
 def _indices(self, selection: slice | Tensor | None) -> Tensor:
@@ -25,30 +25,22 @@ def _indices(self, selection: slice | Tensor | None) -> Tensor:
     return selection
 
 
-def positions(self, indices: Tensor) -> Tensor:
-    raise NotImplementedError
-
-
-def _embed(self, coordinates: Tensor) -> Tensor:
-    return self.geometry.lift_chart_coordinates(coordinates)
-
-
 def squared_distance(
     self, centers: Tensor, selection: slice | Tensor | None = None
 ) -> Tensor:
-    sites = self.positions(self._indices(selection))
-    if not isinstance(self.geometry, EuclideanGeometry):
-        self.geometry.validate_points(sites, name="sites")
-    return self.geometry.squared_distance(sites, centers)
+    sites = _charts.positions(self, _indices(self, selection))
+    if not type(self.geometry.spec) is EuclideanGeometrySpec:
+        _geometry.validate_points(self.geometry, sites, name="sites")
+    return _geometry.squared_distance(self.geometry, sites, centers)
 
 
 def center_offsets(
     self, centers: Tensor, selection: slice | Tensor | None = None
 ) -> Tensor:
-    sites = self.positions(self._indices(selection))
-    if not isinstance(self.geometry, EuclideanGeometry):
-        self.geometry.validate_points(sites, name="sites")
-    return self.geometry.center_offsets(sites, centers)
+    sites = _charts.positions(self, _indices(self, selection))
+    if not type(self.geometry.spec) is EuclideanGeometrySpec:
+        _geometry.validate_points(self.geometry, sites, name="sites")
+    return _geometry.center_offsets(self.geometry, sites, centers)
 
 
 def initialize_centers(self, atoms: int, *, mode: str) -> Tensor:
@@ -56,8 +48,8 @@ def initialize_centers(self, atoms: int, *, mode: str) -> Tensor:
         raise ValueError("atoms must be a positive integer")
     if mode not in ("balanced", "uniform"):
         raise ValueError("mode must be 'balanced' or 'uniform'")
-    if isinstance(self.geometry, EuclideanGeometry) and mode == "uniform":
-        low, high = self._bounds()
+    if type(self.geometry.spec) is EuclideanGeometrySpec and mode == "uniform":
+        low, high = _charts._bounds(self)
         return low + torch.rand(
             atoms, self.embedding_dim, device=self.device, dtype=self.dtype
         ) * (high - low)
@@ -73,8 +65,8 @@ def initialize_centers(self, atoms: int, *, mode: str) -> Tensor:
             .round()
             .long()
         )
-        return self.geometry.initialize_centers(
-            self.positions(indices), atoms, mode="balanced"
+        return _geometry.initialize_centers(
+            self.geometry, _charts.positions(self, indices), atoms, mode="balanced"
         )
     # Other geometries receive a bounded representative site sample.
     sample_count = min(self.features, max(atoms, 1024))
@@ -89,7 +81,9 @@ def initialize_centers(self, atoms: int, *, mode: str) -> Tensor:
         .round()
         .long()
     )
-    return self.geometry.initialize_centers(self.positions(indices), atoms, mode=mode)
+    return _geometry.initialize_centers(
+        self.geometry, _charts.positions(self, indices), atoms, mode=mode
+    )
 
 
 def _unravel(indices: Tensor, shape: tuple[int, ...]) -> tuple[Tensor, ...]:

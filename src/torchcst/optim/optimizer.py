@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch.optim import LBFGS, Optimizer
 
-from torchcst.geometry import EuclideanGeometry
+from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.nn import CSTModule
 
 from .state import OptimizerStateAdapter, default_state_adapter
@@ -82,8 +82,9 @@ class CSTOptimizer(Optimizer):
                 raise ValueError("an atom table cannot have multiple CST policy owners")
             owners.add(id(site.atoms.p))
             for chart in site.cst_charts():
-                if chart.trainable and not isinstance(
-                    chart.geometry, EuclideanGeometry
+                if (
+                    chart.trainable
+                    and not type(chart.geometry.spec) is EuclideanGeometrySpec
                 ):
                     raise ValueError(
                         "trainable non-Euclidean charts need a chart update policy"

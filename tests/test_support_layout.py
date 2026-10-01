@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.kernels import execution as _kernel
 
 """Dependency buckets must match full site support, including seam/idle atoms."""
@@ -29,15 +30,16 @@ def test_buckets_equal_exact_support_and_preserve_each_atom_once(rows, station_r
     with torch.no_grad():
         coordinates = torch.randn(97, 3, dtype=p.dtype)
         coordinates[:, 0] = torch.linspace(-100, 100, 97)
-        p[:, 2:] = chart.geometry.encode_centers(
-            chart.geometry.lift_chart_coordinates(coordinates)
+        p[:, 2:] = _geometry.encode_centers(
+            chart.geometry,
+            _geometry.lift_chart_coordinates(chart.geometry, coordinates),
         )
     encoded, _, precision = _kernel.coordinate(
         layer.kernel, "tile_parameters", chart, p
     )
     layout = support_layout(
         execution_plan(layer),
-        chart.geometry.decode_centers(encoded),
+        _geometry.decode_centers(chart.geometry, encoded),
         precision,
         chart.tile_shape[0],
     )
@@ -69,8 +71,9 @@ def test_seam_shared_atom_is_stored_once_and_gpu_classification_matches(device):
     layer = seam_model().to(device=device, dtype=torch.float32)
     with torch.no_grad():
         point = layer.atoms.p.new_tensor([[75.5, 0, 0]])
-        layer.atoms.p[0, 2:] = layer.chart.geometry.encode_centers(
-            layer.chart.geometry.lift_chart_coordinates(point)
+        layer.atoms.p[0, 2:] = _geometry.encode_centers(
+            layer.chart.geometry,
+            _geometry.lift_chart_coordinates(layer.chart.geometry, point),
         )[0]
     expected = prepare(layer, layer.atoms.p, use_triton=False, support_layout=True)
     actual = prepare(layer, layer.atoms.p, support_layout=True)
@@ -102,8 +105,9 @@ def test_all_idle_atoms_keep_zero_input_and_parameter_gradients(device):
         layer.atoms.p[:, 0] = 0.8
         layer.atoms.p[:, 1] = 1
         coordinates = layer.atoms.p.new_tensor([[8.5, 0, 0]])
-        layer.atoms.p[:, 2:] = layer.chart.geometry.encode_centers(
-            layer.chart.geometry.lift_chart_coordinates(coordinates)
+        layer.atoms.p[:, 2:] = _geometry.encode_centers(
+            layer.chart.geometry,
+            _geometry.lift_chart_coordinates(layer.chart.geometry, coordinates),
         )
     assert not support_mask(layer.chart, layer.kernel, layer.atoms.p).any()
     x = torch.randn(2, 21, device=device, requires_grad=True)

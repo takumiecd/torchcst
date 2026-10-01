@@ -7,11 +7,14 @@ import math
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.charts.lazy import _unravel
-from torchcst.geometry.geometry import (
-    EuclideanGeometry,
-    SphereGeometry,
-    TorusGeometry,
+from torchcst._backends.torch.geometry import execution as _geometry
+from torchcst._backends.torch.patterns import execution as _patterns
+from torchcst.geometry.spec import (
+    EuclideanGeometrySpec,
+    SphereGeometrySpec,
+    TorusGeometrySpec,
 )
 
 
@@ -49,18 +52,21 @@ def validate_support(self, radius: float) -> None:
         raise ValueError("kernel support radius must be positive")
     if self.tile_count <= 2:
         return
-    if isinstance(self.geometry, TorusGeometry):
-        self._validate_torus_support(radius)
+    if type(self.geometry.spec) is TorusGeometrySpec:
+        _validate_torus_support(self, radius)
         return
-    if not isinstance(self.geometry, (EuclideanGeometry, SphereGeometry)):
+    if not (
+        type(self.geometry.spec) is EuclideanGeometrySpec
+        or type(self.geometry.spec) is SphereGeometrySpec
+    ):
         raise NotImplementedError(
             "strip support bounds require Euclidean or Sphere geometry"
         )
     line = self.axes[self.axis]
     span = float(line.spacing[0]) * (self.tile_shape[self.axis] - 1)
     nonneighbor_gap = 2 * float(self.tile_pitch) - span
-    if isinstance(self.geometry, SphereGeometry):
-        low, high = self._bounds()
+    if type(self.geometry.spec) is SphereGeometrySpec:
+        low, high = _charts._bounds(self)
         bound = torch.maximum(low.abs(), high.abs())
         max_norm_squared = float(bound.square().sum())
         sphere_radius = float(self.geometry.radius)
@@ -74,12 +80,12 @@ def _validate_torus_support(self, radius: float) -> None:
     """Check second-neighbor stations, the nearest nonadjacent pairs."""
 
     geometry = self.geometry
-    assert isinstance(geometry, TorusGeometry)
+    assert type(geometry.spec) is TorusGeometrySpec
     line = self.axes[self.axis]
     start = float(line.start[0])
     spacing = float(line.spacing[0])
     pitch = float(self.tile_pitch)
-    period = geometry.circumference
+    period = _geometry.circumference(geometry)
     intervals = []
     for station in range(self.tile_count):
         count = min(
@@ -95,7 +101,7 @@ def _validate_torus_support(self, radius: float) -> None:
         direct_gap = intervals[right][0] - intervals[left][1]
         wrapped_gap = period - (intervals[right][1] - intervals[left][0])
         gap = min(direct_gap, wrapped_gap)
-        if geometry.axis_separation_lower_bound(gap) <= 2 * radius:
+        if _geometry.axis_separation_lower_bound(geometry, gap) <= 2 * radius:
             raise ValueError("strip support radius reaches more than two tile stations")
 
 
@@ -120,12 +126,14 @@ def positions(self, indices: Tensor) -> Tensor:
             )
             local_index = axis_index % self.tile_shape[index]
             coordinates.append(
-                pattern.positions(local_index)
+                _patterns.positions(pattern, local_index)
                 + station[:, None].to(self.dtype) * self.tile_pitch
             )
         else:
-            coordinates.append(pattern.positions(axis_index))
-    return self._embed(torch.cat(tuple(coordinates), dim=-1))
+            coordinates.append(_patterns.positions(pattern, axis_index))
+    return _geometry.lift_chart_coordinates(
+        self.geometry, torch.cat(tuple(coordinates), dim=-1)
+    )
 
 
 def _bounds(self) -> tuple[Tensor, Tensor]:
@@ -133,20 +141,21 @@ def _bounds(self) -> tuple[Tensor, Tensor]:
     highs = []
     for index, pattern in enumerate(self.axes):
         if index == self.axis:
-            start = pattern.positions(
-                torch.zeros(1, dtype=torch.long, device=self.device)
+            start = _patterns.positions(
+                pattern, torch.zeros(1, dtype=torch.long, device=self.device)
             )[0]
             last_local = (self.shape[index] - 1) % self.tile_shape[index]
             end = (
-                pattern.positions(
-                    torch.tensor([last_local], dtype=torch.long, device=self.device)
+                _patterns.positions(
+                    pattern,
+                    torch.tensor([last_local], dtype=torch.long, device=self.device),
                 )[0]
                 + (self.tile_count - 1) * self.tile_pitch
             )
             lows.append(start)
             highs.append(end)
         else:
-            low, high = pattern.bounds()
+            low, high = _patterns.bounds(pattern)
             lows.append(low)
             highs.append(high)
     return torch.cat(tuple(lows)), torch.cat(tuple(highs))

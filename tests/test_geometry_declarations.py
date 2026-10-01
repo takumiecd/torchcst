@@ -10,17 +10,9 @@ from pathlib import Path
 import pytest
 import torch
 
-from torchcst import (
-    Chart,
-    EuclideanGeometry,
-    GridPattern,
-    LinePattern,
-    PointsPattern,
-    ProductChart,
-    SphereGeometry,
-    StripChart,
-    TorusGeometry,
-)
+from torchcst._backends.torch.charts import construction as _construction
+from torchcst._backends.torch.charts import execution as _charts
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst.geometry import (
     ChartSpec,
     EuclideanGeometrySpec,
@@ -34,8 +26,10 @@ from torchcst.geometry import (
 
 @pytest.mark.parametrize("representation", ["ambient", "intrinsic"])
 def test_sphere_and_torus_declare_chord_metric_and_center_storage(representation):
-    sphere = SphereGeometry(3, radius=2.0, representation=representation).declaration()
-    torus = TorusGeometry(
+    sphere = _construction.sphere(
+        3, radius=2.0, representation=representation
+    ).declaration()
+    torus = _construction.torus(
         3,
         major_radius=10.0,
         minor_radius=1.5,
@@ -56,12 +50,15 @@ def test_sphere_and_torus_declare_chord_metric_and_center_storage(representation
 
 
 def test_strip_physical_pitch_is_declared_separately_from_execution_settings():
-    chart = StripChart(
+    chart = _construction.strip(
         shape=(5, 6),
         tile_shape=(2, 6),
         axis=0,
         tile_pitch=0.7,
-        axes=(LinePattern(5, spacing=0.2), GridPattern((2, 3), spacing=0.1)),
+        axes=(
+            _construction.line_pattern(5, spacing=0.2),
+            _construction.grid_pattern((2, 3), spacing=0.1),
+        ),
     )
     spec = chart.declaration()
     assert spec.kind == "strip"
@@ -78,13 +75,13 @@ def test_strip_physical_pitch_is_declared_separately_from_execution_settings():
 
 
 def test_explicit_trainable_points_remain_live_while_declaration_is_a_snapshot():
-    chart = Chart.points(torch.tensor([[0.1, 0.2], [0.3, 0.4]]), trainable=True)
+    chart = _construction.points(torch.tensor([[0.1, 0.2], [0.3, 0.4]]), trainable=True)
     spec = chart.declaration()
     assert spec.trainable
     assert isinstance(spec.axes[0], PointsPatternSpec)
     assert spec.axes[0].coordinates[0][0] == pytest.approx(0.1)
     keys = set(chart.state_dict())
-    chart.positions(torch.arange(2)).square().sum().backward()
+    _charts.positions(chart, torch.arange(2)).square().sum().backward()
     assert chart.coordinates.grad is not None
     with torch.no_grad():
         chart.coordinates.add_(0.1)
@@ -94,7 +91,7 @@ def test_explicit_trainable_points_remain_live_while_declaration_is_a_snapshot()
 
 
 def test_points_pattern_snapshots_are_immutable_and_serializable():
-    pattern = PointsPattern(torch.tensor([[0.1, 0.2], [0.3, 0.4]]))
+    pattern = _construction.points_pattern(torch.tensor([[0.1, 0.2], [0.3, 0.4]]))
     spec = pattern.declaration()
     pattern.coordinates.add_(1)
     assert spec.features == 2 and spec.dim == 2
@@ -103,10 +100,14 @@ def test_points_pattern_snapshots_are_immutable_and_serializable():
 
 
 def test_declared_layout_uses_flattened_axis_order_and_singleton_zero_spacing():
-    pattern = GridPattern((1, 3), low=(0, 0), high=(0, 1))
+    pattern = _construction.grid_pattern((1, 3), low=(0, 0), high=(0, 1))
     assert pattern.declaration().spacing == (0.0, 0.5)
-    chart = ProductChart(
-        shape=(3, 2), axes=(LinePattern(3, spacing=0.2), LinePattern(2, spacing=0.4))
+    chart = _construction.product(
+        shape=(3, 2),
+        axes=(
+            _construction.line_pattern(3, spacing=0.2),
+            _construction.line_pattern(2, spacing=0.4),
+        ),
     )
     spec = chart.declaration()
     assert [p.features for p in spec.axes] == [3, 2]
@@ -114,8 +115,8 @@ def test_declared_layout_uses_flattened_axis_order_and_singleton_zero_spacing():
 
 
 def test_geometry_snapshot_tracks_matching_checkpoint_load():
-    source = SphereGeometry(2, radius=3)
-    target = SphereGeometry(2, radius=1)
+    source = _construction.sphere(2, radius=3)
+    target = _construction.sphere(2, radius=1)
     before = target.declaration()
     target.load_state_dict(source.state_dict())
     assert target.declaration() == source.declaration()
@@ -185,16 +186,25 @@ def test_layout_validation_rejects_incompatible_geometry_and_tiles():
 
 
 def test_custom_geometry_and_chart_do_not_inherit_builtin_semantics():
-    class CustomGeometry(EuclideanGeometry):
+    from torchcst.geometry.state import ChartState, GeometryState
+
+    class CustomGeometry(EuclideanGeometrySpec):
         pass
 
-    class CustomProduct(ProductChart):
+    class CustomChart(ChartSpec):
         pass
 
-    with pytest.raises(NotImplementedError, match="custom geometries"):
-        CustomGeometry(2).declaration()
-    with pytest.raises(NotImplementedError, match="custom charts"):
-        CustomProduct(shape=(3,), axes=(LinePattern(3, spacing=0.2),)).declaration()
+    with pytest.raises(ValueError, match="unsupported geometry"):
+        GeometryState(CustomGeometry(intrinsic_dim=2))
+    with pytest.raises(ValueError, match="unsupported chart"):
+        ChartState(
+            CustomChart(
+                kind="product",
+                shape=(3,),
+                axes=(LinePatternSpec(shape=(3,), start=(0,), spacing=(0.2,)),),
+                geometry=EuclideanGeometrySpec(intrinsic_dim=1),
+            )
+        )
 
 
 def test_config_snapshots_do_not_import_torch_evaluators():
@@ -206,10 +216,10 @@ def test_config_snapshots_do_not_import_torch_evaluators():
             "-c",
             """
 import sys
-from torchcst import TorusGeometry, ProductChart, LinePattern, PointsPattern
-geo = TorusGeometry(3, major_radius=10, minor_radius=1)
+from torchcst import geometry_presets as layout, ChartState, GeometryState
+geo = GeometryState(layout.torus(3, major_radius=10, minor_radius=1))
 geo.declaration()
-chart = ProductChart(shape=(3,2), axes=(LinePattern(3,spacing=0.2),LinePattern(2,spacing=0.4)))
+chart = ChartState(layout.product(shape=(3,2), axes=(layout.line_pattern(3,spacing=0.2),layout.line_pattern(2,spacing=0.4))))
 chart.declaration()
 assert not any(name.startswith('torchcst._backends.torch.') for name in sys.modules)
 assert 'triton' not in sys.modules
@@ -221,13 +231,13 @@ assert 'triton' not in sys.modules
 
 
 def test_geometry_execution_does_not_use_configuration_snapshots(monkeypatch):
-    geometry = SphereGeometry(2, representation="intrinsic")
+    geometry = _construction.sphere(2, representation="intrinsic")
 
     def forbidden(*args, **kwargs):
         raise AssertionError("snapshots must stay outside execution")
 
     monkeypatch.setattr(type(geometry), "declaration", forbidden)
     centers = torch.tensor([[0.1, 0.2], [0.2, 0.3]], requires_grad=True)
-    sites = geometry.decode_centers(centers)
-    geometry.squared_distance(sites, centers).sum().backward()
+    sites = _geometry.decode_centers(geometry, centers)
+    _geometry.squared_distance(geometry, sites, centers).sum().backward()
     assert torch.isfinite(centers.grad).all()

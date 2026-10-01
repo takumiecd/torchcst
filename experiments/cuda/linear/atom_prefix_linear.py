@@ -12,6 +12,7 @@ import torch
 from torch import Tensor
 
 from torchcst import DirectAmpWidthSpec, TriweightSpec
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
 
@@ -44,7 +45,7 @@ def prepare_prefix(site, p: Tensor) -> PrefixPlan:
     # execution_plan validates the fixed kernel configuration. As in the
     # existing backend, avoid repeating host-synchronizing checks in capture.
     encoded, amplitude, precision = _coordinates._tile_parameters(site.kernel, p)
-    centers = site.chart.geometry.decode_centers(encoded)
+    centers = _geometry.decode_centers(site.chart.geometry, encoded)
     radius = centers[:, :2].norm(dim=-1)
     direction = centers[:, :2] / radius[:, None]
     rho = plan.section[:, 0]

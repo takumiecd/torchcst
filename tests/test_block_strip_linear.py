@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.profiles import execution as _profile
 
@@ -92,8 +93,8 @@ def test_boundary_seam_and_graph_updates(backend, execution=None):
         coord = p.new_zeros((8, 3))
         coord[:, 0] = chart.axes[0].start[0] + torch.arange(8, device="cuda") // 2 * 2.6
         coord[:, 0] += torch.where(torch.arange(8, device="cuda") % 2 == 0, 0.7, 2.05)
-        p[:, 2:] = chart.geometry.encode_centers(
-            chart.geometry.lift_chart_coordinates(coord)
+        p[:, 2:] = _geometry.encode_centers(
+            chart.geometry, _geometry.lift_chart_coordinates(chart.geometry, coord)
         )
         p[:, 0] = 0.8
         offsets = prepare(layer.strip, p, support_layout=True)[3]

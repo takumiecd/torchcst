@@ -8,13 +8,13 @@ import torch
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint
 
+from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.parameterizations import (
     direct_amp_width as _parameterizations,
 )
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
-from torchcst.geometry.lazy_chart import StripChart
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.spec import AtomInit
 from torchcst.profiling import cst_span
 
@@ -27,8 +27,8 @@ def lower_half_amplitude(state) -> Tensor:
 
 def initialize(
     state,
-    input_chart: Chart,
-    output_chart: Chart | int,
+    input_chart: ChartState,
+    output_chart: ChartState | int,
     atoms: int | None = None,
     *,
     mode: AtomInit,
@@ -48,7 +48,7 @@ def initialize(
         amplitude = amplitude.clamp(-maximum, maximum)
         q = torch.ones_like(amplitude) + 3.0 * state.scalar("alpha_init").to(amplitude)
         return torch.cat((torch.stack((amplitude, q), dim=-1), center), dim=-1)
-    if not isinstance(output_chart, Chart):
+    if not isinstance(output_chart, ChartState):
         raise TypeError("output_chart must be a Chart")
     input_p = _profile.initialize(state.profiles[0], input_chart, atoms, mode="uniform")
     output_p = _profile.initialize(state.profiles[1], output_chart, atoms, mode=mode)
@@ -64,8 +64,8 @@ def initialize(
 
 def materialize_atoms(
     state,
-    input_chart: Chart,
-    output_chart: Chart | Tensor,
+    input_chart: ChartState,
+    output_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> Tensor:
     if p is None:
@@ -78,8 +78,8 @@ def materialize_atoms(
 
 def factors(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor]:
     with cst_span("cst.kernel.bandwidth"):
@@ -107,7 +107,7 @@ def factors(
 
 def _single_values(
     state,
-    chart: Chart,
+    chart: ChartState,
     center: Tensor,
     amplitude: Tensor,
     precision: Tensor,
@@ -121,7 +121,7 @@ def _single_values(
 
 def _single_block(
     state,
-    chart: Chart,
+    chart: ChartState,
     center: Tensor,
     amplitude: Tensor,
     precision: Tensor,
@@ -159,7 +159,7 @@ def _single_block(
     return torch.stack(parts).sum(dim=0)
 
 
-def weight(state, chart: Chart, p: Tensor) -> Tensor:
+def weight(state, chart: ChartState, p: Tensor) -> Tensor:
     """Sum single-chart atoms with bounded site and atom temporaries."""
 
     center, amplitude, precision = _parameterizations.tile_parameters(state, chart, p)
@@ -180,7 +180,7 @@ def weight(state, chart: Chart, p: Tensor) -> Tensor:
 
 
 def weight_tile(
-    state, chart: Chart, p: Tensor, rows: Tensor, columns: Tensor
+    state, chart: ChartState, p: Tensor, rows: Tensor, columns: Tensor
 ) -> Tensor:
     """Sum atom contributions on one [output rows, input columns] tile.
 
@@ -221,7 +221,7 @@ def weight_tile(
     return torch.cat(pieces).reshape(rows.numel(), columns.numel())
 
 
-def _single_materialize_atoms(state, chart: Chart, p: Tensor) -> Tensor:
+def _single_materialize_atoms(state, chart: ChartState, p: Tensor) -> Tensor:
     center, amplitude, precision = _parameterizations.tile_parameters(state, chart, p)
     blocks = [
         _single_values(
@@ -239,16 +239,16 @@ def _single_materialize_atoms(state, chart: Chart, p: Tensor) -> Tensor:
     return torch.cat(blocks, dim=0).transpose(0, 1).reshape(p.shape[0], *chart.shape)
 
 
-def packed_weight(state, chart: StripChart, p: Tensor) -> Tensor:
+def packed_weight(state, chart: ChartState, p: Tensor) -> Tensor:
     """Return physically ordered, contiguous tile-major weight storage."""
 
-    if not isinstance(chart, StripChart):
+    if not (isinstance(chart, ChartState) and chart.spec.kind == "strip"):
         raise TypeError("packed_weight requires a StripChart")
     center, amplitude, precision = _parameterizations.tile_parameters(state, chart, p)
     tile_size = math.prod(chart.tile_shape)
     tiles = []
     for station in range(chart.tile_count):
-        logical, local = chart.tile_indices(station)
+        logical, local = _charts.tile_indices(chart, station)
         values = _single_block(state, chart, center, amplitude, precision, logical)
         tile = values.new_zeros(tile_size).index_copy(0, local, values)
         tiles.append(tile.reshape(chart.tile_shape))

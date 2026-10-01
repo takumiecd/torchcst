@@ -1,254 +1,142 @@
-# Chart geometry contract
+# Chart / Geometry の数学契約
 
-`Chart`は単なるfeatureラベルではなく、観測siteとatom centerが存在する
-幾何を所有する。Kernelはその幾何の上でbasisを構成するが、距離や領域の
-制約を再実装しない。
+GeometrySpec は空間・次元・距離・center の保存表現を宣言する。ChartSpec はその
+空間の観測点配置を宣言する。GeometryState／ChartState／PatternState は Tensor を
+所有し、計算は backend の関数が実行する。field と構築 API は
+[geometry のガイド](../src/torchcst/geometry/README.md)を参照。
 
-## 責務
+## 次元と配置
 
-### Geometry
+`intrinsic_dim` は幾何の自由度、`embedding_dim` は観測点の座標幅、
+`center_parameter_dim` は atom center の保存幅である。
+EuclideanGeometrySpec では三つとも同じ。SphereGeometrySpec は `S^d` を
+`R^(d+1)` に埋め込み、ambient center は d+1 個、intrinsic center は d 個を保存する。
 
-- intrinsic dimension、site embedding dimension、center parameter dimension
-- site/center間の距離
-- centerの初期化
-- tangent projection
-- retraction
-- vector-like optimizer stateのtransport
+Chart の `shape` は論理 Tensor の形であり、幾何の次元とは別である。
+例えば `shape=(64, 784)` の二軸に Line と `GridPatternSpec(shape=(28, 28))` を
+指定すると、行列を三次元空間に配置する。各 pattern 内も論理軸も row-major。
+最後の軸を最速で平坦化する。Chart に input／output という特別な軸名はない。
 
-`EuclideanGeometry(d)`では両dimensionが`d`であり、更新は加算である。
-`SphereGeometry(d)`は`S^d`を`R^(d+1)`へ埋め込み、chord距離を使う。
-ambient表現では更新proposalは接空間へ射影され、球面へnormalizeされる。
-intrinsic表現では中心だけをnorth poleまわりのnormal coordinates `R^d`で
-保存し、距離計算時にexponential mapで`R^(d+1)`へ復号する。
-
-### Chart
-
-- fixed-cardinalityな観測site
-- 論理的なテンソル形状`shape`と、各軸に対応する`SitePattern`
-- Geometryの所有
-- spacingなどsite配置由来のmetadata
-
-Chartはprofile形状、bandwidth、amplitude、atom数を知らない。
-`ProductChart`は`shape`の各軸に対応する`axes`を直積的に解釈する。
-テンソルの階数は`len(shape)`、幾何座標の次元は各patternの`dim`の和であり、
-両者は同じでなくてよい。例えば`shape=(64, 784, 4)`に対し、
-`axes=(LinePattern(64), GridPattern((28, 28)), LinePattern(4))`なら
-三階テンソルを四次元の幾何に配置する。`CSTLinear`だけが重みを
-`[out, in]`に制限する。ChartのAPIには入出力を表す特別な軸名はない。
-
-`StripChart`も同じ`shape`と`axes`を受け取る。`axis`で指定する延長軸は
-`LinePattern`でなければならず、それ以外の軸はタイル分割しない。
-`tile_shape`は各軸のタイル幅を表し、`tile_pitch`は延長軸上の隣接タイルの
-座標間隔となる。タイル列のために新しい幾何座標軸は追加しない。
-両Chartとも必要なsite番号の座標だけを生成し、テンソル全体の座標表を
-保持しない。
+単一 Chart の線形演算では shape を `(out, in)` とし、Kernel は radial に合成する。
+入出力 Chart の組ではそれぞれの点集合を separable に合成する。両形式を保持し、
+OperatorSpec の SingleChartSpec／ChartPairSpec で区別する。
 
 ```python
-ProductChart(shape=(64, 784), axes=(axis0_line, axis1_grid))
-StripChart(
-    shape=(64, 784), axes=(axis0_line, axis1_grid),
-    tile_shape=(8, 784), axis=0, tile_pitch=4.1,
-)
+from torchcst import geometry_presets as layout
+
+axes = (layout.line_pattern(64, spacing=0.1),
+        layout.grid_pattern((28, 28), spacing=2 / 27))
+product = layout.product(shape=(64, 784), axes=axes)
+strip = layout.strip(shape=(64, 784), axes=axes,
+                     tile_shape=(8, 784), axis=0, tile_pitch=4.1)
 ```
 
-`LinePattern`、`GridPattern`、`PointsPattern`はsiteの局所的な並べ方を
-表す。`spacing`とGeometryが距離の意味を決める。`low/high`はgridの
-両端を直接指定したい場合の代替である。
+Product は各軸の直積。Strip は選択した Line 軸に station の位置を加える。
+延長軸だけを tile 分割し、新たな幾何座標軸を追加しない。tile_shape と tile_pitch は
+数学的な点配置であり、CUDA の block size／launch の設定ではない。
+両形式とも必要な site 番号の座標だけを backend で生成する。全点表を保持しない。
+端の部分 tile も `charts.tile_indices(state, station)` で扱う。
 
-新しいStrip配置で一タイル内の延長軸の幅を`L`、compact kernelの最大半径を
-`R`、`tile_pitch`を`P`とすると、`P > L`でタイルの順序が保たれる。
-さらに`2P - L > 2R`なら、離れた二タイルへ同時に届かないため、
-一つのatomが届くタイルは最大2個になる。`tile_indices(station)`は
-小さなタイル内の対応だけを計算し、全siteのID表を保持しない。
-`packed_weight()`はstation順の物理配列を返すが、現行のPyTorch forwardは
-密な行列を使う。SphereGeometryを指定した場合は、各軸の直積座標を
-北半球へ単射で写し、centerは球面上で更新する。Sphereの支持範囲検証では
-この写像による距離の縮みを保守的に見積もる。
+明示点の Chart は一つの PointsPatternSpec から作る。trainable=True の場合、
+ChartState.coordinates が Parameter になり、通常の autograd で勾配を得る。
+Product／Strip の軸配置は現在固定である。
 
-## TorusGeometryとStripの局所性
+## Sphere の距離と保存表現
 
-`TorusGeometry(m, major_radius=R, minor_radius=r)`は、`R>r>0`のとき
-自由度`m`の輪状超曲面 `S^1 × S^(m-1)` を `R^(m+1)` に埋め込む。
-普通のドーナツ表面は`m=2`であり、`LinePattern × GridPattern((28,28))`
-なら`m=3`、siteの座標幅は4になる。
-`circle_axis`は結合された幾何座標のどの成分を円周方向に使うかを指定する。
-その成分は`LinePattern`から来なければならず、Stripでは分割軸と一致する。
-
-centerにはSphereと同じく二つの保存方式がある。
-既定の`representation="ambient"`では`R^(m+1)`上の表面点を
-`m+1`個で保存する。`representation="intrinsic"`では円周の弧長`t`を
-1個、断面球面のnormal coordinates`v ∈ R^(m-1)`を`m-1`個で保存し、
-合計`m`個にする。後者も距離の計算時はambientへ復号するため、
-同じ表面点なら距離は一致する。`t`は周期`2πR`で折り返し、
-`||v|| ≤ r(π-chart_margin)`として断面の反対極付近を除く。
-これはSphereのintrinsic版と同じ単一chartの制限である。
-
-円周軸の線座標を`t`、残りの`m-1`個の座標を`y`として、
-`θ=t/R`、`q=(r,y)/sqrt(r²+||y||²) ∈ S^(m-1)`とする。
-Chartは要求されたsiteだけについて次の位置を作る。
+距離は ambient chord `||site - decode(center)||²`。
+intrinsic center は north pole の normal coordinates で保存し、exponential map で
+ambient へ復号する。同じ球面上の点なら、ambient／intrinsic の距離は一致する。
 
 ```text
+||center|| <= radius * (pi - chart_margin)
+```
+
+intrinsic 表現のこの上限は、exponential map が退化する antipode 付近を除く。
+既定の chart_margin は 0.05。ambient 表現では proposal を接空間へ射影して表面に戻し、
+intrinsic 表現では中心座標を上の範囲へ制限する。vector state も対応する表現で輸送する。
+
+Product／Strip の軸座標は gnomonic lift によって北半球へ写す。球面の全表面を
+有限格子で覆うという意味ではない。乱数で球面点を生成する場合は backend の
+`charts.construction.sphere_chart(features, intrinsic_dim=..., ...)` を使う。
+compact profile の 0 点・1 点 support を防ぐには別途 covering radius を確認する。
+
+## Torus の距離と Strip の局所性
+
+TorusGeometrySpec は `R > r > 0` に対して `S^1 × S^(m-1)` を `R^(m+1)` に埋め込む。
+普通のドーナツ表面は m=2。Line × 二次元 Grid は m=3、観測点の座標幅は4。
+circle_axis は結合された幾何座標の円周成分を指定する。この成分は LinePatternSpec
+から来る必要があり、Strip では分割軸と一致する。円周方向の配置は一周未満に制限する。
+
+円周の弧長を t、残りの座標を y として、次で観測点を生成する。
+
+```text
+θ = t / R
+q = (r, y) / sqrt(r² + ||y||²)
 F(θ,q) = ((R+r q₀)cosθ, (R+r q₀)sinθ, r q₁, …, r qₘ₋₁)
 ```
 
-`q₀>0`なので、`GridPattern`のsiteは断面球面の外側の一つのパッチを
-占める。ambient centerは輪状超曲面全体を動けるが、intrinsic centerは
-前述の小さな断面capを除く。compact profileでは
-観測siteのない領域へcenterを初期化するとsupportが消えるため、
-通常は`atom_init="balanced"`を使う。単一Gridで断面球面の全面を
-覆ったとは解釈しない。
-
-距離はSphereと同じambient chord距離で、断面を`q,q'`、円周角を
-`θ,θ'`、`a=R+r q₀`、`a'=R+r q'₀`と置くと
+q₀>0 なので Grid は断面球面の外側の一つのパッチを占める。ambient center は表面点を
+m+1 個で保存する。intrinsic center は弧長 t と断面球面の normal coordinates
+`v ∈ R^(m-1)` の計 m 個を保存する。t は周期 2πR で折り返し、
+`||v|| <= r(pi-chart_margin)` とする。どちらも距離計算前に ambient へ復号する。
 
 ```text
+a = R+r q₀, a' = R+r q'₀
 D² = 4aa' sin²((θ-θ')/2) + r² ||q-q'||²
-   = ||F(θ,q)||² + ||F(θ',q')||² - 2 F(θ,q)·F(θ',q')
-D  ≥ 2(R-r) |sin((θ-θ')/2)|
+D >= 2(R-r) |sin((θ-θ')/2)|
 ```
 
-である。最短測地線を数値的に解く必要はない。最後の等式は将来の
-GEMM評価にも使える。`Triweight`などのcompact Profileのsupport半径
-`σ_max`もこのchord距離の単位で指定する。
+この chord 距離の単位で compact profile の帯域と support 半径を指定する。
+最短測地線の距離へ置き換えない。
 
-局所性の検証では、各タイルの円周軸上の座標範囲`[a_i,b_i]`を
-保持せずに計算する。`i<j`の二タイル間の最小円周方向gapを
+一 tile の延長軸の幅を L、pitch を P とすると P>L で station は順序を保つ。
+Euclidean では `2P-L > 2σ_max` が、離れた station へ同時に届かない条件になる。
+Sphere では gnomonic lift による距離の縮みも保守的に見積もる。
+
+Torus では station の座標範囲 `[a_i,b_i]` に対して、円の継ぎ目を含めて
 
 ```text
 g_ij = min(a_j-b_i, 2πR-(b_j-a_i))
 L_ij = 2(R-r) sin(g_ij/(2R))
 ```
 
-とすると、任意の両タイルのsite間距離は`L_ij`以上になる。
-タイル列は一周未満に制限する。隣接タイルは円の継ぎ目を含めて
-循環的に定義する。**隣接しないすべてのタイル対で
-`L_ij > 2σ_max`**なら、三角不等式から同じatomがその対の両方に
-届くことはない。4タイル以上では、任意の三タイルに非隣接対が
-含まれるため、atomが届くタイル数は高々2となる。
-2タイル以下ならこの上限は自明である。3タイルでは全対を検証する
-保守的な条件を用いる。`StripChart.validate_support`はこれを
-事前に判定し、満たさない設定を拒否する。
-**タイル幅が`2σ_max`を超えるだけでは、曲率と円の継ぎ目を
-考慮できないため十分ではない。**
-
-`max_arc_step`を指定すると、retraction時の円周方向の移動を
-一更新あたりその長さ以下に制限できる。`tile_pitch`より小さくすれば
-タイルstationを何個も飛び越す更新を避けられる。これは
-supportの二タイル保証とは別の制約である。現在の`packed_weight()`は
-タイル順の密な配列を作るが、atomの局所的な物理再配置やnativeな
-タイル演算はまだ実装していない。
+を使う。非隣接 station 対で `L_ij > 2σ_max` なら同じ atom が両方へ届かない。
+順序付きの disjoint interval では循環的な second-neighbor が最小候補になる。
+4 station 以上では atom が届く tile は高々2。3 station では保守的な検証を行う。
+2 station 以下では上限は自明である。`charts.validate_support(state, radius)` は
+設定境界でこれを検証する。tile 幅だけでは曲率と円の継ぎ目を扱えない。
 
 ```python
 import math
-from torchcst import GridPattern, LinePattern, StripChart, TorusGeometry
+from torchcst import ChartState, geometry_presets as layout
+from torchcst._backends.torch.charts import execution as charts
 
-torus = TorusGeometry(
-    3, major_radius=100 / (2 * math.pi), minor_radius=1,
-    max_arc_step=10, representation="intrinsic",
-)
-strip = StripChart(
-    shape=(256, 784), tile_shape=(64, 784),
-    axes=(LinePattern(256, spacing=0.1),
-          GridPattern((28, 28), spacing=2 / 27)),
-    axis=0, tile_pitch=25, geometry=torus,
-)
-strip.validate_support(10)
-assert strip.center_parameter_dim == 3  # site coordinates have width 4
+torus = layout.torus(3, major_radius=100 / (2 * math.pi), minor_radius=1,
+                     max_arc_step=10, representation="intrinsic")
+strip = ChartState(layout.strip(
+    shape=(256, 784), tile_shape=(64, 784), axis=0, tile_pitch=25,
+    axes=(layout.line_pattern(256, spacing=0.1),
+          layout.grid_pattern((28, 28), spacing=2 / 27)), geometry=torus,
+))
+charts.validate_support(strip, 10)
+assert strip.center_parameter_dim == 3
+assert strip.embedding_dim == 4
 ```
 
-### Profile の宣言と実行
+max_arc_step は一更新の円周方向の弧長上限であり、support の二 tile 保証とは別。
+Torch tiled、CUDA fused の routing／準備／autograd は backend に置く。
 
-ProfileSpec は距離に対する関数の形、ProfileBinding は幅と正規化を宣言する。
-評価・解析微分・center の初期化・勾配射影・retraction・transport は Torch / CUDA
-backend が計算する。ProfileState は必要な固定幅 Tensor と checkpoint を所有する。
+## Kernel、Optimizer、checkpoint
 
-### Kernel の宣言と実行
+KernelSpec は Profile・幅・正規化・振幅・center の合成を宣言する。Geometry の
+距離や制約を Kernel 側に再実装しない。CSTOptimizer は Kernel の backend に
+勾配射影・proposal の適用・vector state の輸送を依頼する。atom row を直接解釈しない。
 
-KernelSpec は radial / separable / amplitude の合成、parameterization、初期化・更新
-方針を宣言する。共通 KernelState が固定 Tensor を管理し、atom 合成や stored
-parameter width / intrinsic degrees of freedom の集計は backend が担当する。
-旧 Kernel / Profile クラスや互換の計算メソッドはない。
+保存幅は backend の kernel.parameter_dim、自由度は kernel.parameter_dof で確認する。
+CSTModule.atom_parameter_dof／cst_degrees_of_freedom も対応する値を返す。
 
-単一チャートの`presets.direct_activity`は`[w, q, center...]`という一行の
-パラメータから直接重みへの寄与を計算する。入力・出力のfactorは使わない。
-`w`は符号付き振幅、`q`は振幅更新から進む帯域activityで、Profileは
-Triweightなどから選ぶ。単一チャートでは正規化しないProfileの
-site slice評価を使い、全site×全atomの距離テンソルを保持しない。
-StripChartの二タイル制約には設定された最大半径`sigma_max`を使う。
-
-例えばPolar Kernelのparameter spaceは
-
-```text
-Polar coordinates × input Chart geometry × output Chart geometry
-```
-
-という積空間になる。
-
-### Optimizer
-
-- KernelSpec に対応する backend に gradient の接空間射影を依頼
-- optimizer proposalを作成
-- 共通 KernelState を使って backend が retraction を計算
-- vector first momentを新しい接空間へtransport
-
-optimizerはatom rowの列を直接解釈しない。
-
-## Storageと自由度
-
-`S^3`上のcenterには二つの保存方式がある。
-
-- `representation="ambient"`（既定）: `R^4`の単位vectorとして4個保存。
-  冗長だがglobalで安定する。
-- `representation="intrinsic"`: normal coordinatesとして3個保存。
-  north poleの反対側にあるantipode近傍だけをchartから除外する。
-
-どちらもintrinsic degrees of freedomは3である。モデル予算の比較には
-`kernel.parameter_dof(...)`、実際の保存量には`kernel.parameter_dim(...)`を使う。
-
-`CSTModule.atom_parameter_dof`はatom一個の自由度、
-`CSTModule.cst_degrees_of_freedom`はsite全体の自由度を返す。
-
-## 現在のSphere contract
-
-```python
-from torchcst import Chart
-
-chart = Chart.sphere(features=64, intrinsic_dim=3)
-assert chart.coordinates.shape == (64, 4)
-assert chart.intrinsic_dim == 3
-assert chart.embedding_dim == 4
-assert chart.center_parameter_dim == 4
-
-compact = Chart.sphere(
-    features=64,
-    intrinsic_dim=3,
-    representation="intrinsic",
-)
-assert compact.coordinates.shape == (64, 4)
-assert compact.center_parameter_dim == 3
-```
-
-siteは両方式とも球面上の`d+1`次元座標である。intrinsic版で`p`に保存する
-centerだけが`d`次元になり、`Geometry.decode_centers`を通して球面上へ戻される。
-したがって同じ球面上の点なら、ambient版とintrinsic版のKernel距離は一致する。
-
-intrinsic版の有効範囲は
-
-```text
-||p_center|| <= radius * (pi - chart_margin)
-```
-
-であり、更新時にこの範囲へretractされる。既定の`chart_margin=0.05`は
-exponential mapが退化するantipodeを避けるための角度marginである。この方式は
-1 scalar/centerを削減する代わりに、小さなantipodal capを中心の到達領域から除く。
-
-`Chart.sphere`は球面上のsiteを生成する。これは領域外へのcenter escapeを
-防ぐが、有限site集合のcoveringを自動保証するものではない。compact
-profileで0点・1点supportを防ぐには、別途第2近傍covering radiusを測り、
-`sigma_min`をそれより大きく選ぶ必要がある。
-
-## 後方互換性
-
-`Chart.points`、`Chart.linspace`、`Chart.grid`はgeometry未指定時に
-`EuclideanGeometry`を生成する。従来の距離、初期化、parameter storage、
-forward、微分、更新結果はそのまま維持される。
+各 State は現在の Tensor を使って実行する。declaration() は設定境界の snapshot で、
+forward／backward／CUDA Graph capture 中には作らない。checkpoint は現在の buffer と
+primitive metadata を保存する。異なる center 表現・shape・配置種別・学習可否を拒否し、
+ロード後の固定値も検証する。旧 Geometry／Chart／Pattern クラスと旧 checkpoint の
+読み替えは残していない。変更前のソースは Git revision `56e74de` にある。

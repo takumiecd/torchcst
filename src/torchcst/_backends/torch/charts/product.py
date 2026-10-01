@@ -6,6 +6,8 @@ import torch
 from torch import Tensor
 
 from torchcst._backends.torch.charts.lazy import _unravel
+from torchcst._backends.torch.geometry import execution as _geometry
+from torchcst._backends.torch.patterns import execution as _patterns
 
 
 def positions(self, indices: Tensor) -> Tensor:
@@ -19,19 +21,20 @@ def positions(self, indices: Tensor) -> Tensor:
         )
     if bool(((indices < 0) | (indices >= self.features)).any()):
         raise IndexError("site index out of bounds")
-    return self._embed(
+    return _geometry.lift_chart_coordinates(
+        self.geometry,
         torch.cat(
             tuple(
-                axis.positions(axis_index)
+                _patterns.positions(axis, axis_index)
                 for axis, axis_index in zip(self.axes, _unravel(indices, self.shape))
             ),
             dim=-1,
-        )
+        ),
     )
 
 
 def _bounds(self) -> tuple[Tensor, Tensor]:
-    bounds = [axis.bounds() for axis in self.axes]
+    bounds = [_patterns.bounds(axis) for axis in self.axes]
     return torch.cat(tuple(low for low, _ in bounds)), torch.cat(
         tuple(high for _, high in bounds)
     )

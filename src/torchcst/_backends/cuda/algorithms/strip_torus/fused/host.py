@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.operators.strip_torus.layout import _station_layout
 from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
@@ -34,7 +35,7 @@ def prepare(
             center, amplitude, precision = tile_parameters(site.kernel, p)
         else:
             center, amplitude, precision = _coordinates._tile_parameters(site.kernel, p)
-        decoded = site.chart.geometry.decode_centers(center)
+        decoded = _geometry.decode_centers(site.chart.geometry, center)
     if (
         fused
         and decoded.is_cuda

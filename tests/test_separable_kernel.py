@@ -9,15 +9,16 @@ from kernel_cases import (
     separable_state,
 )
 
-from torchcst import Chart
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.profiles import execution as _profile
+from torchcst.geometry.state import ChartState
 
 
-def charts() -> tuple[Chart, Chart]:
+def charts() -> tuple[ChartState, ChartState]:
     return (
-        Chart.linspace(3, low=-1.0, high=1.0),
-        Chart.grid((2, 2), low=-1.0, high=1.0),
+        _construction.linspace(3, low=-1.0, high=1.0),
+        _construction.grid((2, 2), low=-1.0, high=1.0),
     )
 
 
@@ -68,8 +69,8 @@ def test_amplitude_wrapper_adds_one_signed_coordinate_to_any_kernel() -> None:
 
 
 def test_amplitude_kernels_use_the_successful_small_weight_initialization() -> None:
-    input_chart = Chart.linspace(8, low=-1.0, high=1.0)
-    output_chart = Chart.linspace(5, low=-1.0, high=1.0)
+    input_chart = _construction.linspace(8, low=-1.0, high=1.0)
+    output_chart = _construction.linspace(5, low=-1.0, high=1.0)
     atoms = 4096
     kernels = (
         amplitude_state(
@@ -95,8 +96,8 @@ def make_bandwidth_kernel() -> amp_width_state:
 
 
 def test_amplitude_bandwidth_interpolates_precision_at_the_threshold() -> None:
-    input_chart = Chart.linspace(3, low=-1.0, high=1.0)
-    output_chart = Chart.linspace(4, low=-1.0, high=1.0)
+    input_chart = _construction.linspace(3, low=-1.0, high=1.0)
+    output_chart = _construction.linspace(4, low=-1.0, high=1.0)
     kernel = make_bandwidth_kernel()
     p = torch.tensor(
         [[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [100.0, 0.0, 0.0]], dtype=torch.float64
@@ -116,8 +117,8 @@ def test_amplitude_bandwidth_interpolates_precision_at_the_threshold() -> None:
 
 
 def test_weak_atom_uses_the_same_finite_broad_width_on_both_sides() -> None:
-    input_chart = Chart.linspace(3, low=-1.0, high=1.0)
-    output_chart = Chart.linspace(4, low=-1.0, high=1.0)
+    input_chart = _construction.linspace(3, low=-1.0, high=1.0)
+    output_chart = _construction.linspace(4, low=-1.0, high=1.0)
     kernel = make_bandwidth_kernel()
     p = torch.tensor([[1e-10, 0.1, -0.2]], dtype=torch.float64)
     phi_input, phi_output = _kernel.factors(kernel, input_chart, output_chart, p)
@@ -166,8 +167,8 @@ def make_inverse_bandwidth_kernel() -> amp_width_state:
 
 
 def test_inverse_bandwidth_tracks_reciprocal_amplitude_in_the_interior() -> None:
-    input_chart = Chart.linspace(3, low=-1.0, high=1.0)
-    output_chart = Chart.linspace(4, low=-1.0, high=1.0)
+    input_chart = _construction.linspace(3, low=-1.0, high=1.0)
+    output_chart = _construction.linspace(4, low=-1.0, high=1.0)
     kernel = make_inverse_bandwidth_kernel()
     amplitude = torch.tensor([0.25, 0.5, 1.0], dtype=torch.float64)
     p = torch.stack(
@@ -180,8 +181,8 @@ def test_inverse_bandwidth_tracks_reciprocal_amplitude_in_the_interior() -> None
 
 
 def test_inverse_bandwidth_is_even_and_clamped() -> None:
-    input_chart = Chart.linspace(3, low=-1.0, high=1.0)
-    output_chart = Chart.linspace(4, low=-1.0, high=1.0)
+    input_chart = _construction.linspace(3, low=-1.0, high=1.0)
+    output_chart = _construction.linspace(4, low=-1.0, high=1.0)
     kernel = make_inverse_bandwidth_kernel()
     p = torch.tensor(
         [
@@ -228,8 +229,8 @@ def test_inverse_bandwidth_precision_jacobian_matches_autograd() -> None:
 def test_amplitude_bandwidth_factorization_and_second_derivatives_are_finite(
     kernel_factory,
 ) -> None:
-    input_chart = Chart.linspace(3, low=-1.0, high=1.0)
-    output_chart = Chart.linspace(4, low=-1.0, high=1.0)
+    input_chart = _construction.linspace(3, low=-1.0, high=1.0)
+    output_chart = _construction.linspace(4, low=-1.0, high=1.0)
     kernel = kernel_factory()
     p = torch.tensor([[0.0, 0.1, -0.2]], dtype=torch.float64)
     represented = _kernel.materialize_atoms(kernel, input_chart, output_chart, p)
@@ -264,8 +265,8 @@ def test_decoupled_bandwidth_keeps_forward_sigma_and_zeros_amplitude_width_grad(
     torch.testing.assert_close(
         detached_jac, torch.zeros_like(detached_jac), atol=0, rtol=0
     )
-    input_chart = Chart.linspace(3, low=-1.0, high=1.0)
-    output_chart = Chart.linspace(4, low=-1.0, high=1.0)
+    input_chart = _construction.linspace(3, low=-1.0, high=1.0)
+    output_chart = _construction.linspace(4, low=-1.0, high=1.0)
     p = torch.tensor([[0.5, 0.0, 0.0]], dtype=torch.float64)
     torch.testing.assert_close(
         _kernel.coordinate(coupled, "bandwidth_sigma", input_chart, output_chart, p),

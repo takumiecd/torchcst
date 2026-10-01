@@ -13,14 +13,9 @@ from kernel_cases import (
     wendland_state,
 )
 
-from torchcst import (
-    BandwidthBounds,
-    CSTLinear,
-    CSTOptimizer,
-    LinePattern,
-    ProductChart,
-    StripChart,
-)
+from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer
+from torchcst._backends.torch.charts import construction as _construction
+from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.kernels.execution import KernelOptions
 from torchcst._backends.torch.profiles import execution as _profile
@@ -50,8 +45,12 @@ def test_gaussian_profile_records_declaration_contract():
     [gaussian_state, triangle_state, biweight_state, triweight_state, wendland_state],
 )
 def test_one_chart_direct_kernel_uses_selected_profile(profile):
-    chart = ProductChart(
-        shape=(3, 4), axes=(LinePattern(3, spacing=0.5), LinePattern(4, spacing=0.4))
+    chart = _construction.product(
+        shape=(3, 4),
+        axes=(
+            _construction.line_pattern(3, spacing=0.5),
+            _construction.line_pattern(4, spacing=0.4),
+        ),
     )
     kernel = make_kernel(profile)
     model = CSTLinear(
@@ -81,8 +80,12 @@ def test_one_chart_direct_kernel_uses_selected_profile(profile):
 
 
 def test_one_chart_direct_kernel_updates_activity_and_rejects_normalized_profile():
-    chart = ProductChart(
-        shape=(2, 2), axes=(LinePattern(2, spacing=0.5), LinePattern(2, spacing=0.5))
+    chart = _construction.product(
+        shape=(2, 2),
+        axes=(
+            _construction.line_pattern(2, spacing=0.5),
+            _construction.line_pattern(2, spacing=0.5),
+        ),
     )
     normalized = make_kernel(triweight_state)
     normalized.profiles[0] = ProfileState(
@@ -117,9 +120,12 @@ def test_one_chart_direct_kernel_updates_activity_and_rejects_normalized_profile
 
 
 def test_one_chart_direct_kernel_packs_strip_without_site_table():
-    chart = StripChart(
+    chart = _construction.strip(
         shape=(3, 5),
-        axes=(LinePattern(3, spacing=0.2), LinePattern(5, spacing=0.2)),
+        axes=(
+            _construction.line_pattern(3, spacing=0.2),
+            _construction.line_pattern(5, spacing=0.2),
+        ),
         tile_shape=(2, 5),
         axis=0,
         tile_pitch=2.0,
@@ -131,5 +137,5 @@ def test_one_chart_direct_kernel_packs_strip_without_site_table():
     dense = model.dense_weight().flatten()
     assert packed.is_contiguous()
     for station in range(chart.tile_count):
-        logical, local = chart.tile_indices(station)
+        logical, local = _charts.tile_indices(chart, station)
         torch.testing.assert_close(packed[station].flatten()[local], dense[logical])

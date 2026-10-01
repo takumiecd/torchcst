@@ -6,13 +6,14 @@ import pytest
 import torch
 from kernel_cases import direct_state, polar_state, triweight_state
 
-from torchcst import BandwidthBounds, Chart, CSTLinear
+from torchcst import BandwidthBounds, CSTLinear
+from torchcst._backends.torch.charts import construction as _construction
 
 
 def make_model(kernel_type, *, normalize_columns=True):
     return CSTLinear(
-        Chart.linspace(4, spacing=1.0),
-        Chart.linspace(3, spacing=1.0),
+        _construction.linspace(4, spacing=1.0),
+        _construction.linspace(3, spacing=1.0),
         atoms=2,
         kernel=kernel_type(
             amplitude_max=1.0,

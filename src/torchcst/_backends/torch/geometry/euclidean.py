@@ -5,25 +5,28 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from torchcst.geometry.geometry import (
+from .base import (
     _validate_atoms,
+    _validate_center_structure,
+    _validate_structure,
+    validate_points,
 )
 
 
 def squared_distance(self, sites: Tensor, centers: Tensor) -> Tensor:
-    self._validate_structure(sites, name="sites")
-    self._validate_center_structure(centers, name="centers")
+    _validate_structure(self, sites, name="sites")
+    _validate_center_structure(self, centers, name="centers")
     return (sites[:, None, :] - centers[None, :, :]).square().sum(dim=-1)
 
 
 def center_offsets(self, sites: Tensor, centers: Tensor) -> Tensor:
-    self._validate_structure(sites, name="sites")
-    self._validate_center_structure(centers, name="centers")
+    _validate_structure(self, sites, name="sites")
+    _validate_center_structure(self, centers, name="centers")
     return sites[:, None, :] - centers[None, :, :]
 
 
 def initialize_centers(self, sites: Tensor, atoms: int, *, mode: str) -> Tensor:
-    self.validate_points(sites, name="sites")
+    validate_points(self, sites, name="sites")
     _validate_atoms(atoms)
     if mode == "balanced":
         indices = (
@@ -46,23 +49,23 @@ def initialize_centers(self, sites: Tensor, atoms: int, *, mode: str) -> Tensor:
 
 
 def project_tangent(self, points: Tensor, vectors: Tensor) -> Tensor:
-    self._validate_structure(points, name="points")
-    self._validate_structure(vectors, name="vectors")
+    _validate_structure(self, points, name="points")
+    _validate_structure(self, vectors, name="vectors")
     return vectors
 
 
 def retract(self, points: Tensor, displacement: Tensor) -> Tensor:
-    self.validate_points(points, name="points")
-    self.validate_points(displacement, name="displacement")
+    validate_points(self, points, name="points")
+    validate_points(self, displacement, name="displacement")
     if points.shape != displacement.shape:
         raise ValueError("points and displacement must have matching shapes")
     return points + displacement
 
 
 def transport(self, old: Tensor, new: Tensor, vectors: Tensor) -> Tensor:
-    self.validate_points(old, name="old")
-    self.validate_points(new, name="new")
-    self.validate_points(vectors, name="vectors")
+    validate_points(self, old, name="old")
+    validate_points(self, new, name="new")
+    validate_points(self, vectors, name="vectors")
     if old.shape != new.shape or old.shape != vectors.shape:
         raise ValueError("old, new, and vectors must have matching shapes")
     return vectors

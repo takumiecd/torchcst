@@ -12,7 +12,7 @@ from torchcst._backends.torch.parameterizations import (
     polar_amp_width as _parameterizations,
 )
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.spec import AtomInit
 
 
@@ -24,8 +24,8 @@ def lower_half_amplitude(state) -> Tensor:
 
 def initialize(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     atoms: int,
     *,
     mode: AtomInit,
@@ -50,8 +50,8 @@ def initialize(
 
 def materialize_atoms(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> Tensor:
     phi_input, phi_output = _kernel.factors(state, input_chart, output_chart, p)
@@ -60,8 +60,8 @@ def materialize_atoms(
 
 def factors(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor]:
     polar, input_p, output_p = _parameterizations._split(

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from torch import Tensor
 
 from torchcst.atoms import Atoms
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.state import KernelState
 
 from .spec import ChartPairSpec, OperatorSpec, SingleChartSpec
@@ -20,7 +20,7 @@ class Operator:
     declaration() is an explicit configuration snapshot, not a forward lookup.
     """
 
-    charts: tuple[Chart, ...]
+    charts: tuple[ChartState, ...]
     kernel: KernelState
     atoms: Atoms
 
@@ -30,7 +30,7 @@ class Operator:
         if (
             not isinstance(self.charts, tuple)
             or len(self.charts) not in (1, 2)
-            or not all(isinstance(c, Chart) for c in self.charts)
+            or not all(isinstance(c, ChartState) for c in self.charts)
         ):
             raise TypeError("charts must be a tuple containing one or two Charts")
         if not isinstance(self.kernel, KernelState) or not isinstance(

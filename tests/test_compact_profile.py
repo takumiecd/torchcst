@@ -13,7 +13,8 @@ from kernel_cases import (
 )
 from torch.func import hessian, vmap
 
-from torchcst import Chart
+from torchcst._backends.torch.charts import construction as _construction
+from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.profiles import execution as _profile
 
@@ -23,7 +24,7 @@ def _double_profile(factory, sigma: float):
 
 
 def test_wendland_columns_are_l2_normalized_or_zero() -> None:
-    chart = Chart.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1).double())
+    chart = _construction.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1).double())
     profile = _double_profile(wendland_state, 0.5)
     p = torch.tensor([[0.0], [8.0]], dtype=torch.float64)
     values = _profile.evaluate(profile, chart, p)
@@ -35,7 +36,9 @@ def test_wendland_columns_are_l2_normalized_or_zero() -> None:
 
 
 def test_wendland_matches_the_unnormalized_polynomial() -> None:
-    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    chart = _construction.points(
+        torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
+    )
     profile = _double_profile(wendland_state, 1.0)
     p = torch.tensor([[0.0]], dtype=torch.float64)
     raw = torch.tensor([1.0, 0.5**4 * 3.0, 0.0], dtype=torch.float64)
@@ -44,7 +47,9 @@ def test_wendland_matches_the_unnormalized_polynomial() -> None:
 
 
 def test_triweight_matches_the_unnormalized_polynomial() -> None:
-    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    chart = _construction.points(
+        torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
+    )
     profile = triweight_state(1.0, normalize_columns=False).double()
     p = torch.tensor([[0.0]], dtype=torch.float64)
     raw = torch.tensor([1.0, 0.75**3, 0.0], dtype=torch.float64)
@@ -52,7 +57,9 @@ def test_triweight_matches_the_unnormalized_polynomial() -> None:
 
 
 def test_triweight_defaults_to_legacy_l2_column_normalization() -> None:
-    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    chart = _construction.points(
+        torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
+    )
     profile = triweight_state(1.0).double()
     p = torch.tensor([[0.0]], dtype=torch.float64)
     raw = torch.tensor([1.0, 0.75**3, 0.0], dtype=torch.float64)
@@ -62,7 +69,9 @@ def test_triweight_defaults_to_legacy_l2_column_normalization() -> None:
 
 
 def test_triangle_matches_the_radial_hat() -> None:
-    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    chart = _construction.points(
+        torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
+    )
     profile = _double_profile(triangle_state, 1.0)
     p = torch.tensor([[0.0]], dtype=torch.float64)
     expected = torch.tensor(
@@ -72,18 +81,18 @@ def test_triangle_matches_the_radial_hat() -> None:
 
 
 def test_forward_skips_offsets_but_analytic_tangent_uses_them(monkeypatch) -> None:
-    chart = Chart.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1))
+    chart = _construction.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1))
     profile = triweight_state(0.5)
     centers = torch.tensor([[0.1]])
-    original = chart.center_offsets
+    original = _charts.center_offsets
     calls = 0
 
-    def tracked(p):
+    def tracked(state, p):
         nonlocal calls
         calls += 1
-        return original(p)
+        return original(state, p)
 
-    monkeypatch.setattr(chart, "center_offsets", tracked)
+    monkeypatch.setattr(_charts, "center_offsets", tracked)
     _profile.evaluate(profile, chart, centers)
     assert calls == 0
     _profile.tangent(profile, chart, centers)
@@ -91,7 +100,9 @@ def test_forward_skips_offsets_but_analytic_tangent_uses_them(monkeypatch) -> No
 
 
 def test_biweight_matches_the_unnormalized_polynomial() -> None:
-    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    chart = _construction.points(
+        torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
+    )
     profile = _double_profile(biweight_state, 1.0)
     p = torch.tensor([[0.0]], dtype=torch.float64)
     expected = torch.tensor([1.0, 0.75**2, 0.0], dtype=torch.float64)
@@ -99,7 +110,9 @@ def test_biweight_matches_the_unnormalized_polynomial() -> None:
 
 
 def test_biweight_can_opt_into_discrete_column_normalization() -> None:
-    chart = Chart.points(torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64))
+    chart = _construction.points(
+        torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.float64)
+    )
     profile = biweight_state(1.0, normalize_columns=True).double()
     p = torch.tensor([[0.0]], dtype=torch.float64)
     raw = torch.tensor([1.0, 0.75**2, 0.0], dtype=torch.float64)
@@ -117,7 +130,7 @@ def test_compact_normalization_override_must_be_boolean() -> None:
 def test_raw_compact_profile_retains_one_site_center_and_width_derivatives(
     factory,
 ) -> None:
-    chart = Chart.points(torch.tensor([[0.0], [2.0]], dtype=torch.float64))
+    chart = _construction.points(torch.tensor([[0.0], [2.0]], dtype=torch.float64))
     profile = factory(1.0, normalize_columns=False).double()
     center = torch.tensor([[0.25]], dtype=torch.float64)
     precision = torch.ones(1, dtype=torch.float64)
@@ -135,7 +148,7 @@ def test_raw_compact_profile_retains_one_site_center_and_width_derivatives(
     "factory", [wendland_state, triangle_state, biweight_state, triweight_state]
 )
 def test_separated_compact_atoms_have_zero_inner_product(factory) -> None:
-    chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
+    chart = _construction.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
     compact = _double_profile(factory, 0.35)
     gaussian = gaussian_state(0.35).to(dtype=torch.float64)
     p = torch.tensor([[-0.75], [0.75]], dtype=torch.float64)
@@ -153,7 +166,7 @@ def test_separated_compact_atoms_have_zero_inner_product(factory) -> None:
     "factory", [wendland_state, triangle_state, biweight_state, triweight_state]
 )
 def test_compact_tangent_is_finite_on_the_support_boundary(factory) -> None:
-    chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
+    chart = _construction.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
     p = torch.tensor([[0.5], [-0.5]], dtype=torch.float64)
     values, centers, widths = _profile.tangent_with_precision(
@@ -165,7 +178,7 @@ def test_compact_tangent_is_finite_on_the_support_boundary(factory) -> None:
 
 
 def test_wendland_mnist_grid_tangent_is_finite_float32() -> None:
-    chart = Chart.grid((28, 28), low=-1.0, high=1.0)
+    chart = _construction.grid((28, 28), low=-1.0, high=1.0)
     profile = wendland_state(0.1)
     torch.manual_seed(17)
     p = _profile.initialize(profile, chart, 256, mode="uniform")
@@ -181,7 +194,7 @@ def test_wendland_mnist_grid_tangent_is_finite_float32() -> None:
 def test_compact_autograd_hessian_is_finite_inside_boundary_and_outside(
     factory,
 ) -> None:
-    chart = Chart.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
+    chart = _construction.points(torch.linspace(-1.0, 1.0, 21).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
     p = torch.tensor([[0.0], [0.5], [3.0]], dtype=torch.float64)
 
@@ -199,8 +212,8 @@ def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
     kernel = amp_width_state(
         sigma_min=0.1, sigma_max=10.0, profile=triweight_state(0.1)
     )
-    input_chart = Chart.grid((28, 28), low=-1.0, high=1.0)
-    output_chart = Chart.linspace(64, low=-1.0, high=1.0)
+    input_chart = _construction.grid((28, 28), low=-1.0, high=1.0)
+    output_chart = _construction.linspace(64, low=-1.0, high=1.0)
     p = _kernel.initialize(kernel, input_chart, output_chart, 3, mode="uniform")
     p = p.clone()
     p[:, 0] = 1.0
@@ -223,7 +236,7 @@ def test_triweight_factor_hessian_is_finite_for_empty_atoms() -> None:
     "factory", [wendland_state, triangle_state, biweight_state, triweight_state]
 )
 def test_compact_tangent_matches_autograd(factory) -> None:
-    chart = Chart.points(torch.linspace(-1.0, 1.0, 11).unsqueeze(-1).double())
+    chart = _construction.points(torch.linspace(-1.0, 1.0, 11).unsqueeze(-1).double())
     profile = _double_profile(factory, 0.5)
     p = torch.tensor([[0.0], [0.25]], dtype=torch.float64)
     precision = torch.tensor([4.0, 9.0], dtype=torch.float64)
@@ -264,8 +277,12 @@ def test_amplitude_bandwidth_accepts_compact_profiles(factory) -> None:
     kernel = amp_width_state(
         sigma_min=0.8, sigma_max=2.0, profile=factory(0.8)
     ).double()
-    input_chart = Chart.points(torch.linspace(-1.0, 1.0, 9).unsqueeze(-1).double())
-    output_chart = Chart.points(torch.linspace(-1.0, 1.0, 7).unsqueeze(-1).double())
+    input_chart = _construction.points(
+        torch.linspace(-1.0, 1.0, 9).unsqueeze(-1).double()
+    )
+    output_chart = _construction.points(
+        torch.linspace(-1.0, 1.0, 7).unsqueeze(-1).double()
+    )
     p = torch.zeros(2, 3, dtype=torch.float64)
     p[:, 0] = torch.tensor([0.4, -0.3], dtype=torch.float64)
     p[:, 1] = torch.tensor([0.0, 0.2], dtype=torch.float64)
@@ -291,8 +308,8 @@ def test_separable_accepts_compact_profiles() -> None:
     kernel = separable_state(
         input_profile=wendland_state(0.4), output_profile=triweight_state(0.3)
     )
-    input_chart = Chart.linspace(4, low=-1.0, high=1.0)
-    output_chart = Chart.linspace(3, low=-1.0, high=1.0)
+    input_chart = _construction.linspace(4, low=-1.0, high=1.0)
+    output_chart = _construction.linspace(3, low=-1.0, high=1.0)
     p = _kernel.initialize(kernel, input_chart, output_chart, 2, mode="balanced")
     phi_input, phi_output = _kernel.factors(kernel, input_chart, output_chart, p)
     assert phi_input.shape == (4, 2)
@@ -305,7 +322,7 @@ def test_separable_accepts_compact_profiles() -> None:
 def test_triweight_normalized_tangent_matches_clamped_norm_autograd(
     dtype, center_value
 ):
-    chart = Chart.points(torch.tensor([[0.0]], dtype=dtype))
+    chart = _construction.points(torch.tensor([[0.0]], dtype=dtype))
     profile = triweight_state(1.0).to(dtype=dtype)
     p = torch.tensor([[center_value]], dtype=dtype, requires_grad=True)
     precision = torch.ones(1, dtype=dtype, requires_grad=True)

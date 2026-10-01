@@ -5,23 +5,25 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.charts import execution as _charts
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.spec import AtomInit
 
 
-def initialize(state, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
-    return chart.initialize_centers(atoms, mode=mode)
+def initialize(state, chart: ChartState, atoms: int, *, mode: AtomInit) -> Tensor:
+    return _charts.initialize_centers(chart, atoms, mode=mode)
 
 
-def evaluate(state, chart: Chart, p: Tensor) -> Tensor:
+def evaluate(state, chart: ChartState, p: Tensor) -> Tensor:
     precision = state.sigma.reciprocal().square()
     return _profile.evaluate_with_precision(state, chart, p, precision)
 
 
 def evaluate_with_precision(
     state,
-    chart: Chart,
+    chart: ChartState,
     p: Tensor,
     precision: Tensor,
 ) -> Tensor:
@@ -36,7 +38,7 @@ def evaluate_with_precision(
     if precision.ndim == 1 and precision.shape != (p.shape[0],):
         raise ValueError("precision must be scalar or have shape [atoms]")
     precision = precision.to(device=p.device, dtype=p.dtype)
-    squared_distance = chart.squared_distance(p)
+    squared_distance = _charts.squared_distance(chart, p)
     log_squared_values = -squared_distance * precision
     if state.binding.normalization.kind == "none":
         return torch.exp(0.5 * log_squared_values)
@@ -45,7 +47,7 @@ def evaluate_with_precision(
 
 def evaluate_with_precision_slice(
     state,
-    chart: Chart,
+    chart: ChartState,
     p: Tensor,
     precision: Tensor,
     selection: slice | Tensor,
@@ -60,26 +62,26 @@ def evaluate_with_precision_slice(
         precision.ndim == 1 and precision.shape != (p.shape[0],)
     ):
         raise ValueError("precision must be scalar or have shape [atoms]")
-    squared = chart.squared_distance(p, selection)
+    squared = _charts.squared_distance(chart, p, selection)
     return torch.exp(-0.5 * squared * precision.to(device=p.device, dtype=p.dtype))
 
 
-def tangent(state, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
+def tangent(state, chart: ChartState, p: Tensor) -> tuple[Tensor, Tensor]:
     values, centers, _ = _profile.tangent_with_precision(
         state, chart, p, state.sigma.reciprocal().square()
     )
     return values, centers
 
 
-def tangent_with_precision(state, chart: Chart, p: Tensor, precision: Tensor):
+def tangent_with_precision(state, chart: ChartState, p: Tensor, precision: Tensor):
     """Analytic values, center derivatives and precision derivative.
 
     Includes the complete L2 normalization, with no amplitude division.
     """
     precision = precision.to(p)
     values = _profile.evaluate_with_precision(state, chart, p, precision)
-    offset = chart.center_offsets(p)
-    squared = chart.squared_distance(p)
+    offset = _charts.center_offsets(chart, p)
+    squared = _charts.squared_distance(chart, p)
     if state.binding.normalization.kind == "none":
         centers = values[..., None] * precision.reshape(1, -1, 1) * offset
         widths = -0.5 * values * squared
@@ -93,24 +95,24 @@ def tangent_with_precision(state, chart: Chart, p: Tensor, precision: Tensor):
     return values, centers, widths
 
 
-def project_gradient(state, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
-    return chart.geometry.project_tangent(p, gradient)
+def project_gradient(state, chart: ChartState, p: Tensor, gradient: Tensor) -> Tensor:
+    return _geometry.project_tangent(chart.geometry, p, gradient)
 
 
 def apply_parameter_update(
     state,
-    chart: Chart,
+    chart: ChartState,
     p: Tensor,
     displacement: Tensor,
 ) -> Tensor:
-    return chart.geometry.retract(p, displacement)
+    return _geometry.retract(chart.geometry, p, displacement)
 
 
 def transport_state(
     kernel_state,
-    chart: Chart,
+    chart: ChartState,
     old: Tensor,
     new: Tensor,
     state: Tensor,
 ) -> Tensor:
-    return chart.geometry.transport(old, new, state)
+    return _geometry.transport(chart.geometry, old, new, state)

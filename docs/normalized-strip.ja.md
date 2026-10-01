@@ -42,7 +42,7 @@ y = x @ W.T
 ```python
 import math
 import torch
-from torchcst import EuclideanGeometry, GridPattern, LinePattern, StripChart
+from torchcst import geometry_presets as layout
 from torchcst.nn import NormalizedStripLinear
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -50,18 +50,18 @@ torch.backends.cudnn.allow_tf32 = False
 torch.set_float32_matmul_precision("highest")
 
 rows, h, j = 64, 8, 8
-chart = StripChart(
+chart = layout.strip(
     shape=(rows, h * j),
     tile_shape=(32, h * j),
     axis=0,
     tile_pitch=32.0,
     axes=(
-        LinePattern(rows, spacing=1.0, center=(rows - 1) / 2),
-        GridPattern((h, j), spacing=0.5,
+        layout.line_pattern(rows, spacing=1.0, center=(rows - 1) / 2),
+        layout.grid_pattern((h, j), spacing=0.5,
                     center=((h - 1) * 0.25, (j - 1) * 0.25)),
     ),
-    geometry=EuclideanGeometry(3),
-).to('cuda')
+    geometry=layout.euclidean(3),
+)
 
 torch.manual_seed(21)
 p = torch.zeros(128, 5, device='cuda', dtype=torch.float32)

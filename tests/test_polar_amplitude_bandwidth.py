@@ -4,14 +4,16 @@ import pytest
 import torch
 from kernel_cases import polar_state
 
-from torchcst import BandwidthBounds, Chart, CSTLinear, CSTOptimizer
+from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.kernels import execution as _kernel
+from torchcst.geometry.state import ChartState
 
 
-def charts() -> tuple[Chart, Chart]:
+def charts() -> tuple[ChartState, ChartState]:
     return (
-        Chart.linspace(3, low=-1.0, high=1.0),
-        Chart.linspace(4, low=-1.0, high=1.0),
+        _construction.linspace(3, low=-1.0, high=1.0),
+        _construction.linspace(4, low=-1.0, high=1.0),
     )
 
 

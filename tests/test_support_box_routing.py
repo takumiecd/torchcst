@@ -4,6 +4,8 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+from torchcst._backends.torch.geometry import execution as _geometry
+
 pytest.importorskip("triton")
 
 from experiments.cuda.linear.block_strip_linear import BlockStripLinear
@@ -42,8 +44,8 @@ def test_boxed_support_matches_exact_layout_and_graph_updates(monkeypatch):
         coord = p.new_zeros((p.shape[0], 3))
         coord[:, 0] = chart.axes[0].start[0] + (a % 4) * 2.6
         coord[:, 0] += torch.where(a % 2 == 0, 0.7, 2.05)
-        p[:, 2:] = chart.geometry.encode_centers(
-            chart.geometry.lift_chart_coordinates(coord)
+        p[:, 2:] = _geometry.encode_centers(
+            chart.geometry, _geometry.lift_chart_coordinates(chart.geometry, coord)
         )
         p[:, 0] = 0.8
         p[::13, 4] += 4.0
@@ -81,7 +83,10 @@ def test_boxed_support_matches_exact_layout_and_graph_updates(monkeypatch):
                 )
             decoded = decode_intrinsic_torus_compact(chart.geometry, p[:, 2:])
             torch.testing.assert_close(
-                decoded, chart.geometry.decode_centers(p[:, 2:]), atol=3e-5, rtol=3e-5
+                decoded,
+                _geometry.decode_centers(chart.geometry, p[:, 2:]),
+                atol=3e-5,
+                rtol=3e-5,
             )
             assert torch.equal(ordinary[3], boxed[3])
             assert torch.equal(ordinary[0], boxed[0])

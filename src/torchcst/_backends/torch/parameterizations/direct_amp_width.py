@@ -9,13 +9,13 @@ from torch import Tensor
 
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 
 
 def amplitude(
     state,
-    input_chart: Chart,
-    output_chart: Chart | Tensor,
+    input_chart: ChartState,
+    output_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> Tensor:
     """Return the bounded signed amplitude represented by each atom."""
@@ -32,8 +32,8 @@ def amplitude(
 
 def bandwidth_alpha(
     state,
-    input_chart: Chart,
-    output_chart: Chart | Tensor,
+    input_chart: ChartState,
+    output_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> Tensor:
     """Return the activity interpolation coordinate in ``[0, 1]``."""
@@ -50,8 +50,8 @@ def bandwidth_alpha(
 
 def bandwidth_bounds(
     state,
-    input_chart: Chart,
-    output_chart: Chart | Tensor,
+    input_chart: ChartState,
+    output_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Return ``(L(w), U(w))`` for diagnostic use."""
@@ -72,7 +72,7 @@ def bandwidth_bounds(
 
 
 def bandwidth_bounds_by_side(
-    state, input_chart: Chart, output_chart: Chart, p: Tensor
+    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
 ) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor]]:
     """Return ``((L_in, U_in), (L_out, U_out))``."""
 
@@ -85,8 +85,8 @@ def bandwidth_bounds_by_side(
 
 def bandwidth_sigma(
     state,
-    input_chart: Chart,
-    output_chart: Chart | Tensor,
+    input_chart: ChartState,
+    output_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> Tensor:
     """Return the shared effective input/output sigma for each atom."""
@@ -104,7 +104,7 @@ def bandwidth_sigma(
 
 
 def bandwidth_sigmas(
-    state, input_chart: Chart, output_chart: Chart, p: Tensor
+    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
 ) -> tuple[Tensor, Tensor]:
     """Return effective ``(sigma_input, sigma_output)`` for each atom."""
 
@@ -115,8 +115,8 @@ def bandwidth_sigmas(
 
 def bandwidth_precision(
     state,
-    input_chart: Chart,
-    output_chart: Chart | Tensor,
+    input_chart: ChartState,
+    output_chart: ChartState | Tensor,
     p: Tensor | None = None,
 ) -> Tensor:
     """Return the shared input/output precision for each atom."""
@@ -126,7 +126,7 @@ def bandwidth_precision(
 
 
 def bandwidth_precisions(
-    state, input_chart: Chart, output_chart: Chart, p: Tensor
+    state, input_chart: ChartState, output_chart: ChartState, p: Tensor
 ) -> tuple[Tensor, Tensor]:
     """Return input and output precisions for split bandwidths."""
 
@@ -134,7 +134,7 @@ def bandwidth_precisions(
     return sigma_input.reciprocal().square(), sigma_output.reciprocal().square()
 
 
-def _single_split(state, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
+def _single_split(state, chart: ChartState, p: Tensor) -> tuple[Tensor, Tensor]:
     _kernel.check_radial_activity(state, chart)
     expected_dim = 2 + _profile.parameter_dim(state.profiles[0], chart)
     if p.ndim != 2 or p.shape[1] != expected_dim:
@@ -142,7 +142,9 @@ def _single_split(state, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
     return p[:, :2], p[:, 2:]
 
 
-def tile_parameters(state, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+def tile_parameters(
+    state, chart: ChartState, p: Tensor
+) -> tuple[Tensor, Tensor, Tensor]:
     """Return encoded centers, amplitudes and detached inverse square widths.
 
     Execution backends share this preparation so amplitude clamping and
@@ -163,8 +165,8 @@ def _tile_parameters(state, p: Tensor) -> tuple[Tensor, Tensor, Tensor]:
 
 def _split(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
     expected_dim = _kernel.parameter_dim(state, input_chart, output_chart)

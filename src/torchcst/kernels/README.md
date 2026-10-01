@@ -31,16 +31,17 @@ Operator / backend が State と現在の Chart / p を使って計算する。
 from torchcst import GaussianSpec, TriweightSpec, BandwidthBounds, presets
 
 # 固定幅：入力・出力それぞれの形、幅、正規化を宣言する。
-fixed = presets.amplitude(presets.separable(
-    input_profile=presets.fixed_profile(GaussianSpec(), 0.4),
-    output_profile=presets.fixed_profile(TriweightSpec(), 0.7),
-))
+fixed = presets.amplitude(
+    presets.separable(
+        input_profile=presets.fixed_profile(GaussianSpec(), 0.4),
+        output_profile=presets.fixed_profile(TriweightSpec(), 0.7),
+    )
+)
 
 # 動的幅：ProfileBinding に幅を入れず、parameterization が幅を定める。
 activity = presets.polar_activity(
     amplitude_max=1.0,
-    input_bounds=BandwidthBounds(minimum=0.1, birth=2.0,
-                                 maximum=2.0, upper_floor=0.1),
+    input_bounds=BandwidthBounds(minimum=0.1, birth=2.0, maximum=2.0, upper_floor=0.1),
     w_c=0.1,
     profile=presets.profile(TriweightSpec()),
     radial_regularization=0.2,
@@ -49,8 +50,7 @@ activity = presets.polar_activity(
 # 単一 Chart：原則 radial。Direct activity は非正規化 profile を使う。
 radial = presets.direct_activity(
     amplitude_max=1.0,
-    input_bounds=BandwidthBounds(minimum=0.2, birth=0.5,
-                                 maximum=0.8, upper_floor=0.2),
+    input_bounds=BandwidthBounds(minimum=0.2, birth=0.5, maximum=0.8, upper_floor=0.2),
     w_c=0.05,
     profile=presets.profile(TriweightSpec(), normalize=False),
 )
@@ -68,8 +68,12 @@ backend はそれぞれの形を使う。`couple_bandwidth` も微分の契約�
 ```python
 from torchcst import CSTLinear, KernelOptions
 
-layer = CSTLinear(chart=chart, atoms=128, kernel=radial,
-                  kernel_options=KernelOptions(site_chunk=2048, atom_chunk=64))
+layer = CSTLinear(
+    chart=chart,
+    atoms=128,
+    kernel=radial,
+    kernel_options=KernelOptions(site_chunk=2048, atom_chunk=64),
+)
 spec = layer.declaration()  # 現在の固定 Tensor 設定を明示的に snapshot
 ```
 

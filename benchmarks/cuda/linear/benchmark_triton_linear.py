@@ -17,20 +17,12 @@ from time import perf_counter
 
 import torch
 
-from torchcst import (
-    BandwidthBounds,
-    CSTLinear,
-    GridPattern,
-    LinePattern,
-    StripChart,
-    TorusGeometry,
-    TriweightSpec,
-    presets,
-)
+from torchcst import BandwidthBounds, CSTLinear, TriweightSpec, presets
 from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import _FusedLinear
 from torchcst._backends.cuda.algorithms.strip_torus.fused.host import (
     prepare as prepare_atoms,
 )
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.kernels.execution import KernelOptions
 from torchcst.kernels import ProfileBinding
 
@@ -50,16 +42,18 @@ def timed(fn, repeats):
 
 def model(atoms, *, rows=64, columns=128, station_rows=16):
     stations = math.ceil(rows / station_rows)
-    chart = StripChart(
+    chart = _construction.strip(
         shape=(rows, columns),
         tile_shape=(station_rows, columns),
         axes=(
-            LinePattern(rows, spacing=min(0.1, 1.5 / max(station_rows - 1, 1))),
-            GridPattern((columns // 16, 16), spacing=0.05),
+            _construction.line_pattern(
+                rows, spacing=min(0.1, 1.5 / max(station_rows - 1, 1))
+            ),
+            _construction.grid_pattern((columns // 16, 16), spacing=0.05),
         ),
         axis=0,
         tile_pitch=4.1,
-        geometry=TorusGeometry(
+        geometry=_construction.torus(
             3,
             major_radius=max(2, stations) * 4.1 / (2 * math.pi),
             minor_radius=0.4,

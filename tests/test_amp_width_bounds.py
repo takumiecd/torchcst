@@ -4,7 +4,8 @@ import pytest
 import torch
 from kernel_cases import direct_state, polar_state
 
-from torchcst import BandwidthBounds, Chart
+from torchcst import BandwidthBounds
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.kernels import execution as _kernel
 
 
@@ -38,8 +39,8 @@ def test_effective_bandwidth_bounds_never_cross_for_split_sides(kernel_type):
             minimum=0.15, maximum=0.8, birth=0.8, upper_floor=0.15
         ),
     ).double()
-    input_chart = Chart.linspace(3, spacing=1.0)
-    output_chart = Chart.linspace(4, spacing=1.0)
+    input_chart = _construction.linspace(3, spacing=1.0)
+    output_chart = _construction.linspace(4, spacing=1.0)
     amplitude = torch.linspace(0.0, 2.0, 401, dtype=torch.float64)
     for alpha_value in (0.0, 0.5, 1.0):
         alpha = torch.full_like(amplitude, alpha_value)
@@ -79,8 +80,8 @@ def test_sublinear_upper_decay_cannot_cross_near_zero_amplitude(kernel_type):
             minimum=0.1, maximum=1.0, birth=1.0, upper_floor=0.1
         ),
     ).double()
-    input_chart = Chart.linspace(3, spacing=1.0)
-    output_chart = Chart.linspace(4, spacing=1.0)
+    input_chart = _construction.linspace(3, spacing=1.0)
+    output_chart = _construction.linspace(4, spacing=1.0)
     p = _rows(
         kernel_type,
         torch.tensor([0.001], dtype=torch.float64),

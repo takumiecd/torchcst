@@ -2,7 +2,9 @@
 
 from importlib import import_module
 
-from torchcst.geometry import StripChart
+from torchcst._backends.torch.charts import execution as _charts
+from torchcst.geometry.spec import EuclideanGeometrySpec
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.options import KernelOptions
 
 
@@ -104,11 +106,11 @@ def validate_layout(state, charts):
     if len(charts) != expected:
         raise ValueError("kernel composition differs from chart layout")
     name = family(state)
-    if name == "log_width":
-        from torchcst.geometry import EuclideanGeometry
-
-        if not isinstance(charts[0].geometry, EuclideanGeometry):
-            raise ValueError("log-width Euclidean updates require Euclidean geometry")
+    if (
+        name == "log_width"
+        and type(charts[0].geometry.spec) is not EuclideanGeometrySpec
+    ):
+        raise ValueError("log-width Euclidean updates require Euclidean geometry")
     if state.spec.composition == "radial" and name == "direct_amp_width":
         check_radial_activity(state, charts[0])
 
@@ -121,8 +123,8 @@ def check_radial_activity(state, chart):
     parameterization = state.spec.parameterization
     if parameterization.input_bounds != parameterization.output_bounds:
         raise ValueError("radial kernel requires one set of bandwidth bounds")
-    if isinstance(chart, StripChart):
-        chart.validate_support(float(state.scalar("sigma_max_input")))
+    if isinstance(chart, ChartState) and chart.spec.kind == "strip":
+        _charts.validate_support(chart, float(state.scalar("sigma_max_input")))
 
 
 def parameter_dim(state, *charts):

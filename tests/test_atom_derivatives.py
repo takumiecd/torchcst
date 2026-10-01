@@ -3,15 +3,16 @@ from __future__ import annotations
 import torch
 from kernel_cases import amplitude_state, gaussian_state, separable_state
 
-from torchcst import Chart, CSTLinear
+from torchcst import CSTLinear
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._derivatives import DenseDerivativeOracle
 
 
 def make_site() -> CSTLinear:
     torch.manual_seed(11)
     return CSTLinear(
-        Chart.linspace(3, low=-1.0, high=1.0),
-        Chart.linspace(2, low=-1.0, high=1.0),
+        _construction.linspace(3, low=-1.0, high=1.0),
+        _construction.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=amplitude_state(
             separable_state(
@@ -155,8 +156,8 @@ def test_zero_displacement_pullback_matches_parameter_autograd() -> None:
 
 def test_derivatives_reject_trainable_charts_for_now() -> None:
     site = CSTLinear(
-        Chart.linspace(3, trainable=True, low=-1.0, high=1.0),
-        Chart.linspace(2, low=-1.0, high=1.0),
+        _construction.linspace(3, trainable=True, low=-1.0, high=1.0),
+        _construction.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=separable_state(
             input_profile=gaussian_state(0.5), output_profile=gaussian_state(0.5)

@@ -39,6 +39,7 @@ from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
     route_and_layout,
     tile_parameters,
 )
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.operators.strip_torus.preparation import (
     PROFILE_KINDS,
     execution_plan,
@@ -51,7 +52,7 @@ def trainable_boxed_prepare(site, p, *, boxes, witness_cols, decode_mode="torch"
     station_rows = site.chart.tile_shape[0]
     center, amplitude, precision = tile_parameters(site.kernel, p)
     if decode_mode == "torch":
-        decoded = site.chart.geometry.decode_centers(center)
+        decoded = _geometry.decode_centers(site.chart.geometry, center)
     elif decode_mode == "fused":
         if plan.routing.starts.numel() > 256:
             raise ValueError(

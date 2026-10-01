@@ -3,12 +3,12 @@
 Continuous operators for PyTorch. A fixed atom-coordinate table represents a
 weight operator: `W = sum_k Kernel(p[k])`.
 
-KernelSpec and ProfileBinding declare shape, amplitude, width and normalization. Chart and
-Geometry define observation sites and distances. Operator exposes the operation;
+KernelSpec and ProfileBinding declare shape, amplitude, width and normalization. ChartSpec and
+GeometrySpec declare observation sites and distances. Operator exposes the operation;
 backend algorithms implement forward and backward. Atom count and parameter
 shapes stay fixed during training. Models accept pure KernelSpec declarations and
-own a common KernelState; the former Kernel/Profile classes and checkpoint
-compatibility loaders have been removed.
+own common ChartState and KernelState modules. The former Kernel/Profile and
+Chart/Geometry classes and checkpoint compatibility loaders have been removed.
 
 ## Installation
 
@@ -31,11 +31,11 @@ supplies Parameter gradients; there is no optimizer-specific backward route.
 ```python
 import torch
 from torch import nn
-from torchcst import Chart, CSTLinear, CSTOptimizer, BandwidthBounds, presets
+from torchcst import CSTLinear, CSTOptimizer, BandwidthBounds, presets, geometry_presets as layout
 
 layer = CSTLinear(
-    Chart.linspace(16, spacing=0.2),
-    Chart.linspace(8, spacing=0.3),
+    layout.linspace(16, spacing=0.2),
+    layout.linspace(8, spacing=0.3),
     atoms=12,
     kernel=presets.polar_activity(
         amplitude_max=1.0, w_c=0.1,

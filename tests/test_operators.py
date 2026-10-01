@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from torchcst import BandwidthBounds
+from torchcst._backends.torch.charts import construction as _construction
 
 "Operator boundaries, live state and independent reference gradients."
 import copy
@@ -16,21 +17,16 @@ from kernel_cases import (
     triweight_state,
 )
 
-from torchcst import (
-    Chart,
-    ChartPairSpec,
-    CSTLinear,
-    LinePattern,
-    Operator,
-    OperatorSpec,
-    ProductChart,
-    SingleChartSpec,
-)
+from torchcst import ChartPairSpec, CSTLinear, Operator, OperatorSpec, SingleChartSpec
 
 
 def make_single():
-    chart = ProductChart(
-        shape=(3, 4), axes=(LinePattern(3, spacing=0.5), LinePattern(4, spacing=0.4))
+    chart = _construction.product(
+        shape=(3, 4),
+        axes=(
+            _construction.line_pattern(3, spacing=0.5),
+            _construction.line_pattern(4, spacing=0.4),
+        ),
     )
     kernel = direct_state(
         amplitude_max=1.0,
@@ -49,8 +45,8 @@ def make_single():
 
 def make_pair(*, trainable=False, backend="materialized"):
     return CSTLinear(
-        Chart.linspace(4, low=-1, high=1, trainable=trainable),
-        Chart.linspace(3, low=-0.8, high=0.8, trainable=trainable),
+        _construction.linspace(4, low=-1, high=1, trainable=trainable),
+        _construction.linspace(3, low=-0.8, high=0.8, trainable=trainable),
         atoms=2,
         kernel=amplitude_state(
             separable_state(
@@ -217,17 +213,20 @@ def test_operator_rebinds_after_replacing_module_state():
 
 
 def test_normalized_strip_is_a_distinct_single_chart_contract():
-    from torchcst import GridPattern, NormalizedStripLinear, StripChart
+    from torchcst import NormalizedStripLinear
     from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
         NormalizedStripGeometry,
     )
 
-    chart = StripChart(
+    chart = _construction.strip(
         shape=(5, 6),
         tile_shape=(2, 6),
         axis=0,
         tile_pitch=2.0,
-        axes=(LinePattern(5, spacing=1.0), GridPattern((2, 3), spacing=0.5)),
+        axes=(
+            _construction.line_pattern(5, spacing=1.0),
+            _construction.grid_pattern((2, 3), spacing=0.5),
+        ),
     )
     model = NormalizedStripLinear(chart, torch.tensor([[0.2, 0.0, 1.0, 0.2, 0.3]]))
     spec = model.declaration()

@@ -8,13 +8,13 @@ from torch.nn import functional as F
 
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 
 
 def amplitude_gate(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> Tensor:
     """Return the interpolating commitment gate for diagnostic use."""
@@ -25,8 +25,8 @@ def amplitude_gate(
 
 def bandwidth_precision(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> Tensor:
     """Return the shared input/output precision for each atom."""
@@ -38,8 +38,8 @@ def bandwidth_precision(
 
 def bandwidth_sigma(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> Tensor:
     """Return the shared effective input/output sigma for diagnostics."""
@@ -50,8 +50,8 @@ def bandwidth_sigma(
 
 def _split(
     state,
-    input_chart: Chart,
-    output_chart: Chart,
+    input_chart: ChartState,
+    output_chart: ChartState,
     p: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
     expected_dim = _kernel.parameter_dim(state, input_chart, output_chart)

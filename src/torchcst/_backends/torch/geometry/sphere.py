@@ -5,14 +5,12 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from torchcst.geometry.geometry import (
-    SphereGeometry,
-    _validate_atoms,
-)
+from . import base
+from .base import _validate_atoms, _validate_center_structure, _validate_structure
 
 
 def validate_points(self, points: Tensor, *, name: str = "points") -> None:
-    super(SphereGeometry, self).validate_points(points, name=name)
+    base.validate_points(self, points, name=name)
     radius = self.radius.to(points)
     norms = torch.linalg.vector_norm(points, dim=-1)
     # Charts may be constructed in float32 and promoted later. Keep a
@@ -24,7 +22,7 @@ def validate_points(self, points: Tensor, *, name: str = "points") -> None:
 
 
 def _normalize(self, points: Tensor) -> Tensor:
-    self._validate_structure(points, name="points")
+    _validate_structure(self, points, name="points")
     norm = torch.linalg.vector_norm(points, dim=-1, keepdim=True)
     tiny = torch.finfo(points.dtype).tiny
     return points * (self.radius.to(points) / norm.clamp_min(tiny))
@@ -57,7 +55,7 @@ def lift_tangent_sites(self, coordinates: Tensor) -> Tensor:
 
 
 def lift_chart_coordinates(self, coordinates: Tensor) -> Tensor:
-    return self.lift_tangent_sites(coordinates)
+    return lift_tangent_sites(self, coordinates)
 
 
 def max_parameter_radius(self) -> Tensor:
@@ -71,11 +69,11 @@ def sample_sites(self, count: int) -> Tensor:
 
     _validate_atoms(count)
     samples = torch.randn(count, self.embedding_dim, device=self.radius.device)
-    return self._normalize(samples.to(dtype=self.radius.dtype))
+    return _normalize(self, samples.to(dtype=self.radius.dtype))
 
 
 def validate_centers(self, centers: Tensor, *, name: str = "centers") -> None:
-    super(SphereGeometry, self).validate_centers(centers, name=name)
+    base.validate_centers(self, centers, name=name)
     if self.representation == "ambient":
         radius = self.radius.to(centers)
         norms = torch.linalg.vector_norm(centers, dim=-1)
@@ -86,16 +84,16 @@ def validate_centers(self, centers: Tensor, *, name: str = "centers") -> None:
             )
         return
     norms = torch.linalg.vector_norm(centers, dim=-1)
-    limit = self.max_parameter_radius.to(centers)
+    limit = max_parameter_radius(self).to(centers)
     tolerance = limit.clamp_min(1) * 1e-5
     if not bool(torch.all(norms <= limit + tolerance)):
         raise ValueError(f"{name} must lie inside the intrinsic sphere chart")
 
 
 def decode_centers(self, centers: Tensor) -> Tensor:
-    self._validate_center_structure(centers, name="centers")
+    _validate_center_structure(self, centers, name="centers")
     if self.representation == "ambient":
-        return self._normalize(centers)
+        return _normalize(self, centers)
     radius = self.radius.to(centers)
     radial = torch.linalg.vector_norm(centers, dim=-1, keepdim=True)
     theta = radial / radius
@@ -107,7 +105,7 @@ def decode_centers(self, centers: Tensor) -> Tensor:
 def encode_centers(self, points: Tensor) -> Tensor:
     """Encode ambient sphere points in the configured center representation."""
 
-    points = self._normalize(points)
+    points = _normalize(self, points)
     if self.representation == "ambient":
         return points
     radius = self.radius.to(points)
@@ -123,21 +121,21 @@ def encode_centers(self, points: Tensor) -> Tensor:
         fallback,
     )
     encoded = radius * theta * direction
-    return self._clamp_intrinsic(encoded)
+    return _clamp_intrinsic(self, encoded)
 
 
 def squared_distance(self, sites: Tensor, centers: Tensor) -> Tensor:
-    sites = self._normalize(sites)
-    centers = self.decode_centers(centers)
+    sites = _normalize(self, sites)
+    centers = decode_centers(self, centers)
     return (sites[:, None, :] - centers[None, :, :]).square().sum(dim=-1)
 
 
 def center_offsets(self, sites: Tensor, centers: Tensor) -> Tensor:
-    sites = self._normalize(sites)
-    decoded = self.decode_centers(centers)
+    sites = _normalize(self, sites)
+    decoded = decode_centers(self, centers)
     offsets = sites[:, None, :] - decoded[None, :, :]
     if self.representation == "ambient":
-        return self.project_tangent(centers, offsets)
+        return project_tangent(self, centers, offsets)
 
     # Pull the ambient chord-distance derivative back through the sphere
     # exponential map. This is J_decode(center)^T @ (site - decoded).
@@ -163,7 +161,7 @@ def center_offsets(self, sites: Tensor, centers: Tensor) -> Tensor:
 
 
 def initialize_centers(self, sites: Tensor, atoms: int, *, mode: str) -> Tensor:
-    self.validate_points(sites, name="sites")
+    validate_points(self, sites, name="sites")
     _validate_atoms(atoms)
     if mode == "balanced":
         indices = (
@@ -171,7 +169,7 @@ def initialize_centers(self, sites: Tensor, atoms: int, *, mode: str) -> Tensor:
             .round()
             .to(dtype=torch.long)
         )
-        return self.encode_centers(sites.index_select(0, indices))
+        return encode_centers(self, sites.index_select(0, indices))
     if mode != "uniform":
         raise ValueError("mode must be 'balanced' or 'uniform'")
     samples = torch.randn(
@@ -180,45 +178,45 @@ def initialize_centers(self, sites: Tensor, atoms: int, *, mode: str) -> Tensor:
         device=sites.device,
         dtype=sites.dtype,
     )
-    return self.encode_centers(self._normalize(samples))
+    return encode_centers(self, _normalize(self, samples))
 
 
 def project_tangent(self, points: Tensor, vectors: Tensor) -> Tensor:
     if self.representation == "intrinsic":
-        self._validate_center_structure(points, name="points")
-        self._validate_center_structure(vectors, name="vectors")
+        _validate_center_structure(self, points, name="points")
+        _validate_center_structure(self, vectors, name="vectors")
         return vectors
-    points = self._normalize(points)
-    self._validate_structure(vectors, name="vectors")
+    points = _normalize(self, points)
+    _validate_structure(self, vectors, name="vectors")
     radial = (vectors * points).sum(dim=-1, keepdim=True)
     return vectors - radial * points / self.radius.to(points).square()
 
 
 def retract(self, points: Tensor, displacement: Tensor) -> Tensor:
-    self.validate_centers(points, name="points")
-    self._validate_center_structure(displacement, name="displacement")
+    validate_centers(self, points, name="points")
+    _validate_center_structure(self, displacement, name="displacement")
     if points.shape != displacement.shape:
         raise ValueError("points and displacement must have matching shapes")
     if self.representation == "intrinsic":
-        return self._clamp_intrinsic(points + displacement)
-    tangent = self.project_tangent(points, displacement)
-    return self._normalize(points + tangent)
+        return _clamp_intrinsic(self, points + displacement)
+    tangent = project_tangent(self, points, displacement)
+    return _normalize(self, points + tangent)
 
 
 def transport(self, old: Tensor, new: Tensor, vectors: Tensor) -> Tensor:
-    self.validate_centers(old, name="old")
-    self.validate_centers(new, name="new")
-    self._validate_center_structure(vectors, name="vectors")
+    validate_centers(self, old, name="old")
+    validate_centers(self, new, name="new")
+    _validate_center_structure(self, vectors, name="vectors")
     if old.shape != new.shape or old.shape != vectors.shape:
         raise ValueError("old, new, and vectors must have matching shapes")
     if self.representation == "intrinsic":
         return vectors
-    return self.project_tangent(new, vectors)
+    return project_tangent(self, new, vectors)
 
 
 def _clamp_intrinsic(self, centers: Tensor) -> Tensor:
-    self._validate_center_structure(centers, name="centers")
+    _validate_center_structure(self, centers, name="centers")
     norm = torch.linalg.vector_norm(centers, dim=-1, keepdim=True)
-    limit = self.max_parameter_radius.to(centers)
+    limit = max_parameter_radius(self).to(centers)
     scale = (limit / norm.clamp_min(torch.finfo(centers.dtype).tiny)).clamp_max(1)
     return centers * scale

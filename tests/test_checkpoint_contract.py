@@ -12,13 +12,18 @@ from kernel_cases import (
     triweight_state,
 )
 
-from torchcst import Chart, CSTConv2d, CSTLinear
+from torchcst import CSTConv2d, CSTLinear
+from torchcst._backends.torch.charts import construction as _construction
 
 
 def _spherical_linear(input_representation: str, output_representation: str):
     return CSTLinear(
-        Chart.sphere(5, intrinsic_dim=1, representation=input_representation),
-        Chart.sphere(4, intrinsic_dim=1, representation=output_representation),
+        _construction.sphere_chart(
+            5, intrinsic_dim=1, representation=input_representation
+        ),
+        _construction.sphere_chart(
+            4, intrinsic_dim=1, representation=output_representation
+        ),
         atoms=2,
         kernel=amplitude_state(
             separable_state(
@@ -31,8 +36,8 @@ def _spherical_linear(input_representation: str, output_representation: str):
 
 def _bandwidth_linear(profile, *, law="interpolating", couple_bandwidth=True):
     return CSTLinear(
-        Chart.linspace(5, spacing=0.5),
-        Chart.linspace(4, spacing=0.5),
+        _construction.linspace(5, spacing=0.5),
+        _construction.linspace(4, spacing=0.5),
         atoms=2,
         kernel=amp_width_state(
             sigma_min=1.0,
@@ -75,8 +80,8 @@ def test_conv_layout_is_checkpoint_contract():
 
     def model(stride):
         return CSTConv2d(
-            Chart.linspace(4, spacing=1.0),
-            Chart.linspace(2, spacing=1.0),
+            _construction.linspace(4, spacing=1.0),
+            _construction.linspace(2, spacing=1.0),
             in_channels=1,
             out_channels=2,
             kernel_size=2,

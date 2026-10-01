@@ -5,24 +5,26 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
+from torchcst._backends.torch.charts import execution as _charts
+from torchcst._backends.torch.geometry import execution as _geometry_execution
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry import Chart
+from torchcst.geometry.state import ChartState
 from torchcst.kernels.spec import AtomInit
 from torchcst.profiling import cst_span
 
 
-def initialize(state, chart: Chart, atoms: int, *, mode: AtomInit) -> Tensor:
-    return chart.initialize_centers(atoms, mode=mode)
+def initialize(state, chart: ChartState, atoms: int, *, mode: AtomInit) -> Tensor:
+    return _charts.initialize_centers(chart, atoms, mode=mode)
 
 
-def evaluate(state, chart: Chart, p: Tensor) -> Tensor:
+def evaluate(state, chart: ChartState, p: Tensor) -> Tensor:
     precision = state.sigma.reciprocal().square()
     return _profile.evaluate_with_precision(state, chart, p, precision)
 
 
 def evaluate_with_precision(
     state,
-    chart: Chart,
+    chart: ChartState,
     p: Tensor,
     precision: Tensor,
 ) -> Tensor:
@@ -41,7 +43,7 @@ def evaluate_with_precision(
 
 def evaluate_with_precision_slice(
     state,
-    chart: Chart,
+    chart: ChartState,
     p: Tensor,
     precision: Tensor,
     selection: slice | Tensor,
@@ -58,20 +60,20 @@ def evaluate_with_precision_slice(
         precision.ndim == 1 and precision.shape != (p.shape[0],)
     ):
         raise ValueError("precision must be scalar or have shape [atoms]")
-    squared = chart.squared_distance(p, selection)
+    squared = _charts.squared_distance(chart, p, selection)
     return _unnormalized_from_squared(
         state, squared, precision.to(device=p.device, dtype=p.dtype)
     )
 
 
-def tangent(state, chart: Chart, p: Tensor) -> tuple[Tensor, Tensor]:
+def tangent(state, chart: ChartState, p: Tensor) -> tuple[Tensor, Tensor]:
     values, centers, _ = _profile.tangent_with_precision(
         state, chart, p, state.sigma.reciprocal().square()
     )
     return values, centers
 
 
-def tangent_with_precision(state, chart: Chart, p: Tensor, precision: Tensor):
+def tangent_with_precision(state, chart: ChartState, p: Tensor, precision: Tensor):
     """Analytic values, center derivatives and precision derivative."""
 
     offset, squared, precision = _geometry(state, chart, p, precision)
@@ -101,7 +103,7 @@ def tangent_with_precision(state, chart: Chart, p: Tensor, precision: Tensor):
 
 
 def _geometry(
-    state, chart: Chart, p: Tensor, precision: Tensor, *, need_offsets: bool = True
+    state, chart: ChartState, p: Tensor, precision: Tensor, *, need_offsets: bool = True
 ) -> tuple[Tensor | None, Tensor, Tensor]:
     if p.ndim != 2 or p.shape[1] != _profile.parameter_dim(state, chart):
         raise ValueError(
@@ -115,33 +117,33 @@ def _geometry(
     offset = None
     if need_offsets:
         with cst_span("cst.profile.center_offsets"):
-            offset = chart.center_offsets(p)
+            offset = _charts.center_offsets(chart, p)
     with cst_span("cst.profile.squared_distance"):
-        squared = chart.squared_distance(p)
+        squared = _charts.squared_distance(chart, p)
     return offset, squared, precision
 
 
-def project_gradient(state, chart: Chart, p: Tensor, gradient: Tensor) -> Tensor:
-    return chart.geometry.project_tangent(p, gradient)
+def project_gradient(state, chart: ChartState, p: Tensor, gradient: Tensor) -> Tensor:
+    return _geometry_execution.project_tangent(chart.geometry, p, gradient)
 
 
 def apply_parameter_update(
     state,
-    chart: Chart,
+    chart: ChartState,
     p: Tensor,
     displacement: Tensor,
 ) -> Tensor:
-    return chart.geometry.retract(p, displacement)
+    return _geometry_execution.retract(chart.geometry, p, displacement)
 
 
 def transport_state(
     kernel_state,
-    chart: Chart,
+    chart: ChartState,
     old: Tensor,
     new: Tensor,
     state: Tensor,
 ) -> Tensor:
-    return chart.geometry.transport(old, new, state)
+    return _geometry_execution.transport(chart.geometry, old, new, state)
 
 
 def _unnormalized_from_squared(state, squared: Tensor, precision: Tensor) -> Tensor:

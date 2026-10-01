@@ -4,14 +4,8 @@ import pytest
 import torch
 from kernel_cases import amplitude_state, gaussian_state, separable_state
 
-from torchcst import (
-    Chart,
-    CSTLinear,
-    GaussianSpec,
-    LinePattern,
-    ProductChart,
-    presets,
-)
+from torchcst import CSTLinear, GaussianSpec, presets
+from torchcst._backends.torch.charts import construction as _construction
 
 
 def make_kernel() -> amplitude_state:
@@ -24,8 +18,8 @@ def make_kernel() -> amplitude_state:
 
 def make_model(*, backend: str = "factored") -> CSTLinear:
     return CSTLinear(
-        Chart.linspace(5, low=-1.0, high=1.0),
-        Chart.grid((2, 2), low=-1.0, high=1.0),
+        _construction.linspace(5, low=-1.0, high=1.0),
+        _construction.grid((2, 2), low=-1.0, high=1.0),
         atoms=3,
         kernel=make_kernel().declaration(),
         backend=backend,
@@ -70,9 +64,12 @@ def test_forward_gradients_reach_the_opaque_atom_parameters() -> None:
 
 def test_nonfactorized_kernel_uses_the_same_kernel_sum_semantics() -> None:
     model = CSTLinear(
-        chart=ProductChart(
+        chart=_construction.product(
             shape=(2, 3),
-            axes=(LinePattern(2, spacing=0.5), LinePattern(3, spacing=0.5)),
+            axes=(
+                _construction.line_pattern(2, spacing=0.5),
+                _construction.line_pattern(3, spacing=0.5),
+            ),
         ),
         atoms=2,
         kernel=presets.radial(presets.fixed_profile(GaussianSpec(), 1.0)),
@@ -88,9 +85,12 @@ def test_nonfactorized_kernel_uses_the_same_kernel_sum_semantics() -> None:
 def test_factored_backend_rejects_a_kernel_without_that_capability() -> None:
     with pytest.raises(ValueError, match="does not support factorized"):
         CSTLinear(
-            chart=ProductChart(
+            chart=_construction.product(
                 shape=(2, 3),
-                axes=(LinePattern(2, spacing=0.5), LinePattern(3, spacing=0.5)),
+                axes=(
+                    _construction.line_pattern(2, spacing=0.5),
+                    _construction.line_pattern(3, spacing=0.5),
+                ),
             ),
             atoms=2,
             kernel=presets.radial(presets.fixed_profile(GaussianSpec(), 1.0)),
@@ -100,8 +100,8 @@ def test_factored_backend_rejects_a_kernel_without_that_capability() -> None:
 
 def test_constructor_dtype_covers_charts_kernel_and_atoms() -> None:
     model = CSTLinear(
-        Chart.linspace(3, low=-1.0, high=1.0),
-        Chart.linspace(2, low=-1.0, high=1.0),
+        _construction.linspace(3, low=-1.0, high=1.0),
+        _construction.linspace(2, low=-1.0, high=1.0),
         atoms=2,
         kernel=make_kernel().declaration(),
         dtype=torch.float64,

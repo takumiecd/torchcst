@@ -4,12 +4,12 @@ import pytest
 import torch
 from kernel_cases import gaussian_state
 
-from torchcst import Chart
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.profiles import execution as _profile
 
 
 def test_gaussian_evaluates_chart_against_opaque_profile_coordinates() -> None:
-    chart = Chart.points(torch.tensor([[0.0], [2.0]]))
+    chart = _construction.points(torch.tensor([[0.0], [2.0]]))
     p = torch.tensor([[0.0], [1.0], [2.0]])
     profile = gaussian_state(2.0)
     actual = _profile.evaluate(profile, chart, p)
@@ -23,7 +23,7 @@ def test_gaussian_evaluates_chart_against_opaque_profile_coordinates() -> None:
 
 
 def test_gaussian_initialization_is_profile_owned() -> None:
-    chart = Chart.linspace(3, low=-1.0, high=1.0)
+    chart = _construction.linspace(3, low=-1.0, high=1.0)
     profile = gaussian_state(0.5)
     balanced = _profile.initialize(profile, chart, 2, mode="balanced")
     uniform = _profile.initialize(profile, chart, 20, mode="uniform")

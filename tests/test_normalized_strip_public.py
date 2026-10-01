@@ -5,7 +5,7 @@ import math
 import pytest
 import torch
 
-from torchcst import GridPattern, LinePattern, StripChart
+from torchcst._backends.torch.charts import construction as _construction
 
 
 def public_class():
@@ -18,14 +18,14 @@ def chart(
     sizes=(64, 4, 4), origin=(0.0, 0.0, 0.0), *, dtype=torch.float64, device="cpu"
 ):
     n, h, j = sizes
-    return StripChart(
+    return _construction.strip(
         shape=(n, h * j),
         tile_shape=(n, h * j),
         axis=0,
         tile_pitch=float(n),
         axes=(
-            LinePattern(n, low=origin[0], high=origin[0] + n - 1),
-            GridPattern(
+            _construction.line_pattern(n, low=origin[0], high=origin[0] + n - 1),
+            _construction.grid_pattern(
                 (h, j),
                 low=origin[1:],
                 high=(origin[1] + (h - 1) * 0.5, origin[2] + (j - 1) * 0.5),

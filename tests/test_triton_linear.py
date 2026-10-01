@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from torchcst import BandwidthBounds, BiweightSpec, CSTOptimizer, TriweightSpec, presets
+from torchcst._backends.torch.charts import construction as _construction
+from torchcst._backends.torch.charts import execution as _charts
+from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.kernels.execution import KernelOptions
 from torchcst.kernels.state import ProfileState
@@ -19,7 +22,7 @@ from kernel_cases import (
     wendland_state,
 )
 
-from torchcst import CSTLinear, GridPattern, LinePattern, StripChart, TorusGeometry
+from torchcst import CSTLinear
 from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import (
     forward as triton_forward,
 )
@@ -48,16 +51,18 @@ def _model(
     backend="materialized",
 ):
     stations = math.ceil(rows / station_rows)
-    chart = StripChart(
+    chart = _construction.strip(
         shape=(rows, 21),
         tile_shape=(station_rows, 21),
         axes=(
-            LinePattern(rows, spacing=min(1.75, 7 / max(station_rows - 1, 1))),
-            GridPattern(cross_shape, spacing=0.2),
+            _construction.line_pattern(
+                rows, spacing=min(1.75, 7 / max(station_rows - 1, 1))
+            ),
+            _construction.grid_pattern(cross_shape, spacing=0.2),
         ),
         axis=0,
         tile_pitch=10.0,
-        geometry=TorusGeometry(
+        geometry=_construction.torus(
             1 + len(cross_shape),
             major_radius=max(stations, 2) * 10 / (2 * math.pi),
             minor_radius=1.0,
@@ -94,7 +99,7 @@ def test_geometry_factors_reproduce_chart_sites():
         ),
         dim=-1,
     ).reshape(-1, chart.embedding_dim)
-    expected = chart.positions(torch.arange(chart.features))
+    expected = _charts.positions(chart, torch.arange(chart.features))
     torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
 
 
@@ -139,8 +144,8 @@ def test_triton_matches_dense_forward_and_gradients(
         dense.atoms.p[:, 1].uniform_(1.0, 4.0)
         dense.atoms.p[1, 0] = 1.4
         point = dense.atoms.p.new_tensor([[37.5, 0.0, 0.0]])
-        center = dense.chart.geometry.lift_chart_coordinates(point)
-        dense.atoms.p[0, 2:] = dense.chart.geometry.encode_centers(center)[0]
+        center = _geometry.lift_chart_coordinates(dense.chart.geometry, point)
+        dense.atoms.p[0, 2:] = _geometry.encode_centers(dense.chart.geometry, center)[0]
     fused.load_state_dict(dense.state_dict())
     x = torch.randn(21, 33, device="cuda").T.requires_grad_()
     x_fused = x.detach().clone().requires_grad_()

@@ -7,10 +7,8 @@ import math
 import torch
 from torch import Tensor
 
-from torchcst.geometry.geometry import (
-    TorusGeometry,
-    _validate_atoms,
-)
+from . import base
+from .base import _validate_atoms, _validate_center_structure, _validate_structure
 
 
 def circumference(self) -> float:
@@ -50,11 +48,11 @@ def lift_chart_coordinates(self, coordinates: Tensor) -> Tensor:
     minor = self.minor_radius.to(coordinates)
     section = torch.cat((minor.expand(cross.shape[0], 1), cross), dim=-1)
     section = section / torch.linalg.vector_norm(section, dim=-1, keepdim=True)
-    return self._embed(axis / self.major_radius.to(coordinates), section)
+    return _embed(self, axis / self.major_radius.to(coordinates), section)
 
 
 def validate_points(self, points: Tensor, *, name: str = "points") -> None:
-    super(TorusGeometry, self).validate_points(points, name=name)
+    base.validate_points(self, points, name=name)
     radial = torch.linalg.vector_norm(points[..., :2], dim=-1)
     tube = torch.cat(
         ((radial - self.major_radius.to(points)).unsqueeze(-1), points[..., 2:]),
@@ -74,9 +72,9 @@ def validate_points(self, points: Tensor, *, name: str = "points") -> None:
 
 
 def validate_centers(self, centers: Tensor, *, name: str = "centers") -> None:
-    self._validate_center_structure(centers, name=name)
+    _validate_center_structure(self, centers, name=name)
     if self.representation == "ambient":
-        self.validate_points(centers, name=name)
+        validate_points(self, centers, name=name)
         return
     if not bool(torch.isfinite(centers).all()):
         raise ValueError(f"{name} must be finite")
@@ -84,7 +82,7 @@ def validate_centers(self, centers: Tensor, *, name: str = "centers") -> None:
     tolerance = max(1.0, arc_limit) * 1e-5
     if not bool(torch.all(centers[..., 0].abs() <= arc_limit + tolerance)):
         raise ValueError(f"{name} circle coordinate must lie within one turn")
-    section_limit = self.max_section_parameter_radius.to(centers)
+    section_limit = max_section_parameter_radius(self).to(centers)
     if not bool(
         torch.all(
             torch.linalg.vector_norm(centers[..., 1:], dim=-1)
@@ -106,7 +104,7 @@ def _decode_intrinsic(self, centers: Tensor) -> Tensor:
         ),
         dim=-1,
     )
-    return self._embed(centers[..., 0] / self.major_radius.to(centers), q)
+    return _embed(self, centers[..., 0] / self.major_radius.to(centers), q)
 
 
 def _encode_intrinsic(self, points: Tensor) -> Tensor:
@@ -124,7 +122,7 @@ def _encode_intrinsic(self, points: Tensor) -> Tensor:
     )
     section = radius * angle * direction
     section_norm = torch.linalg.vector_norm(section, dim=-1, keepdim=True)
-    limit = self.max_section_parameter_radius.to(points)
+    limit = max_section_parameter_radius(self).to(points)
     section = section * (
         limit / section_norm.clamp_min(torch.finfo(points.dtype).tiny)
     ).clamp_max(1)
@@ -135,23 +133,23 @@ def _encode_intrinsic(self, points: Tensor) -> Tensor:
 def encode_centers(self, points: Tensor) -> Tensor:
     """Encode ambient torus points in the selected center representation."""
 
-    self.validate_points(points)
+    validate_points(self, points)
     if self.representation == "intrinsic":
-        return self._encode_intrinsic(points)
-    return self._project_surface(points, points)
+        return _encode_intrinsic(self, points)
+    return _project_surface(self, points, points)
 
 
 def decode_centers(self, centers: Tensor) -> Tensor:
-    self._validate_center_structure(centers, name="centers")
+    _validate_center_structure(self, centers, name="centers")
     if self.representation == "intrinsic":
-        return self._decode_intrinsic(centers)
-    return self._project_surface(centers, centers)
+        return _decode_intrinsic(self, centers)
+    return _project_surface(self, centers, centers)
 
 
 def squared_distance(self, sites: Tensor, centers: Tensor) -> Tensor:
-    self._validate_structure(sites, name="sites")
-    self._validate_center_structure(centers, name="centers")
-    decoded = self.decode_centers(centers)
+    _validate_structure(self, sites, name="sites")
+    _validate_center_structure(self, centers, name="centers")
+    decoded = decode_centers(self, centers)
     return (sites[:, None, :] - decoded[None, :, :]).square().sum(dim=-1)
 
 
@@ -164,9 +162,9 @@ def _normal(self, points: Tensor) -> Tensor:
 
 
 def center_offsets(self, sites: Tensor, centers: Tensor) -> Tensor:
-    self._validate_structure(sites, name="sites")
-    self._validate_center_structure(centers, name="centers")
-    decoded = self.decode_centers(centers)
+    _validate_structure(self, sites, name="sites")
+    _validate_center_structure(self, centers, name="centers")
+    decoded = decode_centers(self, centers)
     offsets = sites[:, None, :] - decoded[None, :, :]
     if self.representation == "intrinsic":
         radius = self.minor_radius.to(centers)
@@ -202,12 +200,12 @@ def center_offsets(self, sites: Tensor, centers: Tensor) -> Tensor:
             + curvature[None, :, :] * section[None, :, :] * radial_inner
         )
         return torch.cat((circle_offset[..., None], section_gradient), dim=-1)
-    normal = self._normal(decoded)[None, :, :]
+    normal = _normal(self, decoded)[None, :, :]
     return offsets - (offsets * normal).sum(dim=-1, keepdim=True) * normal
 
 
 def initialize_centers(self, sites: Tensor, atoms: int, *, mode: str) -> Tensor:
-    self.validate_points(sites, name="sites")
+    validate_points(self, sites, name="sites")
     _validate_atoms(atoms)
     if mode == "balanced":
         indices = (
@@ -216,7 +214,7 @@ def initialize_centers(self, sites: Tensor, atoms: int, *, mode: str) -> Tensor:
             .long()
         )
         selected = sites.index_select(0, indices)
-        return self.encode_centers(selected)
+        return encode_centers(self, selected)
     if mode != "uniform":
         raise ValueError("mode must be 'balanced' or 'uniform'")
     theta = 2 * torch.pi * torch.rand(atoms, device=sites.device, dtype=sites.dtype)
@@ -224,18 +222,18 @@ def initialize_centers(self, sites: Tensor, atoms: int, *, mode: str) -> Tensor:
         atoms, self.intrinsic_dim, device=sites.device, dtype=sites.dtype
     )
     section = section / torch.linalg.vector_norm(section, dim=-1, keepdim=True)
-    sampled = self._embed(theta, section)
-    return self.encode_centers(sampled)
+    sampled = _embed(self, theta, section)
+    return encode_centers(self, sampled)
 
 
 def project_tangent(self, points: Tensor, vectors: Tensor) -> Tensor:
     if self.representation == "intrinsic":
-        self._validate_center_structure(points, name="points")
-        self._validate_center_structure(vectors, name="vectors")
+        _validate_center_structure(self, points, name="points")
+        _validate_center_structure(self, vectors, name="vectors")
         return vectors
-    self._validate_structure(points, name="points")
-    self._validate_structure(vectors, name="vectors")
-    normal = self._normal(points)
+    _validate_structure(self, points, name="points")
+    _validate_structure(self, vectors, name="vectors")
+    normal = _normal(self, points)
     return vectors - (vectors * normal).sum(dim=-1, keepdim=True) * normal
 
 
@@ -280,8 +278,8 @@ def _project_surface(self, points: Tensor, fallback: Tensor) -> Tensor:
 
 
 def retract(self, points: Tensor, displacement: Tensor) -> Tensor:
-    self.validate_centers(points, name="points")
-    self._validate_center_structure(displacement, name="displacement")
+    validate_centers(self, points, name="points")
+    _validate_center_structure(self, displacement, name="displacement")
     if points.shape != displacement.shape:
         raise ValueError("points and displacement must have matching shapes")
     if not bool(torch.isfinite(displacement).all()):
@@ -297,13 +295,13 @@ def retract(self, points: Tensor, displacement: Tensor) -> Tensor:
         )
         section = points[..., 1:] + displacement[..., 1:]
         length = torch.linalg.vector_norm(section, dim=-1, keepdim=True)
-        limit = self.max_section_parameter_radius.to(section)
+        limit = max_section_parameter_radius(self).to(section)
         section = section * (
             limit / length.clamp_min(torch.finfo(section.dtype).tiny)
         ).clamp_max(1)
         return torch.cat((arc, section), dim=-1)
-    tangent = self.project_tangent(points, displacement)
-    updated = self._project_surface(points + tangent, points)
+    tangent = project_tangent(self, points, displacement)
+    updated = _project_surface(self, points + tangent, points)
     if self.max_arc_step is None:
         return updated
     old_circle = points[..., :2]
@@ -325,20 +323,20 @@ def retract(self, points: Tensor, displacement: Tensor) -> Tensor:
 
 
 def transport(self, old: Tensor, new: Tensor, vectors: Tensor) -> Tensor:
-    self.validate_centers(old, name="old")
-    self.validate_centers(new, name="new")
-    self._validate_center_structure(vectors, name="vectors")
+    validate_centers(self, old, name="old")
+    validate_centers(self, new, name="new")
+    _validate_center_structure(self, vectors, name="vectors")
     if old.shape != new.shape or old.shape != vectors.shape:
         raise ValueError("old, new, and vectors must have matching shapes")
     if self.representation == "intrinsic":
         return vectors
-    return self.project_tangent(new, vectors)
+    return project_tangent(self, new, vectors)
 
 
 def axis_separation_lower_bound(self, gap: float) -> float:
     """Lower bound on chord distance for a wrapped major-circle gap."""
 
-    if not 0 <= gap <= self.circumference / 2:
+    if not 0 <= gap <= circumference(self) / 2:
         raise ValueError("gap must lie in the first half of the major circle")
     return (
         2
