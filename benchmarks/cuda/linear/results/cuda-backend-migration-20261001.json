@@ -1,0 +1,358 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "branch": "codex/cuda-dispatch-registry-v1",
+  "source_commit": "3294bac9b8d325fd0a7e365879c954cfb6ae16c3",
+  "job_id": "l4job-f6d7928b69a443bc8f2c339925cb8092",
+  "source_archive_sha256": "b2fa7d3e80c6d92e23c6902a3e915802679e8abbccd24d086f51a85cd9292086",
+  "result_archive_sha256": "1c4dc0fbabc1e7467970af48cb5033373bdf768add791a30c6557ca5c68d2766",
+  "wheel_sha256": "9b2d2fd6e390866323f37849abcfcff13582dcc98206354542a43a1e64e2a767",
+  "installed_modules_verified": 140,
+  "gpu": "NVIDIA L4, GPU-9da7ca9a-1df0-6e23-3e10-ec4481f4d61a, 580.82.07, 23034 MiB",
+  "versions": {
+    "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "triton": "3.6.0"
+  },
+  "tests": {
+    "passed": 743,
+    "skipped": 2,
+    "failures": 0,
+    "errors": 0,
+    "duration_seconds": 490.982
+  },
+  "baseline_job_id": "l4job-f5b1cab9acb942a588a0872996937f59",
+  "correctness": [
+    {
+      "profile": "broad",
+      "plan": "normalized_window",
+      "scope": "small mixed fixture; independent FP64 all-atom oracle",
+      "errors": {
+        "y": {
+          "max": 2.880039388919453e-08,
+          "rel_l2": 9.709893765124409e-08
+        },
+        "dx": {
+          "max": 3.458474262529876e-08,
+          "rel_l2": 1.1321243008422405e-07
+        },
+        "dp": {
+          "max": 0.00019776835215212785,
+          "rel_l2": 6.91977722026961e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        }
+      }
+    },
+    {
+      "profile": "broad",
+      "plan": "normalized_full",
+      "scope": "small mixed fixture; independent FP64 all-atom oracle",
+      "errors": {
+        "y": {
+          "max": 2.880039388919453e-08,
+          "rel_l2": 9.709893765124409e-08
+        },
+        "dx": {
+          "max": 3.458474262529876e-08,
+          "rel_l2": 1.1321243008422405e-07
+        },
+        "dp": {
+          "max": 0.00019776835215212785,
+          "rel_l2": 6.91978033561649e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        }
+      }
+    },
+    {
+      "profile": "sharp",
+      "plan": "normalized_window",
+      "scope": "small mixed fixture; independent FP64 all-atom oracle",
+      "errors": {
+        "y": {
+          "max": 2.880039388919453e-08,
+          "rel_l2": 9.709893765124409e-08
+        },
+        "dx": {
+          "max": 3.458474262529876e-08,
+          "rel_l2": 1.1321243008422405e-07
+        },
+        "dp": {
+          "max": 0.00019776835215212785,
+          "rel_l2": 6.91977722026961e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        }
+      }
+    },
+    {
+      "profile": "sharp",
+      "plan": "normalized_full",
+      "scope": "small mixed fixture; independent FP64 all-atom oracle",
+      "errors": {
+        "y": {
+          "max": 2.880039388919453e-08,
+          "rel_l2": 9.709893765124409e-08
+        },
+        "dx": {
+          "max": 3.458474262529876e-08,
+          "rel_l2": 1.1321243008422405e-07
+        },
+        "dp": {
+          "max": 0.00019776835215212785,
+          "rel_l2": 6.91978033561649e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        }
+      }
+    }
+  ],
+  "graph_correctness": {
+    "gpu": "NVIDIA L4",
+    "torch": "2.11.0+cu128",
+    "tf32": false,
+    "torchcst_file": "/content/l4job-f6d7928b69a443bc8f2c339925cb8092/results/artifacts/installed/torchcst/__init__.py",
+    "small_independent": {
+      "full": {
+        "y": {
+          "max": 2.880039388919453e-08,
+          "rel_l2": 9.709893765124409e-08
+        },
+        "dx": {
+          "max": 3.458474262529876e-08,
+          "rel_l2": 1.1321243008422405e-07
+        },
+        "dp": {
+          "max": 0.00019776835215212785,
+          "rel_l2": 6.91978033561649e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        },
+        "updated": {
+          "y": {
+            "max": 3.1255673701990894e-08,
+            "rel_l2": 8.676222872948759e-08
+          },
+          "dx": {
+            "max": 2.9025834014095864e-08,
+            "rel_l2": 1.4430089078163373e-07
+          },
+          "dp": {
+            "max": 4.385057131850445e-07,
+            "rel_l2": 1.7861095843867992e-07
+          },
+          "w": {
+            "max": 7.546062184837776e-09,
+            "rel_l2": 7.833067243520687e-08
+          }
+        }
+      },
+      "window": {
+        "y": {
+          "max": 2.880039388919453e-08,
+          "rel_l2": 9.709893765124409e-08
+        },
+        "dx": {
+          "max": 3.458474262529876e-08,
+          "rel_l2": 1.1321243008422405e-07
+        },
+        "dp": {
+          "max": 0.00019776835215212785,
+          "rel_l2": 6.91977722026961e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        },
+        "updated": {
+          "y": {
+            "max": 3.1255673701990894e-08,
+            "rel_l2": 8.676222872948759e-08
+          },
+          "dx": {
+            "max": 2.9025834014095864e-08,
+            "rel_l2": 1.4430089078163373e-07
+          },
+          "dp": {
+            "max": 1.4048248930809137e-07,
+            "rel_l2": 8.549351085710648e-08
+          },
+          "w": {
+            "max": 7.546062184837776e-09,
+            "rel_l2": 7.833067243520687e-08
+          }
+        }
+      }
+    }
+  },
+  "measurements": [
+    {
+      "reference": "normalized_window",
+      "rows": 128,
+      "atoms": 52429,
+      "profile": "broad",
+      "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "allocated_before_capture_bytes": 45241856,
+      "peak_allocated_capture_replay_bytes": 48404480,
+      "peak_reserved_capture_replay_bytes": 90177536,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+      "eager_median_ms": 2.9370930000141016,
+      "graph_median_ms": 1.5071889999944688,
+      "previous_eager_median_ms": 2.931918000058431,
+      "previous_graph_median_ms": 1.5156819999901927,
+      "previous_peak_allocated_capture_replay_bytes": 48404480,
+      "previous_peak_reserved_capture_replay_bytes": 90177536
+    },
+    {
+      "reference": "normalized_full",
+      "rows": 128,
+      "atoms": 52429,
+      "profile": "broad",
+      "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "allocated_before_capture_bytes": 44978688,
+      "peak_allocated_capture_replay_bytes": 54366208,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+      "eager_median_ms": 1.5872069999431915,
+      "graph_median_ms": 0.6154099999093887,
+      "previous_eager_median_ms": 1.5634740000223246,
+      "previous_graph_median_ms": 0.6316010001228278,
+      "previous_peak_allocated_capture_replay_bytes": 54366208,
+      "previous_peak_reserved_capture_replay_bytes": 111149056
+    },
+    {
+      "reference": "dense_linear",
+      "rows": 128,
+      "atoms": 52429,
+      "profile": "broad",
+      "initial_p_sha256": null,
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "allocated_before_capture_bytes": 52429312,
+      "peak_allocated_capture_replay_bytes": 52955648,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+      "eager_median_ms": 0.7357650000585636,
+      "graph_median_ms": 0.12531000004400994,
+      "previous_eager_median_ms": 0.69833100019423,
+      "previous_graph_median_ms": 0.12693400003627175,
+      "previous_peak_allocated_capture_replay_bytes": 52955648,
+      "previous_peak_reserved_capture_replay_bytes": 111149056
+    },
+    {
+      "reference": "normalized_window",
+      "rows": 128,
+      "atoms": 52429,
+      "profile": "sharp",
+      "initial_p_sha256": "5ad7662aa741c0544d1c13f0af7e8886ccffd8f459dce67de1b7e1dca5e535fb",
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "allocated_before_capture_bytes": 45241856,
+      "peak_allocated_capture_replay_bytes": 48404480,
+      "peak_reserved_capture_replay_bytes": 90177536,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+      "eager_median_ms": 2.952689999915492,
+      "graph_median_ms": 0.30427900003360264,
+      "previous_eager_median_ms": 2.774318000092535,
+      "previous_graph_median_ms": 0.30519699998876604,
+      "previous_peak_allocated_capture_replay_bytes": 48404480,
+      "previous_peak_reserved_capture_replay_bytes": 90177536
+    },
+    {
+      "reference": "normalized_full",
+      "rows": 128,
+      "atoms": 52429,
+      "profile": "sharp",
+      "initial_p_sha256": "5ad7662aa741c0544d1c13f0af7e8886ccffd8f459dce67de1b7e1dca5e535fb",
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "allocated_before_capture_bytes": 44978688,
+      "peak_allocated_capture_replay_bytes": 54366208,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+      "eager_median_ms": 1.5746619999390532,
+      "graph_median_ms": 0.5364749999898777,
+      "previous_eager_median_ms": 1.5813810000508965,
+      "previous_graph_median_ms": 0.5451419999644713,
+      "previous_peak_allocated_capture_replay_bytes": 54366208,
+      "previous_peak_reserved_capture_replay_bytes": 111149056
+    },
+    {
+      "reference": "dense_linear",
+      "rows": 128,
+      "atoms": 52429,
+      "profile": "sharp",
+      "initial_p_sha256": null,
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "allocated_before_capture_bytes": 52429312,
+      "peak_allocated_capture_replay_bytes": 52955648,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+      "eager_median_ms": 0.7210070000382984,
+      "graph_median_ms": 0.12410399995133048,
+      "previous_eager_median_ms": 0.7136330000321323,
+      "previous_graph_median_ms": 0.12626900002032926,
+      "previous_peak_allocated_capture_replay_bytes": 52955648,
+      "previous_peak_reserved_capture_replay_bytes": 111149056
+    }
+  ],
+  "limits": [
+    "no performance promotion from one run",
+    "training performance uses plain fused capturable AdamW, not CSTOptimizer",
+    "full-shape independent all-atom oracle not performed; mixed fixture and existing GPU suite cover correctness",
+    "total process GPU usage unmeasured; allocated and reserved recorded separately"
+  ]
+}
