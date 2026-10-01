@@ -11,7 +11,7 @@ AtomGrad は削除した。旧実験の再現には変更前の Git revision `33
 | Parameter | model |
 | learning rate、weight decay、optimizer state | base optimizer |
 | gradient | backend の通常の autograd |
-| 勾配射影・更新規則・vector transport | Kernel 経由の Parameterization / Geometry。計算本体は backend |
+| 勾配射影・更新規則・vector transport | KernelSpec が定める Parameterization / Geometry。計算本体は backend |
 | 更新順序・CST site 発見 | CSTOptimizer |
 | scheduler | PyTorch scheduler を wrapper に接続 |
 
@@ -60,7 +60,7 @@ optimizer = CSTOptimizer(
 )
 ```
 
-指定した parameter-shaped state を Kernel 経由で運ぶ。それ以外の state を
+指定した parameter-shaped state を 共通 KernelState を使う backend で運ぶ。それ以外の state を
 保持することが正しいかは custom optimizer 側の契約である。subclass を名前
 だけで既知の state semantics と推定しない。ASGD の平均パラメータや LBFGS の
 複数 proposal / closure 再評価は、既定経路では扱わない。
@@ -73,7 +73,7 @@ wrapper は `torch.optim.Optimizer` であり、`param_groups` / `state` は bas
 委譲する。base を直接 step / load して wrapper と併用しない。
 
 checkpoint は標準の state / param_groups に `cst` manifest を追加する。
-optimizer type、vector keys、parameter 名・shape と CST policy 所有を検証して
+optimizer type、vector keys、parameter 名・shape、KernelSpec と CST policy 所有を検証して
 復元する。Kernel / Geometry の設定は model checkpoint で復元する。load 後も
 base と wrapper の state / groups は共有する。旧 optimizer や raw base の
 checkpoint は受け入れない。model を目的の device へ移してから wrapper を作り、

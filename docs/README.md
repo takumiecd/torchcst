@@ -11,6 +11,7 @@ Implementation notes live beside the relevant code:
 
 - [Declaration and execution layout](../src/torchcst/_backends/README.md)
 - [Kernel and Profile declarations](../src/torchcst/kernels/README.md)
+- [Kernel cleanup and validation](kernel-cleanup.ja.md)
 - [Geometry and Chart declarations](../src/torchcst/geometry/README.md)
 
 - [CUDA backend migration](cuda-backend-migration.ja.md)

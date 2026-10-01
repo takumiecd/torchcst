@@ -156,22 +156,20 @@ strip.validate_support(10)
 assert strip.center_parameter_dim == 3  # site coordinates have width 4
 ```
 
-### Profile
+### Profile の宣言と実行
 
-- Chartが返す距離へ適用するscalar shape
-- Gaussian/Triweight/Wendlandなどの評価
-- 離散L2正規化
-- center sliceの初期化、gradient projection、retraction、transportを
-  Chart Geometryへ委譲
+ProfileSpec は距離に対する関数の形、ProfileBinding は幅と正規化を宣言する。
+評価・解析微分・center の初期化・勾配射影・retraction・transport は Torch / CUDA
+backend が計算する。ProfileState は必要な固定幅 Tensor と checkpoint を所有する。
 
-### Kernel
+### Kernel の宣言と実行
 
-- 完全なatom row `p`のレイアウト
-- input/output Profileの結合
-- amplitude/bandwidthなどKernel固有座標
-- stored parameter widthとintrinsic degrees of freedomの集計
+KernelSpec は radial / separable / amplitude の合成、parameterization、初期化・更新
+方針を宣言する。共通 KernelState が固定 Tensor を管理し、atom 合成や stored
+parameter width / intrinsic degrees of freedom の集計は backend が担当する。
+旧 Kernel / Profile クラスや互換の計算メソッドはない。
 
-単一チャートの`DirectAmpWidth`は`[w, q, center...]`という一行の
+単一チャートの`presets.direct_activity`は`[w, q, center...]`という一行の
 パラメータから直接重みへの寄与を計算する。入力・出力のfactorは使わない。
 `w`は符号付き振幅、`q`は振幅更新から進む帯域activityで、Profileは
 Triweightなどから選ぶ。単一チャートでは正規化しないProfileの
@@ -188,9 +186,9 @@ Polar coordinates × input Chart geometry × output Chart geometry
 
 ### Optimizer
 
-- Kernelへparameter gradientの接空間射影を依頼
+- KernelSpec に対応する backend に gradient の接空間射影を依頼
 - optimizer proposalを作成
-- Kernelへretractionを依頼
+- 共通 KernelState を使って backend が retraction を計算
 - vector first momentを新しい接空間へtransport
 
 optimizerはatom rowの列を直接解釈しない。

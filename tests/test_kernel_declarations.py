@@ -343,3 +343,64 @@ def test_output_profile_has_its_own_declared_shape(preset):
         (expected_input.sum() + expected_output.sum()), p
     )[0]
     torch.testing.assert_close(actual_grad, expected_grad)
+
+
+@pytest.mark.parametrize(
+    "device",
+    [
+        "cpu",
+        pytest.param(
+            "cuda",
+            marks=pytest.mark.skipif(
+                not torch.cuda.is_available(), reason="CUDA required"
+            ),
+        ),
+    ],
+)
+def test_log_width_clamps_before_exp_and_matches_independent_radial_oracle(device):
+    from torchcst import LinePattern, LogWidthSpec, ProductChart
+    from torchcst.kernels.presets import NORMALIZED_RADIAL_TRIWEIGHT
+
+    spec = replace(
+        NORMALIZED_RADIAL_TRIWEIGHT,
+        parameterization=LogWidthSpec(sigma_min=0.2, sigma_max=1.0),
+    )
+    state = KernelState(spec).to(device=device, dtype=torch.float64)
+    chart = ProductChart(
+        shape=(3, 4), axes=(LinePattern(3, spacing=0.2), LinePattern(4, spacing=0.2))
+    ).to(device=device, dtype=torch.float64)
+    p = torch.tensor(
+        [[-1.0, -1000.0, 0.2, 0.2], [0.5, 0.0, 0.1, 0.3], [1.0, 1000.0, 0.2, 0.4]],
+        device=device,
+        dtype=torch.float64,
+        requires_grad=True,
+    )
+    oracle_p = p.detach().clone().requires_grad_()
+    sites = chart.positions(torch.arange(chart.features, device=device))
+    precision = (
+        -2
+        * oracle_p[:, 1].clamp(
+            state.scalar("sigma_min").log(), state.scalar("sigma_max").log()
+        )
+    ).exp()
+    squared = (sites[:, None, :] - oracle_p[None, :, 2:]).square().sum(-1)
+    raw = (1 - squared * precision).clamp_min(0).pow(3)
+    expected = (raw / raw.norm(dim=0).clamp_min(1e-6) * oracle_p[:, 0]).T.reshape(
+        3, 3, 4
+    )
+    actual = kernel_execution.materialize_atoms(state, chart, p)
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+    actual.square().sum().backward()
+    expected.square().sum().backward()
+    assert torch.isfinite(p.grad).all()
+    assert torch.equal(p.grad[[0, 2], 1], torch.zeros(2, device=device, dtype=p.dtype))
+    torch.testing.assert_close(p.grad, oracle_p.grad, rtol=1e-11, atol=1e-11)
+    with pytest.raises(ValueError, match="provided_atoms"):
+        kernel_execution.initialize(state, chart, 3)
+    displacement = torch.full_like(p, 0.01)
+    torch.testing.assert_close(
+        kernel_execution.apply_parameter_update(
+            state, chart, p, displacement, step_size=0.1
+        ),
+        p + displacement,
+    )

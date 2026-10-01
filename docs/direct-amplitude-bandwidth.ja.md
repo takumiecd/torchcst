@@ -1,7 +1,7 @@
-# DirectAmpWidth の座標と更新
+# Direct / Polar activity の座標と更新
 
-DirectAmpWidth は signed amplitude と活動状態を直接保存する。
-PolarAmpWidth は角度と二乗半径で表す。どちらも更新規則の計算は backend に置き、
+`DirectAmpWidthSpec` は signed amplitude と活動状態を直接保存する座標を宣言する。
+`PolarAmpWidthSpec` は角度と二乗半径で表す座標を宣言する。どちらも更新規則の計算は backend に置き、
 CSTOptimizer は base optimizer の proposal をその規則へ渡す。
 
 ```text
@@ -30,6 +30,10 @@ time-energy の除算、dormant expansion は Direct の規則には含まれな
 この処理は AdamW 専用ではなく、SGD 等の proposal にも適用する。
 
 ## 使用方法
+
+KernelSpec は `presets.direct_activity(...)` または `presets.polar_activity(...)` で
+作り、Layer に渡す。関数の形は ProfileSpec、幅の範囲は BandwidthBounds で指定する。
+[Kernel の例](../src/torchcst/kernels/README.md)を参照。
 
 ```python
 import torch

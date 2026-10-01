@@ -56,9 +56,7 @@ def amplitude_state(kernel):
     return KernelState(presets.amplitude(kernel.declaration()))
 
 
-def amp_width_state(*, sigma_min=None, sigma_max, profile=None, **settings):
-    if sigma_min is None:
-        sigma_min = float(profile.sigma)
+def amp_width_state(*, sigma_min, sigma_max, profile=None, **settings):
     return KernelState(
         presets.amplitude_width(
             sigma_min=sigma_min,

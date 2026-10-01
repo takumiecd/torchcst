@@ -42,6 +42,10 @@ profile 宣言はそれぞれの形で評価する。固定 radial と radial am
 検証は新しい宣言と backend の関数へ移した。profile と幅の独立性、未知の型・版・
 更新方針の拒否、入出力別の shape と勾配、radial amplitude を追加確認した。
 
+log-width の追加検証では、極端な入力で先に log の範囲を制限してから指数を取る。
+独立した radial oracle との値・全 atom 勾配、有限性、境界外の幅勾配ゼロ、
+provided-atoms 初期化の拒否、Euclidean 更新を確認した。
+
 ## GPU の確認
 
 共有 L4 キューで installed-wheel suite と既存の normalized Strip の独立 oracle、
