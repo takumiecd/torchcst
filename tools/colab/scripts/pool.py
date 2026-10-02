@@ -32,7 +32,8 @@ TERMINAL = {"succeeded", "failed", "cancelled"}
 
 # Absolute invocation from a checkout or the legacy installed skill works alike.
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from tools.colab.profiles import ACCELERATORS  # noqa: E402
+from tools.colab.profiles import ACCELERATORS
+from tools.colab.redaction import private_values, redact
 
 
 def atomic_json(path, data):
@@ -236,6 +237,13 @@ class Pool:
         atomic_json(self.slotdir(slot) / "state.json", data)
 
     def call(self, slot, *args, timeout=180, log=None):
+        credential_paths = [
+            Path.home() / ".config/colab-cli/token.json",
+            self.slotdir(slot) / "sessions.json",
+        ]
+        # Stop clears the session cache. Capture both sides of a CLI call so
+        # diagnostics never retain a token that was erased during cleanup.
+        values = private_values(credential_paths) if log else set()
         command = [
             self.cli,
             "--auth",
@@ -268,11 +276,13 @@ class Pool:
             output, _ = process.communicate()
             if log:
                 with Path(log).open("a") as handle:
-                    handle.write(output)
+                    handle.write(
+                        redact(output, values | private_values(credential_paths))
+                    )
             raise
         if log:
             with Path(log).open("a") as handle:
-                handle.write(output)
+                handle.write(redact(output, values | private_values(credential_paths)))
         if process.returncode:
             raise RuntimeError(
                 f"colab {args[0]} failed ({process.returncode}); inspect {log}"

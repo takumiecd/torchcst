@@ -1,0 +1,217 @@
+{
+  "workflow": {
+    "id": 37000213462,
+    "url": "https://github.com/takumiecd/torchcst/actions/runs/37000213462",
+    "source_commit": "49adf035ae002cbc4091e19f819ef026c4b96731",
+    "runner": "GitHub-hosted Ubuntu",
+    "status": "success",
+    "database_job": "skipped: feature-branch validation"
+  },
+  "request_id": "7637452b5e3dcb30fcd581cff4faa5a3a2c90c153426a3166b75df309bbf08f3",
+  "input_file": {
+    "path": "benchmarks/requests/colab-linear.json",
+    "sha256": "e96f387d0f166cd7fd05ed64f72d5c52f793ecbe49a27003fb423457e8235ef5"
+  },
+  "measurement": {
+    "artifact": "records/normalized-1024-broad.l4.r1.json",
+    "artifact_sha256": "853e145b744506b89f66361d051e09c43a4a676787c21e9ab4e912d940e5754e",
+    "key": "normalized-1024-broad.l4.r1",
+    "pool_job_id": "l4job-1b71cdc6682c4fc1a355ddd8416dc3c2",
+    "result_archive_sha256": "a5937b4977fec5ecdc358f9fad9b64e0b826f8f6db3a6424c34a29a99e85026c",
+    "source_archive_sha256": "29bad8f6ab15d92988c86fcc4311f71c0e3a61caf6ad40ca959dae94be58fd0a",
+    "status": "succeeded"
+  },
+  "hardware_runtime": {
+    "gpu": "NVIDIA L4",
+    "compute_capability": [
+      8,
+      9
+    ],
+    "sm_count": 58,
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "triton": "3.6.0",
+    "initialization": {
+      "method": "torch.cpu.v1",
+      "cpu_capability": "DEFAULT"
+    }
+  },
+  "records": [
+    {
+      "worker": "correctness",
+      "plan": "full",
+      "status": "PASS",
+      "scope": "small mixed fixture; independent FP64 all-atom oracle",
+      "errors": {
+        "y": {
+          "max": 5.1658164107459825e-08,
+          "rel_l2": 1.3073949306272647e-07
+        },
+        "dx": {
+          "max": 2.4738951467234704e-08,
+          "rel_l2": 1.1555435534357024e-07
+        },
+        "dp": {
+          "max": 0.00015581330426162054,
+          "rel_l2": 2.8256934483274252e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        }
+      }
+    },
+    {
+      "worker": "correctness",
+      "plan": "window512",
+      "status": "PASS",
+      "scope": "small mixed fixture; independent FP64 all-atom oracle",
+      "errors": {
+        "y": {
+          "max": 5.1658164107459825e-08,
+          "rel_l2": 1.3073949306272647e-07
+        },
+        "dx": {
+          "max": 2.4738951467234704e-08,
+          "rel_l2": 1.1555435534357024e-07
+        },
+        "dp": {
+          "max": 0.00015581330426162054,
+          "rel_l2": 2.8256863841494127e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        }
+      }
+    },
+    {
+      "worker": "measure",
+      "plan": "full",
+      "status": "PASS",
+      "eager": {
+        "median_ms": 1.6677529999924445,
+        "samples_ms": [
+          1.65120399992702,
+          1.8552880001152516,
+          1.7800900000111142,
+          1.700703999858888,
+          1.6677529999924445,
+          1.6572439999436028,
+          1.64175199984129
+        ]
+      },
+      "graph": {
+        "median_ms": 0.6345200001760531,
+        "samples_ms": [
+          0.6789510000544396,
+          0.6395549999069772,
+          0.6345200001760531,
+          0.6346109998958127,
+          0.6305370000063704,
+          0.6299530000433151,
+          0.6303650000063499
+        ]
+      },
+      "peak_allocated_capture_replay_bytes": 54366208,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+    },
+    {
+      "worker": "measure",
+      "plan": "window512",
+      "status": "PASS",
+      "eager": {
+        "median_ms": 2.8941240000222024,
+        "samples_ms": [
+          2.970039000047109,
+          2.9249100000470207,
+          2.908486000023913,
+          2.885500999809665,
+          2.8816770000048564,
+          2.8941240000222024,
+          2.871046999871396
+        ]
+      },
+      "graph": {
+        "median_ms": 1.5290890000869695,
+        "samples_ms": [
+          1.5735459999177692,
+          1.5348780000294937,
+          1.5290890000869695,
+          1.5322520000609074,
+          1.5257659999861062,
+          1.5257309999014979,
+          1.5280919999440812
+        ]
+      },
+      "peak_allocated_capture_replay_bytes": 48404480,
+      "peak_reserved_capture_replay_bytes": 90177536,
+      "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+    },
+    {
+      "worker": "dense",
+      "plan": null,
+      "status": "PASS",
+      "eager": {
+        "median_ms": 0.7100660000105563,
+        "samples_ms": [
+          0.7435380000515579,
+          0.7405400001516682,
+          0.7100660000105563,
+          0.6923019998339441,
+          0.7070419999308797,
+          0.7115779999367078,
+          0.6943390001197258
+        ]
+      },
+      "graph": {
+        "median_ms": 0.12757399986185192,
+        "samples_ms": [
+          0.1548970001294947,
+          0.130062999915026,
+          0.12715499997284496,
+          0.12774700007867068,
+          0.12757399986185192,
+          0.12639999999919382,
+          0.1271300000098563
+        ]
+      },
+      "peak_allocated_capture_replay_bytes": 52955648,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+    }
+  ],
+  "checks": {
+    "archive_hashes_verified": true,
+    "source_inventory_verified": true,
+    "owned_sessions_stopped": true,
+    "legacy_neon_import_byte_exact": true,
+    "legacy_neon_import_no_duplicates": true,
+    "cpu_tests_passed": 655,
+    "cpu_tests_skipped": 135
+  },
+  "negative_runs": [
+    {
+      "id": 36998784995,
+      "reason": "Colab CLI requires Python >=3.12; no GPU allocated"
+    },
+    {
+      "id": 36998925522,
+      "reason": "jupyter-kernel-client 1.0.2 removed KernelClient; owned GPU stopped"
+    },
+    {
+      "id": 36999441747,
+      "reason": "same dependency failure, sanitized diagnostics retrieved; owned GPU stopped"
+    }
+  ],
+  "certification": "not assessed",
+  "limits": [
+    "correctness oracle uses a small mixed fixture; full-shape performance is separately measured",
+    "other participant account not tested",
+    "T4/A100/H100/G4 presets validated as configurations only in this change"
+  ]
+}
