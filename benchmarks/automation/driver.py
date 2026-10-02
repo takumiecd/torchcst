@@ -59,6 +59,7 @@ def run(request, job_key):
             job_key,
         ],
         check=True,
+        env=dict(os.environ, ATEN_CPU_CAPABILITY="default"),
     )
 
 

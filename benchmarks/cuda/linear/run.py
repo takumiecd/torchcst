@@ -92,6 +92,10 @@ def _metadata(args, run):
         "tf32": False,
         "dtype": "float32",
         "seed": run.case.seed,
+        "initialization": {
+            "method": "torch.cpu.v1",
+            "cpu_capability": torch.backends.cpu.get_cpu_capability(),
+        },
         "case": asdict(run.case),
         "input_hashes": run.input_hashes,
         "snapshot_sha256": args.snapshot_sha256,
@@ -112,9 +116,15 @@ def correctness(args, run):
     p[2:4, 2] = 512.02978515625
     op = operator_spec(sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5))
     model = PlanLinear(p, op, run.entry(args.plan_id).plan)
-    gen = torch.Generator(device="cuda").manual_seed(run.case.seed)
-    x = torch.randn(2, 3, 16, device="cuda", generator=gen, requires_grad=True)
-    dy = torch.randn(2, 3, 1024, device="cuda", generator=gen)
+    gen = torch.Generator(device="cpu").manual_seed(run.case.seed)
+    x = (
+        torch.randn(2, 3, 16, device="cpu", dtype=torch.float32, generator=gen)
+        .cuda()
+        .requires_grad_()
+    )
+    dy = torch.randn(
+        2, 3, 1024, device="cpu", dtype=torch.float32, generator=gen
+    ).cuda()
     y = model(x)
     tp = model.p.detach().double().requires_grad_()
     tx = x.detach().double().requires_grad_()
@@ -156,15 +166,20 @@ def measure(args, run):
             p[:, axis + 2] = o + near * spacing + (u - near) * 0.04
     initial_p_hash = hashlib.sha256(p.numpy().tobytes()).hexdigest()
     torch.manual_seed(run.case.seed)
-    x = torch.randn(m, n, device="cuda", requires_grad=True)
-    target = torch.randn(m, n, device="cuda")
+    cpu_x, cpu_target = generate_inputs(run.case.seed, m, n)
+    x = cpu_x.cuda().requires_grad_()
+    target = cpu_target.cuda()
+    del cpu_x, cpu_target
     initial_inputs = {
         "x_sha256": hashlib.sha256(x.detach().cpu().numpy().tobytes()).hexdigest(),
         "target_sha256": hashlib.sha256(target.cpu().numpy().tobytes()).hexdigest(),
     }
     if args.worker == "dense":
         model = nn.Linear(n, n, bias=False, device="cuda")
-        model.weight.data.uniform_(-0.01, 0.01)
+        weight_gen = torch.Generator(device="cpu").manual_seed(run.case.seed)
+        weight = torch.empty(n, n).uniform_(-0.01, 0.01, generator=weight_gen)
+        model.weight.data.copy_(weight.cuda())
+        del weight
     else:
         model = PlanLinear(p.cuda(), op, run.entry(args.plan_id).plan)
     del p
@@ -229,6 +244,17 @@ def measure(args, run):
         "optimizer": asdict(case.optimizer),
         "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
     }
+
+
+def generate_inputs(seed, rows, features):
+    """Independent CPU generator; CUDA device scheduling cannot change the batch."""
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    return tuple(
+        torch.randn(
+            rows, features, device="cpu", dtype=torch.float32, generator=generator
+        )
+        for _ in range(2)
+    )
 
 
 def _write(path, value):

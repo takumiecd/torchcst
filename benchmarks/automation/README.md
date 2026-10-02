@@ -37,6 +37,10 @@ Colab では指定 GPU / runtime と全 source hash を確認し、別 GPU へ f
 現在の環境は Torch 2.11.0+cu128 / CUDA 12.8 / Triton 3.6.0。
 SM数やメモリ容量は機種の固定値を推測せず実機から記録し、GPU variant を分けて保存する。
 job-local venv を使い、system package を変更しない。
+入力・target・初期 parameter は CPU で生成して GPU にコピーする。
+公式 driver は子プロセスの CPU capability を `default` に固定し、
+GPU 世代やホスト CPU による乱数生成の違いを避ける。方式と実際の capability を
+結果の metadata / DB protocol に記録する。生成・転送は timing の外で行う。
 
 ## ローカルでの使用
 

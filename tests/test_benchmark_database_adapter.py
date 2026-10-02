@@ -4,7 +4,7 @@ from dataclasses import replace
 import pytest
 
 from benchmarks.database.adapters.linear import project
-from benchmarks.database.model import Metric
+from benchmarks.database.model import Metric, digest
 from tests.benchmark_database_fixtures import artifact
 
 
@@ -24,6 +24,26 @@ def test_projection_separates_oracle_time_and_memory_scopes():
     assert all(m.scope != "eager" for m in measure.metrics if m.unit == "bytes")
     assert p.records[-1].kind == "dense" and p.records[-1].plan_alias is None
     assert p.records[-1].metrics
+
+
+def test_initialization_protocol_distinguishes_legacy_gpu_and_cpu_batches():
+    data = artifact()
+    legacy = project(data)
+    assert legacy.protocol["initialization"] == {"method": "torch.cuda.legacy-v1"}
+    for record in data["records"]:
+        record["metadata"]["initialization"] = {
+            "method": "torch.cpu.v1",
+            "cpu_capability": "NO AVX",
+        }
+    cpu = project(data)
+    assert cpu.protocol["revision"] == 2
+    assert digest(cpu.protocol) != digest(legacy.protocol)
+    data["records"][0]["metadata"].pop("initialization")
+    with pytest.raises(ValueError, match="different initialization"):
+        project(data)
+    data["records"][0]["metadata"]["initialization"] = {"method": "unknown"}
+    with pytest.raises(ValueError, match="unknown initialization"):
+        project(data)
 
 
 def test_failed_run_and_correctness_only_are_retained_without_performance():

@@ -1,0 +1,1066 @@
+{
+  "actionlint": "PASS",
+  "certification": "not assessed",
+  "configuration": {
+    "path": "benchmarks/requests/colab-linear-l4-g4.json",
+    "sha256": "6783ff7f76b4afece5da1531d7675f60e164f80ac489d88c28b1affc1d7e5deb"
+  },
+  "cpu_tests": {
+    "passed": 652,
+    "skipped": 117
+  },
+  "github_actions": "workflow authored and linted; runner/secret not configured",
+  "initial_inputs_identical_across_gpus": false,
+  "jobs": [
+    {
+      "correctness": [
+        {
+          "errors": {
+            "dp": {
+              "max": 0.00019776835215212785,
+              "rel_l2": 6.91978033561649e-05
+            },
+            "dx": {
+              "max": 3.458474262529876e-08,
+              "rel_l2": 1.1321243008422405e-07
+            },
+            "fixture_atoms": 8,
+            "fixture_sizes": [
+              1024,
+              4,
+              4
+            ],
+            "scope": "small mixed fixture; independent FP64 all-atom oracle",
+            "status": "PASS",
+            "w": {
+              "max": 1.1697243749997366e-08,
+              "rel_l2": 9.668112165998563e-08
+            },
+            "y": {
+              "max": 2.880039388919453e-08,
+              "rel_l2": 9.709893765124409e-08
+            }
+          },
+          "plan": "full"
+        },
+        {
+          "errors": {
+            "dp": {
+              "max": 0.00019776835215212785,
+              "rel_l2": 6.91977722026961e-05
+            },
+            "dx": {
+              "max": 3.458474262529876e-08,
+              "rel_l2": 1.1321243008422405e-07
+            },
+            "fixture_atoms": 8,
+            "fixture_sizes": [
+              1024,
+              4,
+              4
+            ],
+            "scope": "small mixed fixture; independent FP64 all-atom oracle",
+            "status": "PASS",
+            "w": {
+              "max": 1.1697243749997366e-08,
+              "rel_l2": 9.668112165998563e-08
+            },
+            "y": {
+              "max": 2.880039388919453e-08,
+              "rel_l2": 9.709893765124409e-08
+            }
+          },
+          "plan": "window512"
+        }
+      ],
+      "environment": {
+        "compute_capability": [
+          8,
+          9
+        ],
+        "cuda": "12.8",
+        "gpu": "NVIDIA L4",
+        "sm_count": 58,
+        "torch": "2.11.0+cu128",
+        "total_device_bytes": 23659151360,
+        "triton": "3.6.0"
+      },
+      "execution_id": "5ef75ff4-3a0b-40ca-9666-1f914afaae48",
+      "job": {
+        "artifact": "records/normalized-1024-broad.l4.r1.json",
+        "artifact_sha256": "3a8182592a7deac6005f23c41a4485de1eda165ad1c72a4dc8a156630d1c2d34",
+        "key": "normalized-1024-broad.l4.r1",
+        "pool_job_id": "l4job-3bbfeb3d55be4cf4a94063674ec3664f",
+        "result_archive_sha256": "d75fb98ffce28d215e1bd0807670c7a2f328699f39dddc51746ab0e4e92a8995",
+        "source_archive_sha256": "d2f00f53d05a43f96b1a60d3737fe98cc0bdabd779beb787db929da37801babf",
+        "status": "succeeded"
+      },
+      "measurements": [
+        {
+          "plan": "full",
+          "result": {
+            "allocated_before_capture_bytes": 44978688,
+            "atoms": 52429,
+            "eager": {
+              "median_ms": 1.716421999844897,
+              "samples_ms": [
+                1.9670960000439663,
+                1.7663129997345095,
+                1.716421999844897,
+                1.643444999899657,
+                1.6490169996359327,
+                1.6464850000375009,
+                1.7570840000189492
+              ]
+            },
+            "graph": {
+              "median_ms": 0.6004589999974996,
+              "samples_ms": [
+                0.6440940001084527,
+                0.6020959999659681,
+                0.6017309997332632,
+                0.5983229998491879,
+                0.5989050000607676,
+                0.6004589999974996,
+                0.5989020000924938
+              ]
+            },
+            "initial_inputs": {
+              "target_sha256": "860a783986b1cdeb3da5b6fd8b976d836df0155cd06059b51664650288e24128",
+              "x_sha256": "f5da3c9680ff41fe0040529652e8cdd7191f138ce361f3e5494f36904f42b22c"
+            },
+            "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+            "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+            "operator": {
+              "kernel": {
+                "composition": "radial",
+                "initialization": {
+                  "id": "provided_atoms",
+                  "settings": []
+                },
+                "inner": null,
+                "parameterization": {
+                  "id": "signed_amplitude_log_width",
+                  "sigma_max": 3.25,
+                  "sigma_min": 0.03
+                },
+                "profiles": [
+                  {
+                    "normalization": {
+                      "domain": "operator_sites",
+                      "floor": 1e-06,
+                      "kind": "discrete_l2"
+                    },
+                    "parameterization": null,
+                    "profile": {
+                      "id": "triweight",
+                      "revision": 1
+                    }
+                  }
+                ],
+                "revision": 1,
+                "update": {
+                  "id": "euclidean",
+                  "settings": []
+                }
+              },
+              "layout": {
+                "chart": {
+                  "axes": [
+                    {
+                      "id": "line",
+                      "revision": 1,
+                      "shape": [
+                        1024
+                      ],
+                      "spacing": [
+                        1.0
+                      ],
+                      "start": [
+                        -511.5
+                      ]
+                    },
+                    {
+                      "id": "grid",
+                      "revision": 1,
+                      "shape": [
+                        32,
+                        32
+                      ],
+                      "spacing": [
+                        0.5,
+                        0.5
+                      ],
+                      "start": [
+                        -7.75,
+                        -7.75
+                      ]
+                    }
+                  ],
+                  "geometry": {
+                    "center_parameter_dim": 3,
+                    "embedding_dim": 3,
+                    "id": "euclidean",
+                    "intrinsic_dim": 3,
+                    "metric": "euclidean",
+                    "revision": 1
+                  },
+                  "kind": "product",
+                  "revision": 1,
+                  "shape": [
+                    1024,
+                    1024
+                  ]
+                }
+              },
+              "operation_id": "linear",
+              "revision": 1
+            },
+            "optimizer": {
+              "capturable": true,
+              "fused": true,
+              "lr": 0.0001,
+              "name": "AdamW",
+              "weight_decay": 0.01
+            },
+            "peak_allocated_capture_replay_bytes": 54366208,
+            "peak_reserved_capture_replay_bytes": 111149056,
+            "profile": "broad",
+            "reference": "full",
+            "rows": 128,
+            "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+            "status": "PASS",
+            "total_gpu_process_bytes": null
+          }
+        },
+        {
+          "plan": "window512",
+          "result": {
+            "allocated_before_capture_bytes": 45241856,
+            "atoms": 52429,
+            "eager": {
+              "median_ms": 3.012390000094456,
+              "samples_ms": [
+                3.012390000094456,
+                3.107933000137564,
+                3.0207550003069628,
+                3.0237750002015673,
+                2.966048999951454,
+                2.964179000173317,
+                2.9549029995905585
+              ]
+            },
+            "graph": {
+              "median_ms": 1.4962770001147874,
+              "samples_ms": [
+                1.5441059999830031,
+                1.5005159998509043,
+                1.4953049999348877,
+                1.4891360001456633,
+                1.492706000135513,
+                1.4962770001147874,
+                1.5002599998297228
+              ]
+            },
+            "initial_inputs": {
+              "target_sha256": "860a783986b1cdeb3da5b6fd8b976d836df0155cd06059b51664650288e24128",
+              "x_sha256": "f5da3c9680ff41fe0040529652e8cdd7191f138ce361f3e5494f36904f42b22c"
+            },
+            "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+            "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+            "operator": {
+              "kernel": {
+                "composition": "radial",
+                "initialization": {
+                  "id": "provided_atoms",
+                  "settings": []
+                },
+                "inner": null,
+                "parameterization": {
+                  "id": "signed_amplitude_log_width",
+                  "sigma_max": 3.25,
+                  "sigma_min": 0.03
+                },
+                "profiles": [
+                  {
+                    "normalization": {
+                      "domain": "operator_sites",
+                      "floor": 1e-06,
+                      "kind": "discrete_l2"
+                    },
+                    "parameterization": null,
+                    "profile": {
+                      "id": "triweight",
+                      "revision": 1
+                    }
+                  }
+                ],
+                "revision": 1,
+                "update": {
+                  "id": "euclidean",
+                  "settings": []
+                }
+              },
+              "layout": {
+                "chart": {
+                  "axes": [
+                    {
+                      "id": "line",
+                      "revision": 1,
+                      "shape": [
+                        1024
+                      ],
+                      "spacing": [
+                        1.0
+                      ],
+                      "start": [
+                        -511.5
+                      ]
+                    },
+                    {
+                      "id": "grid",
+                      "revision": 1,
+                      "shape": [
+                        32,
+                        32
+                      ],
+                      "spacing": [
+                        0.5,
+                        0.5
+                      ],
+                      "start": [
+                        -7.75,
+                        -7.75
+                      ]
+                    }
+                  ],
+                  "geometry": {
+                    "center_parameter_dim": 3,
+                    "embedding_dim": 3,
+                    "id": "euclidean",
+                    "intrinsic_dim": 3,
+                    "metric": "euclidean",
+                    "revision": 1
+                  },
+                  "kind": "product",
+                  "revision": 1,
+                  "shape": [
+                    1024,
+                    1024
+                  ]
+                }
+              },
+              "operation_id": "linear",
+              "revision": 1
+            },
+            "optimizer": {
+              "capturable": true,
+              "fused": true,
+              "lr": 0.0001,
+              "name": "AdamW",
+              "weight_decay": 0.01
+            },
+            "peak_allocated_capture_replay_bytes": 48404480,
+            "peak_reserved_capture_replay_bytes": 90177536,
+            "profile": "broad",
+            "reference": "window512",
+            "rows": 128,
+            "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+            "status": "PASS",
+            "total_gpu_process_bytes": null
+          }
+        },
+        {
+          "plan": "dense",
+          "result": {
+            "allocated_before_capture_bytes": 52429312,
+            "atoms": null,
+            "eager": {
+              "median_ms": 0.7439060000251629,
+              "samples_ms": [
+                0.7670520003557613,
+                0.7217960001071333,
+                0.8345219998773246,
+                0.7439060000251629,
+                0.7640320000064094,
+                0.7405410001410928,
+                0.726054000097065
+              ]
+            },
+            "graph": {
+              "median_ms": 0.12775499999406748,
+              "samples_ms": [
+                0.16972299999906681,
+                0.1286369997615111,
+                0.12793699988833396,
+                0.12567599969770527,
+                0.12595599991982454,
+                0.12622100030057481,
+                0.12775499999406748
+              ]
+            },
+            "initial_inputs": {
+              "target_sha256": "860a783986b1cdeb3da5b6fd8b976d836df0155cd06059b51664650288e24128",
+              "x_sha256": "f5da3c9680ff41fe0040529652e8cdd7191f138ce361f3e5494f36904f42b22c"
+            },
+            "initial_p_sha256": null,
+            "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+            "operator": {
+              "kernel": {
+                "composition": "radial",
+                "initialization": {
+                  "id": "provided_atoms",
+                  "settings": []
+                },
+                "inner": null,
+                "parameterization": {
+                  "id": "signed_amplitude_log_width",
+                  "sigma_max": 3.25,
+                  "sigma_min": 0.03
+                },
+                "profiles": [
+                  {
+                    "normalization": {
+                      "domain": "operator_sites",
+                      "floor": 1e-06,
+                      "kind": "discrete_l2"
+                    },
+                    "parameterization": null,
+                    "profile": {
+                      "id": "triweight",
+                      "revision": 1
+                    }
+                  }
+                ],
+                "revision": 1,
+                "update": {
+                  "id": "euclidean",
+                  "settings": []
+                }
+              },
+              "layout": {
+                "chart": {
+                  "axes": [
+                    {
+                      "id": "line",
+                      "revision": 1,
+                      "shape": [
+                        1024
+                      ],
+                      "spacing": [
+                        1.0
+                      ],
+                      "start": [
+                        -511.5
+                      ]
+                    },
+                    {
+                      "id": "grid",
+                      "revision": 1,
+                      "shape": [
+                        32,
+                        32
+                      ],
+                      "spacing": [
+                        0.5,
+                        0.5
+                      ],
+                      "start": [
+                        -7.75,
+                        -7.75
+                      ]
+                    }
+                  ],
+                  "geometry": {
+                    "center_parameter_dim": 3,
+                    "embedding_dim": 3,
+                    "id": "euclidean",
+                    "intrinsic_dim": 3,
+                    "metric": "euclidean",
+                    "revision": 1
+                  },
+                  "kind": "product",
+                  "revision": 1,
+                  "shape": [
+                    1024,
+                    1024
+                  ]
+                }
+              },
+              "operation_id": "linear",
+              "revision": 1
+            },
+            "optimizer": {
+              "capturable": true,
+              "fused": true,
+              "lr": 0.0001,
+              "name": "AdamW",
+              "weight_decay": 0.01
+            },
+            "peak_allocated_capture_replay_bytes": 52955648,
+            "peak_reserved_capture_replay_bytes": 111149056,
+            "profile": null,
+            "reference": "dense_linear",
+            "rows": 128,
+            "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+            "status": "PASS",
+            "total_gpu_process_bytes": null
+          }
+        }
+      ]
+    },
+    {
+      "correctness": [
+        {
+          "errors": {
+            "dp": {
+              "max": 0.00019776835215212785,
+              "rel_l2": 6.91977722026961e-05
+            },
+            "dx": {
+              "max": 3.458474262529876e-08,
+              "rel_l2": 1.1321243008422405e-07
+            },
+            "fixture_atoms": 8,
+            "fixture_sizes": [
+              1024,
+              4,
+              4
+            ],
+            "scope": "small mixed fixture; independent FP64 all-atom oracle",
+            "status": "PASS",
+            "w": {
+              "max": 1.1697243749997366e-08,
+              "rel_l2": 9.668112165998563e-08
+            },
+            "y": {
+              "max": 2.8800393861438955e-08,
+              "rel_l2": 9.709893762755369e-08
+            }
+          },
+          "plan": "full"
+        },
+        {
+          "errors": {
+            "dp": {
+              "max": 0.00019776835215212785,
+              "rel_l2": 6.91977722026961e-05
+            },
+            "dx": {
+              "max": 3.458474262529876e-08,
+              "rel_l2": 1.1321243008422405e-07
+            },
+            "fixture_atoms": 8,
+            "fixture_sizes": [
+              1024,
+              4,
+              4
+            ],
+            "scope": "small mixed fixture; independent FP64 all-atom oracle",
+            "status": "PASS",
+            "w": {
+              "max": 1.1697243749997366e-08,
+              "rel_l2": 9.668112165998563e-08
+            },
+            "y": {
+              "max": 2.8800393861438955e-08,
+              "rel_l2": 9.709893762755369e-08
+            }
+          },
+          "plan": "window512"
+        }
+      ],
+      "environment": {
+        "compute_capability": [
+          12,
+          0
+        ],
+        "cuda": "12.8",
+        "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+        "sm_count": 188,
+        "torch": "2.11.0+cu128",
+        "total_device_bytes": 101974081536,
+        "triton": "3.6.0"
+      },
+      "execution_id": "3fe331d4-4bba-4763-8bd5-cd2ed06e385c",
+      "job": {
+        "artifact": "records/normalized-1024-broad.g4.r1.json",
+        "artifact_sha256": "838f7bbc33f268a366ebeb9803ce46beb853642c66e414fdae1c83b929d91d57",
+        "key": "normalized-1024-broad.g4.r1",
+        "pool_job_id": "colabjob-d9e7b07540474e28b6627f56d802441f",
+        "result_archive_sha256": "c170805f5988eeb37d6687004af87849cc65aa810f2f75de73d0e63711323548",
+        "source_archive_sha256": "b2db2ecf84df3c531a49490ea5ec41a8703654f26176283034e8e0ac4efd99f1",
+        "status": "succeeded"
+      },
+      "measurements": [
+        {
+          "plan": "full",
+          "result": {
+            "allocated_before_capture_bytes": 44978688,
+            "atoms": 52429,
+            "eager": {
+              "median_ms": 0.5920600001445564,
+              "samples_ms": [
+                0.663349999967977,
+                0.6124100000306498,
+                0.610560000041005,
+                0.5920600001445564,
+                0.5763699998624361,
+                0.5653800001255149,
+                0.550859999975728
+              ]
+            },
+            "graph": {
+              "median_ms": 0.239770000007411,
+              "samples_ms": [
+                0.2701999999317195,
+                0.24404999999205756,
+                0.23873999998613726,
+                0.23835000001781737,
+                0.2386199998909433,
+                0.239770000007411,
+                0.2402100001290819
+              ]
+            },
+            "initial_inputs": {
+              "target_sha256": "cbf0bb36180f1a8fe5b70aa6b3d9c3974aa1a0300ff0510ee0392fdc169a2f70",
+              "x_sha256": "e6e096033d8a48ee2b826c1e7ebdd6d1bec739bfb10af7473aace85030a2feff"
+            },
+            "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+            "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+            "operator": {
+              "kernel": {
+                "composition": "radial",
+                "initialization": {
+                  "id": "provided_atoms",
+                  "settings": []
+                },
+                "inner": null,
+                "parameterization": {
+                  "id": "signed_amplitude_log_width",
+                  "sigma_max": 3.25,
+                  "sigma_min": 0.03
+                },
+                "profiles": [
+                  {
+                    "normalization": {
+                      "domain": "operator_sites",
+                      "floor": 1e-06,
+                      "kind": "discrete_l2"
+                    },
+                    "parameterization": null,
+                    "profile": {
+                      "id": "triweight",
+                      "revision": 1
+                    }
+                  }
+                ],
+                "revision": 1,
+                "update": {
+                  "id": "euclidean",
+                  "settings": []
+                }
+              },
+              "layout": {
+                "chart": {
+                  "axes": [
+                    {
+                      "id": "line",
+                      "revision": 1,
+                      "shape": [
+                        1024
+                      ],
+                      "spacing": [
+                        1.0
+                      ],
+                      "start": [
+                        -511.5
+                      ]
+                    },
+                    {
+                      "id": "grid",
+                      "revision": 1,
+                      "shape": [
+                        32,
+                        32
+                      ],
+                      "spacing": [
+                        0.5,
+                        0.5
+                      ],
+                      "start": [
+                        -7.75,
+                        -7.75
+                      ]
+                    }
+                  ],
+                  "geometry": {
+                    "center_parameter_dim": 3,
+                    "embedding_dim": 3,
+                    "id": "euclidean",
+                    "intrinsic_dim": 3,
+                    "metric": "euclidean",
+                    "revision": 1
+                  },
+                  "kind": "product",
+                  "revision": 1,
+                  "shape": [
+                    1024,
+                    1024
+                  ]
+                }
+              },
+              "operation_id": "linear",
+              "revision": 1
+            },
+            "optimizer": {
+              "capturable": true,
+              "fused": true,
+              "lr": 0.0001,
+              "name": "AdamW",
+              "weight_decay": 0.01
+            },
+            "peak_allocated_capture_replay_bytes": 54366208,
+            "peak_reserved_capture_replay_bytes": 111149056,
+            "profile": "broad",
+            "reference": "full",
+            "rows": 128,
+            "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+            "status": "PASS",
+            "total_gpu_process_bytes": null
+          }
+        },
+        {
+          "plan": "window512",
+          "result": {
+            "allocated_before_capture_bytes": 45241856,
+            "atoms": 52429,
+            "eager": {
+              "median_ms": 1.0545700001785008,
+              "samples_ms": [
+                1.0750399999324145,
+                1.0694090001379664,
+                1.0612599999149097,
+                1.0545700001785008,
+                1.0505799998554721,
+                1.0500999999294436,
+                1.0450800000398885
+              ]
+            },
+            "graph": {
+              "median_ms": 0.6959899999401387,
+              "samples_ms": [
+                0.7307100001980871,
+                0.6952399999136105,
+                0.701280000157567,
+                0.6944700000985904,
+                0.6959899999401387,
+                0.694629999998142,
+                0.6975399999191723
+              ]
+            },
+            "initial_inputs": {
+              "target_sha256": "cbf0bb36180f1a8fe5b70aa6b3d9c3974aa1a0300ff0510ee0392fdc169a2f70",
+              "x_sha256": "e6e096033d8a48ee2b826c1e7ebdd6d1bec739bfb10af7473aace85030a2feff"
+            },
+            "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+            "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+            "operator": {
+              "kernel": {
+                "composition": "radial",
+                "initialization": {
+                  "id": "provided_atoms",
+                  "settings": []
+                },
+                "inner": null,
+                "parameterization": {
+                  "id": "signed_amplitude_log_width",
+                  "sigma_max": 3.25,
+                  "sigma_min": 0.03
+                },
+                "profiles": [
+                  {
+                    "normalization": {
+                      "domain": "operator_sites",
+                      "floor": 1e-06,
+                      "kind": "discrete_l2"
+                    },
+                    "parameterization": null,
+                    "profile": {
+                      "id": "triweight",
+                      "revision": 1
+                    }
+                  }
+                ],
+                "revision": 1,
+                "update": {
+                  "id": "euclidean",
+                  "settings": []
+                }
+              },
+              "layout": {
+                "chart": {
+                  "axes": [
+                    {
+                      "id": "line",
+                      "revision": 1,
+                      "shape": [
+                        1024
+                      ],
+                      "spacing": [
+                        1.0
+                      ],
+                      "start": [
+                        -511.5
+                      ]
+                    },
+                    {
+                      "id": "grid",
+                      "revision": 1,
+                      "shape": [
+                        32,
+                        32
+                      ],
+                      "spacing": [
+                        0.5,
+                        0.5
+                      ],
+                      "start": [
+                        -7.75,
+                        -7.75
+                      ]
+                    }
+                  ],
+                  "geometry": {
+                    "center_parameter_dim": 3,
+                    "embedding_dim": 3,
+                    "id": "euclidean",
+                    "intrinsic_dim": 3,
+                    "metric": "euclidean",
+                    "revision": 1
+                  },
+                  "kind": "product",
+                  "revision": 1,
+                  "shape": [
+                    1024,
+                    1024
+                  ]
+                }
+              },
+              "operation_id": "linear",
+              "revision": 1
+            },
+            "optimizer": {
+              "capturable": true,
+              "fused": true,
+              "lr": 0.0001,
+              "name": "AdamW",
+              "weight_decay": 0.01
+            },
+            "peak_allocated_capture_replay_bytes": 48404480,
+            "peak_reserved_capture_replay_bytes": 90177536,
+            "profile": "broad",
+            "reference": "window512",
+            "rows": 128,
+            "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+            "status": "PASS",
+            "total_gpu_process_bytes": null
+          }
+        },
+        {
+          "plan": "dense",
+          "result": {
+            "allocated_before_capture_bytes": 52429312,
+            "atoms": null,
+            "eager": {
+              "median_ms": 0.21622999997816805,
+              "samples_ms": [
+                0.2451999998811516,
+                0.24514999995517428,
+                0.23250999993251753,
+                0.21622999997816805,
+                0.2063599999928556,
+                0.2150499999515887,
+                0.21003999995627964
+              ]
+            },
+            "graph": {
+              "median_ms": 0.08756000011089782,
+              "samples_ms": [
+                0.10958999996546481,
+                0.08883999998943182,
+                0.08677000005263835,
+                0.08565999996790197,
+                0.08756000011089782,
+                0.08896000008462579,
+                0.08650999984638474
+              ]
+            },
+            "initial_inputs": {
+              "target_sha256": "cbf0bb36180f1a8fe5b70aa6b3d9c3974aa1a0300ff0510ee0392fdc169a2f70",
+              "x_sha256": "e6e096033d8a48ee2b826c1e7ebdd6d1bec739bfb10af7473aace85030a2feff"
+            },
+            "initial_p_sha256": null,
+            "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+            "operator": {
+              "kernel": {
+                "composition": "radial",
+                "initialization": {
+                  "id": "provided_atoms",
+                  "settings": []
+                },
+                "inner": null,
+                "parameterization": {
+                  "id": "signed_amplitude_log_width",
+                  "sigma_max": 3.25,
+                  "sigma_min": 0.03
+                },
+                "profiles": [
+                  {
+                    "normalization": {
+                      "domain": "operator_sites",
+                      "floor": 1e-06,
+                      "kind": "discrete_l2"
+                    },
+                    "parameterization": null,
+                    "profile": {
+                      "id": "triweight",
+                      "revision": 1
+                    }
+                  }
+                ],
+                "revision": 1,
+                "update": {
+                  "id": "euclidean",
+                  "settings": []
+                }
+              },
+              "layout": {
+                "chart": {
+                  "axes": [
+                    {
+                      "id": "line",
+                      "revision": 1,
+                      "shape": [
+                        1024
+                      ],
+                      "spacing": [
+                        1.0
+                      ],
+                      "start": [
+                        -511.5
+                      ]
+                    },
+                    {
+                      "id": "grid",
+                      "revision": 1,
+                      "shape": [
+                        32,
+                        32
+                      ],
+                      "spacing": [
+                        0.5,
+                        0.5
+                      ],
+                      "start": [
+                        -7.75,
+                        -7.75
+                      ]
+                    }
+                  ],
+                  "geometry": {
+                    "center_parameter_dim": 3,
+                    "embedding_dim": 3,
+                    "id": "euclidean",
+                    "intrinsic_dim": 3,
+                    "metric": "euclidean",
+                    "revision": 1
+                  },
+                  "kind": "product",
+                  "revision": 1,
+                  "shape": [
+                    1024,
+                    1024
+                  ]
+                }
+              },
+              "operation_id": "linear",
+              "revision": 1
+            },
+            "optimizer": {
+              "capturable": true,
+              "fused": true,
+              "lr": 0.0001,
+              "name": "AdamW",
+              "weight_decay": 0.01
+            },
+            "peak_allocated_capture_replay_bytes": 52955648,
+            "peak_reserved_capture_replay_bytes": 111149056,
+            "profile": null,
+            "reference": "dense_linear",
+            "rows": 128,
+            "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+            "status": "PASS",
+            "total_gpu_process_bytes": null
+          }
+        }
+      ]
+    }
+  ],
+  "neon": "not connected; credentials unavailable",
+  "owned_gpu_slots": "all stopped",
+  "postgres": {
+    "byte_exact_restore": true,
+    "counts": {
+      "cases": 1,
+      "metrics": 62,
+      "plans": 2,
+      "projections": 2,
+      "records": 10,
+      "run_plans": 4,
+      "runs": 2
+    },
+    "database": "cst_measurement_61a3f996928c",
+    "first_import": {
+      "jobs_without_observations": [],
+      "request_id": "6415cbecf437edc8807685a8540c385c9b94d54b547a03fbd69dff57846baa40",
+      "runs": [
+        {
+          "projection_id": "fc60f4f9516501dd2792dcf2e6247cc67ada19a0e6aa743b27399daa9d0ba565",
+          "projection_inserted": true,
+          "run_id": "786b1ca803c271f3d347473993413e4ba00083bbbf5c0630f02f641df7acab95",
+          "run_inserted": true
+        },
+        {
+          "projection_id": "a0321f12ee1abd95fd355bfc854825ef5aa67b2786868e3380c035777e024fe5",
+          "projection_inserted": true,
+          "run_id": "e60c68ba477cecb7e36610d41457e3d6ab3051c41b1c54a8df6d4ddfab39a3d0",
+          "run_inserted": true
+        }
+      ]
+    },
+    "retry_import": {
+      "jobs_without_observations": [],
+      "request_id": "6415cbecf437edc8807685a8540c385c9b94d54b547a03fbd69dff57846baa40",
+      "runs": [
+        {
+          "projection_id": "fc60f4f9516501dd2792dcf2e6247cc67ada19a0e6aa743b27399daa9d0ba565",
+          "projection_inserted": false,
+          "run_id": "786b1ca803c271f3d347473993413e4ba00083bbbf5c0630f02f641df7acab95",
+          "run_inserted": false
+        },
+        {
+          "projection_id": "a0321f12ee1abd95fd355bfc854825ef5aa67b2786868e3380c035777e024fe5",
+          "projection_inserted": false,
+          "run_id": "e60c68ba477cecb7e36610d41457e3d6ab3051c41b1c54a8df6d4ddfab39a3d0",
+          "run_inserted": false
+        }
+      ]
+    }
+  },
+  "request_id": "6415cbecf437edc8807685a8540c385c9b94d54b547a03fbd69dff57846baa40",
+  "schema_version": 1,
+  "source_commit": "5386b4c3ca71b0439d1563ed645aa889cfa7b9c3",
+  "status": "PASS",
+  "targeted_postgres_and_contract_tests": 46
+}

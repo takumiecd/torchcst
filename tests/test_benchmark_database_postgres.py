@@ -301,7 +301,7 @@ def test_new_projection_revision_adds_metrics_without_overwriting_evidence(
             metrics=record.metrics
             + (Metric("forward.time", "kernel", "us", "p95", 10, [8, 10]),),
         )
-        return replace(p, revision=2, records=(*p.records[:2], record, *p.records[3:]))
+        return replace(p, revision=3, records=(*p.records[:2], record, *p.records[3:]))
 
     monkeypatch.setattr(postgres, "project", newer)
     second = database.import_linear(raw)
@@ -310,8 +310,8 @@ def test_new_projection_revision_adds_metrics_without_overwriting_evidence(
     assert database.export_run(initial["run_id"]) == raw
     assert database.counts()["runs"] == 1 and database.counts()["projections"] == 2
     assert database.counts()["metrics"] == 63
-    assert {r["adapter_revision"] for r in database.list_records()} == {1, 2}
-    assert len(database.list_records(adapter_revision=2)) == 5
+    assert {r["adapter_revision"] for r in database.list_records()} == {2, 3}
+    assert len(database.list_records(adapter_revision=3)) == 5
 
 
 def test_read_snapshot_and_keyset_pagination(db):

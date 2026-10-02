@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+import torch
 
 from benchmarks.cuda.linear import run as runner
 from benchmarks.cuda.linear.manifest import (
@@ -22,9 +23,23 @@ from benchmarks.cuda.linear.manifest import (
     load_snapshot,
     read_json,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL, WINDOW
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+    FULL,
+    WINDOW,
+)
 
 CASE = DEFAULT_PLANS.parent / "cases/normalized-1024-broad.json"
+
+
+def test_cpu_batch_initialization_is_independent_of_global_rng():
+    first = runner.generate_inputs(21, 4, 16)
+    torch.manual_seed(999)
+    torch.randn(20)
+    second = runner.generate_inputs(21, 4, 16)
+    assert all(torch.equal(a, b) for a, b in zip(first, second))
+    assert all(t.device.type == "cpu" and t.dtype == torch.float32 for t in first)
+    assert not torch.equal(*first)
+    assert not torch.equal(first[0], runner.generate_inputs(22, 4, 16)[0])
 
 
 def save(path, value):

@@ -31,9 +31,14 @@ JSONB は検索用であり、元のバイト列を復元する役割は `artifa
 
 ## 現在の指標と検証
 
-初期 adapter は `cuda.linear.complete-step` revision 1、入力は
+現在の adapter は `cuda.linear.complete-step` revision 2、入力は
 [`benchmarks.cuda.linear.run`](../cuda/linear/README.md) の完成した schema v1 JSON。
 Strip/Torus 診断、wheel driver の別形式はこの入口では受け付けない。
+
+protocol は CPU 初期値生成 (`torch.cpu.v1`、CPU capability を記録) と、
+初期化情報を持たない旧 CUDA 生成 (`torch.cuda.legacy-v1`) を区別する。
+同じ seed でも両方式の入力は異なるため、同じ比較集合に混ぜない。
+旧原本・旧 projection は維持し、新しい adapter での再解析も別 projection として保存する。
 
 | 指標名 | 範囲 | 単位 / 統計 |
 | --- | --- | --- |
@@ -83,7 +88,7 @@ python -m pip install -e '.[dev,benchmark-db]'
 python -m benchmarks.database migrate
 python -m benchmarks.database import-linear output/normalized-step.json
 python -m benchmarks.database status
-python -m benchmarks.database records --gpu 'NVIDIA L4' --kind measure --adapter-revision 1 --limit 100
+python -m benchmarks.database records --gpu 'NVIDIA L4' --kind measure --adapter-revision 2 --limit 100
 python -m benchmarks.database records --plan-id PLAN_SHA256 --case-id CASE_SHA256
 python -m benchmarks.database export-run RUN_SHA256 output/restored.json
 ```
@@ -124,9 +129,9 @@ CLI の `records` は最大1000 workerまで。`next_after` を `--after PROJECT
 別 DB に import すると同じ run / Plan / Case ID と指標を再構成できる。
 provenance・受信時刻や全テーブルのバックアップではない。運用バックアップには PostgreSQL の backup を使う。
 
-今回はコードとローカル PostgreSQL での検証まで。
-Neon project 作成・接続、中央 GitHub Actions だけに書き込み credential を与える ingestion 経路、
-Colab 等の測定実行、認証、leaderboard / dispatch の生成は次の段階で接続する。
+公式 ingestion 経路は [automation](../automation/README.md) に用意している。
+Neon / GitHub の実接続は credential と runner の設定が必要。
+認証、leaderboard / dispatch の生成は後続の工程。
 生成物の実行時形式は [Selector artifact](../../src/torchcst/_backends/cuda/dispatch/README.md) に定義する。
 DB の保存、任意の評価関数による順位付け、選択器の生成、実行時の選択を分離する。
 中央 credential を持たない contributor は結果 JSON を提出する。

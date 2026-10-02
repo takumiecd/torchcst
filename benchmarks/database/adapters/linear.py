@@ -1,4 +1,4 @@
-"""Projection v1 of the normalized CUDA complete-step artifact schema v1.
+"""Projection v2 of the normalized CUDA complete-step artifact schema v1.
 
 Validation checks internal consistency, not the submitter's authenticity or a
 full-shape correctness certification. Failed runs retain evidence, no metrics.
@@ -23,7 +23,7 @@ from benchmarks.database.model import (
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
 
 ADAPTER = "cuda.linear.complete-step"
-REVISION = 1
+REVISION = 2
 
 
 def _hash(value):
@@ -199,6 +199,7 @@ def project(value):
             raise ValueError("unknown selected Plan/reference")
         records.append(Record(kind, result["status"], alias, {}, {}, record))
     if value["status"] == "FAIL":
+        protocol["initialization"] = {"method": "not verified"}
         return Projection(
             ADAPTER, REVISION, case, plans, run.baseline, protocol, tuple(records)
         )
@@ -221,11 +222,29 @@ def project(value):
     )
     operator = json.loads(json.dumps(asdict(op)))
     common = None
+    initialization = None
     inputs = None
     parameters = None
     validated = []
     for record in records:
         meta, result = record.payload["metadata"], record.payload["result"]
+        actual_initialization = meta.get(
+            "initialization", {"method": "torch.cuda.legacy-v1"}
+        )
+        if actual_initialization != {"method": "torch.cuda.legacy-v1"}:
+            if (
+                type(actual_initialization) is not dict
+                or set(actual_initialization) != {"method", "cpu_capability"}
+                or actual_initialization["method"] != "torch.cpu.v1"
+                or type(actual_initialization["cpu_capability"]) is not str
+                or not actual_initialization["cpu_capability"]
+            ):
+                raise ValueError("unknown initialization method")
+        if initialization is not None and initialization != actual_initialization:
+            raise ValueError("workers use different initialization methods")
+        initialization = actual_initialization
+        protocol["initialization"] = initialization
+        protocol["revision"] = 2 if initialization["method"] == "torch.cpu.v1" else 1
         if (
             record.status != "PASS"
             or type(meta.get("schema_version")) is not int
