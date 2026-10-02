@@ -150,4 +150,5 @@ pool と Actions artifact。Actions artifact は14日保存の中間成果物で
 [L4 / G4 と PostgreSQL の検証記録](../../docs/measurement-json-verification.ja.md)を参照。
 同じ測定 JSON の入力・初期 Parameter hash の一致、独立 oracle、完全 step、
 memory、回収 hash、保存・再送・元 JSON の復元を確認した。
-Neon の実接続と GitHub 上からの workflow 実行は初回設定後に確認する。
+[初回設定記録](../../docs/benchmark-actions-setup.ja.md)に Neon の実接続・専用 role・Secret・runner 接続確認を記録した。
+GitHub 上からの workflow 実行は main への反映後に確認する。
