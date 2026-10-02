@@ -11,6 +11,5 @@ build/
 output/
 
 # Generated CUDA experiment logs, source snapshots, traces and tensors
-benchmarks/cuda/linear/evidence/**
-!benchmarks/cuda/linear/evidence/README.md
-experiments/**/evidence/**
+benchmarks/**/evidence/**
+!benchmarks/**/evidence/README.md

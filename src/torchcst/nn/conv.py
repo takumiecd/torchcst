@@ -12,8 +12,10 @@ from torch import Tensor, nn
 
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
-from torchcst.geometry import Chart
-from torchcst.kernels import AtomInit, Kernel
+from torchcst.charts import ChartSpec, ChartState, compile_chart
+from torchcst.kernels import AtomInit, KernelSpec
+from torchcst.kernels.options import KernelOptions
+from torchcst.kernels.state import KernelState
 
 from .module import CSTModule, RepulsionKind
 
@@ -50,14 +52,15 @@ class CSTConv2d(CSTModule):
 
     def __init__(
         self,
-        input_chart: Chart,
-        output_chart: Chart,
+        input_chart: ChartSpec | ChartState,
+        output_chart: ChartSpec | ChartState,
         *,
         in_channels: int,
         out_channels: int,
         kernel_size: int | Sequence[int],
         atoms: int,
-        kernel: Kernel,
+        kernel: KernelSpec,
+        kernel_options: KernelOptions | None = None,
         stride: int | Sequence[int] = 1,
         padding: int | Sequence[int] = 0,
         dilation: int | Sequence[int] = 1,
@@ -67,9 +70,19 @@ class CSTConv2d(CSTModule):
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
+        from torchcst._backends.torch.kernels import execution as _kernel
+
         super().__init__()
-        if not isinstance(input_chart, Chart) or not isinstance(output_chart, Chart):
-            raise TypeError("input_chart and output_chart must be Chart instances")
+        if isinstance(input_chart, ChartSpec):
+            input_chart = compile_chart(input_chart, device=device, dtype=dtype)
+        if isinstance(output_chart, ChartSpec):
+            output_chart = compile_chart(output_chart, device=device, dtype=dtype)
+        if not isinstance(input_chart, ChartState) or not isinstance(
+            output_chart, ChartState
+        ):
+            raise TypeError(
+                "input_chart and output_chart must be ChartSpec or ChartState instances"
+            )
         for name, value in (
             ("in_channels", in_channels),
             ("out_channels", out_channels),
@@ -84,18 +97,12 @@ class CSTConv2d(CSTModule):
             raise ValueError("in_channels must be divisible by groups")
         if out_channels % groups != 0:
             raise ValueError("out_channels must be divisible by groups")
-        if not isinstance(kernel, Kernel):
-            raise TypeError("kernel must implement the Kernel contract")
-        if tuple(kernel.parameters()):
-            raise ValueError("a Kernel cannot own trainable state; put it in atom p")
+        if not isinstance(kernel, KernelSpec):
+            raise TypeError("kernel must be a KernelSpec")
         if atom_init not in ("balanced", "uniform"):
             raise ValueError("atom_init must be 'balanced' or 'uniform'")
         if backend not in ("auto", "factored", "materialized"):
             raise ValueError("backend must be 'auto', 'factored', or 'materialized'")
-        if backend == "factored" and not kernel.supports_factorization:
-            raise ValueError(
-                "the selected kernel does not support factorized execution"
-            )
         if backend == "factored" and groups != 1:
             raise ValueError("factorized CSTConv2d currently requires groups=1")
 
@@ -121,20 +128,26 @@ class CSTConv2d(CSTModule):
 
         self.input_chart = input_chart
         self.output_chart = output_chart
-        self.kernel = kernel
+        self.kernel = KernelState(kernel, options=kernel_options)
+        kernel = self.kernel
+        if backend == "factored" and not _kernel.supports_factorization(kernel):
+            raise ValueError(
+                "the selected kernel does not support factorized execution"
+            )
         self.atom_init = atom_init
         self.backend = backend
 
-        target_device = device or input_chart.coordinates.device
-        target_dtype = dtype or input_chart.coordinates.dtype
+        target_device = device or input_chart.reference.device
+        target_dtype = dtype or input_chart.reference.dtype
         if not target_dtype.is_floating_point:
             raise TypeError("CSTConv2d requires a floating-point dtype")
         self.to(device=target_device, dtype=target_dtype)
 
-        parameter_dim = kernel.parameter_dim(input_chart, output_chart)
+        parameter_dim = _kernel.parameter_dim(kernel, input_chart, output_chart)
         if parameter_dim < 1:
             raise ValueError("kernel.parameter_dim must be positive")
-        p = kernel.initialize(
+        p = _kernel.initialize(
+            kernel,
             input_chart,
             output_chart,
             atoms,
@@ -145,7 +158,7 @@ class CSTConv2d(CSTModule):
             raise ValueError(
                 f"kernel.initialize must return shape {list(expected_shape)}"
             )
-        if p.device != input_chart.coordinates.device or p.dtype != target_dtype:
+        if p.device != input_chart.reference.device or p.dtype != target_dtype:
             raise ValueError("kernel.initialize must match the module device and dtype")
         self.atoms = Atoms(p)
 
@@ -169,8 +182,10 @@ class CSTConv2d(CSTModule):
         return self.atoms.count
 
     def _materialize_flat_atoms(self, p: Tensor) -> Tensor:
-        represented = self.kernel.materialize_atoms(
-            self.input_chart, self.output_chart, p
+        from torchcst._backends.torch.kernels import execution as _kernel
+
+        represented = _kernel.materialize_atoms(
+            self.kernel, self.input_chart, self.output_chart, p
         )
         if p.ndim != 2 or p.shape[1] != self.atoms.parameter_dim:
             raise ValueError(f"p must have shape [atoms, {self.atoms.parameter_dim}]")
@@ -200,10 +215,13 @@ class CSTConv2d(CSTModule):
         return self.materialized_atoms().sum(dim=0)
 
     def _factor_atoms(self, p: Tensor) -> tuple[Tensor, Tensor]:
-        return self.kernel.factors(self.input_chart, self.output_chart, p)
+        from torchcst._backends.torch.kernels import execution as _kernel
+
+        return _kernel.factors(self.kernel, self.input_chart, self.output_chart, p)
 
     def cst_derivatives(self) -> AtomDerivatives:
         """Build derivatives of the flattened local CST operator."""
+        from torchcst._backends.torch.kernels import execution as _kernel
 
         if self.input_chart.trainable or self.output_chart.trainable:
             raise ValueError("the first derivative engine supports frozen charts only")
@@ -211,7 +229,7 @@ class CSTConv2d(CSTModule):
             self.atoms,
             self._materialize_flat_atoms,
             factor_atoms=self._factor_atoms
-            if self.kernel.supports_factorization
+            if _kernel.supports_factorization(self.kernel)
             else None,
         )
 
@@ -223,7 +241,7 @@ class CSTConv2d(CSTModule):
     def cst_parameters(self) -> tuple[nn.Parameter, ...]:
         return (self.atoms.p,)
 
-    def cst_charts(self) -> tuple[Chart, ...]:
+    def cst_charts(self) -> tuple[ChartState, ...]:
         return (self.input_chart, self.output_chart)
 
     def repulsion_terms(
@@ -235,18 +253,18 @@ class CSTConv2d(CSTModule):
         if kind == "cosine":
             dimensions = tuple(range(1, atoms.ndim))
             norms = torch.linalg.vector_norm(atoms, dim=dimensions, keepdim=True)
-            scale = torch.where(
-                norms > 0, norms.reciprocal(), torch.zeros_like(norms)
-            )
+            scale = torch.where(norms > 0, norms.reciprocal(), torch.zeros_like(norms))
             atoms = atoms * scale
         elif kind == "abs":
             atoms = atoms.abs()
         return atoms.sum(dim=0), atoms.square().sum()
 
     def _resolved_backend(self) -> Literal["factored", "materialized"]:
+        from torchcst._backends.torch.kernels import execution as _kernel
+
         if self.backend != "auto":
             return self.backend
-        if not self.kernel.supports_factorization or self.groups != 1:
+        if not _kernel.supports_factorization(self.kernel) or self.groups != 1:
             return "materialized"
         factor_size = self.atom_count * (self.patch_features + self.out_channels)
         dense_size = self.patch_features * self.out_channels
@@ -259,6 +277,8 @@ class CSTConv2d(CSTModule):
         *,
         backend: Literal["factored", "materialized"],
     ) -> Tensor:
+        from torchcst._backends.torch.kernels import execution as _kernel
+
         if backend == "materialized":
             weight = self._materialize_atoms(p).sum(dim=0)
             return F.conv2d(
@@ -271,8 +291,8 @@ class CSTConv2d(CSTModule):
                 groups=self.groups,
             )
 
-        phi_input, phi_output = self.kernel.factors(
-            self.input_chart, self.output_chart, p
+        phi_input, phi_output = _kernel.factors(
+            self.kernel, self.input_chart, self.output_chart, p
         )
         filters = phi_input.transpose(0, 1).reshape(
             p.shape[0], self.in_channels, *self.kernel_size
@@ -294,9 +314,6 @@ class CSTConv2d(CSTModule):
                 f"expected input shape [N, {self.in_channels}, H, W], "
                 f"got {tuple(inputs.shape)}"
             )
-        atom_grad = self.atoms.grad
-        if atom_grad is not None and atom_grad.active:
-            raise TypeError("CSTConv2d does not yet support an active AtomGrad program")
         return self._forward_from_p(
             inputs,
             self.atoms.p,

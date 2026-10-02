@@ -1,21 +1,19 @@
-"""Coordinate geometry for fixed-cardinality CST observations."""
+"""Geometry declarations and scalar Tensor ownership."""
 
-from .chart import Chart, ExplicitChart
-from .geometry import EuclideanGeometry, Geometry, SphereGeometry, TorusGeometry
-from .lazy_chart import ProductChart, StripChart
-from .pattern import GridPattern, LinePattern, PointsPattern, SitePattern
+from . import presets
+from .spec import (
+    EuclideanGeometrySpec,
+    GeometrySpec,
+    SphereGeometrySpec,
+    TorusGeometrySpec,
+)
+from .state import GeometryState
 
 __all__ = [
-    "Chart",
-    "EuclideanGeometry",
-    "ExplicitChart",
-    "Geometry",
-    "GridPattern",
-    "LinePattern",
-    "PointsPattern",
-    "ProductChart",
-    "SitePattern",
-    "SphereGeometry",
-    "StripChart",
-    "TorusGeometry",
+    "EuclideanGeometrySpec",
+    "GeometrySpec",
+    "GeometryState",
+    "SphereGeometrySpec",
+    "TorusGeometrySpec",
+    "presets",
 ]

@@ -1,1 +1,1 @@
-"""Benchmark modules for CUDA Linear experiments."""
+"""Maintained correctness and performance benchmarks."""

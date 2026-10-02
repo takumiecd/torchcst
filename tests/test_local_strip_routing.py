@@ -6,24 +6,26 @@ from dataclasses import replace
 import pytest
 import torch
 
-from torchcst import LinePattern, StripChart, TorusGeometry
-from torchcst.nn._strip_torus import CircleRouting
+from torchcst._backends.torch.charts import construction as _construction
+from torchcst._backends.torch.operators.strip_torus.tiled import CircleRouting
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
 
 def routing(stations, *, start=0.0, spacing=0.1, extra=0.0):
     rows = stations * 8 - 3
-    chart = StripChart(
+    chart = _construction.strip(
         shape=(rows, 1),
         tile_shape=(8, 1),
         axis=0,
         tile_pitch=4.1,
         axes=(
-            LinePattern(rows, low=start, high=start + (rows - 1) * spacing),
-            LinePattern(1, spacing=1.0),
+            _construction.line_pattern(
+                rows, low=start, high=start + (rows - 1) * spacing
+            ),
+            _construction.line_pattern(1, spacing=1.0),
         ),
-        geometry=TorusGeometry(
+        geometry=_construction.torus(
             2,
             major_radius=(stations * 4.1 + extra) / (2 * math.pi),
             minor_radius=0.4,
@@ -52,7 +54,9 @@ def decoded_arcs(plan, arcs):
 def test_local_candidates_match_exhaustive_all_station_boundaries(
     stations, start, spacing, extra
 ):
-    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
 
     plan = routing(stations, start=start, spacing=spacing, extra=extra)
     assert plan.local_candidates
@@ -85,7 +89,9 @@ def test_local_candidates_match_exhaustive_all_station_boundaries(
 
 
 def test_extreme_coordinate_scale_uses_exhaustive_fallback():
-    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
 
     plan = routing(31, start=1e6)
     assert not plan.local_candidates
@@ -96,7 +102,9 @@ def test_extreme_coordinate_scale_uses_exhaustive_fallback():
 
 
 def test_captured_routing_handles_unrestricted_atom_jumps():
-    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
 
     plan = routing(4096)
     decoded = decoded_arcs(plan, torch.zeros(257, device="cuda"))

@@ -53,7 +53,7 @@ HTTPだけを指定した中間版ではJupyter WebSocketが停滞し、host tim
 排他制御は同一ホストでpoolを使う実験同士の協調規約で、直接CLIや別ホストからの操作を禁止する
 OS上のセキュリティ境界ではない。
 
-[生結果・summary・source hashes](../evidence/20260930/)を保存した。
+[生結果・summary・source hashes](../evidence/20260930)を保存した。
 完全なsource/result archivesと転送ログはホストの `~/.local/state/colab-l4-pool/jobs/` に残す。
 
 ```bash

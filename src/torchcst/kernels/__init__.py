@@ -1,27 +1,46 @@
-"""Stateless interpretations of opaque atom coordinates."""
+"""Pure kernel declarations and compositional presets."""
 
-from .amplitude import Amplitude
-from .amplitude_bandwidth import AmplitudeBandwidthSeparable, AmpWidth
-from .base import AtomInit, Kernel, Profile
-from .compact import Biweight, Triangle, Triweight, WendlandC2
-from .direct_amplitude_bandwidth import DirectAmpWidth
-from .gaussian import Gaussian
-from .polar_amplitude_bandwidth import PolarAmpWidth
-from .separable import Separable
+from . import presets
+from .normalization import NormalizationSpec
+from .options import KernelOptions
+from .parameterizations import (
+    AmpWidthSpec,
+    BandwidthBounds,
+    DirectAmpWidthSpec,
+    FixedWidthSpec,
+    LogWidthSpec,
+    ParameterizationSpec,
+    PolarAmpWidthSpec,
+)
+from .profiles import (
+    BiweightSpec,
+    GaussianSpec,
+    ProfileSpec,
+    TriangleSpec,
+    TriweightSpec,
+    WendlandC2Spec,
+)
+from .spec import AtomInit, KernelSpec, ProfileBinding, StatePolicySpec
 
 __all__ = [
-    "AmpWidth",
-    "Amplitude",
-    "AmplitudeBandwidthSeparable",
+    "AmpWidthSpec",
     "AtomInit",
-    "Biweight",
-    "DirectAmpWidth",
-    "Gaussian",
-    "Kernel",
-    "PolarAmpWidth",
-    "Profile",
-    "Separable",
-    "Triangle",
-    "Triweight",
-    "WendlandC2",
+    "BandwidthBounds",
+    "BiweightSpec",
+    "DirectAmpWidthSpec",
+    "FixedWidthSpec",
+    "GaussianSpec",
+    "KernelOptions",
+    "KernelSpec",
+    "LogWidthSpec",
+    "NormalizationSpec",
+    "ParameterizationSpec",
+    "PolarAmpWidthSpec",
+    "ProfileBinding",
+    "ProfileSpec",
+    "StatePolicySpec",
+    "TriangleSpec",
+    "TriweightSpec",
+    "WendlandC2Spec",
+    "presets",
 ]

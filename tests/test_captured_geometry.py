@@ -1,18 +1,17 @@
+from __future__ import annotations
+
 import pytest
 import torch
+from kernel_cases import amp_width_state
 
-from torchcst import AmpWidth, Chart, CSTLinear
+from torchcst import CSTLinear
+from torchcst._backends.torch.charts import construction as _construction
 from torchcst._derivatives._captured import call, frame_transport, local_derivatives
 from torchcst._runtime.validation import device_checks
 
 
-def amplitude_bandwidth() -> AmpWidth:
-    return AmpWidth(
-        sigma_min=0.25,
-        sigma_max=1.0,
-        tau=0.2,
-        temperature=0.5,
-    )
+def amplitude_bandwidth() -> amp_width_state:
+    return amp_width_state(sigma_min=0.25, sigma_max=1.0, tau=0.2, temperature=0.5)
 
 
 @pytest.mark.parametrize(
@@ -30,10 +29,10 @@ def amplitude_bandwidth() -> AmpWidth:
 def test_captured_geometry_matches_original_derivative_contract(device):
     torch.manual_seed(71)
     model = CSTLinear(
-        Chart.linspace(3, low=-1.0, high=1.0),
-        Chart.linspace(2, low=-1.0, high=1.0),
+        _construction.linspace(3, low=-1.0, high=1.0),
+        _construction.linspace(2, low=-1.0, high=1.0),
         atoms=3,
-        kernel=amplitude_bandwidth(),
+        kernel=amplitude_bandwidth().declaration(),
         dtype=torch.float64,
     ).to(device)
     geometry = model.cst_frame_geometry()
@@ -83,17 +82,17 @@ def test_captured_geometry_matches_original_derivative_contract(device):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 def test_capture_invalidates_when_kernel_buffer_changes():
     model = CSTLinear(
-        Chart.linspace(3, low=-1.0, high=1.0),
-        Chart.linspace(2, low=-1.0, high=1.0),
+        _construction.linspace(3, low=-1.0, high=1.0),
+        _construction.linspace(2, low=-1.0, high=1.0),
         atoms=3,
-        kernel=amplitude_bandwidth(),
+        kernel=amplitude_bandwidth().declaration(),
         dtype=torch.float64,
     ).cuda()
     materialize = model.cst_derivatives()._materialize_atoms
     point = model.atoms.p.detach().clone()
     before = call("local_derivatives", materialize, point)
     saved = tuple(x.clone() for x in before)
-    model.kernel.profile.sigma.mul_(1.5)
+    model.kernel.scalar("sigma_min").mul_(1.5)
     after = call("local_derivatives", materialize, point)
     torch.testing.assert_close(after, local_derivatives(materialize, point))
     torch.testing.assert_close(before, saved)

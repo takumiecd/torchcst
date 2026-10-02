@@ -5,74 +5,26 @@ import math
 import pytest
 import torch
 
-from torchcst import GridPattern, LinePattern, StripChart
+from benchmarks.cuda.linear.fixtures import normalized_chart as chart
+from benchmarks.cuda.linear.reference import mixed, oracle
 
 
 def public_class():
-    from torchcst.nn import NormalizedStripLinear
+    from torchcst import CSTLinear, LinearOptions, presets
 
-    return NormalizedStripLinear
+    def build(chart, p, *, memory="full"):
+        return CSTLinear(
+            chart=chart,
+            atoms=p,
+            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            linear_options=LinearOptions(memory=memory),
+        )
 
-
-def chart(
-    sizes=(64, 4, 4), origin=(0.0, 0.0, 0.0), *, dtype=torch.float64, device="cpu"
-):
-    n, h, j = sizes
-    return StripChart(
-        shape=(n, h * j),
-        tile_shape=(n, h * j),
-        axis=0,
-        tile_pitch=float(n),
-        axes=(
-            LinePattern(n, low=origin[0], high=origin[0] + n - 1),
-            GridPattern(
-                (h, j),
-                low=origin[1:],
-                high=(origin[1] + (h - 1) * 0.5, origin[2] + (j - 1) * 0.5),
-            ),
-        ),
-    ).to(device=device, dtype=dtype)
-
-
-def oracle(p, sizes=(64, 4, 4), origin=(0.0, 0.0, 0.0), stored_dtype=None):
-    # Lift stored FP32 clamp endpoints; high-coordinate CUDA tests use F64 truth.
-    bounds = torch.tensor(
-        [math.log(0.03), math.log(3.25)], dtype=stored_dtype or p.dtype
-    ).to(p)
-    sigma = p[:, 1].clamp(bounds[0], bounds[1]).exp()
-    sites = torch.cartesian_prod(
-        *[
-            torch.arange(n, device=p.device, dtype=p.dtype) * s + o
-            for n, s, o in zip(sizes, (1.0, 0.5, 0.5), origin)
-        ]
-    )
-    delta = sites[None] - p[:, None, 2:]
-    k = (1 - delta.square().sum(-1) / sigma[:, None].square()).clamp_min(0).pow(3)
-    norm = torch.linalg.vector_norm(k, dim=1).clamp_min(
-        float(torch.tensor(1e-6, dtype=stored_dtype or p.dtype))
-    )
-    return (p[:, 0, None] * k / norm[:, None]).sum(0).reshape(sizes[0], -1)
-
-
-def mixed(dtype=torch.float64, device="cpu"):
-    return torch.tensor(
-        [
-            [-0.3, math.log(3.0), 31.25, 0.63, 0.77],
-            [0.2, math.log(3.25), 32.5, 0.53, 0.61],
-            [0.1, math.log(0.03), 32.02978515625, 1.50355, 1.5],
-            [0.0, math.log(0.03), 32.02978515625, 1.50355, 1.5],
-            [-0.2, math.log(0.03), 16.0, 1.5, 1.5],
-            [0.3, math.log(0.03), 7.5, 1.25, 1.25],
-            [0.1, math.log(0.003), 8.0, 0.5, 0.5],
-            [-0.1, math.log(10.0), 63.5, 0.5, 0.5],
-        ],
-        dtype=dtype,
-        device=device,
-    )
+    return build
 
 
 def parameter(model):
-    return model.p
+    return model.atoms.p
 
 
 @pytest.mark.parametrize("memory", ["full", "window"])
@@ -154,10 +106,10 @@ def test_empty_atoms_zero_operator():
 def test_owns_parameter_storage_and_dtype_mismatch():
     p = mixed()
     model = public_class()(chart(), p)
-    old = model.p.detach().clone()
+    old = model.atoms.p.detach().clone()
     p.zero_()
-    assert torch.equal(model.p, old)
-    assert model.p.data_ptr() != p.data_ptr()
+    assert torch.equal(model.atoms.p, old)
+    assert model.atoms.p.data_ptr() != p.data_ptr()
     with pytest.raises(
         (ValueError, TypeError, RuntimeError), match="(dtype|Float|Double|type)"
     ):
@@ -190,7 +142,7 @@ def test_cuda_public_window_boundary_independent_all_five(memory):
         g = torch.Generator(device="cuda").manual_seed(21)
         x = torch.randn(2, 3, 16, device="cuda", generator=g, requires_grad=True)
         dy = torch.randn(2, 3, 1024, device="cuda", generator=g)
-        pp = model.p.detach().double().requires_grad_()
+        pp = model.atoms.p.detach().double().requires_grad_()
         xx = x.detach().double().requires_grad_()
         weight = oracle(pp, sizes, stored_dtype=torch.float32)
         observed_weight = model(torch.eye(16, device="cuda")).T
@@ -199,7 +151,7 @@ def test_cuda_public_window_boundary_independent_all_five(memory):
         )
         actual = model(x)
         truth = xx @ weight.T
-        a = torch.autograd.grad(actual, (x, model.p), dy)
+        a = torch.autograd.grad(actual, (x, model.atoms.p), dy)
         b = torch.autograd.grad(truth, (xx, pp), dy.double())
         for left, right in [(actual, truth), *zip(a, b)]:
             assert torch.isfinite(left).all() and torch.isfinite(right).all()
@@ -219,13 +171,13 @@ def test_nonfinite_parameter_rejected(value):
 def test_dtype_roundtrip_keeps_fixed_bounds_and_checkpoint():
     model = public_class()(chart(), mixed()).float().double()
     torch.testing.assert_close(
-        model.sigma_bounds,
+        torch.stack((model.kernel.sigma_min, model.kernel.sigma_max)),
         torch.tensor([0.03, 3.25], dtype=torch.float64),
         atol=0,
         rtol=0,
     )
     x = torch.linspace(-1, 1, 32, dtype=torch.float64).reshape(2, 16)
-    restored = public_class()(chart(), model.p.detach(), memory="full")
+    restored = public_class()(chart(), model.atoms.p.detach(), memory="full")
     restored.load_state_dict(model.state_dict())
     torch.testing.assert_close(restored(x), model(x), atol=0, rtol=0)
 
@@ -255,11 +207,12 @@ def test_replaced_metadata_buffer_refreshes_geometry_and_validates_contract():
     model = public_class()(chart(), mixed())
     x = torch.linspace(-1, 1, 32, dtype=torch.float64).reshape(2, 16)
     before = model(x).detach().clone()
-    model.origin = torch.tensor([1.0, 0.0, 0.0], dtype=torch.float64)
+    model.chart.axes[0].start = torch.tensor([1.0], dtype=torch.float64)
     actual = model(x)
-    expected = x @ oracle(model.p, origin=(1.0, 0.0, 0.0)).T
+    expected = x @ oracle(model.atoms.p, origin=(1.0, 0.0, 0.0)).T
     assert not torch.equal(actual, before)
     torch.testing.assert_close(actual, expected, atol=1e-9, rtol=1e-9)
-    model.sigma_bounds = torch.tensor([0.01, 3.25], dtype=torch.float64)
-    with pytest.raises(RuntimeError, match="sigma bounds"):
-        model(x)
+    model.kernel.sigma_min = torch.tensor(0.01, dtype=torch.float64)
+    # A changed kernel contract uses its general Torch reference, not the fixed CUDA algorithm.
+    assert model._resolved_backend() == "materialized"
+    torch.testing.assert_close(model(x), model.operator.apply(x), atol=0, rtol=0)

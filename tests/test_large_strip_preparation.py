@@ -3,15 +3,19 @@
 import pytest
 import torch
 
-from torchcst.nn._backends._preparation import execution_plan, prepare
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.geometry import execution as _geometry
+from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
 
 @pytest.mark.parametrize("stations,atoms", [(1025, 1), (2048, 17), (4096, 65)])
 def test_chunked_owners_layout_and_gradients(stations, atoms):
-    from benchmarks.cuda.linear.benchmark_triton_linear import model
-    from torchcst.nn._backends._triton_preparation import route_and_layout
+    from benchmarks.cuda.linear.fixtures import strip_torus_model as model
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
 
     torch.manual_seed(33)
     # A partial final station also checks the per-station last-row limits.
@@ -25,7 +29,7 @@ def test_chunked_owners_layout_and_gradients(stations, atoms):
         # Exercise the circular seam and non-aligned positions.
         p[:, 2] += 0.123
     plan = execution_plan(layer)
-    decoded = layer.chart.geometry.decode_centers(p[:, 2:]).detach()
+    decoded = _geometry.decode_centers(layer.chart.geometry, p[:, 2:]).detach()
     actual_owner, _, _ = route_and_layout(plan.routing, decoded)
     torch.testing.assert_close(
         actual_owner, plan.routing.owners(decoded), atol=0, rtol=0
@@ -41,7 +45,7 @@ def test_chunked_owners_layout_and_gradients(stations, atoms):
 
 
 def test_large_preparation_has_no_atom_by_station_allocation():
-    from benchmarks.cuda.linear.benchmark_triton_linear import model
+    from benchmarks.cuda.linear.fixtures import strip_torus_model as model
 
     layer = model(2048, rows=2048, columns=16, station_rows=1)
     with torch.no_grad():

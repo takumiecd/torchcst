@@ -3,7 +3,8 @@
 import pytest
 import torch
 
-from torchcst.nn._backends._preparation import execution_plan
+from torchcst._backends.torch.geometry import execution as _geometry
+from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
@@ -22,8 +23,8 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
 def test_compact_layout_matches_legacy(
     rows, station_rows, columns, atoms, with_support
 ):
-    from benchmarks.cuda.linear.benchmark_triton_linear import model
-    from torchcst.nn._backends._triton_preparation import (
+    from benchmarks.cuda.linear.fixtures import strip_torus_model as model
+    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
         route_and_layout,
         tile_parameters,
     )
@@ -35,7 +36,7 @@ def test_compact_layout_matches_legacy(
         p[:, 2].add_(torch.randn(atoms, device="cuda") * 20)
         p[:, 0].uniform_(-0.8, 0.8)
         center, _, precision = tile_parameters(layer.kernel, p)
-        decoded = layer.chart.geometry.decode_centers(center)
+        decoded = _geometry.decode_centers(layer.chart.geometry, center)
         plan = execution_plan(layer)
         support = (
             (plan.circle, plan.section, precision, station_rows)

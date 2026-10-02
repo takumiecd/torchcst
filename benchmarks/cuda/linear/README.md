@@ -1,27 +1,120 @@
-# CUDA Linear benchmark
+# CUDA Linear benchmarks
 
-[開発用カーネル](../../../experiments/cuda/linear/README.md)の正確性、速度、
-メモリを比較する入口。これらの測定は公開 `backend="auto"` を変更しない。
-CUDA と Triton が必要。
+現在の backend の正しさ・速度・メモリを確認する入口。
+試作実装をここへ置かず、測定対象は `src/torchcst/_backends/` にある実装とする。
+公開 API の統合確認と、registry の plan を強制する比較を分ける。
+
+| ファイル | 役割 | 測定範囲 |
+| --- | --- | --- |
+| `run.py` | Plan catalog と Case を読み、選択 Plan を強制して比較 | 独立 oracle、forward・backward・AdamW、eager / Graph、capture を含む peak |
+| `check_normalized.py` | 公開 CSTLinear の統合確認 | 独立 oracle、全5 atom 勾配、更新後の支持、Graph replay と AdamW 状態。任意で完全 step を測定 |
+| `validate_wheel.py` | shared L4 pool の検証 driver | 配布 wheel の全維持テスト、上記の統合確認、通常幅・鋭い支持・dense の完全 step |
+| `strip_torus.py` | 既存 Strip/Torus の fused / split と参照経路の診断 | 準備、forward、forward/backward。optimizer は含まない |
+| `strip_torus_dense.py` | Strip/Torus と保存済み dense の比較 | forward / backward、FP32 と別条件 BF16。メモリは warmed baseline からの追加割当 |
+| `strip_torus_split.py` | Strip/Torus の split reductions の比較 | forward / backward、forward Graph。optimizer は含まない |
+| `manifest.py` | Plan catalog / Case / 固定 snapshot の読み込み | GPU 不要の schema・recipe・比較条件検証 |
+| `fixtures.py` | Chart・Kernel・model の共通構築 | 純粋な Spec と設定境界の State 構築。テストからも利用 |
+| `reference.py` | 正規化 Triweight の独立 dense oracle | backend の距離・重み生成を呼ばず、サンプル点から直接計算 |
+
+`__init__.py` を含めて10 Python file。benchmark から `tests/` を読み込まない。
+旧 `experiments/`、探索用 CLI、移行段階ごとの validation driver は削除した。
+旧 module 名や `--tests-file` / `--chart-suite` の互換入口は用意しない。
+
+## 正規化 kernel の確認
 
 ```bash
 python -m pip install -e '.[dev,cuda]'
-python -m benchmarks.cuda.linear.profile_paired_dense_cst --size 1024 --rows 128 --graph --rounds 24 --output output/mapped-1024.json
-python -m benchmarks.cuda.linear.profile_anchor_atom_training --size 1024 --rows 128 --basis-mode block --decode-mode torch --rounds 24 --output output/anchor-1024.json
-python -m benchmarks.cuda.linear.profile_mapped_training_kernels --size 1024 --rows 128 --graph --output output/mapped-kernels-1024.json
+python -m benchmarks.cuda.linear.run --list-plans
+python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/normalized-1024-broad.json --validate-only
+python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/normalized-1024-broad.json --correctness-only --output output/normalized-check.json
+python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/normalized-1024-broad.json --source-commit COMMIT --output output/normalized-step.json
+python -m benchmarks.cuda.linear.check_normalized --output output/public-check.json
 ```
 
-`--window-rows`、`--cache-windows`、`--weight-tile-rows`、`--listed-unroll`、
-`--listed-builder-ba`、`--listed-builder-warps` などは mapped 比較で変更できる。
-アンカー側には `--anchor-rows`、`--anchor-column-segments`、
-`--backward-lanes` がある。各 CLI の全項目は `--help` を参照。
-8192²は大きな GPU メモリを要するので、まず小さい形状で正しさを確認する。
+[plans.json](plans.json) は名前付き Plan の一覧。
+各 Plan に Algorithm ID、revision、schema version、全 recipe フィールドを書く。
+registry の `load_plan` が登録済み recipe 型へ変換・検証する。
+export は `dump_plan`、単一 Plan の JSON text の往復は `dumps_plan` / `loads_plan` を使う。
+[Plan の JSON API](../../../src/torchcst/_backends/README.md#plan-の-json-export--import)を参照。省略による既定値の補完や未知の設定は受け付けない。
+現在 full / window512 の検証済み recipe 値のみを受け付け、自由な tuning sweep は用意しない。
 
-時間は同一環境の対応比較、ピーク割当は必要に応じて別プロセスで確認する。
-作業中の結果は `output/` へ置き、採否に使うものだけ
-[evidence](evidence/README.md) と [判断台帳](dispatch-evidence.ja.md)に残す。
-[測定手順と将来の共通 runner](benchmark-workflow.ja.md)には、実装済みの個別
-CLI と構想中の CLI を区別して記している。
+[cases/](cases/) の各 JSON は測定条件（形状、atoms、幅、dtype、seed、warmup、rounds、optimizer）と、
+比較 Plan 名の一覧、明示的な baseline、dense の有無を持つ。
+`--plans PATH` で catalog を変更できる。`--device` は実行 GPU の index。
+`--list-plans` と `--validate-only` は GPU 不要。実機での適合性は実行時に registry が検査する。
 
-[2026-09-29 の GPU 実機テスト](gpu-validation-20260929.ja.md)には、RTX 3070 の
-全体テストと A100 の関連テストを記録した。
+実行開始時に両ファイルを一度だけ読み、選択された Plan と Case の固定 snapshot を
+output の隣の固有ディレクトリへ保存する。worker はその SHA256 を検査してから読み込む。
+各 Plan の独立 oracle 確認を新しい process で行い、全て通った後に各完全 step を計測する。
+実行時に dispatch の自動選択や別 Plan への fallback は行わない。
+候補間の初期 Parameter / input / target の hash 一致も確認する。
+結果には元の JSON の hash、固定 snapshot、実際の Plan、source hash、実機環境、誤差、時間分布、メモリを残す。
+失敗した worker の結果と途中までの記録も保存し、計測を中断する。
+
+`dense: true` は通常の dense Linear を追加する。dense は性能の参照で、CST と同じ Parameter
+空間の演算ではない。`normalized-1024-sharp.json` は鋭い支持の別条件。通常の sigma3 と混ぜない。
+fixture は現在 normalized Euclidean Strip / FP32 / 1024²・8192²に限定する。
+独立 oracle は境界を含む小さい混合 fixture、完全 step は Case の大きい fixture を使う。
+
+`check_normalized` と `validate_wheel` は従来の NVIDIA L4 検証条件を維持する。
+`run` と Strip/Torus の CLI は他の CUDA GPU でも使える。
+全 CLI の設定は `--help` を参照。wheel gate は1024²に限定する。
+`check_normalized --bench` は既定で1024²と8192²を測るため、通常の確認では
+`--sizes 1024` を明示する。
+
+## 配布 wheel の L4 gate
+
+[`colab-l4-pool`](../../../tools/colab-l4-pool/SKILL.md) を使う。
+この driver は system package を変更せず、job-local の Torch 2.11.0+cu128 / CUDA 12.8
+環境でテストする。初期 system probe の CUDA 13.0 と実際の検証 runtime を区別する。
+
+```bash
+python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py submit --source "$PWD" --script "$PWD/benchmarks/cuda/linear/validate_wheel.py" --label wheel-gate --timeout 600 -- SOURCE_COMMIT
+python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py serve --workers 1 --idle-seconds 0
+```
+
+N1024²、M128、約5% atoms、FP32、TF32無効、fused capturable AdamW の契約を維持する。
+各時間・メモリ測定を別 process にし、peak allocated / reserved は Graph capture と replay
+を含める。GPU process usage は別の指標で、この driver では未測定。
+大きい fixture の完全 step 測定と、小さい fixture の独立全勾配 oracle を区別する。
+
+## Strip/Torus の診断
+
+```bash
+python -m benchmarks.cuda.linear.strip_torus --output output/strip-torus.json
+python -m benchmarks.cuda.linear.strip_torus_dense --source-commit COMMIT --output output/strip-torus-dense.json
+python -m benchmarks.cuda.linear.strip_torus_split --output output/strip-torus-split.json
+```
+
+これらは現在の fused backend の診断であり、完全学習 step の結果とは比較しない。
+BF16 は別精度の参照。Parameter bytes や追加 tensor 割当を GPU 全体の peak と呼ばない。
+
+## 記録
+
+作業出力は ignored `output/`、raw log / trace / tensor / snapshot は ignored
+[evidence/](evidence/README.md)、小さい検証記録は [results/](results/) に保存する。
+GPU・runtime・source commit/hash・演算条件・時間分布・誤差・メモリの範囲を記録する。
+benchmark の成功は kernel / dispatch の認証や既定採用を自動で行わない。
+
+過去の数値や不採用理由は [研究履歴](../../../docs/research-history/cuda-linear/README.md)、
+削除した実行コードの取得方法は [削除台帳](../../../docs/research-history/cuda-linear/retired-code.ja.md)
+に保存している。履歴中の旧コマンドは記録当時の source commit で再現する。
+[今回の整理と検証](../../../docs/benchmark-cleanup.ja.md)を参照。
+
+## Plan 一覧の入口の検証（2026-10-02）
+
+source `8f2ec40` の CPU は515 passed / 117 skipped。
+同じ source の配布 wheel を NVIDIA L4、Torch 2.11.0+cu128 / CUDA 12.8 / Triton 3.6.0
+で確認し、631 passed / 1 skipped / 0 failed。skip は Linux で使えない macOS socket binding。
+full / window512 の独立 oracle、公開 API の更新後 Graph / AdamW、両 Case の完全 step が通った。
+各 Plan の初期 Parameter hash と、dense を含む input / target hash は一致。
+source / wheel / installed の152 Python file を照合し、local と L4 の wheel hash も一致した。
+
+[検証記録](results/plan-catalog-20261002.json)に固定 Plan・Case、誤差、全時間サンプル、
+peak allocated / reserved、source と archive の hash を保存している。
+raw artifact は ignored evidence に保存済み。共有 pool の owned GPU は停止済み。
+この確認は小さい独立 oracle と完全 step 測定の範囲であり、認証や既定採用は行わない。
+
+Plan の専用 JSON API は source / 配布 wheel の CPU suite で各533 passed / 117 skipped。
+full / window の dict・JSON text・ファイル往復、recipe 型の復元、GPU 実装を import しないこと、
+不正・重複・非有限な設定の拒否と benchmark の固定 snapshot を確認した。

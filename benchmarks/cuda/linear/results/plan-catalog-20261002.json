@@ -1,0 +1,935 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "date": "2026-10-02",
+  "source_commit": "8f2ec40b6de1e759fb7408aee8e6a8710d52dff7",
+  "local_cpu": {
+    "wheel_sha256": "4cfb16096b8471d9df3b31b399d76b7ceadaab666db1cc76f1aee5f1fd2cc347",
+    "python_files_verified": 152,
+    "source_cpu": {
+      "passed": 515,
+      "skipped": 117
+    },
+    "wheel_cpu_before_last_failure_case": {
+      "passed": 514,
+      "skipped": 117
+    },
+    "wheel_final_manifest_tests": {
+      "passed": 34
+    },
+    "scope": "installed package wheel byte-identical to source; benchmark runner remains checkout code"
+  },
+  "gpu": {
+    "job_id": "l4job-549684aca01640e58055796b09c13c97",
+    "hardware": "NVIDIA L4, GPU-f40e3832-ffe4-147e-0b2d-6db85c7a9ee1, 580.82.07, 23034 MiB",
+    "runtime": {
+      "torch": "2.11.0+cu128",
+      "cuda": "12.8",
+      "triton": "3.6.0",
+      "gpu": "NVIDIA L4"
+    },
+    "pool_probe_versions": {
+      "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "triton": "3.6.0"
+    },
+    "returncode": 0,
+    "timed_out": false,
+    "source_archive_sha256": "677203241c9a023b2f014e180f598a91e161334e4b5ac378f221a2332937fd36",
+    "results_archive_sha256": "bd04a85cba46d7897080296f9fba225b36d1a3b11c8a3ef87675e52e5a518642",
+    "wheel_sha256": "4cfb16096b8471d9df3b31b399d76b7ceadaab666db1cc76f1aee5f1fd2cc347",
+    "python_files_verified": 152,
+    "pytest": {
+      "tests": 632,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "owned_runtime_stopped": true,
+    "environment_warning": "job-local cu128 install reports conflicts with unused inherited system RAPIDS/CUDA13 packages; tested Torch/Triton scope only"
+  },
+  "source_hashes": {
+    "benchmarks/cuda/linear/README.md": "5fdc48a0d82ac353d0b7779b93689dd4a95275b324bcef3ab8a0792ad394cdb9",
+    "benchmarks/cuda/linear/__init__.py": "3a62d7543602d0730bd5015a8b907249a317a735ac1e32f83bad9bc9cf90d446",
+    "benchmarks/cuda/linear/cases/normalized-1024-broad.json": "f6d18e251ba0d8ad1f730202588e6ecaa9650edc25f0a9fe7a0b4bc1dfa29999",
+    "benchmarks/cuda/linear/cases/normalized-1024-sharp.json": "7f1b25120cd7dc942a623d6c46618968bb4965bf8569d1f228deeadc756f92fc",
+    "benchmarks/cuda/linear/check_normalized.py": "4312581f9fe275d2846cc94afb779f70ed3c3ac2f82a67f6c6bd43b495bc16bc",
+    "benchmarks/cuda/linear/evidence/README.md": "2e417f26fb4a1d9a8720489d7980e7afef55e408a34fb06c6683064b5febbc16",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-bounded-atom-pipeline.json": "9d7e5827ddf94c1b6a261cb0b5126ddbeaf8b9fb0c23375ea943f3bf9f2742d9",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-bounded-lanes.json": "5b7195e3bccd8ca674a7819084d01533f516f5728f4b8d77ab47b48d82b0a30e",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-builder-paired-32.json": "3cb3ede7c87321f4a1d44eab42126aa053a635c4c8f4491e3007fb4fedbbe137",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-builder-paired-48.json": "aae5507c38298d6d1704252ee3448b19ab4623af3c512d0b17f6fca1c02310e6",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-builder-peak.json": "e824535c196440a5d633e5a1e4c5a8e25322006f70d5a970c2ed956a0f9112c2",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-cache2-paired.json": "eb1364fe01a9f352d350dc6827bcbe76e7abf939730129b0d5c08471274ed01d",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-cache2-peak.json": "007dcd0846df92b6850531d76708799edf2b54b2b58d7dabb87c372d94939617",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-cst-fused-peak.json": "f498f0717e41d7a3541fa9400c5d07c1b5f801ebf409a5c81b7f98587c5ead31",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-cst-optimizers.json": "329207012dea223d1a0eb7526ab9030fc455dd882b29724987bfa06cd8a775f6",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-dw-layout.json": "28e9a581f24d3cd96cc995c6bbca800006cae86b8c9eac8f42e5e08f9babdc6d",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-final-profile.json": "0d9b3b70e0e4e64b2e2f098c999251d6ff81652158f53f271e02b0aa4e4e542d",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-fp16x3-tiles-extended.json": "5cbe53466a550ce62105b232e560aa0c907d56e0526752d9afab67bec3cd3818",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-fp16x4-dw-gradient-seed21.json": "53d02d105e952b8542be82e5fd2e84fa0946ed283a56955eb1329096941a12b2",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-list-builder-1024.json": "bf38811d5b67862fd3165397e4dac40b229c1f065cf7b7813a5e9c16dfe80311",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-list-builder-sweep2.json": "c179eb846e9c752a034c3464f507405f8a31e7c663f22e42abaf565b5921bbe1",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-paired-fused.json": "1ceaa55fc5b5375589588322c43379f9b42b3665a2bccaf671f847959972a9d9",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-presplit-weight-gemm.json": "aae27433e59f02289d28a7bdb623fbaac1d57981d364082d3b515a92bd528e61",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-profile-final.json": "57321d16c59896d9eaf46f1c92fe4ff5c3c5943fa192a785da8c56e8f6c2b2f2",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-support-ratio-box.json": "bf63fdb56cde861b7fb7e18fde5658ac23dccc9449c380102928750fd0985b56",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-tile-rows-32.json": "529bdaadf5a9938ede1b0549581154623503a5f8356a5a0c00f3d33e793b7e03",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-tile-rows.json": "6d6bb953c81e8342fb92859b768c424f466f3d924981d9983f726365508e3249",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-unroll4-dense-peak.json": "a0b4a76d862414be1d39ee8523bce5cf51e1d0b2bf38b2dc85cdf1565b9f6f01",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-unroll4-gradients-seed21.json": "89b057789e8b4b27fa4a424a4200a4481d1b95cd19393ce1b008d5e51ab8d150",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-unroll4-gradients-seed22.json": "f94a6f497b1cc9911f62c03ddfcb5d0d0b1a719e071c856318f18380bf469a6b",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-unroll4-gradients-seed23.json": "ace3033c95b99dbce19732477f0488a578d9075a4f47a3f7912b7c3f184388a9",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-unroll4-paired-repeat.json": "3d558c5a7a4aa942db34606d54dad83266aadec1ceb8d11b9e5aa4ba293d8a6b",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-unroll4-paired.json": "a43df84a0e00cc930e942dda47049adb6c0b4eee4a3da2f29583d693193175a2",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-unroll4-peak.json": "9861f417dc4f271f800b13f96370dd07f8e2ca50114deaada2de72903599339e",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-unroll4-profile.json": "a286de75200a8203f4d7c715d5d4e077ccf5f7743103eb831fdf019b65310821",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-w-distance.json": "128a3d51c04265f7a194075069802da470c094aaa25695e220e9ccbe8ac1359c",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-w-pipeline.json": "337da30c5cb3ed41053e305fcff03d5051e92644730569e53b0fc3124383b77c",
+    "benchmarks/cuda/linear/evidence/ada-20260929/overnight-w-unroll.json": "0c373e9af886d6d948cbd156702ef4f4a4d1decc4e81ee18a68eb51f7f0bb7c5",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/inventory.json": "088ec3d09a4409e3159600722837f5d96ce1155c79a5e2f0d3b8250effa05a24",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/paired-1024-m128.json": "2be6d24344b8e8fe892e775aa4a0be4631bb630dc73f2cda7f5e1872171b4421",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/paired-1024-m2048-unroll.json": "568793ab81d19ed0dd281e08ad09a6a8c6597893a5fba5f8ebe57fbcb0fc124a",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/paired-1024-m2048.json": "58e602152159fc0cc5d452e1b44ee7bee70370584cb188b0e0dd3ff90421aeef",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/paired-8192-m2048-c4-builder.json": "f26a92cbf268d30cfa55da8181ec17fa2dad70effc1ada76dabc673aeddf9f55",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/paired-8192-m2048-c4-unroll.json": "90202a7a176e7147b4fd663abe85527be56d505ab955d2801fcb8007d43ab690",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/paired-8192-m2048.json": "a7306f8c1dfbd0572f49adbe43f365e5d1c0a0fb7ab42fb52fe63d3e2db8ffd6",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/peak-cst-1024-m128.json": "3507b48da8a6ef4e8639cf6a35df8981966455e96600284461f3e9ff8ca33992",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/peak-cst-1024-m2048.json": "49669ba1f0a05310d0e746d6211858c5e1051f132acb90c0c97989602540a4db",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/peak-cst-8192-m2048-c4.json": "7736ef2a50c5a2014b3e1bc342fd4daf7d1581430f3b2fb5c99970ffe97c04b8",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/peak-cst-8192-m2048.json": "c03ad17a5a5f39377ef31b313bbbd39d8868a13c94aa808f49f621898130b1a1",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/peak-dense-1024-m128.json": "6be258d7279d4af72aa3e815deb87ffd6da330e62ead22b50d3195024c9f6342",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/peak-dense-1024-m2048.json": "3b5588a730d64ddc697dff854759d6fa2b25e830f93e821f6318d3846638cdb3",
+    "benchmarks/cuda/linear/evidence/blackwell-20260929/peak-dense-8192-m2048.json": "4ba4bf18147e8ed085430665a180532d6803712a490c835fdcb06e423d0ba43a",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-factor-peak-cst-m128.json": "ce6278d265ac409ccb7277bb8782c47a8541a3387a049fd3fc688c1be2a6d9b6",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-factor-peak-cst-m16.json": "84a24f94fa4c9902c56c1d34f9daa2c3dee95bf8bd703236246091dddd313992",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-factor-peak-dense-m128.json": "df06c6605046b7d5a414c0baae31f9ff352a593ccc42702e92bdfb2a5b3a7183",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-factor-peak-dense-m16.json": "82b595a85d4b70ded7daab4365b36fce621d72d3d53ec4391defd58a833f51ac",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-factor-peak-factor-m128.json": "6574730c725874fac7cea745a4865b14c41c89edb32e3665611b9ef03d08152b",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-factor-peak-factor-m16.json": "c36aa91f964f6c3a03bbd8e1b7983153bfaf445bba8d4d05f498755dde2cbe26",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-factor-rank-diagnostic.json": "4148342431791e7fe56bafd20fed5c26dda21975f78115ee979c76d1506e584b",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-factor-step-m128.json": "bf8f01d66c5446448895c69f23b0722771d57fa9b4ed8aeea62063ddcde35cb7",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-factor-step-m16.json": "5d85d7b045454bf9efe7e2c85f8eeb9de7452ae503fb09a0098db4bc5811b697",
+    "benchmarks/cuda/linear/evidence/cst-redesign-20260929/cst-surrogate-diagnostic.json": "03c9cf58558bcafee85910f70bcacda170d8c67208b91b03b269bd99643e56de",
+    "benchmarks/cuda/linear/evidence/flash-cst-l4-20260929/flash-backward-m128-l4.json": "df8800715a42102f1c7c844afe56b11d081cf57ceee82fea1f299ff08687ae5b",
+    "benchmarks/cuda/linear/evidence/flash-cst-l4-20260929/flash-backward-m16-l4.json": "d7f4b10799286fd621819fe2b13deeee22b36a7bcb4f6efd961717b67ece232a",
+    "benchmarks/cuda/linear/evidence/flash-cst-l4-20260929/flash-forward-m128-v2-l4.json": "67508c93fd6f12024264cc2a6e1b92628654cff0a6d95580593a4d46715878f4",
+    "benchmarks/cuda/linear/evidence/flash-cst-l4-20260929/flash-forward-m16-v2-l4.json": "706f0bb34f426aaf4221fbe71dd741cca2d33cb751f141878451ccf55d5cab86",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-algorithm-sweep.json": "ef7e280bcc19f32f93f1f914e479edb9ac2f1f1981db8ba020cf04c4c19b14b7",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-fp16-cache-m128.json": "0d90e6f362d0476ee7ab6a107fcf7db3e9a2a64d63ad8d80d42ebe2786438399",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-fp16-cache-m16.json": "53cddb3ffd41907726316d923bf51c0cc34d29cc76469619fa25b341325382ef",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-fused-dw-sweep.json": "4114885dc05ce342afe473726e64ca9418b201633ceccf2e8a7c4775831d5c27",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-grad-fp16-m128.json": "da1d0f9e39bdbb70b6585a0aab1afafd993377fb9418e3bb104a520ff77760fb",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-grad-fp16-m16.json": "6deddf4d10c2a3bb6874245916bedead98ea794faf7b8df92311700e5ea222fc",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-kernel-sweep.json": "1cb8e3e50828d7a1b5a2826aa2989b69c94df3bc7914f90ac64483dd70500bbc",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-peak-baseline-m128.json": "e230acc897fac4540618c320d06b297fda92d6e4dd488d35145fc3a2381f0d66",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-peak-baseline-m16.json": "6f9a65b245aed9cb1a597edd493a6712d51bdd121cec8bed2fbb642ca7bcfed6",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-peak-fp16_full-m128.json": "18029b62a6c8b5ccf44fa58212ab179e28843b212c92278c379f6b82cfc1b82f",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-peak-fp16_full-m16.json": "70da114d3d55ee30dbe297a6a1b93570e24ba5385e5bf76731660c20e82b3c5a",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-profile-m128.json": "3ad4e0ed66b5c502722b90229b3fe8e7626d16877e3df4ddc6d113769b5566f3",
+    "benchmarks/cuda/linear/evidence/l4-algorithm-20260929/l4-profile-m16.json": "73255eb8d64c71c7779d5736a81a158b7a159f35677d5b8e19991c588181e554",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-confirm-m2048-r16-c32.json": "90001918824f950356691300150191691491a5c24a827bcfb4bb91416a966bf5",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-confirm-m2048-r24-c48.json": "39e7a2c6adb3965fb4213f919b97ceeb12a71f5069aa4a15f13e514904092331",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-m128-r16-c32-torch-decode.json": "f64b532c2cad07a713e499c687be8fe7117b9da64c182e09b2257b5dcfa1c6b6",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-m128-r16-c32.json": "6200f5f58790d02ee873d95746a7a8dab140a8ec4dfede092484937c53ddbd48",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-m128-r24-c48-torch-decode.json": "610f20880a4f47aaadc441333a45a383db3ff9fe32d283e03731e0d68a7db22e",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-m2048-r16-c32-torch-decode.json": "dfbe53f775ee8ca04d45105b43945674f4cd476d9ad195f9a8b6bf7e90ed2aa0",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-m2048-r24-c48-torch-decode.json": "7db216645268cd40e9d6eef7a179e4a2759e6d9761c2af54ef40f6a0612fe847",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-memory-m128-anchor.json": "988f0a4a4ae9ae855d8ac2ed4ccf710c922e09ec4621e4e90142a3c7c7594876",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-memory-m128-anchor24.json": "166f802e143537e83128e506e71febbdfbeb90f613cc5f88fae3e50dc4d8edf4",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-memory-m128-baseline.json": "950d492f14e47b41091b2c1fba7b69292e32bd05f0c02b94306d7ea38c1eaba0",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-memory-m128-dense.json": "870e08011b65fe24550524db88f051443100f81b69eb8833770ddfe1188a5333",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-memory-m2048-anchor.json": "9355f74360997571505b179881180d4d4980d1c3a030ad272eceb91a47c2c620",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-memory-m2048-anchor24.json": "ec1dc30e4bcc5c44caffb738c89be45b6b848e9027e69c7646ceff7040846add",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-memory-m2048-baseline.json": "65fbd1801b6a81dc2e26f620f68b709e54559917c3a7d5a0b4fd4773ae7f5df8",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-l4-memory-m2048-dense.json": "f55904b7744b7af71b1d0fe2fad6a80547d7b9ac3d401aea8613c3b082df10a0",
+    "benchmarks/cuda/linear/evidence/l4-anchor-8192-20260929/anchor-8192-probe.json": "8e27da0e10f7c0e9a6b4c3ebab9d75ed42196e408df901a0b549c8a763f2db61",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m128-r16-c32-ba1.json": "63731d33a62841f7d36a56e5554ccbe2967cd561e5b05e9361b2312c21e2235b",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m128-r16-c32-ba4.json": "61e250cfdc313c86255aed930e8965ef6e567504ba7883746be947c4a5c2411a",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m128-r16-c32-ba8.json": "505d8933ab6c5c3724a30ec35ad2c827bfe50cea95de3691aca4e0b7bc9a4b26",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m128-r24-c48-ba4.json": "ee6aba5cecb11d3cf141e26131db9e818971142a5affa5a72149f0dc6816a524",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m128-r24-c48-ba8.json": "efa13238b622fd19c17ed52d8666eac4e7d2ae6f74990d6f1fd16271e4db51a5",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m16-r16-c32-ba1.json": "71f63d70f74ee5baa504eb56f3305970f042e5349d1301b90d467a6b25dc73d8",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m16-r16-c32-ba2.json": "2d5480ea2883617c80ba85ccba8082c6139a9c5f1b21848a83a2cd7fffd0df71",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m16-r16-c32-ba4.json": "47babb28e43c8c07338250c68d3731a453034e27fa96d665d338fa94ae243295",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m16-r16-c32-ba8.json": "50eca71807532b4b39b47c77afee3874b394e9a7a4e07a2b9eb6638bc2be25e8",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m16-r24-c48-ba4.json": "72b6da75e4e7e6f9c58a443c4a39acef58d740562592b9e5d4628dcd498a0aae",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-ba-m16-r24-c48-ba8.json": "76f9fb06ea3878da6d563507e0674f26370b31ee24d0abf5c4c3c9f2c1fd26c7",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-decode-m128-r16-c32-b8-fused.json": "69e30e9984f440c835c597a21ffc49bf4e972a9e4c65fc458e0ee2c35129c7c5",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-decode-m128-r16-c32-b8-torch.json": "37e608d6e491cd330708a092a5a8336509f24332ca3d31faa03836a5d8794d76",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-decode-m16-r16-c32-b8-fused.json": "bb816f81c737547a056985ac35bb147453219dc10362d52f81c48812db237ecc",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-decode-m16-r16-c32-b8-torch.json": "02a2ff066e37d9b99ff37cfba32a3ce90d10977e2600f8e795bf1221afefb063",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-decode-m16-r24-c48-b4-fused.json": "dfe7621865673a52cdb0f9f5d4743b136860904845ae0bb2726952191f627bf6",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-decode-m16-r24-c48-b4-torch.json": "b29982d7758dcc01e4f4910b0412be80bc60ae30ed2dad3d280c6b5dd841f3f1",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-decode-profile-m16-r16-c32-b8-fused.json": "468537b6db5785711acc6e87e9a0bb38cf7ee61df0ce198926010a7ab7f89e8b",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-decode-profile-m16-r16-c32-b8-torch.json": "130db5fb98dabff239cc2ea4bb0730ccbc25a3d2c7be324e26083c4f0eec6eca",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-dense-m128-r16-c32-b8.json": "a5b47525362401c75a657fb84dae1369a0ad523fde18eaa814cc2593793da804",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-dense-m16-r16-c32-b8.json": "3d4e676467b623475db046b1fece511d52cd55f99ae07a3f24b845dfa2d9478a",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-dense-m16-r24-c48-b4.json": "959b37328863fd283adc70cd11968af8436132aacf41d124a6985067e770d2ca",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-fused-decode-gradient.txt": "58ee1865ad0b262b94651191d87b6fe6db46b1c556e6503895f4233725ef727f",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-list-gradient.txt": "f1b2ae3b498ae074a84dc893be757f01cc46a92e6f37b986d8c98a408af5e8a7",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-list-m128-r16-c32-b8-anchors.json": "af5b66c7b00f0381a8f9bb5904e938574eae066229e9a23bb4b8836e01a92447",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-list-m128-r16-c32-b8-full_tile.json": "8cbd1c5ec89b43f41220104105ecbac7058be21310f0e428fb545287bb5609fe",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-list-m16-r16-c32-b8-anchors.json": "0db3f8b7253a3882aefd6ccf6840c851fcf568cb1a5ff2eebc4809336592941b",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-list-m16-r16-c32-b8-full_tile.json": "d78644b19e85cd86756fb4f07200963db023518a6f9c34c66dcd27703cf93869",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-list-m16-r24-c48-b4-anchors.json": "4e1480cbb35c63316cfbb17a4339a9c44f0b7dc11f2eaed99fbd413e8959cc94",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-list-m16-r24-c48-b4-full_tile.json": "5cc720418fff6c01b01e1f53aaa61646c2a52df2c78d72abb2692ae48baff58e",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-list-profile-m16-r16-c32-b8-anchors.json": "050e6a109d06dea76afd378b1e2422b116afed75c4a2b03bfcb528446f93c5fe",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-list-profile-m16-r16-c32-b8-full_tile.json": "cbbc4e7d3087636c6015b604c7e6e8286923210e00b99ed8732a1cccb96029ea",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-opt-m128-r16-c32-b8-foreach.json": "bae1ffeaa12ec9f15fc22a17da57d07f76eed8817a352b47a9786755589bf21f",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-opt-m128-r16-c32-b8-fused.json": "c3f73ccddc8c9ca8f6214af6e8b8721f1832c320e0af6700d5196183424626ea",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-opt-m16-r16-c32-b8-foreach.json": "4eada39437161c2ed9df3e0bcc71d506df1c5974a9e7b374a04b1bc3900f2bc5",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-opt-m16-r16-c32-b8-fused.json": "b350002edfabfc89a943bbb087ccd5a0db44d5a785c782b3785b942d0963aad1",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-opt-m16-r24-c48-b4-foreach.json": "8109ee5ac7e4ad2ea8b62bb650382d1798e776863031f7efd854df6eeefd3fbf",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-opt-m16-r24-c48-b4-fused.json": "f87f0a14bf3fd18687604e86a487d47dcf6101185dbb1085b643bf8b47647b7e",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-opt-profile-m16-b8-foreach.json": "f07fb3d64f5cb377aba513f3292250e2c460d58c24baeee89d5e5b3f81cc1450",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-opt-profile-m16-b8-fused.json": "d7c329865c2d3731d82aa6692c6b37bcf254d0332d2c8b3c441fd51c6decdc2b",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-pod-holdout.json": "3a6a37d3f0291fe601f4ec5b0f4e531d998e46bffd37828155f72b172841720a",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-pod-sweep-calibrated.json": "e9de21a97803f71bdb18d03ea0d8d3a3b720507a62efb5f63ee6cf88aa5fa45f",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-pod-sweep.json": "60f553647f2310fd47096165c9f6dbee8cebf58ccfac3cb6e62478b5904ce1a1",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-pod-train-m128-seed53-r12-c24.json": "0fcaa307ac5b20cc3e6693db3ef5583044c6ce1d0d589ecc5bdb5beb09d34fc0",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-pod-train-m128-seed53-r16-c24.json": "06e1f85bcf1e7f26b2e05e7d495791c73348e4ccb6eeb28304605aba151bf36f",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-pod-train-m16-seed53-r12-c24.json": "09d58aac7249d64c012b96d2d91296892be4d7f1a56e8a79ecfac28c6124a5b0",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-pod-train-m16-seed53-r16-c24.json": "155817f3c5a881c6e21adf76b91337b118cc584e14526b54d4e068584db1b857",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-pod-train-m16-seed71-r16-c24.json": "9ca3f112a437076a86293176d93c16338913fc06c1b8d4bc298e5573f36fc6b2",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-profile-m16-block-ba1.json": "e74afac219aea362ba373cae4933c38fd12a3c55578e94ae10d6b807f7ab9bc4",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-profile-m16-block-ba4.json": "223ec32b69e85fce55a3cb49a987eb08c2c2f57e7bc5e20b46510615c96ed2e9",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-profile-m16-block-ba8.json": "0ab7be2d87677125d1610aae7b0368d0f87dcb03cdf1ec965d12283688d901cd",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-profile-m16-block.json": "f9d28466280cdf62d21e2ff2eebc036f140e1ea2b2d4fab35e0b26b0039e4b75",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-profile-m16-dense.json": "4f96beef278caf1aba15e5dc8630d3480672e76225fae29dcd2ffeb1bc8d3d2e",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m128-r12-c32-block.json": "e174c8db819f52e738fd4b650243dc6b8c0814a1fb989d66f300458eab9c28e9",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m128-r16-c32-block.json": "d819ed67062165717c468fc84b7b8c191debabe068f227e143e43f2748f2b5e8",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m128-r16-c48-block.json": "d40958e0600715741ef3763ebad06c6bc402564f671bd958b4a70c551f33e413",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m16-r12-c32-block.json": "b93382c38bd64859f14e215bc4aa17b2bf206e1910be3d7b0f4f4baebf5d041e",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m16-r16-c32-block.json": "4d19f69832845009d9114a09129c3f063c5ecd0c5d730912f71cf4c08e85a456",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m16-r16-c32-dense.json": "c07921f601d45f328d6898ef2afc75f3f4159ffc852b58e866e26524baf361b7",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m16-r16-c48-block.json": "c7d674fd525d9748064528c48ff53b8abf13ef9bf1a11eec5c754c6a57623ebc",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m16-r24-c48-block.json": "0badec2fab365098d17dc1926ac552425bfdd2a5a382e68d80d7d445434f7a2d",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m16-r8-c16-block.json": "e72959d065d2215c3b180dec590ea1364781df62e802573bc40ae87e109abd62",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-sweep-m16-r8-c32-block.json": "f785b5ac45b402f5dd9d70a97727661f33643b086f14c3f2227f6a2468e27d54",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m128-r16-c32-f1-b8.json": "e84e6644b3f7eefc4eb8a8358c103485050fcc6a17b8466831b8f832c64c4039",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m128-r16-c32-f4-b8.json": "1ff2b39b45474c270c26deab3097221b5218cc4a2841e3edf1d909e70684c6dc",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m128-r16-c32-f8-b8.json": "e7c1a278eee44dbeba8eed602c01f57fb855b7fc80368d47dd6c19ad19f365a3",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m16-r16-c32-f1-b8.json": "6913ab22685164fa4b9a9f662d3156e7198d02b1ee5ff1c013c17defc6caaaa5",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m16-r16-c32-f2-b8.json": "0a36a72fc4c9ff69ac7f297deae07b85b424ea1695940426595da4a523ed4450",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m16-r16-c32-f4-b8.json": "1ebc02a3a0f7740abdf74bf902af1469e998b9057593f142787307ac94bfde46",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m16-r16-c32-f8-b8.json": "6e8d13acb34cf87f7a6e50dd562f137d12895b2805e4b53f72560f9b991fb8b3",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m16-r24-c48-f1-b4.json": "a455b8ef651ce317c13323d2c576b3857a5d5a2ee11be2e0b8b3dfbe9400c18b",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m16-r24-c48-f2-b4.json": "3093e274c1efff0043b23dc5822697e5dd9e91bf2e459656ee08e09583909dd6",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/anchor-v2-m16-r24-c48-f4-b4.json": "6f4af9f49e9896932473c81140bbdc52d395359ab6b9b80429945d1359d668b1",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/ncu-anchor-r16-c32-ba1.csv": "3c877d2e975f793ccc2eeeaa8d506c1d2002da280264eca46d4b10bc9a9989e2",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/ncu-anchor-r16-c32-ba8.csv": "4a1b46ccef74eda74fd4a2c797ec05cd7d56737ab2f5cb2a08de6fb23210b035",
+    "benchmarks/cuda/linear/evidence/l4-anchor-optimization-20260929/ncu-anchor-r24-c48-ba8.csv": "57b4cb7fda31b2a281db57cf49135fef1eadd41e7662289c17683992b34cc499",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/anchor-gradient-check-n128.json": "0bfc1ce13276d4351334f295d7ac3295510ae41116f01cb6c2144667b4421a6f",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/anchor-l4-m128-r16-c32.json": "b36b78e84d42a5d64308aa74d65d657b68e62374dfefa71f83dae541917070c1",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/anchor-l4-m128-r24-c48.json": "3bf70cd7e9980558be6caea42dbc629159a99c676a73271ef77f19fe6ff39f6a",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/anchor-l4-m16-r24-c48.json": "65119becad13f21c8f3a2faa6f4fde855087318c8a3f196d0e04af99e3a8d944",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/anchor-l4-m16.json": "9cf1636743c22185bd4ed84a93578883f22ca992d329d62876cab5af72ae438b",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/mem-128-anchor16.json": "61c0c6436a8fee707746d8500dd492a217d3ed5834b6a085d6726b12c3f1ca87",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/mem-128-anchor24.json": "489d21cec53317a81dc3dfb4378509ce74d630a7ad886560c1150f670d3dc6a4",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/mem-128-baseline.json": "0b0fea2b2a1173c938099d78f361eb73f93603ef4af9e16f4270ee2f599f4ed5",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/mem-16-anchor16.json": "6db7cc567abfbe5ca0928b8d0763c46dd7bc08e5f4c1679d7efdda43391fa834",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/mem-16-anchor24.json": "f787883787b8b06ecfdcf9f4869868901317c2446ab2484d9799a77c05d35c0d",
+    "benchmarks/cuda/linear/evidence/l4-anchor-training-20260929/mem-16-baseline.json": "08d644183a9fb39fd8ecb2357bf198344012f3f76ae56023da958d05d1fd3738",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/l4-atom-atomic-vs-partial.json": "6c0c829584130fe6c65c5b58f27564c2ef504a34e5d2546c5e988cc8d4145289",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/l4-current-kernels-m128.json": "2c209538472845f91257e641074566a5c76276748029012e676145da454e2cb4",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/l4-current-kernels-m128.trace.json": "055902e4b110b36769f6b74f37e91a3a65c4a1561d949f681b27492cd8a8d89d",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/l4-current-kernels-m16.json": "58b1d5b8f3183eb5cf18e06be0af342dc0e2ed685472b834a422e50a3c0cbf13",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/l4-current-kernels-m16.trace.json": "6d746b50d898ff0d370d7917764c03ac589d12d77f0989e21524ec1505936702",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/l4-current-support.json": "6ce0e9f728dde7b6ede4884a0a292cbc7a0e38adcb9b6d76100215e1e3e39735",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/ncu-atoms-metadata.json": "400ef9eaa91b9ccf19f8e04e7f9e0124b8d58284212a907677c92a515ce85899",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/ncu-atoms.csv": "e021972f813e0363594f83bd7fe33b40ed6d5fcc6c6932a78ae379f4fed3b7a8",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/ncu-weight-metadata.json": "89926267495cea9ac4301eb82aeb67cb232e7086dec331dc4e784fbe28f1a0ea",
+    "benchmarks/cuda/linear/evidence/l4-bottleneck-20260929/ncu-weight.csv": "b31c5efdd965012810c43e984b59658325f984383f18669e9daad0ee2b0b7064",
+    "benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/l4-small-tile-fullstep-m128.json": "a3f24c37ce5145e82dca2fcc5bdddae1a40148b6c9c890a85ee5610985edaec0",
+    "benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/l4-small-tile-fullstep-m16.json": "0b83f261cac3db6447a5914766dc349f9fa936e4c5b99972463ee0b4cdec6631",
+    "benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/l4-small-tile-grad-m128.json": "4334a8c25002c5697abe9e56f082ad876a023192bc0353d968568df2e1f750b4",
+    "benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/l4-small-tile-grad-m16.json": "1a8928e3ce13113fc6a418fe384d012beebc63603a6b87df8696fd42db47bce6",
+    "benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/l4-small-tile-peak-m128.json": "8a10983155d7ab98c125285e6ff7aa3ae27140d01f84265b48c03a35da1764b5",
+    "benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/l4-small-tile-peak-m16.json": "f076fdb75dd35566cb40330b4fad6ff530863da75539f5be0c259d4d7c5bfb53",
+    "benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/l4-small-tile-shapes.json": "972eaf596e9c6af82d9f3bb9a05353580d7649fb9e3df1968b1f320461bc4c5f",
+    "benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/l4-small-tile-vs-original-m128.json": "369024ba47d2b8e3aa7d731dffd113f97473b91b2b216cdc5ec917e574d0f8b6",
+    "benchmarks/cuda/linear/evidence/l4-small-tiles-20260929/l4-small-tile-vs-original-m16.json": "fd4f53d74d48e6d74cc09da2334e2c17cdccc562414e1c82b20e888c77b08e25",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/a100/a100-cst-1024-m128-compat.json": "bb0f34cfa148665210a1e337c7e620d7de38bbc15cc309f59451aba6884b157a",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/a100/a100-cst-1024-m16-compat.json": "33f8033d36b56742c9a813813c6e57eac36367a63de7d0a4078f59c85c03110a",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/a100/a100-cst-1024-m2048-compat.json": "0a57ad0fcce8f7c98c1e48580060dc18faa60097a3e64815d177e9d332a7862d",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/a100/context.json": "bf8dc06bdcbc2b258de7136fa57f52e81cdc5b4327beeb085f00a4cfed386e73",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/ada/cache-1024-m128.json": "9d074fa1a717d651dda6c60fb746edc1055e5965965acbd27848f859cafc197d",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/ada/cache-1024-m2048.json": "8a5b86df7ae9db6431b5ec1dfbda0689359a450c014b7bf50497fa9f2350ea5d",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/ada/optimizer-1024-m128.json": "14decaac59f8ecb535e5caafa5153f4785e88891d44f3756652706e9ba1201e4",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/ada/peak-c1-m128.json": "09e176f920ea3717efcb564c2e4b8888b600d4c47650d443ec2afbb009063eb7",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/ada/peak-c1-m2048.json": "5754e30d67fabd9a600d2d2b4d40dca5e97c0aae6073b57af60d4e52ddb7cbfc",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/ada/peak-dense-m128.json": "dc9b4dfcf4f584946972667c9470d60457b0db183e5307cdf10c3869eb908c41",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/ada/peak-dense-m2048.json": "57e8bdd4b7202631b20ecd49dd2e15049b939e3664f2049e766806b5e363e1c9",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/ada/profile-1024-m128-c1.json": "aa911aa7a25a309342da28b8f43fee5f0e49abff273ac0deba83389d8d2fc42f",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/inventory.json": "2fc2fa8b0e054334519347a42aa29b8bd5d23fd07cafaf93693052d56ffc715e",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/paired-1024-m128.json": "0cb0cdc78fa1d1acef0b3865b04ff3e082cc93500dceeeb73fb669a4f5540fd9",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/paired-1024-m16.json": "56f7f3870eb90d43db031a446e6f54c9f8f6538ecceb45f5f2b59d5e32fa0869",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/paired-1024-m2048.json": "52972b8c4b6fdfb23f0e0345ba5dedadd1db561b54f6f5101b3d955834af09d4",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/peak-cst-1024-m128.json": "53cb12d157d50efdc935b3795240740dbc37d9f3cae1e635c561c9eba9b224f1",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/peak-cst-1024-m16.json": "95478f4391ef02b1efd75deacb4d1fd5b432ccea65529f0787e29a3f06e11623",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/peak-cst-1024-m2048.json": "784336a920f92f7ff9eddeffc56dfe9b98faca46ecae71443cd579a7b1bf194e",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/peak-dense-1024-m128.json": "3ba76e15e4155914b6d092623b85404bf6d51b18e96946f59034b736b560f62e",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/peak-dense-1024-m16.json": "e621921d59d87aff1996fcf2eacc15031aa4920af0aaf4842c5b311937ac3e03",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/l4/peak-dense-1024-m2048.json": "2c3623973b2ba5df2e3e8726d7e789b5560ecacb605526b4c9620cf5b61f3e09",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/cache-1024-m128-rtx3070.json": "9d6a9d792ddf140369897d42b70d1ba7db9e0aac1dff7c9e731f908f14509dcf",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/cache-1024-m16-rtx3070.json": "28275acef0e71ce76c9124fb0f42bd102ab967d1840e533af338055740499565",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/cache-1024-m2048-rtx3070.json": "7fc0adb4e9332020c4012183aaac97673e18278dca1c726110ef8830ac4a82a4",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/optimizer-1024-m128-rtx3070.json": "e0cd4004348b8d69b949cddc30b1d28534de1ed7799b85a8c9d1792b168dcfee",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/peak-c1-m128-rtx3070.json": "eee2f715442182fc2f6841cd82f541d94916734ac4ab38d83cd29b1e1bd8f954",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/peak-c1-m16-rtx3070.json": "6ee78dd29c0044ec46e26d8610faadeb97b338d3c995a0917847daf42cfc0346",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/peak-c1-m2048-rtx3070.json": "b0ca5c30b75e925346cebbf6c74e72c168ed578eba0c87cf73dfe84f945dd3b6",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/peak-dense-m128-rtx3070.json": "552496e3d0bba50595237be2dbfddd6f52ab5050a4a690f414562a6fb41221d2",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/peak-dense-m16-rtx3070.json": "ab5a1efb95a3ef411aeb6400eeccaa52febb51622be26eaba512f963ac38ecae",
+    "benchmarks/cuda/linear/evidence/small-shape-20260929/rtx3070/peak-dense-m2048-rtx3070.json": "d8622665ffce2b06c9a75fbe7adc51a6a6b1a7c89aef3e62870db9cd13b46653",
+    "benchmarks/cuda/linear/fixtures.py": "17df8a567b5b8a32304651369b060e74a0d1764ab4f425b32366926ed7555894",
+    "benchmarks/cuda/linear/manifest.py": "417c650597d24459768ea9e3a51c6283db310e8dc5545ed4652627f28df99cc9",
+    "benchmarks/cuda/linear/plans.json": "4e2913a7b75dc58b7ba75141203daa82418e38037ee815aa8684dbc0a9d7f6ed",
+    "benchmarks/cuda/linear/reference.py": "884c2abadb4ceec7c48f0c7e9eba005e46e24344dc317d3475881c4bc9ebbd3a",
+    "benchmarks/cuda/linear/run.py": "c04225c74833975d848880b35cc91efd097d6f1fdb9daf914e11c59b0bb2bb81",
+    "benchmarks/cuda/linear/strip_torus.py": "0fd34d7161f1c0452e85befff2f31d3ef940dcf3dee33a0202e4e92b48a28a59",
+    "benchmarks/cuda/linear/strip_torus_dense.py": "9cdd60850a5df982683f1804b2f52951321e9735d1f3e9763c1f602926096fb7",
+    "benchmarks/cuda/linear/strip_torus_split.py": "ee1d2ae374ecc355bb2aa4ccf6f9f60dbbe0e1c3409b564313236a6e632baf94",
+    "benchmarks/cuda/linear/validate_wheel.py": "4cb1533e1f755a9a0d73245ae07b05153ca98b99dea52eb3fdaba07f3600d595",
+    "src/torchcst/_backends/cuda/registry.py": "6cdb22b2f4e108d1471bc3de162f39d36d7afeab3f3fa2872f8ed239876a719f"
+  },
+  "public_graph_correctness": {
+    "gpu": "NVIDIA L4",
+    "torch": "2.11.0+cu128",
+    "tf32": false,
+    "torchcst_file": "/content/l4job-549684aca01640e58055796b09c13c97/results/artifacts/installed/torchcst/__init__.py",
+    "small_independent": {
+      "full": {
+        "y": {
+          "max": 2.880039388919453e-08,
+          "rel_l2": 9.709893765124409e-08
+        },
+        "dx": {
+          "max": 3.458474262529876e-08,
+          "rel_l2": 1.1321243008422405e-07
+        },
+        "dp": {
+          "max": 0.00019776835215212785,
+          "rel_l2": 6.91978033561649e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        },
+        "updated": {
+          "y": {
+            "max": 3.1255673701990894e-08,
+            "rel_l2": 8.676222872948759e-08
+          },
+          "dx": {
+            "max": 2.9025834014095864e-08,
+            "rel_l2": 1.4430089078163373e-07
+          },
+          "dp": {
+            "max": 4.385057131850445e-07,
+            "rel_l2": 1.7861095843867992e-07
+          },
+          "w": {
+            "max": 7.546062184837776e-09,
+            "rel_l2": 7.833067243520687e-08
+          }
+        }
+      },
+      "window": {
+        "y": {
+          "max": 2.880039388919453e-08,
+          "rel_l2": 9.709893765124409e-08
+        },
+        "dx": {
+          "max": 3.458474262529876e-08,
+          "rel_l2": 1.1321243008422405e-07
+        },
+        "dp": {
+          "max": 0.00019776835215212785,
+          "rel_l2": 6.91977722026961e-05
+        },
+        "w": {
+          "max": 1.1697243749997366e-08,
+          "rel_l2": 9.668112165998563e-08
+        },
+        "updated": {
+          "y": {
+            "max": 3.1255673701990894e-08,
+            "rel_l2": 8.676222872948759e-08
+          },
+          "dx": {
+            "max": 2.9025834014095864e-08,
+            "rel_l2": 1.4430089078163373e-07
+          },
+          "dp": {
+            "max": 1.4048248930809137e-07,
+            "rel_l2": 8.549351085710648e-08
+          },
+          "w": {
+            "max": 7.546062184837776e-09,
+            "rel_l2": 7.833067243520687e-08
+          }
+        }
+      }
+    }
+  },
+  "cases": {
+    "broad": {
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "normalized-1024-broad",
+          "fixture": "normalized_euclidean_strip",
+          "size": 1024,
+          "rows": 128,
+          "atoms": 52429,
+          "profile": "broad",
+          "dtype": "float32",
+          "seed": 21,
+          "warmup": 3,
+          "rounds": 7,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          }
+        },
+        "plans": [
+          {
+            "id": "full",
+            "plan": {
+              "algorithm_id": "normalized_full",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "id": "normalized_full.default.v1",
+                "atom_num_warps": 1,
+                "sorted_forward": true,
+                "sorted_backward": true,
+                "support": "ball",
+                "enable_fp_fusion": true,
+                "saved_support_flags": true,
+                "tuple_grads": false
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "window512",
+            "plan": {
+              "algorithm_id": "normalized_window",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "id": "normalized_window.rows512.v1",
+                "window_rows": 512,
+                "enable_fp_fusion": true
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "full",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "f6d18e251ba0d8ad1f730202588e6ecaa9650edc25f0a9fe7a0b4bc1dfa29999",
+          "plans_sha256": "4e2913a7b75dc58b7ba75141203daa82418e38037ee815aa8684dbc0a9d7f6ed"
+        }
+      },
+      "snapshot_sha256": "c03db64b4cec2bb1a833c2cb9de9372007a476f8e628f5f5ddb82ff321606934",
+      "correctness": {
+        "full": {
+          "status": "PASS",
+          "scope": "small mixed fixture; independent FP64 all-atom oracle",
+          "fixture_sizes": [
+            1024,
+            4,
+            4
+          ],
+          "fixture_atoms": 8,
+          "y": {
+            "max": 2.880039388919453e-08,
+            "rel_l2": 9.709893765124409e-08
+          },
+          "dx": {
+            "max": 3.458474262529876e-08,
+            "rel_l2": 1.1321243008422405e-07
+          },
+          "dp": {
+            "max": 0.00019776835215212785,
+            "rel_l2": 6.91978033561649e-05
+          },
+          "w": {
+            "max": 1.1697243749997366e-08,
+            "rel_l2": 9.668112165998563e-08
+          }
+        },
+        "window512": {
+          "status": "PASS",
+          "scope": "small mixed fixture; independent FP64 all-atom oracle",
+          "fixture_sizes": [
+            1024,
+            4,
+            4
+          ],
+          "fixture_atoms": 8,
+          "y": {
+            "max": 2.880039388919453e-08,
+            "rel_l2": 9.709893765124409e-08
+          },
+          "dx": {
+            "max": 3.458474262529876e-08,
+            "rel_l2": 1.1321243008422405e-07
+          },
+          "dp": {
+            "max": 0.00019776835215212785,
+            "rel_l2": 6.91977722026961e-05
+          },
+          "w": {
+            "max": 1.1697243749997366e-08,
+            "rel_l2": 9.668112165998563e-08
+          }
+        }
+      },
+      "measurements": {
+        "full": {
+          "status": "PASS",
+          "reference": "full",
+          "rows": 128,
+          "atoms": 52429,
+          "profile": "broad",
+          "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+          "initial_inputs": {
+            "x_sha256": "f5da3c9680ff41fe0040529652e8cdd7191f138ce361f3e5494f36904f42b22c",
+            "target_sha256": "860a783986b1cdeb3da5b6fd8b976d836df0155cd06059b51664650288e24128"
+          },
+          "eager": {
+            "median_ms": 1.6194890000065243,
+            "samples_ms": [
+              1.6194890000065243,
+              1.6376109999782784,
+              1.628691999997045,
+              1.5620770000168704,
+              1.5917279999939637,
+              1.571384999976999,
+              1.6273869999849921
+            ]
+          },
+          "graph": {
+            "median_ms": 0.6299819999640022,
+            "samples_ms": [
+              0.6723350000470418,
+              0.6346970000095098,
+              0.631249999969441,
+              0.6299819999640022,
+              0.6291750000286811,
+              0.6285850000153914,
+              0.6289350000088234
+            ]
+          },
+          "allocated_before_capture_bytes": 44978688,
+          "peak_allocated_capture_replay_bytes": 54366208,
+          "peak_reserved_capture_replay_bytes": 111149056,
+          "total_gpu_process_bytes": null,
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+        },
+        "window512": {
+          "status": "PASS",
+          "reference": "window512",
+          "rows": 128,
+          "atoms": 52429,
+          "profile": "broad",
+          "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+          "initial_inputs": {
+            "x_sha256": "f5da3c9680ff41fe0040529652e8cdd7191f138ce361f3e5494f36904f42b22c",
+            "target_sha256": "860a783986b1cdeb3da5b6fd8b976d836df0155cd06059b51664650288e24128"
+          },
+          "eager": {
+            "median_ms": 2.944907000028252,
+            "samples_ms": [
+              3.002717000015309,
+              2.9803559999663776,
+              2.944907000028252,
+              2.945775999990019,
+              2.8922710000074403,
+              2.9225769999925433,
+              2.9069839999920077
+            ]
+          },
+          "graph": {
+            "median_ms": 1.5207890000397128,
+            "samples_ms": [
+              1.5612500000088403,
+              1.5220090000411801,
+              1.5238679999924898,
+              1.5192149999734283,
+              1.5172450000022764,
+              1.5181489999918085,
+              1.5207890000397128
+            ]
+          },
+          "allocated_before_capture_bytes": 45241856,
+          "peak_allocated_capture_replay_bytes": 48404480,
+          "peak_reserved_capture_replay_bytes": 90177536,
+          "total_gpu_process_bytes": null,
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+        },
+        "dense": {
+          "status": "PASS",
+          "reference": "dense_linear",
+          "rows": 128,
+          "atoms": null,
+          "profile": null,
+          "initial_p_sha256": null,
+          "initial_inputs": {
+            "x_sha256": "f5da3c9680ff41fe0040529652e8cdd7191f138ce361f3e5494f36904f42b22c",
+            "target_sha256": "860a783986b1cdeb3da5b6fd8b976d836df0155cd06059b51664650288e24128"
+          },
+          "eager": {
+            "median_ms": 0.7251969999515495,
+            "samples_ms": [
+              0.7867190000183655,
+              0.7313270000395278,
+              0.7133300000532472,
+              0.7034160000216616,
+              0.7307259999720372,
+              0.7251969999515495,
+              0.6988810000052581
+            ]
+          },
+          "graph": {
+            "median_ms": 0.1273070000138432,
+            "samples_ms": [
+              0.15581299999212206,
+              0.12712899996358829,
+              0.1273070000138432,
+              0.12742299998080853,
+              0.12960300000486313,
+              0.1268820000177584,
+              0.12496599998712554
+            ]
+          },
+          "allocated_before_capture_bytes": 52429312,
+          "peak_allocated_capture_replay_bytes": 52955648,
+          "peak_reserved_capture_replay_bytes": 111149056,
+          "total_gpu_process_bytes": null,
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+        }
+      },
+      "comparisons": {
+        "full": {
+          "eager_time_ratio_to_baseline": 1.0,
+          "graph_time_ratio_to_baseline": 1.0
+        },
+        "window512": {
+          "eager_time_ratio_to_baseline": 1.818417414392063,
+          "graph_time_ratio_to_baseline": 2.4140197658450755
+        }
+      }
+    },
+    "sharp": {
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "normalized-1024-sharp",
+          "fixture": "normalized_euclidean_strip",
+          "size": 1024,
+          "rows": 128,
+          "atoms": 52429,
+          "profile": "sharp",
+          "dtype": "float32",
+          "seed": 21,
+          "warmup": 3,
+          "rounds": 7,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          }
+        },
+        "plans": [
+          {
+            "id": "full",
+            "plan": {
+              "algorithm_id": "normalized_full",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "id": "normalized_full.default.v1",
+                "atom_num_warps": 1,
+                "sorted_forward": true,
+                "sorted_backward": true,
+                "support": "ball",
+                "enable_fp_fusion": true,
+                "saved_support_flags": true,
+                "tuple_grads": false
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "window512",
+            "plan": {
+              "algorithm_id": "normalized_window",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "id": "normalized_window.rows512.v1",
+                "window_rows": 512,
+                "enable_fp_fusion": true
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "full",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "7f1b25120cd7dc942a623d6c46618968bb4965bf8569d1f228deeadc756f92fc",
+          "plans_sha256": "4e2913a7b75dc58b7ba75141203daa82418e38037ee815aa8684dbc0a9d7f6ed"
+        }
+      },
+      "snapshot_sha256": "d2d0d46ca1e7566614797dba5f51adfc60eccd80e581a0d41fe8821d9843836a",
+      "correctness": {
+        "full": {
+          "status": "PASS",
+          "scope": "small mixed fixture; independent FP64 all-atom oracle",
+          "fixture_sizes": [
+            1024,
+            4,
+            4
+          ],
+          "fixture_atoms": 8,
+          "y": {
+            "max": 2.880039388919453e-08,
+            "rel_l2": 9.709893765124409e-08
+          },
+          "dx": {
+            "max": 3.458474262529876e-08,
+            "rel_l2": 1.1321243008422405e-07
+          },
+          "dp": {
+            "max": 0.00019776835215212785,
+            "rel_l2": 6.91978033561649e-05
+          },
+          "w": {
+            "max": 1.1697243749997366e-08,
+            "rel_l2": 9.668112165998563e-08
+          }
+        },
+        "window512": {
+          "status": "PASS",
+          "scope": "small mixed fixture; independent FP64 all-atom oracle",
+          "fixture_sizes": [
+            1024,
+            4,
+            4
+          ],
+          "fixture_atoms": 8,
+          "y": {
+            "max": 2.880039388919453e-08,
+            "rel_l2": 9.709893765124409e-08
+          },
+          "dx": {
+            "max": 3.458474262529876e-08,
+            "rel_l2": 1.1321243008422405e-07
+          },
+          "dp": {
+            "max": 0.00019776835215212785,
+            "rel_l2": 6.91977722026961e-05
+          },
+          "w": {
+            "max": 1.1697243749997366e-08,
+            "rel_l2": 9.668112165998563e-08
+          }
+        }
+      },
+      "measurements": {
+        "full": {
+          "status": "PASS",
+          "reference": "full",
+          "rows": 128,
+          "atoms": 52429,
+          "profile": "sharp",
+          "initial_p_sha256": "5ad7662aa741c0544d1c13f0af7e8886ccffd8f459dce67de1b7e1dca5e535fb",
+          "initial_inputs": {
+            "x_sha256": "f5da3c9680ff41fe0040529652e8cdd7191f138ce361f3e5494f36904f42b22c",
+            "target_sha256": "860a783986b1cdeb3da5b6fd8b976d836df0155cd06059b51664650288e24128"
+          },
+          "eager": {
+            "median_ms": 1.5824630000338402,
+            "samples_ms": [
+              1.6298819999747138,
+              1.6250560000230507,
+              1.5824630000338402,
+              1.5541999999868494,
+              1.5599489999544858,
+              1.542057999984081,
+              1.589699999954064
+            ]
+          },
+          "graph": {
+            "median_ms": 0.5479680000348708,
+            "samples_ms": [
+              0.5907729999989897,
+              0.5495210000390216,
+              0.5480990000137353,
+              0.5475109999792949,
+              0.5479680000348708,
+              0.5455480000478019,
+              0.5467370000360461
+            ]
+          },
+          "allocated_before_capture_bytes": 44978688,
+          "peak_allocated_capture_replay_bytes": 54366208,
+          "peak_reserved_capture_replay_bytes": 111149056,
+          "total_gpu_process_bytes": null,
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+        },
+        "window512": {
+          "status": "PASS",
+          "reference": "window512",
+          "rows": 128,
+          "atoms": 52429,
+          "profile": "sharp",
+          "initial_p_sha256": "5ad7662aa741c0544d1c13f0af7e8886ccffd8f459dce67de1b7e1dca5e535fb",
+          "initial_inputs": {
+            "x_sha256": "f5da3c9680ff41fe0040529652e8cdd7191f138ce361f3e5494f36904f42b22c",
+            "target_sha256": "860a783986b1cdeb3da5b6fd8b976d836df0155cd06059b51664650288e24128"
+          },
+          "eager": {
+            "median_ms": 2.769634000003407,
+            "samples_ms": [
+              2.802728999995452,
+              2.769634000003407,
+              2.7864499999736836,
+              2.8013740000005782,
+              2.7277249999997366,
+              2.7542219999645567,
+              2.7482309999982135
+            ]
+          },
+          "graph": {
+            "median_ms": 0.307227000007515,
+            "samples_ms": [
+              0.3509849999545622,
+              0.31085200004099534,
+              0.307085000031293,
+              0.30657400003519797,
+              0.3082030000314262,
+              0.307227000007515,
+              0.30583199998091004
+            ]
+          },
+          "allocated_before_capture_bytes": 45241856,
+          "peak_allocated_capture_replay_bytes": 48404480,
+          "peak_reserved_capture_replay_bytes": 90177536,
+          "total_gpu_process_bytes": null,
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+        },
+        "dense": {
+          "status": "PASS",
+          "reference": "dense_linear",
+          "rows": 128,
+          "atoms": null,
+          "profile": null,
+          "initial_p_sha256": null,
+          "initial_inputs": {
+            "x_sha256": "f5da3c9680ff41fe0040529652e8cdd7191f138ce361f3e5494f36904f42b22c",
+            "target_sha256": "860a783986b1cdeb3da5b6fd8b976d836df0155cd06059b51664650288e24128"
+          },
+          "eager": {
+            "median_ms": 0.7190279999917948,
+            "samples_ms": [
+              0.7835609999915505,
+              0.7811780000110957,
+              0.7475849999991624,
+              0.7085390000156622,
+              0.7122460000346109,
+              0.7190279999917948,
+              0.6738629999745172
+            ]
+          },
+          "graph": {
+            "median_ms": 0.1276890000099229,
+            "samples_ms": [
+              0.15247300001419717,
+              0.1276890000099229,
+              0.1282549999928051,
+              0.12718700003233607,
+              0.12591099999781363,
+              0.1263599999674625,
+              0.12781399999539644
+            ]
+          },
+          "allocated_before_capture_bytes": 52429312,
+          "peak_allocated_capture_replay_bytes": 52955648,
+          "peak_reserved_capture_replay_bytes": 111149056,
+          "total_gpu_process_bytes": null,
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+        }
+      },
+      "comparisons": {
+        "full": {
+          "eager_time_ratio_to_baseline": 1.0,
+          "graph_time_ratio_to_baseline": 1.0
+        },
+        "window512": {
+          "eager_time_ratio_to_baseline": 1.7502045861067081,
+          "graph_time_ratio_to_baseline": 0.5606659512744616
+        }
+      }
+    }
+  },
+  "scope": "fixed Plan-file runner on one L4; small independent mixed FP64 oracle, public Graph/AdamW integration and full-shape complete-step timing/peak; no independent full-shape all-atom gradient oracle; no certification or dispatch promotion",
+  "raw_evidence_directory": "benchmarks/cuda/linear/evidence/plan-catalog-20261002/l4job-549684aca01640e58055796b09c13c97"
+}

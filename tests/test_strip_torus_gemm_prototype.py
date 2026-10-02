@@ -1,21 +1,24 @@
-"""Correctness gates for the exploratory Strip + Torus execution path."""
+from __future__ import annotations
 
+from torchcst import BandwidthBounds
+from torchcst._backends.torch.charts import construction as _construction
+from torchcst._backends.torch.geometry import execution as _geometry
+from torchcst._backends.torch.kernels import execution as _kernel
+from torchcst._backends.torch.kernels.execution import KernelOptions
+
+"""Correctness gates for the exploratory Strip + Torus execution path."""
 import math
 
 import pytest
 import torch
+from kernel_cases import direct_state, triweight_state
 
-from torchcst import (
-    CSTLinear,
-    DirectAmpWidth,
-    GridPattern,
-    LinePattern,
-    StripChart,
-    TorusGeometry,
-    Triweight,
+from torchcst import CSTLinear
+from torchcst._backends.torch.operators.strip_torus.layout import (
+    initial_layout,
+    plan_repack,
 )
-from torchcst.nn._layout import initial_layout, plan_repack
-from torchcst.nn._strip_torus import (
+from torchcst._backends.torch.operators.strip_torus.tiled import (
     owners_from_support,
     route_atoms,
     support_mask,
@@ -24,52 +27,54 @@ from torchcst.nn._strip_torus import (
 
 
 def _model() -> CSTLinear:
-    chart = StripChart(
+    chart = _construction.strip(
         shape=(16, 4),
         tile_shape=(4, 4),
-        axes=(LinePattern(16, spacing=2.0), GridPattern((2, 2), spacing=0.2)),
+        axes=(
+            _construction.line_pattern(16, spacing=2.0),
+            _construction.grid_pattern((2, 2), spacing=0.2),
+        ),
         axis=0,
         tile_pitch=25.0,
-        geometry=TorusGeometry(
+        geometry=_construction.torus(
             3,
             major_radius=100 / (2 * math.pi),
             minor_radius=1.0,
             representation="intrinsic",
         ),
     )
-    kernel = DirectAmpWidth(
+    kernel = direct_state(
         amplitude_max=1.0,
-        sigma_min=10.0,
-        sigma_birth=10.0,
-        sigma_max=10.0,
         w_c=0.05,
-        profile=Triweight(10.0, normalize_columns=False),
-        checkpoint_blocks=False,
+        profile=triweight_state(10.0, normalize_columns=False),
+        input_bounds=BandwidthBounds(
+            minimum=10.0, maximum=10.0, birth=10.0, upper_floor=10.0
+        ),
+        options=KernelOptions(checkpoint_blocks=False),
+        composition="radial",
     )
-    return CSTLinear(chart=chart, atoms=9, kernel=kernel, dtype=torch.float64)
+    return CSTLinear(
+        chart=chart, atoms=9, kernel=kernel.declaration(), dtype=torch.float64
+    )
 
 
 def test_tiled_forward_and_gradients_match_dense_oracle_across_seam() -> None:
     torch.manual_seed(1)
     model = _model()
     with torch.no_grad():
-        # This atom reaches the last station and station zero across the seam.
         point = torch.tensor([[75.5, 0.0, 0.0]], dtype=torch.float64)
-        center = model.chart.geometry.lift_chart_coordinates(point)
-        model.atoms.p[0, 2:] = model.chart.geometry.encode_centers(center)[0]
+        center = _geometry.lift_chart_coordinates(model.chart.geometry, point)
+        model.atoms.p[0, 2:] = _geometry.encode_centers(model.chart.geometry, center)[0]
         model.atoms.p[0, 0] = 0.4
-
     touched = support_mask(model.chart, model.kernel, model.atoms.p)
     assert touched[:, 0].tolist() == [True, False, False, True]
     assert bool((touched.sum(0) <= 2).all())
     owners = owners_from_support(model.chart, model.atoms.p, touched)
     layout = initial_layout(owners, model.chart.tile_count)
     inputs = torch.randn(2, 3, model.in_features, dtype=torch.float64)
-
     expected = model(inputs)
     actual = tiled_linear(model.chart, model.kernel, inputs, model.atoms.p, layout)
     torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
-
     expected.square().sum().backward()
     expected_grad = model.atoms.p.grad.clone()
     model.atoms.p.grad = None
@@ -98,31 +103,26 @@ def test_repacked_atoms_feed_tiled_forward_after_seam_crossing() -> None:
     model = _model()
     with torch.no_grad():
         seam = torch.tensor([[75.5, 0.0, 0.0]], dtype=torch.float64)
-        point = model.chart.geometry.lift_chart_coordinates(seam)
-        model.atoms.p[0, 2:] = model.chart.geometry.encode_centers(point)[0]
+        point = _geometry.lift_chart_coordinates(model.chart.geometry, seam)
+        model.atoms.p[0, 2:] = _geometry.encode_centers(model.chart.geometry, point)[0]
         first_support = support_mask(model.chart, model.kernel, model.atoms.p)
         first_owners = owners_from_support(model.chart, model.atoms.p, first_support)
         first_layout = initial_layout(first_owners, model.chart.tile_count)
         old_packed = first_layout.pack(model.atoms.p)
-
         moved = old_packed.clone()
         packed_slot = int((first_layout.order == 0).nonzero()[0])
         next_point = torch.tensor([[62.0, 0.0, 0.0]], dtype=torch.float64)
-        next_center = model.chart.geometry.lift_chart_coordinates(next_point)
-        moved[packed_slot, 2:] = model.chart.geometry.encode_centers(next_center)[0]
+        next_center = _geometry.lift_chart_coordinates(model.chart.geometry, next_point)
+        moved[packed_slot, 2:] = _geometry.encode_centers(
+            model.chart.geometry, next_center
+        )[0]
         new_support = support_mask(model.chart, model.kernel, moved)
         new_owners = owners_from_support(model.chart, moved, new_support)
         assert int(new_owners[packed_slot]) == model.chart.tile_count - 1
         second_layout = plan_repack(first_layout.offsets, new_owners)
         inputs = torch.randn(2, model.in_features, dtype=torch.float64)
-        actual = tiled_linear(
-            model.chart,
-            model.kernel,
-            inputs,
-            moved,
-            second_layout,
-        )
-        expected = inputs @ model.kernel.weight(model.chart, moved).T
+        actual = tiled_linear(model.chart, model.kernel, inputs, moved, second_layout)
+        expected = inputs @ _kernel.weight(model.kernel, model.chart, moved).T
         torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
 
 
@@ -149,17 +149,18 @@ def test_repack_rejects_a_destination_outside_the_station_range() -> None:
 def test_circle_routing_owns_a_supported_station_and_covers_every_site(representation):
     torch.manual_seed(57)
     model = _model()
-    geometry = TorusGeometry(
+    geometry = _construction.torus(
         3,
         major_radius=100 / (2 * math.pi),
         minor_radius=1.0,
         representation=representation,
     ).double()
     model.chart.geometry = geometry
-    # Sample all angles and varying cross-sections, including unsupported atoms.
     coordinates = torch.randn(251, 3, dtype=torch.float64)
     coordinates[:, 0] = torch.linspace(-150.0, 150.0, 251)
-    center = geometry.encode_centers(geometry.lift_chart_coordinates(coordinates))
+    center = _geometry.encode_centers(
+        geometry, _geometry.lift_chart_coordinates(geometry, coordinates)
+    )
     p = torch.cat((torch.full((251, 1), 0.4), torch.ones(251, 1), center), dim=-1)
     owners = route_atoms(model.chart, model.kernel, p)
     touched = support_mask(model.chart, model.kernel, p)

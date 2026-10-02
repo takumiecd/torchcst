@@ -1,31 +1,45 @@
-"""Dependency buckets must match full site support, including seam/idle atoms."""
+from __future__ import annotations
 
+from torchcst._backends.torch.geometry import execution as _geometry
+from torchcst._backends.torch.kernels import execution as _kernel
+
+"""Dependency buckets must match full site support, including seam/idle atoms."""
 import pytest
 import torch
 from test_strip_torus_gemm_prototype import _model as seam_model
 from test_triton_linear import GPU, _model
 
-from torchcst.nn._backends._preparation import execution_plan, prepare
-from torchcst.nn._backends._triton import forward
-from torchcst.nn._strip_torus import support_mask, tiled_linear
-from torchcst.nn._support_layout import station_buckets, support_layout
+from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import forward
+from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
+from torchcst._backends.torch.operators.strip_torus.support import (
+    station_buckets,
+    support_layout,
+)
+from torchcst._backends.torch.operators.strip_torus.tiled import (
+    support_mask,
+    tiled_linear,
+)
 
 
 @pytest.mark.parametrize("rows,station_rows", [(1, 1), (2, 1), (19, 5)])
 def test_buckets_equal_exact_support_and_preserve_each_atom_once(rows, station_rows):
     torch.manual_seed(71)
     layer = _model(rows=rows, station_rows=station_rows, atoms=97).double()
-    chart, p = layer.chart, layer.atoms.p
+    chart, p = (layer.chart, layer.atoms.p)
     with torch.no_grad():
         coordinates = torch.randn(97, 3, dtype=p.dtype)
         coordinates[:, 0] = torch.linspace(-100, 100, 97)
-        p[:, 2:] = chart.geometry.encode_centers(
-            chart.geometry.lift_chart_coordinates(coordinates)
+        p[:, 2:] = _geometry.encode_centers(
+            chart.geometry,
+            _geometry.lift_chart_coordinates(chart.geometry, coordinates),
         )
-    encoded, _, precision = layer.kernel.tile_parameters(chart, p)
+    encoded, _, precision = _kernel.coordinate(
+        layer.kernel, "tile_parameters", chart, p
+    )
     layout = support_layout(
         execution_plan(layer),
-        chart.geometry.decode_centers(encoded),
+        _geometry.decode_centers(chart.geometry, encoded),
         precision,
         chart.tile_shape[0],
     )
@@ -57,28 +71,29 @@ def test_seam_shared_atom_is_stored_once_and_gpu_classification_matches(device):
     layer = seam_model().to(device=device, dtype=torch.float32)
     with torch.no_grad():
         point = layer.atoms.p.new_tensor([[75.5, 0, 0]])
-        layer.atoms.p[0, 2:] = layer.chart.geometry.encode_centers(
-            layer.chart.geometry.lift_chart_coordinates(point)
+        layer.atoms.p[0, 2:] = _geometry.encode_centers(
+            layer.chart.geometry,
+            _geometry.lift_chart_coordinates(layer.chart.geometry, point),
         )[0]
     expected = prepare(layer, layer.atoms.p, use_triton=False, support_layout=True)
     actual = prepare(layer, layer.atoms.p, support_layout=True)
     for a, b in zip(actual, expected, strict=True):
-        torch.testing.assert_close(a, b, atol=1e-6, rtol=1e-6)
+        torch.testing.assert_close(a, b, atol=1e-06, rtol=1e-06)
     offsets = actual[-1]
-    assert offsets[8] > offsets[7]  # B[3] is the seam; stored only once.
+    assert offsets[8] > offsets[7]
     if device == "cuda":
         x = torch.randn(33, 4, device=device, requires_grad=True)
         reference = torch.nn.functional.linear(x, layer.dense_weight())
         for bm in (16, 32, 64):
             result = forward(layer, x, layer.atoms.p, batch_tile=bm)
-            torch.testing.assert_close(result, reference, atol=3e-5, rtol=3e-5)
+            torch.testing.assert_close(result, reference, atol=3e-05, rtol=3e-05)
             grad = torch.randn_like(result)
             got = torch.autograd.grad(result, (x, layer.atoms.p), grad)
             wanted = torch.autograd.grad(
                 reference, (x, layer.atoms.p), grad, retain_graph=True
             )
             for a, b in zip(got, wanted, strict=True):
-                torch.testing.assert_close(a, b, atol=1e-4, rtol=1e-4)
+                torch.testing.assert_close(a, b, atol=0.0001, rtol=0.0001)
 
 
 @pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=GPU)])
@@ -90,12 +105,13 @@ def test_all_idle_atoms_keep_zero_input_and_parameter_gradients(device):
         layer.atoms.p[:, 0] = 0.8
         layer.atoms.p[:, 1] = 1
         coordinates = layer.atoms.p.new_tensor([[8.5, 0, 0]])
-        layer.atoms.p[:, 2:] = layer.chart.geometry.encode_centers(
-            layer.chart.geometry.lift_chart_coordinates(coordinates)
+        layer.atoms.p[:, 2:] = _geometry.encode_centers(
+            layer.chart.geometry,
+            _geometry.lift_chart_coordinates(layer.chart.geometry, coordinates),
         )
     assert not support_mask(layer.chart, layer.kernel, layer.atoms.p).any()
     x = torch.randn(2, 21, device=device, requires_grad=True)
     y = layer(x)
     assert not y.any()
     dx, dp = torch.autograd.grad(y.sum(), (x, layer.atoms.p))
-    assert not dx.any() and not dp.any()
+    assert not dx.any() and (not dp.any())

@@ -1,5 +1,6 @@
 # Benchmarks
 
-継続して使う測定コードの入口。CUDA Linear のコマンドと数値設定は
-[CUDA Linear benchmark](cuda/linear/README.md)を参照。結果の採否と保存形式は
-[benchmark 運用](cuda/linear/benchmark-workflow.ja.md)に記す。
+本体の正しさ・baseline・速度・メモリを継続して確認する測定コード。
+現在の入口と測定範囲は [CUDA Linear](cuda/linear/README.md) にまとめる。
+試作コードは本体の測定ツリーへ残さず、独立した研究 branch で扱う。
+過去の実験・採否は [研究履歴](../docs/research-history/cuda-linear/README.md) に保存する。

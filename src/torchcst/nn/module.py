@@ -7,20 +7,16 @@ from typing import Literal
 from torch import Tensor, nn
 
 from torchcst.atoms import Atoms
-from torchcst.geometry import Chart
+from torchcst.charts import ChartState
 
 RepulsionKind = Literal["cosine", "raw", "abs"]
 
 
 class CSTModule(nn.Module):
-    """A fixed-shape atom site.
+    """A fixed-shape atom site discovered by CSTOptimizer.
 
-    Family-specific backward stays on ``LinearAtomGrad`` or a future
-    ``ConvAtomGrad``. This type does not unify those programs. Subclasses own
-    one ``Atoms`` table, frozen charts, and the ``(S, κ)`` repulsion terms.
-    ``CSTParameterAdam`` discovers every site through this contract. The N/D
-    optimizer family supports ``CSTLinear`` through ``LinearAtomGrad`` and
-    rejects other site families until they have observation programs.
+    Subclasses own their atom table and charts; ordinary backend autograd
+    supplies gradients. The Kernel owns the coordinate update policy.
     """
 
     atoms: Atoms
@@ -46,8 +42,9 @@ class CSTModule(nn.Module):
     @property
     def atom_parameter_dof(self) -> int:
         """Intrinsic degrees of freedom in one stored atom row."""
+        from torchcst._backends.torch.kernels import execution as _kernel
 
-        return self.kernel.parameter_dof(*self.cst_charts())
+        return _kernel.parameter_dof(self.kernel, *self.cst_charts())
 
     @property
     def cst_degrees_of_freedom(self) -> int:
@@ -60,7 +57,7 @@ class CSTModule(nn.Module):
 
         raise NotImplementedError
 
-    def cst_charts(self) -> tuple[Chart, ...]:
+    def cst_charts(self) -> tuple[ChartState, ...]:
         """Return the charts whose coordinates this site observes."""
 
         raise NotImplementedError

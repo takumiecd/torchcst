@@ -24,14 +24,12 @@ def hessian_from_gradient(
     if point.ndim != 1:
         raise ValueError("point must be a one-dimensional parameter vector")
     if directions is None:
-        directions = torch.eye(
-            point.shape[0], device=point.device, dtype=point.dtype
-        )
+        directions = torch.eye(point.shape[0], device=point.device, dtype=point.dtype)
     if directions.shape != (point.shape[0], point.shape[0]):
         raise ValueError("directions must have shape [P, P]")
     if directions.device != point.device or directions.dtype != point.dtype:
         raise ValueError("directions must match point device and dtype")
-    columns = vmap(
-        lambda direction: jvp(gradient, (point,), (direction,))[1]
-    )(directions)
+    columns = vmap(lambda direction: jvp(gradient, (point,), (direction,))[1])(
+        directions
+    )
     return columns.transpose(-1, -2)

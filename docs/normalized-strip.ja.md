@@ -1,8 +1,11 @@
+> 以下の source commit・コマンド・測定値は検証当時の記録。現在の実行入口は
+> [benchmark README](../benchmarks/cuda/linear/README.md)を参照。
+
 # 正規化 Strip 線形層
 
-`torchcst.nn.NormalizedStripLinear` は、固定された通常の3次元 Euclidean
-`StripChart` 上で、各 atom の離散 L2 ノルムを演算子全体から計算する線形層です。
-既存の `CSTLinear` の API や既定のモデルを変更しません。
+`CSTLinear` に通常の3次元 Euclidean の regular Product / 連続 Strip chart と
+`presets.NORMALIZED_RADIAL_TRIWEIGHT` を渡す。各 atom の離散 L2 ノルムを
+演算子全体から計算する。公開 Linear は共通入口へ統一し、旧専用クラスは削除した。
 
 ## インストール
 
@@ -40,28 +43,30 @@ y = x @ W.T
 軸を最速で平坦化します。例のサイズは小さくしてあります。
 
 ```python
+from torchcst import pattern_presets as sites
+from torchcst import geometry_presets as spaces
 import math
 import torch
-from torchcst import EuclideanGeometry, GridPattern, LinePattern, StripChart
-from torchcst.nn import NormalizedStripLinear
+from torchcst import chart_presets as layout
+from torchcst import CSTLinear, LinearOptions, presets
 
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 torch.set_float32_matmul_precision("highest")
 
 rows, h, j = 64, 8, 8
-chart = StripChart(
+chart = layout.strip(
     shape=(rows, h * j),
     tile_shape=(32, h * j),
     axis=0,
     tile_pitch=32.0,
     axes=(
-        LinePattern(rows, spacing=1.0, center=(rows - 1) / 2),
-        GridPattern((h, j), spacing=0.5,
+        sites.line(rows, spacing=1.0, center=(rows - 1) / 2),
+        sites.grid((h, j), spacing=0.5,
                     center=((h - 1) * 0.25, (j - 1) * 0.25)),
     ),
-    geometry=EuclideanGeometry(3),
-).to('cuda')
+    geometry=spaces.euclidean(3),
+)
 
 torch.manual_seed(21)
 p = torch.zeros(128, 5, device='cuda', dtype=torch.float32)
@@ -71,7 +76,8 @@ p[:, 2] = torch.rand(128, device='cuda') * (rows - 1)
 p[:, 3] = torch.rand(128, device='cuda') * (h - 1) * 0.5
 p[:, 4] = torch.rand(128, device='cuda') * (j - 1) * 0.5
 
-layer = NormalizedStripLinear(chart, p, memory='full')
+layer = CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+                  linear_options=LinearOptions(memory='full'))
 optimizer = torch.optim.AdamW(layer.parameters(), lr=1e-3)
 x = torch.randn(128, h * j, device='cuda')
 optimizer.zero_grad(set_to_none=True)
@@ -81,16 +87,28 @@ optimizer.step()
 ```
 
 入力の最終次元は `h * j` で、その前のバッチ次元は任意です。出力の最終次元は
-`rows` になります。渡した `p` は detach して複製され、層の `layer.p` が独立した
-`nn.Parameter` になります。元の入力テンソルを optimizer に登録せず、例のように
-`layer.parameters()` を登録してください。通常の `torch.optim.AdamW` を使用できます。
-この層は既存 CST optimizer の更新規則を自動適用するものではありません。
+`rows` になります。`atoms=p` の `p` が Tensor なら detach して複製し、`layer.atoms.p` が所有する。
+`nn.Parameter` なら同じオブジェクトを登録し、既に作った optimizer の参照と状態を
+維持する。`Atoms` を渡すと owner ごと再利用する。共用パラメーターの constructor 内
+での dtype/device 変換は拒否する。移動は optimizer を作る前に済ませる。
 
-対応する chart は axis0、連続した tile pitch、LinePattern と2次元 GridPattern を
-持つ通常の3次元 Euclidean Strip です。固定の chart メタデータを registered buffer
-へ保存し、学習可能な chart パラメータを拒否します。層の `.to(device)` は atom と
-保存した descriptor を移動します。`state_dict` にはパラメータと descriptor に加え、
-形式のバージョン、メモリ経路、固定の幅範囲とノルム床を保存します。
+```python
+shared_p = torch.nn.Parameter(p)
+base_optimizer = torch.optim.AdamW([shared_p], lr=1e-3)
+shared_layer = CSTLinear(chart=chart, atoms=shared_p,
+                         kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)
+assert shared_layer.atoms.p is shared_p
+```
+
+通常の torch.optim と CSTOptimizer のどちらも使用できる。log幅と中心の更新は
+Euclidean の通常更新となる。CSTOptimizer の同一モデルに複数の CST policy owner を
+持つ共用 atom table は現時点で拒否する。
+
+対応する高速 algorithm は LinePattern と2次元 GridPattern を持つ固定の3次元
+Euclidean chart を扱う。Product または axis0・連続 tile pitch の Strip に対応する。
+共通 ChartState / KernelState / Atoms をそのまま checkpoint に保存する。
+LinearOptions も checkpoint の契約に含むので、読み込み先に同じ設定を渡す。
+旧専用クラスの checkpoint は読み込まない。
 
 CPU では FP32/FP64 の局所支持を列挙する PyTorch 参照経路を使います。これは
 CPU 用の機能経路で、CUDA の性能測定には含めません。CUDA 高速経路は FP32 と
@@ -100,12 +118,15 @@ CPU 用の機能経路で、CUDA の性能測定には含めません。CUDA 高
 window 経路は行窓512を用い、対応する標準メタデータの条件を満たさない場合は
 full 経路へ戻ります。その場合に同じメモリ削減を保証するものではありません。
 
-chart は固定してください。学習する chart はこの層の対象外です。中心の3座標は
-atom パラメータとして学習できます。
+高速 algorithm は固定 chart が対象です。対応しない配置は CSTLinear の一般
+Torch 参照経路を使います。中心の3座標は atom パラメーターとして学習できます。
 
 ## メモリ経路と測定の範囲
 
-既定の `memory='full'` は通常幅の検証済み経路です。`memory='window'` は
+以下の既存測定は各記録の revision に対する履歴であり、入口統一後の性能を
+示すものではありません。統一後の検証は [Linear 統一記録](linear-unification.ja.md) に記録します。
+
+既定の `LinearOptions(memory='full')` は通常幅の検証済み経路です。`LinearOptions(memory='window')` は
 メモリを優先する選択です。W と dW を行窓の作業領域で再利用し、境界の勾配に
 必要な8行の halo を保持します。全体ノルムと全5パラメータの勾配は維持します。
 逆伝播で W を再生成するため、メモリ削減には追加計算が伴います。
@@ -144,7 +165,7 @@ FP32/TF32 無効の条件で行っています。別の dtype、chart、GPU、�
 同じ測定と見なさないでください。
 
 
-## 配布版の最終検証（2026-10-01）
+## 旧専用クラスの配布版検証（2026-10-01）
 
 wheel を展開し、`experiments/` に依存しない実際の配布コードから実行しました。
 同じ L4（GPU-639ce143）、FP32/TF32 無効、M128、5% atom、forward・dX・全5勾配・
