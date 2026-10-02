@@ -57,3 +57,8 @@ Neonへの本番migration 2はまだ行っていない。新コードへの切�
 
 今回のテストデータはCPUの構造検証fixtureであり、GPU計測結果として本番DBへ提出していない。
 受付結果は常に `consistency_checked` / `self_reported` とし、kernel承認や測定値の真正性と区別する。
+
+後続作業でPR #18をmainにマージし、所有者URLの再設定後にNeonのmigration 2と専用roleへの
+新テーブルのSELECT / INSERT grantを適用した。既存原本・件数・provenanceは維持された。
+Issueへの実投稿から保存までの本番確認は別途残る。
+[本番移行と生成ツールの確認](dispatch-generation-verification.ja.md)を参照。

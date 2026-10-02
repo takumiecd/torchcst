@@ -99,6 +99,10 @@ class ExactSelector(Selector):
 
     @classmethod
     def load(cls, data, *, registry):
+        return cls._load(data, registry=registry, check_runtime=True)
+
+    @classmethod
+    def _load(cls, data, *, registry, check_runtime):
         text = encode_json(data)
         data = decode_json(text)
         exact_fields(
@@ -138,6 +142,8 @@ class ExactSelector(Selector):
             raise ValueError("runtime_versions requires torch and optionally triton")
         for package, expected in runtime.items():
             _identifier(expected, "runtime version")
+            if not check_runtime:
+                continue
             try:
                 installed = (
                     str(torch.__version__) if package == "torch" else version(package)
@@ -206,3 +212,12 @@ class ExactSelector(Selector):
 def load_selector(text, *, registry):
     """Versioned artifact entry point; unimplemented kinds fail explicitly."""
     return ExactSelector.loads(text, registry=registry)
+
+
+def validate_selector_artifact(data, *, registry):
+    """Check an offline document targeting another runtime; return data only.
+
+    This never returns an executable selector. Loading for execution still checks
+    the installed Torch/Triton versions through ``load_selector``.
+    """
+    return ExactSelector._load(data, registry=registry, check_runtime=False).dump()
