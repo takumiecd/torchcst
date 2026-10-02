@@ -1,0 +1,36 @@
+{
+  "dataset": {
+    "adapter": "cuda.linear.complete-step",
+    "adapter_revision": 2,
+    "case_id": "4deff17cc4c6203f728c5a46a6366aea01307b3316b6efb4494bfef52592dd9b",
+    "environment_id": "9bbe9d4fbec8cf23d6cc81a79c2a860041cc2021fc85d89553da529e243fd4b5",
+    "gpu": "NVIDIA L4",
+    "protocol_id": "664a7510233cfcb176ed3f668ca540ec767392f1985851a882457a767f2ee105",
+    "source_id": "d5f637d45c8bb0fbdd646e4fa1f55c031c7cbd61bb6d4857bea2f2a7770cfd72"
+  },
+  "excluded_run_ids": [],
+  "execution_mode": "cuda_graph",
+  "fallback_plan": {
+    "algorithm_id": "normalized_full",
+    "algorithm_revision": "v1",
+    "recipe": {
+      "atom_num_warps": 1,
+      "enable_fp_fusion": true,
+      "id": "normalized_full.default.v1",
+      "saved_support_flags": true,
+      "sorted_backward": true,
+      "sorted_forward": true,
+      "support": "ball",
+      "tuple_grads": false
+    },
+    "schema_version": 1
+  },
+  "min_runs": 1,
+  "revision": "archived-l4-generation-verification-v1",
+  "schema_version": 1,
+  "score_policy": {
+    "id": "speed",
+    "parameters": {},
+    "revision": "v1"
+  }
+}

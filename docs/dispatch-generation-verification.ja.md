@@ -70,3 +70,7 @@ submissionは0件で、テスト用の偽観測は登録していない。
 Issueからの新規提出の本番end-to-end確認も別途残る。
 
 使い方は [生成ガイド](../benchmarks/dispatch/README.md)を参照。
+
+本番Actionsの再現用依頼は
+[l4-archived-verification.json](../benchmarks/dispatch/requests/l4-archived-verification.json)。
+過去の固定された観測を用いる経路確認用で、通常の採用判断用プリセットではない。
