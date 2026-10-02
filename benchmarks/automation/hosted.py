@@ -98,14 +98,49 @@ def preserve_receipts(home, output):
     root = Path(home) / ".local/state/colab-l4-pool"
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
+    private_values = set()
+
+    def remember(value):
+        if isinstance(value, dict):
+            for item in value.values():
+                remember(item)
+        elif isinstance(value, list):
+            for item in value:
+                remember(item)
+        elif isinstance(value, str) and len(value) >= 8:
+            private_values.add(value)
+
+    auth = Path(home) / ".config/colab-cli/token.json"
+    for path in [auth, *(root / "slots").glob("*/sessions.json")]:
+        if path.is_file():
+            remember(json.loads(path.read_bytes()))
+    if os.environ.get("COLAB_AUTH_JSON"):
+        remember(json.loads(os.environ["COLAB_AUTH_JSON"]))
+
+    def sanitized_log(path, destination):
+        if path.is_file() and not path.is_symlink():
+            content = path.read_text(errors="replace")
+            for value in sorted(private_values, key=len, reverse=True):
+                content = content.replace(value, "[redacted]")
+            content = re.sub(r"(?i)(bearer\s+)[^\s\"']+", r"\1[redacted]", content)
+            content = re.sub(
+                r"(?i)([?&](?:token|key|auth)=)[^\s&#\"']+", r"\1[redacted]", content
+            )
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(content)
+
     states = []
     for path in sorted((root / "slots").glob("*/state.json")):
         state = json.loads(path.read_bytes())
         states.append(
             {key: state.get(key) for key in ("status", "session", "endpoint")}
         )
+        sanitized_log(
+            path.parent / "lifecycle.log",
+            output / "slots" / path.parent.name / "lifecycle.log",
+        )
     (output / "owned-sessions.json").write_bytes(encode(states))
-    # OAuth and session configs, queue DB and transport logs are deliberately absent.
+    # OAuth and live session configs and queue DB are deliberately absent.
     for job in (root / "jobs").glob("*"):
         if not job.is_dir() or job.is_symlink():
             continue
@@ -115,6 +150,7 @@ def preserve_receipts(home, output):
                 destination = output / job.name / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(path, destination)
+        sanitized_log(job / "transport.log", output / job.name / "transport.log")
 
 
 def main():

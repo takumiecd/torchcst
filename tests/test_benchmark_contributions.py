@@ -230,7 +230,7 @@ def test_receipts_never_export_live_session_credentials(tmp_path):
     preserve_receipts(tmp_path, output)
     assert (output / "colabjob-fixture/spec.json").exists()
     assert not list(output.rglob("sessions.json"))
-    assert not list(output.rglob("*.log"))
+    assert (output / "colabjob-fixture/transport.log").read_text() == "[redacted]"
     assert all(
         b"runtime-secret" not in path.read_bytes()
         for path in output.rglob("*")
