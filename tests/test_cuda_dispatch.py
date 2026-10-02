@@ -59,6 +59,21 @@ def context(**kwargs):
     return DispatchContext(**(defaults | kwargs))
 
 
+@pytest.mark.parametrize("axis", [0, 1])
+def test_cuda_contract_rejects_future_nested_pattern_revisions(axis):
+    original = context().operator
+    chart = original.layout.chart
+    axes = tuple(
+        replace(value, revision=2) if index == axis else value
+        for index, value in enumerate(chart.axes)
+    )
+    operator = replace(
+        original, layout=replace(original.layout, chart=replace(chart, axes=axes))
+    )
+    with pytest.raises(ValueError, match="fixed regular 3D"):
+        geometry(operator)
+
+
 def test_selection_preserves_legacy_routes_and_explains_fallback():
     assert select_normalized(context()).plan == FULL
     assert select_normalized(context(), memory="window").plan == WINDOW

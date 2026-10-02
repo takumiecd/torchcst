@@ -77,6 +77,7 @@ def normalized_strip_metadata(spec):
         or len(chart.axes) != 2
         or type(chart.axes[0]) is not LinePatternSpec
         or type(chart.axes[1]) is not GridPatternSpec
+        or any(axis.revision != 1 for axis in chart.axes)
         or chart.axes[1].dim != 2
     ):
         raise ValueError("normalized Strip requires fixed regular 3D Euclidean sites")
