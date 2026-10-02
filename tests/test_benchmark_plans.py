@@ -109,6 +109,10 @@ import sys
 from benchmarks.cuda.linear.run import main
 sys.argv = ['run', '--case', {str(CASE)!r}, '--validate-only']
 main()
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
+for plan in (FULL, WINDOW):
+    assert REGISTRY.loads_plan(REGISTRY.dumps_plan(plan)) == plan
 assert 'triton' not in sys.modules
 assert not any(k.endswith(('.executor', '.kernels', '.provider')) for k in sys.modules if 'normalized_euclidean_strip' in k)
 """

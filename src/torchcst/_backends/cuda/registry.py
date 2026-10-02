@@ -12,6 +12,7 @@ from torchcst._backends.cuda.schema import (
     DispatchContext,
     ExecutionPlan,
 )
+from torchcst._backends.cuda.serialization import decode_json, encode_json
 from torchcst.operators.spec import OperatorSpec
 
 
@@ -46,6 +47,36 @@ class Registry:
             raise TypeError("recipe type does not match algorithm")
         algorithm.validate_recipe(plan.recipe)
         return algorithm
+
+    def dump_plan(self, plan: ExecutionPlan) -> dict:
+        """Export a validated Plan as detached, losslessly reloadable JSON data."""
+        algorithm = self.validate_plan(plan)
+        if not is_dataclass(algorithm.recipe_type):
+            raise TypeError("serialized plans require a dataclass recipe")
+        value = {
+            "schema_version": plan.schema_version,
+            "algorithm_id": plan.algorithm_id,
+            "algorithm_revision": plan.algorithm_revision,
+            "recipe": {
+                field.name: getattr(plan.recipe, field.name)
+                for field in fields(algorithm.recipe_type)
+                if field.init
+            },
+        }
+        # JSON-native fields only. Avoid deepcopy/asdict on unknown recipe values,
+        # which could copy tensors or invoke arbitrary serialization hooks.
+        value = decode_json(encode_json(value))
+        if self.load_plan(value) != plan:
+            raise ValueError("recipe cannot round-trip through JSON losslessly")
+        return value
+
+    def dumps_plan(self, plan: ExecutionPlan) -> str:
+        """Export one Plan to deterministic JSON text, without importing GPU code."""
+        return encode_json(self.dump_plan(plan))
+
+    def loads_plan(self, value: str | bytes | bytearray) -> ExecutionPlan:
+        """Import JSON text using only Algorithm/recipe types in this registry."""
+        return self.load_plan(decode_json(value))
 
     def load_plan(self, value: dict) -> ExecutionPlan:
         """Decode a complete declaration using only registered recipe types."""

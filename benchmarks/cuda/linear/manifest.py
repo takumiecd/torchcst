@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 import re
 from dataclasses import asdict, dataclass
@@ -15,6 +14,7 @@ from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract impo
     SEMANTICS,
 )
 from torchcst._backends.cuda.schema import ExecutionPlan
+from torchcst._backends.cuda.serialization import decode_json
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
@@ -34,22 +34,9 @@ def _integer(value, name, minimum=1):
         raise ValueError(f"{name} must be an integer >= {minimum}")
 
 
-def _pairs(items):
-    value = {}
-    for key, item in items:
-        if key in value:
-            raise ValueError(f"duplicate JSON key: {key}")
-        value[key] = item
-    return value
-
-
-def _constant(value):
-    raise ValueError(f"nonfinite JSON value: {value}")
-
-
 def read_json(path):
     raw = Path(path).read_bytes()
-    value = json.loads(raw, object_pairs_hook=_pairs, parse_constant=_constant)
+    value = decode_json(raw)
     return value, hashlib.sha256(raw).hexdigest()
 
 
@@ -152,7 +139,9 @@ class BenchmarkRun:
         return {
             "schema_version": 1,
             "case": asdict(self.case),
-            "plans": [asdict(p) for p in self.plans],
+            "plans": [
+                {"id": p.id, "plan": REGISTRY.dump_plan(p.plan)} for p in self.plans
+            ],
             "baseline": self.baseline,
             "dense": self.dense,
             "input_hashes": self.input_hashes,
@@ -175,7 +164,7 @@ def decode_catalog(value):
         entries.append(PlanEntry(item["id"], REGISTRY.load_plan(item["plan"])))
     if len({p.id for p in entries}) != len(entries):
         raise ValueError("duplicate plan id")
-    identities = {json.dumps(asdict(p.plan), sort_keys=True) for p in entries}
+    identities = {REGISTRY.dumps_plan(p.plan) for p in entries}
     if len(identities) != len(entries):
         raise ValueError("duplicate execution plan under different ids")
     return tuple(entries)

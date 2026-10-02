@@ -38,6 +38,7 @@ torchcst/
       algorithm.py             Algorithm ABC
       context.py / schema.py   共通 OperatorSpec と実行条件・plan・診断
       registry.py / dispatch/  登録・検証・現行の選択方針
+      serialization.py         宣言 metadata の厳密な JSON codec
       algorithms/
         normalized_euclidean_strip/
           contract.py          対応する数学契約の判定・固定 site metadata
@@ -117,3 +118,37 @@ buffer version による固定座標計画の invalidation と fresh な atom �
 
 詳細は [Kernel](../kernels/README.md)、[Geometry](../geometry/README.md)、
 [Pattern](../patterns/README.md)、[Chart](../charts/README.md) を参照。
+
+
+## Plan の JSON export / import
+
+`ExecutionPlan` は実行設定の宣言。registry は登録済み Algorithm の recipe 型を使って
+復元し、schema・ID・revision・全 recipe フィールドとその値を検証する。
+
+| Registry API | 変換 |
+| --- | --- |
+| `dump_plan(plan)` / `load_plan(data)` | Plan ↔ JSON-compatible dict |
+| `dumps_plan(plan)` / `loads_plan(text)` | Plan ↔ JSON text（UTF-8 bytes の読み込みも可） |
+
+```python
+from pathlib import Path
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.cuda.dispatch.select import WINDOW
+
+path = Path("plan.json")
+path.write_text(REGISTRY.dumps_plan(WINDOW), encoding="utf-8")
+restored = REGISTRY.loads_plan(path.read_text(encoding="utf-8"))
+assert restored == WINDOW
+```
+
+dispatcher の `decision.plan` も同じ API で保存できる。復元した Plan は
+`REGISTRY.execute(restored, context, x=x, parameters=p, operator=operator)` へ渡す。
+実機・tensor・数学契約の適合性は実行時に検証する。
+
+保存対象は `schema_version`、`algorithm_id`、`algorithm_revision`、`recipe`。
+export/import は GPU 不要。recipe は JSON-native な scalar / list / string-keyed dict を
+使い、非有限数、重複 JSON key、型の暗黙変換、未登録・未検証の設定は拒否する。
+export は元の recipe と独立した辞書を返し、往復で元の Plan と一致することを確認する。
+JSON text はキーをソートして決定的に出力する。
+`algorithm_revision` は実装契約の版。再現実験では benchmark と同様に source commit / hash
+と実行条件も記録する。

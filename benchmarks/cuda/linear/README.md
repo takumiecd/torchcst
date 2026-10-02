@@ -33,7 +33,9 @@ python -m benchmarks.cuda.linear.check_normalized --output output/public-check.j
 
 [plans.json](plans.json) は名前付き Plan の一覧。
 各 Plan に Algorithm ID、revision、schema version、全 recipe フィールドを書く。
-registry が登録済み recipe 型へ変換・検証する。省略による既定値の補完や未知の設定は受け付けない。
+registry の `load_plan` が登録済み recipe 型へ変換・検証する。
+export は `dump_plan`、単一 Plan の JSON text の往復は `dumps_plan` / `loads_plan` を使う。
+[Plan の JSON API](../../../src/torchcst/_backends/README.md#plan-の-json-export--import)を参照。省略による既定値の補完や未知の設定は受け付けない。
 現在 full / window512 の検証済み recipe 値のみを受け付け、自由な tuning sweep は用意しない。
 
 [cases/](cases/) の各 JSON は測定条件（形状、atoms、幅、dtype、seed、warmup、rounds、optimizer）と、
@@ -112,3 +114,7 @@ source / wheel / installed の152 Python file を照合し、local と L4 の wh
 peak allocated / reserved、source と archive の hash を保存している。
 raw artifact は ignored evidence に保存済み。共有 pool の owned GPU は停止済み。
 この確認は小さい独立 oracle と完全 step 測定の範囲であり、認証や既定採用は行わない。
+
+Plan の専用 JSON API は source / 配布 wheel の CPU suite で各533 passed / 117 skipped。
+full / window の dict・JSON text・ファイル往復、recipe 型の復元、GPU 実装を import しないこと、
+不正・重複・非有限な設定の拒否と benchmark の固定 snapshot を確認した。

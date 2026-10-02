@@ -97,7 +97,7 @@ def _metadata(args, run):
         "plan_id": args.plan_id,
         "plan": None
         if args.worker == "dense"
-        else asdict(run.entry(args.plan_id).plan),
+        else REGISTRY.dump_plan(run.entry(args.plan_id).plan),
     }
 
 
@@ -254,7 +254,15 @@ def main():
         ap.error("device must be nonnegative")
     if args.list_plans:
         entries = decode_catalog(read_json(args.plans)[0])
-        print(json.dumps([asdict(entry) for entry in entries], indent=2))
+        print(
+            json.dumps(
+                [
+                    {"id": entry.id, "plan": REGISTRY.dump_plan(entry.plan)}
+                    for entry in entries
+                ],
+                indent=2,
+            )
+        )
         return
     if args.worker:
         if not args.snapshot or not args.snapshot_sha256 or not args.output:
