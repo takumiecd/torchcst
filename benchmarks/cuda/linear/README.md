@@ -34,7 +34,9 @@ python -m benchmarks.cuda.linear.check_normalized --output output/public-check.j
 
 `check_normalized` と `validate_wheel` は従来の NVIDIA L4 検証条件を維持する。
 `run` と Strip/Torus の CLI は他の CUDA GPU でも使える。
-全 CLI の設定は `--help` を参照。8192² を既定の測定にしない。
+全 CLI の設定は `--help` を参照。wheel gate は1024²に限定する。
+`check_normalized --bench` は既定で1024²と8192²を測るため、通常の確認では
+`--sizes 1024` を明示する。
 
 ## 配布 wheel の L4 gate
 
