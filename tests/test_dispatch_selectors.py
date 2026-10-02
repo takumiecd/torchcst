@@ -362,8 +362,14 @@ def test_written_json_selects_and_executes_both_exact_and_fallback(tmp_path):
     selector = load_selector(path.read_bytes(), registry=registry)
     path.unlink()  # The selected artifact is already in memory.
     for rows, expected in ((2, fast), (3, small)):
-        x = torch.randn(rows, 16, requires_grad=True)
-        p = torch.randn(8, 5, requires_grad=True)
+        # Binary fractions keep this routing check independent of cancellation
+        # and reduction-order rounding in randomly drawn float32 values.
+        x = (
+            torch.arange(rows * 16, dtype=torch.float32).reshape(rows, 16) / 16
+        ).requires_grad_()
+        p = (
+            torch.arange(40, dtype=torch.float32).reshape(8, 5) / 8 - 1
+        ).requires_grad_()
         actual_context = replace(ctx, input_shape=tuple(x.shape))
         decision = selector.select(actual_context)
         assert decision.plan == expected
