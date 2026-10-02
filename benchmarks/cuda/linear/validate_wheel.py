@@ -91,37 +91,19 @@ subprocess.run(
     env=env,
 )
 for profile in ("broad", "sharp"):
-    for memory in ("full", "window"):
-        subprocess.run(
-            [
-                python,
-                public,
-                "--bench",
-                "--skip-small",
-                "--sizes",
-                "1024",
-                "--profiles",
-                profile,
-                "--memory",
-                memory,
-                "--output",
-                str(out / f"cst-{profile}-{memory}.json"),
-            ],
-            check=True,
-            env=env,
-        )
-    # Dense baseline under the same batch, precision and optimizer contract.
+    # Resolve the catalog once; every correctness/timing worker consumes the
+    # same hash-checked snapshot and forces the selected registry Plan.
     subprocess.run(
         [
             python,
-            public,
-            "--bench",
-            "--skip-small",
-            "--sizes",
-            "1024",
-            "--dense-only",
+            "-m",
+            "benchmarks.cuda.linear.run",
+            "--case",
+            str(repo / f"benchmarks/cuda/linear/cases/normalized-1024-{profile}.json"),
+            "--source-commit",
+            args.source_commit,
             "--output",
-            str(out / f"dense-{profile}.json"),
+            str(out / f"plans-{profile}.json"),
         ],
         check=True,
         env=env,

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "full",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "normalized_full",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "id": "normalized_full.default.v1",
+          "atom_num_warps": 1,
+          "sorted_forward": true,
+          "sorted_backward": true,
+          "support": "ball",
+          "enable_fp_fusion": true,
+          "saved_support_flags": true,
+          "tuple_grads": false
+        }
+      }
+    },
+    {
+      "id": "window512",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "normalized_window",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "id": "normalized_window.rows512.v1",
+          "window_rows": 512,
+          "enable_fp_fusion": true
+        }
+      }
+    }
+  ]
+}

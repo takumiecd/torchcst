@@ -6,16 +6,17 @@
 
 | ファイル | 役割 | 測定範囲 |
 | --- | --- | --- |
-| `run.py` | normalized full/window plan を強制して比較 | 独立 oracle、forward・backward・AdamW、eager / Graph、capture を含む peak |
+| `run.py` | Plan catalog と Case を読み、選択 Plan を強制して比較 | 独立 oracle、forward・backward・AdamW、eager / Graph、capture を含む peak |
 | `check_normalized.py` | 公開 CSTLinear の統合確認 | 独立 oracle、全5 atom 勾配、更新後の支持、Graph replay と AdamW 状態。任意で完全 step を測定 |
 | `validate_wheel.py` | shared L4 pool の検証 driver | 配布 wheel の全維持テスト、上記の統合確認、通常幅・鋭い支持・dense の完全 step |
 | `strip_torus.py` | 既存 Strip/Torus の fused / split と参照経路の診断 | 準備、forward、forward/backward。optimizer は含まない |
 | `strip_torus_dense.py` | Strip/Torus と保存済み dense の比較 | forward / backward、FP32 と別条件 BF16。メモリは warmed baseline からの追加割当 |
 | `strip_torus_split.py` | Strip/Torus の split reductions の比較 | forward / backward、forward Graph。optimizer は含まない |
+| `manifest.py` | Plan catalog / Case / 固定 snapshot の読み込み | GPU 不要の schema・recipe・比較条件検証 |
 | `fixtures.py` | Chart・Kernel・model の共通構築 | 純粋な Spec と設定境界の State 構築。テストからも利用 |
 | `reference.py` | 正規化 Triweight の独立 dense oracle | backend の距離・重み生成を呼ばず、サンプル点から直接計算 |
 
-`__init__.py` を含めて9 Python file。benchmark から `tests/` を読み込まない。
+`__init__.py` を含めて10 Python file。benchmark から `tests/` を読み込まない。
 旧 `experiments/`、探索用 CLI、移行段階ごとの validation driver は削除した。
 旧 module 名や `--tests-file` / `--chart-suite` の互換入口は用意しない。
 
@@ -23,14 +24,35 @@
 
 ```bash
 python -m pip install -e '.[dev,cuda]'
-python -m benchmarks.cuda.linear.run --algorithm normalized_window --correctness-only --output output/normalized-check.json
-python -m benchmarks.cuda.linear.run --algorithm normalized_window --size 1024 --rows 128 --profile broad --dense --source-commit COMMIT --output output/normalized-step.json
+python -m benchmarks.cuda.linear.run --list-plans
+python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/normalized-1024-broad.json --validate-only
+python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/normalized-1024-broad.json --correctness-only --output output/normalized-check.json
+python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/normalized-1024-broad.json --source-commit COMMIT --output output/normalized-step.json
 python -m benchmarks.cuda.linear.check_normalized --output output/public-check.json
 ```
 
-`run` は選択 plan と同じ演算の normalized full baseline を新しい process で照合する。
-`--dense` は通常の dense Linear を追加する。dense は性能の参照で、CST と同じ Parameter
-空間の演算ではない。`--profile sharp` は鋭い支持の別条件。通常の sigma3 と混ぜない。
+[plans.json](plans.json) は名前付き Plan の一覧。
+各 Plan に Algorithm ID、revision、schema version、全 recipe フィールドを書く。
+registry が登録済み recipe 型へ変換・検証する。省略による既定値の補完や未知の設定は受け付けない。
+現在 full / window512 の検証済み recipe 値のみを受け付け、自由な tuning sweep は用意しない。
+
+[cases/](cases/) の各 JSON は測定条件（形状、atoms、幅、dtype、seed、warmup、rounds、optimizer）と、
+比較 Plan 名の一覧、明示的な baseline、dense の有無を持つ。
+`--plans PATH` で catalog を変更できる。`--device` は実行 GPU の index。
+`--list-plans` と `--validate-only` は GPU 不要。実機での適合性は実行時に registry が検査する。
+
+実行開始時に両ファイルを一度だけ読み、選択された Plan と Case の固定 snapshot を
+output の隣の固有ディレクトリへ保存する。worker はその SHA256 を検査してから読み込む。
+各 Plan の独立 oracle 確認を新しい process で行い、全て通った後に各完全 step を計測する。
+実行時に dispatch の自動選択や別 Plan への fallback は行わない。
+候補間の初期 Parameter / input / target の hash 一致も確認する。
+結果には元の JSON の hash、固定 snapshot、実際の Plan、source hash、実機環境、誤差、時間分布、メモリを残す。
+失敗した worker の結果と途中までの記録も保存し、計測を中断する。
+
+`dense: true` は通常の dense Linear を追加する。dense は性能の参照で、CST と同じ Parameter
+空間の演算ではない。`normalized-1024-sharp.json` は鋭い支持の別条件。通常の sigma3 と混ぜない。
+fixture は現在 normalized Euclidean Strip / FP32 / 1024²・8192²に限定する。
+独立 oracle は境界を含む小さい混合 fixture、完全 step は Case の大きい fixture を使う。
 
 `check_normalized` と `validate_wheel` は従来の NVIDIA L4 検証条件を維持する。
 `run` と Strip/Torus の CLI は他の CUDA GPU でも使える。
