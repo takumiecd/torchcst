@@ -9,9 +9,17 @@ backend は宣言の意味を変えず、対応する Algorithm と Recipe で�
 ```text
 torchcst/
   geometry/
-    spec.py                    Geometry / Pattern / Chart の不変な宣言
-    presets.py                 純粋な宣言の組み立て
-    state.py                   共通 GeometryState / PatternState / ChartState
+    spec.py / presets.py       空間・metric の不変な宣言と構築
+    state.py                   GeometryState の scalar と checkpoint
+  patterns/
+    spec.py / presets.py       軸の Line / Grid / Points 宣言と構築
+    state.py                   PatternState の bounded な Tensor 状態
+  charts/
+    base.py                    ChartSpec / ChartState の ABC
+    explicit.py                ExplicitChartSpec / ExplicitChartState
+    product.py                 ProductChartSpec / ProductChartState
+    strip.py                   StripChartSpec / StripChartState
+    presets.py / __init__.py    純粋な宣言構築・compile_chart
   kernels/
     profiles/                  Triweight / Gaussian など関数の形の宣言
     parameterizations/         振幅・幅・activity の座標解釈の宣言
@@ -80,9 +88,9 @@ Algorithm が実際に共用するものは、演算グループ内の `_shared/
 
 ## 現在の接続
 
-CSTLinear / CSTConv2d は ChartSpec / KernelSpec から共通 ChartState / KernelState を作る。
-個別の Geometry / Chart / Pattern / Kernel / Profile Module、互換メソッド、旧 checkpoint
-loader はない。Operator は Module が所有する ChartState / KernelState / Atoms を参照する。単一 Chart と入出力 Chart の組は
+CSTLinear / CSTConv2d は ChartSpec / KernelSpec から具体的な ChartState / 共通 KernelState を作る。
+Geometry / Pattern / Kernel / Profile は共通の State を使い、Chart の State は
+Explicit / Product / Strip に分ける。互換メソッドや旧 checkpoint loader はない。Operator は Module が所有する ChartState / KernelState / Atoms を参照する。単一 Chart と入出力 Chart の組は
 layout の型で区別する。Torch の評価・更新は backend の関数で実行する。
 宣言 snapshot を forward ごとに作らず、現在の Tensor / buffer を使う。
 詳細は [Operator](../operators/README.md)を参照。
@@ -106,5 +114,5 @@ buffer version による固定座標計画の invalidation と fresh な atom �
 検証は `tests/`、継続する正しさ・時間・メモリ測定は `benchmarks/`、未採用方式は
 `experiments/` に置く。登録、対応判定、承認、既定 dispatch への採用は別の段階とする。
 
-詳細は [Kernel の移行](../kernels/README.md)と
-[Geometry と Chart の移行](../geometry/README.md)を参照。
+詳細は [Kernel](../kernels/README.md)、[Geometry](../geometry/README.md)、
+[Pattern](../patterns/README.md)、[Chart](../charts/README.md) を参照。

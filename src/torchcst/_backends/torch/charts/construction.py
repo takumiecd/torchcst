@@ -1,13 +1,17 @@
 """Construct live coordinate state at an explicit configuration boundary.
 
-Prefer pure geometry.presets declarations when the layout is static. Tensor
+Prefer pure charts.presets declarations when the layout is static. Tensor
 point tables and random sphere sampling enter through these backend functions.
 """
 
 import torch
 
-from torchcst.geometry import presets
-from torchcst.geometry.state import ChartState, GeometryState, PatternState
+from torchcst.charts import ChartState, compile_chart
+from torchcst.charts import presets as chart_presets
+from torchcst.geometry import presets as geometry_presets
+from torchcst.geometry.state import GeometryState
+from torchcst.patterns import PatternState
+from torchcst.patterns import presets as pattern_presets
 
 
 def _spec(value):
@@ -19,29 +23,29 @@ def _spec(value):
 
 
 def euclidean(dim):
-    return GeometryState(presets.euclidean(dim))
+    return GeometryState(geometry_presets.euclidean(dim))
 
 
 def sphere(intrinsic_dim, **settings):
-    return GeometryState(presets.sphere(intrinsic_dim, **settings))
+    return GeometryState(geometry_presets.sphere(intrinsic_dim, **settings))
 
 
 def torus(intrinsic_dim, **settings):
-    return GeometryState(presets.torus(intrinsic_dim, **settings))
+    return GeometryState(geometry_presets.torus(intrinsic_dim, **settings))
 
 
 def line_pattern(size, **settings):
-    return PatternState(presets.line_pattern(size, **settings))
+    return PatternState(pattern_presets.line(size, **settings))
 
 
 def grid_pattern(shape, **settings):
-    return PatternState(presets.grid_pattern(shape, **settings))
+    return PatternState(pattern_presets.grid(shape, **settings))
 
 
 def points_pattern(coordinates):
     _validate_coordinates(coordinates)
     return PatternState(
-        presets.points_pattern(coordinates.detach().cpu().tolist()),
+        pattern_presets.points(coordinates.detach().cpu().tolist()),
         device=coordinates.device,
         dtype=coordinates.dtype,
     )
@@ -60,8 +64,8 @@ def _validate_coordinates(coordinates):
 
 def points(coordinates, *, geometry=None, trainable=False):
     _validate_coordinates(coordinates)
-    return ChartState(
-        presets.points(
+    return compile_chart(
+        chart_presets.points(
             coordinates.detach().cpu().tolist(),
             geometry=_spec(geometry),
             trainable=trainable,
@@ -72,11 +76,11 @@ def points(coordinates, *, geometry=None, trainable=False):
 
 
 def grid(shape, **settings):
-    return ChartState(presets.grid(shape, **settings))
+    return compile_chart(chart_presets.grid(shape, **settings))
 
 
 def linspace(size, **settings):
-    return ChartState(presets.linspace(size, **settings))
+    return compile_chart(chart_presets.linspace(size, **settings))
 
 
 def sphere_chart(features, *, intrinsic_dim, trainable=False, **settings):
@@ -92,11 +96,11 @@ def sphere_chart(features, *, intrinsic_dim, trainable=False, **settings):
 
 def product(shape, axes, *, geometry=None):
     axes = tuple(axes)
-    spec = presets.product(
+    spec = chart_presets.product(
         shape, tuple(_spec(a) for a in axes), geometry=_spec(geometry)
     )
     reference = axes[0].reference if isinstance(axes[0], PatternState) else None
-    return ChartState(
+    return compile_chart(
         spec,
         device=None if reference is None else reference.device,
         dtype=None if reference is None else reference.dtype,
@@ -105,7 +109,7 @@ def product(shape, axes, *, geometry=None):
 
 def strip(shape, tile_shape, *, axes, axis, tile_pitch, geometry=None):
     axes = tuple(axes)
-    spec = presets.strip(
+    spec = chart_presets.strip(
         shape,
         tile_shape,
         axes=tuple(_spec(a) for a in axes),
@@ -114,7 +118,7 @@ def strip(shape, tile_shape, *, axes, axis, tile_pitch, geometry=None):
         geometry=_spec(geometry),
     )
     reference = axes[0].reference if isinstance(axes[0], PatternState) else None
-    return ChartState(
+    return compile_chart(
         spec,
         device=None if reference is None else reference.device,
         dtype=None if reference is None else reference.dtype,

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Literal
 from torch import Tensor
 
 from torchcst._backends import normalized
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 from torchcst.kernels.state import KernelState
 
 if TYPE_CHECKING:

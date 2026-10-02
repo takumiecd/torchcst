@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from torch import Tensor
 
 from torchcst.atoms import Atoms
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 from torchcst.kernels.state import KernelState
 
 from .spec import ChartPairSpec, OperatorSpec, SingleChartSpec

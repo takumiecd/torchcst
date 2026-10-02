@@ -15,7 +15,7 @@ from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.kernels.execution import KernelOptions
 from torchcst._backends.torch.patterns import execution as _patterns
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 
 
 def direct_kernel(
@@ -54,7 +54,7 @@ def test_auto_keeps_the_exact_single_chart_backend() -> None:
 
 
 def test_chart_contract_and_shape_axes_product():
-    assert not inspect.isabstract(ChartState)
+    assert inspect.isabstract(ChartState)
     assert not hasattr(ChartState, "positions")
     assert (
         isinstance(_construction.grid((2, 2), spacing=1.0), ChartState)

@@ -40,9 +40,11 @@ y = x @ W.T
 軸を最速で平坦化します。例のサイズは小さくしてあります。
 
 ```python
+from torchcst import pattern_presets as sites
+from torchcst import geometry_presets as spaces
 import math
 import torch
-from torchcst import geometry_presets as layout
+from torchcst import chart_presets as layout
 from torchcst import CSTLinear, LinearOptions, presets
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -56,11 +58,11 @@ chart = layout.strip(
     axis=0,
     tile_pitch=32.0,
     axes=(
-        layout.line_pattern(rows, spacing=1.0, center=(rows - 1) / 2),
-        layout.grid_pattern((h, j), spacing=0.5,
+        sites.line(rows, spacing=1.0, center=(rows - 1) / 2),
+        sites.grid((h, j), spacing=0.5,
                     center=((h - 1) * 0.25, (j - 1) * 0.25)),
     ),
-    geometry=layout.euclidean(3),
+    geometry=spaces.euclidean(3),
 )
 
 torch.manual_seed(21)

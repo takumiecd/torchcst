@@ -19,13 +19,14 @@ Parameter / Atoms の constructor 内での device/dtype 変換は拒否する�
 checkpoint の共通 key は atoms.p / chart.* / kernel.* と CSTModule の extra_state。
 
 ```python
+from torchcst import pattern_presets as sites
 import torch
-from torchcst import CSTLinear, LinearOptions, geometry_presets as layout, presets
+from torchcst import CSTLinear, LinearOptions, chart_presets as layout, presets
 
 chart = layout.product(
     shape=(8, 4),
-    axes=(layout.line_pattern(8, spacing=1.0),
-          layout.grid_pattern((2, 2), spacing=0.5)),
+    axes=(sites.line(8, spacing=1.0),
+          sites.grid((2, 2), spacing=0.5)),
 )
 p = torch.nn.Parameter(torch.tensor([[0.2, 0.0, 1.0, 0.2, 0.3]]))
 optimizer = torch.optim.AdamW([p], lr=1e-3)

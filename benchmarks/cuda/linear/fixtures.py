@@ -2,20 +2,16 @@
 
 import math
 
-from torchcst.geometry.spec import (
-    ChartSpec,
-    EuclideanGeometrySpec,
-    GridPatternSpec,
-    LinePatternSpec,
-)
+from torchcst.charts import ProductChartSpec
+from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.kernels.presets import NORMALIZED_RADIAL_TRIWEIGHT
 from torchcst.operators.spec import OperatorSpec, SingleChartSpec
+from torchcst.patterns import GridPatternSpec, LinePatternSpec
 
 
 def operator_spec(*, sizes, origin, spacing):
     """Canonical contiguous sites; CUDA storage tiling is not mathematical state."""
-    chart = ChartSpec(
-        kind="product",
+    chart = ProductChartSpec(
         geometry=EuclideanGeometrySpec(intrinsic_dim=3),
         shape=(sizes[0], math.prod(sizes[1:])),
         axes=(

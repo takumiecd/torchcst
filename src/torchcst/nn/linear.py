@@ -14,8 +14,7 @@ from torchcst._backends.linear import (
 )
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
-from torchcst.geometry.spec import ChartSpec
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartSpec, ChartState, StripChartState, compile_chart
 from torchcst.kernels import AtomInit, KernelSpec
 from torchcst.kernels.options import KernelOptions
 from torchcst.kernels.state import KernelState
@@ -53,9 +52,9 @@ class CSTLinear(CSTModule):
                 )
             input_chart = chart
         if isinstance(input_chart, ChartSpec):
-            input_chart = ChartState(input_chart, device=device, dtype=dtype)
+            input_chart = compile_chart(input_chart, device=device, dtype=dtype)
         if isinstance(output_chart, ChartSpec):
-            output_chart = ChartState(output_chart, device=device, dtype=dtype)
+            output_chart = compile_chart(output_chart, device=device, dtype=dtype)
         if not isinstance(input_chart, ChartState) or (
             output_chart is not None and not isinstance(output_chart, ChartState)
         ):
@@ -250,9 +249,7 @@ class CSTLinear(CSTModule):
         """Return tile-major storage for a single StripChart operator."""
         from torchcst._backends.torch.kernels import execution as _kernel
 
-        if not hasattr(self, "chart") or not (
-            isinstance(self.chart, ChartState) and self.chart.spec.kind == "strip"
-        ):
+        if not hasattr(self, "chart") or not (isinstance(self.chart, StripChartState)):
             raise TypeError("packed_weight requires a single StripChart")
         return _kernel.packed_weight(self.kernel, self.chart, self.atoms.p)
 

@@ -2,15 +2,29 @@
 
 from importlib import import_module
 
-from torchcst.geometry.state import ChartState
+from torchcst.charts import (
+    ExplicitChartSpec,
+    ExplicitChartState,
+    ProductChartSpec,
+    ProductChartState,
+    StripChartSpec,
+    StripChartState,
+)
+
+_TYPES = {
+    ExplicitChartState: (ExplicitChartSpec, "explicit"),
+    ProductChartState: (ProductChartSpec, "product"),
+    StripChartState: (StripChartSpec, "strip"),
+}
 
 
 def _evaluate(state, operation, *args, **kwargs):
-    if type(state) is not ChartState or state.spec.revision != 1:
+    entry = _TYPES.get(type(state))
+    if entry is None or type(state.spec) is not entry[0] or state.spec.revision != 1:
         raise ValueError("unsupported chart state or revision")
-    module = import_module(f"torchcst._backends.torch.charts.{state.spec.kind}")
+    module = import_module(f"torchcst._backends.torch.charts.{entry[1]}")
     function = getattr(module, operation, None)
-    if function is None and state.spec.kind != "explicit":
+    if function is None and type(state) is not ExplicitChartState:
         from . import lazy
 
         function = getattr(lazy, operation, None)

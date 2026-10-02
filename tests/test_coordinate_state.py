@@ -15,10 +15,13 @@ from torchcst import (
     GeometryState,
     PatternState,
     TriweightSpec,
+    compile_chart,
 )
 from torchcst import (
-    geometry_presets as layout,
+    chart_presets as layout,
 )
+from torchcst import geometry_presets as space_presets
+from torchcst import pattern_presets as site_presets
 from torchcst import (
     presets as kernels,
 )
@@ -34,7 +37,7 @@ def radial():
 def matrix(kind="product", **settings):
     args = dict(
         shape=(5, 3),
-        axes=(layout.line_pattern(5, spacing=0.2), layout.line_pattern(3, spacing=0.3)),
+        axes=(site_presets.line(5, spacing=0.2), site_presets.line(3, spacing=0.3)),
         **settings,
     )
     if kind == "strip":
@@ -82,8 +85,8 @@ def test_single_chart_declaration_constructs_an_operator(kind):
 
 
 def test_pair_declarations_construct_a_conv_and_linear_with_lazy_axes():
-    inp = layout.product((4,), (layout.line_pattern(4, spacing=0.2),))
-    out = layout.product((3,), (layout.line_pattern(3, spacing=0.3),))
+    inp = layout.product((4,), (site_presets.line(4, spacing=0.2),))
+    out = layout.product((3,), (site_presets.line(3, spacing=0.3),))
     kernel = kernels.separable(
         input_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
         output_profile=kernels.fixed_profile(TriweightSpec(), sigma=2),
@@ -118,15 +121,15 @@ def test_trainable_explicit_coordinates_are_owned_and_visible_to_autograd():
         layer.input_chart.coordinates.add_(0.1)
     assert before != layer.input_chart.declaration()
     torch.testing.assert_close(
-        torch.tensor(before.axes[0].coordinates), torch.tensor(spec.axes[0].coordinates)
+        torch.tensor(before.coordinates), torch.tensor(spec.coordinates)
     )
 
 
 @pytest.mark.parametrize("kind", ["product", "strip"])
 def test_coordinate_checkpoint_is_weights_only_and_restores_live_buffers(kind):
-    source = ChartState(matrix(kind), dtype=torch.float64)
+    source = compile_chart(matrix(kind), dtype=torch.float64)
     source.axes[0].start.add_(0.25)
-    target = ChartState(matrix(kind), dtype=torch.float64)
+    target = compile_chart(matrix(kind), dtype=torch.float64)
     stream = io.BytesIO()
     torch.save(source.state_dict(), stream)
     stream.seek(0)
@@ -141,9 +144,9 @@ def test_coordinate_checkpoint_is_weights_only_and_restores_live_buffers(kind):
 @pytest.mark.parametrize(
     "spec, state_type",
     [
-        (layout.euclidean(2), GeometryState),
-        (layout.line_pattern(3, spacing=0.2), PatternState),
-        (matrix(), ChartState),
+        (space_presets.euclidean(2), GeometryState),
+        (site_presets.line(3, spacing=0.2), PatternState),
+        (matrix(), compile_chart),
     ],
 )
 def test_unsupported_revisions_reject_at_compilation(spec, state_type):
@@ -156,8 +159,10 @@ def test_sphere_and_torus_chord_distances_match_independent_ambient_oracle(
     representation,
 ):
     for spec in (
-        layout.sphere(2, radius=2, representation=representation),
-        layout.torus(2, major_radius=5, minor_radius=1, representation=representation),
+        space_presets.sphere(2, radius=2, representation=representation),
+        space_presets.torus(
+            2, major_radius=5, minor_radius=1, representation=representation
+        ),
     ):
         state = GeometryState(spec, dtype=torch.float64)
         sites = geometry.lift_chart_coordinates(
@@ -175,12 +180,14 @@ def test_sphere_and_torus_chord_distances_match_independent_ambient_oracle(
 
 
 def test_checkpoint_rejects_invalid_loaded_scalars_and_point_tables():
-    chart = ChartState(matrix("strip"))
+    chart = compile_chart(matrix("strip"))
     checkpoint = copy.deepcopy(chart.state_dict())
     checkpoint["tile_pitch"].fill_(0.01)
     with pytest.raises(RuntimeError, match="invalid coordinate"):
         chart.load_state_dict(checkpoint)
-    chart = ChartState(layout.points(((1.0, 0.0, 0.0),), geometry=layout.sphere(2)))
+    chart = compile_chart(
+        layout.points(((1.0, 0.0, 0.0),), geometry=space_presets.sphere(2))
+    )
     checkpoint = copy.deepcopy(chart.state_dict())
     checkpoint["coordinates"].zero_()
     with pytest.raises(RuntimeError, match="invalid coordinate"):
@@ -191,11 +198,11 @@ def test_huge_product_chart_owns_only_axis_state_and_executes_bounded_selection(
     spec = layout.product(
         (1_000_000, 1_000_000),
         (
-            layout.line_pattern(1_000_000, spacing=0.2),
-            layout.line_pattern(1_000_000, spacing=0.3),
+            site_presets.line(1_000_000, spacing=0.2),
+            site_presets.line(1_000_000, spacing=0.3),
         ),
     )
-    state = ChartState(spec)
+    state = compile_chart(spec)
     assert sum(value.numel() for value in state.buffers()) == 4
     selected = charts.positions(state, torch.tensor([0, 999_999, 999_999_999_999]))
     assert selected.shape == (3, 2)
@@ -205,12 +212,12 @@ def test_huge_product_chart_owns_only_axis_state_and_executes_bounded_selection(
 
 
 def test_execution_reads_live_tensor_state_without_snapshots(monkeypatch):
-    state = ChartState(matrix("strip"))
+    state = compile_chart(matrix("strip"))
 
     def forbidden(*args, **kwargs):
         raise AssertionError("configuration snapshots must stay outside execution")
 
-    for cls in (ChartState, GeometryState, PatternState):
+    for cls in (type(state), GeometryState, PatternState):
         monkeypatch.setattr(cls, "declaration", forbidden)
     centers = charts.initialize_centers(state, 2, mode="balanced").requires_grad_()
     charts.squared_distance(state, centers, slice(0, 3)).sum().backward()
@@ -218,25 +225,18 @@ def test_execution_reads_live_tensor_state_without_snapshots(monkeypatch):
     assert patterns.positions(state.axes[0], torch.arange(3)).shape == (3, 1)
 
 
-@pytest.mark.parametrize("kind", ["explicit", "product", "strip"])
+@pytest.mark.parametrize("kind", ["product", "strip"])
 def test_chart_compilation_checks_nested_pattern_revision(kind):
-    spec = layout.points(((0.0,), (1.0,))) if kind == "explicit" else matrix(kind)
+    spec = matrix(kind)
     future = replace(spec, axes=(replace(spec.axes[0], revision=2), *spec.axes[1:]))
     with pytest.raises(ValueError, match="unsupported chart pattern"):
-        ChartState(future)
+        compile_chart(future)
 
 
-def test_explicit_chart_rejects_custom_point_semantics():
-    from torchcst import ChartSpec, PointsPatternSpec
+def test_explicit_chart_has_coordinates_without_pattern_wrapping():
+    from torchcst import ExplicitChartSpec
 
-    class CustomPoints(PointsPatternSpec):
-        pass
-
-    spec = ChartSpec(
-        kind="explicit",
-        shape=(1,),
-        geometry=layout.euclidean(1),
-        axes=(CustomPoints(coordinates=((0.0,),)),),
-    )
-    with pytest.raises(ValueError, match="unsupported chart pattern"):
-        ChartState(spec)
+    spec = layout.points(((0.0,),))
+    assert isinstance(spec, ExplicitChartSpec)
+    assert spec.coordinates == ((0.0,),)
+    assert not hasattr(spec, "axes")

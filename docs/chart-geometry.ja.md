@@ -3,7 +3,7 @@
 GeometrySpec は空間・次元・距離・center の保存表現を宣言する。ChartSpec はその
 空間の観測点配置を宣言する。GeometryState／ChartState／PatternState は Tensor を
 所有し、計算は backend の関数が実行する。field と構築 API は
-[geometry のガイド](../src/torchcst/geometry/README.md)を参照。
+[Chart のガイド](../src/torchcst/charts/README.md)と [Geometry](../src/torchcst/geometry/README.md)を参照。
 
 ## 次元と配置
 
@@ -22,10 +22,11 @@ Chart の `shape` は論理 Tensor の形であり、幾何の次元とは別で
 OperatorSpec の SingleChartSpec／ChartPairSpec で区別する。
 
 ```python
-from torchcst import geometry_presets as layout
+from torchcst import pattern_presets as sites
+from torchcst import chart_presets as layout
 
-axes = (layout.line_pattern(64, spacing=0.1),
-        layout.grid_pattern((28, 28), spacing=2 / 27))
+axes = (sites.line(64, spacing=0.1),
+        sites.grid((28, 28), spacing=2 / 27))
 product = layout.product(shape=(64, 784), axes=axes)
 strip = layout.strip(shape=(64, 784), axes=axes,
                      tile_shape=(8, 784), axis=0, tile_pitch=4.1)
@@ -107,16 +108,18 @@ L_ij = 2(R-r) sin(g_ij/(2R))
 設定境界でこれを検証する。tile 幅だけでは曲率と円の継ぎ目を扱えない。
 
 ```python
+from torchcst import pattern_presets as sites
+from torchcst import geometry_presets as spaces
 import math
-from torchcst import ChartState, geometry_presets as layout
+from torchcst import compile_chart, chart_presets as layout
 from torchcst._backends.torch.charts import execution as charts
 
-torus = layout.torus(3, major_radius=100 / (2 * math.pi), minor_radius=1,
+torus = spaces.torus(3, major_radius=100 / (2 * math.pi), minor_radius=1,
                      max_arc_step=10, representation="intrinsic")
-strip = ChartState(layout.strip(
+strip = compile_chart(layout.strip(
     shape=(256, 784), tile_shape=(64, 784), axis=0, tile_pitch=25,
-    axes=(layout.line_pattern(256, spacing=0.1),
-          layout.grid_pattern((28, 28), spacing=2 / 27)), geometry=torus,
+    axes=(sites.line(256, spacing=0.1),
+          sites.grid((28, 28), spacing=2 / 27)), geometry=torus,
 ))
 charts.validate_support(strip, 10)
 assert strip.center_parameter_dim == 3

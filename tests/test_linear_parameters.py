@@ -1,7 +1,6 @@
 """Parameter reuse and common dispatch contracts, independent of old entry points."""
 
 import copy
-from dataclasses import replace
 
 import pytest
 import torch
@@ -13,9 +12,11 @@ from torchcst import (
     CSTLinear,
     CSTOptimizer,
     LinearOptions,
-    geometry_presets,
+    chart_presets,
     presets,
 )
+from torchcst import geometry_presets as space_presets
+from torchcst import pattern_presets as site_presets
 
 
 def layer(atoms, **kwargs):
@@ -83,14 +84,14 @@ def test_existing_atoms_can_be_used_by_ordinary_chart_pair_kernel():
         output_profile=presets.fixed_profile(presets.GaussianSpec(), 1.0),
     )
     source = CSTLinear(
-        geometry_presets.linspace(4, spacing=1.0),
-        geometry_presets.linspace(3, spacing=1.0),
+        chart_presets.linspace(4, spacing=1.0),
+        chart_presets.linspace(3, spacing=1.0),
         atoms=2,
         kernel=kernel,
     )
     target = CSTLinear(
-        geometry_presets.linspace(4, spacing=1.0),
-        geometry_presets.linspace(3, spacing=1.0),
+        chart_presets.linspace(4, spacing=1.0),
+        chart_presets.linspace(3, spacing=1.0),
         atoms=source.atoms,
         kernel=kernel,
     )
@@ -109,7 +110,9 @@ def test_atom_width_is_checked_against_selected_kernel():
 def test_product_and_strip_share_the_same_mathematical_operation():
     state = chart()
     spec = state.declaration()
-    product = replace(spec, kind="product", tile_shape=None, tile_pitch=None, axis=None)
+    from torchcst import ProductChartSpec
+
+    product = ProductChartSpec(geometry=spec.geometry, shape=spec.shape, axes=spec.axes)
     # Storage tiling is not a separate Linear operation.
     model = CSTLinear(
         chart=product, atoms=mixed(), kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT
@@ -152,13 +155,13 @@ def test_checkpoint_load_refreshes_live_metadata_and_preserves_optimizer_referen
 
 def test_non_regular_layout_uses_general_reference():
     model = CSTLinear(
-        chart=geometry_presets.product(
+        chart=chart_presets.product(
             (4, 4),
             axes=(
-                geometry_presets.line_pattern(4, spacing=1.0),
-                geometry_presets.line_pattern(4, spacing=1.0),
+                site_presets.line(4, spacing=1.0),
+                site_presets.line(4, spacing=1.0),
             ),
-            geometry=geometry_presets.euclidean(2),
+            geometry=space_presets.euclidean(2),
         ),
         atoms=torch.tensor([[0.5, 0.0, 0.2, 0.3]]),
         kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,

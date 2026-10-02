@@ -7,7 +7,7 @@ from typing import Literal
 from torch import Tensor, nn
 
 from torchcst.atoms import Atoms
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 
 RepulsionKind = Literal["cosine", "raw", "abs"]
 

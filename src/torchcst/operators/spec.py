@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from torchcst.geometry.spec import ChartSpec
+from torchcst.charts import ChartSpec
 from torchcst.kernels.spec import KernelSpec
 
 

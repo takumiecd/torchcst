@@ -11,7 +11,7 @@ from torchcst._backends.torch.parameterizations import (
     direct_amp_width as _parameterizations,
 )
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 
 
 def apply_parameter_update(

@@ -8,7 +8,7 @@ from torch import Tensor
 from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.geometry import execution as _geometry_execution
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 from torchcst.kernels.spec import AtomInit
 from torchcst.profiling import cst_span
 

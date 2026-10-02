@@ -7,7 +7,7 @@ from torch import Tensor
 
 from torchcst._backends.torch.parameterizations import amp_width as _parameterizations
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 
 
 def project_parameter_gradient(

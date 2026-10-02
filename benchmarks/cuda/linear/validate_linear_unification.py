@@ -15,6 +15,11 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("source_commit")
+parser.add_argument(
+    "--chart-suite",
+    action="store_true",
+    help="Include concrete chart, geometry and routing contracts",
+)
 args = parser.parse_args()
 repo = Path.cwd()
 out = Path(os.environ["CST_JOB_OUTPUT"])
@@ -89,6 +94,19 @@ subprocess.run(
         "tests/test_single_chart.py",
         "tests/test_triton_linear.py",
         "tests/test_coordinate_state.py",
+        *(
+            [
+                "tests/test_chart_types.py",
+                "tests/test_geometry_declarations.py",
+                "tests/test_chart.py",
+                "tests/test_tiled_linear.py",
+                "tests/test_torus_geometry.py",
+                "tests/test_captured_geometry.py",
+                "tests/test_local_strip_routing.py",
+            ]
+            if args.chart_suite
+            else []
+        ),
     ],
     check=True,
     env=env,

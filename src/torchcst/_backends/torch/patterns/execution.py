@@ -1,7 +1,11 @@
 """Functional evaluation of small site patterns."""
 
-from torchcst.geometry.spec import GridPatternSpec, LinePatternSpec, PointsPatternSpec
-from torchcst.geometry.state import PatternState
+from torchcst.patterns import (
+    GridPatternSpec,
+    LinePatternSpec,
+    PatternState,
+    PointsPatternSpec,
+)
 
 from . import grid, points
 

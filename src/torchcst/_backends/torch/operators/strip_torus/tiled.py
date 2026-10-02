@@ -13,8 +13,8 @@ from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.operators.strip_torus.layout import AtomLayout
 from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
+from torchcst.charts import ChartState, StripChartState
 from torchcst.geometry.spec import TorusGeometrySpec
-from torchcst.geometry.state import ChartState
 from torchcst.kernels import DirectAmpWidthSpec
 from torchcst.kernels.profiles import (
     BiweightSpec,
@@ -29,7 +29,7 @@ def validate_tiled(chart: object, kernel: object) -> ChartState:
     """Check the deliberately narrow first tiled backend."""
 
     if (
-        not (isinstance(chart, ChartState) and chart.spec.kind == "strip")
+        not (isinstance(chart, StripChartState))
         or not type(chart.geometry.spec) is TorusGeometrySpec
     ):
         raise TypeError("tiled backend requires StripChart + TorusGeometry")

@@ -13,7 +13,7 @@ from torchcst._backends.torch.operators.strip_torus.tiled import (
     validate_tiled as validate_strip_torus,
 )
 from torchcst._backends.torch.parameterizations import direct_amp_width as _coordinates
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 from torchcst.kernels.state import KernelState
 from torchcst.profiling import cst_span
 

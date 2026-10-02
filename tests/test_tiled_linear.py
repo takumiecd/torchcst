@@ -14,7 +14,7 @@ import torch
 from kernel_cases import direct_state, gaussian_state, triweight_state
 
 from torchcst import CSTLinear
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 
 
 def make_radial_state(*, compact: bool = True) -> direct_state:

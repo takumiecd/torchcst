@@ -1,17 +1,22 @@
 """Fixed-shape continuous operators for PyTorch."""
 
 from .atoms import Atoms
-from .geometry import (
+from .charts import (
     ChartSpec,
     ChartState,
+    ExplicitChartSpec,
+    ExplicitChartState,
+    ProductChartSpec,
+    ProductChartState,
+    StripChartSpec,
+    StripChartState,
+    compile_chart,
+)
+from .charts import presets as chart_presets
+from .geometry import (
     EuclideanGeometrySpec,
     GeometrySpec,
     GeometryState,
-    GridPatternSpec,
-    LinePatternSpec,
-    PatternSpec,
-    PatternState,
-    PointsPatternSpec,
     SphereGeometrySpec,
     TorusGeometrySpec,
 )
@@ -37,6 +42,14 @@ from .kernels import (
 from .nn import CSTConv2d, CSTLinear, CSTModule, LinearOptions
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
 from .optim import CSTOptimizer, OptimizerStateAdapter
+from .patterns import (
+    GridPatternSpec,
+    LinePatternSpec,
+    PatternSpec,
+    PatternState,
+    PointsPatternSpec,
+)
+from .patterns import presets as pattern_presets
 
 __all__ = [
     "AmpWidthSpec",
@@ -52,6 +65,8 @@ __all__ = [
     "ChartState",
     "DirectAmpWidthSpec",
     "EuclideanGeometrySpec",
+    "ExplicitChartSpec",
+    "ExplicitChartState",
     "FixedWidthSpec",
     "GaussianSpec",
     "GeometrySpec",
@@ -70,13 +85,20 @@ __all__ = [
     "PatternState",
     "PointsPatternSpec",
     "PolarAmpWidthSpec",
+    "ProductChartSpec",
+    "ProductChartState",
     "ProfileBinding",
     "SingleChartSpec",
     "SphereGeometrySpec",
+    "StripChartSpec",
+    "StripChartState",
     "TorusGeometrySpec",
     "TriangleSpec",
     "TriweightSpec",
     "WendlandC2Spec",
+    "chart_presets",
+    "compile_chart",
     "geometry_presets",
+    "pattern_presets",
     "presets",
 ]

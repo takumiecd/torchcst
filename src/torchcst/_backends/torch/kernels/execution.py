@@ -3,8 +3,8 @@
 from importlib import import_module
 
 from torchcst._backends.torch.charts import execution as _charts
+from torchcst.charts import StripChartState
 from torchcst.geometry.spec import EuclideanGeometrySpec
-from torchcst.geometry.state import ChartState
 from torchcst.kernels.options import KernelOptions
 
 
@@ -123,7 +123,7 @@ def check_radial_activity(state, chart):
     parameterization = state.spec.parameterization
     if parameterization.input_bounds != parameterization.output_bounds:
         raise ValueError("radial kernel requires one set of bandwidth bounds")
-    if isinstance(chart, ChartState) and chart.spec.kind == "strip":
+    if isinstance(chart, StripChartState):
         _charts.validate_support(chart, float(state.scalar("sigma_max_input")))
 
 

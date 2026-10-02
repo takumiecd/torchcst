@@ -13,15 +13,13 @@ import torch
 from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.geometry import execution as _geometry
+from torchcst.charts import ProductChartSpec, StripChartSpec
 from torchcst.geometry import (
-    ChartSpec,
     EuclideanGeometrySpec,
-    GridPatternSpec,
-    LinePatternSpec,
-    PointsPatternSpec,
     SphereGeometrySpec,
     TorusGeometrySpec,
 )
+from torchcst.patterns import GridPatternSpec, LinePatternSpec
 
 
 @pytest.mark.parametrize("representation", ["ambient", "intrinsic"])
@@ -78,15 +76,14 @@ def test_explicit_trainable_points_remain_live_while_declaration_is_a_snapshot()
     chart = _construction.points(torch.tensor([[0.1, 0.2], [0.3, 0.4]]), trainable=True)
     spec = chart.declaration()
     assert spec.trainable
-    assert isinstance(spec.axes[0], PointsPatternSpec)
-    assert spec.axes[0].coordinates[0][0] == pytest.approx(0.1)
+    assert spec.coordinates[0][0] == pytest.approx(0.1)
     keys = set(chart.state_dict())
     _charts.positions(chart, torch.arange(2)).square().sum().backward()
     assert chart.coordinates.grad is not None
     with torch.no_grad():
         chart.coordinates.add_(0.1)
     assert chart.declaration() != spec
-    assert spec.axes[0].coordinates[0][0] == pytest.approx(0.1)
+    assert spec.coordinates[0][0] == pytest.approx(0.1)
     assert set(chart.state_dict()) == keys
 
 
@@ -149,23 +146,20 @@ def test_invalid_geometry_declarations_reject(factory, kwargs):
 def test_layout_validation_rejects_incompatible_geometry_and_tiles():
     line = LinePatternSpec(shape=(3,), start=(0,), spacing=(0.2,))
     with pytest.raises(ValueError, match="dimensions"):
-        ChartSpec(
-            kind="product",
+        ProductChartSpec(
             geometry=EuclideanGeometrySpec(intrinsic_dim=2),
             shape=(3,),
             axes=(line,),
         )
-    with pytest.raises(ValueError, match="tile metadata"):
-        ChartSpec(
-            kind="product",
+    with pytest.raises(TypeError, match="tile_pitch"):
+        ProductChartSpec(
             geometry=EuclideanGeometrySpec(intrinsic_dim=1),
             shape=(3,),
             axes=(line,),
             tile_pitch=1,
         )
     with pytest.raises(ValueError, match="disjoint"):
-        ChartSpec(
-            kind="strip",
+        StripChartSpec(
             geometry=EuclideanGeometrySpec(intrinsic_dim=1),
             shape=(3,),
             axes=(line,),
@@ -175,8 +169,7 @@ def test_layout_validation_rejects_incompatible_geometry_and_tiles():
         )
     grid = GridPatternSpec(shape=(3, 2), start=(0, 0), spacing=(0.2, 0.2))
     with pytest.raises(ValueError, match="line axis"):
-        ChartSpec(
-            kind="product",
+        ProductChartSpec(
             geometry=TorusGeometrySpec(
                 intrinsic_dim=2, major_radius=10, minor_radius=1
             ),
@@ -186,20 +179,20 @@ def test_layout_validation_rejects_incompatible_geometry_and_tiles():
 
 
 def test_custom_geometry_and_chart_do_not_inherit_builtin_semantics():
-    from torchcst.geometry.state import ChartState, GeometryState
+    from torchcst.charts import compile_chart
+    from torchcst.geometry.state import GeometryState
 
     class CustomGeometry(EuclideanGeometrySpec):
         pass
 
-    class CustomChart(ChartSpec):
+    class CustomChart(ProductChartSpec):
         pass
 
     with pytest.raises(ValueError, match="unsupported geometry"):
         GeometryState(CustomGeometry(intrinsic_dim=2))
     with pytest.raises(ValueError, match="unsupported chart"):
-        ChartState(
+        compile_chart(
             CustomChart(
-                kind="product",
                 shape=(3,),
                 axes=(LinePatternSpec(shape=(3,), start=(0,), spacing=(0.2,)),),
                 geometry=EuclideanGeometrySpec(intrinsic_dim=1),
@@ -215,11 +208,13 @@ def test_config_snapshots_do_not_import_torch_evaluators():
             sys.executable,
             "-c",
             """
+from torchcst import geometry_presets as space_presets
+from torchcst import pattern_presets as site_presets
 import sys
-from torchcst import geometry_presets as layout, ChartState, GeometryState
-geo = GeometryState(layout.torus(3, major_radius=10, minor_radius=1))
+from torchcst import chart_presets as layout, compile_chart, GeometryState
+geo = GeometryState(space_presets.torus(3, major_radius=10, minor_radius=1))
 geo.declaration()
-chart = ChartState(layout.product(shape=(3,2), axes=(layout.line_pattern(3,spacing=0.2),layout.line_pattern(2,spacing=0.4))))
+chart = compile_chart(layout.product(shape=(3,2), axes=(site_presets.line(3,spacing=0.2),site_presets.line(2,spacing=0.4))))
 chart.declaration()
 assert not any(name.startswith('torchcst._backends.torch.') for name in sys.modules)
 assert 'triton' not in sys.modules

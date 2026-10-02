@@ -12,7 +12,7 @@ from kernel_cases import (
 from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 
 
 def charts() -> tuple[ChartState, ChartState]:

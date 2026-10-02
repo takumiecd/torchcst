@@ -10,7 +10,7 @@ from torch import Tensor
 from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.parameterizations import amp_width as _parameterizations
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 from torchcst.kernels.spec import AtomInit
 
 

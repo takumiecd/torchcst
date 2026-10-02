@@ -14,7 +14,7 @@ from torchcst._backends.torch.parameterizations import (
     direct_amp_width as _parameterizations,
 )
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState, StripChartState
 from torchcst.kernels.spec import AtomInit
 from torchcst.profiling import cst_span
 
@@ -242,7 +242,7 @@ def _single_materialize_atoms(state, chart: ChartState, p: Tensor) -> Tensor:
 def packed_weight(state, chart: ChartState, p: Tensor) -> Tensor:
     """Return physically ordered, contiguous tile-major weight storage."""
 
-    if not (isinstance(chart, ChartState) and chart.spec.kind == "strip"):
+    if not (isinstance(chart, StripChartState)):
         raise TypeError("packed_weight requires a StripChart")
     center, amplitude, precision = _parameterizations.tile_parameters(state, chart, p)
     tile_size = math.prod(chart.tile_shape)

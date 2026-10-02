@@ -1,30 +1,18 @@
-"""Immutable coordinate declarations and shared Tensor ownership."""
+"""Geometry declarations and scalar Tensor ownership."""
 
 from . import presets
 from .spec import (
-    ChartSpec,
     EuclideanGeometrySpec,
     GeometrySpec,
-    GridPatternSpec,
-    LinePatternSpec,
-    PatternSpec,
-    PointsPatternSpec,
     SphereGeometrySpec,
     TorusGeometrySpec,
 )
-from .state import ChartState, GeometryState, PatternState
+from .state import GeometryState
 
 __all__ = [
-    "ChartSpec",
-    "ChartState",
     "EuclideanGeometrySpec",
     "GeometrySpec",
     "GeometryState",
-    "GridPatternSpec",
-    "LinePatternSpec",
-    "PatternSpec",
-    "PatternState",
-    "PointsPatternSpec",
     "SphereGeometrySpec",
     "TorusGeometrySpec",
     "presets",

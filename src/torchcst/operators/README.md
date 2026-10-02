@@ -45,7 +45,7 @@ Parameter gradients without installing an optimizer-specific backward route.
 `Operator` は nn.Module ではない。所有権、checkpoint の key、optimizer の
 Parameter 参照は既存 Module のまま。`atoms.p` の更新や置き換え、dtype / device
 変換後も live view は現在の値を使う。Module 自体を差し替えたときは CSTLinear
-が view を再構成する。Chart と Kernel は共通 ChartState / KernelState を参照する。
+が view を再構成する。Chart と Kernel は具体的な ChartState / 共通 KernelState を参照する。
 利用者は Layer に ChartSpec / KernelSpec を渡し、新しい意味には対応する backend 実装を用意する。
 
 `declaration()` と `spec.bind()` は設定境界の処理。scalar の読み戻しや明示点の
@@ -82,3 +82,6 @@ launch 設定は各 Algorithm の Recipe に置く。対応する固定 metadata
 snapshot し、buffer の置換・version・dtype/device が変わったら再構成する。
 atom の値は毎回現在の Tensor を使う。通常 forward / backward / Graph capture では
 snapshot しない。metadata を変えた後は capture の外で一度 forward する。
+
+ChartSpec / ChartState は ABC。具体型は charts/ に置き、Layer は compile_chart で対応する
+State を構築する。Geometry と Pattern はそれぞれ geometry/ と patterns/ に置く。

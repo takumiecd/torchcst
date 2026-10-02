@@ -17,7 +17,7 @@ from torchcst._backends.torch.kernels import execution as _kernel
 from torchcst._backends.torch.operators.dispatch import validate_tiled
 from torchcst._backends.torch.operators.strip_torus.tiled import CircleRouting
 from torchcst._backends.torch.patterns import execution as _patterns
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 from torchcst.kernels.state import KernelState
 
 if TYPE_CHECKING:

@@ -4,13 +4,11 @@ import math
 from dataclasses import dataclass
 from functools import cache
 
-from torchcst.geometry.spec import (
-    EuclideanGeometrySpec,
-    GridPatternSpec,
-    LinePatternSpec,
-)
+from torchcst.charts import ProductChartSpec, StripChartSpec
+from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.kernels.presets import NORMALIZED_RADIAL_TRIWEIGHT
 from torchcst.operators.spec import OperatorSpec, SingleChartSpec
+from torchcst.patterns import GridPatternSpec, LinePatternSpec
 
 OPERATION = "linear"
 SEMANTICS = "normalized-strip-triweight-l2-v1"
@@ -70,7 +68,7 @@ def normalized_strip_metadata(spec):
         raise ValueError("operator differs from the normalized Strip kernel contract")
     chart = spec.layout.chart
     if (
-        chart.kind not in ("product", "strip")
+        type(chart) not in (ProductChartSpec, StripChartSpec)
         or chart.geometry != EuclideanGeometrySpec(intrinsic_dim=3)
         or chart.trainable
         or chart.revision != 1
@@ -82,7 +80,7 @@ def normalized_strip_metadata(spec):
     ):
         raise ValueError("normalized Strip requires fixed regular 3D Euclidean sites")
     line, grid = chart.axes
-    if chart.kind == "strip" and (
+    if type(chart) is StripChartSpec and (
         chart.axis != 0 or chart.tile_pitch != chart.tile_shape[0] * line.spacing[0]
     ):
         raise ValueError("normalized Strip requires contiguous row sites")

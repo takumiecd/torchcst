@@ -31,7 +31,7 @@ supplies Parameter gradients; there is no optimizer-specific backward route.
 ```python
 import torch
 from torch import nn
-from torchcst import CSTLinear, CSTOptimizer, BandwidthBounds, presets, geometry_presets as layout
+from torchcst import CSTLinear, CSTOptimizer, BandwidthBounds, presets, chart_presets as layout
 
 layer = CSTLinear(
     layout.linspace(16, spacing=0.2),
@@ -125,7 +125,9 @@ An explicitly empty table represents a zero operator; integer counts must be pos
 - [CSTOptimizer](docs/cst-optimizer.ja.md)
 - [Declaration and backend layout](src/torchcst/_backends/README.md)
 - [Kernel and Profile](src/torchcst/kernels/README.md)
-- [Geometry and Chart](src/torchcst/geometry/README.md)
+- [Geometry](src/torchcst/geometry/README.md)
+- [Charts](src/torchcst/charts/README.md)
+- [Patterns](src/torchcst/patterns/README.md)
 - [Operator](src/torchcst/operators/README.md)
 - [Benchmarks](benchmarks/cuda/linear/README.md)
 

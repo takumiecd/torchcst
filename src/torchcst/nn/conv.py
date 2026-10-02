@@ -12,8 +12,7 @@ from torch import Tensor, nn
 
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
-from torchcst.geometry.spec import ChartSpec
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartSpec, ChartState, compile_chart
 from torchcst.kernels import AtomInit, KernelSpec
 from torchcst.kernels.options import KernelOptions
 from torchcst.kernels.state import KernelState
@@ -75,9 +74,9 @@ class CSTConv2d(CSTModule):
 
         super().__init__()
         if isinstance(input_chart, ChartSpec):
-            input_chart = ChartState(input_chart, device=device, dtype=dtype)
+            input_chart = compile_chart(input_chart, device=device, dtype=dtype)
         if isinstance(output_chart, ChartSpec):
-            output_chart = ChartState(output_chart, device=device, dtype=dtype)
+            output_chart = compile_chart(output_chart, device=device, dtype=dtype)
         if not isinstance(input_chart, ChartState) or not isinstance(
             output_chart, ChartState
         ):

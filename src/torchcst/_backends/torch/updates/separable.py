@@ -7,7 +7,7 @@ from torch import Tensor
 
 from torchcst._backends.torch.kernels import separable as _kernels
 from torchcst._backends.torch.profiles import execution as _profile
-from torchcst.geometry.state import ChartState
+from torchcst.charts import ChartState
 
 
 def project_parameter_gradient(
