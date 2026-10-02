@@ -5,5 +5,11 @@
   "general_trust_points": 1,
   "recognized_trust_points": 10,
   "max_file_bytes": 5242880,
-  "recognized": []
+  "recognized": [
+    {
+      "github_user_id": 94827864,
+      "login": "takumiecd",
+      "reason": "Repository administrator and benchmark maintainer"
+    }
+  ]
 }
