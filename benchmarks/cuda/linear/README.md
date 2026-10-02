@@ -98,3 +98,17 @@ benchmark の成功は kernel / dispatch の認証や既定採用を自動で行
 削除した実行コードの取得方法は [削除台帳](../../../docs/research-history/cuda-linear/retired-code.ja.md)
 に保存している。履歴中の旧コマンドは記録当時の source commit で再現する。
 [今回の整理と検証](../../../docs/benchmark-cleanup.ja.md)を参照。
+
+## Plan 一覧の入口の検証（2026-10-02）
+
+source `8f2ec40` の CPU は515 passed / 117 skipped。
+同じ source の配布 wheel を NVIDIA L4、Torch 2.11.0+cu128 / CUDA 12.8 / Triton 3.6.0
+で確認し、631 passed / 1 skipped / 0 failed。skip は Linux で使えない macOS socket binding。
+full / window512 の独立 oracle、公開 API の更新後 Graph / AdamW、両 Case の完全 step が通った。
+各 Plan の初期 Parameter hash と、dense を含む input / target hash は一致。
+source / wheel / installed の152 Python file を照合し、local と L4 の wheel hash も一致した。
+
+[検証記録](results/plan-catalog-20261002.json)に固定 Plan・Case、誤差、全時間サンプル、
+peak allocated / reserved、source と archive の hash を保存している。
+raw artifact は ignored evidence に保存済み。共有 pool の owned GPU は停止済み。
+この確認は小さい独立 oracle と完全 step 測定の範囲であり、認証や既定採用は行わない。
