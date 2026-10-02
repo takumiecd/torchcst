@@ -63,8 +63,43 @@ CPU は source と配布 wheel の両方で 516 passed / 201 skipped。lint / fo
 共通 CSTLinear に移した。Parameter 同一性・既存 AdamW 状態・CSTOptimizer・Tensor 複製・
 一般 kernel での Atoms 再利用・checkpoint 後の参照維持・metadata 再構成も検証する。
 
-L4 の配布 wheel、CUDA Graph replay、時間・capture を含む allocated peak は
-validate_linear_unification.py で測定する。測定結果は完了後に追記する。
+L4 の配布 wheel は **291 passed / 0 failed / 0 skipped**。source `28cc041`、
+Torch 2.11.0+cu128 / CUDA 12.8 / Triton 3.6.0 / NVIDIA L4 / driver 580.82.07。
+pool の初期 probe は CUDA 13.0 の system 環境だが、実際の検証は job-local CUDA 12.8
+環境で行った。system package は変更していない。probe と検証 runtime を混同しない。
+
+独立 FP64 oracle で W / y / dX / 全5勾配を照合した。full / window の混合・鋭い支持、
+clip・floor・512行境界・capture 後の中心と幅の変更、AdamW の Parameter と状態を含む
+Graph replay が通過した。shared Parameter の非連続 stride と、対応しない dtype / 間隔の
+一般参照への fallback も通過。全 CUDA テストの網羅実行ではなく対象291件である。
+CPU は旧入口 `e20f0df` と8ケース・24 Tensor の y/dX/dP を比較し、bitwise 一致した。
+ドキュメントの使用例も CPU で実行した。
+
+N1024² / M128 / 52,429 atoms（約5%）/ FP32 / TF32無効 / fused capturable AdamW
+lr1e-4・weight_decay .01。各ケースは別プロセス。時間は forward・backward・optimizer
+を含む Graph replay の同期 wall time 中央値。peak は capture から測定する。
+
+| 条件 | 経路 | Graph ms | peak allocated MiB | peak reserved MiB |
+| --- | --- | ---: | ---: | ---: |
+| 通常 sigma3 | full | 0.613194 | 51.8511 | 106 |
+| 通常 sigma3 | window | 1.503789 | 46.1655 | 86 |
+| 通常条件の比較 | dense | 0.128718 | 50.5024 | 106 |
+| 鋭い支持 | full | 0.537161 | 51.8511 | 106 |
+| 鋭い支持 | window | 0.306918 | 46.1655 | 86 |
+| 鋭い条件の比較 | dense | 0.127008 | 50.5024 | 106 |
+
+全 GPU process usage は未測定。大きい fixture は完全 step の測定であり、全 atom の
+独立勾配 oracle ではない。同じ profile の full/window 初期 atom SHA は一致する。
+通常幅と鋭い支持を別に記録した。速度改善や性能による algorithm 昇格の根拠とはしない。
+
+job は `l4job-0ddda738c14c4dd39d92b5019a25fb3d`。
+source archive SHA256 は `95f6d0b9169d58b5b97eabcaba2ec1ab987c5b082e389c81e878ed3bee886a02`、
+result archive は `a15bfa4463b584a3b6c7075ee57f8ae5276733c447128f5b8e607f1d2360c6db`、
+remote wheel は `be0085485c1957ab8e34901bba6da89f047686562296be6e024fd101a722b006`。
+result archive を receipt SHA と照合し、140 Python file を source / wheel / installed の間で
+byte比較した。旧専用 module が含まれないことも確認した。owned GPU は停止済み。
+raw source / logs / wheel / tensors は ignored evidence に保存している。
+[機械記録](../benchmarks/cuda/linear/results/linear-unification-20261002.json) を参照。
 
 ```bash
 python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py submit --source "$PWD" --script "$PWD/benchmarks/cuda/linear/validate_linear_unification.py" --label linear-unification --timeout 1800 -- SOURCE_COMMIT
