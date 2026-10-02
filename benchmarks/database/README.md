@@ -4,6 +4,9 @@ Neon / PostgreSQL に、**Plan と、その Plan を実行して得た複数の�
 ライブラリの実行時依存にはせず、checkout 内の benchmark tooling として扱う。
 SQLite の旧試作や互換 API は含めない。
 
+[公式測定経路](../automation/README.md)は、固定 request と Colab の回収結果を照合し、
+この保存 API に中央の出所情報を付けて取り込む。GPU 端末へ DB の認証情報を渡さない。
+
 ## 保存するもの
 
 | テーブル | 主なフィールド | 役割 |

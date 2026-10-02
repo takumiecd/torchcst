@@ -1,0 +1,132 @@
+name: Benchmark measurement
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_file:
+        description: Committed measurement JSON (cases, GPUs, repetitions)
+        type: string
+        required: true
+        default: benchmarks/requests/colab-linear.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-colab
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    # Initial official path measures merged, reviewed source only.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11'
+      - name: Install CPU tooling
+        run: python -m pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+      - name: Freeze measurement request
+        env:
+          PYTHONPATH: src
+          REQUEST_FILE: ${{ inputs.request_file }}
+        run: >-
+          python -m benchmarks.automation prepare
+          --request "$REQUEST_FILE"
+          --output output/request.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: benchmark-request
+          path: output/request.json
+          if-no-files-found: error
+          retention-days: 14
+
+  measure:
+    needs: prepare
+    # This is a logged-in CPU bridge to Colab, not an always-running GPU VM.
+    # Start the runner only for a batch. The shared pool owns all L4 sessions.
+    runs-on: [self-hosted, colab-client]
+    environment: benchmark-colab
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: benchmark-request
+          path: output/official-request
+      - name: Run fixed measurements through the shared Colab queue
+        run: >-
+          python3 -m benchmarks.automation colab
+          --request output/official-request/request.json
+          --output output/official-measurement
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: benchmark-results
+          path: output/official-measurement
+          if-no-files-found: error
+          retention-days: 14
+
+  ingest:
+    needs: [prepare, measure]
+    if: always() && needs.prepare.result == 'success' && (needs.measure.result == 'success' || needs.measure.result == 'failure')
+    runs-on: ubuntu-latest
+    environment: benchmark-database
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11'
+      - name: Install ingestion tooling
+        run: |
+          python -m pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install 'psycopg[binary]>=3.2,<4'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: benchmark-request
+          path: output/official-request
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: benchmark-results
+          path: output/official-measurement
+      - name: Validate result bindings before receiving DB credentials
+        env:
+          PYTHONPATH: src
+        run: >-
+          python -m benchmarks.automation validate
+          --request output/official-request/request.json
+          --results output/official-measurement/results
+      - name: Attach workflow provenance
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          fields = ['GITHUB_REPOSITORY', 'GITHUB_RUN_ID',
+                    'GITHUB_SHA', 'GITHUB_ACTOR', 'GITHUB_WORKFLOW_REF']
+          Path('output/provenance.json').write_text(json.dumps({
+              'origin': 'github-actions-colab-bridge',
+              'workflow': {key: os.environ[key] for key in fields},
+              'certification': 'not assessed'
+          }))
+          PY
+      - name: Append verified observations to Neon
+        env:
+          PYTHONPATH: src
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: >-
+          python -m benchmarks.automation ingest
+          --request output/official-request/request.json
+          --results output/official-measurement/results
+          --provenance output/provenance.json

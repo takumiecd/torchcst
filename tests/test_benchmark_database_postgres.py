@@ -27,6 +27,58 @@ Database = postgres.Database
 
 
 @pytest.fixture
+def automation_source(tmp_path):
+    from tests.test_benchmark_automation import make_source
+
+    return make_source(tmp_path)
+
+
+def test_request_bound_ingestion_and_caller_provenance(db, automation_source, tmp_path):
+    from benchmarks.automation.ingest import ingest
+    from tests.test_benchmark_automation import make_bundle, rewrite_result, prepared
+
+    database, _ = db
+    request = prepared(automation_source, repetitions=2)
+    path, results = make_bundle(tmp_path / "submission", request)
+    first = ingest(
+        path, results, database, {"origin": "central-test", "actor": "maintainer"}
+    )
+    assert len(first["runs"]) == 2 and not first["jobs_without_observations"]
+    assert database.counts()["runs"] == 2
+    again = ingest(
+        path, results, database, {"origin": "central-test", "actor": "maintainer"}
+    )
+    assert all(not r["run_inserted"] for r in again["runs"])
+    with pytest.raises(ValueError, match="different provenance"):
+        ingest(path, results, database, {"origin": "different-retry"})
+    for row in database.list_records():
+        assert row["provenance"]["origin"] == "central-test"
+        assert row["provenance"]["request_id"] == request["request_id"]
+        assert row["provenance"]["request"] == request
+        assert row["provenance"]["certification"] == "not assessed"
+    # Validate the entire batch before any inserts, even with a new first result.
+    rewrite_result(results, lambda value: value.update(execution_id=str(uuid.uuid4())))
+    rewrite_result(results, lambda value: value["run"]["case"].update(rows=64), index=1)
+    with pytest.raises(ValueError):
+        ingest(path, results, database, {"origin": "central-test"})
+    assert database.counts()["runs"] == 2
+
+
+def test_request_ingestion_retains_failed_benchmark(db, automation_source, tmp_path):
+    from benchmarks.automation.ingest import ingest
+    from tests.test_benchmark_automation import make_bundle, prepared
+
+    database, _ = db
+    path, results = make_bundle(
+        tmp_path / "failed", prepared(automation_source), failure=True
+    )
+    result = ingest(path, results, database, {"origin": "central-test"})
+    assert len(result["runs"]) == 1
+    assert database.counts()["metrics"] == 0
+    assert database.list_records()[0]["run_status"] == "FAIL"
+
+
+@pytest.fixture
 def db():
     admin_dsn = os.environ.get("TORCHCST_TEST_DATABASE_URL")
     if not admin_dsn:

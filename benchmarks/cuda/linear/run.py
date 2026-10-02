@@ -248,8 +248,8 @@ def main():
     ap.add_argument(
         "--worker", choices=("correctness", "measure", "dense"), help=argparse.SUPPRESS
     )
-    ap.add_argument("--snapshot", type=Path, help=argparse.SUPPRESS)
-    ap.add_argument("--snapshot-sha256", help=argparse.SUPPRESS)
+    ap.add_argument("--snapshot", type=Path, help="execute a frozen run snapshot")
+    ap.add_argument("--snapshot-sha256", help="required SHA256 of the frozen snapshot")
     ap.add_argument("--plan-id", help=argparse.SUPPRESS)
     args = ap.parse_args()
     if args.device < 0:
@@ -275,9 +275,16 @@ def main():
         elif not run.dense:
             ap.error("dense reference was not selected")
     else:
-        if not args.case:
-            ap.error("--case is required (except --list-plans)")
-        run = load_run(args.case, args.plans)
+        if args.snapshot:
+            if args.case or not args.snapshot_sha256:
+                ap.error(
+                    "--snapshot requires its hash and cannot be combined with --case"
+                )
+            run = load_snapshot(args.snapshot, expected_hash=args.snapshot_sha256)
+        else:
+            if not args.case or args.snapshot_sha256:
+                ap.error("--case or a frozen --snapshot with its hash is required")
+            run = load_run(args.case, args.plans)
         if args.validate_only:
             print(json.dumps(run.snapshot(), indent=2))
             return

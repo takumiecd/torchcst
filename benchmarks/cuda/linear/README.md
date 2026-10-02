@@ -53,6 +53,10 @@ output の隣の固有ディレクトリへ保存する。worker はその SHA25
 結果には元の JSON の hash、固定 snapshot、実際の Plan、source hash、実機環境、誤差、時間分布、メモリを残す。
 実行 UUID と UTC 開始時刻も記録する。同じ数値を得た別実行と結果の再送を区別する。
 完成した `run.py` の JSON は [PostgreSQL 保存入口](../../database/README.md)で追記・検索・復元できる。
+固定された測定依頼を Colab で実行し、中央で照合して保存する入口は
+[official measurement tooling](../../automation/README.md)を参照。
+`--snapshot PATH --snapshot-sha256 HASH` は固定した run を coordinator に直接渡す。
+元の Case / catalog を読み直さず、同じ候補・初期条件を実行する。
 失敗した worker の結果と途中までの記録も保存し、計測を中断する。
 
 `dense: true` は通常の dense Linear を追加する。dense は性能の参照で、CST と同じ Parameter
