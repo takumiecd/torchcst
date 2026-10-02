@@ -52,7 +52,7 @@ def check(a, b, tol=3e-4):
     }
 
 
-def small_gate():
+def small_gate(*, selector_factory=None):
     sizes = (1024, 4, 4)
     p = mixed(torch.float32, "cuda")
     p[0, 2] = 511.25
@@ -69,6 +69,8 @@ def small_gate():
             kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
             selector=algorithm_selector(algorithm_id),
         )
+        if selector_factory is not None:
+            model.selector = selector_factory(model, algorithm_id)
         xx = x.clone().requires_grad_()
         actual = model(xx)
         tp = model.atoms.p.detach().double().requires_grad_()
@@ -122,6 +124,8 @@ def small_gate():
             kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
             selector=algorithm_selector(algorithm_id),
         )
+        if selector_factory is not None:
+            eager.selector = selector_factory(eager, algorithm_id)
         eo = torch.optim.AdamW(
             eager.parameters(),
             lr=1e-4,
@@ -165,7 +169,7 @@ def small_gate():
     return reports
 
 
-def benchmark(n, profile, algorithm_id, dense=False):
+def benchmark(n, profile, algorithm_id, dense=False, *, selector_factory=None):
     h, j = (32, 32) if n == 1024 else (64, 128)
     sizes = (n, h, j)
     origin = (-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4)
@@ -197,6 +201,8 @@ def benchmark(n, profile, algorithm_id, dense=False):
             kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
             selector=algorithm_selector(algorithm_id),
         )
+        if selector_factory is not None:
+            model.selector = selector_factory(model, algorithm_id)
     del p
     opt = torch.optim.AdamW(
         model.parameters(),

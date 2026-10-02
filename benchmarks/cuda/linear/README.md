@@ -7,6 +7,7 @@
 | ファイル | 役割 | 測定範囲 |
 | --- | --- | --- |
 | `run.py` | Plan catalog と Case を読み、選択 Plan を強制して比較 | 独立 oracle、forward・backward・AdamW、eager / Graph、capture を含む peak |
+| `check_dispatch.py` | 実機条件の JSON を明示的に書き、読み戻して公開 CSTLinear を実行 | 完全一致・未観測 fallback・不正ファイルの拒否、独立 oracle と Graph。任意で完全 step を別 process で測定 |
 | `check_normalized.py` | 公開 CSTLinear の統合確認 | 独立 oracle、全5 atom 勾配、更新後の支持、Graph replay と AdamW 状態。任意で完全 step を測定 |
 | `validate_wheel.py` | shared L4 pool の検証 driver | 配布 wheel の全維持テスト、上記の統合確認、通常幅・鋭い支持・dense の完全 step |
 | `strip_torus.py` | 既存 Strip/Torus の fused / split と参照経路の診断 | 準備、forward、forward/backward。optimizer は含まない |
@@ -16,7 +17,7 @@
 | `fixtures.py` | Chart・Kernel・model の共通構築 | 純粋な Spec と設定境界の State 構築。テストからも利用 |
 | `reference.py` | 正規化 Triweight の独立 dense oracle | backend の距離・重み生成を呼ばず、サンプル点から直接計算 |
 
-`__init__.py` を含めて10 Python file。benchmark から `tests/` を読み込まない。
+`__init__.py` を含めて11 Python file。benchmark から `tests/` を読み込まない。
 旧 `experiments/`、探索用 CLI、移行段階ごとの validation driver は削除した。
 旧 module 名や `--tests-file` / `--chart-suite` の互換入口は用意しない。
 
@@ -29,6 +30,7 @@ python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/normali
 python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/normalized-1024-broad.json --correctness-only --output output/normalized-check.json
 python -m benchmarks.cuda.linear.run --case benchmarks/cuda/linear/cases/normalized-1024-broad.json --source-commit COMMIT --output output/normalized-step.json
 python -m benchmarks.cuda.linear.check_normalized --output output/public-check.json
+python -m benchmarks.cuda.linear.check_dispatch --output-dir output/dispatch-check --bench
 ```
 
 [plans.json](plans.json) は名前付き Plan の一覧。
@@ -122,3 +124,9 @@ raw artifact は ignored evidence に保存済み。共有 pool の owned GPU �
 Plan の専用 JSON API は source / 配布 wheel の CPU suite で各533 passed / 117 skipped。
 full / window の dict・JSON text・ファイル往復、recipe 型の復元、GPU 実装を import しないこと、
 不正・重複・非有限な設定の拒否と benchmark の固定 snapshot を確認した。
+
+`check_dispatch` は catalog の二つの Plan を明示的に使う動作確認。生成する JSON は
+`demonstration-only` と表示し、性能順位や承認済み policy として配布しない。
+`dispatch-*.json`・選択 trace・oracle 誤差・不正 JSON の拒否理由を結果ディレクトリに保存する。
+`--bench` は1024²・M128・52,429 atoms・sigma3・FP32・AdamW の完全 step と
+dense 参照を別 process で測定する。小さい混合 fixture の独立全 atom oracle と区別する。

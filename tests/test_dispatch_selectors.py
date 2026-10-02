@@ -325,3 +325,55 @@ def test_custom_rule_reuses_same_validation_and_decision_interface():
     assert selector.select(context(atom_count=10)).plan == FULL
     with pytest.raises(ValueError, match="TF32"):
         selector.select(context(precision=PrecisionPolicy(allow_tf32=True)))
+
+
+def test_written_json_selects_and_executes_both_exact_and_fallback(tmp_path):
+    registry = Registry()
+    for name in ("toy_fast", "toy_small"):
+        registry.register(ToyAlgorithm(name))
+    fast = ExecutionPlan("toy_fast", "v1", Recipe(256))
+    small = ExecutionPlan("toy_small", "v1", Recipe())
+    ctx = context(device=DeviceInfo("cpu"))
+    from torchcst._backends.cuda.serialization import encode_json
+
+    # Write all fields explicitly: exercise aliases and file I/O rather than
+    # relying exclusively on ExactSelector.from_entries().
+    data = {
+        "schema_version": 1,
+        "selector": {"kind": "exact_table", "revision": "file-fixture-v1"},
+        "score_policy": {"id": "fixture", "revision": "v1", "parameters": {}},
+        "dataset_snapshot": "file-fixture",
+        "runtime_versions": {"torch": str(torch.__version__)},
+        "plans": {
+            "preferred": registry.dump_plan(fast),
+            "fallback": registry.dump_plan(small),
+        },
+        "entries": [
+            {
+                "condition": dump_condition(ctx),
+                "plan_id": "preferred",
+                "evidence_ids": ["fixture-only"],
+            }
+        ],
+        "fallback_plan_id": "fallback",
+    }
+    path = tmp_path / "dispatch.json"
+    path.write_text(encode_json(data), encoding="utf-8")
+    selector = load_selector(path.read_bytes(), registry=registry)
+    path.unlink()  # The selected artifact is already in memory.
+    for rows, expected in ((2, fast), (3, small)):
+        x = torch.randn(rows, 16, requires_grad=True)
+        p = torch.randn(8, 5, requires_grad=True)
+        actual_context = replace(ctx, input_shape=tuple(x.shape))
+        decision = selector.select(actual_context)
+        assert decision.plan == expected
+        y = registry.execute(
+            decision.plan, actual_context, x=x, parameters=p, operator=ctx.operator
+        )
+        expected_y = (x.detach().sum(-1) * p.detach()[0, 0])[:, None].repeat(1, 64)
+        torch.testing.assert_close(y, expected_y)
+        y.sum().backward()
+        torch.testing.assert_close(x.grad, torch.full_like(x, 64) * p.detach()[0, 0])
+        expected_p = torch.zeros_like(p)
+        expected_p[0, 0] = 64 * x.detach().sum()
+        torch.testing.assert_close(p.grad, expected_p)
