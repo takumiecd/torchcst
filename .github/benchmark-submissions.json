@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "repository": "takumiecd/torchcst",
+  "general_daily_runs": 10,
+  "general_trust_points": 1,
+  "recognized_trust_points": 10,
+  "max_file_bytes": 5242880,
+  "recognized": []
+}

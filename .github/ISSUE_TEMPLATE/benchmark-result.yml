@@ -1,0 +1,22 @@
+name: Submit benchmark result
+description: Upload a completed benchmark JSON measured on your own GPU or Colab.
+title: "[Benchmark result] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run the repository benchmark on your own GPU or Colab, then attach its completed JSON below.
+        No fork, PR, Colab credentials or database credentials are needed to submit results.
+        One issue accepts one run JSON. Results and hardware information will be public.
+        The same file submitted again does not create another observation.
+        General and recognized accounts use this same form.
+        See [submission rules](https://github.com/takumiecd/torchcst/blob/main/.github/benchmark-submissions.json)
+        and [instructions](https://github.com/takumiecd/torchcst/blob/main/docs/benchmark-contributions.ja.md).
+  - type: textarea
+    id: result
+    attributes:
+      label: Benchmark JSON
+      description: Drag one completed JSON from benchmarks.cuda.linear.run into this field. Do not paste credentials or Python source.
+      placeholder: Attach output/normalized-step.json here.
+    validations:
+      required: true

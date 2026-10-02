@@ -39,6 +39,12 @@ def main():
     query.add_argument("--limit", type=int, default=100)
     query.add_argument("--adapter-revision", type=int)
     query.add_argument("--after", nargs=2, metavar=("PROJECTION_ID", "ORDINAL"))
+    submitted = commands.add_parser(
+        "submissions", help="list submission accounts, policy and trust snapshots"
+    )
+    submitted.add_argument("--submitter-id", type=int)
+    submitted.add_argument("--after")
+    submitted.add_argument("--limit", type=int, default=100)
     args = parser.parse_args()
     try:
         with connect_from_env(args.database_env) as connection:
@@ -55,6 +61,14 @@ def main():
                 with args.output.open("xb") as output:
                     output.write(raw)
                 result = {"run_id": args.run_id, "output": str(args.output)}
+            elif args.command == "submissions":
+                rows = database.list_submissions(
+                    submitter_id=args.submitter_id, after=args.after, limit=args.limit
+                )
+                result = {
+                    "submissions": rows,
+                    "next_after": rows[-1]["id"] if len(rows) == args.limit else None,
+                }
             else:
                 after = (args.after[0], int(args.after[1])) if args.after else None
                 rows = database.list_records(

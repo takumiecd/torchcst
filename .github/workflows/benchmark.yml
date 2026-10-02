@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   prepare:
-    # Fork users measure the unchanged upstream commit on their default branch.
+    # Optional Colab measurement helper; submit each completed run JSON via an issue.
     # A protected validation environment can test a reviewed feature ref.
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || github.ref == vars.BENCHMARK_VALIDATION_REF
     runs-on: ubuntu-latest
@@ -103,54 +103,3 @@ jobs:
       - name: Erase runner OAuth cache
         if: always()
         run: python -m benchmarks.automation.hosted erase
-
-  ingest:
-    needs: [prepare, measure]
-    if: always() && github.repository == 'takumiecd/torchcst' && github.ref == 'refs/heads/main' && needs.prepare.result == 'success' && (needs.measure.result == 'success' || needs.measure.result == 'failure')
-    runs-on: ubuntu-latest
-    environment: benchmark-database
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: '3.11'
-      - name: Install ingestion tooling
-        run: |
-          python -m pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install 'psycopg[binary]>=3.2,<4'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: benchmark-request
-          path: output/official-request
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: benchmark-results
-          path: output/official-measurement
-      - name: Validate result bindings before receiving DB credentials
-        env:
-          PYTHONPATH: src
-        run: >-
-          python -m benchmarks.automation validate
-          --request output/official-request/request.json
-          --results output/official-measurement/results
-      - name: Attach workflow provenance from GitHub metadata
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-        run: >-
-          python -m benchmarks.automation.contributions provenance
-          --repository "$REPOSITORY" --run-id "$RUN_ID"
-          --output output/provenance.json
-      - name: Append verified observations to Neon
-        env:
-          PYTHONPATH: src
-          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
-        run: >-
-          python -m benchmarks.automation ingest
-          --request output/official-request/request.json
-          --results output/official-measurement/results
-          --provenance output/provenance.json
