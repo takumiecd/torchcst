@@ -7,8 +7,10 @@ import os
 import subprocess
 import sys
 from dataclasses import asdict
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 
@@ -177,6 +179,8 @@ def test_coordinator_freezes_case_and_stops_on_failure(tmp_path, monkeypatch, fa
     else:
         runner.main()
     combined = read_json(output)[0]
+    assert str(UUID(combined["execution_id"])) == combined["execution_id"]
+    assert datetime.fromisoformat(combined["started_at"]).utcoffset() == timedelta(0)
     assert combined["status"] == ("FAIL" if failure else "PASS")
     assert all(snapshot == snapshots[0] for snapshot in snapshots)
     assert [asdict(e.plan) for e in snapshots[0].plans] == [

@@ -17,7 +17,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import torch
@@ -310,6 +312,8 @@ def main():
     snapshot_hash = hashlib.sha256(snapshot.read_bytes()).hexdigest()
     combined = {
         "schema_version": 1,
+        "execution_id": str(uuid.uuid4()),
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "status": "RUNNING",
         "certification": "not assessed",
         "run": run.snapshot(),

@@ -49,6 +49,8 @@ output の隣の固有ディレクトリへ保存する。worker はその SHA25
 実行時に dispatch の自動選択や別 Plan への fallback は行わない。
 候補間の初期 Parameter / input / target の hash 一致も確認する。
 結果には元の JSON の hash、固定 snapshot、実際の Plan、source hash、実機環境、誤差、時間分布、メモリを残す。
+実行 UUID と UTC 開始時刻も記録する。同じ数値を得た別実行と結果の再送を区別する。
+完成した `run.py` の JSON は [PostgreSQL 保存入口](../../database/README.md)で追記・検索・復元できる。
 失敗した worker の結果と途中までの記録も保存し、計測を中断する。
 
 `dense: true` は通常の dense Linear を追加する。dense は性能の参照で、CST と同じ Parameter

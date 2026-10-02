@@ -130,6 +130,7 @@ An explicitly empty table represents a zero operator; integer counts must be pos
 - [Patterns](src/torchcst/patterns/README.md)
 - [Operator](src/torchcst/operators/README.md)
 - [Benchmarks](benchmarks/cuda/linear/README.md)
+- [Benchmark database (PostgreSQL / Neon)](benchmarks/database/README.md)
 
 This package is a research API. Historical measurements describe their recorded
 source revision, model and hardware and do not establish performance of a
