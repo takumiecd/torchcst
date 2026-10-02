@@ -1,0 +1,378 @@
+{
+  "schema_version": 1,
+  "status": "VALIDATED_WITH_EXISTING_CU130_ROUTING_LIMITATION",
+  "source_commit": "fcc621b",
+  "branch": "codex/cuda-dispatch-registry-v1",
+  "cpu": {
+    "source": {
+      "passed": 502,
+      "skipped": 197
+    },
+    "installed_wheel": {
+      "passed": 502,
+      "skipped": 197
+    },
+    "wheel_sha256": "6ed56e8d74fca17c45dfd2d341d4b56613deec2ba6013ff66b25c1dc7720bc7f"
+  },
+  "cpu_parity": {
+    "baseline_commit": "56e74de",
+    "cases": 11,
+    "tensors": 112,
+    "max_absolute_difference": 0.0,
+    "contract": "bitwise identical float64 CPU coordinate, update, forward and gradient tensors"
+  },
+  "gpu_runs": [
+    {
+      "job_id": "l4job-35acc05c161d4fbcbf59edddd9f16321",
+      "source_commit": "f49e633",
+      "status": "FAIL_EXISTING_CU130_ROUTING_COMPARISON",
+      "gpu": "NVIDIA L4, GPU-8b9457ab-f5f4-cdd0-6b59-113e9faecd2c, 580.82.07, 23034 MiB",
+      "environment": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "source_archive_sha256": "fa86da76814010f3e5d988801b71c1ed53676993539247077cd1565d20272740",
+      "result_archive_sha256": "67b0c03b69a2c09107d066747e00b91454f5219724316a0c04a948b10a486a5d",
+      "tests": {
+        "passed": 750,
+        "failed": [
+          {
+            "classname": "tests.test_local_strip_routing",
+            "name": "test_local_candidates_match_exhaustive_all_station_boundaries[3-0.0-0.1-0.0]"
+          },
+          {
+            "classname": "tests.test_local_strip_routing",
+            "name": "test_local_candidates_match_exhaustive_all_station_boundaries[31-107.1-0.58-1000.0]"
+          },
+          {
+            "classname": "tests.test_local_strip_routing",
+            "name": "test_local_candidates_match_exhaustive_all_station_boundaries[1025--81.7-0.1-0.0]"
+          },
+          {
+            "classname": "tests.test_local_strip_routing",
+            "name": "test_local_candidates_match_exhaustive_all_station_boundaries[4096-19.2-0.1-1000.0]"
+          },
+          {
+            "classname": "tests.test_local_strip_routing",
+            "name": "test_local_candidates_match_exhaustive_all_station_boundaries[16384-0.0-0.1-0.0]"
+          },
+          {
+            "classname": "tests.test_local_strip_routing",
+            "name": "test_extreme_coordinate_scale_uses_exhaustive_fallback"
+          },
+          {
+            "classname": "tests.test_triton_linear",
+            "name": "test_fused_routing_matches_reference_including_seams[257-64-4]"
+          }
+        ],
+        "skipped": 2
+      }
+    },
+    {
+      "job_id": "l4job-6724814dafdd4e2c8ed72d3960178ffd",
+      "source_commit": "f178cd6",
+      "status": "FAIL_EXISTING_CU130_ROUTING_COMPARISON",
+      "gpu": "NVIDIA L4, GPU-8b9457ab-f5f4-cdd0-6b59-113e9faecd2c, 580.82.07, 23034 MiB",
+      "environment": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "source_archive_sha256": "1d6b44ad2bf9b99185c9621f0700697e87c47ef467ad98163f603bd7c1817462",
+      "result_archive_sha256": "1f80e7ca47c74e4359dac101f765b37aa465cf2d0f2e91fddab670d9c464e1ca",
+      "tests": {
+        "passed": 202,
+        "failed": [
+          {
+            "classname": "tests.test_triton_linear",
+            "name": "test_fused_routing_matches_reference_including_seams[257-64-4]"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "job_id": "l4job-e9d1ca4645ee45a881267a036b8f7810",
+      "source_commit": "fcc621b",
+      "status": "PASS",
+      "gpu": "NVIDIA L4, GPU-c3791cf3-1ff1-aafa-0c76-b31831b95725, 580.82.07, 23034 MiB",
+      "pool_probe_environment": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "validation_environment": {
+        "torch": "2.11.0+cu128",
+        "cuda": "12.8",
+        "triton": "3.6.0",
+        "gpu": "NVIDIA L4"
+      },
+      "source_archive_sha256": "9c594888b95e2766b4c429a179c632330fcdb6374fdd198fffd4c5dc157fa309",
+      "result_archive_sha256": "35876167d7f648c73d74191909d60a5edcaa7b50b98d3c6e0a61e38fd1af1884",
+      "tests": {
+        "operator_dispatch_profile": {
+          "passed": 120,
+          "failed": [],
+          "skipped": 0
+        },
+        "coordinate_optimizer_graph_routing": {
+          "passed": 211,
+          "failed": [],
+          "skipped": 0
+        },
+        "unique_passed": 331
+      },
+      "wheel_sha256": "6ed56e8d74fca17c45dfd2d341d4b56613deec2ba6013ff66b25c1dc7720bc7f",
+      "verified_python_modules": 139
+    }
+  ],
+  "cu130_baseline_comparison": {
+    "job_id": "l4job-2cb8cbbcfbbe48f3a29bf95cd4a4ac4b",
+    "baseline_commit": "56e74de",
+    "current_commit": "f178cd6",
+    "baseline": {
+      "passed": 13,
+      "failed": [
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[3-0.0-0.1-0.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[31-107.1-0.58-1000.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[1025--81.7-0.1-0.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[4096-19.2-0.1-1000.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[16384-0.0-0.1-0.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_extreme_coordinate_scale_uses_exhaustive_fallback"
+        },
+        {
+          "classname": "tests.test_triton_linear",
+          "name": "test_fused_routing_matches_reference_including_seams[257-64-4]"
+        }
+      ],
+      "skipped": 0
+    },
+    "current": {
+      "passed": 13,
+      "failed": [
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[3-0.0-0.1-0.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[31-107.1-0.58-1000.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[1025--81.7-0.1-0.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[4096-19.2-0.1-1000.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_local_candidates_match_exhaustive_all_station_boundaries[16384-0.0-0.1-0.0]"
+        },
+        {
+          "classname": "tests.test_local_strip_routing",
+          "name": "test_extreme_coordinate_scale_uses_exhaustive_fallback"
+        },
+        {
+          "classname": "tests.test_triton_linear",
+          "name": "test_fused_routing_matches_reference_including_seams[257-64-4]"
+        }
+      ],
+      "skipped": 0
+    },
+    "same_failure_identities": true,
+    "setup_failure_after_comparison": "venv ensurepip unavailable; subsequent job used --without-pip"
+  },
+  "interrupted_job": {
+    "job_id": "l4job-a6d4fd499fad4199bced7b3c58538ad4",
+    "status": "interrupted_without_verified_result",
+    "recovery": "pool recover stopped owned runtime; resubmitted final source"
+  },
+  "measurements": [
+    {
+      "profile": "broad",
+      "reference": "normalized_full",
+      "batch": 128,
+      "atoms": 52429,
+      "operator_shape": [
+        1024,
+        1024
+      ],
+      "dtype": "float32",
+      "tf32": false,
+      "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "eager_median_ms": 1.6290429994114675,
+      "graph_median_ms": 0.6221550011105137,
+      "allocated_before_capture_bytes": 44978688,
+      "peak_allocated_capture_replay_bytes": 54366208,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+    },
+    {
+      "profile": "broad",
+      "reference": "normalized_window",
+      "batch": 128,
+      "atoms": 52429,
+      "operator_shape": [
+        1024,
+        1024
+      ],
+      "dtype": "float32",
+      "tf32": false,
+      "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "eager_median_ms": 2.9641159999300726,
+      "graph_median_ms": 1.5318740006478038,
+      "allocated_before_capture_bytes": 45241856,
+      "peak_allocated_capture_replay_bytes": 48404480,
+      "peak_reserved_capture_replay_bytes": 90177536,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+    },
+    {
+      "profile": "broad",
+      "reference": "dense_linear",
+      "batch": 128,
+      "atoms": 52429,
+      "operator_shape": [
+        1024,
+        1024
+      ],
+      "dtype": "float32",
+      "tf32": false,
+      "initial_p_sha256": null,
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "eager_median_ms": 0.7192579996626591,
+      "graph_median_ms": 0.13021199993090704,
+      "allocated_before_capture_bytes": 52429312,
+      "peak_allocated_capture_replay_bytes": 52955648,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+    },
+    {
+      "profile": "sharp",
+      "reference": "normalized_full",
+      "batch": 128,
+      "atoms": 52429,
+      "operator_shape": [
+        1024,
+        1024
+      ],
+      "dtype": "float32",
+      "tf32": false,
+      "initial_p_sha256": "5ad7662aa741c0544d1c13f0af7e8886ccffd8f459dce67de1b7e1dca5e535fb",
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "eager_median_ms": 1.6653349994157907,
+      "graph_median_ms": 0.5426570005511167,
+      "allocated_before_capture_bytes": 44978688,
+      "peak_allocated_capture_replay_bytes": 54366208,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+    },
+    {
+      "profile": "sharp",
+      "reference": "normalized_window",
+      "batch": 128,
+      "atoms": 52429,
+      "operator_shape": [
+        1024,
+        1024
+      ],
+      "dtype": "float32",
+      "tf32": false,
+      "initial_p_sha256": "5ad7662aa741c0544d1c13f0af7e8886ccffd8f459dce67de1b7e1dca5e535fb",
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "eager_median_ms": 2.8286039996601176,
+      "graph_median_ms": 0.309003000438679,
+      "allocated_before_capture_bytes": 45241856,
+      "peak_allocated_capture_replay_bytes": 48404480,
+      "peak_reserved_capture_replay_bytes": 90177536,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+    },
+    {
+      "profile": "sharp",
+      "reference": "dense_linear",
+      "batch": 128,
+      "atoms": 52429,
+      "operator_shape": [
+        1024,
+        1024
+      ],
+      "dtype": "float32",
+      "tf32": false,
+      "initial_p_sha256": null,
+      "optimizer": {
+        "name": "AdamW",
+        "lr": 0.0001,
+        "weight_decay": 0.01,
+        "fused": true,
+        "capturable": true
+      },
+      "eager_median_ms": 0.7109399994078558,
+      "graph_median_ms": 0.1284909994865302,
+      "allocated_before_capture_bytes": 52429312,
+      "peak_allocated_capture_replay_bytes": 52955648,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "total_gpu_process_bytes": null,
+      "scope": "complete-step performance; no independent full-shape all-atom gradient oracle"
+    }
+  ],
+  "verification_scope": "Cu130 complete suite: 750 passed, seven routing comparisons reproduced at the previous source. Final source Cu128 installed-wheel targeted suites: 331 distinct passed, including all seven routing comparisons. No fresh complete Cu128 suite at final source. Independent small-shape graph oracle and isolated sigma-three/sharp complete-step measurements passed. No performance promotion."
+}
