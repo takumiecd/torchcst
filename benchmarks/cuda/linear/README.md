@@ -58,6 +58,8 @@ output の隣の固有ディレクトリへ保存する。worker はその SHA25
 fixture は現在 normalized Euclidean Strip / FP32 / 1024²・8192²に限定する。
 独立 oracle は境界を含む小さい混合 fixture、完全 step は Case の大きい fixture を使う。
 
+`check_normalized --algorithm normalized_full normalized_window` は Algorithm ID から
+通常の Plan と FixedSelector を構築して公開入口を確認する。専用の memory 指定はない。
 `check_normalized` と `validate_wheel` は従来の NVIDIA L4 検証条件を維持する。
 `run` と Strip/Torus の CLI は他の CUDA GPU でも使える。
 全 CLI の設定は `--help` を参照。wheel gate は1024²に限定する。

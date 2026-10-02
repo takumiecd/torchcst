@@ -12,6 +12,7 @@ from torchcst._backends.linear import (
     resolve_backend,
     validate_backend,
 )
+from torchcst._backends.cuda.dispatch.base import Selector
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.charts import ChartSpec, ChartState, StripChartState, compile_chart
@@ -21,7 +22,6 @@ from torchcst.kernels.state import KernelState
 from torchcst.operators import Operator
 
 from .module import CSTModule, RepulsionKind
-from .options import LinearOptions
 
 
 class CSTLinear(CSTModule):
@@ -36,7 +36,7 @@ class CSTLinear(CSTModule):
         atoms: int | Tensor | Atoms,
         kernel: KernelSpec,
         kernel_options: KernelOptions | None = None,
-        linear_options: LinearOptions | None = None,
+        selector: Selector | None = None,
         atom_init: AtomInit = "balanced",
         backend: Backend = "auto",
         device: torch.device | str | None = None,
@@ -68,9 +68,9 @@ class CSTLinear(CSTModule):
             raise TypeError("atoms must be an integer, Tensor, Parameter or Atoms")
         if isinstance(atoms, int) and atoms < 1:
             raise ValueError("atoms must be positive")
-        if linear_options is not None and not isinstance(linear_options, LinearOptions):
-            raise TypeError("linear_options must be LinearOptions")
-        self.linear_options = linear_options or LinearOptions()
+        if selector is not None and not isinstance(selector, Selector):
+            raise TypeError("selector must implement Selector")
+        self.selector = selector
         if not isinstance(kernel, KernelSpec):
             raise TypeError("kernel must be a KernelSpec")
         if atom_init not in ("balanced", "uniform"):
@@ -165,7 +165,6 @@ class CSTLinear(CSTModule):
         layout = {
             "in_features": self.in_features,
             "out_features": self.out_features,
-            "linear_options": {"memory": self.linear_options.memory},
         }
         if hasattr(self, "chart"):
             layout["chart_mode"] = "single"

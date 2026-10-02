@@ -21,7 +21,11 @@ from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe
     WindowRecipe,
 )
 from torchcst._backends.cuda.context import context_from_tensors
-from torchcst._backends.cuda.dispatch.select import FULL, WINDOW, select_normalized
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+    FULL,
+    WINDOW,
+)
+from torchcst._backends.cuda.dispatch.select import FixedSelector
 from torchcst._backends.cuda.registry import Registry
 from torchcst._backends.cuda.schema import (
     DeviceInfo,
@@ -74,21 +78,28 @@ def test_cuda_contract_rejects_future_nested_pattern_revisions(axis):
         geometry(operator)
 
 
-def test_selection_preserves_legacy_routes_and_explains_fallback():
-    assert select_normalized(context()).plan == FULL
-    assert select_normalized(context(), memory="window").plan == WINDOW
+def test_fixed_selection_and_explicit_fallback():
+    assert FixedSelector(FULL, registry=REGISTRY).select(context()).plan == FULL
+    assert FixedSelector(WINDOW, registry=REGISTRY).select(context()).plan == WINDOW
     op = replace_sites(context().operator, origin=(0.1, 0.0, 0.0))
-    decision = select_normalized(context(operator=op), memory="window")
+    decision = FixedSelector(WINDOW, registry=REGISTRY, fallback_plan=FULL).select(
+        context(operator=op)
+    )
     assert decision.plan == FULL
     assert "quarter-grid" in decision.reason
-    assert decision.evidence_ids == ()  # compatibility is not new certification
+    assert decision.evidence_ids == ()  # explicit selection is not certification
     assert decision.workspace_upper_bound_bytes is None
 
 
 @pytest.mark.parametrize("rows", [1, 31, 33, 65])
 def test_window_row_guard_falls_back(rows):
     op = replace_sites(context().operator, sizes=(rows, 4, 4))
-    assert select_normalized(context(operator=op), memory="window").plan == FULL
+    assert (
+        FixedSelector(WINDOW, registry=REGISTRY, fallback_plan=FULL)
+        .select(context(operator=op))
+        .plan
+        == FULL
+    )
     with pytest.raises(ValueError, match="divisible by 32"):
         REGISTRY.validate(WINDOW, context(operator=op))
 
@@ -108,9 +119,11 @@ def test_window_row_guard_falls_back(rows):
     ],
 )
 def test_common_constraints_cannot_be_bypassed_by_fallback(kwargs, reason):
-    for memory in ("full", "window"):
+    for plan in (FULL, WINDOW):
         with pytest.raises(ValueError, match=reason):
-            select_normalized(context(**kwargs), memory=memory)
+            FixedSelector(plan, registry=REGISTRY, fallback_plan=FULL).select(
+                context(**kwargs)
+            )
 
 
 def test_registry_rejects_revision_recipe_and_duplicate_registration():
@@ -160,7 +173,7 @@ def test_context_is_metadata_and_immutable():
 
 def test_import_does_not_load_triton_or_gpu_implementations():
     code = (
-        "import sys; from torchcst._backends.cuda.dispatch.select import FULL; "
+        "import sys; from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL; "
         "assert 'triton' not in sys.modules; "
         "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.kernels' not in sys.modules; "
         "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.executor' not in sys.modules; assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.provider' not in sys.modules"

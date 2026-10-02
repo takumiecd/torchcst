@@ -12,7 +12,6 @@ from torchcst import (
     Atoms,
     CSTLinear,
     CSTOptimizer,
-    LinearOptions,
     chart_presets,
     presets,
 )
@@ -172,12 +171,20 @@ def test_non_regular_layout_uses_general_reference():
     torch.testing.assert_close(model(x), model.operator.apply(x), atol=0, rtol=0)
 
 
-def test_execution_preference_is_separate_from_declaration():
-    full = layer(mixed())
-    window = layer(mixed(), linear_options=LinearOptions(memory="window"))
-    assert full.declaration() == window.declaration()
-    with pytest.raises(RuntimeError, match="checkpoint contract"):
-        window.load_state_dict(full.state_dict())
+def test_selector_is_separate_from_declaration_and_checkpoint():
+    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+        WINDOW,
+    )
+    from torchcst._backends.cuda.dispatch import FixedSelector
+
+    first = layer(mixed())
+    selector = FixedSelector(WINDOW, registry=REGISTRY)
+    second = layer(mixed(), selector=selector)
+    assert first.declaration() == second.declaration()
+    second.load_state_dict(first.state_dict())
+    assert second.selector is selector
+    assert not hasattr(__import__("torchcst"), "LinearOptions")
 
 
 def test_old_public_entry_point_is_removed():

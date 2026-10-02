@@ -123,7 +123,9 @@ provenance・受信時刻や全テーブルのバックアップではない。�
 
 今回はコードとローカル PostgreSQL での検証まで。
 Neon project 作成・接続、中央 GitHub Actions だけに書き込み credential を与える ingestion 経路、
-Colab 等の測定実行、認証、leaderboard / dispatch の出力は次の段階で接続する。
+Colab 等の測定実行、認証、leaderboard / dispatch の生成は次の段階で接続する。
+生成物の実行時形式は [Selector artifact](../../src/torchcst/_backends/cuda/dispatch/README.md) に定義する。
+DB の保存、任意の評価関数による順位付け、選択器の生成、実行時の選択を分離する。
 中央 credential を持たない contributor は結果 JSON を提出する。
 
 ## テスト

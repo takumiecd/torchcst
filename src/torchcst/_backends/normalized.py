@@ -75,16 +75,17 @@ def forward(site, inputs, p):
         result = apply(flat, p, plan)
     elif flat.device.type == "cuda":
         from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import (
+            BOOTSTRAP_SELECTOR,
             REGISTRY,
         )
         from torchcst._backends.cuda.context import context_from_tensors
-        from torchcst._backends.cuda.dispatch.select import select_normalized
 
         # Triton kernels use packed rows. Keep shared Parameters intact and let
         # autograd propagate through a temporary copy for strided atom tables.
         parameters = p.contiguous()
         context = context_from_tensors(operator, flat, parameters)
-        decision = select_normalized(context, memory=site.linear_options.memory)
+        selector = site.selector if site.selector is not None else BOOTSTRAP_SELECTOR
+        decision = selector.select(context)
         result = REGISTRY.execute(
             decision.plan, context, x=flat, parameters=parameters, operator=operator
         )

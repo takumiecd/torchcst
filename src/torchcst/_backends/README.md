@@ -37,7 +37,7 @@ torchcst/
     cuda/
       algorithm.py             Algorithm ABC
       context.py / schema.py   共通 OperatorSpec と実行条件・plan・診断
-      registry.py / dispatch/  登録・検証・現行の選択方針
+      registry.py / dispatch/  登録・検証・差し替え可能な選択器
       serialization.py         宣言 metadata の厳密な JSON codec
       algorithms/
         normalized_euclidean_strip/
@@ -133,7 +133,7 @@ buffer version による固定座標計画の invalidation と fresh な atom �
 ```python
 from pathlib import Path
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.dispatch.select import WINDOW
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import WINDOW
 
 path = Path("plan.json")
 path.write_text(REGISTRY.dumps_plan(WINDOW), encoding="utf-8")
@@ -152,3 +152,9 @@ export は元の recipe と独立した辞書を返し、往復で元の Plan �
 JSON text はキーをソートして決定的に出力する。
 `algorithm_revision` は実装契約の版。再現実験では benchmark と同様に source commit / hash
 と実行条件も記録する。
+
+## 選択器
+
+[Selector の契約と完全一致 artifact](cuda/dispatch/README.md)を参照。
+full / window の専用選択 API は廃止し、両者を通常の Algorithm 候補にする。
+選択器は `CSTLinear(selector=...)` に渡し、数学的宣言・checkpoint から分離する。

@@ -1,9 +1,10 @@
+"""Operator boundaries, live state and independent reference gradients."""
+
 from __future__ import annotations
 
 from torchcst import BandwidthBounds
 from torchcst._backends.torch.charts import construction as _construction
 
-"Operator boundaries, live state and independent reference gradients."
 import copy
 from dataclasses import FrozenInstanceError, replace
 
@@ -320,7 +321,10 @@ def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
         ),
     ]
     from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-    from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
+    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+        FULL,
+        WINDOW,
+    )
     from torchcst._backends.cuda.schema import DeviceInfo, DispatchContext
 
     for candidate in variants:

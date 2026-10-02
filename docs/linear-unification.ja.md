@@ -24,7 +24,7 @@ checkpoint の共通 key は atoms.p / chart.* / kernel.* と CSTModule の extr
 ```python
 from torchcst import pattern_presets as sites
 import torch
-from torchcst import CSTLinear, LinearOptions, chart_presets as layout, presets
+from torchcst import CSTLinear, chart_presets as layout, presets
 
 chart = layout.product(
     shape=(8, 4),
@@ -33,8 +33,7 @@ chart = layout.product(
 )
 p = torch.nn.Parameter(torch.tensor([[0.2, 0.0, 1.0, 0.2, 0.3]]))
 optimizer = torch.optim.AdamW([p], lr=1e-3)
-layer = CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
-                  linear_options=LinearOptions(memory='window'))
+layer = CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)
 assert layer.atoms.p is p
 optimizer.zero_grad(set_to_none=True)
 layer(torch.randn(2, 4)).square().mean().backward()
@@ -43,7 +42,8 @@ optimizer.step()
 
 ## 実行の分担
 
-chart と kernel の宣言は数学を表し、LinearOptions は full/window の実行選好を表す。
+chart と kernel の宣言は数学を表し、`selector` は Plan の選択方針を表す。
+full / window は通常の Algorithm 候補として扱う。
 共通 _backends/linear.py が固定 regular 3D Euclidean の normalized radial 契約を判定し、
 _backends/normalized.py が局所支持の Torch または既存 CUDA registry に接続する。
 Product と連続 Strip に対応する。対応しない宣言は一般の Torch 参照経路を使用する。
@@ -62,6 +62,8 @@ atom は常に現在の Parameter を使う。変更後は capture の外で for
 AdamW を使う。GPU 性能による新規 algorithm の承認・昇格はこの変更の対象外。
 
 ## 検証
+
+以下は入口統一時の source revision に対する測定履歴。現在の selector API 変更後の GPU 再測定ではない。
 
 CPU は source と配布 wheel の両方で 516 passed / 201 skipped。lint / format も通過。独立 oracle による出力・dX・全5勾配のテストを
 共通 CSTLinear に移した。Parameter 同一性・既存 AdamW 状態・CSTOptimizer・Tensor 複製・

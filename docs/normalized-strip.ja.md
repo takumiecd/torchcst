@@ -48,7 +48,7 @@ from torchcst import geometry_presets as spaces
 import math
 import torch
 from torchcst import chart_presets as layout
-from torchcst import CSTLinear, LinearOptions, presets
+from torchcst import CSTLinear, presets
 
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
@@ -76,8 +76,7 @@ p[:, 2] = torch.rand(128, device='cuda') * (rows - 1)
 p[:, 3] = torch.rand(128, device='cuda') * (h - 1) * 0.5
 p[:, 4] = torch.rand(128, device='cuda') * (j - 1) * 0.5
 
-layer = CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
-                  linear_options=LinearOptions(memory='full'))
+layer = CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)
 optimizer = torch.optim.AdamW(layer.parameters(), lr=1e-3)
 x = torch.randn(128, h * j, device='cuda')
 optimizer.zero_grad(set_to_none=True)
@@ -107,7 +106,7 @@ Euclidean の通常更新となる。CSTOptimizer の同一モデルに複数の
 対応する高速 algorithm は LinePattern と2次元 GridPattern を持つ固定の3次元
 Euclidean chart を扱う。Product または axis0・連続 tile pitch の Strip に対応する。
 共通 ChartState / KernelState / Atoms をそのまま checkpoint に保存する。
-LinearOptions も checkpoint の契約に含むので、読み込み先に同じ設定を渡す。
+`selector` は実行方針として別途設定し、数学的な checkpoint の契約に含めない。
 旧専用クラスの checkpoint は読み込まない。
 
 CPU では FP32/FP64 の局所支持を列挙する PyTorch 参照経路を使います。これは
@@ -115,8 +114,8 @@ CPU 用の機能経路で、CUDA の性能測定には含めません。CUDA 高
 間隔 `(1, 0.5, 0.5)` に対応し、Triton を必要になった時点で import します。
 基本パッケージや CPU 利用の import に Triton は必要ありません。CUDA 経路は
 一次微分を対象とし、autocast と TF32 を拒否します。CUDA の
-window 経路は行窓512を用い、対応する標準メタデータの条件を満たさない場合は
-full 経路へ戻ります。その場合に同じメモリ削減を保証するものではありません。
+window Algorithm は行窓512を用います。選択器は対応条件を検証し、必要なら
+その方針に明示された fallback Plan を検証して使います。
 
 高速 algorithm は固定 chart が対象です。対応しない配置は CSTLinear の一般
 Torch 参照経路を使います。中心の3座標は atom パラメーターとして学習できます。
@@ -126,8 +125,9 @@ Torch 参照経路を使います。中心の3座標は atom パラメーター�
 以下の既存測定は各記録の revision に対する履歴であり、入口統一後の性能を
 示すものではありません。統一後の検証は [Linear 統一記録](linear-unification.ja.md) に記録します。
 
-既定の `LinearOptions(memory='full')` は通常幅の検証済み経路です。`LinearOptions(memory='window')` は
-メモリを優先する選択です。W と dW を行窓の作業領域で再利用し、境界の勾配に
+full / window は Registry に並ぶ二つの Algorithm です。専用の memory 指定はありません。
+[Selector](../src/torchcst/_backends/cuda/dispatch/README.md) が登録済み Plan を選びます。
+window は W と dW を行窓の作業領域で再利用し、境界の勾配に
 必要な8行の halo を保持します。全体ノルムと全5パラメータの勾配は維持します。
 逆伝播で W を再生成するため、メモリ削減には追加計算が伴います。
 

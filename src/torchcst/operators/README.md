@@ -77,7 +77,8 @@ regular Product と連続 Strip は同じ点配置で実行できる。
 固定 kernel・正規化・幅・Euclidean site の意味が一致しない場合は、この専用
 algorithm に流さず一般の Torch 参照経路を使う。
 
-`LinearOptions(memory="full" | "window")` は実行の好みで、OperatorSpec には入らない。
+`CSTLinear(selector=...)` の選択器は実行方針で、OperatorSpec と checkpoint には入らない。
+full / window も通常の登録済み Algorithm として Plan に記述する。
 launch 設定は各 Algorithm の Recipe に置く。対応する固定 metadata は設定境界で
 snapshot し、buffer の置換・version・dtype/device が変わったら再構成する。
 atom の値は毎回現在の Tensor を使う。通常 forward / backward / Graph capture では

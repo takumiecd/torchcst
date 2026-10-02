@@ -18,17 +18,41 @@ class DeviceInfo:
     compute_capability: tuple[int, int] | None = None
     sm_count: int | None = None
 
+    def __post_init__(self):
+        if type(self.type) is not str or not self.type or type(self.name) is not str:
+            raise ValueError("device type/name must be strings")
+        if self.index is not None and (type(self.index) is not int or self.index < 0):
+            raise ValueError("device index must be nonnegative or None")
+        if self.compute_capability is not None and (
+            type(self.compute_capability) is not tuple
+            or len(self.compute_capability) != 2
+            or any(type(n) is not int or n < 0 for n in self.compute_capability)
+        ):
+            raise ValueError("compute capability must contain two nonnegative integers")
+        if self.sm_count is not None and (
+            type(self.sm_count) is not int or self.sm_count < 1
+        ):
+            raise ValueError("SM count must be positive or None")
+
 
 @dataclass(frozen=True)
 class PrecisionPolicy:
     autocast: bool = False
     allow_tf32: bool = False
 
+    def __post_init__(self):
+        if any(type(v) is not bool for v in (self.autocast, self.allow_tf32)):
+            raise ValueError("precision flags must be bool")
+
 
 @dataclass(frozen=True)
 class RequiredGrads:
     inputs: bool = False
     parameters: bool = False
+
+    def __post_init__(self):
+        if any(type(v) is not bool for v in (self.inputs, self.parameters)):
+            raise ValueError("gradient flags must be bool")
 
 
 @dataclass(frozen=True)
@@ -49,6 +73,18 @@ class DispatchContext:
     def __post_init__(self):
         if not isinstance(self.operator, operators.OperatorSpec):
             raise TypeError("operator must be a common OperatorSpec")
+        if type(self.input_shape) is not tuple or type(self.input_strides) is not tuple:
+            raise TypeError("shape and strides must be immutable tuples")
+        if not isinstance(self.dtype, torch.dtype):
+            raise TypeError("dtype must be a torch.dtype")
+        if (
+            not isinstance(self.device, DeviceInfo)
+            or not isinstance(self.required_grads, RequiredGrads)
+            or not isinstance(self.precision, PrecisionPolicy)
+        ):
+            raise TypeError("context requires typed device/gradient/precision metadata")
+        if type(self.deterministic) is not bool:
+            raise ValueError("deterministic must be bool")
         if type(self.parameter_dim) is not int or self.parameter_dim <= 0:
             raise ValueError("parameter dimension must be positive")
         if not self.input_shape or self.input_shape[-1] != self.operator.in_features:
@@ -100,7 +136,7 @@ class SupportResult:
 @dataclass(frozen=True)
 class DispatchDecision:
     plan: ExecutionPlan
-    tree_revision: str
+    selector_revision: str
     matched_path: tuple[str, ...]
     reason: str
     evidence_ids: tuple[str, ...] = ()

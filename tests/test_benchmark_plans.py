@@ -22,7 +22,7 @@ from benchmarks.cuda.linear.manifest import (
     load_snapshot,
     read_json,
 )
-from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL, WINDOW
 
 CASE = DEFAULT_PLANS.parent / "cases/normalized-1024-broad.json"
 
@@ -112,7 +112,7 @@ from benchmarks.cuda.linear.run import main
 sys.argv = ['run', '--case', {str(CASE)!r}, '--validate-only']
 main()
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL, WINDOW
 for plan in (FULL, WINDOW):
     assert REGISTRY.loads_plan(REGISTRY.dumps_plan(plan)) == plan
 assert 'triton' not in sys.modules

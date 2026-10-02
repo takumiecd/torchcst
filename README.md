@@ -108,8 +108,9 @@ chart policy and are currently rejected by the optimizer wrapper.
 `CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)`
 uses the globally L2-normalized Euclidean Triweight operator. Its amplitude / log
 width / center coordinates use ordinary optimizer updates. Common dispatch selects
-support-local Torch or CUDA full/window algorithms from the chart and kernel.
-`linear_options=LinearOptions(memory="window")` prefers bounded matrix temporaries.
+support-local Torch or registered CUDA algorithms from the chart and kernel.
+`CSTLinear(selector=...)` accepts a Plan selector; full and window are ordinary
+Algorithm candidates. See the [selector contract](src/torchcst/_backends/cuda/dispatch/README.md).
 See the [normalized Strip guide](docs/normalized-strip.ja.md).
 
 `atoms=` accepts an integer (initialize), a Tensor (detach and copy), an
