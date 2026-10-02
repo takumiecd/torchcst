@@ -126,9 +126,11 @@ def admit_run(repository, run, upstream):
     return workflow_origin(name, run)
 
 
-def workflow_origin(repository, run):
+def workflow_origin(repository, run, *, hosted=True):
     return {
-        "origin": "github-actions-hosted-colab",
+        "origin": "github-actions-hosted-colab"
+        if hosted
+        else "github-actions-colab-bridge",
         "workflow": {
             "GITHUB_REPOSITORY": repository,
             "GITHUB_RUN_ID": str(run["id"]),
@@ -251,6 +253,13 @@ def fetch(repository, run_id, root, output, upstream, github):
     if request["request"]["source_commit"] != run["head_sha"]:
         raise ValueError("request does not belong to workflow source commit")
     trusted_request(root, request)
+    # Preserve the original origin of historical Mac-bridge observations.
+    # Their immutable DB provenance must survive import/retry unchanged.
+    provenance = workflow_origin(
+        metadata["full_name"],
+        run,
+        hosted="benchmarks/automation/hosted.py" in request["request"]["source_files"],
+    )
     extract_data(
         github.archive(repository, artifacts["benchmark-results"]),
         output / "measurement",

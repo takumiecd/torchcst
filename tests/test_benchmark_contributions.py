@@ -191,7 +191,7 @@ def test_fetch_binds_github_metadata_request_and_results(tmp_path):
     )
     assert result["request_id"] == request["request_id"]
     assert json.loads((output / "provenance.json").read_text()) == workflow_origin(
-        repo["full_name"], run
+        repo["full_name"], run, hosted=False
     )
     assert (output / "measurement/results/submission.json").read_bytes() == (
         results / "submission.json"
