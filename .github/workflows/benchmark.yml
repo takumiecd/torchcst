@@ -66,7 +66,9 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install pinned Colab client
-        run: python -m pip install google-colab-cli==0.6.0
+        run: |
+          python -m pip install google-colab-cli==0.6.0 jupyter-kernel-client==0.14.0
+          python -c 'from jupyter_kernel_client import KernelClient'
       - name: Restore and verify Colab authentication
         env:
           COLAB_AUTH_JSON: ${{ secrets.COLAB_AUTH_JSON }}

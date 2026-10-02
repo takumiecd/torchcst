@@ -14,7 +14,8 @@ GitHub の CPU runner が Colab の GPU を確保・測定・回収・停止す�
 
 1. 公開 repository を fork し、Actions を有効にする。
    upstream の main をそのまま同期する。Fork 固有の source 変更は中央取り込みで拒否する。
-2. 自分の端末で `google-colab-cli==0.6.0` をインストールし、`colab login` と
+2. 自分の端末で Python 3.12+ に `google-colab-cli==0.6.0` と
+   `jupyter-kernel-client==0.14.0` をインストールし、`colab login` と
    `colab --auth oauth2 whoami` で自分の Colab アカウントを確認する。
 3. Fork の Settings → Environments で `benchmark-colab` を作り、deployment branch を
    default branch（通常 `main`）だけに制限する。
