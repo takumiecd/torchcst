@@ -22,7 +22,7 @@ from benchmarks.automation.contract import (
 
 def pool_call(pool, *args, check=True):
     completed = subprocess.run(
-        [sys.executable, str(pool), *map(str, args)], capture_output=True, text=True
+        [sys.executable, str(pool), *map(str, args)], capture_output=True, text=True, check=False
     )
     if check and completed.returncode:
         raise RuntimeError(completed.stderr.strip() or "shared pool command failed")

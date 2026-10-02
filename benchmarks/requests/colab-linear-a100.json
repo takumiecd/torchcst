@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "benchmark": "cuda.linear.complete-step",
+  "catalog": "benchmarks/cuda/linear/plans.json",
+  "cases": [
+    "benchmarks/cuda/linear/cases/normalized-1024-broad.json"
+  ],
+  "targets": [
+    "A100"
+  ],
+  "environment": {
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "triton": "3.6.0"
+  },
+  "repetitions": 1,
+  "timeout_seconds": 600
+}

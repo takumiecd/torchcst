@@ -6,7 +6,7 @@
 ```text
 GitHub Actions prepare → 固定 request
                            ↓
-ログイン済み端末 → shared Colab queue → 正しさ / 完全 step / memory
+GitHub-hosted runner → Colab queue → 正しさ / 完全 step / memory
                            ↓
 GitHub Actions ingest → 依頼との照合 → PostgreSQL / Neon
 ```
@@ -17,6 +17,8 @@ GitHub Actions ingest → 依頼との照合 → PostgreSQL / Neon
 | --- | --- |
 | `contract.py` | JSON の読み込み・request の作成・内容 hash、source inventory、job の識別。読み込みは標準ライブラリのみ |
 | `colab.py` | 既存 shared pool への提出・待機・検証済み結果の回収。DB を import しない |
+| `hosted.py` | GitHub runner 上で OAuth Secret を復元し、対話なしで認証・account を確認。checkout 外に保存 |
+| `contributions.py` | fork の Actions artifact を取得し、upstream main から request を再構築して中央で検証 |
 | `driver.py` | pool 内の専用環境を作り、固定 snapshot を既存 benchmark に渡す |
 | `ingest.py` | request と結果を照合し、既存 DB API にまとめて追記。Colab を import しない |
 | `__main__.py` | 上記の CLI。DB 接続は `ingest` のときだけ |
@@ -95,31 +97,35 @@ Actions へ渡す bundle には元の benchmark JSON と提出・回収 hash を
 ## GitHub Actions の初回設定
 
 [benchmark.yml](../../.github/workflows/benchmark.yml) は手動起動のみ。
-`main` の reviewed source を測り、PR のコードを自動実行しない。
-測定 JSON の repository 内パスを入力すると `prepare` → `measure` → `ingest` が順に動く。
+`prepare` / `measure` / `ingest` は GitHub-hosted Ubuntu runner で動く。
+測定 GPU は Colab のアカウントから一時確保する。自分の PC を起動しておく必要はない。
 
-事前に以下を設定する。
+設定は [参加・運用ガイド](../../docs/benchmark-contributions.ja.md) を参照。
+通常は既存の [測定 JSON 一覧](../requests/README.md) から repository 内パスを選ぶ。
+新しい条件を増やすときだけ JSON / Case / Plan をレビューして main に追加する。
 
-1. Neon の schema を owner で migrate し、取り込み専用 role の接続文字列を用意する。
-2. GitHub Environment `benchmark-database` に Secret `NEON_DATABASE_URL` を登録する。
-   接続文字列はログ・チャット・tracked file に貼らない。Neon の TLS 設定を維持する。
-3. Environment `benchmark-colab` と `benchmark-database` の deployment branch を
-   `main` に制限する。必要なら required reviewer も設定する。
-4. ログイン済みの macOS / Linux 端末に self-hosted runner を登録し、
-   `colab-client` label を付ける。この CPU bridge は測定 batch のときだけ起動できる。
-   Python 3.10+ と Colab CLI / アカウント設定を事前に準備する。
-5. workflow が `main` に入った後、Actions → Benchmark measurement → Run workflow。
+Fork では測定・artifact 保存まで動き、中央の Neon 接続情報を使わない。
+中央の [benchmark-ingest.yml](../../.github/workflows/benchmark-ingest.yml) は提出元 repository と
+Actions run ID を受け取り、GitHub の実行・artifact metadata を読み直す。
+source commit が upstream `origin/main` の祖先であること、中央コードで再構築した request と
+投稿 request が完全一致することを確認する。投稿側の Python や workflow は中央で実行しない。
+Zip の digest、展開サイズ・パス・リンクを検査し、JSON データだけを展開する。
 
-Runner の登録と label は [GitHub の手順](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/use-in-a-workflow)
-に従う。GPU VM を常駐させる必要はない。bridge が offline なら `measure` は実行待ちになる。
-設定・ログインは自動代行しない。runner の任意 PR 実行を許可しない。
+DB Secret は中央の `benchmark-database` Environment の最後の取り込み step にだけ渡す。
+Fork artifact の読み取りには中央側で GitHub の read credential が必要となる。
+`BENCHMARK_ARTIFACT_READ_TOKEN` を設定する場合も DB / Colab の資格情報と分ける。
+同じ観測を直接保存・後から取り込み・再送したときの provenance は実行元の GitHub metadata
+から同じ値を作る。取り込み側の run ID や retry attempt で重複を作らない。
 
-DB の Secret を参照するのは GitHub-hosted `ingest` job の最後の step だけ。
-結果検証に先立って GPU 上のコードや artifact 内の Python を実行しない。
-workflow metadata（repository / run ID / source SHA / actor）は中央から付与する。
-取り込み job の retry attempt は測定の出所に使わず、同じ回収 bundle の再送を同じ出所として扱う。
-external actions は full commit SHA に固定する。
-[GitHub の security reference](https://docs.github.com/en/actions/reference/security/secure-use)を参照。
+OAuth は runner の HOME に一時復元し、token を更新して account を確認してから確保する。
+対話ログインに fallback しない。Secret を driver の環境変数や source snapshot に渡さず、
+終了時に削除する。CLI は `google-colab-cli==0.6.0`、外部 Actions は full SHA に固定する。
+
+GPU の停止が確認できなかった場合は自動再測定しない。
+`benchmark-pool-state` artifact に、この runner が所有した session と retrieval receipt を保存する。
+強制キャンセル・runner 消失では後処理が完了しない場合があるため、Colab 上の残存 session と
+artifact を確認し、[pool の復旧手順](../../tools/colab-l4-pool/references/operations.ja.md)で
+所有した session だけを停止する。同じアカウントでローカルと Actions を同時に運用しない。
 
 ## 保存・検証の意味
 

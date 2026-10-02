@@ -40,19 +40,9 @@ raw source / result archive、GitHub artifacts、workflow logs は ignored `benc
 owned GPU slots は全て停止、一時 runner は measure job 完了後に自動登録解除された。
 kernel の認証・採用や leaderboard / dispatch 規則生成は行っていない。
 
-## この Mac で次の測定を始める
+## この記録の実行方式
 
-1. このコマンドを実行して端末を開いたままにする。必要な runner の再登録も行う。
+上記は Mac の一時 runner を使った初回の検証記録。
+以後の運用は [参加・運用ガイド](benchmark-contributions.ja.md) の GitHub-hosted runner 方式に移す。
+初回検証時のローカル runner 設定・raw evidence は削除せず private state / ignored directory に保持する。
 
-   ```bash
-   python3 ~/.local/state/torchcst-actions-runner/start.py
-   ```
-
-2. GitHub → Actions → Benchmark measurement → Run workflow で `main` と測定 JSON の repository 内パスを指定する。
-
-runner は1 job後に終了する。新しい JSON / Case / Plan の変更は main に反映してから指定する。
-JSON が GPU・Case・回数を指定し、GPU の確保・実行・回収・停止は共有 Colab queue が管理する。
-この起動用設定は今回の Mac の非公開設定であり、他の端末は自身の認証と runner の初回設定が必要。
-
-汎用の初回設定は [automation README](../benchmarks/automation/README.md) を参照。
-ローカルの非公開設定・詳細 receipt は ignored `output/actions-setup/` とホストの private state に保持している。
