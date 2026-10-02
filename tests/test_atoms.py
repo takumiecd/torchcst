@@ -30,7 +30,6 @@ def test_atoms_state_dict_rejects_a_different_fixed_shape() -> None:
     ("p", "error_type", "message"),
     [
         (torch.ones(2), ValueError, "p must have shape"),
-        (torch.ones(0, 3), ValueError, "at least one atom"),
         (torch.ones(2, 0), ValueError, "at least one coordinate"),
         (torch.ones(2, 3, dtype=torch.int64), TypeError, "floating-point"),
         (torch.tensor([[float("nan")]]), ValueError, "finite"),

@@ -90,6 +90,8 @@ custom subclass が組み込み ID を引き継ぐ旧拡張方法は廃止した
 対応する backend 実装を追加する。旧 API の利用例は Git revision `c21ea97` を参照する。
 
 `NORMALIZED_RADIAL_TRIWEIGHT` は operator 全体での離散 L2 正規化と log width の
-固定契約。`NormalizedStripLinear` の既存の CUDA full / window 実行に使う。
+固定契約。`CSTLinear` の共通 dispatch が対応する CPU / CUDA full / window 実行を選ぶ。
+`provided_atoms` の宣言には `atoms=Tensor | nn.Parameter | Atoms` で既存座標を渡す。
+LogWidthSpec の幅端点は FP64 buffer として保存し、dtype 往復でも宣言値を維持する。
 任意の宣言が CUDA Registry に自動登録されるわけではなく、対応・検証・承認・
 既定 dispatch への採用は別の段階である。

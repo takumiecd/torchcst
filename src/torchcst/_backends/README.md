@@ -24,7 +24,8 @@ torchcst/
     spec.py                    単一 Chart / Chart の組 / linear Operator の宣言
     binding.py                 Module の live state を参照する Operator
   _backends/
-    linear.py                  Module の backend 選択・遅延接続
+    linear.py                  Module の共通 backend 選択・遅延接続
+    normalized.py              fixed regular radial と CPU / CUDA Registry の接続
     cuda/
       algorithm.py             Algorithm ABC
       context.py / schema.py   共通 OperatorSpec と実行条件・plan・診断

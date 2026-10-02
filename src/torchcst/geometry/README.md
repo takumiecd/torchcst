@@ -50,11 +50,14 @@ from torchcst import CSTLinear, TriweightSpec, geometry_presets as layout, prese
 
 chart = layout.product(
     shape=(5, 6),
-    axes=(layout.line_pattern(5, spacing=0.2),
-          layout.grid_pattern((2, 3), spacing=0.3)),
+    axes=(
+        layout.line_pattern(5, spacing=0.2),
+        layout.grid_pattern((2, 3), spacing=0.3),
+    ),
 )
 layer = CSTLinear(
-    chart=chart, atoms=3,
+    chart=chart,
+    atoms=3,
     kernel=presets.radial(presets.fixed_profile(TriweightSpec(), sigma=2.0)),
 )
 y = layer(torch.randn(4, 6))  # [4, 5]
@@ -63,7 +66,7 @@ assert layer.chart.spec.kind == "product"
 
 `CSTLinear`／`CSTConv2d` は ChartSpec を受け取って ChartState を所有する。
 Tensor の共有が必要なら、既に作った ChartState も明示的に渡せる。
-`NormalizedStripLinear` も Strip の ChartSpec または ChartState を受け取る。
+normalized radial も `CSTLinear` に ChartSpec または ChartState と KernelSpec を渡す。
 
 `layout.linspace`／`layout.grid` は固定点表の宣言を作る。大きな直積には
 `layout.product` を使う。spacing と low/high は排他的であり、暗黙の座標範囲はない。
@@ -72,11 +75,15 @@ Tensor の共有が必要なら、既に作った ChartState も明示的に渡�
 from torchcst import ChartState, geometry_presets as layout
 from torchcst._backends.torch.charts import execution as charts
 
-state = ChartState(layout.strip(
-    shape=(5, 3), tile_shape=(2, 3), axis=0, tile_pitch=0.8,
-    axes=(layout.line_pattern(5, spacing=0.2),
-          layout.line_pattern(3, spacing=0.3)),
-))
+state = ChartState(
+    layout.strip(
+        shape=(5, 3),
+        tile_shape=(2, 3),
+        axis=0,
+        tile_pitch=0.8,
+        axes=(layout.line_pattern(5, spacing=0.2), layout.line_pattern(3, spacing=0.3)),
+    )
+)
 indices, local = charts.tile_indices(state, 2)  # 端の部分 tile
 sites = charts.positions(state, indices)
 ```

@@ -10,7 +10,8 @@ class Atoms(nn.Module):
     """Own one opaque, fixed-shape parameter row per atom.
 
     ``Atoms`` deliberately assigns no meaning to columns of ``p``. The selected
-    kernel is the only component allowed to interpret them.
+    kernel is the only component allowed to interpret them. A Tensor is copied;
+    an nn.Parameter is registered as-is, preserving existing optimizer state.
     """
 
     def __init__(self, p: Tensor) -> None:
@@ -19,8 +20,6 @@ class Atoms(nn.Module):
             raise TypeError("p must be a torch.Tensor")
         if p.ndim != 2:
             raise ValueError("p must have shape [atoms, parameter_dim]")
-        if p.shape[0] < 1:
-            raise ValueError("Atoms must contain at least one atom")
         if p.shape[1] < 1:
             raise ValueError("p must contain at least one coordinate per atom")
         if not p.is_floating_point():
@@ -28,7 +27,7 @@ class Atoms(nn.Module):
         if not torch.isfinite(p).all():
             raise ValueError("p must be finite")
 
-        self.p = nn.Parameter(p.detach().clone())
+        self.p = p if isinstance(p, nn.Parameter) else nn.Parameter(p.detach().clone())
 
     @property
     def count(self) -> int:

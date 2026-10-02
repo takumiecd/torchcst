@@ -23,13 +23,13 @@ from pathlib import Path
 import torch
 from torch import nn
 
+from benchmarks.cuda.linear.fixtures import operator_spec
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
     geometry,
 )
 from torchcst._backends.cuda.context import context_from_tensors
 from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
-from torchcst.nn.normalized_strip import normalized_strip_declaration
 
 PLANS = {"normalized_full": FULL, "normalized_window": WINDOW}
 
@@ -94,9 +94,7 @@ def correctness(args):
     p = helpers["mixed"](torch.float32, "cuda")
     p[0, 2], p[1, 2] = 511.25, 512.5
     p[2:4, 2] = 512.02978515625
-    op = normalized_strip_declaration(
-        sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5)
-    )
+    op = operator_spec(sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5))
     model = PlanLinear(p, op, PLANS[args.algorithm])
     gen = torch.Generator(device="cuda").manual_seed(args.seed)
     x = torch.randn(2, 3, 16, device="cuda", generator=gen, requires_grad=True)
@@ -125,9 +123,7 @@ def measure(args):
     h, j = (32, 32) if n == 1024 else (64, 128)
     sizes = (n, h, j)
     origin = (-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4)
-    op = normalized_strip_declaration(
-        sizes=sizes, origin=origin, spacing=(1.0, 0.5, 0.5)
-    )
+    op = operator_spec(sizes=sizes, origin=origin, spacing=(1.0, 0.5, 0.5))
     sites = geometry(op)
     gen = torch.Generator(device="cpu").manual_seed(args.seed)
     p = torch.empty(round(0.05 * n * n), 5)

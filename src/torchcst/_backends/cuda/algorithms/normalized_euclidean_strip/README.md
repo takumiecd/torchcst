@@ -1,6 +1,6 @@
 # Globally normalized Strip execution
 
-`torchcst.nn.NormalizedStripLinear` owns signed amplitude, log bandwidth and
+`torchcst.nn.CSTLinear` owns an `Atoms` table of signed amplitude, log bandwidth and
 three continuous center coordinates. Both implementations evaluate joint 3D
 Triweight support and its discrete L2 norm over the whole finite operator,
 with norm floor `1e-6` and bandwidth clamped to `.03–3.25`.

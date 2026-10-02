@@ -24,3 +24,5 @@ Historical GPU measurements are linked from the experiment and benchmark
 directories. An old result does not by itself change the public backend policy.
 
 - [Operator の宣言と実状態](../src/torchcst/operators/README.md)
+
+- [CSTLinear の入口・既存 atom 再利用の統一](linear-unification.ja.md)

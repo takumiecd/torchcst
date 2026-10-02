@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from .options import KernelOptions
-from .parameterizations import BandwidthBounds, FixedWidthSpec
+from .parameterizations import BandwidthBounds, FixedWidthSpec, LogWidthSpec
 from .parameterizations.activity_width import ActivityWidthSpec
 from .spec import KernelSpec, ProfileBinding
 
@@ -96,7 +96,30 @@ class KernelState(nn.Module):
             }
         )
         for name, value in scalars.items():
-            self.register_buffer(name, torch.tensor(float(value)))
+            self.register_buffer(
+                name,
+                torch.tensor(
+                    float(value),
+                    dtype=(
+                        torch.float64
+                        if type(parameterization) is LogWidthSpec
+                        else None
+                    ),
+                ),
+            )
+
+    def _apply(self, fn, recurse=True):
+        # Log-width endpoints must survive float()/double() without quantizing
+        # the declared bounds; evaluation casts them to the parameter dtype.
+        preserved = (
+            {name: value.detach().clone() for name, value in self._buffers.items()}
+            if type(self.spec.parameterization) is LogWidthSpec
+            else {}
+        )
+        result = super()._apply(fn, recurse=recurse)
+        for name, value in preserved.items():
+            self._buffers[name] = value.to(device=self._buffers[name].device)
+        return result
 
     def setting(self, name):
         if self.spec.parameterization is not None and hasattr(

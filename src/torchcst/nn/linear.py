@@ -22,6 +22,7 @@ from torchcst.kernels.state import KernelState
 from torchcst.operators import Operator
 
 from .module import CSTModule, RepulsionKind
+from .options import LinearOptions
 
 
 class CSTLinear(CSTModule):
@@ -33,9 +34,10 @@ class CSTLinear(CSTModule):
         output_chart: ChartSpec | ChartState | None = None,
         *,
         chart: ChartSpec | ChartState | None = None,
-        atoms: int,
+        atoms: int | Tensor | Atoms,
         kernel: KernelSpec,
         kernel_options: KernelOptions | None = None,
+        linear_options: LinearOptions | None = None,
         atom_init: AtomInit = "balanced",
         backend: Backend = "auto",
         device: torch.device | str | None = None,
@@ -63,10 +65,13 @@ class CSTLinear(CSTModule):
             not hasattr(input_chart, "shape") or len(input_chart.shape) != 2
         ):
             raise ValueError("a single chart must describe an [out, in] operator")
-        if isinstance(atoms, bool) or not isinstance(atoms, int):
-            raise TypeError("atoms must be an integer")
-        if atoms < 1:
+        if isinstance(atoms, bool) or not isinstance(atoms, (int, Tensor, Atoms)):
+            raise TypeError("atoms must be an integer, Tensor, Parameter or Atoms")
+        if isinstance(atoms, int) and atoms < 1:
             raise ValueError("atoms must be positive")
+        if linear_options is not None and not isinstance(linear_options, LinearOptions):
+            raise TypeError("linear_options must be LinearOptions")
+        self.linear_options = linear_options or LinearOptions()
         if not isinstance(kernel, KernelSpec):
             raise TypeError("kernel must be a KernelSpec")
         if atom_init not in ("balanced", "uniform"):
@@ -81,7 +86,11 @@ class CSTLinear(CSTModule):
         self.atom_init = atom_init
         self.backend = backend
 
-        reference = input_chart.reference
+        reference = (
+            atoms.p
+            if isinstance(atoms, Atoms)
+            else (atoms if isinstance(atoms, Tensor) else input_chart.reference)
+        )
         target_device = device or reference.device
         target_dtype = dtype or reference.dtype
         if not target_dtype.is_floating_point:
@@ -92,22 +101,36 @@ class CSTLinear(CSTModule):
         parameter_dim = _kernel.parameter_dim(kernel, *charts)
         if parameter_dim < 1:
             raise ValueError("kernel.parameter_dim must be positive")
-        p = _kernel.initialize(kernel, *charts, atoms, mode=atom_init)
-        expected_shape = (atoms, parameter_dim)
-        if p.shape != expected_shape:
-            raise ValueError(
-                f"kernel.initialize must return shape {list(expected_shape)}"
+        if isinstance(atoms, int):
+            p = _kernel.initialize(kernel, *charts, atoms, mode=atom_init)
+            atom_state = Atoms(p)
+        elif isinstance(atoms, Atoms):
+            atom_state = atoms
+            p = atoms.p
+        else:
+            p = (
+                atoms
+                if isinstance(atoms, nn.Parameter)
+                else atoms.to(device=charts[0].reference.device, dtype=target_dtype)
             )
+            atom_state = Atoms(p)
+        expected_shape = (atom_state.count, parameter_dim)
+        if p.shape != expected_shape:
+            raise ValueError(f"atom parameters must have shape {list(expected_shape)}")
         # A device alias such as "cuda" resolves to an indexed device after
         # .to(); compare against the actual chart device, not the alias.
         initialized_device = charts[0].reference.device
         if p.device != initialized_device or p.dtype != target_dtype:
-            raise ValueError("kernel.initialize must match the module device and dtype")
-        self.atoms = Atoms(p)
+            raise ValueError(
+                "atom parameters must match the module device and dtype; convert shared parameters before binding"
+            )
+        self.atoms = atom_state
         # A plain view keeps existing Parameter/buffer ownership and state keys.
         self.__dict__["_operator"] = Operator(
             charts=self.cst_charts(), kernel=self.kernel, atoms=self.atoms
         )
+        # Bind fixed metadata before Graph capture; parameters remain live.
+        self._resolved_backend()
 
     @property
     def operator(self) -> Operator:
@@ -140,7 +163,11 @@ class CSTLinear(CSTModule):
         self._backend = value
 
     def _checkpoint_layout(self) -> dict[str, object]:
-        layout = {"in_features": self.in_features, "out_features": self.out_features}
+        layout = {
+            "in_features": self.in_features,
+            "out_features": self.out_features,
+            "linear_options": {"memory": self.linear_options.memory},
+        }
         if hasattr(self, "chart"):
             layout["chart_mode"] = "single"
         return layout

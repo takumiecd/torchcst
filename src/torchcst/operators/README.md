@@ -54,22 +54,31 @@ snapshot は forward / backward / CUDA Graph capture 中に行わない。traina
 view は live な設定を使うので、設定変更後に宣言を利用する場合は改めて取得する。
 
 CSTLinear / CSTConv2d は宣言から State を構築する。Triton / tiled の
-既存実行と normalized Strip の CUDA registry は、既存の最適化入口を維持する。
+既存実行と normalized radial の CUDA registry を、CSTLinear の共通入口から選択する。
 汎用宣言を受け入れる Algorithm は、その数学的・数値的契約に適合するものだけを
 登録する。入出力 Chart の組を将来なくす場合も、正規化領域と勾配を照合して移行する。
 
-## normalized Strip の CUDA 接続
+## normalized radial の共通 dispatch
 
-`NormalizedStripLinear.declaration()` も共通の `OperatorSpec` を返す。これは一枚の
-3D Euclidean Chart 上で、Triweight を operator 全体の点で L2 正規化する radial
-演算。座標は signed amplitude / clamped log width / center で、DirectAmpWidth の
-activity 座標や Chart ごとの正規化とは別の意味である。
+`CSTLinear` の `chart` と `kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT` が、
+一枚の regular 3D Euclidean Chart 上で Triweight を演算子全体の点で L2 正規化する
+radial 演算を宣言する。signed amplitude / clamped log width / center の座標であり、
+DirectAmpWidth の activity 座標や Chart ごとの正規化とは別の意味である。
 
-CUDA Registry もこの共通 `OperatorSpec` を受け取る。normalized Euclidean Strip の
-専用 adapter は `_backends/cuda/algorithms/normalized_euclidean_strip/contract.py`
-にあり、固定された Kernel・正規化・幅・Euclidean site の意味を厳密に判定する。
-CUDA 内の別 `OperatorSpec` と互換 alias は削除した。launch 設定は各 Algorithm の
-Recipe に置き、宣言の意味を Recipe で変更しない。
+`atoms=` は整数、Tensor、nn.Parameter、Atoms を受け取る。Tensor は detach して
+複製、Parameter は同一オブジェクトを登録、Atoms は owner ごと再利用する。
+正規化用にも同じ live Operator / KernelState / ChartState / Atoms を使う。
+公開 Linear は CSTLinear に統一し、旧専用クラスと checkpoint adapter は削除した。
 
-`NormalizedStripLinear` は現在も既存の `p` 所有 Module であり、CSTLinear の
-live `Operator` binding への統合は未実施。宣言と CUDA Registry の入口は共通になった。
+`_backends/linear.py` の共通 dispatch が対応を判定し、`_backends/normalized.py` が
+CPU の局所支持計算と CUDA Registry を接続する。対応判定は
+`cuda/algorithms/normalized_euclidean_strip/contract.py` に置く。
+regular Product と連続 Strip は同じ点配置で実行できる。
+固定 kernel・正規化・幅・Euclidean site の意味が一致しない場合は、この専用
+algorithm に流さず一般の Torch 参照経路を使う。
+
+`LinearOptions(memory="full" | "window")` は実行の好みで、OperatorSpec には入らない。
+launch 設定は各 Algorithm の Recipe に置く。対応する固定 metadata は設定境界で
+snapshot し、buffer の置換・version・dtype/device が変わったら再構成する。
+atom の値は毎回現在の Tensor を使う。通常 forward / backward / Graph capture では
+snapshot しない。metadata を変えた後は capture の外で一度 forward する。

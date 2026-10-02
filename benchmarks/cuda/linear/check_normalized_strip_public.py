@@ -23,7 +23,7 @@ if wheel_root:
     sys.path.insert(0, wheel_root)
 import torch
 
-from torchcst.nn import NormalizedStripLinear
+from torchcst import CSTLinear, LinearOptions, presets
 
 
 def check(a, b, tol=3e-4):
@@ -49,15 +49,18 @@ def small_gate(helper):
     dy = torch.randn(2, 3, 1024, device="cuda", generator=generator)
     reports = {}
     for memory in ("full", "window"):
-        model = NormalizedStripLinear(
-            helper["chart"](sizes, dtype=torch.float32, device="cuda"), p, memory=memory
+        model = CSTLinear(
+            chart=helper["chart"](sizes, dtype=torch.float32, device="cuda"),
+            atoms=p,
+            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            linear_options=LinearOptions(memory=memory),
         )
         xx = x.clone().requires_grad_()
         actual = model(xx)
-        tp = model.p.detach().double().requires_grad_()
+        tp = model.atoms.p.detach().double().requires_grad_()
         tx = x.double().requires_grad_()
         truth = tx @ helper["oracle"](tp, sizes, stored_dtype=torch.float32).T
-        ag = torch.autograd.grad(actual, (xx, model.p), dy)
+        ag = torch.autograd.grad(actual, (xx, model.atoms.p), dy)
         tg = torch.autograd.grad(truth, (tx, tp), dy.double())
         reports[memory] = {
             "y": check(actual, truth),
@@ -76,7 +79,11 @@ def small_gate(helper):
         # Capture entire training step, then compare multiple replays from the
         # exact post-capture P/m/v/step state, with a current-centre mutation.
         opt = torch.optim.AdamW(
-            model.parameters(), lr=1e-4, weight_decay=0.01, fused=True, capturable=True
+            model.parameters(),
+            lr=1e-4,
+            weight_decay=0.01,
+            fused=True,
+            capturable=True,
         )
         stream = torch.cuda.Stream()
         stream.wait_stream(torch.cuda.current_stream())
@@ -95,36 +102,41 @@ def small_gate(helper):
         with torch.cuda.graph(graph, stream=stream):
             step(model, opt)
         torch.cuda.synchronize()
-        eager = NormalizedStripLinear(
-            helper["chart"](sizes, dtype=torch.float32, device="cuda"),
-            model.p.detach(),
-            memory=memory,
+        eager = CSTLinear(
+            chart=helper["chart"](sizes, dtype=torch.float32, device="cuda"),
+            atoms=model.atoms.p.detach(),
+            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            linear_options=LinearOptions(memory=memory),
         )
         eo = torch.optim.AdamW(
-            eager.parameters(), lr=1e-4, weight_decay=0.01, fused=True, capturable=True
+            eager.parameters(),
+            lr=1e-4,
+            weight_decay=0.01,
+            fused=True,
+            capturable=True,
         )
         eo.load_state_dict(copy.deepcopy(opt.state_dict()))
         with torch.no_grad():
             # Route/support changes across the row-window boundary after capture.
-            model.p[0, 2].add_(1.0)
-            eager.p[0, 2].add_(1.0)
-            model.p[1, 1].fill_(math.log(0.199))
-            eager.p[1, 1].fill_(math.log(0.199))
+            model.atoms.p[0, 2].add_(1.0)
+            eager.atoms.p[0, 2].add_(1.0)
+            model.atoms.p[1, 1].fill_(math.log(0.199))
+            eager.atoms.p[1, 1].fill_(math.log(0.199))
         for _ in range(3):
             graph.replay()
             step(eager, eo)
             torch.cuda.synchronize()
-            check(model.p, eager.p)
-            check(model.p.grad, eager.p.grad)
+            check(model.atoms.p, eager.atoms.p)
+            check(model.atoms.p.grad, eager.atoms.p.grad)
             for key in ("exp_avg", "exp_avg_sq", "step"):
-                check(opt.state[model.p][key], eo.state[eager.p][key])
+                check(opt.state[model.atoms.p][key], eo.state[eager.atoms.p][key])
         # Updated independent, unscaled all-five check, not just optimizer parity.
         xx = x.clone().requires_grad_()
         y = model(xx)
-        tp = model.p.detach().double().requires_grad_()
+        tp = model.atoms.p.detach().double().requires_grad_()
         tx = x.double().requires_grad_()
         truth = tx @ helper["oracle"](tp, sizes, stored_dtype=torch.float32).T
-        aa = torch.autograd.grad(y, (xx, model.p), dy)
+        aa = torch.autograd.grad(y, (xx, model.atoms.p), dy)
         bb = torch.autograd.grad(truth, (tx, tp), dy.double())
         reports[memory]["updated"] = {
             "y": check(y, truth),
@@ -165,14 +177,19 @@ def benchmark(helper, n, profile, memory, dense=False):
         model = torch.nn.Linear(n, n, bias=False, device="cuda")
         model.weight.data.uniform_(-0.01, 0.01)
     else:
-        model = NormalizedStripLinear(
-            helper["chart"](sizes, origin, dtype=torch.float32, device="cuda"),
-            p,
-            memory=memory,
+        model = CSTLinear(
+            chart=helper["chart"](sizes, origin, dtype=torch.float32, device="cuda"),
+            atoms=p,
+            kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+            linear_options=LinearOptions(memory=memory),
         )
     del p
     opt = torch.optim.AdamW(
-        model.parameters(), lr=1e-4, weight_decay=0.01, fused=True, capturable=True
+        model.parameters(),
+        lr=1e-4,
+        weight_decay=0.01,
+        fused=True,
+        capturable=True,
     )
 
     def step():

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal
 
 from torch import Tensor
 
+from torchcst._backends import normalized
 from torchcst.geometry.state import ChartState
 from torchcst.kernels.state import KernelState
 
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from torchcst.nn.linear import CSTLinear
 
 Backend = Literal["auto", "factored", "materialized", "tiled", "triton"]
-ResolvedBackend = Literal["factored", "materialized", "tiled", "triton"]
+ResolvedBackend = Literal["factored", "materialized", "tiled", "triton", "normalized"]
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,8 @@ def resolve_backend(site: CSTLinear) -> ResolvedBackend:
 
     if site.backend != "auto":
         return site.backend
+    if normalized.supports(site):
+        return "normalized"
     if len(site.cst_charts()) == 1 or not _kernel.supports_factorization(site.kernel):
         return "materialized"
     factor_size = site.atom_count * (site.in_features + site.out_features)
@@ -84,4 +87,6 @@ def linear_forward(
 ) -> Tensor:
     # CSTLinear validates backend assignments; execution need not synchronize
     # chart configuration buffers with the host on every dispatch.
+    if backend == "normalized":
+        return normalized.forward(site, inputs, p)
     return _IMPLEMENTATIONS[backend].forward(site, inputs, p)

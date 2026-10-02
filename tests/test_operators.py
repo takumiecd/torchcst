@@ -17,7 +17,7 @@ from kernel_cases import (
     triweight_state,
 )
 
-from torchcst import ChartPairSpec, CSTLinear, Operator, OperatorSpec, SingleChartSpec
+from torchcst import ChartPairSpec, CSTLinear, Operator, SingleChartSpec
 
 
 def make_single():
@@ -213,7 +213,7 @@ def test_operator_rebinds_after_replacing_module_state():
 
 
 def test_normalized_strip_is_a_distinct_single_chart_contract():
-    from torchcst import NormalizedStripLinear
+    from torchcst import CSTLinear, presets
     from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
         NormalizedStripGeometry,
     )
@@ -228,7 +228,11 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
             _construction.grid_pattern((2, 3), spacing=0.5),
         ),
     )
-    model = NormalizedStripLinear(chart, torch.tensor([[0.2, 0.0, 1.0, 0.2, 0.3]]))
+    model = CSTLinear(
+        chart=chart,
+        atoms=torch.tensor([[0.2, 0.0, 1.0, 0.2, 0.3]]),
+        kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
+    )
     spec = model.declaration()
     assert isinstance(spec.layout, SingleChartSpec)
     assert spec.shape == (5, 6)
@@ -236,8 +240,7 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
     assert spec.kernel.profiles[0].normalization.domain == "operator_sites"
     adapted = NormalizedStripGeometry.from_declaration(spec)
     assert adapted.sizes == (5, 2, 3)
-    assert isinstance(model._operator_spec, OperatorSpec)
-    assert model._operator_spec == spec
+    assert model.operator.declaration() == spec
     physical = replace(spec, layout=SingleChartSpec(chart=chart.declaration()))
     assert NormalizedStripGeometry.from_declaration(physical) == adapted
     discontinuous = replace(physical.layout.chart, tile_pitch=3.0)
@@ -247,22 +250,22 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
         )
     before = spec
     with torch.no_grad():
-        model.origin.add_(0.25)
+        model.chart.axes[0].start.add_(0.25)
     after = model.declaration()
     assert before != after
-    assert model._operator_spec == after
+    assert model.operator.declaration() == after
     model.double()
     assert model.declaration() == after
 
 
 def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
+    from benchmarks.cuda.linear.fixtures import operator_spec
     from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
         NormalizedStripGeometry,
     )
     from torchcst.kernels import BiweightSpec, NormalizationSpec
-    from torchcst.nn.normalized_strip import normalized_strip_declaration
 
-    spec = normalized_strip_declaration(
+    spec = operator_spec(
         sizes=(5, 2, 3), origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5)
     )
     binding = spec.kernel.profiles[0]

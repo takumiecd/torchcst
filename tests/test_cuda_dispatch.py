@@ -8,6 +8,7 @@ from dataclasses import FrozenInstanceError, replace
 import pytest
 import torch
 
+from benchmarks.cuda.linear.fixtures import operator_spec
 from torchcst._backends.cuda.algorithm import Algorithm
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
@@ -30,12 +31,11 @@ from torchcst._backends.cuda.schema import (
     RequiredGrads,
     SupportResult,
 )
-from torchcst.nn.normalized_strip import normalized_strip_declaration
 
 
 def replace_sites(spec, **kwargs):
     sites = geometry(spec)
-    return normalized_strip_declaration(
+    return operator_spec(
         **(
             {"sizes": sites.sizes, "origin": sites.origin, "spacing": sites.spacing}
             | kwargs
@@ -45,7 +45,7 @@ def replace_sites(spec, **kwargs):
 
 def context(**kwargs):
     defaults = {
-        "operator": normalized_strip_declaration(
+        "operator": operator_spec(
             sizes=(1024, 4, 4), origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5)
         ),
         "input_shape": (6, 16),
@@ -253,9 +253,7 @@ def test_cuda_direct_plan_grad_subsets_and_two_live_forwards(
     try:
         sizes = (1024, 4, 4)
         p = helpers["mixed"](torch.float32, "cuda").requires_grad_(parameter_grad)
-        op = normalized_strip_declaration(
-            sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5)
-        )
+        op = operator_spec(sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5))
         x1 = torch.randn(2, 16, device="cuda", requires_grad=input_grad)
         x2 = torch.randn(3, 16, device="cuda", requires_grad=input_grad)
         y1, y2 = [

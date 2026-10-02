@@ -105,10 +105,20 @@ motion. Sphere and Torus atom centers use Geometry projection, retraction and
 vector transport. Trainable non-Euclidean observation charts require a separate
 chart policy and are currently rejected by the optimizer wrapper.
 
-NormalizedStripLinear exposes the existing globally L2-normalized Euclidean
-Triweight operator. Its amplitude / log width / center coordinates use ordinary
-optimizer updates. `memory="window"` trades computation for bounded matrix
-temporaries. See the [normalized Strip guide](docs/normalized-strip.ja.md).
+`CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)`
+uses the globally L2-normalized Euclidean Triweight operator. Its amplitude / log
+width / center coordinates use ordinary optimizer updates. Common dispatch selects
+support-local Torch or CUDA full/window algorithms from the chart and kernel.
+`linear_options=LinearOptions(memory="window")` prefers bounded matrix temporaries.
+See the [normalized Strip guide](docs/normalized-strip.ja.md).
+
+`atoms=` accepts an integer (initialize), a Tensor (detach and copy), an
+`nn.Parameter` (reuse its identity, gradients and existing optimizer state), or
+`Atoms` (reuse the owner and its Parameter). Supplied tables must match the kernel's
+coordinate width. Shared parameters must already match the requested device/dtype;
+constructor conversion never silently replaces them. Prepare the final device
+before binding an optimizer. Parameters are available as `layer.atoms.p`.
+An explicitly empty table represents a zero operator; integer counts must be positive.
 
 ## Documentation
 
