@@ -1,5 +1,7 @@
 # ベンチマーク結果の提出
 
+参加手順の入口は [CONTRIBUTING.md](../CONTRIBUTING.md)。この文書には詳細な提出規則と管理者の運用手順を記載する。
+
 GPU での計測と、共有 Neon への提出を分ける。
 自分の CUDA GPU、Colab、レンタル環境で benchmark を動かし、完成した結果 JSON を
 **この repository の Issue に添付**する。提出用の fork / branch / PR、
