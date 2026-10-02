@@ -49,3 +49,25 @@ CPU suite は655 passed / 135 skipped、既存 TorchScript warnings18件。
 
 別参加者の Colab アカウント、追加の GPU preset の実機測定はこの確認の対象外。
 参加手順は [運用ガイド](benchmark-contributions.ja.md)、入力は [JSON 一覧](../benchmarks/requests/README.md)を参照。
+
+## Main / Neon の通し確認
+
+[run 37004242555](https://github.com/takumiecd/torchcst/actions/runs/37004242555) は
+merge commit `19d203cedf8395752d18c5eefa7defbd27cc2d6f` を既存の L4 JSON で測り、
+GitHub-hosted Ubuntu の `prepare → measure → ingest` が全て成功した。
+Neon に新しい5 records / 31 metrics を保存し、専用 role で元 JSON の byte-exact export、
+request / source SHA / workflow run ID / origin を照合した。
+
+[中央取り込み run 37005008609](https://github.com/takumiecd/torchcst/actions/runs/37005008609) でも
+同じ観測を GitHub metadata / artifact digest / upstream request と再照合して取り込んだ。
+DB は4 runs / 20 records / 124 metrics のままで、再送は観測を増やしていない。
+[機械記録](../benchmarks/automation/results/hosted-neon-20261002.json)に今回の job / request / archive hash、
+測定値、Neon の照合と再送結果を保存した。raw evidence は同じ ignored evidence directory に保持した。
+
+owned GPU の停止を確認した。self-hosted runner の登録・起動は0台。
+検証専用 Environment と `BENCHMARK_VALIDATION_REF` を削除し、
+`benchmark-colab` / `benchmark-database` の main-only policy を維持している。
+
+参加者の fork と別人の Colab アカウントは未実行。
+Fork での測定には参加者自身の Colab 初回認証設定、中央での fork artifact 読み取りには
+別途 read credential の設定が必要。今回の中央取り込み確認は upstream 自身の実行に対して行った。

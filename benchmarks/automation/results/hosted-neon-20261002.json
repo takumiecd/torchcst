@@ -1,0 +1,162 @@
+{
+  "workflow": {
+    "id": 37004242555,
+    "url": "https://github.com/takumiecd/torchcst/actions/runs/37004242555",
+    "source_commit": "19d203cedf8395752d18c5eefa7defbd27cc2d6f",
+    "jobs": {
+      "prepare": "success",
+      "measure": "success",
+      "ingest": "success"
+    },
+    "runner": "GitHub-hosted Ubuntu"
+  },
+  "request_id": "c3c8b4e27bf6a92e71424042c6ec619bc24606aa999a6130e49d4fb00748aed1",
+  "measurement": {
+    "artifact": "records/normalized-1024-broad.l4.r1.json",
+    "artifact_sha256": "c0f0f7d47ad6f178bcdbc8c56aa3e2c3bd37d481fa3f95404ec196342fd5667b",
+    "key": "normalized-1024-broad.l4.r1",
+    "pool_job_id": "l4job-3c356352854a443aba3be6d31ce2363a",
+    "result_archive_sha256": "5f8282a4d52bdce394cd26b3601fe03c121a6dd7602d68472108a37f9e9f35af",
+    "source_archive_sha256": "cf3080ad8a8713724b24d9add9a589d8501c4de0a7203b1e9b69cd2bf6e82c8b",
+    "status": "succeeded"
+  },
+  "gpu": "NVIDIA L4",
+  "runtime": {
+    "compute_capability": [
+      8,
+      9
+    ],
+    "sm_count": 58,
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "triton": "3.6.0",
+    "initialization": {
+      "method": "torch.cpu.v1",
+      "cpu_capability": "DEFAULT"
+    }
+  },
+  "neon": {
+    "run_id": "6142fe7566355ea876117098f0831cf741a33e7d2838837e305d2f08508063d3",
+    "records": 5,
+    "metrics": 31,
+    "database_counts": {
+      "plans": 2,
+      "cases": 1,
+      "runs": 4,
+      "projections": 4,
+      "run_plans": 8,
+      "records": 20,
+      "metrics": 124
+    },
+    "byte_exact_export": true,
+    "workflow_provenance_verified": true,
+    "role": "torchcst_actions_ingest"
+  },
+  "measurements": [
+    {
+      "plan": "full",
+      "eager": {
+        "median_ms": 1.594697999962591,
+        "samples_ms": [
+          1.652974000080576,
+          1.594697999962591,
+          1.6028810000534577,
+          1.587720000088666,
+          1.586385999871709,
+          1.5949580001688446,
+          1.5166499999850203
+        ]
+      },
+      "graph": {
+        "median_ms": 0.6101379999563505,
+        "samples_ms": [
+          0.6495689999610477,
+          0.6148990000838239,
+          0.6093290000990237,
+          0.6087770000249293,
+          0.6091929999456625,
+          0.6101379999563505,
+          0.6112849998771708
+        ]
+      },
+      "peak_allocated_capture_replay_bytes": 54366208,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured"
+    },
+    {
+      "plan": "window512",
+      "eager": {
+        "median_ms": 2.8952780000963685,
+        "samples_ms": [
+          2.9793359999530367,
+          2.8952780000963685,
+          2.894586000138588,
+          2.9065410001294367,
+          2.9187779998665064,
+          2.8702560000510857,
+          2.8841159999046795
+        ]
+      },
+      "graph": {
+        "median_ms": 1.4972999999827152,
+        "samples_ms": [
+          1.5326370000821044,
+          1.4946999999665422,
+          1.493940000045768,
+          1.5024580000044807,
+          1.4903290000347624,
+          1.498919000141541,
+          1.4972999999827152
+        ]
+      },
+      "peak_allocated_capture_replay_bytes": 48404480,
+      "peak_reserved_capture_replay_bytes": 90177536,
+      "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured"
+    },
+    {
+      "plan": "dense",
+      "eager": {
+        "median_ms": 0.6981889998769475,
+        "samples_ms": [
+          0.7682269999804703,
+          0.747814999840557,
+          0.6763999999748194,
+          0.6981889998769475,
+          0.6740229998740688,
+          0.7272769998962758,
+          0.6943589999082178
+        ]
+      },
+      "graph": {
+        "median_ms": 0.12601299999914772,
+        "samples_ms": [
+          0.1529189999018854,
+          0.12699199987764587,
+          0.1261330000943417,
+          0.12407899998834182,
+          0.12601299999914772,
+          0.1259610000943212,
+          0.12507199994615803
+        ]
+      },
+      "peak_allocated_capture_replay_bytes": 52955648,
+      "peak_reserved_capture_replay_bytes": 111149056,
+      "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured"
+    }
+  ],
+  "cleanup": {
+    "owned_sessions_stopped": true
+  },
+  "certification": "not assessed",
+  "central_import": {
+    "workflow_id": 37005008609,
+    "url": "https://github.com/takumiecd/torchcst/actions/runs/37005008609",
+    "status": "success",
+    "no_duplicate_observations": true
+  },
+  "participant_setup": {
+    "other_person_account_tested": false,
+    "central_fork_read_token_configured": false,
+    "instructions": "docs/benchmark-contributions.ja.md"
+  }
+}

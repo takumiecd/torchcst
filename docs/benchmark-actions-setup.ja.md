@@ -46,3 +46,12 @@ kernel の認証・採用や leaderboard / dispatch 規則生成は行ってい�
 以後の運用は [参加・運用ガイド](benchmark-contributions.ja.md) の GitHub-hosted runner 方式に移す。
 初回検証時のローカル runner 設定・raw evidence は削除せず private state / ignored directory に保持する。
 
+
+## GitHub-hosted runner への移行
+
+[PR #16](https://github.com/takumiecd/torchcst/pull/16) で main の測定 runner を GitHub-hosted Ubuntu に移した。
+[run 37004242555](https://github.com/takumiecd/torchcst/actions/runs/37004242555) は
+Mac runner を起動せず Colab の測定・回収・停止、Neon への保存まで成功した。
+[検証記録](hosted-benchmark-verification.ja.md)に source / hash / raw evidence と中央取り込みの再送確認を残した。
+通常は [既存 JSON](../benchmarks/requests/README.md) を指定する。
+初回認証と fork からの提出手順は [参加ガイド](benchmark-contributions.ja.md)を参照。
