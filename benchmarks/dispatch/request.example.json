@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "revision": "l4-speed-v1",
+  "dataset": {
+    "adapter": "cuda.linear.complete-step",
+    "adapter_revision": 2,
+    "gpu": "NVIDIA L4",
+    "source_id": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "execution_mode": "cuda_graph",
+  "min_runs": 3,
+  "excluded_run_ids": [],
+  "score_policy": {
+    "id": "speed",
+    "revision": "v1",
+    "parameters": {}
+  },
+  "fallback_plan": {
+    "schema_version": 1,
+    "algorithm_id": "normalized_full",
+    "algorithm_revision": "v1",
+    "recipe": {
+      "id": "normalized_full.default.v1",
+      "atom_num_warps": 1,
+      "sorted_forward": true,
+      "sorted_backward": true,
+      "support": "ball",
+      "enable_fp_fusion": true,
+      "saved_support_flags": true,
+      "tuple_grads": false
+    }
+  }
+}

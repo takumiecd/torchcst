@@ -86,8 +86,9 @@ DB の構造変更は `migrations/002_*.sql` 以降の順序付き migration と
 DB schema version、artifact schema version、adapter revision、測定 protocol revision を分ける。
 新しい benchmark 形式は明示的な adapter と取り込み入口を追加し、DB 接続処理と切り離す。
 
-認証・除外・leaderboard・dispatch 規則は今回のテーブルから自動生成しない。
-今後、判断の理由と対象の run / Plan ID を持つ追記専用の別テーブルを追加する。
+観測の保存自体は認証・leaderboard・dispatch採用を行わない。
+生成ツールは明示した依頼と評価関数から順位・選択器を出力する。
+採用・除外の判断履歴をDBで共有する場合は、理由と対象のrun / Plan IDを持つ追記専用テーブルを別途追加する。
 
 ## 使い方
 
@@ -142,7 +143,8 @@ provenance・受信時刻や全テーブルのバックアップではない。�
 
 公開 ingestion 経路は [submissions](../submissions/README.md) に用意している。
 Neon / GitHub の実接続は credential と runner の設定が必要。
-観測の再現確認、leaderboard / dispatch の生成は後続の工程。
+観測の再現確認は別の工程。leaderboard / dispatch の生成は
+[生成ツール](../dispatch/README.md)で行う。
 生成物の実行時形式は [Selector artifact](../../src/torchcst/_backends/cuda/dispatch/README.md) に定義する。
 DB の保存、任意の評価関数による順位付け、選択器の生成、実行時の選択を分離する。
 中央 credential を持たない contributor は結果 JSON を提出する。

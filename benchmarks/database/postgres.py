@@ -438,6 +438,11 @@ class Database:
         gpu=None,
         kind=None,
         adapter_revision=None,
+        adapter=None,
+        source_id=None,
+        environment_id=None,
+        protocol_id=None,
+        include_declarations=False,
         after=None,
         limit=100,
     ):
@@ -448,6 +453,8 @@ class Database:
         """
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise ValueError("limit must be 1..1000")
+        if type(include_declarations) is not bool:
+            raise ValueError("include_declarations must be bool")
         self._check_schema()
         clauses, params = [], []
         for column, value in (
@@ -456,6 +463,10 @@ class Database:
             ("r.environment ->> 'gpu'", gpu),
             ("r.kind", kind),
             ("p.adapter_revision", adapter_revision),
+            ("p.adapter", adapter),
+            ("r.source_id", source_id),
+            ("r.environment_id", environment_id),
+            ("p.protocol_id", protocol_id),
         ):
             if value is not None:
                 clauses.append(column + " = %s")
@@ -472,6 +483,11 @@ class Database:
             params.extend(after)
         where = " AND ".join(clauses) or "TRUE"
         params.append(limit)
+        declarations = (
+            ", c.declaration AS case_declaration, pl.declaration AS plan_declaration, r.payload"
+            if include_declarations
+            else ""
+        )
         return self.connection.execute(
             f"""SELECT r.projection_id, r.ordinal, p.run_id,
             p.adapter, p.adapter_revision, p.case_id, p.protocol_id, p.protocol,
@@ -484,7 +500,7 @@ class Database:
                 'tier', s.tier, 'trust_points', s.trust_points, 'policy_id', s.policy_id,
                 'validation', s.validation, 'measurement_authenticity', s.measurement_authenticity
             ) END AS submission,
-            r.environment_id, r.environment, r.source_id, r.source,
+            r.environment_id, r.environment, r.source_id, r.source{declarations},
             COALESCE((SELECT jsonb_agg(jsonb_build_object(
                 'name', m.name, 'scope', m.scope, 'unit', m.unit,
                 'statistic', m.statistic, 'value', m.value,
@@ -495,6 +511,8 @@ class Database:
             JOIN benchmark.runs u ON u.id = p.run_id
             LEFT JOIN benchmark.submissions s ON s.run_id = u.id
             LEFT JOIN benchmark.run_plans rp ON rp.projection_id = r.projection_id AND rp.alias = r.plan_alias
+            JOIN benchmark.cases c ON c.id = p.case_id
+            LEFT JOIN benchmark.plans pl ON pl.id = rp.plan_id
             WHERE {where} ORDER BY r.projection_id, r.ordinal LIMIT %s""",
             params,
         ).fetchall()

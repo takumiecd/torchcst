@@ -140,7 +140,8 @@ DBには結果原本、Plan・Case、観測・指標、提出者ID・ユーザ�
 この受付はGPUでの再計測を行わないため、測定値の真正性を保証するものではありません。
 
 DBへの保存、kernel / Algorithmの承認、leaderboardの生成、dispatcherへの採用は別の処理です。
-蓄積した観測を使う集計・ランキング・dispatch生成は、この受付workflowには含まれていません。
+蓄積した観測を使う集計・ランキング・dispatch生成は
+[別の生成ツール・Actions](benchmarks/dispatch/README.md)で行います。
 
 中央Actions・Neonの設定、DB移行、管理者の再実行と観測照会については
 [詳しい参加・運用ガイド](docs/benchmark-contributions.ja.md)を参照してください。

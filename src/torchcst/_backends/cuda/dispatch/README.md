@@ -18,7 +18,9 @@ full / window を特別な分岐にせず、Registry の Algorithm ID / revision
 評価関数は速度・メモリ等の任意の指標を使う。実行時には評価関数を呼ばない。
 `score_policy` はその関数の ID / revision / parameters を記録する metadata。
 関数本体を JSON に埋め込んだり、forward で任意コードを評価したりしない。
-DB 側の評価関数・leaderboard・artifact の自動生成はまだ未実装。
+DBからの固定snapshot抽出・評価関数・leaderboard・exact artifact生成は
+[生成ツール](../../../../../benchmarks/dispatch/README.md)に用意する。
+評価関数は生成ツール側で実行する。DB内のPython実行や既定policyへの自動採用は含めない。
 
 | 選択器 | 現在の状態 | 選択方法 |
 | --- | --- | --- |
