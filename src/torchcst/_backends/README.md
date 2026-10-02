@@ -58,7 +58,7 @@ torchcst/
     公開 Module                Parameter / buffer / checkpoint の所有
 ```
 
-本体から `experiments/`、`benchmarks/`、`tests/` へ依存しない。Torch backend は
+本体から `benchmarks/`、`tests/` へ依存しない。Torch backend は
 CPU 専用という意味ではなく、Torch Tensor の対応 device 上で計算する参照経路。
 NVIDIA 向け Triton の最適化をここへ混ぜない。
 
@@ -111,8 +111,9 @@ buffer version による固定座標計画の invalidation と fresh な atom �
 区別し、Triton というだけの理由で複数の計算方式を一つのファイルへ集めない。
 未実装のディレクトリや空の雛形は作らない。
 
-検証は `tests/`、継続する正しさ・時間・メモリ測定は `benchmarks/`、未採用方式は
-`experiments/` に置く。登録、対応判定、承認、既定 dispatch への採用は別の段階とする。
+検証は `tests/`、継続する正しさ・時間・メモリ測定は `benchmarks/` に置く。
+未採用方式は独立した研究 branch で扱い、本体ツリーへ試作ディレクトリを残さない。
+過去の採否は `docs/research-history/` に保存する。登録、対応判定、承認、既定 dispatch への採用は別の段階とする。
 
 詳細は [Kernel](../kernels/README.md)、[Geometry](../geometry/README.md)、
 [Pattern](../patterns/README.md)、[Chart](../charts/README.md) を参照。

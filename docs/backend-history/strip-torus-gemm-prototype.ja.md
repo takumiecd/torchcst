@@ -2,7 +2,7 @@
 
 > この文書に残る `prototypes` の実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
 > 歴史的な再現手順です。削除したコードの参照方法は
-> [旧実験コード](../../experiments/cuda/linear/legacy-prototypes.ja.md)を参照してください。
+> [旧実験コード](../research-history/cuda-linear/legacy-prototypes.ja.md)を参照してください。
 
 現在の標準tiled/Triton経路は、単独タイル用・境界共有アトムを分ける配置へ更新した。
 最新の配置、再利用実験と測定結果は [support-layout.ja.md](support-layout.ja.md) を参照。
@@ -451,6 +451,6 @@ snapshot は `srv11/cst-lab/torchcst-gemm-gap-20260926/`、archive SHA256 は
 ハードウェア・コミット・6ケース完了・archive hash をローカルでも確認した。
 
 アトムから出力を直接求める次の試作と測定結果は
-[atom-prefix-linear.ja.md](../../experiments/cuda/linear/notes/atom-prefix-linear.ja.md) に記録した。
+[atom-prefix-linear.ja.md](../research-history/cuda-linear/notes/atom-prefix-linear.ja.md) に記録した。
 Triweight の4種類の累積和を使って重み生成を省けるが、現時点のPyTorch実装は
 既存の融合版より遅く、公開backendには追加していない。

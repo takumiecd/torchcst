@@ -1,3 +1,6 @@
+> 以下の source commit・コマンド・測定値は検証当時の記録。現在の実行入口は
+> [benchmark README](../benchmarks/cuda/linear/README.md)を参照。
+
 # Kernel の共通宣言への整理（2026-10-01）
 
 旧 API の互換を廃止し、CSTLinear / CSTConv2d は KernelSpec を受け取る。

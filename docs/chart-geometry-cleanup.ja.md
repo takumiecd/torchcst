@@ -1,3 +1,6 @@
+> 以下の source commit・コマンド・測定値は検証当時の記録。現在の実行入口は
+> [benchmark README](../benchmarks/cuda/linear/README.md)を参照。
+
 # Chart / Geometry の整理と検証（2026-10-02）
 
 変更前は `56e74de`。Kernel と同じく、Geometry／Pattern／Chart を不変な宣言、共通の

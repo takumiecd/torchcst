@@ -4,9 +4,10 @@ import copy
 
 import pytest
 import torch
-from test_normalized_strip_public import chart, mixed, oracle
 from torch import nn
 
+from benchmarks.cuda.linear.fixtures import normalized_chart as chart
+from benchmarks.cuda.linear.reference import mixed, oracle
 from torchcst import (
     Atoms,
     CSTLinear,

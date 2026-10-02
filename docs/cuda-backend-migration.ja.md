@@ -1,3 +1,6 @@
+> 以下の source commit・コマンド・測定値は検証当時の記録。現在の実行入口は
+> [benchmark README](../benchmarks/cuda/linear/README.md)を参照。
+
 # CUDA backend の整理
 
 作業 branch は `codex/cuda-dispatch-registry-v1`。基準は `7b17408`。

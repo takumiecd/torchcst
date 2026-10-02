@@ -210,7 +210,7 @@ kernel 単体の勝ちと完全ステップの勝ちは区別する。メモリ�
 ## 実装順
 
 実装・レシピ・説明の配置と、開発用 `experiments/` からの移行単位は
-[リポジトリ配置](../../experiments/cuda/linear/repository-layout.ja.md)に従う。
+[リポジトリ配置](../research-history/cuda-linear/repository-layout.ja.md)に従う。
 
 1. `nn/_backends/` に `CudaContext`、`CudaRecipe`、`DispatchNode`、
    `DispatchDecision` と純粋な木の traversal を追加し、現行の選択を再現する。
@@ -226,15 +226,15 @@ kernel 単体の勝ちと完全ステップの勝ちは区別する。メモリ�
 
 ## この設計の根拠になる既存記録
 
-実験の採否と追加時の記録形式は[dispatch の実験台帳](../../benchmarks/cuda/linear/dispatch-evidence.ja.md)に集約する。
+実験の採否と追加時の記録形式は[dispatch の実験台帳](../research-history/cuda-linear/dispatch-evidence.ja.md)に集約する。
 
-- [`five-percent-breakthrough-research.ja.md`](../../experiments/cuda/linear/notes/five-percent-breakthrough-research.ja.md):
+- [`five-percent-breakthrough-research.ja.md`](../research-history/cuda-linear/notes/five-percent-breakthrough-research.ja.md):
   小さな内部ポリシーを先に作る方針、CSR・Graph・メモリの測定。
-- [`small-shape-ada-ampere-20260929.ja.md`](../../experiments/cuda/linear/notes/small-shape-ada-ampere-20260929.ja.md):
+- [`small-shape-ada-ampere-20260929.ja.md`](../research-history/cuda-linear/notes/small-shape-ada-ampere-20260929.ja.md):
   同じ形状でも GPU と M により利点が変わる測定。
-- [`blackwell-bounded-cst-20260929.ja.md`](../../experiments/cuda/linear/notes/blackwell-bounded-cst-20260929.ja.md):
+- [`blackwell-bounded-cst-20260929.ja.md`](../research-history/cuda-linear/notes/blackwell-bounded-cst-20260929.ja.md):
   絶対時間と dense 比率が GPU 世代間で同じ方向に動くとは限らない例。
-- [`l4-anchor-8192-dispatch-handoff-20260929.ja.md`](../../experiments/cuda/linear/notes/l4-anchor-8192-dispatch-handoff-20260929.ja.md):
+- [`l4-anchor-8192-dispatch-handoff-20260929.ja.md`](../research-history/cuda-linear/notes/l4-anchor-8192-dispatch-handoff-20260929.ja.md):
   近似演算を Exact CST の `auto` に混ぜない根拠。
 
 ## 実装前に固定する詳細
@@ -245,4 +245,4 @@ kernel 単体の勝ちと完全ステップの勝ちは区別する。メモリ�
 保存形式、plan ID と kernel 登録表、診断 API を具体的に固定する。
 `torch.library` で公開する演算子の粒度と最低 PyTorch 版は、mapped 学習経路の
 Tensor 入出力が本体で固まる段階で別に決める。性能の木を追加する際は
-[実験台帳](../../benchmarks/cuda/linear/dispatch-evidence.ja.md)の evidence ID を必須にする。
+[実験台帳](../research-history/cuda-linear/dispatch-evidence.ja.md)の evidence ID を必須にする。

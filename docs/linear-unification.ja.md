@@ -1,3 +1,6 @@
+> 以下の source commit・コマンド・測定値は検証当時の記録。現在の実行入口は
+> [benchmark README](../benchmarks/cuda/linear/README.md)を参照。
+
 # CSTLinear と既存 atom の再利用（2026-10-02）
 
 公開 Linear の入口を CSTLinear に統一した。NormalizedStripLinear とその公開 export、

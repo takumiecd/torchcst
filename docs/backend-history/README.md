@@ -11,5 +11,5 @@ They are not additional public backend names.
 | CUDA plan selection | General performance tree is a proposal; normalized full/window now have a registry and compatibility selector on the research branch | [Dispatch design](cuda-dispatch-design.ja.md), [registry v1](cuda-registry-v1.ja.md) |
 
 The public `backend="auto"` still selects the existing exact CST implementations.
-Candidate algorithms remain in [CUDA Linear experiments](../../experiments/cuda/linear/README.md).
+Earlier candidate algorithms and decisions are archived in [CUDA Linear research history](../research-history/cuda-linear/README.md).
 - [単一 Chart を基本とする Operator 接続](operator-integration.ja.md)

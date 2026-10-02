@@ -1,12 +1,11 @@
-# Saved CUDA Linear measurements
+# Raw CUDA Linear evidence
 
-This directory contains selected raw JSON, CSV, and text outputs cited by
-[research notes](../../../../experiments/cuda/linear/notes/README.md) and the
-[dispatch evidence ledger](../dispatch-evidence.ja.md). Each dated subdirectory
-groups a measurement campaign; the associated note records its source commit,
-GPU, comparison method, and limits. These files are evidence, not runtime
-dispatch configuration.
+Generated logs, traces, tensors and frozen source copies are ignored and preserved
+on disk. Small source/job identities, measured results and reproduction commands
+are tracked in [results](../results/) and the associated design notes.
 
-New measurements start in ignored `output/`. Preserve only results used in a
-decision, with a note and a reproducible command. Keep large traces outside
-the repository and record their source and hash when needed.
+Earlier measurements and negative results are linked from the
+[research history](../../../../docs/research-history/cuda-linear/README.md) and
+[historical dispatch ledger](../../../../docs/research-history/cuda-linear/dispatch-evidence.ja.md).
+These files do not configure runtime dispatch. Existing intentionally tracked
+evidence remains tracked; new raw evidence is not added to Git.

@@ -1,3 +1,6 @@
+> 以下の source commit・コマンド・測定値は検証当時の記録。現在の実行入口は
+> [benchmark README](../benchmarks/cuda/linear/README.md)を参照。
+
 # Chart の型と座標パッケージの分離（2026-10-02）
 
 一つの ChartSpec に kind と全種類の nullable field を詰める方式を廃止した。

@@ -2,7 +2,7 @@
 
 > この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
 > 歴史的な再現手順です。削除したコードの参照方法は
-> [旧実験コード](../../experiments/cuda/linear/legacy-prototypes.ja.md)を参照してください。
+> [旧実験コード](../research-history/cuda-linear/legacy-prototypes.ja.md)を参照してください。
 
 ## 設計条件
 
@@ -121,5 +121,5 @@ GPU名、6ケース完了、ソースcommit、転送hash、テスト完了をロ
 ## 同じ配置を使う直接縮約の試作
 
 細かなremapを追加せず、atomから出力・勾配を局所的に縮約する試作を追加した。
-方式・制限・A100測定は [local-atom-linear.ja.md](../../experiments/cuda/linear/notes/local-atom-linear.ja.md) に記録した。
+方式・制限・A100測定は [local-atom-linear.ja.md](../research-history/cuda-linear/notes/local-atom-linear.ja.md) に記録した。
 現段階で既存融合版に対する安定した速度優位はなく、標準経路は変更していない。

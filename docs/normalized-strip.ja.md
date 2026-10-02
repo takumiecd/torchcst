@@ -1,3 +1,6 @@
+> 以下の source commit・コマンド・測定値は検証当時の記録。現在の実行入口は
+> [benchmark README](../benchmarks/cuda/linear/README.md)を参照。
+
 # 正規化 Strip 線形層
 
 `CSTLinear` に通常の3次元 Euclidean の regular Product / 連続 Strip chart と

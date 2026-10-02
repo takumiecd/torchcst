@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
 
 @pytest.mark.parametrize("stations,atoms", [(1025, 1), (2048, 17), (4096, 65)])
 def test_chunked_owners_layout_and_gradients(stations, atoms):
-    from benchmarks.cuda.linear.benchmark_triton_linear import model
+    from benchmarks.cuda.linear.fixtures import strip_torus_model as model
     from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
         route_and_layout,
     )
@@ -45,7 +45,7 @@ def test_chunked_owners_layout_and_gradients(stations, atoms):
 
 
 def test_large_preparation_has_no_atom_by_station_allocation():
-    from benchmarks.cuda.linear.benchmark_triton_linear import model
+    from benchmarks.cuda.linear.fixtures import strip_torus_model as model
 
     layer = model(2048, rows=2048, columns=16, station_rows=1)
     with torch.no_grad():

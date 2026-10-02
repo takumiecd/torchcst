@@ -19,11 +19,12 @@ Implementation notes live beside the relevant code:
 
 - [CUDA backend migration](cuda-backend-migration.ja.md)
 - [CUDA backend and dispatch history](backend-history/README.md)
-- [CUDA Linear experiments and kernel decisions](../experiments/cuda/linear/README.md)
+- [Historical CUDA Linear research and decisions](research-history/cuda-linear/README.md)
 - [CUDA Linear benchmarks and measurements](../benchmarks/cuda/linear/README.md)
+- [Benchmark cleanup and validation](benchmark-cleanup.ja.md)
 
-Historical GPU measurements are linked from the experiment and benchmark
-directories. An old result does not by itself change the public backend policy.
+Historical GPU measurements are retained under research-history and benchmark
+results. An old result does not by itself change the public backend policy.
 
 - [Operator の宣言と実状態](../src/torchcst/operators/README.md)
 

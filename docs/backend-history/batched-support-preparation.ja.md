@@ -2,11 +2,11 @@
 
 > この文書の `prototypes` 実行例は commit `190a1bb3fa6259fde493a30d901d5cab7c2ebb82` 時点の
 > 歴史的な再現手順です。削除したコードの参照方法は
-> [旧実験コード](../../experiments/cuda/linear/legacy-prototypes.ja.md)を参照してください。
+> [旧実験コード](../research-history/cuda-linear/legacy-prototypes.ja.md)を参照してください。
 
 2026-09-26。[所属探索の局所化](local-strip-routing.ja.md)に続き、I/B分類と準備用メモリを改善した。
 
-後続の[計算本体の改善](../../experiments/cuda/linear/notes/fused-compute-reuse.ja.md)で、atom方向の縮約と入力128行への再利用を変更した。
+後続の[計算本体の改善](../research-history/cuda-linear/notes/fused-compute-reuse.ja.md)で、atom方向の縮約と入力128行への再利用を変更した。
 以下はその変更前の計算本体を使った測定である。
 
 ## 変更

@@ -242,17 +242,13 @@ def test_recipe_field_types_cannot_alias_validated_values(recipe):
 def test_cuda_direct_plan_grad_subsets_and_two_live_forwards(
     plan, input_grad, parameter_grad
 ):
-    import runpy
-    from pathlib import Path
+    from benchmarks.cuda.linear.reference import mixed, oracle
 
-    helpers = runpy.run_path(
-        str(Path(__file__).with_name("test_normalized_strip_public.py"))
-    )
     previous = torch.backends.cuda.matmul.allow_tf32
     torch.backends.cuda.matmul.allow_tf32 = False
     try:
         sizes = (1024, 4, 4)
-        p = helpers["mixed"](torch.float32, "cuda").requires_grad_(parameter_grad)
+        p = mixed(torch.float32, "cuda").requires_grad_(parameter_grad)
         op = operator_spec(sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5))
         x1 = torch.randn(2, 16, device="cuda", requires_grad=input_grad)
         x2 = torch.randn(3, 16, device="cuda", requires_grad=input_grad)
@@ -264,7 +260,7 @@ def test_cuda_direct_plan_grad_subsets_and_two_live_forwards(
         ]
         tp = p.detach().double().requires_grad_(parameter_grad)
         tx1, tx2 = [x.detach().double().requires_grad_(input_grad) for x in (x1, x2)]
-        w = helpers["oracle"](tp, sizes, stored_dtype=torch.float32)
+        w = oracle(tp, sizes, stored_dtype=torch.float32)
         t1, t2 = tx1 @ w.T, tx2 @ w.T
         torch.testing.assert_close(y1.double(), t1, atol=3e-4, rtol=3e-4)
         torch.testing.assert_close(y2.double(), t2, atol=3e-4, rtol=3e-4)

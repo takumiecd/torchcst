@@ -12,7 +12,6 @@ import hashlib
 import json
 import math
 import os
-import runpy
 import statistics
 import subprocess
 import sys
@@ -23,6 +22,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
+from benchmarks.cuda.linear import reference
 from benchmarks.cuda.linear.fixtures import operator_spec
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
@@ -60,7 +60,9 @@ def _metadata(args):
     source_files = sorted(Path(torchcst.__file__).parent.rglob("*.py"))
     source_files += [
         Path(__file__),
-        Path(args.tests_file),
+        Path(reference.__file__),
+        Path(__file__).with_name("fixtures.py"),
+        Path(__file__).with_name("check_normalized.py"),
     ]
     return {
         "schema_version": 1,
@@ -87,11 +89,10 @@ def _metadata(args):
 
 
 def correctness(args):
-    helpers = runpy.run_path(args.tests_file)
-    from benchmarks.cuda.linear.check_normalized_strip_public import check
+    from benchmarks.cuda.linear.check_normalized import check
 
     sizes = (1024, 4, 4)
-    p = helpers["mixed"](torch.float32, "cuda")
+    p = reference.mixed(torch.float32, "cuda")
     p[0, 2], p[1, 2] = 511.25, 512.5
     p[2:4, 2] = 512.02978515625
     op = operator_spec(sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5))
@@ -102,7 +103,7 @@ def correctness(args):
     y = model(x)
     tp = model.p.detach().double().requires_grad_()
     tx = x.detach().double().requires_grad_()
-    w = helpers["oracle"](tp, sizes, stored_dtype=torch.float32)
+    w = reference.oracle(tp, sizes, stored_dtype=torch.float32)
     truth = tx @ w.T
     ga = torch.autograd.grad(y, (x, model.p), dy)
     gt = torch.autograd.grad(truth, (tx, tp), dy.double())
@@ -190,8 +191,8 @@ def measure(args):
         "reference": "dense_linear" if args.worker == "dense" else args.algorithm,
         "operator": asdict(op),
         "rows": m,
-        "atoms": round(0.05 * n * n),
-        "profile": args.profile,
+        "atoms": None if args.worker == "dense" else round(0.05 * n * n),
+        "profile": None if args.worker == "dense" else args.profile,
         "initial_p_sha256": initial_p_hash if args.worker != "dense" else None,
         "eager": eager,
         "graph": graph_times,
@@ -220,7 +221,6 @@ def main():
     ap.add_argument("--rounds", type=int, default=7)
     ap.add_argument("--seed", type=int, default=21)
     ap.add_argument("--device", type=int, default=0)
-    ap.add_argument("--tests-file", default="tests/test_normalized_strip_public.py")
     ap.add_argument("--source-commit", default="unrecorded")
     ap.add_argument("--correctness-only", action="store_true")
     ap.add_argument("--dense", action="store_true")
@@ -279,8 +279,6 @@ def main():
             str(args.seed),
             "--device",
             str(args.device),
-            "--tests-file",
-            args.tests_file,
             "--source-commit",
             args.source_commit,
         ]
