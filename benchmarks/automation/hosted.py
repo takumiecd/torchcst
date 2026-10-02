@@ -4,9 +4,12 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from benchmarks.automation.contract import encode
 
 
 def install_credentials(raw, home):
@@ -90,13 +93,42 @@ def bootstrap():
     print("Colab account verified; no GPU allocated")
 
 
+def preserve_receipts(home, output):
+    """Export measurement evidence, never live CLI session credentials/cache."""
+    root = Path(home) / ".local/state/colab-l4-pool"
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=False)
+    states = []
+    for path in sorted((root / "slots").glob("*/state.json")):
+        state = json.loads(path.read_bytes())
+        states.append(
+            {key: state.get(key) for key in ("status", "session", "endpoint")}
+        )
+    (output / "owned-sessions.json").write_bytes(encode(states))
+    # OAuth and session configs, queue DB and transport logs are deliberately absent.
+    for job in (root / "jobs").glob("*"):
+        if not job.is_dir() or job.is_symlink():
+            continue
+        for name in ("spec.json", "receipt.json", "source.tar.gz", "results.tar.gz"):
+            path = job / name
+            if path.is_file() and not path.is_symlink():
+                destination = output / job.name / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, destination)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["bootstrap", "erase"])
+    parser.add_argument("command", choices=["bootstrap", "erase", "receipts"])
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "bootstrap":
             bootstrap()
+        elif args.command == "receipts":
+            if args.output is None:
+                raise ValueError("receipts needs --output")
+            preserve_receipts(Path.home(), args.output)
         else:
             (Path.home() / ".config/colab-cli/token.json").unlink(missing_ok=True)
         return 0

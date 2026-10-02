@@ -84,12 +84,15 @@ jobs:
           path: output/official-measurement
           if-no-files-found: error
           retention-days: 14
+      - name: Export measurement receipts without live session credentials
+        if: always()
+        run: python -m benchmarks.automation.hosted receipts --output output/pool-receipts
       - name: Preserve owned pool receipts for inspection and recovery
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: benchmark-pool-state
-          path: ~/.local/state/colab-l4-pool
+          path: output/pool-receipts
           if-no-files-found: warn
           retention-days: 14
       - name: Erase runner OAuth cache

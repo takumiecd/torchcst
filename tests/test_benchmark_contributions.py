@@ -17,7 +17,7 @@ from benchmarks.automation.contributions import (
     trusted_request,
     workflow_origin,
 )
-from benchmarks.automation.hosted import install_credentials
+from benchmarks.automation.hosted import install_credentials, preserve_receipts
 from tests.test_benchmark_automation import make_bundle, make_source
 
 
@@ -210,3 +210,29 @@ def test_oauth_secret_stays_private_outside_checkout(tmp_path):
     token["token_uri"] = "https://untrusted.invalid/token"
     with pytest.raises(ValueError, match="endpoint"):
         install_credentials(json.dumps(token), tmp_path / "other")
+
+
+def test_receipts_never_export_live_session_credentials(tmp_path):
+    root = tmp_path / ".local/state/colab-l4-pool"
+    slot = root / "slots/1"
+    slot.mkdir(parents=True)
+    (slot / "state.json").write_text(
+        json.dumps(
+            {"status": "stopped", "session": "cst-pool-owned", "endpoint": "owned-id"}
+        )
+    )
+    (slot / "sessions.json").write_text('{"token":"runtime-secret"}')
+    job = root / "jobs/colabjob-fixture"
+    job.mkdir(parents=True)
+    (job / "spec.json").write_text('{"id":"job"}')
+    (job / "transport.log").write_text("runtime-secret")
+    output = tmp_path / "receipts"
+    preserve_receipts(tmp_path, output)
+    assert (output / "colabjob-fixture/spec.json").exists()
+    assert not list(output.rglob("sessions.json"))
+    assert not list(output.rglob("*.log"))
+    assert all(
+        b"runtime-secret" not in path.read_bytes()
+        for path in output.rglob("*")
+        if path.is_file()
+    )
