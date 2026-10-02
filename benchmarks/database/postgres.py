@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 from contextlib import contextmanager
+from datetime import timezone
 from pathlib import Path
 
 import psycopg
@@ -16,6 +17,10 @@ from torchcst._backends.cuda.serialization import decode_json, encode_json
 
 MIGRATIONS = Path(__file__).with_name("migrations")
 TABLES = ("plans", "cases", "runs", "projections", "run_plans", "records", "metrics")
+
+
+class SubmissionQuotaExceeded(ValueError):
+    pass
 
 
 def connect_from_env(name="DATABASE_URL"):
@@ -236,6 +241,158 @@ class Database:
             "projection_inserted": bool(projected),
         }
 
+    def import_submission(self, raw, submission, policy):
+        """Admit one independently measured run, atomically with its UTC quota.
+
+        Account identity comes from the central GitHub caller, not the artifact.
+        All evidence remains append-only; recognition/points are policy snapshots.
+        Replays and copied runs do not consume another slot or gain another attribution.
+        """
+        submission.validate(policy)
+        if type(raw) is not bytes or not 0 < len(raw) <= policy.max_file_bytes:
+            raise ValueError("empty or oversized result JSON")
+        value = decode_json(raw)
+        project(value)  # Validate before locks/writes, including FAIL evidence.
+        execution_id, _ = execution_identity(value)
+        if execution_id is None:
+            raise ValueError(
+                "new submissions require an execution UUID and UTC start time"
+            )
+        run_id = digest(value)
+        submission_id = digest(
+            {"repository": submission.repository, "issue_id": submission.issue_id}
+        )
+
+        def receipt(row, inserted):
+            return {
+                "submission_id": row["id"],
+                "run_id": row["run_id"],
+                "submission_inserted": inserted,
+                "tier": row["tier"],
+                "trust_points": row["trust_points"],
+                "policy_id": row["policy_id"],
+                "submitter_id": row["submitter_id"],
+                "submitter_login": row["submitter_login"],
+                "validation": "consistency_checked",
+                "measurement_authenticity": "self_reported",
+            }
+
+        with self.connection.transaction():
+            self._check_schema()
+            # First serialize a submitter's admissions, then serialize duplicate
+            # run identities across accounts. All callers acquire in this order.
+            self.connection.execute(
+                "SELECT pg_advisory_xact_lock(1937011556, hashtext(%s))",
+                (str(submission.submitter_id),),
+            )
+            self.connection.execute(
+                "SELECT pg_advisory_xact_lock(1937011557, hashtext(%s))", (run_id,)
+            )
+            existing = self.connection.execute(
+                "SELECT * FROM benchmark.submissions WHERE repository = %s AND issue_id = %s",
+                (submission.repository, submission.issue_id),
+            ).fetchone()
+            if existing:
+                if (
+                    existing["submitter_id"] != submission.submitter_id
+                    or existing["run_id"] != run_id
+                ):
+                    raise ValueError(
+                        "accepted issue already refers to another submitter or run; use a new issue"
+                    )
+                return receipt(existing, False)
+            existing = self.connection.execute(
+                "SELECT * FROM benchmark.submissions WHERE run_id = %s", (run_id,)
+            ).fetchone()
+            if existing:
+                return receipt(existing, False)
+            received = self.connection.execute(
+                "SELECT clock_timestamp() AS now"
+            ).fetchone()["now"]
+            utc_day = received.astimezone(timezone.utc).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            limit = policy.daily_limit(submission.submitter_id)
+            if limit is not None:
+                count = self.connection.execute(
+                    "SELECT count(*) AS n FROM benchmark.submissions WHERE submitter_id = %s AND received_at >= %s",
+                    (submission.submitter_id, utc_day),
+                ).fetchone()["n"]
+                if count >= limit:
+                    raise SubmissionQuotaExceeded(
+                        "general account daily submission limit reached (UTC)"
+                    )
+            self.connection.execute(
+                "INSERT INTO benchmark.submission_policies(id, declaration) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (policy.id, Jsonb(policy.declaration)),
+            )
+            previous = self.connection.execute(
+                "SELECT provenance FROM benchmark.runs WHERE id = %s",
+                (run_id,),
+            ).fetchone()
+            # A run's immutable origin survives linkage from a new submission
+            # channel, including observations imported by an older hosted workflow.
+            provenance = (
+                previous["provenance"]
+                if previous
+                else {
+                    "origin": "external-benchmark-json",
+                    "measurement_authenticity": "self_reported",
+                    "certification": "not assessed",
+                }
+            )
+            self.import_linear(raw, provenance=provenance)
+            row = self.connection.execute(
+                """INSERT INTO benchmark.submissions
+                (id, repository, issue_id, issue_number, issue_body_sha256, submitter_id,
+                 submitter_login, tier, trust_points, policy_id, run_id, artifact_url,
+                 artifact_bytes, validation, measurement_authenticity, received_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        'consistency_checked', 'self_reported', %s) RETURNING *""",
+                (
+                    submission_id,
+                    submission.repository,
+                    submission.issue_id,
+                    submission.issue_number,
+                    submission.issue_body_sha256,
+                    submission.submitter_id,
+                    submission.submitter_login,
+                    policy.tier(submission.submitter_id),
+                    policy.trust_points(submission.submitter_id),
+                    policy.id,
+                    run_id,
+                    submission.artifact_url,
+                    len(raw),
+                    received,
+                ),
+            ).fetchone()
+            return receipt(row, True)
+
+    def list_submissions(self, *, submitter_id=None, after=None, limit=100):
+        """Read account attribution without conflating trust with correctness."""
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("limit must be 1..1000")
+        from benchmarks.submissions.policy import positive_id
+
+        self._check_schema()
+        clauses, params = [], []
+        if submitter_id is not None:
+            positive_id(submitter_id)
+            clauses.append("submitter_id = %s")
+            params.append(submitter_id)
+        if after is not None:
+            if type(after) is not str or not re.fullmatch(r"[0-9a-f]{64}", after):
+                raise ValueError("invalid submission cursor")
+            clauses.append("id > %s")
+            params.append(after)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        return self.connection.execute(
+            "SELECT id, repository, issue_number, submitter_id, submitter_login, tier, trust_points, "
+            "policy_id, run_id, validation, measurement_authenticity, received_at::text "
+            "FROM benchmark.submissions" + where + " ORDER BY id LIMIT %s",
+            (*params, limit),
+        ).fetchall()
+
     @contextmanager
     def snapshot(self):
         """Several reads use the same PostgreSQL snapshot, excluding later writes."""
@@ -321,6 +478,12 @@ class Database:
             r.plan_alias, rp.plan_id, rp.is_baseline, r.kind, r.status,
             u.status AS run_status, u.provenance, u.execution_id::text,
             u.started_at::text, u.artifact_schema_version,
+            CASE WHEN s.id IS NULL THEN NULL ELSE jsonb_build_object(
+                'id', s.id, 'repository', s.repository, 'issue_number', s.issue_number,
+                'submitter_id', s.submitter_id, 'submitter_login', s.submitter_login,
+                'tier', s.tier, 'trust_points', s.trust_points, 'policy_id', s.policy_id,
+                'validation', s.validation, 'measurement_authenticity', s.measurement_authenticity
+            ) END AS submission,
             r.environment_id, r.environment, r.source_id, r.source,
             COALESCE((SELECT jsonb_agg(jsonb_build_object(
                 'name', m.name, 'scope', m.scope, 'unit', m.unit,
@@ -330,6 +493,7 @@ class Database:
                 WHERE m.projection_id = r.projection_id AND m.record_ordinal = r.ordinal), '[]'::jsonb) AS metrics
             FROM benchmark.records r JOIN benchmark.projections p ON p.id = r.projection_id
             JOIN benchmark.runs u ON u.id = p.run_id
+            LEFT JOIN benchmark.submissions s ON s.run_id = u.id
             LEFT JOIN benchmark.run_plans rp ON rp.projection_id = r.projection_id AND rp.alias = r.plan_alias
             WHERE {where} ORDER BY r.projection_id, r.ordinal LIMIT %s""",
             params,

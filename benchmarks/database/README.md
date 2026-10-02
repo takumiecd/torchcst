@@ -4,8 +4,9 @@ Neon / PostgreSQL に、**Plan と、その Plan を実行して得た複数の�
 ライブラリの実行時依存にはせず、checkout 内の benchmark tooling として扱う。
 SQLite の旧試作や互換 API は含めない。
 
-[公式測定経路](../automation/README.md)は、固定 request と Colab の回収結果を照合し、
-この保存 API に中央の出所情報を付けて取り込む。GPU 端末へ DB の認証情報を渡さない。
+[提出経路](../submissions/README.md)は、各自のGPU・Colabで得た完成JSONを同じrepositoryの
+Issueから受け付ける。中央が投稿者をGitHub APIで確認し、公開設定に従って件数上限と
+信頼ポイントを割り当てる。GPU端末へDBの認証情報を渡さない。
 
 ## 保存するもの
 
@@ -18,6 +19,8 @@ SQLite の旧試作や互換 API は含めない。
 | `run_plans` | `projection_id`, `alias`, `plan_id`, `is_baseline` | 実行に含めた Plan の名前と baseline。名前は実行内の alias |
 | `records` | `projection_id`, `ordinal`, `plan_alias`, `kind`, `status`, `environment_id`, `environment`, `source_id`, `source`, `payload` | worker ごとの観測。正しさ、性能、dense 参照を区別。GPU / runtime、source commit / hashes、元の worker JSON |
 | `metrics` | `name`, `scope`, `unit`, `statistic`, `value`, `samples`, `details` | 指標ごとの値と各サンプル。時間・メモリ専用の固定列を作らない |
+| `submission_policies` | `id`, `declaration` | 公開された提出規則の原本。内容hashで識別し追記保存 |
+| `submissions` | `id`, `repository`, `issue_id`, `issue_number`, `submitter_id`, `submitter_login`, `tier`, `trust_points`, `policy_id`, `run_id`, `received_at` | GitHubから得た投稿者と観測の帰属、受付時点の区分・ポイント。上書きしない |
 
 たとえば同じ Plan を３回測れば、`plans` は１件を共有し、実行・worker の観測を３回分残す。
 同じ JSON の再送は増やさない。キー順や空白だけの変更も同じ run として扱い、最初に受け付けたバイト列を保持する。
@@ -72,6 +75,12 @@ forward / backward の個別時間、p95、新しいメモリ指標などは、`
 同じ原本から新しい projection を作り、以前の projection を上書きしない。
 現時点で原本に含まれない値は再解析だけでは得られず、benchmark 側の追加計測が必要。
 
+migration 2 で提出者の帰属と公開policyを追加する。一般はUTCで1日10実行・1点、
+認定は件数上限なし・既定10点。認定の追加やポイント変更は管理者による設定変更のみ。
+上限はDBの受信時刻で数え、投稿者が自己申告した日時・区分・ポイントを使わない。
+認定と検証状態は独立し、受付は内部整合性を確認した `self_reported` 観測として記録する。
+ランキングへのポイントの使い方や自動加点のアルゴリズムは含めない。
+
 DB の構造変更は `migrations/002_*.sql` 以降の順序付き migration として追加する。
 適用済み SQL を書き換えると checksum 不一致で拒否する。
 DB schema version、artifact schema version、adapter revision、測定 protocol revision を分ける。
@@ -90,6 +99,7 @@ python -m benchmarks.database import-linear output/normalized-step.json
 python -m benchmarks.database status
 python -m benchmarks.database records --gpu 'NVIDIA L4' --kind measure --adapter-revision 2 --limit 100
 python -m benchmarks.database records --plan-id PLAN_SHA256 --case-id CASE_SHA256
+python -m benchmarks.database submissions --submitter-id GITHUB_NUMERIC_ID
 python -m benchmarks.database export-run RUN_SHA256 output/restored.json
 ```
 
@@ -107,6 +117,7 @@ GRANT SELECT ON ALL TABLES IN SCHEMA benchmark TO benchmark_ingest, benchmark_re
 GRANT INSERT ON benchmark.plans, benchmark.cases, benchmark.runs,
     benchmark.projections, benchmark.run_plans, benchmark.records, benchmark.metrics
     TO benchmark_ingest;
+GRANT INSERT ON benchmark.submission_policies, benchmark.submissions TO benchmark_ingest;
 ```
 
 実際の LOGIN role にそれぞれを付与する。migration 後に新テーブルの権限も設定する。
@@ -129,9 +140,9 @@ CLI の `records` は最大1000 workerまで。`next_after` を `--after PROJECT
 別 DB に import すると同じ run / Plan / Case ID と指標を再構成できる。
 provenance・受信時刻や全テーブルのバックアップではない。運用バックアップには PostgreSQL の backup を使う。
 
-公式 ingestion 経路は [automation](../automation/README.md) に用意している。
+公開 ingestion 経路は [submissions](../submissions/README.md) に用意している。
 Neon / GitHub の実接続は credential と runner の設定が必要。
-認証、leaderboard / dispatch の生成は後続の工程。
+観測の再現確認、leaderboard / dispatch の生成は後続の工程。
 生成物の実行時形式は [Selector artifact](../../src/torchcst/_backends/cuda/dispatch/README.md) に定義する。
 DB の保存、任意の評価関数による順位付け、選択器の生成、実行時の選択を分離する。
 中央 credential を持たない contributor は結果 JSON を提出する。

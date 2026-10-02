@@ -1,6 +1,7 @@
-# Official measurement path
+# Colab measurement helper
 
-測定依頼を固定し、公式の Colab 実行経路から得た観測を中央で検証して保存する。
+測定依頼を固定して Colab で実行する任意の補助ツール。
+共有DBへの公開提出は [Issue受付](../submissions/README.md) に統一する。
 通常の `torchcst` 実行や dispatcher の JSON 読み込みから、この tooling は呼ばない。
 
 ```text
@@ -8,7 +9,7 @@ GitHub Actions prepare → 固定 request
                            ↓
 GitHub-hosted runner → Colab queue → 正しさ / 完全 step / memory
                            ↓
-GitHub Actions ingest → 依頼との照合 → PostgreSQL / Neon
+結果JSON → 同じrepositoryの提出Issue → 中央受付Actions → PostgreSQL / Neon
 ```
 
 ## 境界
@@ -18,7 +19,6 @@ GitHub Actions ingest → 依頼との照合 → PostgreSQL / Neon
 | `contract.py` | JSON の読み込み・request の作成・内容 hash、source inventory、job の識別。読み込みは標準ライブラリのみ |
 | `colab.py` | 既存 shared pool への提出・待機・検証済み結果の回収。DB を import しない |
 | `hosted.py` | GitHub runner 上で OAuth Secret を復元し、対話なしで認証・account を確認。checkout 外に保存 |
-| `contributions.py` | fork の Actions artifact を取得し、upstream main から request を再構築して中央で検証 |
 | `driver.py` | pool 内の専用環境を作り、固定 snapshot を既存 benchmark に渡す |
 | `ingest.py` | request と結果を照合し、既存 DB API にまとめて追記。Colab を import しない |
 | `__main__.py` | 上記の CLI。DB 接続は `ingest` のときだけ |
@@ -97,25 +97,20 @@ Actions へ渡す bundle には元の benchmark JSON と提出・回収 hash を
 ## GitHub Actions の初回設定
 
 [benchmark.yml](../../.github/workflows/benchmark.yml) は手動起動のみ。
-`prepare` / `measure` / `ingest` は GitHub-hosted Ubuntu runner で動く。
+`prepare` / `measure` は GitHub-hosted Ubuntu runner で動く。
 測定 GPU は Colab のアカウントから一時確保する。自分の PC を起動しておく必要はない。
 
 設定は [参加・運用ガイド](../../docs/benchmark-contributions.ja.md) を参照。
 通常は既存の [測定 JSON 一覧](../requests/README.md) から repository 内パスを選ぶ。
 新しい条件を増やすときだけ JSON / Case / Plan をレビューして main に追加する。
 
-Fork では測定・artifact 保存まで動き、中央の Neon 接続情報を使わない。
-中央の [benchmark-ingest.yml](../../.github/workflows/benchmark-ingest.yml) は提出元 repository と
-Actions run ID を受け取り、GitHub の実行・artifact metadata を読み直す。
-source commit が upstream `origin/main` の祖先であること、中央コードで再構築した request と
-投稿 request が完全一致することを確認する。投稿側の Python や workflow は中央で実行しない。
-Zip の digest、展開サイズ・パス・リンクを検査し、JSON データだけを展開する。
-
-DB Secret は中央の `benchmark-database` Environment の最後の取り込み step にだけ渡す。
-Fork artifact の読み取りには中央側で GitHub の read credential が必要となる。
-`BENCHMARK_ARTIFACT_READ_TOKEN` を設定する場合も DB / Colab の資格情報と分ける。
-同じ観測を直接保存・後から取り込み・再送したときの provenance は実行元の GitHub metadata
-から同じ値を作る。取り込み側の run ID や retry attempt で重複を作らない。
+この workflow は測定・artifact 保存まで動き、Neon の接続情報を使わない。
+各実行の `artifacts/benchmark.json` を取り出し、中央の提出 Issue に添付する。
+Actions run ID を指定する旧 fork artifact 取り込み経路は削除した。
+中央の [benchmark-submit.yml](../../.github/workflows/benchmark-submit.yml) が投稿者と公開設定を
+照合し、一般はUTCで1日10実行・1点、認定は件数上限なし・既定10点として受け付ける。
+ローカルGPU・Colab・レンタルGPUでも同じJSONの受付処理を使う。
+DB Secret は中央の `benchmark-database` Environment の保存 step にだけ渡す。
 
 OAuth は runner の HOME に一時復元し、token を更新して account を確認してから確保する。
 対話ログインに fallback しない。Secret を driver の環境変数や source snapshot に渡さず、
@@ -127,7 +122,10 @@ GPU の停止が確認できなかった場合は自動再測定しない。
 artifact を確認し、[pool の復旧手順](../../tools/colab-l4-pool/references/operations.ja.md)で
 所有した session だけを停止する。同じアカウントでローカルと Actions を同時に運用しない。
 
-## 保存・検証の意味
+## 固定requestの検証と管理者向け保存API
+
+以下の `ingest` CLI は管理者が固定 request / pool receipt を照合するためのAPI。
+公開提出の入口は `benchmarks.submissions` であり、通常参加者はこのCLIやDB接続を使わない。
 
 全 job の bundle を検証してから、既存 `Database.import_linear` を一つの transaction で呼ぶ。
 Case / Plan / source / GPU / runtime / raw hash / execution UUID と既存 adapter の計測条件を検査する。
@@ -157,7 +155,7 @@ pool と Actions artifact。Actions artifact は14日保存の中間成果物で
 同じ測定 JSON の入力・初期 Parameter hash の一致、独立 oracle、完全 step、
 memory、回収 hash、保存・再送・元 JSON の復元を確認した。
 [初回設定記録](../../docs/benchmark-actions-setup.ja.md)に Neon の実接続・専用 role・Secret・runner 接続確認を記録した。
-GitHub の `prepare → measure → ingest` も L4 の１ケースで実行済み。
+旧 GitHub の `prepare → measure → ingest` も L4 の１ケースで実行済み。
 同じ記録に実行 URL、Neon の出所照合・元 JSON 復元・重複防止、GPU / runner 終了確認と次回の起動手順を残した。
 
 [GitHub-hosted runner の実機確認](../../docs/hosted-benchmark-verification.ja.md)で、

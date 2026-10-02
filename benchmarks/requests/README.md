@@ -1,6 +1,6 @@
 # 測定 JSON
 
-Actions の `request_file` に、以下の既存ファイルのパスを指定する。
+任意の Colab 測定補助Actionsの `request_file` に、以下の既存ファイルのパスを指定する。
 GPU・Case・Plan・回数は JSON に固定され、Actions 側で個別に上書きしない。
 
 | ファイル | GPU | 独立測定 |
@@ -22,3 +22,6 @@ GPU・Case・Plan・回数は JSON に固定され、Actions 側で個別に上�
 
 新しい条件は JSON / Case / Plan を PR で main に追加してから選ぶ。
 [参加・設定手順](../../docs/benchmark-contributions.ja.md)を参照。
+
+測定補助Actionsはartifact保存まで。各完成 `artifacts/benchmark.json` を取り出し、
+同じrepositoryの提出Issueに添付する。ローカルGPUでの測定にも同じ提出フォームを使う。

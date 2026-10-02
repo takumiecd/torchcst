@@ -347,7 +347,7 @@ def test_provenance_conflict_and_bad_artifact_leave_no_new_data(db):
 
 def test_migration_history_is_checked_and_migration_is_idempotent(db):
     database, _ = db
-    assert database.migrate() == 1
+    assert database.migrate() == 2
     database.connection.execute(
         "UPDATE benchmark.schema_migrations SET checksum = 'changed'"
     )

@@ -1,5 +1,8 @@
 # GitHub-hosted Colab 測定の確認（2026-10-02）
 
+この文書は変更前の実機確認記録。現在の提出経路は [Issue受付](benchmark-contributions.ja.md)
+に移行し、旧 fork artifact 取り込みworkflowは削除した。測定補助Actionsは引き続き利用できる。
+
 [run 37000213462](https://github.com/takumiecd/torchcst/actions/runs/37000213462) で
 GitHub-hosted Ubuntu の `prepare → measure` が成功した。
 source は `49adf035ae002cbc4091e19f819ef026c4b96731`、入力は
