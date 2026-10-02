@@ -21,14 +21,38 @@
 - `6293283de9fc23af1d237473c099b7b2084952cc6088de92d3580d8d8a4fa88e`
 - `4f906c4d2b23199c71217f56a441a3722ee90f0d54d0d7b21723f9e36758fb73`
 
-## 次の確認
+## Actions の通し確認
 
-[PR #15](https://github.com/takumiecd/torchcst/pull/15) の main への反映後、
-[測定 JSON](../benchmarks/requests/colab-linear.json) を指定して実際の Actions を１回実行する。
-まだ GitHub 上で prepare → measure → ingest が通ったという確認はしていない。
+[Actions run 36995360838](https://github.com/takumiecd/torchcst/actions/runs/36995360838) で
+`prepare → measure → ingest` が全て成功した。
+[PR #15](https://github.com/takumiecd/torchcst/pull/15) の merge commit
+`1f9f1774242b1df9fe256de87c89ceef29d4b092` を、
+[測定 JSON](../benchmarks/requests/colab-linear.json) から固定して測定した。
+L4・独立実行1回で、full / window512 と dense 参照の正しさ・完全 step・capture/replay peak memory を確認した。
 
-この runner は ephemeral のため1 jobを終えると GitHub の登録が解除される。
-次の batch は runner の再登録・起動が必要。GPU VM の確保・実行・回収・停止は共有 Colab queue が管理する。
+Neon に今回の5 worker records / 31 metrics が保存され、
+`github-actions-colab-bridge` の出所と実際の workflow run ID / source SHA を照合した。
+元 JSON の byte-exact export と同じ provenance での再送が重複を増やさないことも確認した。
+DB 全体は3 runs / 15 worker records / 93 metrics（先の接続確認の2 runs を含む）。
+
+[機械記録](../benchmarks/automation/results/actions-neon-20261002.json)に request、job、archive hash、誤差、全時間サンプル、runtime と保存・停止確認を残した。
+raw source / result archive、GitHub artifacts、workflow logs は ignored `benchmarks/automation/evidence/actions-20261002/` に保持した。
+owned GPU slots は全て停止、一時 runner は measure job 完了後に自動登録解除された。
+kernel の認証・採用や leaderboard / dispatch 規則生成は行っていない。
+
+## この Mac で次の測定を始める
+
+1. このコマンドを実行して端末を開いたままにする。必要な runner の再登録も行う。
+
+   ```bash
+   python3 ~/.local/state/torchcst-actions-runner/start.py
+   ```
+
+2. GitHub → Actions → Benchmark measurement → Run workflow で `main` と測定 JSON の repository 内パスを指定する。
+
+runner は1 job後に終了する。新しい JSON / Case / Plan の変更は main に反映してから指定する。
+JSON が GPU・Case・回数を指定し、GPU の確保・実行・回収・停止は共有 Colab queue が管理する。
+この起動用設定は今回の Mac の非公開設定であり、他の端末は自身の認証と runner の初回設定が必要。
 
 汎用の初回設定は [automation README](../benchmarks/automation/README.md) を参照。
 ローカルの非公開設定・詳細 receipt は ignored `output/actions-setup/` とホストの private state に保持している。
