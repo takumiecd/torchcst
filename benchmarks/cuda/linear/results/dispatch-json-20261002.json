@@ -1,0 +1,169 @@
+{
+  "status": "PASS",
+  "source_commit": "3c8901d9493e6912007275ed383f58e9bd54bf32",
+  "cpu_source_commit": "7de49949ea12f4976b1307b46c56ee224ad21e4a",
+  "job_id": "l4job-132c93c6daf643529ee6e8b1a4418323",
+  "cpu_tests": {
+    "passed": 602,
+    "skipped": 133
+  },
+  "gpu_tests": {
+    "passed": 108,
+    "failed": 0,
+    "skipped": 0
+  },
+  "runtime": {
+    "compute_capability": [
+      8,
+      9
+    ],
+    "cuda": "12.8",
+    "gpu": "NVIDIA L4",
+    "sm_count": 58,
+    "tf32": false,
+    "torch": "2.11.0+cu128",
+    "triton": "3.6.0"
+  },
+  "source_archive_sha256": "c7d75ea932a8dbac9f70199a9010c69f019cd9753b1b274df9a26bc9d77659dc",
+  "result_archive_sha256": "3e2fe01d9a283aa5e11af84b87aba3322d89819393aeec41057966765cf89d64",
+  "scope": "independent small mixed fixture; y/dX/all-five atom gradients; AdamW Graph replay",
+  "policies_are": "demonstration fixtures; no leaderboard or approval claims",
+  "correctness": {
+    "normalized_full": {
+      "dp": {
+        "max": 0.00019776835215212785,
+        "rel_l2": 6.91978033561649e-05
+      },
+      "dx": {
+        "max": 3.458474262529876e-08,
+        "rel_l2": 1.1321243008422405e-07
+      },
+      "updated": {
+        "dp": {
+          "max": 4.385057131850445e-07,
+          "rel_l2": 1.7861095843867992e-07
+        },
+        "dx": {
+          "max": 2.9025834014095864e-08,
+          "rel_l2": 1.4430089078163373e-07
+        },
+        "w": {
+          "max": 7.546062184837776e-09,
+          "rel_l2": 7.833067243520687e-08
+        },
+        "y": {
+          "max": 3.1255673701990894e-08,
+          "rel_l2": 8.676222872948759e-08
+        }
+      },
+      "w": {
+        "max": 1.1697243749997366e-08,
+        "rel_l2": 9.668112165998563e-08
+      },
+      "y": {
+        "max": 2.880039388919453e-08,
+        "rel_l2": 9.709893765124409e-08
+      }
+    },
+    "normalized_window": {
+      "dp": {
+        "max": 0.00019776835215212785,
+        "rel_l2": 6.91977722026961e-05
+      },
+      "dx": {
+        "max": 3.458474262529876e-08,
+        "rel_l2": 1.1321243008422405e-07
+      },
+      "updated": {
+        "dp": {
+          "max": 1.4048248930809137e-07,
+          "rel_l2": 8.549351085710648e-08
+        },
+        "dx": {
+          "max": 2.9025834014095864e-08,
+          "rel_l2": 1.4430089078163373e-07
+        },
+        "w": {
+          "max": 7.546062184837776e-09,
+          "rel_l2": 7.833067243520687e-08
+        },
+        "y": {
+          "max": 3.1255673701990894e-08,
+          "rel_l2": 8.676222872948759e-08
+        }
+      },
+      "w": {
+        "max": 1.1697243749997366e-08,
+        "rel_l2": 9.668112165998563e-08
+      },
+      "y": {
+        "max": 2.880039388919453e-08,
+        "rel_l2": 9.709893765124409e-08
+      }
+    }
+  },
+  "fallback": {
+    "algorithm_id": "normalized_window",
+    "checks": {
+      "dp": {
+        "max": 5.6191101385105746e-05,
+        "rel_l2": 2.295455101435696e-05
+      },
+      "dx": {
+        "max": 3.287048577771401e-08,
+        "rel_l2": 1.0562068425686724e-07
+      },
+      "y": {
+        "max": 2.2756902431919634e-08,
+        "rel_l2": 8.741401184529513e-08
+      }
+    }
+  },
+  "rejected_files": {
+    "runtime_version": "dispatch runtime version differs: torch",
+    "unknown_plan": "unknown entry plan ID"
+  },
+  "benchmark_contract": {
+    "size": 1024,
+    "batch": 128,
+    "atoms": 52429,
+    "sigma": 3.0,
+    "dtype": "float32",
+    "tf32": false,
+    "optimizer": "fused capturable AdamW, lr=1e-4, weight_decay=0.01",
+    "scope": "forward/backward/optimizer; CUDA Graph capture plus replay peak; large fixture is not an independent all-atom oracle"
+  },
+  "benchmarks": {
+    "dense": {
+      "graph_ms": 0.1272429999517044,
+      "eager_ms": 0.6987939999589798,
+      "max_allocated_capture_replay": 52955648,
+      "max_reserved_capture_replay": 111149056,
+      "initial_p_sha256": null
+    },
+    "full": {
+      "graph_ms": 0.6252819999872372,
+      "eager_ms": 1.8289470000354413,
+      "max_allocated_capture_replay": 54369792,
+      "max_reserved_capture_replay": 111149056,
+      "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c"
+    },
+    "window512": {
+      "graph_ms": 1.513336000016352,
+      "eager_ms": 3.111233000026914,
+      "max_allocated_capture_replay": 48408064,
+      "max_reserved_capture_replay": 90177536,
+      "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c"
+    }
+  },
+  "gpu_process_memory_usage": "unmeasured",
+  "owned_gpu_stopped": true,
+  "evidence": "benchmarks/cuda/linear/evidence/dispatch-json-20261002/l4job-132c93c6daf643529ee6e8b1a4418323",
+  "verification": {
+    "source_archive_sha256": "c7d75ea932a8dbac9f70199a9010c69f019cd9753b1b274df9a26bc9d77659dc",
+    "result_archive_sha256": "3e2fe01d9a283aa5e11af84b87aba3322d89819393aeec41057966765cf89d64",
+    "source_file_count": 167,
+    "source_file_mismatches": [],
+    "verified_result_files": 16
+  }
+}

@@ -130,3 +130,6 @@ full / window の dict・JSON text・ファイル往復、recipe 型の復元、
 `dispatch-*.json`・選択 trace・oracle 誤差・不正 JSON の拒否理由を結果ディレクトリに保存する。
 `--bench` は1024²・M128・52,429 atoms・sigma3・FP32・AdamW の完全 step と
 dense 参照を別 process で測定する。小さい混合 fixture の独立全 atom oracle と区別する。
+
+[L4 の JSON 実機検証記録](../../../docs/dispatch-json-verification.ja.md)と
+[機械記録](results/dispatch-json-20261002.json)を参照。

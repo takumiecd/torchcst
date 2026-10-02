@@ -121,8 +121,10 @@ python -m pytest -q tests/test_dispatch_selectors.py tests/test_cuda_dispatch.py
 python -m pytest -q
 ```
 
-2026-10-02 のローカル CPU suite は 601 passed / 133 skipped。
+2026-10-02 のローカル CPU suite は 602 passed / 133 skipped。
 JSON 往復、条件の全フィールド、未観測条件、明示的 fallback、workspace 制限、
 別 Algorithm ID、custom rule、二回の forward と autograd、選択器を替えた checkpoint を検証する。
 CUDA と PostgreSQL の専用テストは環境未接続のため skip。
-この変更に対する GPU の速度・peak メモリの再測定は行っていない。
+L4 上で実ファイルからの公開経路、独立 oracle、Graph replay と完全 step の時間・peak を確認した。
+対象4ファイルは108 passed / 0 failed / 0 skipped。
+[実機検証記録](../../../../../docs/dispatch-json-verification.ja.md)を参照。
