@@ -159,3 +159,6 @@ memory、回収 hash、保存・再送・元 JSON の復元を確認した。
 [初回設定記録](../../docs/benchmark-actions-setup.ja.md)に Neon の実接続・専用 role・Secret・runner 接続確認を記録した。
 GitHub の `prepare → measure → ingest` も L4 の１ケースで実行済み。
 同じ記録に実行 URL、Neon の出所照合・元 JSON 復元・重複防止、GPU / runner 終了確認と次回の起動手順を残した。
+
+[GitHub-hosted runner の実機確認](../../docs/hosted-benchmark-verification.ja.md)で、
+Mac runner を起動せず L4 の正しさ・完全 step・memory・回収・停止を確認した。
