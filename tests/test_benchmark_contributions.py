@@ -19,6 +19,7 @@ from benchmarks.automation.contributions import (
 )
 from benchmarks.automation.hosted import install_credentials, preserve_receipts
 from tests.test_benchmark_automation import make_bundle, make_source
+from tools.colab.redaction import private_values, redact
 
 
 def metadata(commit):
@@ -236,3 +237,18 @@ def test_receipts_never_export_live_session_credentials(tmp_path):
         for path in output.rglob("*")
         if path.is_file()
     )
+
+
+def test_cached_runtime_tokens_stay_redacted_after_stop_erases_cache(tmp_path):
+    cache = tmp_path / "sessions.json"
+    cache.write_text('{"session":{"proxy":{"token":"private-runtime-token"}}}')
+    before = private_values([cache])
+    cache.write_text("{}")
+    diagnostic = (
+        "403 Forbidden: private-runtime-token; Bearer other-token ?token=url-token"
+    )
+    clean = redact(diagnostic, before | private_values([cache]))
+    assert "403 Forbidden" in clean
+    assert "private-runtime-token" not in clean
+    assert "other-token" not in clean
+    assert "url-token" not in clean
