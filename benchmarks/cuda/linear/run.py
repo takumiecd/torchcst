@@ -17,7 +17,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import torch
@@ -90,6 +92,10 @@ def _metadata(args, run):
         "tf32": False,
         "dtype": "float32",
         "seed": run.case.seed,
+        "initialization": {
+            "method": "torch.cpu.v1",
+            "cpu_capability": torch.backends.cpu.get_cpu_capability(),
+        },
         "case": asdict(run.case),
         "input_hashes": run.input_hashes,
         "snapshot_sha256": args.snapshot_sha256,
@@ -110,9 +116,15 @@ def correctness(args, run):
     p[2:4, 2] = 512.02978515625
     op = operator_spec(sizes=sizes, origin=(0.0, 0.0, 0.0), spacing=(1.0, 0.5, 0.5))
     model = PlanLinear(p, op, run.entry(args.plan_id).plan)
-    gen = torch.Generator(device="cuda").manual_seed(run.case.seed)
-    x = torch.randn(2, 3, 16, device="cuda", generator=gen, requires_grad=True)
-    dy = torch.randn(2, 3, 1024, device="cuda", generator=gen)
+    gen = torch.Generator(device="cpu").manual_seed(run.case.seed)
+    x = (
+        torch.randn(2, 3, 16, device="cpu", dtype=torch.float32, generator=gen)
+        .cuda()
+        .requires_grad_()
+    )
+    dy = torch.randn(
+        2, 3, 1024, device="cpu", dtype=torch.float32, generator=gen
+    ).cuda()
     y = model(x)
     tp = model.p.detach().double().requires_grad_()
     tx = x.detach().double().requires_grad_()
@@ -154,15 +166,20 @@ def measure(args, run):
             p[:, axis + 2] = o + near * spacing + (u - near) * 0.04
     initial_p_hash = hashlib.sha256(p.numpy().tobytes()).hexdigest()
     torch.manual_seed(run.case.seed)
-    x = torch.randn(m, n, device="cuda", requires_grad=True)
-    target = torch.randn(m, n, device="cuda")
+    cpu_x, cpu_target = generate_inputs(run.case.seed, m, n)
+    x = cpu_x.cuda().requires_grad_()
+    target = cpu_target.cuda()
+    del cpu_x, cpu_target
     initial_inputs = {
         "x_sha256": hashlib.sha256(x.detach().cpu().numpy().tobytes()).hexdigest(),
         "target_sha256": hashlib.sha256(target.cpu().numpy().tobytes()).hexdigest(),
     }
     if args.worker == "dense":
         model = nn.Linear(n, n, bias=False, device="cuda")
-        model.weight.data.uniform_(-0.01, 0.01)
+        weight_gen = torch.Generator(device="cpu").manual_seed(run.case.seed)
+        weight = torch.empty(n, n).uniform_(-0.01, 0.01, generator=weight_gen)
+        model.weight.data.copy_(weight.cuda())
+        del weight
     else:
         model = PlanLinear(p.cuda(), op, run.entry(args.plan_id).plan)
     del p
@@ -229,6 +246,17 @@ def measure(args, run):
     }
 
 
+def generate_inputs(seed, rows, features):
+    """Independent CPU generator; CUDA device scheduling cannot change the batch."""
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    return tuple(
+        torch.randn(
+            rows, features, device="cpu", dtype=torch.float32, generator=generator
+        )
+        for _ in range(2)
+    )
+
+
 def _write(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
 
@@ -246,8 +274,8 @@ def main():
     ap.add_argument(
         "--worker", choices=("correctness", "measure", "dense"), help=argparse.SUPPRESS
     )
-    ap.add_argument("--snapshot", type=Path, help=argparse.SUPPRESS)
-    ap.add_argument("--snapshot-sha256", help=argparse.SUPPRESS)
+    ap.add_argument("--snapshot", type=Path, help="execute a frozen run snapshot")
+    ap.add_argument("--snapshot-sha256", help="required SHA256 of the frozen snapshot")
     ap.add_argument("--plan-id", help=argparse.SUPPRESS)
     args = ap.parse_args()
     if args.device < 0:
@@ -273,9 +301,16 @@ def main():
         elif not run.dense:
             ap.error("dense reference was not selected")
     else:
-        if not args.case:
-            ap.error("--case is required (except --list-plans)")
-        run = load_run(args.case, args.plans)
+        if args.snapshot:
+            if args.case or not args.snapshot_sha256:
+                ap.error(
+                    "--snapshot requires its hash and cannot be combined with --case"
+                )
+            run = load_snapshot(args.snapshot, expected_hash=args.snapshot_sha256)
+        else:
+            if not args.case or args.snapshot_sha256:
+                ap.error("--case or a frozen --snapshot with its hash is required")
+            run = load_run(args.case, args.plans)
         if args.validate_only:
             print(json.dumps(run.snapshot(), indent=2))
             return
@@ -310,6 +345,8 @@ def main():
     snapshot_hash = hashlib.sha256(snapshot.read_bytes()).hexdigest()
     combined = {
         "schema_version": 1,
+        "execution_id": str(uuid.uuid4()),
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "status": "RUNNING",
         "certification": "not assessed",
         "run": run.snapshot(),

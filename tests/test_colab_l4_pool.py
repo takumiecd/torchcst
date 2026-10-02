@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[1] / "tools/colab-l4-pool/scripts"
+SCRIPTS = Path(__file__).resolve().parents[1] / "tools/colab/scripts"
 
 
 def load(name):
@@ -125,6 +125,7 @@ def test_supervisor_lock_survives_other_process(source, tmp_path):
 class FakePool(pool_module.Pool):
     def __init__(self, root, *, fail=None, wrong_identity=False):
         super().__init__(root)
+        self.expected_account = "owner@example.com"
         self.fail = fail
         self.wrong_identity = wrong_identity
         self.events = []
@@ -138,7 +139,7 @@ class FakePool(pool_module.Pool):
                 + (
                     "other@example.com"
                     if self.wrong_identity
-                    else pool_module.EXPECTED_EMAIL
+                    else self.expected_account
                 )
                 + "\n"
             )
@@ -235,6 +236,70 @@ def test_wrong_identity_never_allocates(source, tmp_path):
     assert not pool.active
 
 
+def test_unconfigured_account_never_allocates(source, tmp_path):
+    pool = FakePool(tmp_path / "state")
+    pool.expected_account = None
+    submit(pool, source)
+    with pytest.raises(RuntimeError, match="Configure"):
+        pool.serve(1, 0)
+    assert not pool.active
+
+
+def test_gpu_queues_share_one_owner_and_only_explicit_gpu_runs(source, tmp_path):
+    pool = FakePool(tmp_path / "state")
+    driver = tmp_path / "driver.py"
+    driver.write_text("print('ok')")
+    jobs = {
+        gpu: pool.submit(source, driver, [], 10, "test", gpu)
+        for gpu in ("L4", "T4", "A100", "H100", "G4")
+    }
+    pool.serve(1, 0)  # Existing L4 clients cannot allocate an expensive queued GPU.
+    assert pool.get(jobs["L4"])["status"] == "succeeded"
+    assert all(
+        pool.get(jobs[g])["status"] == "queued" for g in ("T4", "A100", "H100", "G4")
+    )
+    for gpu in ("T4", "A100", "H100", "G4"):
+        pool.serve(1, 0, gpu)
+        assert pool.get(jobs[gpu])["status"] == "succeeded"
+        assert not pool.active
+
+
+def test_configure_account_and_network_preserve_each_other(tmp_path):
+    state = tmp_path / "state"
+
+    def configure(*args):
+        return subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPTS / "pool.py"),
+                "--state-root",
+                str(state),
+                "configure",
+                *args,
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+    assert configure("--account", "participant@example.com").returncode == 0
+    assert configure("--interface", "default").returncode == 0
+    assert pool_module.Pool(state).expected_account == "participant@example.com"
+    assert configure("--account", "invalid").returncode != 0
+
+
+def test_existing_l4_entry_reads_same_queue(source, tmp_path):
+    pool = pool_module.Pool(tmp_path / "state")
+    job = submit(pool, source)
+    entry = SCRIPTS.parents[1] / "colab-l4-pool/scripts/pool.py"
+    result = subprocess.run(
+        [sys.executable, str(entry), "--state-root", str(pool.root), "status"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["jobs"][0]["id"] == job
+
+
 @pytest.mark.parametrize("kind", ["escape", "symlink", "duplicate"])
 def test_unsafe_results_rejected(tmp_path, kind):
     directory = tmp_path / "job"
@@ -314,7 +379,7 @@ def test_wrong_hardware_rejected_before_driver(source, tmp_path, monkeypatch, ha
         "check_output",
         lambda *a, **k: hardware + ", uuid, driver, memory",
     )
-    with pytest.raises(ValueError, match="exactly one NVIDIA L4"):
+    with pytest.raises(ValueError, match="exactly one requested GPU"):
         remote.main(spec, tmp_path / "remote")
 
 

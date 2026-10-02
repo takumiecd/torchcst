@@ -5,6 +5,14 @@ description: Share Colab L4 GPUs across research agents and Codex chats using a 
 
 # Shared Colab L4 experiments
 
+The implementation now lives in `tools/colab/scripts`; this existing entry
+point still uses the same host-wide queue and defaults to L4 only. Public
+measurement users use [the Colab tool](../colab/README.md), without installing
+a skill. Configure the expected authenticated account on this host once with
+`pool.py configure --account EMAIL`; the implementation contains no personal
+email. Keep L4 jobs on this shared queue. Other GPU types must be explicitly
+selected by the orchestrator, never by an existing L4 supervisor implicitly.
+
 Use the installed entry point `~/.codex/skills/colab-l4-pool/scripts/pool.py`
 with Python 3.9+. It needs the standard library and `~/.local/bin/colab`.
 The default queue is `~/.local/state/colab-l4-pool`, shared across local chats,

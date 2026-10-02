@@ -1,0 +1,51 @@
+{
+  "postgres_version": "14.19",
+  "source_artifacts": [
+    {
+      "path": "benchmarks/cuda/linear/evidence/plan-catalog-20261002/l4job-549684aca01640e58055796b09c13c97/results/artifacts/plans-broad.json",
+      "sha256": "e932c32740aa9703337acbdb577c2b1519eab0995d6d71d13e0e93033d31b725",
+      "run_id": "b74fce4c7d2f4a81bf943e1410e65518b982ccf8112d36859c8d08157ef94faa",
+      "projection_id": "ed64ce48af465127423093e36f64254e9522b0ab51e05d4e39e5a976f1a64ad1",
+      "run_inserted": true,
+      "projection_inserted": true
+    },
+    {
+      "path": "benchmarks/cuda/linear/evidence/plan-catalog-20261002/l4job-549684aca01640e58055796b09c13c97/results/artifacts/plans-sharp.json",
+      "sha256": "c3ba27bcb07a9aa8fedc4aceb3460c1463eaa0d39bebb737b9ff3c16d2cabd14",
+      "run_id": "6f6c8fee207a721d3a8b2be87fc7844c242d39345d136b2b60a8491212b4b2ed",
+      "projection_id": "9b0ec5953f2986c2e97136bf07cc3f47fdbee90e4676bc2d801a1a5c2a64e512",
+      "run_inserted": true,
+      "projection_inserted": true
+    }
+  ],
+  "scope": "Existing L4 artifacts imported locally; no new GPU execution or Neon access.",
+  "counts": {
+    "plans": 2,
+    "cases": 2,
+    "runs": 2,
+    "projections": 2,
+    "run_plans": 4,
+    "records": 10,
+    "metrics": 62
+  },
+  "measured_records": 4,
+  "source_commits": [
+    "8f2ec40"
+  ],
+  "schema_version": 1,
+  "date": "2026-10-02",
+  "database_schema_version": 1,
+  "adapter": "cuda.linear.complete-step",
+  "adapter_revision": 1,
+  "cpu_tests": {
+    "passed": 584,
+    "skipped": 117,
+    "warnings": 18
+  },
+  "postgres_integration_tests": 16,
+  "adapter_unit_tests": 35,
+  "focused_ruff": "passed",
+  "new_gpu_runs": 0,
+  "neon_connected": false,
+  "raw_evidence": "benchmarks/database/evidence/postgres-20261002/"
+}

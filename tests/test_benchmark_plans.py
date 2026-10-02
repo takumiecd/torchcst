@@ -7,10 +7,13 @@ import os
 import subprocess
 import sys
 from dataclasses import asdict
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
+import torch
 
 from benchmarks.cuda.linear import run as runner
 from benchmarks.cuda.linear.manifest import (
@@ -20,9 +23,23 @@ from benchmarks.cuda.linear.manifest import (
     load_snapshot,
     read_json,
 )
-from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+    FULL,
+    WINDOW,
+)
 
 CASE = DEFAULT_PLANS.parent / "cases/normalized-1024-broad.json"
+
+
+def test_cpu_batch_initialization_is_independent_of_global_rng():
+    first = runner.generate_inputs(21, 4, 16)
+    torch.manual_seed(999)
+    torch.randn(20)
+    second = runner.generate_inputs(21, 4, 16)
+    assert all(torch.equal(a, b) for a, b in zip(first, second))
+    assert all(t.device.type == "cpu" and t.dtype == torch.float32 for t in first)
+    assert not torch.equal(*first)
+    assert not torch.equal(first[0], runner.generate_inputs(22, 4, 16)[0])
 
 
 def save(path, value):
@@ -110,7 +127,7 @@ from benchmarks.cuda.linear.run import main
 sys.argv = ['run', '--case', {str(CASE)!r}, '--validate-only']
 main()
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL, WINDOW
 for plan in (FULL, WINDOW):
     assert REGISTRY.loads_plan(REGISTRY.dumps_plan(plan)) == plan
 assert 'triton' not in sys.modules
@@ -177,6 +194,8 @@ def test_coordinator_freezes_case_and_stops_on_failure(tmp_path, monkeypatch, fa
     else:
         runner.main()
     combined = read_json(output)[0]
+    assert str(UUID(combined["execution_id"])) == combined["execution_id"]
+    assert datetime.fromisoformat(combined["started_at"]).utcoffset() == timedelta(0)
     assert combined["status"] == ("FAIL" if failure else "PASS")
     assert all(snapshot == snapshots[0] for snapshot in snapshots)
     assert [asdict(e.plan) for e in snapshots[0].plans] == [

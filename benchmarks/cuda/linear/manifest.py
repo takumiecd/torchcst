@@ -220,6 +220,11 @@ def load_snapshot(path, *, expected_hash=None):
     value, actual_hash = read_json(path)
     if expected_hash is not None and actual_hash != expected_hash:
         raise ValueError("run snapshot hash differs from coordinator")
+    return decode_snapshot(value)
+
+
+def decode_snapshot(value):
+    """Decode a frozen run declaration without needing a temporary file."""
     _keys(
         value,
         ["schema_version", "case", "plans", "baseline", "dense", "input_hashes"],

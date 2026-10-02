@@ -39,7 +39,7 @@ from .kernels import (
     WendlandC2Spec,
     presets,
 )
-from .nn import CSTConv2d, CSTLinear, CSTModule, LinearOptions
+from .nn import CSTConv2d, CSTLinear, CSTModule
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
 from .optim import CSTOptimizer, OptimizerStateAdapter
 from .patterns import (
@@ -75,7 +75,6 @@ __all__ = [
     "KernelOptions",
     "KernelSpec",
     "LinePatternSpec",
-    "LinearOptions",
     "LogWidthSpec",
     "NormalizationSpec",
     "Operator",

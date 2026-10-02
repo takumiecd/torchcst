@@ -7,17 +7,23 @@ import torch
 
 from benchmarks.cuda.linear.fixtures import normalized_chart as chart
 from benchmarks.cuda.linear.reference import mixed, oracle
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+    FULL,
+    WINDOW,
+)
+from torchcst._backends.cuda.dispatch import FixedSelector
 
 
 def public_class():
-    from torchcst import CSTLinear, LinearOptions, presets
+    from torchcst import CSTLinear, presets
 
-    def build(chart, p, *, memory="full"):
+    def build(chart, p, *, selector=None):
         return CSTLinear(
             chart=chart,
             atoms=p,
             kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
-            linear_options=LinearOptions(memory=memory),
+            selector=selector,
         )
 
     return build
@@ -27,12 +33,11 @@ def parameter(model):
     return model.atoms.p
 
 
-@pytest.mark.parametrize("memory", ["full", "window"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_public_cpu_independent_y_dx_all_five(memory, dtype):
+def test_public_cpu_independent_y_dx_all_five(dtype):
     cls = public_class()
     p = mixed(dtype)
-    model = cls(chart(dtype=dtype), p, memory=memory)
+    model = cls(chart(dtype=dtype), p)
     actualp = parameter(model)
     truthp = actualp.detach().double().requires_grad_()
     x = torch.linspace(-0.3, 0.7, 96, dtype=dtype).reshape(2, 3, 16).requires_grad_()
@@ -56,11 +61,11 @@ def test_public_cpu_independent_y_dx_all_five(memory, dtype):
     assert ga[1][6, 1] == 0 and ga[1][7, 1] == 0
 
 
-def test_default_full_checkpoint_and_arbitrary_leading_dimensions():
+def test_checkpoint_and_arbitrary_leading_dimensions():
     cls = public_class()
     p = mixed()
     a = cls(chart(), p)
-    b = cls(chart(), p, memory="full")
+    b = cls(chart(), p)
     b.load_state_dict(a.state_dict())
     for shape in [(16,), (3, 16), (2, 3, 16)]:
         x = torch.linspace(-1, 1, math.prod(shape), dtype=p.dtype).reshape(shape)
@@ -69,10 +74,10 @@ def test_default_full_checkpoint_and_arbitrary_leading_dimensions():
     assert set(a.state_dict()) == set(b.state_dict())
 
 
-@pytest.mark.parametrize("memory", ["bad", "", None])
-def test_invalid_memory_deterministic(memory):
-    with pytest.raises((ValueError, TypeError), match="memory"):
-        public_class()(chart(), mixed(), memory=memory)
+@pytest.mark.parametrize("selector", ["bad", {}, 1])
+def test_invalid_selector(selector):
+    with pytest.raises(TypeError, match="selector"):
+        public_class()(chart(), mixed(), selector=selector)
 
 
 @pytest.mark.parametrize("shape", [(2, 4), (2, 6), (5,)])
@@ -126,8 +131,8 @@ def test_input_device_mismatch():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("memory", ["full", "window"])
-def test_cuda_public_window_boundary_independent_all_five(memory):
+@pytest.mark.parametrize("plan", [FULL, WINDOW])
+def test_cuda_public_algorithm_boundary_independent_all_five(plan):
     previous = torch.backends.cuda.matmul.allow_tf32
     torch.backends.cuda.matmul.allow_tf32 = False
     try:
@@ -137,7 +142,9 @@ def test_cuda_public_window_boundary_independent_all_five(memory):
         p[1, 2] = 512.5
         p[2:4, 2] = 512.02978515625
         model = public_class()(
-            chart(sizes, dtype=torch.float32, device="cuda"), p, memory=memory
+            chart(sizes, dtype=torch.float32, device="cuda"),
+            p,
+            selector=FixedSelector(plan, registry=REGISTRY),
         )
         g = torch.Generator(device="cuda").manual_seed(21)
         x = torch.randn(2, 3, 16, device="cuda", generator=g, requires_grad=True)
@@ -177,7 +184,7 @@ def test_dtype_roundtrip_keeps_fixed_bounds_and_checkpoint():
         rtol=0,
     )
     x = torch.linspace(-1, 1, 32, dtype=torch.float64).reshape(2, 16)
-    restored = public_class()(chart(), model.atoms.p.detach(), memory="full")
+    restored = public_class()(chart(), model.atoms.p.detach())
     restored.load_state_dict(model.state_dict())
     torch.testing.assert_close(restored(x), model(x), atol=0, rtol=0)
 

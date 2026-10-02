@@ -9,6 +9,8 @@ build/
 .ruff_cache/
 .DS_Store
 output/
+.env
+.env.*
 
 # Generated CUDA experiment logs, source snapshots, traces and tensors
 benchmarks/**/evidence/**

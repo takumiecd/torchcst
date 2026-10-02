@@ -11,7 +11,7 @@ from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGIST
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
     FullRecipe,
 )
-from torchcst._backends.cuda.dispatch.select import FULL, WINDOW
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL, WINDOW
 from torchcst._backends.cuda.registry import Registry
 from torchcst._backends.cuda.schema import ExecutionPlan, SupportResult
 

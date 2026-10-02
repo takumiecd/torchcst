@@ -4,6 +4,9 @@ Large benchmark is NOT an independent all-A oracle. No experiments imports.
 Run from a checkout or an extracted wheel; fixtures and oracle are local modules.
 """
 
+# Wheel selection deliberately precedes imports of torchcst.
+# ruff: noqa: E402
+
 import argparse
 import copy
 import gc
@@ -24,7 +27,17 @@ import torch
 
 from benchmarks.cuda.linear.fixtures import normalized_chart
 from benchmarks.cuda.linear.reference import mixed, oracle
-from torchcst import CSTLinear, LinearOptions, presets
+from torchcst import CSTLinear, presets
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.cuda.dispatch import FixedSelector
+
+
+def algorithm_selector(algorithm_id):
+    algorithm = REGISTRY.get(algorithm_id, revision="v1")
+    from torchcst._backends.cuda.schema import ExecutionPlan
+
+    plan = ExecutionPlan(algorithm.id, algorithm.revision, algorithm.recipe_type())
+    return FixedSelector(plan, registry=REGISTRY)
 
 
 def check(a, b, tol=3e-4):
@@ -39,7 +52,7 @@ def check(a, b, tol=3e-4):
     }
 
 
-def small_gate():
+def small_gate(*, selector_factory=None):
     sizes = (1024, 4, 4)
     p = mixed(torch.float32, "cuda")
     p[0, 2] = 511.25
@@ -49,13 +62,15 @@ def small_gate():
     x = torch.randn(2, 3, 16, device="cuda", generator=generator)
     dy = torch.randn(2, 3, 1024, device="cuda", generator=generator)
     reports = {}
-    for memory in ("full", "window"):
+    for algorithm_id in ("normalized_full", "normalized_window"):
         model = CSTLinear(
             chart=normalized_chart(sizes, dtype=torch.float32, device="cuda"),
             atoms=p,
             kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
-            linear_options=LinearOptions(memory=memory),
+            selector=algorithm_selector(algorithm_id),
         )
+        if selector_factory is not None:
+            model.selector = selector_factory(model, algorithm_id)
         xx = x.clone().requires_grad_()
         actual = model(xx)
         tp = model.atoms.p.detach().double().requires_grad_()
@@ -63,7 +78,7 @@ def small_gate():
         truth = tx @ oracle(tp, sizes, stored_dtype=torch.float32).T
         ag = torch.autograd.grad(actual, (xx, model.atoms.p), dy)
         tg = torch.autograd.grad(truth, (tx, tp), dy.double())
-        reports[memory] = {
+        reports[algorithm_id] = {
             "y": check(actual, truth),
             "dx": check(ag[0], tg[0]),
             "dp": check(ag[1], tg[1]),
@@ -107,8 +122,10 @@ def small_gate():
             chart=normalized_chart(sizes, dtype=torch.float32, device="cuda"),
             atoms=model.atoms.p.detach(),
             kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
-            linear_options=LinearOptions(memory=memory),
+            selector=algorithm_selector(algorithm_id),
         )
+        if selector_factory is not None:
+            eager.selector = selector_factory(eager, algorithm_id)
         eo = torch.optim.AdamW(
             eager.parameters(),
             lr=1e-4,
@@ -139,7 +156,7 @@ def small_gate():
         truth = tx @ oracle(tp, sizes, stored_dtype=torch.float32).T
         aa = torch.autograd.grad(y, (xx, model.atoms.p), dy)
         bb = torch.autograd.grad(truth, (tx, tp), dy.double())
-        reports[memory]["updated"] = {
+        reports[algorithm_id]["updated"] = {
             "y": check(y, truth),
             "dx": check(aa[0], bb[0]),
             "dp": check(aa[1], bb[1]),
@@ -152,7 +169,7 @@ def small_gate():
     return reports
 
 
-def benchmark(n, profile, memory, dense=False):
+def benchmark(n, profile, algorithm_id, dense=False, *, selector_factory=None):
     h, j = (32, 32) if n == 1024 else (64, 128)
     sizes = (n, h, j)
     origin = (-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4)
@@ -182,8 +199,10 @@ def benchmark(n, profile, memory, dense=False):
             chart=normalized_chart(sizes, origin, dtype=torch.float32, device="cuda"),
             atoms=p,
             kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
-            linear_options=LinearOptions(memory=memory),
+            selector=algorithm_selector(algorithm_id),
         )
+        if selector_factory is not None:
+            model.selector = selector_factory(model, algorithm_id)
     del p
     opt = torch.optim.AdamW(
         model.parameters(),
@@ -237,7 +256,7 @@ def benchmark(n, profile, memory, dense=False):
         "a": None if dense else a,
         "m": 128,
         "profile": None if dense else profile,
-        "memory": memory,
+        "algorithm_id": algorithm_id if not dense else "dense",
         "dense": dense,
         "initial_p_sha256": None if dense else sha,
         "eager_ms": eager["median_ms"],
@@ -258,7 +277,9 @@ def main():
     ap.add_argument("--bench", action="store_true")
     ap.add_argument("--sizes", nargs="+", type=int, default=[1024, 8192])
     ap.add_argument("--profiles", nargs="+", default=["broad", "sharp"])
-    ap.add_argument("--memory", nargs="+", default=["full", "window"])
+    ap.add_argument(
+        "--algorithm", nargs="+", default=["normalized_full", "normalized_window"]
+    )
     ap.add_argument("--dense", action="store_true")
     ap.add_argument(
         "--dense-only",
@@ -296,13 +317,13 @@ def main():
             for profile in [] if args.dense_only else args.profiles:
                 if profile not in ("broad", "sharp"):
                     raise ValueError("unknown profile")
-                for memory in args.memory:
-                    result["benchmarks"].append(benchmark(n, profile, memory))
+                for algorithm_id in args.algorithm:
+                    result["benchmarks"].append(benchmark(n, profile, algorithm_id))
                     gc.collect()
                     torch.cuda.empty_cache()
                     Path(args.output).write_text(json.dumps(result, indent=2))
             if args.dense or args.dense_only:
-                result["benchmarks"].append(benchmark(n, "broad", "full", True))
+                result["benchmarks"].append(benchmark(n, "broad", None, True))
                 gc.collect()
                 torch.cuda.empty_cache()
                 Path(args.output).write_text(json.dumps(result, indent=2))
