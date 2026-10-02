@@ -53,11 +53,46 @@ bitwise 一致した。
 型ごとの field / Tensor の不存在、ABC の直接構築拒否、concrete compiler、未登録型・版の
 拒否、checkpoint の種類・旧形式の拒否、snapshot と演算の境界を追加検証した。
 
-L4 の配布 wheel、既存 fused / normalized dispatch、Graph replay、時間・allocated peak は
-共有 pool の validate_linear_unification.py --chart-suite で測定する。結果は完了後に追記する。
+L4 の配布 wheel は **367 passed / 0 failed / 0 skipped**。source は `76d0a75`。
+Chart・Geometry・部分端 tile・Torus・local/exhaustive routing・既存 fused / normalized
+dispatch と checkpoint を含む対象テストを実行した。全 CUDA テストの網羅実行ではない。
+独立 FP64 oracle で W / y / dX / 全5 atom 勾配を照合し、鋭い支持と floor / clip、
+中心・幅を変更した Graph replay、AdamW の Parameter と状態も確認した。
+
+検証 runtime は Torch 2.11.0+cu128 / CUDA 12.8 / Triton 3.6.0 / NVIDIA L4 /
+driver 580.82.07。pool の初期 probe は system の CUDA 13.0 だが、実際の検証は
+job-local CUDA 12.8 環境で行った。system package は変更していない。
+pip は共有 system 環境の未使用 RAPIDS/CUDA 13 package との依存警告を出した。
+この環境で確認した範囲は Torch/Triton の対象テストと以下の測定である。
+
+N1024² / M128 / 52,429 atoms（約5%）/ FP32 / TF32無効 / fused capturable AdamW
+lr1e-4・weight_decay .01。各ケースは別プロセスで、forward・backward・optimizer を
+含む Graph replay の同期 wall time 中央値を測定した。peak は capture から測る。
+
+| 条件 | 経路 | Graph ms | peak allocated MiB | peak reserved MiB |
+| --- | --- | ---: | ---: | ---: |
+| 通常 sigma3 | full | 0.620308 | 51.8511 | 106 |
+| 通常 sigma3 | window | 1.506952 | 46.1655 | 86 |
+| 通常条件の比較 | dense | 0.127080 | 50.5024 | 106 |
+| 鋭い支持 | full | 0.538673 | 51.8511 | 106 |
+| 鋭い支持 | window | 0.306169 | 46.1655 | 86 |
+| 鋭い条件の比較 | dense | 0.126887 | 50.5024 | 106 |
+
+全 GPU process usage は未測定。大きい fixture は完全 step の測定であり、全 atom の
+独立勾配 oracle ではない。同じ profile の full/window 初期 atom SHA は一致する。
+通常幅と鋭い支持を分けて記録し、速度改善や algorithm 昇格の根拠とはしない。
+
+成功 job は `l4job-16c752a2fcc6477abc0dd05be209520d`。
+result archive SHA256 を receipt と照合し、152 Python file を source / remote wheel /
+installed の間で byte 比較した。local wheel と remote wheel の SHA256 も一致する。
+owned GPU は停止済み。最初の job `l4job-e14ae3b8bc8c4a04ad9ca78ceaa13275` は
+完了応答を失い、セッションも失われたため測定結果は未確認。pool recovery で
+server 上の active session 不在を確認後、同じ source を一度再実行した。
+計算エラーとは分類せず、ログを ignored evidence に保存した。
+[機械記録と hash](../benchmarks/cuda/linear/results/chart-types-20261002.json) を参照。
 
 ```bash
-python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py submit --source "$PWD" --script "$PWD/benchmarks/cuda/linear/validate_linear_unification.py" --label chart-types --timeout 1800 -- SOURCE_COMMIT --chart-suite
+python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py submit --source "$PWD" --script "$PWD/benchmarks/cuda/linear/validate_linear_unification.py" --label chart-types --timeout 600 -- 76d0a756e4483cfb810551d0c869bc007c04db28 --chart-suite
 python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py serve --workers 1 --idle-seconds 0
 ```
 

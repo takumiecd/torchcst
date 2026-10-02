@@ -1,0 +1,402 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "source_commit": "76d0a756e4483cfb810551d0c869bc007c04db28",
+  "local_cpu": {
+    "source_passed": 524,
+    "wheel_passed": 524,
+    "skipped_each": 201
+  },
+  "cpu_baseline_parity": {
+    "baseline": "96c3f86",
+    "cases": 11,
+    "tensors": 112,
+    "bitwise_equal": true
+  },
+  "gpu": {
+    "job_id": "l4job-16c752a2fcc6477abc0dd05be209520d",
+    "hardware": "NVIDIA L4, GPU-3e794188-1328-b3f0-5386-a8a3ba1ea980, 580.82.07, 23034 MiB",
+    "validation_runtime": {
+      "torch": "2.11.0+cu128",
+      "cuda": "12.8",
+      "triton": "3.6.0",
+      "gpu": "NVIDIA L4"
+    },
+    "pool_probe_runtime": {
+      "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "triton": "3.6.0"
+    },
+    "source_archive_sha256": "b6cb8dfd521f6cc3756769072cd762ca2d6a558d80a1a8f191f3ec840419f59d",
+    "results_archive_sha256": "13b7c95e421f95a25e5bf69c9087caab05a2a27020dffa1678ed362ad1fcebf4",
+    "wheel_sha256": "9e85dfa08c64071da8bb7158d2256ed5ae177b7ca0841284837b80b850c21f29",
+    "returncode": 0,
+    "timed_out": false,
+    "selected_tests_passed": 367,
+    "tests_failed": 0,
+    "tests_skipped": 0,
+    "python_files_verified_against_source": 152,
+    "owned_runtime_stopped": true,
+    "environment_warning": "job-local cu128 install reports conflicts with unused inherited system RAPIDS/CUDA 13 packages; tested Torch/Triton scope only"
+  },
+  "local_wheel_sha256": "9e85dfa08c64071da8bb7158d2256ed5ae177b7ca0841284837b80b850c21f29",
+  "correctness": {
+    "full": {
+      "y": {
+        "max": 2.880039388919453e-08,
+        "rel_l2": 9.709893765124409e-08
+      },
+      "dx": {
+        "max": 3.458474262529876e-08,
+        "rel_l2": 1.1321243008422405e-07
+      },
+      "dp": {
+        "max": 0.00019776835215212785,
+        "rel_l2": 6.91978033561649e-05
+      },
+      "w": {
+        "max": 1.1697243749997366e-08,
+        "rel_l2": 9.668112165998563e-08
+      },
+      "updated": {
+        "y": {
+          "max": 3.1255673701990894e-08,
+          "rel_l2": 8.676222872948759e-08
+        },
+        "dx": {
+          "max": 2.9025834014095864e-08,
+          "rel_l2": 1.4430089078163373e-07
+        },
+        "dp": {
+          "max": 4.385057131850445e-07,
+          "rel_l2": 1.7861095843867992e-07
+        },
+        "w": {
+          "max": 7.546062184837776e-09,
+          "rel_l2": 7.833067243520687e-08
+        }
+      }
+    },
+    "window": {
+      "y": {
+        "max": 2.880039388919453e-08,
+        "rel_l2": 9.709893765124409e-08
+      },
+      "dx": {
+        "max": 3.458474262529876e-08,
+        "rel_l2": 1.1321243008422405e-07
+      },
+      "dp": {
+        "max": 0.00019776835215212785,
+        "rel_l2": 6.91977722026961e-05
+      },
+      "w": {
+        "max": 1.1697243749997366e-08,
+        "rel_l2": 9.668112165998563e-08
+      },
+      "updated": {
+        "y": {
+          "max": 3.1255673701990894e-08,
+          "rel_l2": 8.676222872948759e-08
+        },
+        "dx": {
+          "max": 2.9025834014095864e-08,
+          "rel_l2": 1.4430089078163373e-07
+        },
+        "dp": {
+          "max": 1.4048248930809137e-07,
+          "rel_l2": 8.549351085710648e-08
+        },
+        "w": {
+          "max": 7.546062184837776e-09,
+          "rel_l2": 7.833067243520687e-08
+        }
+      }
+    }
+  },
+  "measurements": [
+    {
+      "case": "broad",
+      "algorithm": "full",
+      "n": 1024,
+      "a": 52429,
+      "m": 128,
+      "profile": "broad",
+      "memory": "full",
+      "dense": false,
+      "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+      "eager_ms": 1.8447630000082427,
+      "graph_ms": 0.6203080001796479,
+      "eager_wall": {
+        "median_ms": 1.8447630000082427,
+        "samples_ms": [
+          1.9434730002103606,
+          1.878928000223823,
+          1.8447630000082427,
+          1.836714000091888,
+          1.8558110000412853,
+          1.8002169999817852,
+          1.775888999873132
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "graph_wall": {
+        "median_ms": 0.6203080001796479,
+        "samples_ms": [
+          0.6631289998040302,
+          0.6278849996306235,
+          0.6203080001796479,
+          0.6258769999476499,
+          0.61362199994619,
+          0.6155910000416043,
+          0.6144379999568628
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "allocated_before_capture": 44982272,
+      "max_allocated_capture_replay": 54369792,
+      "max_reserved_capture_replay": 111149056,
+      "optimizer_steps": 20.0,
+      "scope": "full-shape timing, no independent all-A oracle"
+    },
+    {
+      "case": "broad",
+      "algorithm": "window",
+      "n": 1024,
+      "a": 52429,
+      "m": 128,
+      "profile": "broad",
+      "memory": "window",
+      "dense": false,
+      "initial_p_sha256": "dc15f47548eab70ed599f82252a5680cd802e687e096aafd9c3b1caf27d32a4c",
+      "eager_ms": 3.047959000014089,
+      "graph_ms": 1.5069519999997283,
+      "eager_wall": {
+        "median_ms": 3.047959000014089,
+        "samples_ms": [
+          3.1517930001427885,
+          3.047959000014089,
+          3.042986999844288,
+          3.0151869996188907,
+          3.060100999846327,
+          3.1172200001492456,
+          3.027621999990515
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "graph_wall": {
+        "median_ms": 1.5069519999997283,
+        "samples_ms": [
+          1.547901999856549,
+          1.5069519999997283,
+          1.5072669998517085,
+          1.5029870000944356,
+          1.5096580000317772,
+          1.5040900002531998,
+          1.506841000264103
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "allocated_before_capture": 45245440,
+      "max_allocated_capture_replay": 48408064,
+      "max_reserved_capture_replay": 90177536,
+      "optimizer_steps": 20.0,
+      "scope": "full-shape timing, no independent all-A oracle"
+    },
+    {
+      "case": "dense comparison for broad",
+      "algorithm": "dense",
+      "n": 1024,
+      "m": 128,
+      "profile": "not applicable to dense",
+      "memory": "full",
+      "dense": true,
+      "eager_ms": 0.7272359998751199,
+      "graph_ms": 0.1270799998565053,
+      "eager_wall": {
+        "median_ms": 0.7272359998751199,
+        "samples_ms": [
+          0.8132230000228446,
+          0.7647120000910945,
+          0.730292999833182,
+          0.7272359998751199,
+          0.7093320000421954,
+          0.6848240000181249,
+          0.6977789998927619
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "graph_wall": {
+        "median_ms": 0.1270799998565053,
+        "samples_ms": [
+          0.15365899980679387,
+          0.12887699995189905,
+          0.1270799998565053,
+          0.12574700031109387,
+          0.12693500002569635,
+          0.12643400032175123,
+          0.12745599997288082
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "allocated_before_capture": 52429312,
+      "max_allocated_capture_replay": 52955648,
+      "max_reserved_capture_replay": 111149056,
+      "optimizer_steps": 20.0,
+      "scope": "full-shape timing, no independent all-A oracle"
+    },
+    {
+      "case": "sharp",
+      "algorithm": "full",
+      "n": 1024,
+      "a": 52429,
+      "m": 128,
+      "profile": "sharp",
+      "memory": "full",
+      "dense": false,
+      "initial_p_sha256": "5ad7662aa741c0544d1c13f0af7e8886ccffd8f459dce67de1b7e1dca5e535fb",
+      "eager_ms": 1.8123180002476147,
+      "graph_ms": 0.5386730003920093,
+      "eager_wall": {
+        "median_ms": 1.8123180002476147,
+        "samples_ms": [
+          1.873122999768384,
+          1.8156330002057075,
+          1.7871159998321673,
+          1.8196820001321612,
+          1.8024920000243583,
+          1.8123180002476147,
+          1.7956179999600863
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "graph_wall": {
+        "median_ms": 0.5386730003920093,
+        "samples_ms": [
+          0.5809100002807099,
+          0.54503699993802,
+          0.5386730003920093,
+          0.5364640001062071,
+          0.5389960001593863,
+          0.5386089997045929,
+          0.5374460001803527
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "allocated_before_capture": 44982272,
+      "max_allocated_capture_replay": 54369792,
+      "max_reserved_capture_replay": 111149056,
+      "optimizer_steps": 20.0,
+      "scope": "full-shape timing, no independent all-A oracle"
+    },
+    {
+      "case": "sharp",
+      "algorithm": "window",
+      "n": 1024,
+      "a": 52429,
+      "m": 128,
+      "profile": "sharp",
+      "memory": "window",
+      "dense": false,
+      "initial_p_sha256": "5ad7662aa741c0544d1c13f0af7e8886ccffd8f459dce67de1b7e1dca5e535fb",
+      "eager_ms": 3.049950999866269,
+      "graph_ms": 0.306168999941292,
+      "eager_wall": {
+        "median_ms": 3.049950999866269,
+        "samples_ms": [
+          3.137087999675714,
+          3.0677409999952943,
+          3.051684999718418,
+          3.0407569997805695,
+          3.0300210000859806,
+          3.049950999866269,
+          3.0483810000987432
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "graph_wall": {
+        "median_ms": 0.306168999941292,
+        "samples_ms": [
+          0.35242700005255756,
+          0.3072099998462363,
+          0.306168999941292,
+          0.3076540001529793,
+          0.3032959998563456,
+          0.30590400001528906,
+          0.3061330003220064
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "allocated_before_capture": 45245440,
+      "max_allocated_capture_replay": 48408064,
+      "max_reserved_capture_replay": 90177536,
+      "optimizer_steps": 20.0,
+      "scope": "full-shape timing, no independent all-A oracle"
+    },
+    {
+      "case": "dense comparison for sharp",
+      "algorithm": "dense",
+      "n": 1024,
+      "m": 128,
+      "profile": "not applicable to dense",
+      "memory": "full",
+      "dense": true,
+      "eager_ms": 0.7497279998460726,
+      "graph_ms": 0.12688700007856824,
+      "eager_wall": {
+        "median_ms": 0.7497279998460726,
+        "samples_ms": [
+          0.787820999903488,
+          0.7497279998460726,
+          0.8397230003538425,
+          0.7545639996351383,
+          0.7319480000660405,
+          0.7233770002130768,
+          0.6969070000195643
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "graph_wall": {
+        "median_ms": 0.12688700007856824,
+        "samples_ms": [
+          0.1522029997431673,
+          0.12709500015262165,
+          0.12688700007856824,
+          0.12639699980354635,
+          0.12567399971885607,
+          0.1269229996978538,
+          0.12536800022644456
+        ],
+        "clock": "perf_counter with CUDA synchronization; no event instrumentation"
+      },
+      "allocated_before_capture": 52429312,
+      "max_allocated_capture_replay": 52955648,
+      "max_reserved_capture_replay": 111149056,
+      "optimizer_steps": 20.0,
+      "scope": "full-shape timing, no independent all-A oracle"
+    }
+  ],
+  "measurement_scope": {
+    "rows": 128,
+    "n": 1024,
+    "atoms": 52429,
+    "dtype": "float32",
+    "tf32": false,
+    "optimizer": "fused capturable AdamW lr=1e-4 weight_decay=.01",
+    "memory": "peak allocated/reserved including CUDA Graph capture and replay; each case in an isolated process",
+    "total_gpu_process_usage": "unmeasured",
+    "oracle": "independent mixed small fixture; full-size all-atom independent gradient oracle not performed",
+    "scope": "chart and coordinate package integration verification; no algorithm promotion or speedup claim",
+    "atoms_applies_to": "CST cases; dense baseline has a 1024 x 1024 weight matrix"
+  },
+  "reproduction": "python3 ~/.codex/skills/colab-l4-pool/scripts/pool.py submit --source \"$PWD\" --script \"$PWD/benchmarks/cuda/linear/validate_linear_unification.py\" --label chart-types --timeout 600 -- 76d0a756e4483cfb810551d0c869bc007c04db28 --chart-suite",
+  "raw_evidence": "benchmarks/cuda/linear/evidence/chart-types/gpu/l4job-16c752a2fcc6477abc0dd05be209520d",
+  "interrupted_attempt": {
+    "job_id": "l4job-e14ae3b8bc8c4a04ad9ca78ceaa13275",
+    "cause": "completion response lost; owned endpoint no longer found; no calculation result retrieved",
+    "owned_runtime_stopped": true,
+    "source_archive_sha256": "87018fbdedf0dd820498f5aa60469ae266bf90ddf8fc53a83f2c74ed19924ffe",
+    "raw_evidence": "benchmarks/cuda/linear/evidence/chart-types/gpu/l4job-e14ae3b8bc8c4a04ad9ca78ceaa13275"
+  }
+}
