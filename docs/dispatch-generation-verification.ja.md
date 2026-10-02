@@ -66,8 +66,16 @@ PYTHONPATH=src .venv/bin/python -m benchmarks.dispatch \
 submissionは0件で、テスト用の偽観測は登録していない。
 
 専用roleで本番Neonから生成するCLIは確認済み。GitHub Secret自体は変更していない。
-新しい生成workflowはPRのmain反映後に手動実行を確認する。
-Issueからの新規提出の本番end-to-end確認も別途残る。
+PR #19をmainへマージし、commit `99f4e52f2c47be631a3a45e8f92d47d78c241dfa`で
+[生成Actions（37021155265）](https://github.com/takumiecd/torchcst/actions/runs/37021155265)が成功した。
+Environment `benchmark-database`の既存Secret `NEON_DATABASE_URL`でNeonへ接続し、
+観測抽出・ランキング・JSON生成・artifact保存まで完了した。
+ダウンロードしたdispatch.json・leaderboard.json・dataset.jsonは、上記のローカル生成物と
+すべてバイト単位で一致した。Actions生成物はignored
+`output/dispatch-generation-actions-evidence/`に保存した。
+生成したartifactは候補であり、既定dispatcherの自動更新は行わない。
+
+Issue受付の本番確認は[受付の検証記録](issue-submission-verification.ja.md)を参照。
 
 使い方は [生成ガイド](../benchmarks/dispatch/README.md)を参照。
 
