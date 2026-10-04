@@ -480,7 +480,7 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
     ],
 )
 def test_graph_training_updates_width_and_matches_public_optimizer(
-    plan_id, size_override=None
+    plan_id, size_override=None, polar_update="torch", updates=4
 ):
     from benchmarks.cuda.linear.local_product import (
         fixture_operator,
@@ -540,7 +540,7 @@ def test_graph_training_updates_width_and_matches_public_optimizer(
         x.grad = None
         y = model(x)
         ((y * target).sum() / x.numel()).backward()
-        optimizer_step(model, opt, step_size=0.0001)
+        optimizer_step(model, opt, step_size=0.0001, polar_update=polar_update)
         return y
 
     stream = torch.cuda.Stream()
@@ -577,7 +577,7 @@ def test_graph_training_updates_width_and_matches_public_optimizer(
         group["capturable"] = False
     oracle = CSTOptimizer(base, model=truth)
     tx = x.detach().clone().to(truth.atoms.p.dtype).requires_grad_()
-    for _ in range(4):
+    for _ in range(updates):
         oracle.zero_grad()
         tx.grad = None
         expected_y = truth(tx)

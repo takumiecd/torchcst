@@ -87,3 +87,9 @@ N64 is the primary development fixture; small-shape slack and mixed widths still
 cost time/memory. Public FP32 singleton-gradient residuals were isolated with an
 independent FP64 check; new captured-update oracles use public FP64 with unchanged
 tolerances and measured candidates remain FP32.
+
+2026-10-04: [Fused PolarAmpWidth update](20261004-polar-update-fusion.md),
+67 L4 tests per validated batch,20-step production optimizer comparisons and
+nine full-shape scalar gradient gates. N64 middle complete step150.622→73.103us;
+N64 narrow-only123.484→46.274us. Sigma3 also improves177.722→99.636us with live
+width updates. Measured peak allocated memory is unchanged; dense remains faster.

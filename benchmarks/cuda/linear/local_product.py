@@ -308,7 +308,10 @@ def initialize(case):
 def correctness(args, run, model_type):
     """Independent FP64 scalar oracle, including live/floor singleton gradients."""
     from benchmarks.cuda.linear.check_normalized import check
-    from torchcst._backends.cuda.algorithms.local_product.polar import graph_update
+    from torchcst._backends.cuda.algorithms.local_product.polar import (
+        fused_update_,
+        graph_update,
+    )
     from torchcst._backends.torch.kernels import execution
 
     domain = Domain(16, 16)
@@ -337,14 +340,21 @@ def correctness(args, run, model_type):
         truth = truth + amp * (tx * v).sum(1)[:, None] * u[None]
     ga = torch.autograd.grad(y, (x, model.p), dy)
     gt = torch.autograd.grad(truth, (tx, tp), dy.double())
-    actual_update = graph_update(
-        value, p, -run.case.optimizer.lr * ga[1], step_size=run.case.optimizer.lr
-    )
+    displacement = -run.case.optimizer.lr * ga[1]
+    if args.polar_update == "fused":
+        actual_update = p + displacement
+        # Optimizer integration receives the already-rounded proposal.
+        displacement = actual_update - p
+        fused_update_(value, p, actual_update, step_size=run.case.optimizer.lr)
+    else:
+        actual_update = graph_update(
+            value, p, displacement, step_size=run.case.optimizer.lr
+        )
     expected_update = execution.apply_parameter_update(
         value,
         *domain.charts(device="cuda"),
         p,
-        -run.case.optimizer.lr * ga[1],
+        displacement,
         step_size=run.case.optimizer.lr,
     )
     return {
@@ -357,18 +367,37 @@ def correctness(args, run, model_type):
     }
 
 
-def optimizer_step(model, optimizer, *, step_size):
+def optimizer_step(model, optimizer, *, step_size, polar_update="torch", events=None):
     """Graph-safe specialization, checked against CSTOptimizer for this fixture."""
-    from torchcst._backends.cuda.algorithms.local_product.polar import graph_update
+    from torchcst._backends.cuda.algorithms.local_product.polar import (
+        fused_update_,
+        graph_update,
+    )
 
+    if polar_update not in ("torch", "fused"):
+        raise ValueError("unknown polar update implementation")
+
+    if events is not None:
+        events[0].record()
     previous = model.p.detach().clone()
+    if events is not None:
+        events[1].record()
     optimizer.step()
+    if events is not None:
+        events[2].record()
     with torch.no_grad():
+        if polar_update == "fused":
+            fused_update_(model.local_state, previous, model.p, step_size=step_size)
+            if events is not None:
+                events[3].record()
+            return
         model.p.copy_(
             graph_update(
                 model.local_state, previous, model.p - previous, step_size=step_size
             )
         )
+    if events is not None:
+        events[3].record()
 
 
 def measure_prepared_forward(case, recipe=None):

@@ -126,6 +126,7 @@ def _metadata(args, run):
         "snapshot_sha256": args.snapshot_sha256,
         "worker": args.worker,
         "plan_id": args.plan_id,
+        "polar_update": args.polar_update,
         "plan": None
         if args.worker == "dense"
         else REGISTRY.dump_plan(run.entry(args.plan_id).plan),
@@ -242,7 +243,7 @@ def measure(args, run):
         capturable=case.optimizer.capturable,
     )
 
-    def step(events=None):
+    def step(events=None, update_events=None):
         if events is not None:
             events[0].record()
         optimizer.zero_grad(set_to_none=True)
@@ -256,7 +257,13 @@ def measure(args, run):
         if local and args.worker != "dense":
             from benchmarks.cuda.linear.local_product import optimizer_step
 
-            optimizer_step(model, optimizer, step_size=case.optimizer.lr)
+            optimizer_step(
+                model,
+                optimizer,
+                step_size=case.optimizer.lr,
+                polar_update=args.polar_update,
+                events=update_events,
+            )
         else:
             optimizer.step()
         if events is not None:
@@ -389,20 +396,37 @@ def measure(args, run):
         # measurement. External event nodes add overhead; these are diagnostics,
         # not replacements for uninstrumented complete-step graph timings.
         events = [torch.cuda.Event(enable_timing=True, external=True) for _ in range(4)]
+        update_events = (
+            [torch.cuda.Event(enable_timing=True, external=True) for _ in range(4)]
+            if local and args.worker != "dense"
+            else None
+        )
         diagnostic = torch.cuda.CUDAGraph()
         with torch.cuda.graph(diagnostic, stream=stream):
-            step(events)
+            step(events, update_events)
         samples = {name: [] for name in ("forward_loss", "backward", "optimizer")}
+        update_samples = {name: [] for name in ("old_snapshot", "adamw", "polar")}
         for _ in range(case.rounds):
             diagnostic.replay()
             torch.cuda.synchronize()
             for index, values in enumerate(samples.values()):
                 values.append(events[index].elapsed_time(events[index + 1]))
+            if update_events is not None:
+                for index, values in enumerate(update_samples.values()):
+                    values.append(
+                        update_events[index].elapsed_time(update_events[index + 1])
+                    )
         phases = {
             "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
             "phases": {
                 name: {"median_ms": statistics.median(values), "samples_ms": values}
                 for name, values in samples.items()
+            },
+            "optimizer_components": None
+            if update_events is None
+            else {
+                name: {"median_ms": statistics.median(values), "samples_ms": values}
+                for name, values in update_samples.items()
             },
         }
     core = None
@@ -479,6 +503,12 @@ def main():
     ap.add_argument("--correctness-only", action="store_true")
     ap.add_argument("--phase-diagnostics", action="store_true")
     ap.add_argument("--core-diagnostics", action="store_true")
+    ap.add_argument(
+        "--polar-update",
+        choices=("torch", "fused"),
+        default="torch",
+        help="local-product research polar update; AdamW is unchanged",
+    )
     ap.add_argument("--output", type=Path)
     ap.add_argument(
         "--worker", choices=("correctness", "measure", "dense"), help=argparse.SUPPRESS
@@ -525,6 +555,8 @@ def main():
             return
     if args.core_diagnostics and run.case.fixture != "local_polar_product":
         ap.error("--core-diagnostics requires the local product fixture")
+    if args.polar_update == "fused" and run.case.fixture != "local_polar_product":
+        ap.error("--polar-update fused requires the local product fixture")
     if not args.output:
         ap.error("--output is required for GPU execution")
     args.output = args.output.resolve()
@@ -592,6 +624,7 @@ def main():
             cmd += ["--phase-diagnostics"]
         if args.core_diagnostics:
             cmd += ["--core-diagnostics"]
+        cmd += ["--polar-update", args.polar_update]
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join(sys.path)
         returncode = None
