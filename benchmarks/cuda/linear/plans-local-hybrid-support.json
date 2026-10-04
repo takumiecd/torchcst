@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "local-fused",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": true,
+          "route": "fused",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-saved",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": true,
+          "route": "saved",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-unpacked",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "fused",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-torch",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "torch",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-polar",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "polar",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-polar-saved",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "polar_saved",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-hybrid-rho2",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            2.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "hybrid",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-hybrid",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "hybrid",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-hybrid-rho8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            8.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "hybrid",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-hybrid-support-rho2",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            2.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "hybrid_support",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-hybrid-support",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "hybrid_support",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-hybrid-support-rho8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            8.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "hybrid_support",
+          "support_limit": 8
+        }
+      }
+    }
+  ]
+}

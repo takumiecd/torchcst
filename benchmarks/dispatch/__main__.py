@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from benchmarks.cuda.linear.manifest import REGISTRY
 from torchcst._backends.cuda.serialization import decode_json, encode_json
 
 from .generate import generate

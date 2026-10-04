@@ -1,0 +1,350 @@
+{
+  "adapter": "cuda.linear.complete-step",
+  "adapter_revision": 3,
+  "certification": "not assessed",
+  "database_after": {
+    "cases": 7,
+    "metrics": 798,
+    "plans": 8,
+    "projections": 14,
+    "records": 126,
+    "run_plans": 56,
+    "runs": 14
+  },
+  "database_before": {
+    "cases": 1,
+    "metrics": 124,
+    "plans": 2,
+    "projections": 4,
+    "records": 20,
+    "run_plans": 8,
+    "runs": 4
+  },
+  "independent_runs_per_final_case": 1,
+  "kernel_checkpoint": "9dffad67",
+  "registrations": [
+    {
+      "case": "128-early",
+      "dataset_id": "5292f68c7649c965cec28dbad1f5cc5b847ba304517f7a816a12586a2bb66758",
+      "dispatch_sha256": "9919161bbd7e0ba279d90544b3da58ba7c3985ca9343bc28bf5650f6a3a68773",
+      "evidence_ids": [
+        "adbbce0143b09a1b374d333cd8b2319c630a9d06c2a58d32270f4be7aa3a7fae:9"
+      ],
+      "independent_runs": 1,
+      "output": "benchmarks/database/evidence/local-product-20261005/generated/128-early-speed",
+      "peak_allocated_bytes": 509952,
+      "policy": "speed",
+      "request": "benchmarks/dispatch/requests/local-product-l4-20261005/128-early-speed.json",
+      "selected_alias": "persistent-supportprep-g",
+      "selected_route": "persistent_supportprep_g",
+      "step_ms": 0.18015899968304439
+    },
+    {
+      "case": "128-early",
+      "dataset_id": "5292f68c7649c965cec28dbad1f5cc5b847ba304517f7a816a12586a2bb66758",
+      "dispatch_sha256": "f7e86c26c0d52e903a5be83beb79d62ed1b28e15e2dd8fa6dce529c9725b1e21",
+      "evidence_ids": [
+        "adbbce0143b09a1b374d333cd8b2319c630a9d06c2a58d32270f4be7aa3a7fae:11"
+      ],
+      "independent_runs": 1,
+      "output": "benchmarks/database/evidence/local-product-20261005/generated/128-early-baseline-peak",
+      "peak_allocated_bytes": 417280,
+      "policy": "baseline-peak",
+      "request": "benchmarks/dispatch/requests/local-product-l4-20261005/128-early-baseline-peak.json",
+      "selected_alias": "persistent-supportprep-band",
+      "selected_route": "persistent_supportprep_band",
+      "step_ms": 0.1920100003189873
+    },
+    {
+      "case": "64-middle",
+      "dataset_id": "85ea5b6245ae9cf05f098cc3187533347e6ade78964b955027f34e58f217e9a1",
+      "dispatch_sha256": "3da446f9dbe504c7875aad37e2d8475edf2495033f66acfe77345454c95841ee",
+      "evidence_ids": [
+        "14dedeb08d2f76407289d031742b0618b481ea78c62310cb9b52dda502af2f87:11"
+      ],
+      "independent_runs": 1,
+      "output": "benchmarks/database/evidence/local-product-20261005/generated/64-middle-speed",
+      "peak_allocated_bytes": 152064,
+      "policy": "speed",
+      "request": "benchmarks/dispatch/requests/local-product-l4-20261005/64-middle-speed.json",
+      "selected_alias": "persistent-supportprep-band",
+      "selected_route": "persistent_supportprep_band",
+      "step_ms": 0.0661570002193912
+    },
+    {
+      "case": "64-middle",
+      "dataset_id": "85ea5b6245ae9cf05f098cc3187533347e6ade78964b955027f34e58f217e9a1",
+      "dispatch_sha256": "1c05f6aebf89cdaa9f032a1d117f61434b6b245189da0fb8caf2d432d0a67eca",
+      "evidence_ids": [
+        "14dedeb08d2f76407289d031742b0618b481ea78c62310cb9b52dda502af2f87:11"
+      ],
+      "independent_runs": 1,
+      "output": "benchmarks/database/evidence/local-product-20261005/generated/64-middle-baseline-peak",
+      "peak_allocated_bytes": 152064,
+      "policy": "baseline-peak",
+      "request": "benchmarks/dispatch/requests/local-product-l4-20261005/64-middle-baseline-peak.json",
+      "selected_alias": "persistent-supportprep-band",
+      "selected_route": "persistent_supportprep_band",
+      "step_ms": 0.0661570002193912
+    },
+    {
+      "case": "64-narrow-only",
+      "dataset_id": "767d0cde47c580db3091d3d097733892f2b25eb0831b5485e20d424589ca7a9c",
+      "dispatch_sha256": "ed24e8cbc8e07286650091e754d707c25148fead622feb695eeb2997cce6f9ac",
+      "evidence_ids": [
+        "236e8c78063954c8d49ce24b8c561bbf9c142d815716fd487cd5446c41ea383f:11"
+      ],
+      "independent_runs": 1,
+      "output": "benchmarks/database/evidence/local-product-20261005/generated/64-narrow-only-speed",
+      "peak_allocated_bytes": 152064,
+      "policy": "speed",
+      "request": "benchmarks/dispatch/requests/local-product-l4-20261005/64-narrow-only-speed.json",
+      "selected_alias": "persistent-supportprep-band",
+      "selected_route": "persistent_supportprep_band",
+      "step_ms": 0.043992000428261235
+    },
+    {
+      "case": "64-narrow-only",
+      "dataset_id": "767d0cde47c580db3091d3d097733892f2b25eb0831b5485e20d424589ca7a9c",
+      "dispatch_sha256": "643b53a9394a5c4e898100544af71871daadfffb5f0b74765582fc9c3dc2928a",
+      "evidence_ids": [
+        "236e8c78063954c8d49ce24b8c561bbf9c142d815716fd487cd5446c41ea383f:11"
+      ],
+      "independent_runs": 1,
+      "output": "benchmarks/database/evidence/local-product-20261005/generated/64-narrow-only-baseline-peak",
+      "peak_allocated_bytes": 152064,
+      "policy": "baseline-peak",
+      "request": "benchmarks/dispatch/requests/local-product-l4-20261005/64-narrow-only-baseline-peak.json",
+      "selected_alias": "persistent-supportprep-band",
+      "selected_route": "persistent_supportprep_band",
+      "step_ms": 0.043992000428261235
+    },
+    {
+      "case": "64-sigma3",
+      "dataset_id": "e6fd194585e18a9fc3419dd25d07a15fcd344c55bba46102b9023b500b047887",
+      "dispatch_sha256": "592b97d5026800109534c477875300a157f10e1ab1d2c7c749837bebe453474f",
+      "evidence_ids": [
+        "5b472dcbb1269575f784842348bf47ea21b796a29ff1ea7cb07b540882279b97:9"
+      ],
+      "independent_runs": 1,
+      "output": "benchmarks/database/evidence/local-product-20261005/generated/64-sigma3-speed",
+      "peak_allocated_bytes": 178176,
+      "policy": "speed",
+      "request": "benchmarks/dispatch/requests/local-product-l4-20261005/64-sigma3-speed.json",
+      "selected_alias": "persistent-supportprep-g",
+      "selected_route": "persistent_supportprep_g",
+      "step_ms": 0.0845180002215784
+    },
+    {
+      "case": "64-sigma3",
+      "dataset_id": "e6fd194585e18a9fc3419dd25d07a15fcd344c55bba46102b9023b500b047887",
+      "dispatch_sha256": "746764fe1d2ddd217eb3c675f82bd613565ffcf463e43c8ae8cdc323a0bc6e4a",
+      "evidence_ids": [
+        "5b472dcbb1269575f784842348bf47ea21b796a29ff1ea7cb07b540882279b97:11"
+      ],
+      "independent_runs": 1,
+      "output": "benchmarks/database/evidence/local-product-20261005/generated/64-sigma3-baseline-peak",
+      "peak_allocated_bytes": 152064,
+      "policy": "baseline-peak",
+      "request": "benchmarks/dispatch/requests/local-product-l4-20261005/64-sigma3-baseline-peak.json",
+      "selected_alias": "persistent-supportprep-band",
+      "selected_route": "persistent_supportprep_band",
+      "step_ms": 0.0848359995870851
+    }
+  ],
+  "research_branch": "codex/local-product-hybrid",
+  "runs": [
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/initial-results/artifacts/local-size-128-early.json",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3",
+      "execution_id": "8a87ec1e-0966-44e4-9a30-9781208f02e6",
+      "phase": "initial-results",
+      "projection_id": "4c4f50a0510d6d4e199e87e379db8db574a26482c5eb46fc6c7be5b7cb61cdcd",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-5b39198a2dbd4671bd2b6941faf96fa3",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "ad9c0feec7874c7fd14aac35ea13494aaf3eeaffef7af6ed1c065b71c9b48875",
+        "source_snapshot_sha256": "d9924bc06d550718ec9427df625cf9c015aefc6c2fe216223f3fe88da3984775"
+      },
+      "raw_sha256": "d4c0eb3c01534c7d217d4bbe29eaa9d650b20f863fdeb9f38f5ec11ea144cdc8",
+      "run_id": "b521560164ae0e43875aaeea4b10fd1cefb58748422f895ac94ae50c5b0cdd8c",
+      "run_inserted": true,
+      "source_id": "0331bd639c85c964a94bdab1b2d77ad726d1f345dbb6bfa3c583bc99b12f29cc"
+    },
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/initial-results/artifacts/local-size-128-middle.json",
+      "case_id": "38adbd9c57116ff6cf2278e8d5d673d01c5097a6462d0ebaa660b30d8c87f729",
+      "execution_id": "9ce3bbcb-bda6-44cc-b4dd-8c26afdbf4cf",
+      "phase": "initial-results",
+      "projection_id": "103529dd8462878ad7eb6e54e19b0acfabeed8b8a5c8da4f7ae52078d517c6bd",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-5b39198a2dbd4671bd2b6941faf96fa3",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "ad9c0feec7874c7fd14aac35ea13494aaf3eeaffef7af6ed1c065b71c9b48875",
+        "source_snapshot_sha256": "d9924bc06d550718ec9427df625cf9c015aefc6c2fe216223f3fe88da3984775"
+      },
+      "raw_sha256": "45ca57792ff494adbfaceb05324822ab5e48d2cc344e778d8b01404aa9997a63",
+      "run_id": "ac9764fc2061e39023b69c658d0849b62141f1077df9bf21a229d7a5bb99f699",
+      "run_inserted": true,
+      "source_id": "0331bd639c85c964a94bdab1b2d77ad726d1f345dbb6bfa3c583bc99b12f29cc"
+    },
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/initial-results/artifacts/local-size-64-early.json",
+      "case_id": "92838f39847f7ed2f8d835dc13db0ffbc0a6aa48c1904171877d2e32000b4199",
+      "execution_id": "738b4e91-99a6-4dea-8d2a-b05757e0415f",
+      "phase": "initial-results",
+      "projection_id": "a281166a321b7391b811ef8516b0b5a75b9111d9c4db81446c609b41d9a2fd22",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-5b39198a2dbd4671bd2b6941faf96fa3",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "ad9c0feec7874c7fd14aac35ea13494aaf3eeaffef7af6ed1c065b71c9b48875",
+        "source_snapshot_sha256": "d9924bc06d550718ec9427df625cf9c015aefc6c2fe216223f3fe88da3984775"
+      },
+      "raw_sha256": "88ffa603e7bac13bdcb714c38a77d2333a3a071a9c00865e4d223d51116d5d37",
+      "run_id": "ce34d967732c0ed8c4f041f940d0d89869c0f61a8e26f241313e4a8545ef8da3",
+      "run_inserted": true,
+      "source_id": "0331bd639c85c964a94bdab1b2d77ad726d1f345dbb6bfa3c583bc99b12f29cc"
+    },
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/initial-results/artifacts/local-size-64-middle.json",
+      "case_id": "a4dcc75b4777400d3abf38c44b7db16a389a2235ab02224beb96b149bb995a3e",
+      "execution_id": "70417b53-b50e-4787-8ac0-d2719b81c165",
+      "phase": "initial-results",
+      "projection_id": "399175949a2721e656d1b2f41339f14380d034b9c2bab85cbe1d8c8f5a6bfa98",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-5b39198a2dbd4671bd2b6941faf96fa3",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "ad9c0feec7874c7fd14aac35ea13494aaf3eeaffef7af6ed1c065b71c9b48875",
+        "source_snapshot_sha256": "d9924bc06d550718ec9427df625cf9c015aefc6c2fe216223f3fe88da3984775"
+      },
+      "raw_sha256": "b730c562990a021ac875212bffcd4f393f6e787a1ed9ddf7b61a0812d8df7c45",
+      "run_id": "3a80e96fe37574db40fcc437671ca78d0cab0bd24cb8a50df5f687660f4e3175",
+      "run_inserted": true,
+      "source_id": "0331bd639c85c964a94bdab1b2d77ad726d1f345dbb6bfa3c583bc99b12f29cc"
+    },
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/initial-results/artifacts/local-size-64-narrow-only.json",
+      "case_id": "ecd024e3dc852bc3d6e9934d72e05e63b0c4ad9baefcb4b55c1afceea332e00c",
+      "execution_id": "b187cf24-5062-4350-a26c-7202dcb9fe0a",
+      "phase": "initial-results",
+      "projection_id": "5ba7f3bd7810abc70d1745f89b7645216779416d95e0898f85ff0ddae1992adb",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-5b39198a2dbd4671bd2b6941faf96fa3",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "ad9c0feec7874c7fd14aac35ea13494aaf3eeaffef7af6ed1c065b71c9b48875",
+        "source_snapshot_sha256": "d9924bc06d550718ec9427df625cf9c015aefc6c2fe216223f3fe88da3984775"
+      },
+      "raw_sha256": "f23133b683fceea8fc5546d7dd589355046c1439e8d1217378dac13e267170f0",
+      "run_id": "8b614d66625d9d75eef59d7d9489a60abe15b8619046e0fb3ee9f7e70c2e388a",
+      "run_inserted": true,
+      "source_id": "0331bd639c85c964a94bdab1b2d77ad726d1f345dbb6bfa3c583bc99b12f29cc"
+    },
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/initial-results/artifacts/local-size-64-sigma3.json",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0",
+      "execution_id": "7a43226d-1a59-49f8-89e1-aab50c92615b",
+      "phase": "initial-results",
+      "projection_id": "68736f868bbd24c549917deefff110f92ee10885230104b2cd4b329261d50009",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-5b39198a2dbd4671bd2b6941faf96fa3",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "ad9c0feec7874c7fd14aac35ea13494aaf3eeaffef7af6ed1c065b71c9b48875",
+        "source_snapshot_sha256": "d9924bc06d550718ec9427df625cf9c015aefc6c2fe216223f3fe88da3984775"
+      },
+      "raw_sha256": "db3061cb7efad4fb83be90034d07ced32c91844d595278e92d8f74c97b7c5d69",
+      "run_id": "d39ed1f8837a82a8771ffda912a64f8022443878e95d48e9a66e66a4d62d0eef",
+      "run_inserted": true,
+      "source_id": "0331bd639c85c964a94bdab1b2d77ad726d1f345dbb6bfa3c583bc99b12f29cc"
+    },
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/final-results/artifacts/local-size-128-early.json",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3",
+      "execution_id": "deb2e92d-0b26-4fde-adfe-557c100492e4",
+      "phase": "final-results",
+      "projection_id": "adbbce0143b09a1b374d333cd8b2319c630a9d06c2a58d32270f4be7aa3a7fae",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-b37da59e240841bf952bd4a8f6c108aa",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "303903c04d0a002ddc89d9405e17f103f1e449a050c26c1f496b47e2abcb9492",
+        "source_snapshot_sha256": "9d7ed30338eb278b97451d37883e12da2ccb1795a713e928bb72fe852a1eabda"
+      },
+      "raw_sha256": "1feba205e9e57fe3cdcd516d84f9f3e9d74e3afb33475fdd5456a3b5d2c9dd2a",
+      "run_id": "1a52bf420d3b077fe502d44c4c6d1170db7a3aaddc4e2a9f2e70d0eb245f1af8",
+      "run_inserted": true,
+      "source_id": "69b560101ea47bd3104dd6e022d33e0e0cf6ee9b65810ea46cab75e81da9ac1b"
+    },
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/final-results/artifacts/local-size-64-middle.json",
+      "case_id": "a4dcc75b4777400d3abf38c44b7db16a389a2235ab02224beb96b149bb995a3e",
+      "execution_id": "44f2e153-379b-4e8d-bdd4-6b5e6bbe92a3",
+      "phase": "final-results",
+      "projection_id": "14dedeb08d2f76407289d031742b0618b481ea78c62310cb9b52dda502af2f87",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-b37da59e240841bf952bd4a8f6c108aa",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "303903c04d0a002ddc89d9405e17f103f1e449a050c26c1f496b47e2abcb9492",
+        "source_snapshot_sha256": "9d7ed30338eb278b97451d37883e12da2ccb1795a713e928bb72fe852a1eabda"
+      },
+      "raw_sha256": "9dd3bbe9625af69daa1c6630822b8d030e2633e9638592dca7f570021d4130e0",
+      "run_id": "c00a922935a26329c8bee5aceab3bcb417528b194c63ce72091565fce6164566",
+      "run_inserted": true,
+      "source_id": "69b560101ea47bd3104dd6e022d33e0e0cf6ee9b65810ea46cab75e81da9ac1b"
+    },
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/final-results/artifacts/local-size-64-narrow-only.json",
+      "case_id": "ecd024e3dc852bc3d6e9934d72e05e63b0c4ad9baefcb4b55c1afceea332e00c",
+      "execution_id": "d466f108-5853-411c-ba01-8bcbf9aa8bc4",
+      "phase": "final-results",
+      "projection_id": "236e8c78063954c8d49ce24b8c561bbf9c142d815716fd487cd5446c41ea383f",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-b37da59e240841bf952bd4a8f6c108aa",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "303903c04d0a002ddc89d9405e17f103f1e449a050c26c1f496b47e2abcb9492",
+        "source_snapshot_sha256": "9d7ed30338eb278b97451d37883e12da2ccb1795a713e928bb72fe852a1eabda"
+      },
+      "raw_sha256": "faeac3fa4601ef57261af58a9c14a0fb590520edd0bd49d41ecf753c394b48b8",
+      "run_id": "2b386be71335dcc58fa8f8e8de9e178fdbb131c683c85691cf4aa81da711e588",
+      "run_inserted": true,
+      "source_id": "69b560101ea47bd3104dd6e022d33e0e0cf6ee9b65810ea46cab75e81da9ac1b"
+    },
+    {
+      "artifact": "benchmarks/cuda/linear/evidence/local-contraction-20261004/final-results/artifacts/local-size-64-sigma3.json",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0",
+      "execution_id": "1f902a8b-a22f-44ba-a9c6-01d5a12e2660",
+      "phase": "final-results",
+      "projection_id": "5b472dcbb1269575f784842348bf47ea21b796a29ff1ea7cb07b540882279b97",
+      "projection_inserted": true,
+      "provenance": {
+        "certification": "not assessed",
+        "job_id": "l4job-b37da59e240841bf952bd4a8f6c108aa",
+        "origin": "owned-colab-l4-pool",
+        "result_archive_sha256": "303903c04d0a002ddc89d9405e17f103f1e449a050c26c1f496b47e2abcb9492",
+        "source_snapshot_sha256": "9d7ed30338eb278b97451d37883e12da2ccb1795a713e928bb72fe852a1eabda"
+      },
+      "raw_sha256": "b996d02bc1b6743db522f2015630756bb9ef685f777ad4de19c9932067c21a91",
+      "run_id": "a162cd74cf10b9b8d7ead5f5973f1112cd951f32345cedbc7e3af0e575e814de",
+      "run_inserted": true,
+      "source_id": "69b560101ea47bd3104dd6e022d33e0e0cf6ee9b65810ea46cab75e81da9ac1b"
+    }
+  ],
+  "runtime_selection": "case-scoped exact candidates; rho mixture is not a runtime key",
+  "schema_version": 1
+}
