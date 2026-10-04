@@ -54,7 +54,7 @@ class PlanLinear(nn.Module):
             from benchmarks.cuda.linear.local_product import runtime
 
             self.local_state, domain = runtime(operator, self.p.device)
-            if plan.recipe.route == "hybrid_persistent":
+            if plan.recipe.execution_route == "hybrid_persistent":
                 from torchcst._backends.cuda.algorithms.local_product.persistent import (
                     PersistentLayout,
                 )
@@ -316,7 +316,7 @@ def measure(args, run):
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
-        if recipe.route in (
+        if recipe.execution_route in (
             "hybrid",
             "hybrid_support",
             "hybrid_three",
@@ -324,7 +324,7 @@ def measure(args, run):
             "hybrid_packed",
             "hybrid_persistent",
         ):
-            inclusive = recipe.route in (
+            inclusive = recipe.execution_route in (
                 "hybrid_three",
                 "hybrid_singletons",
                 "hybrid_packed",
@@ -370,7 +370,11 @@ def measure(args, run):
         final_support = summarize(
             decode(model.local_state, model.p).detach().cpu(), Domain(n, n)
         )
-        if recipe.route in ("hybrid_singletons", "hybrid_packed", "hybrid_persistent"):
+        if recipe.execution_route in (
+            "hybrid_singletons",
+            "hybrid_packed",
+            "hybrid_persistent",
+        ):
             hybrid_routing["singleton_direct_initial_atoms"] = support_report[
                 "onehot_both_live_atoms"
             ]
@@ -391,7 +395,7 @@ def measure(args, run):
     if args.worker != "dense" and model.persistent_layout is not None:
         layout_report = model.persistent_layout.report()
     phases = None
-    if args.phase_diagnostics:
+    if args.phase_diagnostics or args.kernel_diagnostics:
         # A separate instrumented training graph after the primary timing/memory
         # measurement. External event nodes add overhead; these are diagnostics,
         # not replacements for uninstrumented complete-step graph timings.
@@ -402,10 +406,27 @@ def measure(args, run):
             else None
         )
         diagnostic = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(diagnostic, stream=stream):
-            step(events, update_events)
+        backend_events = None
+        if args.kernel_diagnostics and local and args.worker != "dense":
+            from torchcst._backends.cuda.algorithms.local_product import executor
+
+            backend_events = {
+                name: [
+                    torch.cuda.Event(enable_timing=True, external=True)
+                    for _ in range(2)
+                ]
+                for name in ("prepare", "layout", "h", "output", "dx", "parameters")
+            }
+            executor.DIAGNOSTIC_EVENTS = backend_events
+        try:
+            with torch.cuda.graph(diagnostic, stream=stream):
+                step(events, update_events)
+        finally:
+            if backend_events is not None:
+                executor.DIAGNOSTIC_EVENTS = None
         samples = {name: [] for name in ("forward_loss", "backward", "optimizer")}
         update_samples = {name: [] for name in ("old_snapshot", "adamw", "polar")}
+        backend_samples = {name: [] for name in backend_events or {}}
         for _ in range(case.rounds):
             diagnostic.replay()
             torch.cuda.synchronize()
@@ -416,6 +437,9 @@ def measure(args, run):
                     values.append(
                         update_events[index].elapsed_time(update_events[index + 1])
                     )
+            for name, values in backend_samples.items():
+                pair = backend_events[name]
+                values.append(pair[0].elapsed_time(pair[1]))
         phases = {
             "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
             "phases": {
@@ -427,6 +451,10 @@ def measure(args, run):
             else {
                 name: {"median_ms": statistics.median(values), "samples_ms": values}
                 for name, values in update_samples.items()
+            },
+            "backend_components": {
+                name: {"median_ms": statistics.median(values), "samples_ms": values}
+                for name, values in backend_samples.items()
             },
         }
     core = None
@@ -465,7 +493,7 @@ def measure(args, run):
         "sigma_updates": sigma_updates,
         "persistent_layout": layout_report,
         "hybrid_routing": hybrid_routing,
-        "h_policy": run.entry(args.plan_id).plan.recipe.route
+        "h_policy": run.entry(args.plan_id).plan.recipe.execution_route
         if local and args.worker != "dense"
         else None,
         "compiler_reports": __import__(
@@ -503,6 +531,7 @@ def main():
     ap.add_argument("--correctness-only", action="store_true")
     ap.add_argument("--phase-diagnostics", action="store_true")
     ap.add_argument("--core-diagnostics", action="store_true")
+    ap.add_argument("--kernel-diagnostics", action="store_true")
     ap.add_argument(
         "--polar-update",
         choices=("torch", "fused"),
@@ -557,6 +586,11 @@ def main():
         ap.error("--core-diagnostics requires the local product fixture")
     if args.polar_update == "fused" and run.case.fixture != "local_polar_product":
         ap.error("--polar-update fused requires the local product fixture")
+    if args.kernel_diagnostics and (
+        run.case.fixture != "local_polar_product"
+        or any(entry.plan.recipe.execution_route == "torch" for entry in run.plans)
+    ):
+        ap.error("--kernel-diagnostics requires CUDA local product routes")
     if not args.output:
         ap.error("--output is required for GPU execution")
     args.output = args.output.resolve()
@@ -624,6 +658,8 @@ def main():
             cmd += ["--phase-diagnostics"]
         if args.core_diagnostics:
             cmd += ["--core-diagnostics"]
+        if args.kernel_diagnostics:
+            cmd += ["--kernel-diagnostics"]
         cmd += ["--polar-update", args.polar_update]
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join(sys.path)

@@ -480,7 +480,7 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
     ],
 )
 def test_graph_training_updates_width_and_matches_public_optimizer(
-    plan_id, size_override=None, polar_update="torch", updates=4
+    plan_id, size_override=None, polar_update="torch", updates=4, plan_override=None
 ):
     from benchmarks.cuda.linear.local_product import (
         fixture_operator,
@@ -527,6 +527,8 @@ def test_graph_training_updates_width_and_matches_public_optimizer(
 
     entries = decode_catalog(read_json(catalog)[0])
     plan = next(entry.plan for entry in entries if entry.id == plan_id)
+    if plan_override is not None:
+        plan = plan_override
     model = PlanLinear(initialize(case.case).cuda(), fixture_operator(case.case), plan)
     opt = torch.optim.AdamW(
         [model.p], lr=0.0001, weight_decay=0.01, fused=True, capturable=True

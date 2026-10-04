@@ -93,3 +93,10 @@ tolerances and measured candidates remain FP32.
 nine full-shape scalar gradient gates. N64 middle complete step150.622→73.103us;
 N64 narrow-only123.484→46.274us. Sigma3 also improves177.722→99.636us with live
 width updates. Measured peak allocated memory is unchanged; dense remains faster.
+
+2026-10-04: [Support preparation, band dispatch and backward G reuse](20261004-support-preparation-and-backward-g.md),
+95 final GPU-host tests and24 scalar gradient gates. N64 middle72.300→66.157us
+and ordinary initial-sigma3 98.897→84.836us without more peak allocation.
+N128 early216.977→180.159us with savedG, at allocated peak.486328 instead of
+.397949MiB. Initial naive G regressions are preserved; final band dispatch
+removes repeated classification. Dense remains faster.

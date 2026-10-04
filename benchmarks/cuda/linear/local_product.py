@@ -18,6 +18,37 @@ SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
 class LocalRecipe(Recipe):
     route: str = "fused"
 
+    @property
+    def execution_route(self):
+        if self.route in (
+            "persistent_supportprep",
+            "persistent_saved_g",
+            "persistent_supportprep_g",
+            "persistent_band_dispatch",
+            "persistent_supportprep_band",
+        ):
+            return "hybrid_persistent"
+        return self.route
+
+    @property
+    def support_prepare(self):
+        return self.route in (
+            "persistent_supportprep",
+            "persistent_supportprep_g",
+            "persistent_supportprep_band",
+        )
+
+    @property
+    def save_g(self):
+        return self.route in ("persistent_saved_g", "persistent_supportprep_g")
+
+    @property
+    def band_dispatch(self):
+        return self.save_g or self.route in (
+            "persistent_band_dispatch",
+            "persistent_supportprep_band",
+        )
+
     def __post_init__(self):
         if type(self.rho_upper) not in (tuple, list) or any(
             type(x) not in (int, float) for x in self.rho_upper
@@ -26,6 +57,11 @@ class LocalRecipe(Recipe):
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
         if self.route not in (
+            "persistent_band_dispatch",
+            "persistent_supportprep_band",
+            "persistent_supportprep",
+            "persistent_saved_g",
+            "persistent_supportprep_g",
             "fused",
             "saved",
             "torch",
@@ -43,7 +79,7 @@ class LocalRecipe(Recipe):
         ):
             raise ValueError("unknown local H route")
         if (
-            self.route
+            self.execution_route
             in (
                 "polar",
                 "polar_saved",
@@ -59,7 +95,7 @@ class LocalRecipe(Recipe):
             and self.pack
         ):
             raise ValueError("fused polar routes require canonical order")
-        if self.route in (
+        if self.execution_route in (
             "hybrid_three",
             "hybrid_singletons",
             "hybrid_packed",
@@ -169,18 +205,19 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
         from torchcst._backends.cuda.algorithms.local_product.executor import local_h
 
         value, domain = runtime(operator, x.device)
-        if recipe.route == "torch":
+        if recipe.execution_route == "torch":
             v, u = local_product_dense_factors(parameters, value, domain)
             return (x @ v) @ u.T
-        if recipe.route == "hybrid_persistent" and persistent_layout is None:
+        if recipe.execution_route == "hybrid_persistent" and persistent_layout is None:
             raise ValueError("persistent route requires model-owned layout state")
         return local_h(
             x,
             parameters,
             value,
             domain,
-            saved=recipe.route in ("saved", "polar_saved", "polar_support_saved"),
-            sparse=recipe.route
+            saved=recipe.execution_route
+            in ("saved", "polar_saved", "polar_support_saved"),
+            sparse=recipe.execution_route
             in (
                 "support",
                 "hybrid_support",
@@ -191,7 +228,7 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "polar_support",
                 "polar_support_saved",
             ),
-            fused_polar=recipe.route
+            fused_polar=recipe.execution_route
             in (
                 "polar",
                 "polar_saved",
@@ -204,7 +241,7 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "polar_support",
                 "polar_support_saved",
             ),
-            hybrid=recipe.route
+            hybrid=recipe.execution_route
             in (
                 "hybrid",
                 "hybrid_support",
@@ -213,18 +250,20 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "hybrid_packed",
                 "hybrid_persistent",
             ),
-            three_band=recipe.route
+            three_band=recipe.execution_route
             in (
                 "hybrid_three",
                 "hybrid_singletons",
                 "hybrid_packed",
                 "hybrid_persistent",
             ),
-            singletons=recipe.route
+            singletons=recipe.execution_route
             in ("hybrid_singletons", "hybrid_packed", "hybrid_persistent"),
-            tile_packed=recipe.route in ("hybrid_packed", "hybrid_persistent"),
+            tile_packed=recipe.execution_route
+            in ("hybrid_packed", "hybrid_persistent"),
             persistent_layout=persistent_layout,
-            support_only=recipe.route in ("polar_support", "polar_support_saved"),
+            support_only=recipe.execution_route
+            in ("polar_support", "polar_support_saved"),
             recipe=recipe,
         )
 
@@ -427,7 +466,7 @@ def measure_prepared_forward(case, recipe=None):
         polar_scalars,
     )
 
-    if recipe is not None and recipe.route not in (
+    if recipe is not None and recipe.execution_route not in (
         "polar_support_saved",
         "hybrid_packed",
         "hybrid_persistent",
@@ -451,13 +490,17 @@ def measure_prepared_forward(case, recipe=None):
             return x @ dense_weight.T
     else:
         a, b, n = len(source), len(x), case.size
-        hybrid = recipe.route != "polar_support_saved"
+        hybrid = recipe.execution_route != "polar_support_saved"
         packed = prepare_metadata(
-            source, domain, sparse=True, scalars=polar_scalars(state)
+            source,
+            domain,
+            sparse=True,
+            scalars=polar_scalars(state),
+            support_bounded=recipe.support_prepare,
         )
         h = source.new_empty((b, a))
         ends = None
-        if recipe.route == "hybrid_persistent":
+        if recipe.execution_route == "hybrid_persistent":
             layout = PersistentLayout(source, state, domain, recipe)
             views, orders, offsets, ends = layout.refresh(packed)
         elif hybrid:

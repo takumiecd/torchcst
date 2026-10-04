@@ -8,6 +8,13 @@ from .recipe import DEFAULT_RECIPE
 
 # Scalar compiler reports, not CUDA tensors. Never claim on-chip residency if spilled.
 COMPILER_REPORTS = {}
+# Set only while capturing a separate benchmark diagnostic graph.
+DIAGNOSTIC_EVENTS = None
+
+
+def _stamp(name, edge):
+    if DIAGNOSTIC_EVENTS is not None:
+        DIAGNOSTIC_EVENTS[name][edge].record()
 
 
 def _report(name, compiled):
@@ -42,6 +49,9 @@ def _fused(
     import triton as tr
 
     from . import kernels
+
+    if swap:
+        _stamp("dx", 0)
 
     k, n, oi, oo, js, i = _sizes(domain, swap)
     y = x.new_empty((len(x), n))
@@ -93,18 +103,23 @@ def _fused(
         + ("dx" if swap else "fused_forward"),
         compiled,
     )
+    if swap:
+        _stamp("dx", 1)
     return y
 
 
-def prepare_metadata(q, domain, *, sparse, scalars):
+def prepare_metadata(q, domain, *, sparse, scalars, support_bounded=False):
     import triton as tr
 
     from . import kernels
 
+    _stamp("prepare", 0)
+
     a = len(q)
     packed = q.new_empty((13 if sparse else 9, a))
     if a:
-        compiled = kernels.prepare[(a,)](
+        prepare = kernels.prepare_support if support_bounded else kernels.prepare
+        compiled = prepare[(a,)](
             q,
             packed,
             a,
@@ -118,13 +133,20 @@ def prepare_metadata(q, domain, *, sparse, scalars):
             sparse,
             bool(scalars),
             scalars,
-            num_warps=4,
+            num_warps=1 if support_bounded else 4,
             enable_fp_fusion=False,
         )
         _report(
-            "prepare_polar" if scalars else "prepare_support" if sparse else "prepare",
+            "prepare_bounded"
+            if support_bounded
+            else "prepare_polar"
+            if scalars
+            else "prepare_support"
+            if sparse
+            else "prepare",
             compiled,
         )
+    _stamp("prepare", 1)
     return packed
 
 
@@ -176,10 +198,14 @@ def _packed_fused(
     swap=False,
     ends=None,
     canonical_atoms=0,
+    saved_g=None,
 ):
     import triton as tr
 
     from . import kernels
+
+    if swap:
+        _stamp("dx", 0)
 
     k, n, oi, oo, js, i = _sizes(domain, swap)
     y = x.new_empty((len(x), n))
@@ -188,7 +214,7 @@ def _packed_fused(
     ](
         x,
         packed,
-        h,
+        saved_g if saved_g is not None else h,
         order,
         offsets,
         y,
@@ -209,10 +235,21 @@ def _packed_fused(
         recipe.rho_upper[1],
         Ends=ends,
         H_A=canonical_atoms,
+        SAVED_G=saved_g is not None,
+        BAND_DISPATCH=recipe.band_dispatch,
         num_warps=8 if max(k, n) > 64 else 4,
         enable_fp_fusion=False,
     )
-    _report("packed_dx" if swap else "packed_forward", compiled)
+    _report(
+        "packed_dx_saved_g"
+        if swap and saved_g is not None
+        else "packed_dx"
+        if swap
+        else "packed_forward",
+        compiled,
+    )
+    if swap:
+        _stamp("dx", 1)
     return y
 
 
@@ -240,16 +277,25 @@ class _LocalH(torch.autograd.Function):
         from . import kernels
 
         a = len(q)
-        packed = prepare_metadata(q, domain, sparse=sparse, scalars=scalars)
+        packed = prepare_metadata(
+            q,
+            domain,
+            sparse=sparse,
+            scalars=scalars,
+            support_bounded=recipe.support_prepare,
+        )
         ends = q.new_empty((0,))
+        _stamp("layout", 0)
         if persistent_layout is not None:
             views, orders, offsets, ends = persistent_layout.refresh(packed)
         elif tile_packed:
             views, orders, offsets = tile_layout(packed, domain, recipe)
         else:
             views, orders, offsets = (q.new_empty((0,)),) * 3
+        _stamp("layout", 1)
         # Fixed capacity keeps graph replay independent of a changing wide count.
         # Hybrid writes/reads only wide lanes; compact capacity is future work.
+        _stamp("h", 0)
         h = q.new_empty((len(x), a)) if saved or hybrid else q.new_empty((0,))
         if (saved or hybrid) and a:
             compiled = kernels.save_h[
@@ -276,6 +322,8 @@ class _LocalH(torch.autograd.Function):
                 enable_fp_fusion=False,
             )
             _report("hybrid_save_h" if hybrid else "save_h", compiled)
+        _stamp("h", 1)
+        _stamp("output", 0)
         if tile_packed:
             y = _packed_fused(
                 x,
@@ -320,6 +368,7 @@ class _LocalH(torch.autograd.Function):
                 three_band=three_band,
                 singletons=singletons,
             )
+        _stamp("output", 1)
         ctx.save_for_backward(
             x,
             views[0] if tile_packed else packed,
@@ -369,7 +418,14 @@ class _LocalH(torch.autograd.Function):
         ) = ctx.settings
         dy = dy.contiguous()
         dx = None
-        if ctx.needs_input_grad[0] and tile_packed:
+        use_g = (
+            recipe.save_g
+            and tile_packed
+            and ctx.needs_input_grad[0]
+            and ctx.needs_input_grad[1]
+        )
+        g = x.new_empty((len(x), len(source))) if use_g else None
+        if ctx.needs_input_grad[0] and tile_packed and not use_g:
             dx = _packed_fused(
                 dy,
                 views[1],
@@ -382,7 +438,7 @@ class _LocalH(torch.autograd.Function):
                 ends=ends[1] if persistent else None,
                 canonical_atoms=len(source) if persistent else 0,
             )
-        elif ctx.needs_input_grad[0]:
+        elif ctx.needs_input_grad[0] and not use_g:
             dx = _fused(
                 dy,
                 packed,
@@ -395,6 +451,7 @@ class _LocalH(torch.autograd.Function):
             )
         dq = None
         if ctx.needs_input_grad[1]:
+            _stamp("parameters", 0)
             a = packed.shape[1]
             canonical_atoms = len(source) if persistent else a
             dq = packed.new_empty((canonical_atoms, 4))
@@ -417,7 +474,7 @@ class _LocalH(torch.autograd.Function):
                     max(16, tr.next_power_of_2(domain.input_count)),
                     max(16, tr.next_power_of_2(domain.output_count)),
                     16
-                    if max(domain.input_count, domain.output_count) > 64
+                    if max(domain.input_count, domain.output_count) > 64 or use_g
                     else max(16, tr.next_power_of_2(len(x))),
                     recipe.atom_block,
                     saved,
@@ -433,6 +490,8 @@ class _LocalH(torch.autograd.Function):
                     SINGLETON_FAST=singletons,
                     Order=orders[0] if tile_packed else None,
                     H_A=canonical_atoms if persistent else 0,
+                    G=g,
+                    SAVE_G=use_g,
                     num_warps=8
                     if max(domain.input_count, domain.output_count) > 64
                     else 4,
@@ -452,6 +511,21 @@ class _LocalH(torch.autograd.Function):
                     else ("param_saved" if saved else "param_recomputed"),
                     compiled,
                 )
+            _stamp("parameters", 1)
+        if use_g:
+            dx = _packed_fused(
+                dy,
+                views[1],
+                h,
+                orders[1],
+                offsets[1],
+                domain,
+                recipe,
+                swap=True,
+                ends=ends[1] if persistent else None,
+                canonical_atoms=len(source),
+                saved_g=g,
+            )
         return dx, dq, None, None, None, None, None, None, None, None, None, None, None
 
 

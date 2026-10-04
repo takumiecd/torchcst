@@ -25,7 +25,11 @@ class PersistentLayout(nn.Module):
         )
         self.slots = tr.cdiv(self.atoms + 31 * (self.stride - 1), 16) * 16
         packed = prepare_metadata(
-            parameters, domain, sparse=True, scalars=polar_scalars(value)
+            parameters,
+            domain,
+            sparse=True,
+            scalars=polar_scalars(value),
+            support_bounded=recipe.support_prepare,
         )
         _views, _order, compact = tile_layout(packed, domain, recipe)
         compact = compact.cpu()

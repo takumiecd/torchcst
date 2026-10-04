@@ -12,6 +12,18 @@ class Recipe:
     pack: bool = True
     support_limit: int = 8
 
+    @property
+    def support_prepare(self):
+        return False
+
+    @property
+    def save_g(self):
+        return False
+
+    @property
+    def band_dispatch(self):
+        return False
+
     def __post_init__(self):
         if not self.rho_upper or any(
             not math.isfinite(x) or x <= 0 for x in self.rho_upper

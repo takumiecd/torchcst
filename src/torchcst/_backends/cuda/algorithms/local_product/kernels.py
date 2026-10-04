@@ -98,6 +98,97 @@ def prepare(
 
 
 @tr.jit
+def _candidate_span(c, inv, O: tl.constexpr, S: tl.constexpr, SIZE: tl.constexpr):
+    radius = tl.sqrt_rn(tl.div_rn(1.0, inv))
+    # Two extra sites on either side cover radius/index rounding. When chart
+    # coordinates lose site precision, retain the original full-grid scan.
+    error = 8.0 * 1.1920928955078125e-7 * (tl.abs(c) + tl.abs(O) + SIZE * S + radius)
+    precise = (inv > 0.0) & (radius < float("inf")) & (error < S)
+    lo = tl.maximum(
+        tl.minimum(tl.floor(tl.div_rn(c - O - radius, S)).to(tl.int32) - 2, SIZE), 0
+    )
+    hi = tl.maximum(
+        tl.minimum(tl.ceil(tl.div_rn(c - O + radius, S)).to(tl.int32) + 3, SIZE), 0
+    )
+    return tl.where(precise, lo, 0), tl.where(precise, tl.maximum(hi - lo, 0), SIZE)
+
+
+@tr.jit
+def _support_stats(
+    c,
+    inv,
+    begin,
+    O: tl.constexpr,
+    S: tl.constexpr,
+    SIZE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    site = begin + tl.arange(0, BLOCK)
+    v, dv = _raw(O + site * S - c, inv)
+    v, dv = tl.where(site < SIZE, v, 0.0), tl.where(site < SIZE, dv, 0.0)
+    norm = tl.sqrt(tl.sum(v * v, 0))
+    safe = tl.maximum(norm, 1e-6)
+    gamma = tl.where(norm >= 1e-6, tl.sum(v * dv, 0) / (safe * safe), 0.0)
+    singleton = (norm >= 1e-6) & (tl.sum((v > 0).to(tl.int32), 0) == 1)
+    first = tl.min(tl.where(v > 0, site, SIZE), 0)
+    last = tl.max(tl.where(v > 0, site + 1, 0), 0)
+    return safe, gamma, singleton, first, last
+
+
+@tr.jit
+def prepare_support(
+    Q,
+    P,
+    A: tl.constexpr,
+    KI: tl.constexpr,
+    NO: tl.constexpr,
+    S: tl.constexpr,
+    OI: tl.constexpr,
+    OO: tl.constexpr,
+    PK: tl.constexpr,
+    PN: tl.constexpr,
+    BOUNDS: tl.constexpr = False,
+    POLAR: tl.constexpr = False,
+    Scalars=(),
+):
+    a = tl.program_id(0)
+    if POLAR:
+        amp, inv = _polar_atom(Q, a, Scalars)
+    else:
+        amp, inv = tl.load(Q + a * 4), tl.load(Q + a * 4 + 1)
+    ci, co = tl.load(Q + a * 4 + 2), tl.load(Q + a * 4 + 3)
+    start_i, count_i = _candidate_span(ci, inv, OI, S, KI)
+    start_o, count_o = _candidate_span(co, inv, OO, S, NO)
+    count = tl.maximum(count_i, count_o)
+    if count <= 8:
+        sv, gv, fv, v0, v1 = _support_stats(ci, inv, start_i, OI, S, KI, 8)
+        su, gu, fu, u0, u1 = _support_stats(co, inv, start_o, OO, S, NO, 8)
+    elif count <= 16:
+        sv, gv, fv, v0, v1 = _support_stats(ci, inv, start_i, OI, S, KI, 16)
+        su, gu, fu, u0, u1 = _support_stats(co, inv, start_o, OO, S, NO, 16)
+    elif count <= 32:
+        sv, gv, fv, v0, v1 = _support_stats(ci, inv, start_i, OI, S, KI, 32)
+        su, gu, fu, u0, u1 = _support_stats(co, inv, start_o, OO, S, NO, 32)
+    else:
+        sv, gv, fv, v0, v1 = _support_stats(ci, inv, 0, OI, S, KI, PK)
+        su, gu, fu, u0, u1 = _support_stats(co, inv, 0, OO, S, NO, PN)
+    tl.store(P + a, amp)
+    tl.store(P + A + a, inv)
+    tl.store(P + 2 * A + a, ci)
+    tl.store(P + 3 * A + a, co)
+    tl.store(P + 4 * A + a, sv)
+    tl.store(P + 5 * A + a, su)
+    tl.store(P + 6 * A + a, gv)
+    tl.store(P + 7 * A + a, gu)
+    tl.store(P + 8 * A + a, (fv.to(tl.int32) | (fu.to(tl.int32) << 1)).to(tl.float32))
+    if BOUNDS:
+        tl.store(P + 9 * A + a, v0.to(tl.float32))
+        tl.store(P + 10 * A + a, v1.to(tl.float32))
+        tl.store(P + 11 * A + a, u0.to(tl.float32))
+        tl.store(P + 12 * A + a, u1.to(tl.float32))
+
+
+@tr.jit
 def _factor(
     P, a, points, A: tl.constexpr, OUT: tl.constexpr, S: tl.constexpr, O: tl.constexpr
 ):
@@ -431,6 +522,8 @@ def fused_packed(
     RHO: tl.constexpr,
     Ends=None,
     H_A: tl.constexpr = 0,
+    SAVED_G: tl.constexpr = False,
+    BAND_DISPATCH: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     tile = tl.program_id(1)
@@ -467,38 +560,57 @@ def fused_packed(
             else:
                 enabled = valid & (ulo < (tile + 1) * 16) & (uhi > tile * 16)
                 if tl.sum(enabled.to(tl.int32), 0) > 0:
-                    y = _fused_general_block(
-                        X,
-                        P,
-                        H,
-                        a,
-                        b,
-                        j,
-                        i,
-                        y,
-                        enabled,
-                        B,
-                        K,
-                        N,
-                        A,
-                        S,
-                        OI,
-                        OO,
-                        JS,
-                        IS,
-                        BK,
-                        BM,
-                        BA,
-                        SWAP,
-                        True,
-                        LIMIT,
-                        not SWAP,
-                        RHO,
-                        False,
-                        True,
-                        HOrder=Order,
-                        H_A=H_A,
-                    )
+                    if BAND_DISPATCH and phase == 3 and (not SWAP or SAVED_G):
+                        # The persistent bucket already certifies wide,
+                        # non-singleton atoms. Do not classify each block again.
+                        ha = tl.load(Order + a, enabled, 0)
+                        stored = tl.load(
+                            H + b[:, None] * H_A + ha[None, :],
+                            (b[:, None] < B) & enabled[None, :],
+                            0.0,
+                        )
+                        u, _du = _factor(P, a, IS + i, A, not SWAP, S, OO)
+                        u = tl.where((i[:, None] < N) & enabled[None, :], u, 0.0)
+                        amp = tl.load(P + a, enabled, 0.0)
+                        y = tl.dot(
+                            stored * amp[None, :],
+                            tl.trans(u),
+                            y,
+                            input_precision="ieee",
+                        )
+                    else:
+                        y = _fused_general_block(
+                            X,
+                            P,
+                            H,
+                            a,
+                            b,
+                            j,
+                            i,
+                            y,
+                            enabled,
+                            B,
+                            K,
+                            N,
+                            A,
+                            S,
+                            OI,
+                            OO,
+                            JS,
+                            IS,
+                            BK,
+                            BM,
+                            BA,
+                            SWAP,
+                            True,
+                            LIMIT,
+                            (not SWAP or SAVED_G) and not BAND_DISPATCH,
+                            RHO,
+                            BAND_DISPATCH and not SWAP,
+                            True,
+                            HOrder=Order,
+                            H_A=H_A,
+                        )
     tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
 
 
@@ -556,7 +668,7 @@ def _fused_general_block(
                     B,
                     K,
                     JS,
-                    False,
+                    SWAP,
                     S,
                     OI,
                     BM,
@@ -567,7 +679,7 @@ def _fused_general_block(
                     Enabled=enabled,
                 )
             else:
-                v_local, _dv_local_matrix = _factor(P, a, JS + j, A, False, S, OI)
+                v_local, _dv_local_matrix = _factor(P, a, JS + j, A, SWAP, S, OI)
                 v_local = tl.where((j[:, None] < K) & narrow[None, :], v_local, 0.0)
                 h = tl.dot(x, v_local, input_precision="ieee")
         if tl.sum(wide.to(tl.int32), 0) > 0:
@@ -699,6 +811,8 @@ def _param_sums(
     SINGLETON_FAST: tl.constexpr,
     HOrder=None,
     H_A: tl.constexpr = 0,
+    G=None,
+    SAVE_G: tl.constexpr = False,
 ):
     j, i = tl.arange(0, BK), tl.arange(0, BN)
     ha = tl.load(HOrder + a, a < A, 0) if HOrder is not None else a
@@ -846,6 +960,11 @@ def _param_sums(
         g = tl.dot(dy, u, input_precision="ieee")
         dh = tl.dot(x, dv, input_precision="ieee")
         dg = tl.dot(dy, du, input_precision="ieee")
+    if SAVE_G:
+        wide = _wide(P, a, A, S, RHO, THREE_BAND) & enabled
+        tl.store(
+            G + b[:, None] * H_A + ha[None, :], g, (b[:, None] < B) & wide[None, :]
+        )
     amp = tl.load(P + a, a < A, 0.0)
     da = tl.sum(h * g, 0)
     dci = amp * tl.sum(dh * g, 0)
@@ -886,6 +1005,8 @@ def param_vjp(
     SINGLETON_FAST: tl.constexpr = False,
     Order=None,
     H_A: tl.constexpr = 0,
+    G=None,
+    SAVE_G: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     original = tl.load(Order + a, a < A, -1) if Order is not None else a
@@ -938,6 +1059,8 @@ def param_vjp(
                     SINGLETON_FAST,
                     HOrder=Order,
                     H_A=H_A,
+                    G=G,
+                    SAVE_G=SAVE_G,
                 )
             if SINGLETON_FAST:
                 vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
