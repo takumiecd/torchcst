@@ -25,8 +25,17 @@ class LocalRecipe(Recipe):
             raise ValueError("requires a numeric boundary array")
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
-        if self.route not in ("fused", "saved", "torch", "support"):
+        if self.route not in (
+            "fused",
+            "saved",
+            "torch",
+            "support",
+            "polar",
+            "polar_saved",
+        ):
             raise ValueError("unknown local H route")
+        if self.route in ("polar", "polar_saved") and self.pack:
+            raise ValueError("fused polar routes require canonical order")
         if (
             type(self.pack) is not bool
             or type(self.atom_block) is not int
@@ -112,8 +121,9 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
             parameters,
             value,
             domain,
-            saved=recipe.route == "saved",
+            saved=recipe.route in ("saved", "polar_saved"),
             sparse=recipe.route == "support",
+            fused_polar=recipe.route in ("polar", "polar_saved"),
             recipe=recipe,
         )
 

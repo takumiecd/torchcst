@@ -8,7 +8,7 @@ PolarAmpWidth product. Sigma/spacing is the basis for choosing H's reuse range.
 This package carries the validated local-H primitive from `2acefae`, relocated
 out of the benchmark tree. It is not registered in production dispatch.
 The original routes retain the measured mathematical contract; `kernels.py` now
-adds an experimental support-bounded contraction route.
+adds experimental support-bounded contractions and fused polar preparation/VJP.
 See the [measurement record](../../../../../../docs/research-history/local-product/20261003-local-h.md).
 
 | File | Responsibility |
@@ -25,6 +25,11 @@ route refreshes intervals on the GPU and uses direct contractions for narrow
 atom groups, with the existing matrix path for wide groups. H->Y still uses the
 padded dot. Compacted per-atom routing and explicit shared/global-H policy remain
 to implement. L1/L2 are caches, not direct allocation policies.
+The `fused_polar` option reads current polar parameters and live scalar buffers
+inside normalization preparation, and applies the angular amplitude chain rule
+inside parameter VJP. It skips the separate Torch decode/autograd chain while
+keeping width task derivatives detached. Both local and saved H support this
+option in canonical atom order; sorting is a separate future optimization.
 The initial batch limit is 64; local sizes are at most 64 with full norm domains
 at most 128. Existing CUDA correctness and spill reports are historical;
 relocation checks do not constitute a new GPU performance result.
@@ -51,3 +56,7 @@ step timing and is not the future compact GPU support-preparation implementation
 
 Future larger GEMM composition and Strip/Torus integration follow validation of
 this small-transform primitive. No outer matrix schedule is introduced here.
+
+The fused-polar comparison uses `plans-local-polar.json` with
+`cases/local-{32,64}-{profile}-polar.json` in the same runner. Profile names denote
+initial widths, not fixed widths. See research notes for measured results.

@@ -6,12 +6,41 @@ Both modes use full-domain normalization and its center derivatives.
 
 import triton as tr
 import triton.language as tl
+from triton.language.extra.cuda import libdevice
 
 
 @tr.jit
 def _raw(delta, inv):
     gap = tl.maximum(1.0 - delta * delta * inv, 0.0)
     return gap * gap * gap, 6.0 * delta * inv * gap * gap
+
+
+@tr.jit
+def _polar_atom(Source, a, Scalars):
+    z0, z1 = tl.load(Source + 4 * a), tl.load(Source + 4 * a + 1)
+    r2 = z0 * z0 + z1 * z1
+    radius = libdevice.sqrt(tl.maximum(r2, 1.1754943508222875e-38))
+    amplitude = tl.div_rn(tl.load(Scalars[0]).to(tl.float32) * z0, radius)
+    alpha = tl.minimum(tl.maximum(tl.div_rn(r2 - 1.0, 3.0), 0.0), 1.0)
+    minimum = tl.load(Scalars[5]).to(tl.float32)
+    birth = tl.load(Scalars[6]).to(tl.float32)
+    maximum = tl.load(Scalars[7]).to(tl.float32)
+    kappa = tl.load(Scalars[2]).to(tl.float32)
+    ratio = tl.div_rn(amplitude, tl.load(Scalars[1]).to(tl.float32))
+    x = ratio * ratio
+    upper_x = libdevice.pow(x, tl.load(Scalars[4]).to(tl.float32))
+    upper = minimum + tl.div_rn((maximum - minimum) * kappa, kappa + upper_x)
+    upper = tl.maximum(upper, tl.load(Scalars[8]).to(tl.float32))
+    lower = minimum + tl.div_rn(
+        birth - minimum, 1.0 + tl.load(Scalars[3]).to(tl.float32) * x
+    )
+    upper = tl.maximum(upper, lower)
+    sigma = libdevice.exp(
+        (1.0 - alpha) * libdevice.log(lower) + alpha * libdevice.log(upper)
+    )
+    sigma = tl.minimum(tl.maximum(sigma, lower), upper)
+    inverse = tl.div_rn(1.0, sigma)
+    return amplitude, inverse * inverse
 
 
 @tr.jit
@@ -27,10 +56,15 @@ def prepare(
     PK: tl.constexpr,
     PN: tl.constexpr,
     BOUNDS: tl.constexpr = False,
+    POLAR: tl.constexpr = False,
+    Scalars=(),
 ):
     a = tl.program_id(0)
-    amp = tl.load(Q + a * 4)
-    inv = tl.load(Q + a * 4 + 1)
+    if POLAR:
+        amp, inv = _polar_atom(Q, a, Scalars)
+    else:
+        amp = tl.load(Q + a * 4)
+        inv = tl.load(Q + a * 4 + 1)
     ci = tl.load(Q + a * 4 + 2)
     co = tl.load(Q + a * 4 + 3)
     j, i = tl.arange(0, PK), tl.arange(0, PN)
@@ -294,6 +328,9 @@ def param_vjp(
     SAVED: tl.constexpr,
     SPARSE: tl.constexpr = False,
     LIMIT: tl.constexpr = 8,
+    POLAR: tl.constexpr = False,
+    Source=None,
+    AmplitudeMax=None,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     b, j, i = tl.arange(0, BB), tl.arange(0, BK), tl.arange(0, BN)
@@ -332,7 +369,20 @@ def param_vjp(
     da = tl.sum(h * g, 0)
     dci = amp * tl.sum(dh * g, 0)
     dco = amp * tl.sum(h * dg, 0)
-    tl.store(DQ + 4 * a, da, a < A)
-    tl.store(DQ + 4 * a + 1, 0.0, a < A)
+    if POLAR:
+        z0 = tl.load(Source + 4 * a, a < A, 0.0)
+        z1 = tl.load(Source + 4 * a + 1, a < A, 0.0)
+        r2 = z0 * z0 + z1 * z1
+        safe = tl.maximum(r2, 1.1754943508222875e-38)
+        inverse = tl.div_rn(1.0, libdevice.sqrt(safe))
+        active = r2 >= 1.1754943508222875e-38
+        scale = tl.load(AmplitudeMax).to(tl.float32) * inverse
+        d0 = da * scale * (1.0 - tl.where(active, tl.div_rn(z0 * z0, safe), 0.0))
+        d1 = -da * scale * tl.where(active, tl.div_rn(z0 * z1, safe), 0.0)
+        tl.store(DQ + 4 * a, d0, a < A)
+        tl.store(DQ + 4 * a + 1, d1, a < A)
+    else:
+        tl.store(DQ + 4 * a, da, a < A)
+        tl.store(DQ + 4 * a + 1, 0.0, a < A)
     tl.store(DQ + 4 * a + 2, dci, a < A)
     tl.store(DQ + 4 * a + 3, dco, a < A)

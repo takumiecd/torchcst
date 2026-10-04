@@ -31,3 +31,10 @@ kernel SHA256 is unchanged from the measured source at `2acefae`:
 No GPU experiment was rerun for this source relocation.
 
 2026-10-04: [Exact support diagnostics and existing Linear benchmark integration](20261004-support-and-linear.md), 127 L4 checks plus five small-transform cases; whole-call routes only, hybrid dispatch pending.
+
+2026-10-04: [Support-bounded contraction experiment](20261004-support-contractions.md),
+139 L4 checks pass; complete steps were 7–11% slower. Retained as a negative result.
+
+2026-10-04: [Fused current-state polar preparation and task VJP](20261004-fused-polar.md),
+151 L4-host checks pass; ordinary initial-rho3 complete-step time reduces by41.9%
+versus the existing unsorted route, with evolving sigma. Dense remains faster.

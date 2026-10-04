@@ -124,10 +124,11 @@ def test_recipe_and_shared_contract():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("saved", [False, True])
+@pytest.mark.parametrize("fused_polar", [False, True])
 @pytest.mark.parametrize(
     "batch,spacing,sliced", [(1, 1.0, False), (7, 0.5, True), (32, 1.0, True)]
 )
-def test_local_h_y_dx_polar_gradient_update(saved, batch, spacing, sliced):
+def test_local_h_y_dx_polar_gradient_update(saved, fused_polar, batch, spacing, sliced):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
 
     d = Domain(
@@ -144,7 +145,15 @@ def test_local_h_y_dx_polar_gradient_update(saved, batch, spacing, sliced):
     p = fixture(s, d, device="cuda", dtype=torch.float32)
     x = torch.randn(batch, d.input_count, device="cuda", requires_grad=True)
     dy = torch.randn(batch, d.output_count, device="cuda")
-    actual = local_h(x, p, s, d, saved=saved)
+    actual = local_h(
+        x,
+        p,
+        s,
+        d,
+        saved=saved,
+        fused_polar=fused_polar,
+        recipe=Recipe(pack=not fused_polar),
+    )
     ax, ap = torch.autograd.grad(actual, (x, p), dy)
     pp, xx = p.detach().double().requires_grad_(), x.detach().double().requires_grad_()
     ss = (
@@ -174,7 +183,8 @@ def test_local_h_y_dx_polar_gradient_update(saved, batch, spacing, sliced):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("saved", [False, True])
-def test_graph_replay_refreshes_polar_decode_and_packing(saved):
+@pytest.mark.parametrize("fused_polar", [False, True])
+def test_graph_replay_refreshes_polar_decode_and_packing(saved, fused_polar):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
 
     d = Domain(32, 32)
@@ -183,7 +193,15 @@ def test_graph_replay_refreshes_polar_decode_and_packing(saved):
     x = torch.randn(16, 32, device="cuda", requires_grad=True)
 
     def step():
-        y = local_h(x, p, s, d, saved=saved)
+        y = local_h(
+            x,
+            p,
+            s,
+            d,
+            saved=saved,
+            fused_polar=fused_polar,
+            recipe=Recipe(pack=not fused_polar),
+        )
         return y, *torch.autograd.grad(y, (x, p), torch.ones_like(y))
 
     stream = torch.cuda.Stream()
@@ -198,12 +216,42 @@ def test_graph_replay_refreshes_polar_decode_and_packing(saved):
     with torch.no_grad():
         p[0, :2] *= 2
         p[0, 2:] = p.new_tensor([19.3, 23.2])
+        s.scalar("amplitude_max").fill_(1.7)
     graph.replay()
     pp, xx = p.detach().double().requires_grad_(), x.detach().double().requires_grad_()
     ss = state(minimum=1, birth=1, w_c=0.2).double().cuda()
+    ss.scalar("amplitude_max").copy_(s.scalar("amplitude_max"))
     y = scalar_oracle(xx, pp, ss, d)
     expected = (y, *torch.autograd.grad(y, (xx, pp), torch.ones_like(y)))
     for a, e in zip(actual, expected):
+        torch.testing.assert_close(a.double(), e, atol=4e-4, rtol=4e-4)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("saved", [False, True])
+def test_fused_polar_nontrivial_envelopes_at_max_batch(saved):
+    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+
+    d = Domain(
+        64,
+        64,
+        spacing=0.5,
+        input_start=3,
+        input_count=33,
+        output_start=5,
+        output_count=47,
+    )
+    s = state(minimum=0.5, birth=1.5, maximum=8, w_c=0.2).cuda()
+    p = fixture(s, d, device="cuda", dtype=torch.float32, atoms=41)
+    x = torch.randn(64, d.input_count, device="cuda", requires_grad=True)
+    dy = torch.randn(64, d.output_count, device="cuda")
+    y = local_h(x, p, s, d, saved=saved, fused_polar=True, recipe=Recipe(pack=False))
+    grads = torch.autograd.grad(y, (x, p), dy)
+    xx, pp = x.detach().double().requires_grad_(), p.detach().double().requires_grad_()
+    ss = state(minimum=0.5, birth=1.5, maximum=8, w_c=0.2).double().cuda()
+    expected = scalar_oracle(xx, pp, ss, d)
+    truth_grads = torch.autograd.grad(expected, (xx, pp), dy.double())
+    for a, e in [(y, expected), *zip(grads, truth_grads)]:
         torch.testing.assert_close(a.double(), e, atol=4e-4, rtol=4e-4)
 
 
@@ -314,7 +362,16 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("plan_id", ["local-unpacked", "local-saved", "local-support"])
+@pytest.mark.parametrize(
+    "plan_id",
+    [
+        "local-unpacked",
+        "local-saved",
+        "local-support",
+        "local-polar",
+        "local-polar-saved",
+    ],
+)
 def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     from benchmarks.cuda.linear.local_product import (
         initialize,
@@ -325,15 +382,18 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     from benchmarks.cuda.linear.run import PlanLinear
     from torchcst import CSTLinear, CSTOptimizer
 
+    catalog = DEFAULT_PLANS.with_name(
+        "plans-local-polar.json"
+        if plan_id.startswith("local-polar")
+        else "plans-local-support.json"
+    )
     case = load_run(
         DEFAULT_PLANS.parent / "cases/local-32-mixed.json",
-        DEFAULT_PLANS.with_name("plans-local-support.json"),
+        catalog,
     )
     from benchmarks.cuda.linear.manifest import decode_catalog, read_json
 
-    entries = decode_catalog(
-        read_json(DEFAULT_PLANS.with_name("plans-local-support.json"))[0]
-    )
+    entries = decode_catalog(read_json(catalog)[0])
     plan = next(entry.plan for entry in entries if entry.id == plan_id)
     model = PlanLinear(initialize(case.case).cuda(), operator_spec(32), plan)
     opt = torch.optim.AdamW(

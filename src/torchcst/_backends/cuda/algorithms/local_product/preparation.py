@@ -45,3 +45,21 @@ def order_atoms(q, domain, recipe):
     co = ((q[:, 3] - domain.output_origin) / (16 * domain.spacing)).floor().long()
     key = (scale * no + co.clamp(0, no - 1)) * ni + ci.clamp(0, ni - 1)
     return torch.argsort(key, stable=True)
+
+
+def polar_scalars(value):
+    """Live scalar buffers for the fused decoder; no host reads or frozen sigma."""
+    return tuple(
+        value.scalar(name)
+        for name in (
+            "amplitude_max",
+            "w_c",
+            "kappa",
+            "lower_kappa",
+            "upper_decay_power",
+            "sigma_min_input",
+            "sigma_birth_input",
+            "sigma_max_input",
+            "upper_floor_input",
+        )
+    )

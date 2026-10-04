@@ -1,9 +1,9 @@
-"""Small local tiles only. Polar decode/update belongs to existing TorchCST."""
+"""Small local tiles with production-equivalent polar decoding and task VJP."""
 
 import torch
 from torch.autograd.function import once_differentiable
 
-from .preparation import decode, order_atoms
+from .preparation import decode, order_atoms, polar_scalars
 from .recipe import DEFAULT_RECIPE
 
 # Scalar compiler reports, not CUDA tensors. Never claim on-chip residency if spilled.
@@ -64,7 +64,8 @@ def _fused(x, packed, domain, recipe, swap=False, sparse=False):
 
 class _LocalH(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, q, domain, recipe, saved, sparse):
+    def forward(ctx, x, q, domain, recipe, saved, sparse, scalars):
+        fused_polar = bool(scalars)
         import triton as tr
 
         from . import kernels
@@ -84,10 +85,17 @@ class _LocalH(torch.autograd.Function):
                 tr.next_power_of_2(domain.input_size),
                 tr.next_power_of_2(domain.output_size),
                 sparse,
+                fused_polar,
+                scalars,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
-            _report("prepare_support" if sparse else "prepare", compiled)
+            _report(
+                "prepare_polar"
+                if fused_polar
+                else ("prepare_support" if sparse else "prepare"),
+                compiled,
+            )
         h = q.new_empty((len(x), a)) if saved else q.new_empty((0,))
         if saved:
             if a:
@@ -130,8 +138,10 @@ class _LocalH(torch.autograd.Function):
             _report("from_h", compiled)
         else:
             y = _fused(x, packed, domain, recipe, sparse=sparse)
-        ctx.save_for_backward(x, packed, h)
-        ctx.settings = domain, recipe, saved, sparse
+        ctx.save_for_backward(
+            x, packed, h, q if fused_polar else q.new_empty((0,)), *scalars
+        )
+        ctx.settings = domain, recipe, saved, sparse, fused_polar
         return y
 
     @staticmethod
@@ -141,8 +151,8 @@ class _LocalH(torch.autograd.Function):
 
         from . import kernels
 
-        x, packed, h = ctx.saved_tensors
-        domain, recipe, saved, sparse = ctx.settings
+        x, packed, h, source, *scalars = ctx.saved_tensors
+        domain, recipe, saved, sparse, fused_polar = ctx.settings
         dy = dy.contiguous()
         dx = (
             _fused(dy, packed, domain, recipe, swap=True, sparse=sparse)
@@ -176,19 +186,34 @@ class _LocalH(torch.autograd.Function):
                     saved,
                     sparse,
                     recipe.support_limit,
+                    fused_polar,
+                    source if fused_polar else None,
+                    scalars[0] if fused_polar else None,
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
                 _report(
-                    "support_param"
+                    "polar_param"
+                    if fused_polar
+                    else "support_param"
                     if sparse
                     else ("param_saved" if saved else "param_recomputed"),
                     compiled,
                 )
-        return dx, dq, None, None, None, None
+        return dx, dq, None, None, None, None, None
 
 
-def local_h(x, p, value, domain, *, saved=False, sparse=False, recipe=DEFAULT_RECIPE):
+def local_h(
+    x,
+    p,
+    value,
+    domain,
+    *,
+    saved=False,
+    sparse=False,
+    fused_polar=False,
+    recipe=DEFAULT_RECIPE,
+):
     """Y_local from X_local, normalized full-domain profiles, and polar atoms.
 
     Call validate_state once at configuration. Bounds stay shared during updates.
@@ -208,10 +233,15 @@ def local_h(x, p, value, domain, *, saved=False, sparse=False, recipe=DEFAULT_RE
         or x.shape[1] != domain.input_count
     ):
         raise ValueError("requires CUDA FP32 local X[B<=64,K] and polar P[A,4]")
-    q = decode(value, p)
-    order = order_atoms(q, domain, recipe)
-    q = q.index_select(0, order)
+    if fused_polar:
+        if recipe.pack:
+            raise ValueError("initial fused polar route uses canonical atom order")
+        q, scalars = p, polar_scalars(value)
+    else:
+        q, scalars = decode(value, p), ()
+        order = order_atoms(q, domain, recipe)
+        q = q.index_select(0, order)
     with torch.cuda.device(x.device):
         return _LocalH.apply(
-            x.contiguous(), q.contiguous(), domain, recipe, saved, sparse
+            x.contiguous(), q.contiguous(), domain, recipe, saved, sparse, scalars
         )
