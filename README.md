@@ -124,6 +124,7 @@ An explicitly empty table represents a zero operator; integer counts must be pos
 ## Documentation
 
 - [Contributing: code and GPU benchmark results](CONTRIBUTING.md)
+- [CUDA kernel development: validation, measurements and PR integration](docs/kernel-development.ja.md)
 - [CSTOptimizer](docs/cst-optimizer.ja.md)
 - [Declaration and backend layout](src/torchcst/_backends/README.md)
 - [Kernel and Profile](src/torchcst/kernels/README.md)
