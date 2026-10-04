@@ -8,13 +8,46 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from benchmarks.cuda.linear.local_product import SEMANTICS as LOCAL_SEMANTICS
+from benchmarks.cuda.linear.local_product import LocalAlgorithm
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import (
+    NormalizedFullAlgorithm,
+    NormalizedWindowAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
     OPERATION,
     SEMANTICS,
 )
+from torchcst._backends.cuda.registry import Registry
 from torchcst._backends.cuda.schema import ExecutionPlan
 from torchcst._backends.cuda.serialization import decode_json
+
+
+class BenchmarkRegistry(Registry):
+    """Local recipes have immutable boundary tuples, represented as JSON arrays."""
+
+    def dump_plan(self, plan):
+        if plan.algorithm_id != "research_local_product":
+            return super().dump_plan(plan)
+        self.validate_plan(plan)
+        recipe = asdict(plan.recipe)
+        recipe["rho_upper"] = list(recipe["rho_upper"])
+        value = {
+            "schema_version": plan.schema_version,
+            "algorithm_id": plan.algorithm_id,
+            "algorithm_revision": plan.algorithm_revision,
+            "recipe": recipe,
+        }
+        if self.load_plan(value) != plan:
+            raise ValueError("local recipe does not round-trip losslessly")
+        return value
+
+
+# This catalog is benchmark-local. Production registration/selection is unchanged.
+REGISTRY = BenchmarkRegistry()
+REGISTRY.register(NormalizedFullAlgorithm())
+REGISTRY.register(NormalizedWindowAlgorithm())
+REGISTRY.register(LocalAlgorithm())
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
@@ -91,16 +124,28 @@ class BenchmarkCase:
 
     def __post_init__(self):
         _id(self.id, "case id")
-        if self.fixture != "normalized_euclidean_strip":
+        if self.fixture not in ("normalized_euclidean_strip", "local_polar_product"):
             raise ValueError("unknown benchmark fixture")
-        if type(self.size) is not int or self.size not in (1024, 8192):
-            raise ValueError("fixture size must be 1024 or 8192")
+        sizes = (16, 32, 64) if self.fixture == "local_polar_product" else (1024, 8192)
+        if type(self.size) is not int or self.size not in sizes:
+            raise ValueError(f"fixture size must be one of {sizes}")
+        if self.fixture == "local_polar_product" and (
+            type(self.rows) is not int or not 1 <= self.rows <= 64 or self.atoms < 4
+        ):
+            raise ValueError(
+                "local fixture requires batch 1..64 and at least four atoms"
+            )
         for name in ["rows", "atoms", "warmup", "rounds"]:
             _integer(getattr(self, name), name)
         _integer(self.seed, "seed", 0)
         if self.seed >= 2**63:
             raise ValueError("seed must be less than 2**63")
-        if self.profile not in ("broad", "sharp") or self.dtype != "float32":
+        profiles = (
+            ("broad", "sharp", "few", "wide", "mixed")
+            if self.fixture == "local_polar_product"
+            else ("broad", "sharp")
+        )
+        if self.profile not in profiles or self.dtype != "float32":
             raise ValueError("fixture requires broad/sharp profile and float32")
         if type(self.optimizer) is not OptimizerSpec:
             raise TypeError("case needs an OptimizerSpec")
@@ -123,9 +168,10 @@ class BenchmarkRun:
             raise ValueError("dense must be a bool")
         for entry in self.plans:
             algorithm = REGISTRY.validate_plan(entry.plan)
-            if (
-                algorithm.operation_id != OPERATION
-                or algorithm.semantics_id != SEMANTICS
+            if algorithm.operation_id != OPERATION or algorithm.semantics_id != (
+                LOCAL_SEMANTICS
+                if self.case.fixture == "local_polar_product"
+                else SEMANTICS
             ):
                 raise ValueError("plan mathematical contract differs from fixture")
 

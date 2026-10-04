@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "local-fused",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": true,
+          "route": "fused"
+        }
+      }
+    },
+    {
+      "id": "local-saved",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": true,
+          "route": "saved"
+        }
+      }
+    },
+    {
+      "id": "local-unpacked",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "fused"
+        }
+      }
+    },
+    {
+      "id": "local-torch",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "torch"
+        }
+      }
+    }
+  ]
+}

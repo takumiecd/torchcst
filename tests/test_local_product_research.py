@@ -247,3 +247,67 @@ def test_max_batch_atom32_and_unsorted_preserve_gradients(saved):
     ex, ep = torch.autograd.grad(truth, (xx, pp), dy.double())
     for a, e in [(actual, truth), (ax, ex), (ap, ep)]:
         torch.testing.assert_close(a.double(), e, atol=4e-4, rtol=4e-4)
+
+
+def test_actual_support_count_floor_and_slice():
+    from torchcst._backends.cuda.algorithms.local_product.support import (
+        analyze_side,
+        summarize,
+    )
+
+    d = Domain(16, 16, input_start=4, input_count=4)
+    # shared sigma=spacing: aligned one site vs. two between sites; empty/floor.
+    q = torch.tensor(
+        [
+            [0.1, 1.0, 4.0, 5.0],
+            [0.1, 1.0, 4.5, 5.5],
+            [0.1, 1.0, -50.0, 5.0],
+            [0.1, 1.0, -0.999, -0.999],
+        ],
+        dtype=torch.float64,
+    )
+    vi, uo = analyze_side(q, d, "input"), analyze_side(q, d, "output")
+    assert vi.full_count.tolist() == [1, 2, 0, 1]
+    assert vi.local_count.tolist() == [1, 2, 0, 0]
+    assert vi.singleton_live.tolist() == [True, False, False, False]
+    assert uo.singleton_live.tolist() == [True, False, True, False]
+    assert vi.start.tolist() == [4, 4, 4, 4]
+    assert vi.stop.tolist() == [5, 6, 4, 4]
+    for upper in [(1,), (1, 2), (2, 8, 16)]:
+        report = summarize(q, d, count_upper=upper)
+        assert sum(report["bucket_atoms"]) == 4
+        assert report["onehot_both_live_atoms"] == 1
+        assert report["inactive_in_local_transform_atoms"] == 2
+
+
+def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
+    from types import SimpleNamespace
+
+    from benchmarks.cuda.linear.local_product import optimizer_step
+    from torchcst import CSTLinear, CSTOptimizer
+
+    d = Domain(16, 16)
+    s = state(birth=1).double()
+    p = fixture(s, d).detach()
+    model = CSTLinear(
+        *d.charts(dtype=torch.float64),
+        atoms=p,
+        kernel=s.spec,
+        dtype=torch.float64,
+        backend="factored",
+    )
+    actual = SimpleNamespace(p=torch.nn.Parameter(p.clone()), local_state=s)
+    proposal = torch.optim.AdamW([actual.p], lr=0.0001, weight_decay=0.01)
+    base = torch.optim.AdamW(model.parameters(), lr=0.0001, weight_decay=0.01)
+    oracle = CSTOptimizer(base, model=model)
+    gen = torch.Generator().manual_seed(95)
+    for _ in range(4):
+        grad = torch.randn(p.shape, generator=gen, dtype=p.dtype)
+        actual.p.grad, model.atoms.p.grad = grad.clone(), grad.clone()
+        optimizer_step(actual, proposal, step_size=0.0001)
+        oracle.step()
+        torch.testing.assert_close(actual.p, model.atoms.p, atol=1e-12, rtol=1e-12)
+        for key, tensor in proposal.state[actual.p].items():
+            torch.testing.assert_close(
+                tensor, base.state[model.atoms.p][key], atol=1e-12, rtol=1e-12
+            )

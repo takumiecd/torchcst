@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "local-32-sharp",
+    "fixture": "local_polar_product",
+    "size": 32,
+    "rows": 16,
+    "atoms": 51,
+    "profile": "sharp",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 3,
+    "rounds": 7,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    }
+  },
+  "plans": [
+    "local-fused",
+    "local-saved",
+    "local-unpacked",
+    "local-torch"
+  ],
+  "baseline": "local-torch",
+  "dense": true
+}

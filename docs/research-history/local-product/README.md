@@ -29,3 +29,5 @@ checks skip on the local host. Ruff and diff whitespace checks pass. The CUDA
 kernel SHA256 is unchanged from the measured source at `2acefae`:
 `7e992455f0974f7e617e9b5a17b202fa024ab4d3b7c8a846916ee0f7583c0715`.
 No GPU experiment was rerun for this source relocation.
+
+2026-10-04: [Exact support diagnostics and existing Linear benchmark integration](20261004-support-and-linear.md), 127 L4 checks plus five small-transform cases; whole-call routes only, hybrid dispatch pending.

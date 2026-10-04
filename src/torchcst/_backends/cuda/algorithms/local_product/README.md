@@ -34,12 +34,17 @@ The shared fixture module now contains local product state and reference helpers
 Small cases, same-model reference paths and ordinary dense Linear should use the
 existing correctness / timing / complete-step memory reporting workflow.
 
-The existing `run.py`/manifest currently accept only normalized Euclidean Strip
-at 1024/8192, with forced full/window plans and fused capturable AdamW. The next
-integration work extends that existing fixture/plan path for small PolarAmpWidth
-transforms; the old cases and their mathematical/numerical contract remain
-intact. Historical local-H measurements used SGD displacement plus polar
-activity updates and must not be presented as this runner's AdamW results.
+The existing `run.py`/manifest now also accepts small PolarAmpWidth transforms
+via `plans-local-product.json` and `cases/local-{16,32,64}-{profile}.json`.
+The old normalized Strip declarations and production registration remain intact.
+Candidates use fused capturable AdamW proposals followed by the existing
+Euclidean polar update algebra. The fixture specialization is checked against
+public CSTOptimizer's parameters and moment state. Historical local-H numbers
+used SGD displacement plus polar updates and are not comparable AdamW results.
+
+`support.py` supplies exact full/local support and tile-overlap diagnostics for
+tuning, including empty/floor-active/singleton cases. It is intentionally outside
+step timing and is not the future compact GPU support-preparation implementation.
 
 Future larger GEMM composition and Strip/Torus integration follow validation of
 this small-transform primitive. No outer matrix schedule is introduced here.
