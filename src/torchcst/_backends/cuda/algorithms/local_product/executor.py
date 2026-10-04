@@ -26,7 +26,7 @@ def _sizes(domain, swap=False):
     return (n, k, oo, oi, i, js) if swap else (k, n, oi, oo, js, i)
 
 
-def _fused(x, packed, domain, recipe, swap=False):
+def _fused(x, packed, domain, recipe, swap=False, sparse=False):
     import triton as tr
 
     from . import kernels
@@ -51,22 +51,26 @@ def _fused(x, packed, domain, recipe, swap=False):
         recipe.batch_block,
         recipe.atom_block,
         swap,
+        sparse,
+        recipe.support_limit,
         num_warps=4,
         enable_fp_fusion=False,
     )
-    _report("dx" if swap else "fused_forward", compiled)
+    _report(
+        ("support_" if sparse else "") + ("dx" if swap else "fused_forward"), compiled
+    )
     return y
 
 
 class _LocalH(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, q, domain, recipe, saved):
+    def forward(ctx, x, q, domain, recipe, saved, sparse):
         import triton as tr
 
         from . import kernels
 
         a = len(q)
-        packed = q.new_empty((9, a))
+        packed = q.new_empty((13 if sparse else 9, a))
         if a:
             compiled = kernels.prepare[(a,)](
                 q,
@@ -79,10 +83,11 @@ class _LocalH(torch.autograd.Function):
                 domain.output_origin,
                 tr.next_power_of_2(domain.input_size),
                 tr.next_power_of_2(domain.output_size),
+                sparse,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
-            _report("prepare", compiled)
+            _report("prepare_support" if sparse else "prepare", compiled)
         h = q.new_empty((len(x), a)) if saved else q.new_empty((0,))
         if saved:
             if a:
@@ -124,9 +129,9 @@ class _LocalH(torch.autograd.Function):
             )
             _report("from_h", compiled)
         else:
-            y = _fused(x, packed, domain, recipe)
+            y = _fused(x, packed, domain, recipe, sparse=sparse)
         ctx.save_for_backward(x, packed, h)
-        ctx.settings = domain, recipe, saved
+        ctx.settings = domain, recipe, saved, sparse
         return y
 
     @staticmethod
@@ -137,10 +142,10 @@ class _LocalH(torch.autograd.Function):
         from . import kernels
 
         x, packed, h = ctx.saved_tensors
-        domain, recipe, saved = ctx.settings
+        domain, recipe, saved, sparse = ctx.settings
         dy = dy.contiguous()
         dx = (
-            _fused(dy, packed, domain, recipe, swap=True)
+            _fused(dy, packed, domain, recipe, swap=True, sparse=sparse)
             if ctx.needs_input_grad[0]
             else None
         )
@@ -169,19 +174,28 @@ class _LocalH(torch.autograd.Function):
                     max(16, tr.next_power_of_2(len(x))),
                     recipe.atom_block,
                     saved,
+                    sparse,
+                    recipe.support_limit,
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
-                _report("param_saved" if saved else "param_recomputed", compiled)
-        return dx, dq, None, None, None
+                _report(
+                    "support_param"
+                    if sparse
+                    else ("param_saved" if saved else "param_recomputed"),
+                    compiled,
+                )
+        return dx, dq, None, None, None, None
 
 
-def local_h(x, p, value, domain, *, saved=False, recipe=DEFAULT_RECIPE):
+def local_h(x, p, value, domain, *, saved=False, sparse=False, recipe=DEFAULT_RECIPE):
     """Y_local from X_local, normalized full-domain profiles, and polar atoms.
 
     Call validate_state once at configuration. Bounds stay shared during updates.
     No outer GEMM scheduling or production Strip/Torus dispatch is added here.
     """
+    if sparse and saved:
+        raise ValueError("initial support route recomputes local H")
     if (
         not x.is_cuda
         or x.dtype != torch.float32
@@ -198,4 +212,6 @@ def local_h(x, p, value, domain, *, saved=False, recipe=DEFAULT_RECIPE):
     order = order_atoms(q, domain, recipe)
     q = q.index_select(0, order)
     with torch.cuda.device(x.device):
-        return _LocalH.apply(x.contiguous(), q.contiguous(), domain, recipe, saved)
+        return _LocalH.apply(
+            x.contiguous(), q.contiguous(), domain, recipe, saved, sparse
+        )

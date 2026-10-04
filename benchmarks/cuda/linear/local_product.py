@@ -25,7 +25,7 @@ class LocalRecipe(Recipe):
             raise ValueError("requires a numeric boundary array")
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
-        if self.route not in ("fused", "saved", "torch"):
+        if self.route not in ("fused", "saved", "torch", "support"):
             raise ValueError("unknown local H route")
         if (
             type(self.pack) is not bool
@@ -70,7 +70,7 @@ def runtime(operator, device):
 @dataclass(frozen=True)
 class LocalAlgorithm(Algorithm[LocalRecipe]):
     id: str = "research_local_product"
-    revision: str = "v1"
+    revision: str = "v2"
     operation_id: str = "linear"
     semantics_id: str = SEMANTICS
     recipe_type: type = LocalRecipe
@@ -108,7 +108,13 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
             v, u = local_product_dense_factors(parameters, value, domain)
             return (x @ v) @ u.T
         return local_h(
-            x, parameters, value, domain, saved=recipe.route == "saved", recipe=recipe
+            x,
+            parameters,
+            value,
+            domain,
+            saved=recipe.route == "saved",
+            sparse=recipe.route == "support",
+            recipe=recipe,
         )
 
 

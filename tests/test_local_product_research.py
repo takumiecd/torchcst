@@ -314,7 +314,7 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("plan_id", ["local-unpacked", "local-saved"])
+@pytest.mark.parametrize("plan_id", ["local-unpacked", "local-saved", "local-support"])
 def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     from benchmarks.cuda.linear.local_product import (
         initialize,
@@ -327,11 +327,15 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
 
     case = load_run(
         DEFAULT_PLANS.parent / "cases/local-32-mixed.json",
-        DEFAULT_PLANS.with_name("plans-local-product.json"),
+        DEFAULT_PLANS.with_name("plans-local-support.json"),
     )
-    model = PlanLinear(
-        initialize(case.case).cuda(), operator_spec(32), case.entry(plan_id).plan
+    from benchmarks.cuda.linear.manifest import decode_catalog, read_json
+
+    entries = decode_catalog(
+        read_json(DEFAULT_PLANS.with_name("plans-local-support.json"))[0]
     )
+    plan = next(entry.plan for entry in entries if entry.id == plan_id)
+    model = PlanLinear(initialize(case.case).cuda(), operator_spec(32), plan)
     opt = torch.optim.AdamW(
         [model.p], lr=0.0001, weight_decay=0.01, fused=True, capturable=True
     )
@@ -396,3 +400,77 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
             )
     after = decode(model.local_state, model.p).detach()[:, 1].rsqrt()
     assert torch.count_nonzero(after != before) > len(after) // 2
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("limit", [1, 2, 4, 8])
+@pytest.mark.parametrize("spacing", [1.0, 0.5])
+def test_support_route_handles_narrow_wide_floor_and_slices(limit, spacing):
+    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+
+    d = Domain(
+        64,
+        64,
+        spacing=spacing,
+        input_start=3,
+        input_count=33,
+        output_start=5,
+        output_count=47,
+    )
+    s = state(minimum=spacing, birth=spacing, maximum=16 * spacing).cuda()
+    p = fixture(s, d, device="cuda", dtype=torch.float32, atoms=41)
+    with torch.no_grad():
+        # Most atoms start at the minimum. Include a broad group plus a purely
+        # narrow partial group so both device branches execute in the same call.
+        radius = p[:, :2].square().sum(1).sqrt()
+        p[:, :2].div_(radius[:, None])
+        p[8, :2].mul_(2)
+    x = torch.randn(64, d.input_count, device="cuda", requires_grad=True)
+    dy = torch.randn(64, d.output_count, device="cuda")
+    recipe = Recipe(pack=False, support_limit=limit)
+    y = local_h(x, p, s, d, sparse=True, recipe=recipe)
+    grads = torch.autograd.grad(y, (x, p), dy)
+    xx, pp = x.detach().double().requires_grad_(), p.detach().double().requires_grad_()
+    ss = state(minimum=spacing, birth=spacing, maximum=16 * spacing).double().cuda()
+    expected = scalar_oracle(xx, pp, ss, d)
+    truth_grads = torch.autograd.grad(expected, (xx, pp), dy.double())
+    for a, e in [(y, expected), *zip(grads, truth_grads)]:
+        torch.testing.assert_close(a.double(), e, atol=4e-4, rtol=4e-4)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+def test_support_graph_refreshes_bounds_across_threshold():
+    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+
+    d = Domain(32, 32)
+    s = state(birth=1).cuda()
+    p = fixture(s, d, device="cuda", dtype=torch.float32, atoms=19)
+    with torch.no_grad():
+        p[:, :2].div_(p[:, :2].norm(dim=1, keepdim=True))
+    x = torch.randn(7, 32, device="cuda", requires_grad=True)
+    dy = torch.randn(7, 32, device="cuda")
+    recipe = Recipe(pack=False, support_limit=4)
+
+    def step():
+        y = local_h(x, p, s, d, sparse=True, recipe=recipe)
+        return y, *torch.autograd.grad(y, (x, p), dy)
+
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(3):
+            step()
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        actual = step()
+    with torch.no_grad():
+        p[:16, :2].mul_(2)
+        p[0, 2:] = p.new_tensor([17.3, 21.2])
+    graph.replay()
+    xx, pp = x.detach().double().requires_grad_(), p.detach().double().requires_grad_()
+    ss = state(birth=1).double().cuda()
+    expected = scalar_oracle(xx, pp, ss, d)
+    expected_grads = torch.autograd.grad(expected, (xx, pp), dy.double())
+    for a, e in zip(actual, (expected, *expected_grads)):
+        torch.testing.assert_close(a.double(), e, atol=4e-4, rtol=4e-4)

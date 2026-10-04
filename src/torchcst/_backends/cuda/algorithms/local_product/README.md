@@ -7,7 +7,8 @@ PolarAmpWidth product. Sigma/spacing is the basis for choosing H's reuse range.
 
 This package carries the validated local-H primitive from `2acefae`, relocated
 out of the benchmark tree. It is not registered in production dispatch.
-`kernels.py` is byte-identical to the measured source at that checkpoint.
+The original routes retain the measured mathematical contract; `kernels.py` now
+adds an experimental support-bounded contraction route.
 See the [measurement record](../../../../../../docs/research-history/local-product/20261003-local-h.md).
 
 | File | Responsibility |
@@ -19,9 +20,11 @@ See the [measurement record](../../../../../../docs/research-history/local-produ
 | `kernels.py` | Fused local H, saved H, dX and parameter contractions |
 | `executor.py` | Execute one small local transform with autograd |
 
-Current routes are fused H and globally saved H, selected for a whole call.
-Combined sigma-dependent routing, explicit shared-H reuse and support-shortened
-loops are still to implement. L1/L2 are caches, not direct allocation policies.
+Whole-call routes are fused H and globally saved H. The experimental support
+route refreshes intervals on the GPU and uses direct contractions for narrow
+atom groups, with the existing matrix path for wide groups. H->Y still uses the
+padded dot. Compacted per-atom routing and explicit shared/global-H policy remain
+to implement. L1/L2 are caches, not direct allocation policies.
 The initial batch limit is 64; local sizes are at most 64 with full norm domains
 at most 128. Existing CUDA correctness and spill reports are historical;
 relocation checks do not constitute a new GPU performance result.

@@ -26,6 +26,7 @@ def prepare(
     OO: tl.constexpr,
     PK: tl.constexpr,
     PN: tl.constexpr,
+    BOUNDS: tl.constexpr = False,
 ):
     a = tl.program_id(0)
     amp = tl.load(Q + a * 4)
@@ -53,6 +54,13 @@ def prepare(
     tl.store(P + 6 * A + a, gv)
     tl.store(P + 7 * A + a, gu)
     tl.store(P + 8 * A + a, flags.to(tl.float32))
+    if BOUNDS:
+        # Full-domain support, independently for both centers. The same sigma
+        # need not imply equal counts near a boundary or at different grid phases.
+        tl.store(P + 9 * A + a, tl.min(tl.where(v > 0, j, KI), 0).to(tl.float32))
+        tl.store(P + 10 * A + a, tl.max(tl.where(v > 0, j + 1, 0), 0).to(tl.float32))
+        tl.store(P + 11 * A + a, tl.min(tl.where(u > 0, i, NO), 0).to(tl.float32))
+        tl.store(P + 12 * A + a, tl.max(tl.where(u > 0, i + 1, 0), 0).to(tl.float32))
 
 
 @tr.jit
@@ -74,6 +82,87 @@ def _factor(
 
 
 @tr.jit
+def _interval(
+    P, a, A: tl.constexpr, OUT: tl.constexpr, START: tl.constexpr, COUNT: tl.constexpr
+):
+    lo = tl.load(P + (11 if OUT else 9) * A + a, a < A, 0.0).to(tl.int32)
+    hi = tl.load(P + (12 if OUT else 10) * A + a, a < A, 0.0).to(tl.int32)
+    lo = tl.minimum(tl.maximum(lo - START, 0), COUNT)
+    hi = tl.minimum(tl.maximum(hi - START, 0), COUNT)
+    return lo, hi, tl.maximum(hi - lo, 0)
+
+
+@tr.jit
+def _site_factor(
+    P, a, points, A: tl.constexpr, OUT: tl.constexpr, S: tl.constexpr, O: tl.constexpr
+):
+    inv = tl.load(P + A + a, a < A, 0.0)
+    c = tl.load(P + (3 if OUT else 2) * A + a, a < A, 0.0)
+    norm = tl.load(P + (5 if OUT else 4) * A + a, a < A, 1.0)
+    gamma = tl.load(P + (7 if OUT else 6) * A + a, a < A, 0.0)
+    flag = tl.load(P + 8 * A + a, a < A, 0.0).to(tl.int32)
+    raw, dc = _raw(O + points * S - c, inv)
+    f = raw / norm
+    d = dc / norm - f * gamma
+    d = tl.where(((flag >> (1 if OUT else 0)) & 1) != 0, 0.0, d)
+    return f, d
+
+
+@tr.jit
+def _support_contract(
+    X,
+    P,
+    a,
+    b,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    K: tl.constexpr,
+    START: tl.constexpr,
+    OUT: tl.constexpr,
+    S: tl.constexpr,
+    O: tl.constexpr,
+    BB: tl.constexpr,
+    BA: tl.constexpr,
+):
+    lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    h, dh = tl.full((BB, BA), 0.0, tl.float32), tl.full((BB, BA), 0.0, tl.float32)
+    for offset in range(tl.max(width, 0)):
+        j = lo + offset
+        live = (a < A) & (offset < width) & (j < K)
+        x = tl.load(
+            X + b[:, None] * K + j[None, :], (b[:, None] < B) & live[None, :], 0.0
+        )
+        f, dc = _site_factor(P, a, START + j, A, OUT, S, O)
+        h += x * f[None, :]
+        dh += x * dc[None, :]
+    return h, dh
+
+
+@tr.jit
+def _matrix_contract(
+    X,
+    P,
+    a,
+    b,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    K: tl.constexpr,
+    START: tl.constexpr,
+    OUT: tl.constexpr,
+    S: tl.constexpr,
+    O: tl.constexpr,
+    BK: tl.constexpr,
+):
+    j = tl.arange(0, BK)
+    x = tl.load(
+        X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
+    )
+    v, dv = _factor(P, a, START + j, A, OUT, S, O)
+    v, dv = tl.where(j[:, None] < K, v, 0.0), tl.where(j[:, None] < K, dv, 0.0)
+    return tl.dot(x, v, input_precision="ieee"), tl.dot(x, dv, input_precision="ieee")
+
+
+@tr.jit
 def fused(
     X,
     P,
@@ -92,20 +181,35 @@ def fused(
     BM: tl.constexpr,
     BA: tl.constexpr,
     SWAP: tl.constexpr,
+    SPARSE: tl.constexpr = False,
+    LIMIT: tl.constexpr = 8,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     j, i = tl.arange(0, BK), tl.arange(0, BN)
-    x = tl.load(
-        X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
-    )
+    if not SPARSE:
+        x = tl.load(
+            X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
+        )
     y = tl.full((BM, BN), 0.0, tl.float32)
     for a0 in range(0, A, BA):
         a = a0 + tl.arange(0, BA)
-        v, _ = _factor(P, a, JS + j, A, SWAP, S, OI)
-        u, _ = _factor(P, a, IS + i, A, not SWAP, S, OO)
-        v, u = tl.where(j[:, None] < K, v, 0.0), tl.where(i[:, None] < N, u, 0.0)
+        u, _du_full = _factor(P, a, IS + i, A, not SWAP, S, OO)
+        u = tl.where(i[:, None] < N, u, 0.0)
         amp = tl.load(P + a, a < A, 0.0)
-        h = tl.dot(x, v, input_precision="ieee")
+        if SPARSE:
+            _lo, _hi, width = _interval(P, a, A, SWAP, JS, K)
+            if tl.max(width, 0) <= LIMIT:
+                h, _dh_support = _support_contract(
+                    X, P, a, b, A, B, K, JS, SWAP, S, OI, BM, BA
+                )
+            else:
+                h, _dh_matrix = _matrix_contract(
+                    X, P, a, b, A, B, K, JS, SWAP, S, OI, BK
+                )
+        else:
+            v, _dv_full = _factor(P, a, JS + j, A, SWAP, S, OI)
+            v = tl.where(j[:, None] < K, v, 0.0)
+            h = tl.dot(x, v, input_precision="ieee")
         y = tl.dot(h * amp[None, :], tl.trans(u), y, input_precision="ieee")
     tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
 
@@ -188,28 +292,42 @@ def param_vjp(
     BB: tl.constexpr,
     BA: tl.constexpr,
     SAVED: tl.constexpr,
+    SPARSE: tl.constexpr = False,
+    LIMIT: tl.constexpr = 8,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     b, j, i = tl.arange(0, BB), tl.arange(0, BK), tl.arange(0, BN)
-    x = tl.load(
-        X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
-    )
-    dy = tl.load(
-        DY + b[:, None] * N + i[None, :], (b[:, None] < B) & (i[None, :] < N), 0.0
-    )
-    v, dv = _factor(P, a, JS + j, A, False, S, OI)
-    u, du = _factor(P, a, IS + i, A, True, S, OO)
-    v, dv = tl.where(j[:, None] < K, v, 0.0), tl.where(j[:, None] < K, dv, 0.0)
-    u, du = tl.where(i[:, None] < N, u, 0.0), tl.where(i[:, None] < N, du, 0.0)
-    if SAVED:
-        h = tl.load(
-            H + b[:, None] * A + a[None, :], (b[:, None] < B) & (a[None, :] < A), 0.0
-        )
+    if SPARSE:
+        _vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
+        _ulo, _uhi, uw = _interval(P, a, A, True, IS, N)
+        if tl.maximum(tl.max(vw, 0), tl.max(uw, 0)) <= LIMIT:
+            h, dh = _support_contract(X, P, a, b, A, B, K, JS, False, S, OI, BB, BA)
+            g, dg = _support_contract(DY, P, a, b, A, B, N, IS, True, S, OO, BB, BA)
+        else:
+            h, dh = _matrix_contract(X, P, a, b, A, B, K, JS, False, S, OI, BK)
+            g, dg = _matrix_contract(DY, P, a, b, A, B, N, IS, True, S, OO, BN)
     else:
-        h = tl.dot(x, v, input_precision="ieee")
-    g = tl.dot(dy, u, input_precision="ieee")
-    dh = tl.dot(x, dv, input_precision="ieee")
-    dg = tl.dot(dy, du, input_precision="ieee")
+        x = tl.load(
+            X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
+        )
+        dy = tl.load(
+            DY + b[:, None] * N + i[None, :], (b[:, None] < B) & (i[None, :] < N), 0.0
+        )
+        v, dv = _factor(P, a, JS + j, A, False, S, OI)
+        u, du = _factor(P, a, IS + i, A, True, S, OO)
+        v, dv = tl.where(j[:, None] < K, v, 0.0), tl.where(j[:, None] < K, dv, 0.0)
+        u, du = tl.where(i[:, None] < N, u, 0.0), tl.where(i[:, None] < N, du, 0.0)
+        if SAVED:
+            h = tl.load(
+                H + b[:, None] * A + a[None, :],
+                (b[:, None] < B) & (a[None, :] < A),
+                0.0,
+            )
+        else:
+            h = tl.dot(x, v, input_precision="ieee")
+        g = tl.dot(dy, u, input_precision="ieee")
+        dh = tl.dot(x, dv, input_precision="ieee")
+        dg = tl.dot(dy, du, input_precision="ieee")
     amp = tl.load(P + a, a < A, 0.0)
     da = tl.sum(h * g, 0)
     dci = amp * tl.sum(dh * g, 0)
