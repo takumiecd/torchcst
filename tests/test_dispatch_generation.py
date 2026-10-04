@@ -9,7 +9,7 @@ from dataclasses import replace
 
 import pytest
 
-from benchmarks.database.adapters.linear import ADAPTER, REVISION, project
+from benchmarks.database.adapters.linear import ADAPTER, project
 from benchmarks.database.model import digest
 from benchmarks.dispatch import ScorePolicy, generate
 from benchmarks.dispatch.generate import _context
@@ -49,7 +49,7 @@ def request_for(row, **changes):
         "revision": "test-v1",
         "dataset": {
             "adapter": ADAPTER,
-            "adapter_revision": REVISION,
+            "adapter_revision": row["adapter_revision"],
             "gpu": row["environment"]["gpu"],
             "source_id": row["source_id"],
         },
@@ -67,7 +67,7 @@ def dataset_for(*values):
         projection = project(value)
         run_id = digest(value)
         projection_id = digest(
-            {"run_id": run_id, "adapter": ADAPTER, "revision": REVISION}
+            {"run_id": run_id, "adapter": ADAPTER, "revision": projection.revision}
         )
         for ordinal, record in enumerate(projection.records):
             if record.kind != "measure":
@@ -79,7 +79,7 @@ def dataset_for(*values):
                     "projection_id": projection_id,
                     "ordinal": ordinal,
                     "adapter": ADAPTER,
-                    "adapter_revision": REVISION,
+                    "adapter_revision": projection.revision,
                     "case_id": projection.case_id,
                     "case_declaration": projection.case,
                     "protocol_id": digest(projection.protocol),

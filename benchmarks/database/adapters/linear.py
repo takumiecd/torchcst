@@ -1,4 +1,4 @@
-"""Projection v2 of the normalized CUDA complete-step artifact schema v1.
+"""Normalized v2 and local-product v3 projections of complete-step schema v1.
 
 Validation checks internal consistency, not the submitter's authenticity or a
 full-shape correctness certification. Failed runs retain evidence, no metrics.
@@ -11,8 +11,12 @@ import re
 import statistics
 from dataclasses import asdict
 
-from benchmarks.cuda.linear.fixtures import operator_spec
-from benchmarks.cuda.linear.manifest import decode_snapshot
+from benchmarks.cuda.linear.manifest import REGISTRY, decode_snapshot
+from benchmarks.cuda.linear.protocol import (
+    LOCAL_OPTIMIZER_POLICY,
+    LOCAL_ORACLE_SCOPE,
+    measurement_operator,
+)
 from benchmarks.database.model import (
     Metric,
     Projection,
@@ -20,10 +24,10 @@ from benchmarks.database.model import (
     digest,
     execution_identity,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
 
 ADAPTER = "cuda.linear.complete-step"
 REVISION = 2
+LOCAL_REVISION = 3
 
 
 def _hash(value):
@@ -31,7 +35,7 @@ def _hash(value):
         raise ValueError("expected SHA256 hex string")
 
 
-def _source(meta):
+def _source(meta, *, research=False):
     hashes = meta.get("source_hashes")
     if type(hashes) is not dict or not hashes:
         raise ValueError("missing source hashes")
@@ -52,15 +56,27 @@ def _source(meta):
     if not any(name.startswith("torchcst/") for name in normalized):
         raise ValueError("missing package source hashes")
     commit = meta.get("source_commit")
+    label = None
     if commit != "unrecorded" and (
         type(commit) is not str or not re.fullmatch("[0-9a-f]{7,40}", commit)
     ):
-        raise ValueError("source commit needs a Git SHA/prefix or unrecorded")
-    return {
+        if (
+            not research
+            or type(commit) is not str
+            or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", commit)
+        ):
+            raise ValueError("source commit needs a Git SHA/prefix or unrecorded")
+        # Frozen research snapshots may have a working-tree label. Retain it
+        # explicitly without certifying it as a Git commit; hashes identify code.
+        label, commit = commit, "unrecorded"
+    result = {
         "commit": commit,
         "commit_is_full_sha": commit != "unrecorded" and len(commit) == 40,
         "hashes": normalized,
     }
+    if label is not None:
+        result["recorded_source_label"] = label
+    return result
 
 
 def _environment(meta):
@@ -155,7 +171,9 @@ def project(value):
         raise ValueError("run must be completed with a record list")
     execution_identity(value)
     run = decode_snapshot(value["run"])
-    case = asdict(run.case)
+    case = json.loads(json.dumps(asdict(run.case), allow_nan=False))
+    local = run.case.fixture == "local_polar_product"
+    revision = LOCAL_REVISION if local else REVISION
     plans = {p.id: REGISTRY.dump_plan(p.plan) for p in run.plans}
     protocol = {
         "id": ADAPTER,
@@ -168,13 +186,16 @@ def project(value):
         "correctness": "small mixed fixture; independent FP64 all-atom oracle",
         "memory": "warmed model, gradients and optimizer; capture/replay peak",
     }
+    if local:
+        protocol["correctness"] = LOCAL_ORACLE_SCOPE
+        protocol["optimizer_policy"] = LOCAL_OPTIMIZER_POLICY
     _hash(value["snapshot_sha256"])
     historical = (json.dumps(run.snapshot(), indent=2, allow_nan=False) + "\n").encode()
     # Older producer revisions used different dictionary order in Plan JSON.
     # Preserve that order from the original artifact to verify its byte hash.
     original = (json.dumps(value["run"], indent=2, allow_nan=False) + "\n").encode()
     if value["snapshot_sha256"] not in (
-        digest(run.snapshot()),
+        digest(json.loads(historical)),
         hashlib.sha256(historical).hexdigest(),
         hashlib.sha256(original).hexdigest(),
     ):
@@ -201,7 +222,7 @@ def project(value):
     if value["status"] == "FAIL":
         protocol["initialization"] = {"method": "not verified"}
         return Projection(
-            ADAPTER, REVISION, case, plans, run.baseline, protocol, tuple(records)
+            ADAPTER, revision, case, plans, run.baseline, protocol, tuple(records)
         )
 
     performance = any(r.kind == "measure" for r in records)
@@ -213,38 +234,41 @@ def project(value):
     actual = [(r.kind, r.plan_alias) for r in records]
     if len(set(actual)) != len(actual) or set(actual) != expected:
         raise ValueError("incomplete/duplicate worker set")
-    n = case["size"]
-    h, j = (32, 32) if n == 1024 else (64, 128)
-    op = operator_spec(
-        sizes=(n, h, j),
-        origin=(-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4),
-        spacing=(1.0, 0.5, 0.5),
-    )
+    op = measurement_operator(case)
     operator = json.loads(json.dumps(asdict(op)))
     common = None
     initialization = None
     inputs = None
     parameters = None
+    polar_update = None
     validated = []
     for record in records:
         meta, result = record.payload["metadata"], record.payload["result"]
         actual_initialization = meta.get(
             "initialization", {"method": "torch.cuda.legacy-v1"}
         )
-        if actual_initialization != {"method": "torch.cuda.legacy-v1"}:
-            if (
-                type(actual_initialization) is not dict
-                or set(actual_initialization) != {"method", "cpu_capability"}
-                or actual_initialization["method"] != "torch.cpu.v1"
-                or type(actual_initialization["cpu_capability"]) is not str
-                or not actual_initialization["cpu_capability"]
-            ):
-                raise ValueError("unknown initialization method")
+        if actual_initialization != {"method": "torch.cuda.legacy-v1"} and (
+            type(actual_initialization) is not dict
+            or set(actual_initialization) != {"method", "cpu_capability"}
+            or actual_initialization["method"] != "torch.cpu.v1"
+            or type(actual_initialization["cpu_capability"]) is not str
+            or not actual_initialization["cpu_capability"]
+        ):
+            raise ValueError("unknown initialization method")
         if initialization is not None and initialization != actual_initialization:
             raise ValueError("workers use different initialization methods")
         initialization = actual_initialization
         protocol["initialization"] = initialization
         protocol["revision"] = 2 if initialization["method"] == "torch.cpu.v1" else 1
+        if local:
+            actual_update = meta.get("polar_update")
+            if actual_update not in ("torch", "fused"):
+                raise ValueError("unknown polar update implementation")
+            if polar_update is not None and polar_update != actual_update:
+                raise ValueError("workers use different polar update implementations")
+            polar_update = actual_update
+            protocol["polar_update"] = polar_update
+            protocol["revision"] = 3
         if (
             record.status != "PASS"
             or type(meta.get("schema_version")) is not int
@@ -265,18 +289,20 @@ def project(value):
             raise ValueError("worker precision/seed differs")
         if meta.get("plan") != plans.get(record.plan_alias):
             raise ValueError("worker Plan differs from selected Plan")
-        source, environment = _source(meta), _environment(meta)
+        source, environment = _source(meta, research=local), _environment(meta)
         identity = (source, environment)
         if common is not None and identity != common:
             raise ValueError("workers have different source/runtime/GPU")
         common = identity
         if record.kind == "correctness":
-            if (
+            if not local and (
                 result.get("fixture_sizes") != [1024, 4, 4]
                 or result.get("fixture_atoms") != 8
                 or result.get("scope") != protocol["correctness"]
             ):
                 raise ValueError("unknown independent oracle fixture/scope")
+            if local and result.get("scope") != LOCAL_ORACLE_SCOPE:
+                raise ValueError("unknown local independent oracle scope")
             metrics = tuple(
                 Metric(
                     f"error.{tensor}",
@@ -285,7 +311,11 @@ def project(value):
                     key,
                     result[tensor][key],
                 )
-                for tensor in ("w", "y", "dx", "dp")
+                for tensor in (
+                    ("y", "dx", "dp", "polar_update")
+                    if local
+                    else ("w", "y", "dx", "dp")
+                )
                 for key in ("max", "rel_l2")
             )
         else:
@@ -296,6 +326,10 @@ def project(value):
             ):
                 raise ValueError("measurement operator/optimizer differs")
             dense = record.kind == "dense"
+            if local and result.get("optimizer_policy") != (
+                "ordinary AdamW" if dense else LOCAL_OPTIMIZER_POLICY
+            ):
+                raise ValueError("measurement polar optimizer contract differs")
             if result.get("reference") != (
                 "dense_linear" if dense else record.plan_alias
             ):
@@ -337,5 +371,5 @@ def project(value):
             )
         )
     return Projection(
-        ADAPTER, REVISION, case, plans, run.baseline, protocol, tuple(validated)
+        ADAPTER, revision, case, plans, run.baseline, protocol, tuple(validated)
     )

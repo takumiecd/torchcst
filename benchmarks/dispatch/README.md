@@ -10,7 +10,8 @@ PostgreSQLの固定snapshot（READ ONLY / REPEATABLE READ）
 ```
 
 DB接続・集計・評価は生成時に行う。ライブラリのforwardからDBへ接続しない。
-現在の生成adapterは `cuda.linear.complete-step` revision 2、選択器は `exact_table`。
+生成adapterは `cuda.linear.complete-step`（normalized Strip は revision 2、
+研究用 local product は revision 3）、選択器は `exact_table`。
 既存の [Selector artifact v1](../../src/torchcst/_backends/cuda/dispatch/README.md)を出力する。
 GPUでの再測定、kernel承認、既定dispatchへの自動採用は行わない。
 
@@ -120,6 +121,28 @@ python -m benchmarks.dispatch \
 生成機のTorchを対象GPUのTorch版として記録しない。出力は観測に記録されたTorch / Triton版を対象にする。
 CPU生成時は構造とRegistryを検査し、実行用 `load_selector` は引き続き実際の導入済み版を照合する。
 runtime版の違う環境では読み込みを拒否する。CUDA版などJSONが照合しない条件の扱いは生成・配布側で管理する。
+
+## Local product の研究候補
+
+CLI は benchmark-local Registry を使うため `research_local_product@v2` の Plan も生成できる。
+local の条件は入出力各1次元、共有幅・PolarAmpWidth・normalized Triweight product、
+16/32/64/128 sites、batch 1..64、parameter_dim=4、CUDA FP32 / TF32 off。
+Operator の width bounds を Case から復元し、polar optimizer 契約を照合する。
+生成 artifact の読み込みにも `benchmarks.cuda.linear.manifest.REGISTRY` を指定する。
+研究候補の本番登録や公開 CSTLinear 経路への接続は行わない。
+persistent route の実行には、既存研究 runner と同じ model-owned layout が必要。
+
+初期 rho mixture は実行時の完全一致条件には入らない。混合・narrow-only のように
+同じ runtime key を持つ Case は `case_id` で分けて artifact を生成する。
+複数 Case を暗黙にまとめると衝突検査が拒否する。各 artifact は測定 Case に限定した
+開発候補であり、現在の rho 分布を読み取る自動選択器ではない。
+
+[2026-10-05 の保存・候補登録記録](../../docs/research-history/local-product/20261005-database-and-dispatch.md)
+と [`requests/local-product-l4-20261005/`](requests/local-product-l4-20261005/) に、
+最終 L4 source の Case ごとの生成依頼を保存する。速度優先と、従来 control の
+allocated peak 以内で最速を選ぶ候補を分ける。後者の ceiling は比較方針であり、
+ユーザー指定のメモリ上限ではない。各 Case は1独立実行なので `min_runs=1` を明記し、
+21時間サンプルを21独立実行に読み替えない。
 
 ## GitHub Actions
 

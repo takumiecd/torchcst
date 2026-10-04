@@ -26,6 +26,41 @@ def prepare(database):
     return request_for(row)
 
 
+def test_local_product_import_export_and_scoped_dispatch(db):
+    from benchmarks.cuda.linear.manifest import REGISTRY as research_registry
+    from tests.test_local_product_database import local_artifact
+
+    database, _ = db
+    value = local_artifact()
+    raw = raw_artifact(value)
+    first = database.import_linear(raw)
+    again = database.import_linear(raw_artifact(value))
+    assert first["run_inserted"] and first["projection_inserted"]
+    assert not again["run_inserted"] and not again["projection_inserted"]
+    assert database.export_run(first["run_id"]) == raw
+    assert database.counts()["metrics"] == 83
+    row = database.list_records(kind="measure", adapter_revision=3)[0]
+    request = request_for(row)
+    request["dataset"]["case_id"] = row["case_id"]
+    request["fallback_plan"] = value["run"]["plans"][0]["plan"]
+    dataset = read_dataset(database, request, page_size=1)
+    assert len(dataset["records"]) == 6
+    speed = generate(dataset, request, registry=research_registry)
+    request["score_policy"]["parameters"] = {"max_peak_allocated_bytes": 3000}
+    bounded = generate(dataset, request, registry=research_registry)
+    for result, route in (
+        (speed, "persistent_supportprep_g"),
+        (bounded, "persistent_supportprep_band"),
+    ):
+        entry = result.artifact["entries"][0]
+        assert result.artifact["plans"][entry["plan_id"]]["recipe"]["route"] == route
+    database.import_linear(raw_artifact(local_artifact("narrow-only")))
+    assert len(read_dataset(database, request)["records"]) == 6
+    request["dataset"].pop("case_id")
+    with pytest.raises(ValueError, match="multiple comparison cohorts"):
+        generate(read_dataset(database, request), request, registry=research_registry)
+
+
 def test_paginated_db_generation_keeps_raw_evidence_and_uses_no_writes(db):
     database, _ = db
     request = prepare(database)

@@ -1,5 +1,11 @@
 # Small linear product / hybrid H
 
+2026-10-05: [Database preservation and research dispatch candidates](20261005-database-and-dispatch.md).
+Ten completed L4 runner artifacts (including negative alternatives) are stored
+in the existing PostgreSQL database with exact restoration/idempotence checks.
+Eight case-scoped speed/baseline-peak candidates are generated;214 local and
+real-PostgreSQL checks pass. Production dispatch remains unchanged.
+
 2026-10-04 development starts on `codex/local-product-hybrid`, based on main
 `6eee7fa`. The previous branch `codex/cst-gemm-tile-source` and its commits are
 retained; its managed checkout was archived. Source is recovered from `2acefae`

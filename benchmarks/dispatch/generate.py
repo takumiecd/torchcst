@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 
 import torch
 
-from benchmarks.cuda.linear.fixtures import operator_spec
+from benchmarks.cuda.linear.protocol import LOCAL_OPTIMIZER_POLICY, measurement_operator
 from benchmarks.database.model import digest
 from torchcst._backends.cuda.dispatch.conditions import condition_key, dump_condition
 from torchcst._backends.cuda.dispatch.exact import validate_selector_artifact
@@ -61,14 +61,10 @@ def _context(row, mode):
     """Protocol-specific reconstruction, never an arbitrary JSON type loader."""
     case, env = row["case_declaration"], row["environment"]
     n = case["size"]
-    h, j = (32, 32) if n == 1024 else (64, 128)
-    if n not in (1024, 8192) or case["fixture"] != "normalized_euclidean_strip":
-        raise ValueError("unknown complete-step fixture")
-    operator = operator_spec(
-        sizes=(n, h, j),
-        origin=(-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4),
-        spacing=(1.0, 0.5, 0.5),
-    )
+    local = case["fixture"] == "local_polar_product"
+    if row["adapter_revision"] != (3 if local else 2):
+        raise ValueError("generation fixture/adapter revision differs")
+    operator = measurement_operator(case)
     result = row["payload"]["result"]
     if (
         result["operator"] != json.loads(json.dumps(asdict(operator), allow_nan=False))
@@ -76,6 +72,14 @@ def _context(row, mode):
         or result["atoms"] != case["atoms"]
     ):
         raise ValueError("stored worker differs from generation fixture")
+    if local and (
+        row["protocol"].get("optimizer_policy") != LOCAL_OPTIMIZER_POLICY
+        or row["protocol"].get("polar_update") not in ("torch", "fused")
+        or row["payload"]["metadata"].get("polar_update")
+        != row["protocol"]["polar_update"]
+        or result.get("optimizer_policy") != LOCAL_OPTIMIZER_POLICY
+    ):
+        raise ValueError("stored polar optimizer contract differs")
     if env["dtype"] != "float32" or env["tf32"] is not False:
         raise ValueError("unsupported fixture precision")
     return DispatchContext(
@@ -84,7 +88,7 @@ def _context(row, mode):
         input_strides=(n, 1),
         dtype=torch.float32,
         atom_count=case["atoms"],
-        parameter_dim=5,
+        parameter_dim=4 if local else 5,
         device=DeviceInfo(
             "cuda", None, env["gpu"], tuple(env["compute_capability"]), env["sm_count"]
         ),
