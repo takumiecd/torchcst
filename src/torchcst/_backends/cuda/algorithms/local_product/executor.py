@@ -96,6 +96,80 @@ def _fused(
     return y
 
 
+def tile_layout(packed, domain, recipe):
+    """Refresh both execution layouts from current normalized support on device."""
+    import triton as tr
+
+    from . import kernels
+
+    a = packed.shape[1]
+    views = packed.new_empty((2, 13, a))
+    orders = packed.new_empty((2, a), dtype=torch.int32)
+    stride = max(tr.cdiv(domain.input_count, 16), tr.cdiv(domain.output_count, 16)) + 5
+    offsets = packed.new_empty((2, stride), dtype=torch.int32)
+    if a:
+        compiled = kernels.pack_tiles[(2,)](
+            packed,
+            views,
+            orders,
+            offsets,
+            a,
+            domain.input_count,
+            domain.output_count,
+            domain.input_start,
+            domain.output_start,
+            domain.spacing,
+            recipe.rho_upper[1],
+            tr.next_power_of_2(a),
+            tr.next_power_of_2(stride),
+            stride,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        _report("tile_layout", compiled)
+    else:
+        offsets.zero_()
+    return views, orders, offsets
+
+
+def _packed_fused(x, packed, h, order, offsets, domain, recipe, *, swap=False):
+    import triton as tr
+
+    from . import kernels
+
+    k, n, oi, oo, js, i = _sizes(domain, swap)
+    y = x.new_empty((len(x), n))
+    compiled = kernels.fused_packed[
+        (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(n, 16))
+    ](
+        x,
+        packed,
+        h,
+        order,
+        offsets,
+        y,
+        len(x),
+        k,
+        n,
+        packed.shape[1],
+        domain.spacing,
+        oi,
+        oo,
+        js,
+        i,
+        max(16, tr.next_power_of_2(k)),
+        recipe.batch_block,
+        recipe.atom_block,
+        swap,
+        recipe.support_limit,
+        recipe.rho_upper[1],
+        num_warps=8 if max(k, n) > 64 else 4,
+        enable_fp_fusion=False,
+    )
+    _report("packed_dx" if swap else "packed_forward", compiled)
+    return y
+
+
 class _LocalH(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -111,6 +185,7 @@ class _LocalH(torch.autograd.Function):
         support_only,
         three_band,
         singletons,
+        tile_packed,
     ):
         fused_polar = bool(scalars)
         import triton as tr
@@ -143,6 +218,10 @@ class _LocalH(torch.autograd.Function):
                 else ("prepare_support" if sparse else "prepare"),
                 compiled,
             )
+        if tile_packed:
+            views, orders, offsets = tile_layout(packed, domain, recipe)
+        else:
+            views, orders, offsets = (q.new_empty((0,)),) * 3
         # Fixed capacity keeps graph replay independent of a changing wide count.
         # Hybrid writes/reads only wide lanes; compact capacity is future work.
         h = q.new_empty((len(x), a)) if saved or hybrid else q.new_empty((0,))
@@ -171,7 +250,9 @@ class _LocalH(torch.autograd.Function):
                 enable_fp_fusion=False,
             )
             _report("hybrid_save_h" if hybrid else "save_h", compiled)
-        if saved:
+        if tile_packed:
+            y = _packed_fused(x, views[0], h, orders[0], offsets[0], domain, recipe)
+        elif saved:
             y = x.new_empty((len(x), domain.output_count))
             compiled = kernels.from_h[(tr.cdiv(len(x), recipe.batch_block),)](
                 h,
@@ -204,7 +285,14 @@ class _LocalH(torch.autograd.Function):
                 singletons=singletons,
             )
         ctx.save_for_backward(
-            x, packed, h, q if fused_polar else q.new_empty((0,)), *scalars
+            x,
+            views[0] if tile_packed else packed,
+            h,
+            views,
+            orders,
+            offsets,
+            q if fused_polar else q.new_empty((0,)),
+            *scalars,
         )
         ctx.settings = (
             domain,
@@ -216,6 +304,7 @@ class _LocalH(torch.autograd.Function):
             support_only,
             three_band,
             singletons,
+            tile_packed,
         )
         return y
 
@@ -226,7 +315,7 @@ class _LocalH(torch.autograd.Function):
 
         from . import kernels
 
-        x, packed, h, source, *scalars = ctx.saved_tensors
+        x, packed, h, views, orders, offsets, source, *scalars = ctx.saved_tensors
         (
             domain,
             recipe,
@@ -237,10 +326,16 @@ class _LocalH(torch.autograd.Function):
             support_only,
             three_band,
             singletons,
+            tile_packed,
         ) = ctx.settings
         dy = dy.contiguous()
-        dx = (
-            _fused(
+        dx = None
+        if ctx.needs_input_grad[0] and tile_packed:
+            dx = _packed_fused(
+                dy, views[1], h, orders[1], offsets[1], domain, recipe, swap=True
+            )
+        elif ctx.needs_input_grad[0]:
+            dx = _fused(
                 dy,
                 packed,
                 domain,
@@ -250,9 +345,6 @@ class _LocalH(torch.autograd.Function):
                 support_only=support_only,
                 singletons=singletons,
             )
-            if ctx.needs_input_grad[0]
-            else None
-        )
         dq = None
         if ctx.needs_input_grad[1]:
             a = packed.shape[1]
@@ -290,6 +382,7 @@ class _LocalH(torch.autograd.Function):
                     support_only,
                     THREE_BAND=three_band,
                     SINGLETON_FAST=singletons,
+                    Order=orders[0] if tile_packed else None,
                     num_warps=8
                     if max(domain.input_count, domain.output_count) > 64
                     else 4,
@@ -309,7 +402,7 @@ class _LocalH(torch.autograd.Function):
                     else ("param_saved" if saved else "param_recomputed"),
                     compiled,
                 )
-        return dx, dq, None, None, None, None, None, None, None, None, None
+        return dx, dq, None, None, None, None, None, None, None, None, None, None
 
 
 def local_h(
@@ -325,6 +418,7 @@ def local_h(
     support_only=False,
     three_band=False,
     singletons=False,
+    tile_packed=False,
     recipe=DEFAULT_RECIPE,
 ):
     """Y_local from X_local, normalized full-domain profiles, and polar atoms.
@@ -349,6 +443,8 @@ def local_h(
         raise ValueError(
             "three-band requires sparse hybrid with boundaries [1, mid, ...]"
         )
+    if tile_packed and (not singletons or not fused_polar):
+        raise ValueError("tile packing requires fused polar singleton hybrid")
     if singletons and not three_band:
         raise ValueError("singleton split requires the three-band hybrid")
     if (
@@ -384,4 +480,5 @@ def local_h(
             support_only,
             three_band,
             singletons,
+            tile_packed,
         )

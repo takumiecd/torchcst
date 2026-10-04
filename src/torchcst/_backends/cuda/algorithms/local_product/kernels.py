@@ -254,6 +254,61 @@ def _singletons(P, a, A: tl.constexpr):
 
 
 @tr.jit
+def pack_tiles(
+    P,
+    Views,
+    Orders,
+    Offsets,
+    A: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    JS: tl.constexpr,
+    IS: tl.constexpr,
+    S: tl.constexpr,
+    MID: tl.constexpr,
+    BLOCK: tl.constexpr,
+    BINS: tl.constexpr,
+    STRIDE: tl.constexpr,
+):
+    """Two SoA execution views; trainable rows and optimizer state keep their IDs.
+
+    A tile owns a certified singleton. General atoms are stored once per view,
+    in three rho bands, rather than duplicated into every intersected tile.
+    Padded lanes are outside the histogram's logical bucket range.
+    """
+    direction = tl.program_id(0)
+    a = tl.arange(0, BLOCK)
+    flag = tl.load(P + 8 * A + a, a < A, 0.0).to(tl.int32)
+    vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
+    ulo, _uhi, uw = _interval(P, a, A, True, IS, N)
+    if direction == 0:
+        groups = tl.cdiv(N, 16)
+        site = ulo
+    else:
+        groups = tl.cdiv(K, 16)
+        site = vlo
+    active = (a < A) & (vw > 0) & (uw > 0)
+    inv = tl.load(P + A + a, a < A, 0.0)
+    band = tl.where(
+        inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
+    )
+    bucket = tl.where(flag == 3, site // 16, groups + band)
+    bucket = tl.where(active, bucket, groups + 3)
+    bucket = tl.where(a < A, bucket, BINS - 1)
+    counts = tl.histogram(bucket, BINS)
+    offsets = tl.cumsum(counts, 0) - counts
+    g = tl.arange(0, BINS)
+    tl.store(Offsets + direction * STRIDE + g, offsets, g < groups + 5)
+    # Include the atom ID in the key for a deterministic within-bucket order.
+    key = tl.where(a < A, bucket * A + a, 2147483647)
+    ordered = tl.sort(key, descending=False) % A
+    tl.store(Orders + direction * A + a, ordered, a < A)
+    for field in tl.static_range(13):
+        value = tl.load(P + field * A + ordered, a < A, 0.0)
+        tl.store(Views + direction * 13 * A + field * A + a, value, a < A)
+
+
+@tr.jit
 def fused(
     X,
     P,
@@ -352,6 +407,95 @@ def fused(
 
 
 @tr.jit
+def fused_packed(
+    X,
+    P,
+    H,
+    Order,
+    Offsets,
+    Y,
+    B: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    A: tl.constexpr,
+    S: tl.constexpr,
+    OI: tl.constexpr,
+    OO: tl.constexpr,
+    JS: tl.constexpr,
+    IS: tl.constexpr,
+    BK: tl.constexpr,
+    BM: tl.constexpr,
+    BA: tl.constexpr,
+    SWAP: tl.constexpr,
+    LIMIT: tl.constexpr,
+    RHO: tl.constexpr,
+):
+    b = tl.program_id(0) * BM + tl.arange(0, BM)
+    tile = tl.program_id(1)
+    i = tile * 16 + tl.arange(0, 16)
+    j = tl.arange(0, BK)
+    y = tl.full((BM, 16), 0.0, tl.float32)
+    groups: tl.constexpr = (N + 15) // 16
+    # Read only this tile's singleton interval, then the nonempty general bands.
+    for phase in tl.static_range(4):
+        bucket = tile if phase == 0 else groups + phase - 1
+        begin = tl.load(Offsets + bucket)
+        end = tl.load(Offsets + bucket + 1)
+        for a0 in range(begin, end, BA):
+            a = a0 + tl.arange(0, BA)
+            valid = (a < A) & (a < end)
+            vlo, _vhi, vw = _interval(P, a, A, SWAP, JS, K)
+            ulo, uhi, uw = _interval(P, a, A, not SWAP, IS, N)
+            if phase == 0:
+                live = valid & (vw == 1) & (uw == 1)
+                direct = tl.load(
+                    X + b[:, None] * K + vlo[None, :],
+                    (b[:, None] < B) & live[None, :],
+                    0.0,
+                )
+                amp = tl.load(P + a, live, 0.0)
+                targets = ((i[:, None] == ulo[None, :]) & live[None, :]).to(tl.float32)
+                y = tl.dot(
+                    direct * amp[None, :], tl.trans(targets), y, input_precision="ieee"
+                )
+            else:
+                enabled = valid & (ulo < (tile + 1) * 16) & (uhi > tile * 16)
+                if tl.sum(enabled.to(tl.int32), 0) > 0:
+                    y = _fused_general_block(
+                        X,
+                        P,
+                        H,
+                        a,
+                        b,
+                        j,
+                        i,
+                        y,
+                        enabled,
+                        B,
+                        K,
+                        N,
+                        A,
+                        S,
+                        OI,
+                        OO,
+                        JS,
+                        IS,
+                        BK,
+                        BM,
+                        BA,
+                        SWAP,
+                        True,
+                        LIMIT,
+                        not SWAP,
+                        RHO,
+                        False,
+                        True,
+                        HOrder=Order,
+                    )
+    tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
+
+
+@tr.jit
 def _fused_general_block(
     X,
     P,
@@ -382,6 +526,7 @@ def _fused_general_block(
     SUPPORT_ONLY: tl.constexpr,
     THREE_BAND: tl.constexpr,
     DenseX=None,
+    HOrder=None,
 ):
     if not SPARSE:
         x = DenseX
@@ -418,8 +563,9 @@ def _fused_general_block(
                 v_local = tl.where((j[:, None] < K) & narrow[None, :], v_local, 0.0)
                 h = tl.dot(x, v_local, input_precision="ieee")
         if tl.sum(wide.to(tl.int32), 0) > 0:
+            ha = tl.load(HOrder + a, wide, 0) if HOrder is not None else a
             stored = tl.load(
-                H + b[:, None] * A + a[None, :],
+                H + b[:, None] * A + ha[None, :],
                 (b[:, None] < B) & wide[None, :],
                 0.0,
             )
@@ -543,8 +689,10 @@ def _param_sums(
     SUPPORT_ONLY: tl.constexpr,
     THREE_BAND: tl.constexpr,
     SINGLETON_FAST: tl.constexpr,
+    HOrder=None,
 ):
     j, i = tl.arange(0, BK), tl.arange(0, BN)
+    ha = tl.load(HOrder + a, a < A, 0) if HOrder is not None else a
     enabled = (a < A) & ~_singletons(P, a, A) if SINGLETON_FAST else (a < A)
     if HYBRID and SPARSE:
         h, dh = _support_contract(
@@ -624,7 +772,7 @@ def _param_sums(
                 Enabled=enabled,
             )
             stored_wide_h = tl.load(
-                H + b[:, None] * A + a[None, :],
+                H + b[:, None] * A + ha[None, :],
                 (b[:, None] < B) & wide[None, :],
                 0.0,
             )
@@ -647,7 +795,7 @@ def _param_sums(
             g, dg = _matrix_contract(DY, P, a, b, A, B, N, IS, True, S, OO, BN)
         if SAVED:
             h = tl.load(
-                H + b[:, None] * A + a[None, :],
+                H + b[:, None] * A + ha[None, :],
                 (b[:, None] < B) & (a[None, :] < A),
                 0.0,
             )
@@ -664,7 +812,7 @@ def _param_sums(
         u, du = tl.where(i[:, None] < N, u, 0.0), tl.where(i[:, None] < N, du, 0.0)
         if SAVED:
             h = tl.load(
-                H + b[:, None] * A + a[None, :],
+                H + b[:, None] * A + ha[None, :],
                 (b[:, None] < B) & (a[None, :] < A),
                 0.0,
             )
@@ -676,7 +824,7 @@ def _param_sums(
                 h = tl.dot(x, tl.where(narrow[None, :], v, 0.0), input_precision="ieee")
             if tl.sum(wide.to(tl.int32), 0) > 0:
                 stored_h = tl.load(
-                    H + b[:, None] * A + a[None, :],
+                    H + b[:, None] * A + ha[None, :],
                     (b[:, None] < B) & wide[None, :],
                     0.0,
                 )
@@ -724,8 +872,10 @@ def param_vjp(
     SUPPORT_ONLY: tl.constexpr = False,
     THREE_BAND: tl.constexpr = False,
     SINGLETON_FAST: tl.constexpr = False,
+    Order=None,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
+    original = tl.load(Order + a, a < A, 0) if Order is not None else a
     da = tl.full((BA,), 0.0, tl.float32)
     dci = tl.full((BA,), 0.0, tl.float32)
     dco = tl.full((BA,), 0.0, tl.float32)
@@ -768,6 +918,7 @@ def param_vjp(
                 SUPPORT_ONLY,
                 THREE_BAND,
                 SINGLETON_FAST,
+                HOrder=Order,
             )
         if SINGLETON_FAST:
             vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
@@ -788,8 +939,8 @@ def param_vjp(
         dci += partial_i
         dco += partial_o
     if POLAR:
-        z0 = tl.load(Source + 4 * a, a < A, 0.0)
-        z1 = tl.load(Source + 4 * a + 1, a < A, 0.0)
+        z0 = tl.load(Source + 4 * original, a < A, 0.0)
+        z1 = tl.load(Source + 4 * original + 1, a < A, 0.0)
         r2 = z0 * z0 + z1 * z1
         safe = tl.maximum(r2, 1.1754943508222875e-38)
         inverse = tl.div_rn(1.0, libdevice.sqrt(safe))
@@ -797,10 +948,10 @@ def param_vjp(
         scale = tl.load(AmplitudeMax).to(tl.float32) * inverse
         d0 = da * scale * (1.0 - tl.where(active, tl.div_rn(z0 * z0, safe), 0.0))
         d1 = -da * scale * tl.where(active, tl.div_rn(z0 * z1, safe), 0.0)
-        tl.store(DQ + 4 * a, d0, a < A)
-        tl.store(DQ + 4 * a + 1, d1, a < A)
+        tl.store(DQ + 4 * original, d0, a < A)
+        tl.store(DQ + 4 * original + 1, d1, a < A)
     else:
-        tl.store(DQ + 4 * a, da, a < A)
-        tl.store(DQ + 4 * a + 1, 0.0, a < A)
-    tl.store(DQ + 4 * a + 2, dci, a < A)
-    tl.store(DQ + 4 * a + 3, dco, a < A)
+        tl.store(DQ + 4 * original, da, a < A)
+        tl.store(DQ + 4 * original + 1, 0.0, a < A)
+    tl.store(DQ + 4 * original + 2, dci, a < A)
+    tl.store(DQ + 4 * original + 3, dco, a < A)

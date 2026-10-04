@@ -75,10 +75,8 @@ def test_width_fixture_rejects_invalid_mixtures(change):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("mid", [2.0, 4.0, 8.0])
 @pytest.mark.parametrize("spacing,sliced", [(1.0, False), (0.5, True)])
-@pytest.mark.parametrize("singletons", [False, True])
-def test_three_band_subspacing_graph_and_all_gradients(
-    mid, spacing, sliced, singletons
-):
+@pytest.mark.parametrize("route", ["three", "singleton", "packed"])
+def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced, route):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
     from torchcst._backends.cuda.algorithms.local_product.polar import graph_update
     from torchcst._backends.torch.kernels import execution
@@ -107,7 +105,8 @@ def test_three_band_subspacing_graph_and_all_gradients(
             hybrid=True,
             sparse=True,
             three_band=True,
-            singletons=singletons,
+            singletons=route != "three",
+            tile_packed=route == "packed",
             fused_polar=True,
             recipe=recipe,
         )
@@ -130,6 +129,9 @@ def test_three_band_subspacing_graph_and_all_gradients(
                 (torch.arange(len(p), device="cuda") + shift) % 3
             ]
             p[:, :2] = p.new_tensor([0.6, 0.8]) * radii[:, None]
+            sites = torch.arange(len(p), device="cuda")
+            p[4:, 2] = ((sites[4:] * 7 + shift * 13) % 32) * spacing
+            p[4:, 3] = ((sites[4:] * 11 + shift * 17) % 32) * spacing
             p[0, :2] = p.new_tensor([0.6, 0.8])
             p[0, 2:] = -0.24999 * spacing  # nonzero floor-active singleton
             p[1, :2] = p.new_tensor([0.6, 0.8])
@@ -165,7 +167,8 @@ def test_three_band_subspacing_graph_and_all_gradients(
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("batch", [1, 32, 64])
-def test_singleton_output_collisions_and_all_local_h(batch):
+@pytest.mark.parametrize("tile_packed", [False, True])
+def test_singleton_output_collisions_and_all_local_h(batch, tile_packed):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
 
     d = Domain(32, 32)
@@ -186,6 +189,7 @@ def test_singleton_output_collisions_and_all_local_h(batch):
         sparse=True,
         three_band=True,
         singletons=True,
+        tile_packed=tile_packed,
         fused_polar=True,
         recipe=Recipe(pack=False, rho_upper=(1, 4, 16)),
     )

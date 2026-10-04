@@ -475,22 +475,26 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
         "local-hybrid-support",
         "local-polar-support",
         "local-polar-support-saved",
+        "hybrid-packed-mid4",
     ],
 )
 def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     from benchmarks.cuda.linear.local_product import (
+        fixture_operator,
         initialize,
-        operator_spec,
         optimizer_step,
     )
     from benchmarks.cuda.linear.manifest import DEFAULT_PLANS, load_run
     from benchmarks.cuda.linear.run import PlanLinear
     from torchcst import CSTLinear, CSTOptimizer
 
-    size = 128 if plan_id.startswith("local-hybrid") else 32
+    is_packed = plan_id == "hybrid-packed-mid4"
+    size = 128 if plan_id.startswith("local-hybrid") or is_packed else 32
     batch = 32 if size == 128 else 16
     catalog = DEFAULT_PLANS.with_name(
-        "plans-local-rho.json"
+        "plans-local-packed.json"
+        if is_packed
+        else "plans-local-rho.json"
         if plan_id.startswith("local-polar-support")
         else "plans-local-hybrid-support.json"
         if plan_id.startswith("local-hybrid")
@@ -500,14 +504,18 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     )
     case = load_run(
         DEFAULT_PLANS.parent
-        / f"cases/local-{size}-mixed{'-hybrid' if size == 128 else ''}.json",
+        / (
+            "cases/local-128-packed-middle.json"
+            if is_packed
+            else f"cases/local-{size}-mixed{'-hybrid' if size == 128 else ''}.json"
+        ),
         catalog,
     )
     from benchmarks.cuda.linear.manifest import decode_catalog, read_json
 
     entries = decode_catalog(read_json(catalog)[0])
     plan = next(entry.plan for entry in entries if entry.id == plan_id)
-    model = PlanLinear(initialize(case.case).cuda(), operator_spec(size), plan)
+    model = PlanLinear(initialize(case.case).cuda(), fixture_operator(case.case), plan)
     opt = torch.optim.AdamW(
         [model.p], lr=0.0001, weight_decay=0.01, fused=True, capturable=True
     )

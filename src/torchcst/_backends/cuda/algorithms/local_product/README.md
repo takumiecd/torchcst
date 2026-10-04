@@ -24,13 +24,13 @@ See the [measurement record](../../../../../../docs/research-history/local-produ
 Whole-call routes are fused H and globally saved H. The experimental support
 route refreshes intervals on the GPU and uses direct contractions for narrow
 atom groups, with the existing matrix path for wide groups. H->Y still uses the
-padded dot. Compaction, spatial grouping and an explicit shared-H policy remain
-to implement. L1/L2 are caches, not direct allocation policies.
+padded dot. General-support compaction and an explicit shared-H policy remain
+to implement; an optional small-tile singleton layout is described below. L1/L2 are caches, not direct allocation policies.
 The `fused_polar` option reads current polar parameters and live scalar buffers
 inside normalization preparation, and applies the angular amplitude chain rule
 inside parameter VJP. It skips the separate Torch decode/autograd chain while
 keeping width task derivatives detached. Both local and saved H support this
-option in canonical atom order; sorting is a separate future optimization.
+option in canonical parameter order; optional execution views preserve those IDs.
 The initial batch limit is 64; local sizes are at most 128 with full norm domains
 at most 128. Existing CUDA correctness and spill reports are historical;
 relocation checks do not constitute a new GPU performance result.
@@ -110,3 +110,17 @@ producer, so scheduling as well as H traffic affects the measured crossover.
 The existing benchmark routes are `polar_support` / `polar_support_saved`, with
 `plans-local-rho.json` and matched `rho*` initialization cases. See
 [`20261004-rho-sweep.md`](../../../../../../docs/research-history/local-product/20261004-rho-sweep.md).
+
+
+`tile_packed=True` with the fused-polar singleton hybrid physically packs two
+SoA execution views. Each has singleton buckets for its output owners (forward
+or dX), three general rho bands and an inactive tail, plus offsets/canonical IDs.
+A GPU sort/pack launch refreshes both views on every forward, including Graph
+replay. General atoms are stored once per view; they still have overlap tests.
+Parameter VJP reads the forward view and returns canonical gradients, preserving
+AdamW state identities. The normalizer, H producer and polar update are retained;
+layout maintenance is not yet fused with parameter updates. The research route
+is `hybrid_packed`, using the existing runner's `plans-local-packed.json`.
+See [`20261004-physical-tile-layout.md`](../../../../../../docs/research-history/local-product/20261004-physical-tile-layout.md)
+for the scope, correctness gates and complete-step measurements. This small-tile
+sort is not a global scheduling strategy for large matrices.

@@ -295,8 +295,13 @@ def measure(args, run):
             "hybrid_support",
             "hybrid_three",
             "hybrid_singletons",
+            "hybrid_packed",
         ):
-            inclusive = recipe.route in ("hybrid_three", "hybrid_singletons")
+            inclusive = recipe.route in (
+                "hybrid_three",
+                "hybrid_singletons",
+                "hybrid_packed",
+            )
             limit = recipe.rho_upper[1 if inclusive else 0]
             initial_wide = (
                 initial_precision <= limit**-2
@@ -337,7 +342,7 @@ def measure(args, run):
         final_support = summarize(
             decode(model.local_state, model.p).detach().cpu(), Domain(n, n)
         )
-        if recipe.route == "hybrid_singletons":
+        if recipe.route in ("hybrid_singletons", "hybrid_packed"):
             hybrid_routing["singleton_direct_initial_atoms"] = support_report[
                 "onehot_both_live_atoms"
             ]

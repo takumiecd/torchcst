@@ -36,6 +36,7 @@ class LocalRecipe(Recipe):
             "hybrid_support",
             "hybrid_three",
             "hybrid_singletons",
+            "hybrid_packed",
             "polar_support",
             "polar_support_saved",
         ):
@@ -49,13 +50,14 @@ class LocalRecipe(Recipe):
                 "hybrid_support",
                 "hybrid_three",
                 "hybrid_singletons",
+                "hybrid_packed",
                 "polar_support",
                 "polar_support_saved",
             )
             and self.pack
         ):
             raise ValueError("fused polar routes require canonical order")
-        if self.route in ("hybrid_three", "hybrid_singletons") and (
+        if self.route in ("hybrid_three", "hybrid_singletons", "hybrid_packed") and (
             len(self.rho_upper) < 3 or self.rho_upper[0] != 1.0
         ):
             raise ValueError("three-band route requires boundaries [1, mid, ...]")
@@ -177,6 +179,7 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "hybrid_support",
                 "hybrid_three",
                 "hybrid_singletons",
+                "hybrid_packed",
                 "polar_support",
                 "polar_support_saved",
             ),
@@ -188,13 +191,22 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "hybrid_support",
                 "hybrid_three",
                 "hybrid_singletons",
+                "hybrid_packed",
                 "polar_support",
                 "polar_support_saved",
             ),
             hybrid=recipe.route
-            in ("hybrid", "hybrid_support", "hybrid_three", "hybrid_singletons"),
-            three_band=recipe.route in ("hybrid_three", "hybrid_singletons"),
-            singletons=recipe.route == "hybrid_singletons",
+            in (
+                "hybrid",
+                "hybrid_support",
+                "hybrid_three",
+                "hybrid_singletons",
+                "hybrid_packed",
+            ),
+            three_band=recipe.route
+            in ("hybrid_three", "hybrid_singletons", "hybrid_packed"),
+            singletons=recipe.route in ("hybrid_singletons", "hybrid_packed"),
+            tile_packed=recipe.route == "hybrid_packed",
             support_only=recipe.route in ("polar_support", "polar_support_saved"),
             recipe=recipe,
         )
