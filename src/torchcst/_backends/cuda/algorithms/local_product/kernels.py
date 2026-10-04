@@ -159,11 +159,29 @@ def _support_contract(
     BA: tl.constexpr,
     NARROW_ONLY: tl.constexpr = False,
     RHO: tl.constexpr = 4.0,
+    THREE_BAND: tl.constexpr = False,
 ):
     lo, _hi, width = _interval(P, a, A, OUT, START, K)
     if NARROW_ONLY:
-        width = tl.where(_wide(P, a, A, S, RHO), 0, width)
+        width = tl.where(_wide(P, a, A, S, RHO, THREE_BAND), 0, width)
     h, dh = tl.full((BB, BA), 0.0, tl.float32), tl.full((BB, BA), 0.0, tl.float32)
+    if THREE_BAND:
+        inv = tl.load(P + A + a, a < A, 0.0)
+        # rho<1 is at most two positive sites, not a one-hot certificate.
+        # Keep an actual-count guard and the original full-domain factor/floor.
+        fast = (a < A) & (inv > 1.0 / (S * S)) & (width <= 2)
+        for offset in tl.static_range(2):
+            j = lo + offset
+            live = fast & (offset < width) & (j < K)
+            x = tl.load(
+                X + b[:, None] * K + j[None, :],
+                (b[:, None] < B) & live[None, :],
+                0.0,
+            )
+            f, dc = _site_factor(P, a, START + j, A, OUT, S, O)
+            h += x * f[None, :]
+            dh += x * dc[None, :]
+        width = tl.where(fast, 0, width)
     for offset in range(tl.max(width, 0)):
         j = lo + offset
         live = (a < A) & (offset < width) & (j < K)
@@ -192,6 +210,7 @@ def _matrix_contract(
     BK: tl.constexpr,
     WIDE_ONLY: tl.constexpr = False,
     RHO: tl.constexpr = 4.0,
+    THREE_BAND: tl.constexpr = False,
 ):
     j = tl.arange(0, BK)
     x = tl.load(
@@ -200,15 +219,24 @@ def _matrix_contract(
     v, dv = _factor(P, a, START + j, A, OUT, S, O)
     v, dv = tl.where(j[:, None] < K, v, 0.0), tl.where(j[:, None] < K, dv, 0.0)
     if WIDE_ONLY:
-        wide = _wide(P, a, A, S, RHO)
+        wide = _wide(P, a, A, S, RHO, THREE_BAND)
         v, dv = tl.where(wide[None, :], v, 0.0), tl.where(wide[None, :], dv, 0.0)
     return tl.dot(x, v, input_precision="ieee"), tl.dot(x, dv, input_precision="ieee")
 
 
 @tr.jit
-def _wide(P, a, A: tl.constexpr, S: tl.constexpr, RHO: tl.constexpr):
+def _wide(
+    P,
+    a,
+    A: tl.constexpr,
+    S: tl.constexpr,
+    RHO: tl.constexpr,
+    INCLUSIVE: tl.constexpr = False,
+):
     # rho > RHO, using the precision prepared from this forward's live sigma.
     inv = tl.load(P + A + a, a < A, 0.0)
+    if INCLUSIVE:
+        return (a < A) & (inv <= 1.0 / ((S * RHO) * (S * RHO)))
     return (a < A) & (inv < 1.0 / ((S * RHO) * (S * RHO)))
 
 
@@ -237,6 +265,7 @@ def fused(
     H=None,
     RHO: tl.constexpr = 4.0,
     SUPPORT_ONLY: tl.constexpr = False,
+    THREE_BAND: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     j, i = tl.arange(0, BK), tl.arange(0, BN)
@@ -251,13 +280,28 @@ def fused(
         u = tl.where(i[:, None] < N, u, 0.0)
         amp = tl.load(P + a, a < A, 0.0)
         if HYBRID:
-            wide = _wide(P, a, A, S, RHO)
+            wide = _wide(P, a, A, S, RHO, THREE_BAND)
             narrow = (a < A) & ~wide
             h = tl.full((BM, BA), 0.0, tl.float32)
             if tl.sum(narrow.to(tl.int32), 0) > 0:
                 if SPARSE:
                     h, _dh_local_support = _support_contract(
-                        X, P, a, b, A, B, K, JS, False, S, OI, BM, BA, True, RHO
+                        X,
+                        P,
+                        a,
+                        b,
+                        A,
+                        B,
+                        K,
+                        JS,
+                        False,
+                        S,
+                        OI,
+                        BM,
+                        BA,
+                        True,
+                        RHO,
+                        THREE_BAND,
                     )
                 else:
                     v_local, _dv_local_matrix = _factor(P, a, JS + j, A, False, S, OI)
@@ -305,11 +349,12 @@ def save_h(
     HYBRID: tl.constexpr = False,
     RHO: tl.constexpr = 4.0,
     SUPPORT_ONLY: tl.constexpr = False,
+    THREE_BAND: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     a = tl.program_id(1) * BA + tl.arange(0, BA)
     j = tl.arange(0, BK)
-    save = _wide(P, a, A, S, RHO) if HYBRID else (a < A)
+    save = _wide(P, a, A, S, RHO, THREE_BAND) if HYBRID else (a < A)
     if not HYBRID or tl.sum(save.to(tl.int32), 0) > 0:
         if SUPPORT_ONLY:
             h, _dh_saved = _support_contract(
@@ -384,22 +429,23 @@ def _param_sums(
     RHO: tl.constexpr,
     LIMIT: tl.constexpr,
     SUPPORT_ONLY: tl.constexpr,
+    THREE_BAND: tl.constexpr,
 ):
     j, i = tl.arange(0, BK), tl.arange(0, BN)
     if HYBRID and SPARSE:
         h, dh = _support_contract(
-            X, P, a, b, A, B, K, JS, False, S, OI, BB, BA, True, RHO
+            X, P, a, b, A, B, K, JS, False, S, OI, BB, BA, True, RHO, THREE_BAND
         )
         g, dg = _support_contract(
-            DY, P, a, b, A, B, N, IS, True, S, OO, BB, BA, True, RHO
+            DY, P, a, b, A, B, N, IS, True, S, OO, BB, BA, True, RHO, THREE_BAND
         )
-        wide = _wide(P, a, A, S, RHO)
+        wide = _wide(P, a, A, S, RHO, THREE_BAND)
         if tl.sum(wide.to(tl.int32), 0) > 0:
             _h_wide_unused, dh_wide = _matrix_contract(
-                X, P, a, b, A, B, K, JS, False, S, OI, BK, True, RHO
+                X, P, a, b, A, B, K, JS, False, S, OI, BK, True, RHO, THREE_BAND
             )
             g_wide, dg_wide = _matrix_contract(
-                DY, P, a, b, A, B, N, IS, True, S, OO, BN, True, RHO
+                DY, P, a, b, A, B, N, IS, True, S, OO, BN, True, RHO, THREE_BAND
             )
             stored_wide_h = tl.load(
                 H + b[:, None] * A + a[None, :],
@@ -500,6 +546,7 @@ def param_vjp(
     HYBRID: tl.constexpr = False,
     RHO: tl.constexpr = 4.0,
     SUPPORT_ONLY: tl.constexpr = False,
+    THREE_BAND: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     da = tl.full((BA,), 0.0, tl.float32)
@@ -533,6 +580,7 @@ def param_vjp(
             RHO,
             LIMIT,
             SUPPORT_ONLY,
+            THREE_BAND,
         )
         da += partial_a
         dci += partial_i

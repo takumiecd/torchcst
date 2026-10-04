@@ -109,6 +109,49 @@ class OptimizerSpec:
 
 
 @dataclass(frozen=True)
+class WidthFixture:
+    """Initial width mixture; all widths remain trainable through polar activity."""
+
+    minimum: float
+    birth: float
+    maximum: float
+    rho: tuple[float, ...]
+    fractions: tuple[float, ...]
+    center_jitter: float | None
+
+    def __post_init__(self):
+        for name in ("minimum", "birth", "maximum"):
+            x = getattr(self, name)
+            if type(x) not in (int, float) or not math.isfinite(x) or x <= 0:
+                raise ValueError("width bounds must be positive finite numbers")
+        if (
+            not self.minimum <= self.birth <= self.maximum
+            or self.minimum == self.maximum
+        ):
+            raise ValueError("invalid width bounds")
+        for name in ("rho", "fractions"):
+            values = getattr(self, name)
+            if type(values) not in (tuple, list) or not values:
+                raise ValueError("width mixture must have nonempty arrays")
+            if any(type(x) not in (int, float) or not math.isfinite(x) for x in values):
+                raise ValueError("width mixture must contain finite numbers")
+            object.__setattr__(self, name, tuple(values))
+        if len(self.rho) != len(self.fractions) or any(x < 0 for x in self.fractions):
+            raise ValueError("invalid width mixture fractions")
+        if not math.isclose(sum(self.fractions), 1.0, abs_tol=1e-9):
+            raise ValueError("width mixture fractions must sum to one")
+        # This benchmark's domain spacing is one. Initialize within its shared bounds.
+        if any(not self.birth <= x <= self.maximum for x in self.rho):
+            raise ValueError("initial rho must be within birth..maximum")
+        if self.center_jitter is not None and (
+            type(self.center_jitter) not in (int, float)
+            or not math.isfinite(self.center_jitter)
+            or not 0 <= self.center_jitter <= 0.5
+        ):
+            raise ValueError("center jitter must be None or in [0,.5]")
+
+
+@dataclass(frozen=True)
 class BenchmarkCase:
     id: str
     fixture: str
@@ -121,6 +164,7 @@ class BenchmarkCase:
     warmup: int
     rounds: int
     optimizer: OptimizerSpec
+    widths: WidthFixture | None = None
 
     def __post_init__(self):
         _id(self.id, "case id")
@@ -164,6 +208,12 @@ class BenchmarkCase:
             raise ValueError("fixture requires broad/sharp profile and float32")
         if type(self.optimizer) is not OptimizerSpec:
             raise TypeError("case needs an OptimizerSpec")
+        if self.widths is not None and (
+            type(self.widths) is not WidthFixture
+            or self.fixture != "local_polar_product"
+            or self.profile != "mixed"
+        ):
+            raise ValueError("custom widths require the local mixed fixture")
 
 
 @dataclass(frozen=True)
@@ -245,10 +295,22 @@ def _case(value):
         "rounds",
         "optimizer",
     ]
+    if "widths" in value:
+        keys.append("widths")
     _keys(value, keys, "case")
     optimizer = value["optimizer"]
     _keys(optimizer, ["name", "lr", "weight_decay", "fused", "capturable"], "optimizer")
-    return BenchmarkCase(**(value | {"optimizer": OptimizerSpec(**optimizer)}))
+    widths = value.get("widths")
+    if widths is not None:
+        _keys(
+            widths,
+            ["minimum", "birth", "maximum", "rho", "fractions", "center_jitter"],
+            "width fixture",
+        )
+        widths = WidthFixture(**widths)
+    return BenchmarkCase(
+        **(value | {"optimizer": OptimizerSpec(**optimizer), "widths": widths})
+    )
 
 
 def load_run(case_file, plans_file=DEFAULT_PLANS):

@@ -36,6 +36,7 @@ def _fused(
     hybrid=False,
     h=None,
     support_only=False,
+    three_band=False,
 ):
     import triton as tr
 
@@ -65,8 +66,9 @@ def _fused(
         recipe.support_limit,
         hybrid,
         h,
-        recipe.rho_upper[0],
+        recipe.rho_upper[1 if three_band else 0],
         support_only,
+        THREE_BAND=three_band,
         num_warps=8 if max(k, n) > 64 else 4,
         enable_fp_fusion=False,
     )
@@ -89,7 +91,17 @@ def _fused(
 class _LocalH(torch.autograd.Function):
     @staticmethod
     def forward(
-        ctx, x, q, domain, recipe, saved, sparse, scalars, hybrid, support_only
+        ctx,
+        x,
+        q,
+        domain,
+        recipe,
+        saved,
+        sparse,
+        scalars,
+        hybrid,
+        support_only,
+        three_band,
     ):
         fused_polar = bool(scalars)
         import triton as tr
@@ -142,8 +154,9 @@ class _LocalH(torch.autograd.Function):
                 recipe.batch_block,
                 recipe.atom_block,
                 hybrid,
-                recipe.rho_upper[0],
+                recipe.rho_upper[1 if three_band else 0],
                 support_only,
+                THREE_BAND=three_band,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
@@ -177,11 +190,21 @@ class _LocalH(torch.autograd.Function):
                 hybrid=hybrid,
                 h=h,
                 support_only=support_only,
+                three_band=three_band,
             )
         ctx.save_for_backward(
             x, packed, h, q if fused_polar else q.new_empty((0,)), *scalars
         )
-        ctx.settings = domain, recipe, saved, sparse, fused_polar, hybrid, support_only
+        ctx.settings = (
+            domain,
+            recipe,
+            saved,
+            sparse,
+            fused_polar,
+            hybrid,
+            support_only,
+            three_band,
+        )
         return y
 
     @staticmethod
@@ -192,7 +215,9 @@ class _LocalH(torch.autograd.Function):
         from . import kernels
 
         x, packed, h, source, *scalars = ctx.saved_tensors
-        domain, recipe, saved, sparse, fused_polar, hybrid, support_only = ctx.settings
+        domain, recipe, saved, sparse, fused_polar, hybrid, support_only, three_band = (
+            ctx.settings
+        )
         dy = dy.contiguous()
         dx = (
             _fused(
@@ -240,8 +265,9 @@ class _LocalH(torch.autograd.Function):
                     source if fused_polar else None,
                     scalars[0] if fused_polar else None,
                     hybrid,
-                    recipe.rho_upper[0],
+                    recipe.rho_upper[1 if three_band else 0],
                     support_only,
+                    THREE_BAND=three_band,
                     num_warps=8
                     if max(domain.input_count, domain.output_count) > 64
                     else 4,
@@ -259,7 +285,7 @@ class _LocalH(torch.autograd.Function):
                     else ("param_saved" if saved else "param_recomputed"),
                     compiled,
                 )
-        return dx, dq, None, None, None, None, None, None, None
+        return dx, dq, None, None, None, None, None, None, None, None
 
 
 def local_h(
@@ -273,6 +299,7 @@ def local_h(
     fused_polar=False,
     hybrid=False,
     support_only=False,
+    three_band=False,
     recipe=DEFAULT_RECIPE,
 ):
     """Y_local from X_local, normalized full-domain profiles, and polar atoms.
@@ -287,6 +314,15 @@ def local_h(
     if hybrid and (saved or recipe.pack):
         raise ValueError(
             "hybrid requires canonical order and no whole-call saved route"
+        )
+    if three_band and (
+        not hybrid
+        or not sparse
+        or len(recipe.rho_upper) < 3
+        or recipe.rho_upper[0] != 1
+    ):
+        raise ValueError(
+            "three-band requires sparse hybrid with boundaries [1, mid, ...]"
         )
     if (
         not x.is_cuda
@@ -319,4 +355,5 @@ def local_h(
             scalars,
             hybrid,
             support_only,
+            three_band,
         )

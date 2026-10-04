@@ -34,6 +34,7 @@ class LocalRecipe(Recipe):
             "polar_saved",
             "hybrid",
             "hybrid_support",
+            "hybrid_three",
             "polar_support",
             "polar_support_saved",
         ):
@@ -45,12 +46,17 @@ class LocalRecipe(Recipe):
                 "polar_saved",
                 "hybrid",
                 "hybrid_support",
+                "hybrid_three",
                 "polar_support",
                 "polar_support_saved",
             )
             and self.pack
         ):
             raise ValueError("fused polar routes require canonical order")
+        if self.route == "hybrid_three" and (
+            len(self.rho_upper) < 3 or self.rho_upper[0] != 1.0
+        ):
+            raise ValueError("three-band route requires boundaries [1, mid, ...]")
         if (
             type(self.pack) is not bool
             or type(self.atom_block) is not int
@@ -60,7 +66,7 @@ class LocalRecipe(Recipe):
 
 
 @lru_cache(maxsize=8)
-def operator_spec(size):
+def operator_spec(size, minimum=1.0, birth=1.0, maximum=16.0):
     from benchmarks.cuda.linear.fixtures import local_product_state
 
     domain = Domain(size, size)
@@ -69,7 +75,33 @@ def operator_spec(size):
         layout=ChartPairSpec(
             input_chart=charts[0].declaration(), output_chart=charts[1].declaration()
         ),
-        kernel=local_product_state(birth=1).spec,
+        kernel=local_product_state(minimum=minimum, birth=birth, maximum=maximum).spec,
+    )
+
+
+def fixture_state(case):
+    from benchmarks.cuda.linear.fixtures import local_product_state
+
+    if case.widths is None:
+        return local_product_state(birth=1)
+    w = case.widths
+    return local_product_state(minimum=w.minimum, birth=w.birth, maximum=w.maximum)
+
+
+def fixture_operator(case, size=None):
+    n = case.size if size is None else size
+    if case.widths is None:
+        return operator_spec(n)
+    w = case.widths
+    return operator_spec(n, w.minimum, w.birth, w.maximum)
+
+
+def _matches(operator):
+    bounds = getattr(operator.kernel.parameterization, "input_bounds", None)
+    if bounds is None:
+        return False
+    return operator == operator_spec(
+        operator.in_features, bounds.minimum, bounds.birth, bounds.maximum
     )
 
 
@@ -84,7 +116,7 @@ def runtime(operator, device):
     )
     from torchcst.kernels.state import KernelState
 
-    if operator != operator_spec(operator.in_features):
+    if not _matches(operator):
         raise ValueError("unrecognized local product operator")
     value = KernelState(operator.kernel).to(device=device)
     validate_state(value)
@@ -108,7 +140,7 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
         reasons = []
         if context.operator.in_features not in (16, 32, 64, 128):
             reasons.append("small research sizes are 16/32/64/128")
-        elif context.operator != operator_spec(context.operator.in_features):
+        elif not _matches(context.operator):
             reasons.append("requires the fixed shared-width normalized polar contract")
         if context.dtype != torch.float32 or context.device.type != "cuda":
             reasons.append("requires CUDA FP32")
@@ -141,6 +173,7 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
             in (
                 "support",
                 "hybrid_support",
+                "hybrid_three",
                 "polar_support",
                 "polar_support_saved",
             ),
@@ -150,10 +183,12 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "polar_saved",
                 "hybrid",
                 "hybrid_support",
+                "hybrid_three",
                 "polar_support",
                 "polar_support_saved",
             ),
-            hybrid=recipe.route in ("hybrid", "hybrid_support"),
+            hybrid=recipe.route in ("hybrid", "hybrid_support", "hybrid_three"),
+            three_band=recipe.route == "hybrid_three",
             support_only=recipe.route in ("polar_support", "polar_support_saved"),
             recipe=recipe,
         )
@@ -193,6 +228,34 @@ def initialize(case):
         torch.stack((direction, (1 - direction.square()).sqrt()), 1) * radius[:, None]
     )
     center = torch.rand(case.atoms, 2, generator=gen) * (case.size - 1)
+    if case.widths is not None:
+        w = case.widths
+        # Same centers/amplitudes across mixtures. Only the initial radii differ.
+        if w.center_jitter is not None:
+            center = (
+                center.round()
+                + (torch.rand(case.atoms, 2, generator=gen) * 2 - 1) * w.center_jitter
+            )
+            center.clamp_(0, case.size - 1)
+        ends = [
+            round(case.atoms * sum(w.fractions[: k + 1])) for k in range(len(w.rho))
+        ]
+        desired = torch.empty(case.atoms)
+        begin = 0
+        for rho, end in zip(w.rho, ends):
+            desired[begin:end] = rho
+            begin = end
+        desired = desired[torch.randperm(case.atoms, generator=gen)]
+        # Account for the production amplitude-dependent upper bound.
+        direction = direction.sign() * 0.6
+        upper = w.minimum + (w.maximum - w.minimum) / (1 + (direction / 1e6).square())
+        upper.clamp_(min=w.birth)
+        alpha = (desired / w.birth).log() / (upper / w.birth).log()
+        radius = (1 + 3 * alpha.clamp(0, 1)).sqrt()
+        polar = (
+            torch.stack((direction, torch.full_like(direction, 0.8)), 1)
+            * radius[:, None]
+        )
     if initial_rho is not None:
         # Matched amplitude/direction and centers across widths. Only radius
         # differs. These labels set initialization; training does not freeze sigma.
@@ -210,17 +273,18 @@ def initialize(case):
 def correctness(args, run, model_type):
     """Independent FP64 scalar oracle, including live/floor singleton gradients."""
     from benchmarks.cuda.linear.check_normalized import check
-    from benchmarks.cuda.linear.fixtures import local_product_state
     from torchcst._backends.cuda.algorithms.local_product.polar import graph_update
     from torchcst._backends.torch.kernels import execution
 
     domain = Domain(16, 16)
-    value = local_product_state(birth=1).cuda()
+    value = fixture_state(run.case).cuda()
     p = initialize(run.case)[: min(run.case.atoms, 13)].cuda()
     # Include exact singleton, two sites, empty input, and norm-floor support.
     p[:4, :2] = p.new_tensor([[0.1, (0.99) ** 0.5]] * 4)
     p[:4, 2:] = p.new_tensor([[4, 5], [4.5, 5.5], [-50, 5], [-0.999, -0.999]])
-    model = model_type(p, operator_spec(16), run.entry(args.plan_id).plan)
+    if run.case.widths is not None:
+        p[3, 2:] = -0.999 * run.case.widths.birth
+    model = model_type(p, fixture_operator(run.case, 16), run.entry(args.plan_id).plan)
     gen = torch.Generator().manual_seed(run.case.seed)
     x = torch.randn(7, 16, generator=gen).cuda().requires_grad_()
     dy = torch.randn(7, 16, generator=gen).cuda()
@@ -228,7 +292,7 @@ def correctness(args, run, model_type):
     tp, tx = p.double().requires_grad_(), x.detach().double().requires_grad_()
     from torchcst._backends.cuda.algorithms.local_product.preparation import decode
 
-    q = decode(local_product_state(birth=1).double().cuda(), tp)
+    q = decode(fixture_state(run.case).double().cuda(), tp)
     j = torch.arange(16, device="cuda", dtype=torch.float64)
     truth = torch.zeros_like(tx)
     for amp, inv, ci, co in q:

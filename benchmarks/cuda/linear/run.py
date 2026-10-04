@@ -160,17 +160,17 @@ def measure(args, run):
     local = case.fixture == "local_polar_product"
     support_report = None
     if local:
-        from benchmarks.cuda.linear.fixtures import local_product_state
-        from benchmarks.cuda.linear.local_product import initialize
-        from benchmarks.cuda.linear.local_product import operator_spec as local_spec
+        from benchmarks.cuda.linear.local_product import (
+            fixture_operator,
+            fixture_state,
+            initialize,
+        )
         from torchcst._backends.cuda.algorithms.local_product.contract import Domain
         from torchcst._backends.cuda.algorithms.local_product.preparation import decode
         from torchcst._backends.cuda.algorithms.local_product.support import summarize
 
-        op, p = local_spec(n), initialize(case)
-        support_report = summarize(
-            decode(local_product_state(birth=1), p), Domain(n, n)
-        )
+        op, p = fixture_operator(case), initialize(case)
+        support_report = summarize(decode(fixture_state(case), p), Domain(n, n))
     else:
         h, j = (32, 32) if n == 1024 else (64, 128)
         sizes = (n, h, j)
@@ -290,10 +290,19 @@ def measure(args, run):
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
-        if recipe.route in ("hybrid", "hybrid_support"):
-            limit = recipe.rho_upper[0]
-            initial_wide = initial_precision < limit**-2
-            final_wide = final_precision < limit**-2
+        if recipe.route in ("hybrid", "hybrid_support", "hybrid_three"):
+            limit = recipe.rho_upper[1 if recipe.route == "hybrid_three" else 0]
+            inclusive = recipe.route == "hybrid_three"
+            initial_wide = (
+                initial_precision <= limit**-2
+                if inclusive
+                else initial_precision < limit**-2
+            )
+            final_wide = (
+                final_precision <= limit**-2
+                if inclusive
+                else final_precision < limit**-2
+            )
             hybrid_routing = {
                 "rho_limit": limit,
                 "diagnostic_basis": "production Torch decode outside timing; exact boundary comparisons can differ by FP32 rounding",
@@ -305,6 +314,26 @@ def measure(args, run):
                 "scratch_capacity_elements": m * case.atoms,
                 "capacity_policy": "fixed B*A; only wide H lanes written/read; not compacted",
             }
+            if recipe.route == "hybrid_three":
+                for label, precision in (
+                    ("initial", initial_precision),
+                    ("final", final_precision),
+                ):
+                    rho = precision.rsqrt()
+                    hybrid_routing[label + "_three_band_atoms"] = [
+                        int((rho < 1).sum()),
+                        int(((rho >= 1) & (rho < limit)).sum()),
+                        int((rho >= limit).sum()),
+                    ]
+                hybrid_routing["band_boundaries"] = [1, limit]
+                hybrid_routing["kernel_saved_comparison"] = (
+                    "rho >= mid; CPU diagnostics may differ at FP32 boundaries"
+                )
+        final_support = summarize(
+            decode(model.local_state, model.p).detach().cpu(), Domain(n, n)
+        )
+    else:
+        final_support = None
     if local:
         assert all(torch.isfinite(p).all() for p in model.parameters())
         if args.worker != "dense":
@@ -355,6 +384,7 @@ def measure(args, run):
         if local and args.worker != "dense"
         else "ordinary AdamW",
         "initial_support": support_report if args.worker != "dense" else None,
+        "final_support": final_support,
         "sigma_updates": sigma_updates,
         "hybrid_routing": hybrid_routing,
         "h_policy": run.entry(args.plan_id).plan.recipe.route

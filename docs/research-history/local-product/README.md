@@ -56,3 +56,8 @@ peaks are smaller. H lifetime and contraction arithmetic remain separate choices
 the old paths use evolving sigma with restricted geometry, not fixed sigma-three.
 Compact local records match the FP64 scalar oracle through six CPU comparisons
 with production width updates; no new GPU speed or memory claim.
+
+2026-10-04: [Subspacing mixtures and three-band H](20261004-subspacing-mixtures.md),
+214 L4-host checks and28 full-shape oracle comparisons. All819 sigmas evolve;
+narrow shares10/50/95/100% reduce support contraction time. The three-band
+hybrid remains slower than saved-H controls; retained as a negative result.

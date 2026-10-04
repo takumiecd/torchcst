@@ -80,6 +80,17 @@ chunks in the same CTA. The benchmark route is `hybrid_support`; see
 [`20261004-hybrid-support.md`](../../../../../../docs/research-history/local-product/20261004-hybrid-support.md)
 for verification and measurements.
 
+`three_band=True, hybrid=True, sparse=True` uses boundaries `[1, mid, ...]`.
+Current rho<1 contracts at most two input sites with an unrolled guarded path;
+1<=rho<mid uses the support loop, and rho>=mid uses saved matrix H. Narrow
+parameter VJP contractions use the same guarded path. This does not yet replace
+the padded H->Y dot with scalar/few-site output accumulation. The benchmark route
+is `hybrid_three`; `plans-local-mixture.json` compares mid2/4/8 with prior routes.
+Its cases accept an optional `widths` object specifying shared bounds and an
+initial rho/fraction mixture, including minimum<spacing. Widths continue to
+evolve during training and graph replay. See
+[`20261004-subspacing-mixtures.md`](../../../../../../docs/research-history/local-product/20261004-subspacing-mixtures.md).
+
 `support_only=True, sparse=True` isolates support-aware whole-call local/saved H
 without hybrid classification or group-wide matrix fallback. In saved mode the
 producer also reads only positive input support; parameter VJP reuses H while
