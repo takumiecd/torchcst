@@ -3,6 +3,129 @@
 2026-10-05時点。小さいCST線形変換の研究は既存のLinear runner、PostgreSQL保存、
 ディスパッチ生成を使う。main統合はGitHub PRで行う。
 
+開発の入口・PR手順・研究環境の運用規則は
+[CONTRIBUTING.md](../CONTRIBUTING.md)に集約する。この文書は実装・登録・検証の詳細を扱う。
+
+## 追加する種類と変更箇所
+
+ここでのCUDA kernelは計算実装を指す。数学的なKernelSpecを追加する場合は、
+宣言・Torch参照実装・演算の契約も変更対象になる。
+
+| 変更 | 実装・宣言 | benchmarkと検証 |
+| --- | --- | --- |
+| 既存Algorithmのrecipe/launch調整 | 対象の `recipe.py`、`validate_recipe`、executor/kernels。local研究routeは `benchmarks/cuda/linear/local_product.py` | 新Planと比較Case、JSON往復、同一契約の独立oracle・GPU測定 |
+| 同じ数学契約の新CUDA Algorithm | `algorithms/<方式>/` にAlgorithm/Recipe、必要なcontract、executor/kernels | benchmark Registryへ登録、catalog/Case、oracle・対応/非対応条件・autograd・Graph検証 |
+| 新しい数学的なKernel/演算 | `kernels/` の宣言とTorch参照実装、必要なOperator/Chart契約、対応Algorithm | 対応fixture、独立oracle、protocol、結果adapterと提出/dispatch側の検証を追加 |
+
+数学的な意味が同じ候補は同じsemanticsを保つ。正規化・支持・微分の意味を変更したら
+新しい意味の版として区別する。既存Planのaliasだけを変えて同じPlanを重複登録しない。
+登録済みrecipeの意味を変える場合は実装契約のrevisionを更新し、古い結果との比較範囲を明示する。
+
+### 新Algorithmの実装先とインターフェース
+
+実際に動いている最小の見本は
+[`window/algorithm.py`](../src/torchcst/_backends/cuda/algorithms/normalized_euclidean_strip/window/algorithm.py)と
+[`window/recipe.py`](../src/torchcst/_backends/cuda/algorithms/normalized_euclidean_strip/window/recipe.py)。
+共通interfaceは [`Algorithm`](../src/torchcst/_backends/cuda/algorithm.py)で定義する。
+
+| 要素 | 実装する内容 |
+| --- | --- |
+| `id` / `revision` | 他候補と区別できる実装のID・契約の版 |
+| `operation_id` / `semantics_id` | 対応する演算・数学的意味 |
+| `recipe_type` / `validate_recipe` | immutable dataclassと、実装が受け付ける設定の厳密な検査 |
+| `supports(context, recipe)` | Kernel/Chart契約、shape、stride、dtype、GPU、精度、勾配などの適合性。非対応理由を返す |
+| `workspace_bound` | 実装が管理するscratchの上界。分からなければ `None`。実測GPUピークとは区別する |
+| `execute` | executorを遅延importし、そのforwardの設定・保存状態に対応したbackwardを接続する |
+
+Algorithm構築、recipe検査、support判定はGPUコードのimportやTensor値の読み出しを行わない。
+Algorithmインスタンスへ入力・支持・勾配bufferを保存しない。forwardごとの保存状態を
+autograd呼び出しに持たせ、Parameterの更新はoptimizerが行う。
+`supports`はメタデータだけで判定し、現在のsigmaに依存する支持分類は実行時に更新する。
+
+### Registry、runner、adapterの接続
+
+新しい研究Algorithmはまず
+[`benchmarks/cuda/linear/manifest.py`](../benchmarks/cuda/linear/manifest.py)のbenchmark-local
+`REGISTRY`へ登録する。metadataをimportするだけでTritonを読み込まないことを確認する。
+本番Registry・公開CSTLinearの選択器へ接続するかは、実機検証後の別判断にする。
+
+既存のnormalized Windowを独立Registryへ登録してJSON往復を確認する実行例：
+
+```bash
+python - <<'PY'
+from torchcst._backends.cuda.registry import Registry
+from torchcst._backends.cuda.schema import ExecutionPlan
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.algorithm import NormalizedWindowAlgorithm
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import WindowRecipe
+
+registry = Registry()
+algorithm = NormalizedWindowAlgorithm()
+registry.register(algorithm)
+plan = ExecutionPlan(algorithm.id, algorithm.revision, WindowRecipe())
+assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+print(registry.dumps_plan(plan))
+PY
+```
+
+自分のAlgorithm/Recipeもこの形で検査し、拒否する設定・未知revision・非対応contextの
+テストを追加する。normalized full/windowは登録済みの既定recipeだけを許可するので、
+JSONの数値だけを書き換えても新候補として実行できない。
+
+同じ数学契約の候補でも、runnerのfixture構築、Plan実行、source hash収集、
+correctness/measure workerの全経路を確認する。
+既存Linear runnerが対応するfixtureはnormalized Stripと小さいlocal polar product。
+任意の新演算が自動で通る入口ではない。
+新fixtureや結果指標を追加する場合は
+[`fixtures.py`](../benchmarks/cuda/linear/fixtures.py)、
+[`protocol.py`](../benchmarks/cuda/linear/protocol.py)、
+[`run.py`](../benchmarks/cuda/linear/run.py)、
+[`database/adapters/linear.py`](../benchmarks/database/adapters/linear.py)、
+提出とdispatchのdecoderまで対応を揃える。既存fixtureの契約に押し込まず、
+新しい結果形式には明示的なadapter/取り込み入口を設ける。
+指標の意味が変わる場合はadapter revisionを上げ、過去のprojectionを保持する。
+
+## 登録済みAlgorithmで手順を試す
+
+この例は実装済みのnormalized fullをbaseline、window512をcandidateにして、
+登録→比較条件→検証→測定→提出前検査の流れを試す。
+新しいkernelの性能結果を作る例ではない。最初の二つはCPUだけで実行できる。
+
+```bash
+python -m tools.kernel_dev prepare \
+  --case benchmarks/cuda/linear/cases/normalized-1024-broad.json \
+  --candidate window512 --output output/window-comparison
+python -m tools.kernel_dev check \
+  --plans output/window-comparison/plans.json \
+  --case output/window-comparison/case.json
+```
+
+出力は選択したbaseline/candidateだけの `plans.json`、同じ入力・optimizer・dense参照を
+維持した `case.json`、元Case/catalogのパスとSHA256を持つ `source.json`。
+出力先は新しいディレクトリにする。複数候補は `--candidate` を繰り返す。
+同じ数学契約の新Planをcatalogへ登録したら、そのaliasも候補に指定できる。
+runtimeでの適合性と数値の正しさは次のGPU検証で確認する。
+
+対応CUDA GPUで、repoルートから実行する：
+
+```bash
+python -m tools.kernel_dev test --suite normalized-strip
+python -m benchmarks.cuda.linear.run \
+  --plans output/window-comparison/plans.json \
+  --case output/window-comparison/case.json \
+  --source-commit "$(git rev-parse HEAD)" --correctness-only \
+  --output output/window-comparison/correctness.json
+python -m benchmarks.cuda.linear.run \
+  --plans output/window-comparison/plans.json \
+  --case output/window-comparison/case.json \
+  --source-commit "$(git rev-parse HEAD)" \
+  --output output/window-comparison/benchmark.json
+python -m benchmarks.submissions check output/window-comparison/benchmark.json
+```
+
+correctnessが失敗したら修正してから測定へ進む。測定runner自身も先にcorrectnessを実行する。
+新しい実装はcommitした状態で測定し、実際のsource hashも結果に保持する。
+完成した結果JSONの提出・PRへの証拠の記載は [CONTRIBUTING.md](../CONTRIBUTING.md)に従う。
+
 ## 開発環境と確認コマンド
 
 すべてrepoルートから実行する。`tools.kernel_dev`はrepo内の開発用入口で、
@@ -94,15 +217,9 @@ source snapshot SHA256、結果archive SHA256を付け、資格情報はGPUに�
 
 ## 記録と統合
 
-`docs/research-history/local-product/`へ採否、誤差、完全step時間とピーク、job ID、
-source/result hash、再現コマンドを記録する。raw logs・tensors・source copiesはignored
-`evidence/`へ保存し、bulk-addしない。検証済みのまとまりをcommitする。
-
-named branchをpushし、GitHub PRを作成して必要な検証後にGitHubでmergeする。
-PRテンプレートには、変更の契約、検証結果、未実施の検証、測定の条件と証拠を記載する。
-**CPU validation** Actionsが宣言検査・CPUテスト・wheel / sdist buildを実行する。
-このCIはGPUの時間・メモリや実DBへの保存を検証しない。GPU実装の採用時は上記の
-実機検証を別途完了し、PRから証拠を参照する。
-mainへ直接pushしない。ローカルmainのmergeをリモート統合の代わりにしない。
-GitHubでmergeされた後だけ、origin/mainをfetchしてローカルmainをfast-forwardする。
-worktree整理前に必要なignored evidenceを保全し、復旧先を研究ノートへ残す。
+手順・PRの検証項目・共有GPUの制約・証拠保全は
+[CONTRIBUTING.md](../CONTRIBUTING.md)を正本とする。
+local productの簡潔な記録は `docs/research-history/local-product/`、
+CUDA Linearの記録は `docs/research-history/cuda-linear/` に置く。
+採否、誤差、完全step時間とピーク、独立run数、job ID、source/result hash、
+再現コマンドと保全先を残す。実機未検証の候補は研究ブランチで扱う。

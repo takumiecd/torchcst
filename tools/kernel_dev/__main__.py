@@ -1,4 +1,4 @@
-"""Validate benchmark declarations and run kernel development test suites.
+"""Prepare comparisons, validate declarations and run kernel test suites.
 
 This tool does not measure performance, submit jobs or change dispatch policy.
 """
@@ -10,6 +10,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from benchmarks.cuda.linear.manifest import (
@@ -95,18 +96,89 @@ def test_suite(suite: str):
     ).returncode
 
 
+def prepare(plans: Path, case: Path, candidates: list[str], output: Path):
+    """Create a small baseline/candidate comparison using registered plans."""
+    source = load_run(case, plans)
+    catalog_value, catalog_hash = read_json(plans)
+    if catalog_hash != source.input_hashes["plans_sha256"]:
+        raise ValueError("source catalog changed while preparing comparison")
+    entries = decode_catalog(catalog_value)
+    by_id = {entry.id: entry for entry in entries}
+    if (
+        not candidates
+        or len(set(candidates)) != len(candidates)
+        or source.baseline in candidates
+    ):
+        raise ValueError("candidates must be unique and different from the baseline")
+    if any(name not in by_id for name in candidates):
+        raise ValueError("candidate is not registered in the source catalog")
+    if not source.dense:
+        raise ValueError("comparison source Case must include the dense reference")
+    selected = [source.baseline, *candidates]
+    # This also rejects candidates with a different mathematical contract.
+    run = replace(source, plans=tuple(by_id[name] for name in selected))
+    catalog = {
+        "schema_version": 1,
+        "plans": [
+            {"id": entry.id, "plan": REGISTRY.dump_plan(entry.plan)}
+            for entry in run.plans
+        ],
+    }
+    declaration = {
+        "schema_version": 1,
+        "case": asdict(run.case),
+        "plans": selected,
+        "baseline": run.baseline,
+        "dense": run.dense,
+    }
+    provenance = {
+        "plans": str(plans),
+        "case": str(case),
+        "input_hashes": source.input_hashes,
+    }
+    # Validate everything before creating files; never overwrite an experiment.
+    payloads = {
+        name: json.dumps(value, indent=2, allow_nan=False) + "\n"
+        for name, value in (
+            ("plans.json", catalog),
+            ("case.json", declaration),
+            ("source.json", provenance),
+        )
+    }
+    output.mkdir(parents=True, exist_ok=False)
+    for name, text in payloads.items():
+        (output / name).write_text(text)
+    return check(output / "plans.json", [output / "case.json"])
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     preflight = commands.add_parser("check", help="CPU-only Plan/Case validation")
     preflight.add_argument("--plans", type=Path, default=DEFAULT_PLANS)
     preflight.add_argument("--case", type=Path, action="append", default=[])
+    comparison = commands.add_parser(
+        "prepare", help="create a baseline/candidate comparison from registered plans"
+    )
+    comparison.add_argument("--plans", type=Path, default=DEFAULT_PLANS)
+    comparison.add_argument("--case", type=Path, required=True)
+    comparison.add_argument("--candidate", action="append", required=True)
+    comparison.add_argument("--output", type=Path, required=True)
     tests = commands.add_parser("test", help="run a documented test suite")
     tests.add_argument("--suite", choices=("cpu", *GPU_SUITES), required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "check":
             print(json.dumps(check(args.plans, args.case), indent=2, allow_nan=False))
+            return 0
+        if args.command == "prepare":
+            print(
+                json.dumps(
+                    prepare(args.plans, args.case, args.candidate, args.output),
+                    indent=2,
+                    allow_nan=False,
+                )
+            )
             return 0
         return test_suite(args.suite)
     except (OSError, ValueError, TypeError) as error:
