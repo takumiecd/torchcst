@@ -26,7 +26,7 @@ def _sizes(domain, swap=False):
     return (n, k, oo, oi, i, js) if swap else (k, n, oi, oo, js, i)
 
 
-def _fused(x, packed, domain, recipe, swap=False, sparse=False):
+def _fused(x, packed, domain, recipe, swap=False, sparse=False, hybrid=False, h=None):
     import triton as tr
 
     from . import kernels
@@ -53,18 +53,23 @@ def _fused(x, packed, domain, recipe, swap=False, sparse=False):
         swap,
         sparse,
         recipe.support_limit,
-        num_warps=4,
+        hybrid,
+        h,
+        recipe.rho_upper[0],
+        num_warps=8 if max(k, n) > 64 else 4,
         enable_fp_fusion=False,
     )
     _report(
-        ("support_" if sparse else "") + ("dx" if swap else "fused_forward"), compiled
+        ("hybrid_" if hybrid else "support_" if sparse else "")
+        + ("dx" if swap else "fused_forward"),
+        compiled,
     )
     return y
 
 
 class _LocalH(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, q, domain, recipe, saved, sparse, scalars):
+    def forward(ctx, x, q, domain, recipe, saved, sparse, scalars, hybrid):
         fused_polar = bool(scalars)
         import triton as tr
 
@@ -96,28 +101,32 @@ class _LocalH(torch.autograd.Function):
                 else ("prepare_support" if sparse else "prepare"),
                 compiled,
             )
-        h = q.new_empty((len(x), a)) if saved else q.new_empty((0,))
+        # Fixed capacity keeps graph replay independent of a changing wide count.
+        # Hybrid writes/reads only wide lanes; compact capacity is future work.
+        h = q.new_empty((len(x), a)) if saved or hybrid else q.new_empty((0,))
+        if (saved or hybrid) and a:
+            compiled = kernels.save_h[
+                (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(a, recipe.atom_block))
+            ](
+                x,
+                packed,
+                h,
+                len(x),
+                domain.input_count,
+                a,
+                domain.spacing,
+                domain.input_origin,
+                domain.input_start,
+                max(16, tr.next_power_of_2(domain.input_count)),
+                recipe.batch_block,
+                recipe.atom_block,
+                hybrid,
+                recipe.rho_upper[0],
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            _report("hybrid_save_h" if hybrid else "save_h", compiled)
         if saved:
-            if a:
-                compiled = kernels.save_h[
-                    (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(a, recipe.atom_block))
-                ](
-                    x,
-                    packed,
-                    h,
-                    len(x),
-                    domain.input_count,
-                    a,
-                    domain.spacing,
-                    domain.input_origin,
-                    domain.input_start,
-                    max(16, tr.next_power_of_2(domain.input_count)),
-                    recipe.batch_block,
-                    recipe.atom_block,
-                    num_warps=4,
-                    enable_fp_fusion=False,
-                )
-                _report("save_h", compiled)
             y = x.new_empty((len(x), domain.output_count))
             compiled = kernels.from_h[(tr.cdiv(len(x), recipe.batch_block),)](
                 h,
@@ -137,11 +146,11 @@ class _LocalH(torch.autograd.Function):
             )
             _report("from_h", compiled)
         else:
-            y = _fused(x, packed, domain, recipe, sparse=sparse)
+            y = _fused(x, packed, domain, recipe, sparse=sparse, hybrid=hybrid, h=h)
         ctx.save_for_backward(
             x, packed, h, q if fused_polar else q.new_empty((0,)), *scalars
         )
-        ctx.settings = domain, recipe, saved, sparse, fused_polar
+        ctx.settings = domain, recipe, saved, sparse, fused_polar, hybrid
         return y
 
     @staticmethod
@@ -152,7 +161,7 @@ class _LocalH(torch.autograd.Function):
         from . import kernels
 
         x, packed, h, source, *scalars = ctx.saved_tensors
-        domain, recipe, saved, sparse, fused_polar = ctx.settings
+        domain, recipe, saved, sparse, fused_polar, hybrid = ctx.settings
         dy = dy.contiguous()
         dx = (
             _fused(dy, packed, domain, recipe, swap=True, sparse=sparse)
@@ -189,18 +198,24 @@ class _LocalH(torch.autograd.Function):
                     fused_polar,
                     source if fused_polar else None,
                     scalars[0] if fused_polar else None,
-                    num_warps=4,
+                    hybrid,
+                    recipe.rho_upper[0],
+                    num_warps=8
+                    if max(domain.input_count, domain.output_count) > 64
+                    else 4,
                     enable_fp_fusion=False,
                 )
                 _report(
-                    "polar_param"
+                    "hybrid_param"
+                    if hybrid
+                    else "polar_param"
                     if fused_polar
                     else "support_param"
                     if sparse
                     else ("param_saved" if saved else "param_recomputed"),
                     compiled,
                 )
-        return dx, dq, None, None, None, None, None
+        return dx, dq, None, None, None, None, None, None
 
 
 def local_h(
@@ -212,6 +227,7 @@ def local_h(
     saved=False,
     sparse=False,
     fused_polar=False,
+    hybrid=False,
     recipe=DEFAULT_RECIPE,
 ):
     """Y_local from X_local, normalized full-domain profiles, and polar atoms.
@@ -221,6 +237,10 @@ def local_h(
     """
     if sparse and saved:
         raise ValueError("initial support route recomputes local H")
+    if hybrid and (saved or sparse or recipe.pack):
+        raise ValueError(
+            "hybrid requires canonical order and no whole-call saved/support route"
+        )
     if (
         not x.is_cuda
         or x.dtype != torch.float32
@@ -243,5 +263,12 @@ def local_h(
         q = q.index_select(0, order)
     with torch.cuda.device(x.device):
         return _LocalH.apply(
-            x.contiguous(), q.contiguous(), domain, recipe, saved, sparse, scalars
+            x.contiguous(),
+            q.contiguous(),
+            domain,
+            recipe,
+            saved,
+            sparse,
+            scalars,
+            hybrid,
         )

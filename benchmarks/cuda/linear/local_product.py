@@ -32,9 +32,10 @@ class LocalRecipe(Recipe):
             "support",
             "polar",
             "polar_saved",
+            "hybrid",
         ):
             raise ValueError("unknown local H route")
-        if self.route in ("polar", "polar_saved") and self.pack:
+        if self.route in ("polar", "polar_saved", "hybrid") and self.pack:
             raise ValueError("fused polar routes require canonical order")
         if (
             type(self.pack) is not bool
@@ -91,8 +92,8 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
 
     def supports(self, context, recipe):
         reasons = []
-        if context.operator.in_features not in (16, 32, 64):
-            reasons.append("small research sizes are 16/32/64")
+        if context.operator.in_features not in (16, 32, 64, 128):
+            reasons.append("small research sizes are 16/32/64/128")
         elif context.operator != operator_spec(context.operator.in_features):
             reasons.append("requires the fixed shared-width normalized polar contract")
         if context.dtype != torch.float32 or context.device.type != "cuda":
@@ -123,7 +124,8 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
             domain,
             saved=recipe.route in ("saved", "polar_saved"),
             sparse=recipe.route == "support",
-            fused_polar=recipe.route in ("polar", "polar_saved"),
+            fused_polar=recipe.route in ("polar", "polar_saved", "hybrid"),
+            hybrid=recipe.route == "hybrid",
             recipe=recipe,
         )
 

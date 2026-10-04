@@ -126,7 +126,9 @@ class BenchmarkCase:
         _id(self.id, "case id")
         if self.fixture not in ("normalized_euclidean_strip", "local_polar_product"):
             raise ValueError("unknown benchmark fixture")
-        sizes = (16, 32, 64) if self.fixture == "local_polar_product" else (1024, 8192)
+        sizes = (
+            (16, 32, 64, 128) if self.fixture == "local_polar_product" else (1024, 8192)
+        )
         if type(self.size) is not int or self.size not in sizes:
             raise ValueError(f"fixture size must be one of {sizes}")
         if self.fixture == "local_polar_product" and (

@@ -197,6 +197,13 @@ def _matrix_contract(
 
 
 @tr.jit
+def _wide(P, a, A: tl.constexpr, S: tl.constexpr, RHO: tl.constexpr):
+    # rho > RHO, using the precision prepared from this forward's live sigma.
+    inv = tl.load(P + A + a, a < A, 0.0)
+    return (a < A) & (inv < 1.0 / ((S * RHO) * (S * RHO)))
+
+
+@tr.jit
 def fused(
     X,
     P,
@@ -217,6 +224,9 @@ def fused(
     SWAP: tl.constexpr,
     SPARSE: tl.constexpr = False,
     LIMIT: tl.constexpr = 8,
+    HYBRID: tl.constexpr = False,
+    H=None,
+    RHO: tl.constexpr = 4.0,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     j, i = tl.arange(0, BK), tl.arange(0, BN)
@@ -230,7 +240,22 @@ def fused(
         u, _du_full = _factor(P, a, IS + i, A, not SWAP, S, OO)
         u = tl.where(i[:, None] < N, u, 0.0)
         amp = tl.load(P + a, a < A, 0.0)
-        if SPARSE:
+        if HYBRID:
+            wide = _wide(P, a, A, S, RHO)
+            narrow = (a < A) & ~wide
+            h = tl.full((BM, BA), 0.0, tl.float32)
+            if tl.sum(narrow.to(tl.int32), 0) > 0:
+                v_local, _dv_local = _factor(P, a, JS + j, A, False, S, OI)
+                v_local = tl.where((j[:, None] < K) & narrow[None, :], v_local, 0.0)
+                h = tl.dot(x, v_local, input_precision="ieee")
+            if tl.sum(wide.to(tl.int32), 0) > 0:
+                stored = tl.load(
+                    H + b[:, None] * A + a[None, :],
+                    (b[:, None] < B) & wide[None, :],
+                    0.0,
+                )
+                h = tl.where(wide[None, :], stored, h)
+        elif SPARSE:
             _lo, _hi, width = _interval(P, a, A, SWAP, JS, K)
             if tl.max(width, 0) <= LIMIT:
                 h, _dh_support = _support_contract(
@@ -262,17 +287,21 @@ def save_h(
     BK: tl.constexpr,
     BM: tl.constexpr,
     BA: tl.constexpr,
+    HYBRID: tl.constexpr = False,
+    RHO: tl.constexpr = 4.0,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     a = tl.program_id(1) * BA + tl.arange(0, BA)
     j = tl.arange(0, BK)
-    x = tl.load(
-        X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
-    )
-    v, _ = _factor(P, a, JS + j, A, False, S, OI)
-    v = tl.where(j[:, None] < K, v, 0.0)
-    h = tl.dot(x, v, input_precision="ieee")
-    tl.store(H + b[:, None] * A + a[None, :], h, (b[:, None] < B) & (a[None, :] < A))
+    save = _wide(P, a, A, S, RHO) if HYBRID else (a < A)
+    if not HYBRID or tl.sum(save.to(tl.int32), 0) > 0:
+        x = tl.load(
+            X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
+        )
+        v, _dv_saved = _factor(P, a, JS + j, A, False, S, OI)
+        v = tl.where((j[:, None] < K) & save[None, :], v, 0.0)
+        h = tl.dot(x, v, input_precision="ieee")
+        tl.store(H + b[:, None] * A + a[None, :], h, (b[:, None] < B) & save[None, :])
 
 
 @tr.jit
@@ -331,6 +360,8 @@ def param_vjp(
     POLAR: tl.constexpr = False,
     Source=None,
     AmplitudeMax=None,
+    HYBRID: tl.constexpr = False,
+    RHO: tl.constexpr = 4.0,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     b, j, i = tl.arange(0, BB), tl.arange(0, BK), tl.arange(0, BN)
@@ -360,6 +391,19 @@ def param_vjp(
                 (b[:, None] < B) & (a[None, :] < A),
                 0.0,
             )
+        elif HYBRID:
+            wide = _wide(P, a, A, S, RHO)
+            narrow = (a < A) & ~wide
+            h = tl.full((BB, BA), 0.0, tl.float32)
+            if tl.sum(narrow.to(tl.int32), 0) > 0:
+                h = tl.dot(x, tl.where(narrow[None, :], v, 0.0), input_precision="ieee")
+            if tl.sum(wide.to(tl.int32), 0) > 0:
+                stored_h = tl.load(
+                    H + b[:, None] * A + a[None, :],
+                    (b[:, None] < B) & wide[None, :],
+                    0.0,
+                )
+                h = tl.where(wide[None, :], stored_h, h)
         else:
             h = tl.dot(x, v, input_precision="ieee")
         g = tl.dot(dy, u, input_precision="ieee")

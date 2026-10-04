@@ -255,6 +255,90 @@ def test_fused_polar_nontrivial_envelopes_at_max_batch(saved):
         torch.testing.assert_close(a.double(), e, atol=4e-4, rtol=4e-4)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("route", ["local", "saved", "hybrid"])
+@pytest.mark.parametrize("batch", [32, 64])
+def test_full_128_transform_all_atom_gradients(route, batch):
+    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+
+    d = Domain(128, 128)
+    s = state(birth=1).cuda()
+    p = fixture(
+        s, d, device="cuda", dtype=torch.float32, atoms=819 if batch == 32 else 41
+    )
+    x = torch.randn(batch, 128, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    recipe = Recipe(pack=False, rho_upper=(4.0, 16.0))
+    y = local_h(
+        x,
+        p,
+        s,
+        d,
+        saved=route == "saved",
+        hybrid=route == "hybrid",
+        fused_polar=True,
+        recipe=recipe,
+    )
+    grads = torch.autograd.grad(y, (x, p), dy)
+    xx, pp = x.detach().double().requires_grad_(), p.detach().double().requires_grad_()
+    expected = scalar_oracle(xx, pp, state(birth=1).double().cuda(), d)
+    truth_grads = torch.autograd.grad(expected, (xx, pp), dy.double())
+    for a, e in [(y, expected), *zip(grads, truth_grads)]:
+        torch.testing.assert_close(a.double(), e, atol=4e-4, rtol=4e-4)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("limit", [2.0, 4.0, 8.0])
+def test_hybrid_graph_switches_both_directions_without_stale_h(limit):
+    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+
+    d = Domain(128, 128, input_start=3, input_count=73, output_start=5, output_count=97)
+    s = state(birth=1).cuda()
+    p = fixture(s, d, device="cuda", dtype=torch.float32, atoms=41)
+    with torch.no_grad():
+        p[:, :2].div_(p[:, :2].norm(dim=1, keepdim=True))
+        p[16:32, :2].mul_(2)
+        p[33::2, :2].mul_(2)
+    recipe = Recipe(pack=False, rho_upper=(limit, 16.0))
+    x = torch.randn(7, d.input_count, device="cuda", requires_grad=True)
+    dy = torch.randn(7, d.output_count, device="cuda")
+
+    def step():
+        y = local_h(x, p, s, d, hybrid=True, fused_polar=True, recipe=recipe)
+        return y, *torch.autograd.grad(y, (x, p), dy)
+
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(3):
+            step()
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        actual = step()
+    for flip in (True, False):
+        with torch.no_grad():
+            p[:, :2].div_(p[:, :2].norm(dim=1, keepdim=True))
+            p[: 16 if flip else 0, :2].mul_(2)
+            if not flip:
+                p[16:32, :2].mul_(2)
+            p[33::2, :2].mul_(2)
+            p[0, 2:] = p.new_tensor([23.3, 41.2])
+        q = decode(s, p).detach()
+        wide = q[:, 1] < (d.spacing * limit) ** -2
+        assert wide[:16].all() if flip else not wide[:16].any()
+        assert not wide[16:32].any() if flip else wide[16:32].all()
+        graph.replay()
+        xx, pp = (
+            x.detach().double().requires_grad_(),
+            p.detach().double().requires_grad_(),
+        )
+        expected = scalar_oracle(xx, pp, state(birth=1).double().cuda(), d)
+        truth_grads = torch.autograd.grad(expected, (xx, pp), dy.double())
+        for a, e in zip(actual, (expected, *truth_grads)):
+            torch.testing.assert_close(a.double(), e, atol=4e-4, rtol=4e-4)
+
+
 def test_graph_update_and_dense_baseline_match_production():
     from benchmarks.cuda.linear.fixtures import (
         local_product_dense_factors as dense_factors,
@@ -370,6 +454,7 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
         "local-support",
         "local-polar",
         "local-polar-saved",
+        "local-hybrid",
     ],
 )
 def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
@@ -382,26 +467,31 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     from benchmarks.cuda.linear.run import PlanLinear
     from torchcst import CSTLinear, CSTOptimizer
 
+    size = 128 if plan_id == "local-hybrid" else 32
+    batch = 32 if size == 128 else 16
     catalog = DEFAULT_PLANS.with_name(
-        "plans-local-polar.json"
+        "plans-local-hybrid.json"
+        if plan_id == "local-hybrid"
+        else "plans-local-polar.json"
         if plan_id.startswith("local-polar")
         else "plans-local-support.json"
     )
     case = load_run(
-        DEFAULT_PLANS.parent / "cases/local-32-mixed.json",
+        DEFAULT_PLANS.parent
+        / f"cases/local-{size}-mixed{'-hybrid' if size == 128 else ''}.json",
         catalog,
     )
     from benchmarks.cuda.linear.manifest import decode_catalog, read_json
 
     entries = decode_catalog(read_json(catalog)[0])
     plan = next(entry.plan for entry in entries if entry.id == plan_id)
-    model = PlanLinear(initialize(case.case).cuda(), operator_spec(32), plan)
+    model = PlanLinear(initialize(case.case).cuda(), operator_spec(size), plan)
     opt = torch.optim.AdamW(
         [model.p], lr=0.0001, weight_decay=0.01, fused=True, capturable=True
     )
     gen = torch.Generator().manual_seed(193)
-    x = torch.randn(16, 32, generator=gen).cuda().requires_grad_()
-    target = torch.randn(16, 32, generator=gen).cuda()
+    x = torch.randn(batch, size, generator=gen).cuda().requires_grad_()
+    target = torch.randn(batch, size, generator=gen).cuda()
 
     def step():
         opt.zero_grad(set_to_none=True)
@@ -423,7 +513,7 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     torch.cuda.synchronize()
     before = decode(model.local_state, model.p).detach()[:, 1].rsqrt().clone()
     # Start the public, eager optimizer from the same post-capture state/moments.
-    d = Domain(32, 32)
+    d = Domain(size, size)
     truth = CSTLinear(
         *d.charts(device="cuda"),
         atoms=model.p.detach().clone(),

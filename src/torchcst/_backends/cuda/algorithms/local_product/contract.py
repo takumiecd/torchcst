@@ -29,7 +29,7 @@ class Domain:
             if not (
                 2 <= size <= 128
                 and 0 <= start < size
-                and 1 <= count <= 64
+                and 1 <= count <= 128
                 and start + count <= size
             ):
                 raise ValueError("small domain or slice out of bounds")

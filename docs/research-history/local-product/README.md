@@ -38,3 +38,7 @@ No GPU experiment was rerun for this source relocation.
 2026-10-04: [Fused current-state polar preparation and task VJP](20261004-fused-polar.md),
 151 L4-host checks pass; ordinary initial-rho3 complete-step time reduces by41.9%
 versus the existing unsorted route, with evolving sigma. Dense remains faster.
+
+2026-10-04: [128-site transforms and per-atom hybrid H](20261004-hybrid-128.md),
+166 L4-host checks pass; all-H storage gains at N128, while naive hybrid is slower
+and parameter VJP spills. Further optimization is required.

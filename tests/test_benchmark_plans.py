@@ -254,7 +254,7 @@ assert 'torchcst._backends.cuda.algorithms.local_product.kernels' not in sys.mod
     )
 
 
-@pytest.mark.parametrize("size", [16, 32, 64])
+@pytest.mark.parametrize("size", [16, 32, 64, 128])
 @pytest.mark.parametrize("profile", ["sharp", "few", "broad", "wide", "mixed"])
 def test_local_initialization_covers_all_support_scales(size, profile):
     from benchmarks.cuda.linear.fixtures import local_product_state
@@ -262,7 +262,11 @@ def test_local_initialization_covers_all_support_scales(size, profile):
     from torchcst._backends.cuda.algorithms.local_product.preparation import decode
 
     run = load_run(
-        DEFAULT_PLANS.parent / f"cases/local-{size}-{profile}.json", LOCAL_PLANS
+        DEFAULT_PLANS.parent
+        / f"cases/local-{size}-{profile}{'-hybrid' if size == 128 else ''}.json",
+        DEFAULT_PLANS.with_name("plans-local-hybrid.json")
+        if size == 128
+        else LOCAL_PLANS,
     )
     p = initialize(run.case)
     assert p.shape == (round(0.05 * size * size), 4)

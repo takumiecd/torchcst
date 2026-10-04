@@ -8,7 +8,8 @@ PolarAmpWidth product. Sigma/spacing is the basis for choosing H's reuse range.
 This package carries the validated local-H primitive from `2acefae`, relocated
 out of the benchmark tree. It is not registered in production dispatch.
 The original routes retain the measured mathematical contract; `kernels.py` now
-adds experimental support-bounded contractions and fused polar preparation/VJP.
+adds experimental support-bounded contractions, fused polar preparation/VJP,
+and per-atom hybrid H.
 See the [measurement record](../../../../../../docs/research-history/local-product/20261003-local-h.md).
 
 | File | Responsibility |
@@ -23,14 +24,14 @@ See the [measurement record](../../../../../../docs/research-history/local-produ
 Whole-call routes are fused H and globally saved H. The experimental support
 route refreshes intervals on the GPU and uses direct contractions for narrow
 atom groups, with the existing matrix path for wide groups. H->Y still uses the
-padded dot. Compacted per-atom routing and explicit shared/global-H policy remain
+padded dot. Compaction, spatial grouping and an explicit shared-H policy remain
 to implement. L1/L2 are caches, not direct allocation policies.
 The `fused_polar` option reads current polar parameters and live scalar buffers
 inside normalization preparation, and applies the angular amplitude chain rule
 inside parameter VJP. It skips the separate Torch decode/autograd chain while
 keeping width task derivatives detached. Both local and saved H support this
 option in canonical atom order; sorting is a separate future optimization.
-The initial batch limit is 64; local sizes are at most 64 with full norm domains
+The initial batch limit is 64; local sizes are at most 128 with full norm domains
 at most 128. Existing CUDA correctness and spill reports are historical;
 relocation checks do not constitute a new GPU performance result.
 
@@ -60,3 +61,12 @@ this small-transform primitive. No outer matrix schedule is introduced here.
 The fused-polar comparison uses `plans-local-polar.json` with
 `cases/local-{32,64}-{profile}-polar.json` in the same runner. Profile names denote
 initial widths, not fixed widths. See research notes for measured results.
+
+`hybrid=True` combines both H policies per atom in the same operator. With
+canonical ordering and `rho_upper=(4,16)`, current rho<=4 uses local H and rho>4
+uses saved H, reused for forward and parameter VJP. The first array boundary is
+the cutoff; other boundaries remain available to the ordering policy. dX retains
+the transposed local contraction. Scratch capacity is fixed B*A; only wide lanes
+are written/read, without compaction or a promise of cache residency. CUDA Graph
+replay refreshes classifications and H on every forward. See
+[`20261004-hybrid-128.md`](../../../../../../docs/research-history/local-product/20261004-hybrid-128.md).

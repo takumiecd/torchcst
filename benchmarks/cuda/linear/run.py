@@ -209,10 +209,12 @@ def measure(args, run):
         model = PlanLinear(p.cuda(), op, run.entry(args.plan_id).plan)
     del p
     initial_sigma = None
+    initial_precision = None
     if local and args.worker != "dense":
         from torchcst._backends.cuda.algorithms.local_product.preparation import decode
 
-        initial_sigma = decode(model.local_state, model.p).detach()[:, 1].rsqrt().cpu()
+        initial_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
+        initial_sigma = initial_precision.rsqrt()
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=case.optimizer.lr,
@@ -264,8 +266,10 @@ def measure(args, run):
     peak_allocated = torch.cuda.max_memory_allocated()
     peak_reserved = torch.cuda.max_memory_reserved()
     sigma_updates = None
+    hybrid_routing = None
     if initial_sigma is not None:
-        final_sigma = decode(model.local_state, model.p).detach()[:, 1].rsqrt().cpu()
+        final_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
+        final_sigma = final_precision.rsqrt()
         change = final_sigma - initial_sigma
         sigma_updates = {
             "fixed": False,
@@ -277,6 +281,22 @@ def measure(args, run):
         }
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
+        recipe = run.entry(args.plan_id).plan.recipe
+        if recipe.route == "hybrid":
+            limit = recipe.rho_upper[0]
+            initial_wide = initial_precision < limit**-2
+            final_wide = final_precision < limit**-2
+            hybrid_routing = {
+                "rho_limit": limit,
+                "diagnostic_basis": "production Torch decode outside timing; exact boundary comparisons can differ by FP32 rounding",
+                "initial_local_atoms": int((~initial_wide).sum()),
+                "initial_saved_atoms": int(initial_wide.sum()),
+                "final_local_atoms": int((~final_wide).sum()),
+                "final_saved_atoms": int(final_wide.sum()),
+                "changed_routes": int((initial_wide != final_wide).sum()),
+                "scratch_capacity_elements": m * case.atoms,
+                "capacity_policy": "fixed B*A; only wide H lanes written/read; not compacted",
+            }
     if local:
         assert all(torch.isfinite(p).all() for p in model.parameters())
         if args.worker != "dense":
@@ -305,6 +325,7 @@ def measure(args, run):
         else "ordinary AdamW",
         "initial_support": support_report if args.worker != "dense" else None,
         "sigma_updates": sigma_updates,
+        "hybrid_routing": hybrid_routing,
         "h_policy": run.entry(args.plan_id).plan.recipe.route
         if local and args.worker != "dense"
         else None,
