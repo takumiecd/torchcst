@@ -4,6 +4,96 @@
 コードはPull Request、計測結果はこのリポジトリのIssueから提出します。
 計測結果の提出には、fork・提出用ブランチ・PR・Neonの接続情報は不要です。
 
+## コード・kernelを追加する
+
+開発の入口はこの文書です。CUDA kernelの具体的な実装・登録・測定は
+[カーネル開発ガイド](docs/kernel-development.ja.md)を参照してください。
+
+```text
+変更の数学的な契約を決める
+    → codex/ ブランチで実装・Algorithm/Recipeを登録
+    → Plan/Caseを用意し、宣言・独立oracle・回帰テストを確認
+    → 同じ条件のbaseline・candidate・denseを実GPUで測定
+    → 正しさ・完全step時間・ピークメモリ・証拠を記録
+    → PRでレビュー・必要な検証を通してGitHubでmerge
+```
+
+### 1. 開発環境を用意する
+
+repoルートで実行します。外部参加者はforkからPRを作成できます。
+
+```bash
+python -m pip install -e '.[dev]'
+git switch -c codex/my-kernel
+python -m tools.kernel_dev test --suite cpu
+```
+
+GPUホストでは `python -m pip install -e '.[dev,cuda]'` を使います。
+CUDAが見える環境でCPU検証を行うときは `CUDA_VISIBLE_DEVICES=''` を付けます。
+GPU・実DBが必要なテストのskipは、GPU・DB検証を完了したことにはなりません。
+
+### 2. 実装と比較条件を登録する
+
+数学的なKernelSpecとCUDAのAlgorithm/Recipeは区別します。同じ演算の計算方式を
+変える場合は `_backends/cuda/algorithms/` に実装を置きます。
+既存のrecipe調整、新Algorithm、新しい数学的な演算で必要な変更は
+[追加する種類と変更箇所](docs/kernel-development.ja.md#追加する種類と変更箇所)に整理しています。
+本体の `src/torchcst/` から `benchmarks/` や `tests/` に依存しないでください。
+
+公開APIの契約は [README.md](README.md)、現在のpackage境界は
+[backendの配置規約](src/torchcst/_backends/README.md)を正本とします。
+演算の定義はatomごとのkernelの和であり、行列への因数分解は計算方式の一つです。
+atom数・Parameterのshapeは学習中固定し、振幅・幅・中心などの学習可能な値はatomの
+Parameterに持たせます。Moduleの状態所有、微分計算、optimizerの更新を分離してください。
+旧store・birth/death/merge・slot remapping・Pullback Adamなどの互換surfaceを復活させません。
+
+比較用のPlan catalogとCaseは既存Linear runnerで読み込める形式にします。
+登録済みの候補で手順を試す例は、GPUなしで実行できます。
+
+```bash
+python -m tools.kernel_dev prepare \
+  --plans benchmarks/cuda/linear/plans-local-contraction.json \
+  --case benchmarks/cuda/linear/cases/local-contraction-64-sigma3.json \
+  --candidate persistent-supportprep-band \
+  --output output/kernel-comparison
+python -m tools.kernel_dev check \
+  --plans output/kernel-comparison/plans.json \
+  --case output/kernel-comparison/case.json
+```
+
+`prepare`はbaseline・指定candidate・denseを含む比較用JSONと、元ファイルのhashを
+新しいディレクトリへ保存します。候補は `--candidate` を繰り返して指定できます。
+既存の出力先は上書きしません。新しい実装を自動生成・登録するコマンドではありません。
+新候補を登録した後は、そのcatalogとCaseを入力にして同じ手順を使います。
+
+### 3. 正しさ・性能・メモリを確認する
+
+独立oracleでY・dX・全atom勾配、境界、支持、正規化を検証します。
+optimizerを変える場合はParameter・moments・stepも比較します。
+GPUでGraph replayと可変幅を確認し、未計装の完全学習stepを測定します。
+時間とcapture/replay込みのallocated / reservedピークを同じ条件で比較してください。
+
+[実行できる最小例](docs/kernel-development.ja.md#登録済みalgorithmで手順を試す)に
+CPU確認からGPU correctness、完全step測定、提出前検査までのコマンドを載せています。
+所有者の共有GPUを使う場合は、下の[研究運用規則](#所有者の研究環境と運用規則)も適用します。
+自分のGPUで測定する外部参加者に、所有者のGPUアカウントやDBの資格情報は必要ありません。
+
+### 4. 記録してPRを作成する
+
+コード・テスト・簡潔な研究ノートをcommitし、raw logs・trace・tensor・source copiesは
+ignored `output/` または `benchmarks/**/evidence/` に保存します。
+計測結果はこの文書のIssue経路から提出し、PRから提出Issueや観測IDを参照できます。
+新しいPlanや結果形式は中央registry / adapterが対応してから受け付けられるため、
+コード側の対応を先にレビューします。
+
+PRテンプレートに、変更の目的・契約、実行した検証、未実施の検証、hardware/runtime、
+完全step時間・ピークメモリ、独立run数、source/result hashと再現コマンドを記載します。
+PRの **CPU validation** Actionsは宣言検査・CPUテスト・wheel/sdist buildを実行します。
+GPUの正しさ・性能や実DBは別途確認します。公開dispatcherへの採用も別の判断です。
+
+mainへ直接pushせず、名前付きブランチをpushしてGitHub PRから統合します。
+GitHubでmergeされた後に、ローカルmainを `origin/main` へfast-forwardします。
+
 ## ベンチマーク結果を提供する
 
 ```text
@@ -114,38 +204,6 @@ Artifact内の各実行の `artifacts/benchmark.json` を取り出し、同じIs
 [requestsガイド](benchmarks/requests/README.md)を参照してください。
 自分のGPUやColabで直接計測する参加者は、GitHubへのColab認証設定なしで結果だけ提出できます。
 
-## コードを改善する
-
-CUDA kernelを追加・改善する場合は、[開発手順](docs/kernel-development.ja.md)に
-実装先、宣言検査、正しさ・完全step測定、記録とPR統合の手順をまとめています。
-GPUを使う前に、repoルートでPlanとCaseを確認できます。
-
-```bash
-python -m tools.kernel_dev check \
-  --plans benchmarks/cuda/linear/plans-local-contraction.json \
-  --case benchmarks/cuda/linear/cases/local-contraction-64-sigma3.json
-```
-
-1. ブランチを作成し、必要なコード・テスト・説明を変更します。外部参加者はforkからPRを作成できます。
-2. 変更に対応するテストを実行します。GPU実装では正しさと実GPUでの速度・メモリを確認します。
-3. 計測結果は上記のIssue経路で提出し、PRから提出Issueや観測IDを参照します。
-4. PRには変更の目的、Algorithmの考え方、検証方法と結果を記載します。
-
-開発用依存関係とCPUでのテスト実行：
-
-```bash
-python -m pip install -e '.[dev]'
-python -m pytest -q
-```
-
-`python -m tools.kernel_dev test --suite cpu` でもCPU環境で全テストを実行できます。
-PRの **CPU validation** Actionsは宣言検査、CPUテスト、配布物buildを実行します。
-GPU・実DBの検証は別途必要です。
-
-GPUやDBが必要なテストは環境に依存します。実行できなかった検証をPRに明記してください。
-新しいPlanや結果形式は中央registry / adapterが対応してから受け付けられるため、
-コード側の追加と対応を先にレビューします。計測結果をコードPRへ大量にコミットする必要はありません。
-
 ## 観測の保存と採用
 
 DBには結果原本、Plan・Case、観測・指標、提出者ID・ユーザー名、Issue情報、受付日時、
@@ -159,3 +217,79 @@ DBへの保存、kernel / Algorithmの承認、leaderboardの生成、dispatcher
 
 中央Actions・Neonの設定、DB移行、管理者の再実行と観測照会については
 [詳しい参加・運用ガイド](docs/benchmark-contributions.ja.md)を参照してください。
+
+## 所有者の研究環境と運用規則
+
+以下は、このrepoの所有者のGPU・研究worktreeを使う人とエージェントに適用する規則です。
+外部参加者の自前GPUには、所有者の共有プール・GPU割当を要求しません。
+通常の開発手順は上の「コード・kernelを追加する」を参照してください。
+
+### Main integration must use pull requests
+
+- The user explicitly prohibits direct pushes to `main` (2026-10-05).
+- Publish changes on a named `codex/` branch, create a GitHub pull request, and
+  merge through the pull request after the required validation passes.
+- Do not substitute a local merge into `main` for remote PR integration. After
+  GitHub merges the PR, fetch and fast-forward the local `main` to `origin/main`.
+- Preserve commits, uncommitted files and needed ignored evidence before
+  archiving or removing research worktrees. Keep recovery paths in research notes.
+
+### Shared Colab L4 experiments
+
+For Colab L4 research experiments, read and use
+[the shared pool skill](tools/colab-l4-pool/SKILL.md). It is also installed at
+`~/.codex/skills/colab-l4-pool` on the user's local host.
+
+- All local chats/worktrees submit to the default host-wide queue. Do not
+  create a per-agent live queue with `--state-root`.
+- One orchestrator owns `serve`; other agents submit jobs and wait for results.
+  Default to one L4. The orchestrator may select two or three when warranted
+  within the user's authorized allocation scope.
+- Do not directly upload, execute, restart or stop the pool's `cst-pool-*`
+  sessions through the CLI or notebook UI. The pool serializes complete
+  experiments and manages isolated subprocesses, result retrieval and cleanup.
+- A wait timeout does not release a runtime. Use `status` and the documented
+  recovery path for interrupted work; do not edit the database or slot records.
+
+Other GPUs and sessions outside this pool retain their existing workflows.
+This queue coordinates one host; another computer must not operate its VMs.
+
+### Cross-generation experiment scope
+
+- The user authorized Blackwell/G4 and other GPU generations on 2026-10-01.
+  Keep the original L4 performance objective and record other devices separately.
+- G4 use is cost constrained. The orchestrator alone selects and allocates short
+  comparison runs for promising, validated candidates. Agents must not provision
+  G4 independently or run broad G4 parameter sweeps.
+- Measure a complete dense training step on each comparison GPU under the same
+  model, batch, dtype, precision settings and optimizer contract. Preserve kernel
+  normalization, sharp support/one-hot behavior, dX and all atom gradients.
+- Record actual hardware and runtime versions, retrieve verified results and stop
+  owned runtimes after the selected batch. A faster GPU is not evidence of an
+  algorithmic improvement on L4.
+
+### Complete-step memory objective
+
+- The user added low memory consumption as a requirement on 2026-10-01.
+  Evaluate time and memory together; retain normalization, support and gradient
+  correctness. There is no user-specified numerical memory ceiling.
+- Report peak allocated memory for the complete step including CUDA Graph
+  capture. Distinguish allocated bytes, allocator reserved bytes and total GPU
+  process usage; do not present a tensor budget as a measured GPU peak.
+- Prefer bounded weight/weight-gradient scratch and buffer reuse. Keep new
+  implementations on research branches until independent correctness checks
+  and actual GPU time/peak measurements pass. Label sharp-only fixtures separately
+  from the ordinary sigma-three performance objective.
+
+### Research Git checkpoints
+
+- Keep experiment worktrees on named `codex/` branches. Commit coherent source,
+  tests and research notes at validated checkpoints; record negative results too.
+- Keep generated logs, traces, tensors and frozen source copies in ignored
+  `evidence/` directories. Preserve these files on disk; do not bulk-add them.
+  Track concise results, job IDs, source hashes and reproduction commands in notes.
+- Keep experimental alternatives on their research branches until validated for
+  the main tree's mathematical and numerical contract.
+- Before Colab submission, inspect `git status` and ensure raw evidence copies
+  will not enter the source snapshot. Existing intentionally tracked evidence
+  remains tracked; new raw output is ignored.

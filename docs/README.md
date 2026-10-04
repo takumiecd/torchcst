@@ -3,6 +3,9 @@
 The root [README](../README.md) defines the public API. This directory holds
 cross-cutting design notes for charts, coordinates, and optimizers.
 
+Development starts at [CONTRIBUTING](../CONTRIBUTING.md); CUDA implementation
+details and runnable examples are in the [kernel development guide](kernel-development.ja.md).
+
 - [Chart geometry](chart-geometry.ja.md)
 - [Direct amplitude and bandwidth coordinates](direct-amplitude-bandwidth.ja.md)
 - [CSTOptimizer](cst-optimizer.ja.md)

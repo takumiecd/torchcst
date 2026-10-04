@@ -1,50 +1,9 @@
-# CLAUDE.md
+# Repository instructions
 
-## Commands
+Follow [AGENTS.md](AGENTS.md). The shared developer workflow and research
+operating rules live in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-```bash
-.venv/bin/pytest
-.venv/bin/ruff check .
-python -m pip install -e ".[dev]"
-```
-
-## Contract
-
-`README.md` is the public API contract. The implementation is a ground-up,
-fixed-shape, continuous-only rewrite. Do not restore compatibility surfaces for
-stores, structural policies, birth, death, merge, absorb, slot remapping, or the
-old Pullback Adam implementation.
-
-## Package boundaries
-
-| Package | Responsibility |
-| --- | --- |
-| `geometry/` | fixed-cardinality charts and future coordinate geometry |
-| `atoms/` | fixed-shape atom amplitudes and opaque kernel-coordinate rows |
-| `kernels/` | stateless interpretation, initialization, and evaluation of opaque atom coordinates |
-| `nn/` | user-facing CST modules such as `CSTLinear` and future convolution modules |
-| `_derivatives/` | internal displacement, JVP, VJP, HVP, and contraction machinery shared across module families |
-| `optim/` | model-level parameter ownership, compact moments, first-order solve, optional quartic solve, and joint state commit |
-
-Public objects are re-exported from `torchcst`; internal placement must not leak
-into the README API. Keep module ownership separate from derivative evaluation,
-and keep optimizer logic independent of the concrete Linear or Conv family.
-
-`experiments/` holds development-only kernels; `benchmarks/` holds their
-reproducible measurements. Neither belongs in the wheel, and `src/torchcst/`
-must not import either. The public `backend="auto"` continues to select exact
-CST implementations. Fixed-anchor CST is a separate approximate development
-path until its semantics and quality policy are explicitly established.
-Keep kernel contracts and decisions beside the implementation, measured evidence
-beside the benchmark, and only cross-cutting architecture in `docs/`.
-
-The canonical operator is `sum(kernel(p[a], charts))`. A factored matrix
-expression is an optional kernel capability and must not become the model
-definition. Amplitude and every other trainable kernel property belong in each
-atom's opaque `p` row; kernel objects own only fixed configuration or buffers.
-
-## Development order
-
-Every landed milestone must remain testable. Establish dense autograd oracles
-before optimizing a contraction, and establish the complete quartic correctness
-path before introducing numerical shortcuts.
+For kernel implementation, registration, correctness and measurement, read
+[the kernel development guide](docs/kernel-development.ja.md).
+The current public API is in [README.md](README.md), and package boundaries are
+in [the backend layout](src/torchcst/_backends/README.md).
