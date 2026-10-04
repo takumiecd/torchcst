@@ -1,11 +1,15 @@
-# Main integration of validated local-product research
+# Pull-request integration of validated local-product research
 
 2026-10-05: the user explicitly requested integration into main after database
-preservation and research dispatcher generation. Main was clean at `6eee7fae`;
-`codex/local-product-hybrid` at `e211ecb3` descended directly from that commit.
-The merge had no conflicts and preserves the full research commit history.
+preservation and research dispatcher generation. The user clarified that remote
+integration must use a GitHub PR and that direct pushes to main are prohibited.
+The prematurely prepared local merge `97c97699` was preserved on
+`codex/local-product-main-pr`; local main was restored to `origin/main` at
+`6eee7fae`. The validated changes are published only through this PR branch.
+After GitHub merges the PR, local main is synchronized by fast-forward only.
+AGENTS.md records the PR requirement for subsequent work.
 
-Main now contains the small normalized/shared-width PolarAmpWidth product
+The PR contains the small normalized/shared-width PolarAmpWidth product
 algorithms, per-atom local/saved H and optional saved G, persistent execution
 layout, existing Linear benchmark Cases/Plans, revision-3 database projection,
 case-scoped dispatch generation requests, tests and research records. Algorithms
@@ -31,7 +35,7 @@ one-sided finite-difference test specifies the upper-end interior derivative and
 checks the zero exterior derivative. No CUDA kernel or product/polar math was
 changed by this repair.
 
-After repair, main's complete suite is **778 passed / 302 skipped** (20.31s).
+After repair, the candidate's complete suite is **778 passed / 302 skipped** (20.31s).
 Focused public/dispatch checks are42 passed /12 skipped. Skips include unavailable
 CUDA hardware and dedicated PostgreSQL tests; they are not counted as passes.
 Prior validation remains the95 final GPU-host checks /24 full-shape independent
@@ -56,15 +60,16 @@ Copied27 generated-candidate/receipt/log files into main's ignored
 `benchmarks/database/evidence/local-product-20261005/` and verified every SHA256
 against the research checkout. Thus the saved-dataset reproduction commands work
 from main too. Original experiment raw outputs, frozen source archives and pool
-receipts remain preserved in the research checkout and host-wide pool directories.
+receipts remain preserved in recovery archives and host-wide pool directories.
 No ignored PostgreSQL test-server data or credentials were copied or committed.
-The research worktree is retained to preserve its raw evidence.
+Worktree recovery paths and the archive procedure are recorded in
+[the cleanup record](20261005-worktree-cleanup.md).
 
 Main integration logs, pre-merge frozen checkout, initial failures, final suite
 and copy-hash manifest are ignored under
 `benchmarks/database/evidence/main-integration-20261005/`.
-This is a local main integration; no remote publish or production-default
-selection claim is made.
+Remote integration uses a GitHub PR; no direct main push or production-default
+selection is part of this checkpoint.
 
 ```bash
 PYTHONPATH=src:. python -m pytest -q
