@@ -10,7 +10,14 @@ def oracle(p, sizes=(64, 4, 4), origin=(0.0, 0.0, 0.0), stored_dtype=None):
     bounds = torch.tensor(
         [math.log(0.03), math.log(3.25)], dtype=stored_dtype or p.dtype
     ).to(p)
-    sigma = p[:, 1].clamp(bounds[0], bounds[1]).exp()
+    # Inclusive endpoint derivative is part of this kernel's declared contract.
+    # Spell it out independently of PyTorch's clamp tie-gradient convention.
+    log_width = torch.where(
+        p[:, 1] < bounds[0],
+        bounds[0],
+        torch.where(p[:, 1] > bounds[1], bounds[1], p[:, 1]),
+    )
+    sigma = log_width.exp()
     sites = torch.cartesian_prod(
         *[
             torch.arange(n, device=p.device, dtype=p.dtype) * s + o

@@ -74,6 +74,31 @@ def test_checkpoint_and_arbitrary_leading_dimensions():
     assert set(a.state_dict()) == set(b.state_dict())
 
 
+def test_upper_width_endpoint_keeps_one_sided_interior_derivative():
+    p = mixed()[1:2].clone()
+    x = torch.linspace(-0.3, 0.7, 16, dtype=p.dtype).reshape(1, 16)
+    dy = torch.linspace(-1, 0.6, 64, dtype=p.dtype).reshape(1, 64)
+    model = public_class()(chart(dtype=p.dtype), p)
+    gradient = torch.autograd.grad((model(x) * dy).sum(), parameter(model))[0][0, 1]
+    # A one-sided difference of the independent forward truth specifies the
+    # derivative without relying on either implementation's autograd clamp.
+    eps = 1e-6
+    interior = p.clone()
+    interior[0, 1] -= eps
+    boundary_loss = ((x @ oracle(p).T) * dy).sum()
+    interior_loss = ((x @ oracle(interior).T) * dy).sum()
+    expected = (boundary_loss - interior_loss) / eps
+    assert gradient.abs() > 1e-8
+    torch.testing.assert_close(gradient, expected, rtol=2e-5, atol=1e-7)
+    outside = p.clone()
+    outside[0, 1] += eps
+    exterior_model = public_class()(chart(dtype=p.dtype), outside)
+    exterior_gradient = torch.autograd.grad(
+        (exterior_model(x) * dy).sum(), parameter(exterior_model)
+    )[0][0, 1]
+    assert exterior_gradient == 0
+
+
 @pytest.mark.parametrize("selector", ["bad", {}, 1])
 def test_invalid_selector(selector):
     with pytest.raises(TypeError, match="selector"):

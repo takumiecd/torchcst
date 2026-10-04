@@ -1,4 +1,4 @@
-"""Fixed normalized Strip plan verification and complete-step comparison.
+"""Linear plan verification and complete-step comparison.
 
 A fresh subprocess owns each correctness/timing/peak measurement. The baseline
 is the same normalized operator with its full recipe; dense is a separate
@@ -29,12 +29,12 @@ from benchmarks.cuda.linear import reference
 from benchmarks.cuda.linear.fixtures import operator_spec
 from benchmarks.cuda.linear.manifest import (
     DEFAULT_PLANS,
+    REGISTRY,
     decode_catalog,
     load_run,
     load_snapshot,
     read_json,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
     geometry,
 )
@@ -48,10 +48,34 @@ class PlanLinear(nn.Module):
         super().__init__()
         self.p = nn.Parameter(p.detach().clone().contiguous())
         self.operator, self.plan = operator, plan
+        self.local_state = None
+        self.persistent_layout = None
+        if plan.algorithm_id == "research_local_product":
+            from benchmarks.cuda.linear.local_product import runtime
+
+            self.local_state, domain = runtime(operator, self.p.device)
+            if plan.recipe.execution_route == "hybrid_persistent":
+                from torchcst._backends.cuda.algorithms.local_product.persistent import (
+                    PersistentLayout,
+                )
+
+                self.persistent_layout = PersistentLayout(
+                    self.p, self.local_state, domain, plan.recipe
+                )
 
     def forward(self, x):
         flat = x.reshape(-1, self.operator.in_features).contiguous()
         context = context_from_tensors(self.operator, flat, self.p)
+        if self.persistent_layout is not None:
+            algorithm = REGISTRY.validate(self.plan, context)
+            y = algorithm.execute(
+                x=flat,
+                parameters=self.p,
+                operator=self.operator,
+                recipe=self.plan.recipe,
+                persistent_layout=self.persistent_layout,
+            )
+            return y.reshape(*x.shape[:-1], self.operator.out_features)
         y = REGISTRY.execute(
             self.plan, context, x=flat, parameters=self.p, operator=self.operator
         )
@@ -71,6 +95,7 @@ def _metadata(args, run):
         Path(__file__).with_name("fixtures.py"),
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
+        Path(__file__).with_name("local_product.py"),
     ]
     return {
         "schema_version": 1,
@@ -101,6 +126,7 @@ def _metadata(args, run):
         "snapshot_sha256": args.snapshot_sha256,
         "worker": args.worker,
         "plan_id": args.plan_id,
+        "polar_update": args.polar_update,
         "plan": None
         if args.worker == "dense"
         else REGISTRY.dump_plan(run.entry(args.plan_id).plan),
@@ -108,6 +134,10 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "local_polar_product":
+        from benchmarks.cuda.linear.local_product import correctness as local_check
+
+        return local_check(args, run, PlanLinear)
     from benchmarks.cuda.linear.check_normalized import check
 
     sizes = (1024, 4, 4)
@@ -147,23 +177,38 @@ def correctness(args, run):
 def measure(args, run):
     case = run.case
     n, m = case.size, case.rows
-    h, j = (32, 32) if n == 1024 else (64, 128)
-    sizes = (n, h, j)
-    origin = (-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4)
-    op = operator_spec(sizes=sizes, origin=origin, spacing=(1.0, 0.5, 0.5))
-    sites = geometry(op)
-    gen = torch.Generator(device="cpu").manual_seed(run.case.seed)
-    p = torch.empty(case.atoms, 5)
-    p[:, 0] = torch.rand(len(p), generator=gen) - 0.5
-    p[:, 1] = math.log(3.0 if case.profile == "broad" else 0.199)
-    p[:, 2:] = torch.rand(len(p), 3, generator=gen) * torch.tensor(
-        [(count - 1) * spacing for count, spacing in zip(sizes, sites.spacing)]
-    ) + torch.tensor(origin)
-    if case.profile == "sharp":
-        for axis, (spacing, o) in enumerate(zip(sites.spacing, sites.origin)):
-            u = (p[:, axis + 2] - o) / spacing
-            near = torch.floor(u + 0.5)
-            p[:, axis + 2] = o + near * spacing + (u - near) * 0.04
+    local = case.fixture == "local_polar_product"
+    support_report = None
+    if local:
+        from benchmarks.cuda.linear.local_product import (
+            fixture_operator,
+            fixture_state,
+            initialize,
+        )
+        from torchcst._backends.cuda.algorithms.local_product.contract import Domain
+        from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+        from torchcst._backends.cuda.algorithms.local_product.support import summarize
+
+        op, p = fixture_operator(case), initialize(case)
+        support_report = summarize(decode(fixture_state(case), p), Domain(n, n))
+    else:
+        h, j = (32, 32) if n == 1024 else (64, 128)
+        sizes = (n, h, j)
+        origin = (-(n - 1) / 2, -(h - 1) / 4, -(j - 1) / 4)
+        op = operator_spec(sizes=sizes, origin=origin, spacing=(1.0, 0.5, 0.5))
+        sites = geometry(op)
+        gen = torch.Generator(device="cpu").manual_seed(run.case.seed)
+        p = torch.empty(case.atoms, 5)
+        p[:, 0] = torch.rand(len(p), generator=gen) - 0.5
+        p[:, 1] = math.log(3.0 if case.profile == "broad" else 0.199)
+        p[:, 2:] = torch.rand(len(p), 3, generator=gen) * torch.tensor(
+            [(count - 1) * spacing for count, spacing in zip(sizes, sites.spacing)]
+        ) + torch.tensor(origin)
+        if case.profile == "sharp":
+            for axis, (spacing, o) in enumerate(zip(sites.spacing, sites.origin)):
+                u = (p[:, axis + 2] - o) / spacing
+                near = torch.floor(u + 0.5)
+                p[:, axis + 2] = o + near * spacing + (u - near) * 0.04
     initial_p_hash = hashlib.sha256(p.numpy().tobytes()).hexdigest()
     torch.manual_seed(run.case.seed)
     cpu_x, cpu_target = generate_inputs(run.case.seed, m, n)
@@ -183,6 +228,13 @@ def measure(args, run):
     else:
         model = PlanLinear(p.cuda(), op, run.entry(args.plan_id).plan)
     del p
+    initial_sigma = None
+    initial_precision = None
+    if local and args.worker != "dense":
+        from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+
+        initial_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
+        initial_sigma = initial_precision.rsqrt()
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=case.optimizer.lr,
@@ -191,12 +243,31 @@ def measure(args, run):
         capturable=case.optimizer.capturable,
     )
 
-    def step():
+    def step(events=None, update_events=None):
+        if events is not None:
+            events[0].record()
         optimizer.zero_grad(set_to_none=True)
         x.grad = None
         loss = (model(x) * target).sum() / (m * n)
+        if events is not None:
+            events[1].record()
         loss.backward()
-        optimizer.step()
+        if events is not None:
+            events[2].record()
+        if local and args.worker != "dense":
+            from benchmarks.cuda.linear.local_product import optimizer_step
+
+            optimizer_step(
+                model,
+                optimizer,
+                step_size=case.optimizer.lr,
+                polar_update=args.polar_update,
+                events=update_events,
+            )
+        else:
+            optimizer.step()
+        if events is not None:
+            events[3].record()
 
     def timed(call):
         samples = []
@@ -225,6 +296,175 @@ def measure(args, run):
         step()
     graph_times = timed(graph.replay)
     torch.cuda.synchronize()
+    # Save the measured peaks before post-run diagnostics allocate buffers.
+    peak_allocated = torch.cuda.max_memory_allocated()
+    peak_reserved = torch.cuda.max_memory_reserved()
+    sigma_updates = None
+    hybrid_routing = None
+    if initial_sigma is not None:
+        final_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
+        final_sigma = final_precision.rsqrt()
+        change = final_sigma - initial_sigma
+        sigma_updates = {
+            "fixed": False,
+            "source": "current polar activity every forward/replay",
+            "initial": initial_sigma.tolist(),
+            "final": final_sigma.tolist(),
+            "changed_atoms": int((change != 0).sum()),
+            "max_abs_change": float(change.abs().max()),
+        }
+        if not sigma_updates["changed_atoms"]:
+            raise AssertionError("dynamic-width fixture did not update sigma")
+        recipe = run.entry(args.plan_id).plan.recipe
+        if recipe.execution_route in (
+            "hybrid",
+            "hybrid_support",
+            "hybrid_three",
+            "hybrid_singletons",
+            "hybrid_packed",
+            "hybrid_persistent",
+        ):
+            inclusive = recipe.execution_route in (
+                "hybrid_three",
+                "hybrid_singletons",
+                "hybrid_packed",
+                "hybrid_persistent",
+            )
+            limit = recipe.rho_upper[1 if inclusive else 0]
+            initial_wide = (
+                initial_precision <= limit**-2
+                if inclusive
+                else initial_precision < limit**-2
+            )
+            final_wide = (
+                final_precision <= limit**-2
+                if inclusive
+                else final_precision < limit**-2
+            )
+            hybrid_routing = {
+                "rho_limit": limit,
+                "diagnostic_basis": "production Torch decode outside timing; exact boundary comparisons can differ by FP32 rounding",
+                "initial_local_atoms": int((~initial_wide).sum()),
+                "initial_saved_atoms": int(initial_wide.sum()),
+                "final_local_atoms": int((~final_wide).sum()),
+                "final_saved_atoms": int(final_wide.sum()),
+                "changed_routes": int((initial_wide != final_wide).sum()),
+                "scratch_capacity_elements": m * case.atoms,
+                "capacity_policy": "fixed B*A; only wide H lanes written/read; not compacted",
+            }
+            if inclusive:
+                for label, precision in (
+                    ("initial", initial_precision),
+                    ("final", final_precision),
+                ):
+                    rho = precision.rsqrt()
+                    hybrid_routing[label + "_three_band_atoms"] = [
+                        int((rho < 1).sum()),
+                        int(((rho >= 1) & (rho < limit)).sum()),
+                        int((rho >= limit).sum()),
+                    ]
+                hybrid_routing["band_boundaries"] = [1, limit]
+                hybrid_routing["kernel_saved_comparison"] = (
+                    "rho >= mid; CPU diagnostics may differ at FP32 boundaries"
+                )
+        final_support = summarize(
+            decode(model.local_state, model.p).detach().cpu(), Domain(n, n)
+        )
+        if recipe.execution_route in (
+            "hybrid_singletons",
+            "hybrid_packed",
+            "hybrid_persistent",
+        ):
+            hybrid_routing["singleton_direct_initial_atoms"] = support_report[
+                "onehot_both_live_atoms"
+            ]
+            hybrid_routing["singleton_direct_final_atoms"] = final_support[
+                "onehot_both_live_atoms"
+            ]
+            hybrid_routing["saved_scope"] = (
+                "rho>=mid excluding full-domain live singletons; width-only saved counts above are pre-exclusion"
+            )
+    else:
+        final_support = None
+    if local:
+        assert all(torch.isfinite(p).all() for p in model.parameters())
+        if args.worker != "dense":
+            radius = model.p.detach()[:, :2].square().sum(1)
+            assert ((radius >= 1 - 1e-5) & (radius <= 4 + 1e-5)).all()
+    layout_report = None
+    if args.worker != "dense" and model.persistent_layout is not None:
+        layout_report = model.persistent_layout.report()
+    phases = None
+    if args.phase_diagnostics or args.kernel_diagnostics:
+        # A separate instrumented training graph after the primary timing/memory
+        # measurement. External event nodes add overhead; these are diagnostics,
+        # not replacements for uninstrumented complete-step graph timings.
+        events = [torch.cuda.Event(enable_timing=True, external=True) for _ in range(4)]
+        update_events = (
+            [torch.cuda.Event(enable_timing=True, external=True) for _ in range(4)]
+            if local and args.worker != "dense"
+            else None
+        )
+        diagnostic = torch.cuda.CUDAGraph()
+        backend_events = None
+        if args.kernel_diagnostics and local and args.worker != "dense":
+            from torchcst._backends.cuda.algorithms.local_product import executor
+
+            backend_events = {
+                name: [
+                    torch.cuda.Event(enable_timing=True, external=True)
+                    for _ in range(2)
+                ]
+                for name in ("prepare", "layout", "h", "output", "dx", "parameters")
+            }
+            executor.DIAGNOSTIC_EVENTS = backend_events
+        try:
+            with torch.cuda.graph(diagnostic, stream=stream):
+                step(events, update_events)
+        finally:
+            if backend_events is not None:
+                executor.DIAGNOSTIC_EVENTS = None
+        samples = {name: [] for name in ("forward_loss", "backward", "optimizer")}
+        update_samples = {name: [] for name in ("old_snapshot", "adamw", "polar")}
+        backend_samples = {name: [] for name in backend_events or {}}
+        for _ in range(case.rounds):
+            diagnostic.replay()
+            torch.cuda.synchronize()
+            for index, values in enumerate(samples.values()):
+                values.append(events[index].elapsed_time(events[index + 1]))
+            if update_events is not None:
+                for index, values in enumerate(update_samples.values()):
+                    values.append(
+                        update_events[index].elapsed_time(update_events[index + 1])
+                    )
+            for name, values in backend_samples.items():
+                pair = backend_events[name]
+                values.append(pair[0].elapsed_time(pair[1]))
+        phases = {
+            "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+            "phases": {
+                name: {"median_ms": statistics.median(values), "samples_ms": values}
+                for name, values in samples.items()
+            },
+            "optimizer_components": None
+            if update_events is None
+            else {
+                name: {"median_ms": statistics.median(values), "samples_ms": values}
+                for name, values in update_samples.items()
+            },
+            "backend_components": {
+                name: {"median_ms": statistics.median(values), "samples_ms": values}
+                for name, values in backend_samples.items()
+            },
+        }
+    core = None
+    if args.core_diagnostics:
+        from benchmarks.cuda.linear.local_product import measure_prepared_forward
+
+        core = measure_prepared_forward(
+            case,
+            None if args.worker == "dense" else run.entry(args.plan_id).plan.recipe,
+        )
     return {
         "status": "PASS",
         "reference": "dense_linear" if args.worker == "dense" else args.plan_id,
@@ -236,13 +476,32 @@ def measure(args, run):
         "initial_inputs": initial_inputs,
         "eager": eager,
         "graph": graph_times,
+        "phase_diagnostics": phases,
+        "prepared_forward_diagnostics": core,
         "allocated_before_capture_bytes": before,
-        "peak_allocated_capture_replay_bytes": torch.cuda.max_memory_allocated(),
-        "peak_reserved_capture_replay_bytes": torch.cuda.max_memory_reserved(),
+        "peak_allocated_capture_replay_bytes": peak_allocated,
+        "peak_reserved_capture_replay_bytes": peak_reserved,
         "total_gpu_process_bytes": None,
         "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
         "optimizer": asdict(case.optimizer),
         "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
+        "optimizer_policy": "euclidean polar finite_chord; AdamW proposal + activity/radial update"
+        if local and args.worker != "dense"
+        else "ordinary AdamW",
+        "initial_support": support_report if args.worker != "dense" else None,
+        "final_support": final_support,
+        "sigma_updates": sigma_updates,
+        "persistent_layout": layout_report,
+        "hybrid_routing": hybrid_routing,
+        "h_policy": run.entry(args.plan_id).plan.recipe.execution_route
+        if local and args.worker != "dense"
+        else None,
+        "compiler_reports": __import__(
+            "torchcst._backends.cuda.algorithms.local_product.executor",
+            fromlist=["COMPILER_REPORTS"],
+        ).COMPILER_REPORTS
+        if local and args.worker != "dense"
+        else None,
     }
 
 
@@ -270,6 +529,15 @@ def main():
     ap.add_argument("--device", type=int, default=0)
     ap.add_argument("--source-commit", default="unrecorded")
     ap.add_argument("--correctness-only", action="store_true")
+    ap.add_argument("--phase-diagnostics", action="store_true")
+    ap.add_argument("--core-diagnostics", action="store_true")
+    ap.add_argument("--kernel-diagnostics", action="store_true")
+    ap.add_argument(
+        "--polar-update",
+        choices=("torch", "fused"),
+        default="torch",
+        help="local-product research polar update; AdamW is unchanged",
+    )
     ap.add_argument("--output", type=Path)
     ap.add_argument(
         "--worker", choices=("correctness", "measure", "dense"), help=argparse.SUPPRESS
@@ -314,6 +582,15 @@ def main():
         if args.validate_only:
             print(json.dumps(run.snapshot(), indent=2))
             return
+    if args.core_diagnostics and run.case.fixture != "local_polar_product":
+        ap.error("--core-diagnostics requires the local product fixture")
+    if args.polar_update == "fused" and run.case.fixture != "local_polar_product":
+        ap.error("--polar-update fused requires the local product fixture")
+    if args.kernel_diagnostics and (
+        run.case.fixture != "local_polar_product"
+        or any(entry.plan.recipe.execution_route == "torch" for entry in run.plans)
+    ):
+        ap.error("--kernel-diagnostics requires CUDA local product routes")
     if not args.output:
         ap.error("--output is required for GPU execution")
     args.output = args.output.resolve()
@@ -377,6 +654,13 @@ def main():
         ]
         if plan_id is not None:
             cmd += ["--plan-id", plan_id]
+        if args.phase_diagnostics:
+            cmd += ["--phase-diagnostics"]
+        if args.core_diagnostics:
+            cmd += ["--core-diagnostics"]
+        if args.kernel_diagnostics:
+            cmd += ["--kernel-diagnostics"]
+        cmd += ["--polar-update", args.polar_update]
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join(sys.path)
         returncode = None

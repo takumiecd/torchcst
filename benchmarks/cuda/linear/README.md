@@ -137,3 +137,85 @@ dense 参照を別 process で測定する。小さい混合 fixture の独立�
 
 [L4 の JSON 実機検証記録](../../../docs/dispatch-json-verification.ja.md)と
 [機械記録](results/dispatch-json-20261002.json)を参照。
+
+## Small PolarAmpWidth product research
+
+The existing runner also accepts the research-only `local_polar_product` fixture.
+Use the separate catalog with the same runner, fresh-process isolation, frozen
+run declarations, FP32/TF32-off settings, correctness gates and capture-inclusive
+memory measurements:
+
+```bash
+python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-local-product.json \
+  --case benchmarks/cuda/linear/cases/local-64-broad.json \
+  --output benchmarks/cuda/linear/evidence/local-64-broad.json
+```
+
+Sizes are 16/32/64, batches 16/16/32 by default, and atoms are rounded from 5% of
+N*K. Profiles `sharp`, `few`, `broad`, `wide`, and `mixed` initialize rho=1, 2, 3,
+16, or mixed widths through the **production polar activity map**. Minimum sigma
+and spacing are both 1 in these fixtures. `sharp` also aligns centers to grid
+sites; one-hot eligibility is checked from actual support and the norm floor.
+These specify **only the initial state**. Sigma is recomputed from the current
+PolarAmpWidth angle/activity radius every forward, including graph replay.
+`sigma_updates` records initial/final per-atom widths, the count that changed,
+and maximum change. The dynamic fixture fails if no widths change. Width changes
+follow the existing CST update policy, including radial regularization and dormant
+expansion; no fixed sigma tensor is injected into the forward or backward.
+Initial and final diagnostics are outside timing and outside the measured peak;
+peak statistics are saved immediately after capture/replay.
+
+Plans compare fused local H, saved H, fused without ordering, and the same
+normalized CST computed with Torch factors. An ordinary dense Linear is a
+separate performance reference. Candidate plans share atoms, inputs, loss and
+AdamW proposal settings. CST candidates then apply the production Euclidean
+polar finite-chord/activity/radial update policy. Dense uses ordinary AdamW.
+The graph-safe fixture specialization is checked against public CSTOptimizer,
+including AdamW moment state. It does not add public CSTOptimizer graph support.
+
+`initial_support` reports exact full/local support counts, local intervals,
+normalization-floor cases and touched tiles, **outside timing**. The diagnostic
+uses full factors and is not the future sparse runtime preparation path. Step
+measurements do include polar decode, ordering, full-domain norm preparation,
+forward, dX, all atom gradients, AdamW proposal, and polar policy update.
+The current paths select fused/saved for the whole call; these reports do not
+implement a mixed per-atom routing policy or guarantee any L1/L2 residency.
+
+For the matched width/reuse experiment use `plans-local-rho.json` and
+`cases/local-{64,128}-rho{1,1_5,2,3,4,8,16}.json`. These labels select initial
+sigma/spacing; sigma is updated during every training step. Across widths only
+initial polar radius changes, keeping centers, amplitudes and inputs matched.
+`polar_support` and `polar_support_saved` both read the actual input support for
+H; the latter materializes H for reuse. See the
+[rho experiment record](../../../docs/research-history/local-product/20261004-rho-sweep.md).
+
+`--phase-diagnostics` adds a separate graph with external CUDA events after
+primary timing/memory measurement. It reports forward+loss, backward and
+optimizer phases with instrumentation overhead; training continues, with no
+sigma freezing. Primary uninstrumented complete-step timing and capture/replay
+memory peaks remain the comparison metrics. Reported final sigma is the end of
+the primary measurement, before phase diagnostics run.
+
+## 小さい積カーネルのサイズ比較（研究）
+
+`local-size-{32,64,128}-{early,middle,late,narrow-only}.json` はbatch32、
+約5% atoms、同じ初期rho分布・PolarAmpWidth更新を使う研究用Case。
+`plans-local-persistent.json` のsaved-H、毎回pack、配置を保持するhybridを
+既存runnerで比較する。各Caseに同じshapeのdense完全step参照を含む。
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-local-persistent.json \
+  --case benchmarks/cuda/linear/cases/local-size-64-middle.json \
+  --phase-diagnostics --core-diagnostics \
+  --output benchmarks/cuda/linear/evidence/local-size-64-middle.json
+```
+
+`--core-diagnostics` は測定後、初期状態を別途再構築し、正規化と配置の準備を
+除いたforward（H生成とY）をGPUイベントで測る。100回のforwardを一つのGraphに
+入れ、Pythonからのreplay間隔の影響を避ける。入力・係数を反復利用する診断であり、
+backward/loss/optimizerは含まない。dense診断は同じCST演算子のWを参照用に準備する。
+候補はWを生成しない。FP64 Torch factor参照との一致を確認するが、独立したscalar
+全勾配oracleと完全step測定は別のgate。完全stepのpeakは診断の前に保存する。
+診断時間を完全stepから差し引いて残りの時間を推定しない。

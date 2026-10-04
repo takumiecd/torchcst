@@ -1,3 +1,13 @@
+# Main integration must use pull requests
+
+- The user explicitly prohibits direct pushes to `main` (2026-10-05).
+- Publish changes on a named `codex/` branch, create a GitHub pull request, and
+  merge through the pull request after the required validation passes.
+- Do not substitute a local merge into `main` for remote PR integration. After
+  GitHub merges the PR, fetch and fast-forward the local `main` to `origin/main`.
+- Preserve commits, uncommitted files and needed ignored evidence before
+  archiving or removing research worktrees. Keep recovery paths in research notes.
+
 # Shared Colab L4 experiments
 
 For Colab L4 research experiments, read and use

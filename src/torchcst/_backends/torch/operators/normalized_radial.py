@@ -27,9 +27,13 @@ def apply(x, p, plan):
         total = math.prod(lengths)
         if not total:
             continue
-        precision = torch.exp(
-            -2 * atom[1].clamp(math.log(_SIGMA_LOW), math.log(_SIGMA_HIGH))
+        # The CUDA contract retains the interior derivative at both endpoints.
+        # Explicit choices avoid version-dependent scalar/tensor clamp tie VJPs.
+        lower, upper = atom.new_tensor([math.log(_SIGMA_LOW), math.log(_SIGMA_HIGH)])
+        log_width = torch.where(
+            atom[1] < lower, lower, torch.where(atom[1] > upper, upper, atom[1])
         )
+        precision = torch.exp(-2 * log_width)
 
         def chunk(
             start,

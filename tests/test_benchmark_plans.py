@@ -214,3 +214,116 @@ def test_coordinator_freezes_case_and_stops_on_failure(tmp_path, monkeypatch, fa
     else:
         assert calls[-1] == ("dense", None)
         assert combined["comparisons"]["full"]["graph_time_ratio_to_baseline"] == 1.0
+
+
+LOCAL_PLANS = DEFAULT_PLANS.with_name("plans-local-product.json")
+
+
+def test_local_catalog_roundtrip_and_fixture_contract(tmp_path):
+    local_case = DEFAULT_PLANS.parent / "cases/local-32-mixed.json"
+    run = load_run(local_case, LOCAL_PLANS)
+    assert run.case.atoms == 51
+    assert run.baseline == "local-torch"
+    snapshot = save(tmp_path / "snapshot.json", run.snapshot())
+    assert load_snapshot(snapshot) == run
+    with pytest.raises(ValueError, match="contract differs"):
+        value = read_json(CASE)[0]
+        value.update(plans=["local-fused"], baseline="local-fused")
+        load_run(save(tmp_path / "bad.json", value), LOCAL_PLANS)
+    with pytest.raises(ValueError, match="contract differs"):
+        value = read_json(local_case)[0]
+        value.update(plans=["full"], baseline="full")
+        load_run(save(tmp_path / "bad2.json", value))
+
+
+def test_local_cpu_cli_does_not_import_triton():
+    code = f"""
+import sys
+from benchmarks.cuda.linear.run import main
+sys.argv = ['run', '--case', {str(DEFAULT_PLANS.parent / "cases/local-16-sharp.json")!r},
+            '--plans', {str(LOCAL_PLANS)!r}, '--validate-only']
+main()
+assert 'triton' not in sys.modules
+assert 'torchcst._backends.cuda.algorithms.local_product.kernels' not in sys.modules
+"""
+    subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        capture_output=True,
+        env=dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path)),
+    )
+
+
+@pytest.mark.parametrize("size", [16, 32, 64, 128])
+@pytest.mark.parametrize("profile", ["sharp", "few", "broad", "wide", "mixed"])
+def test_local_initialization_covers_all_support_scales(size, profile):
+    from benchmarks.cuda.linear.fixtures import local_product_state
+    from benchmarks.cuda.linear.local_product import initialize
+    from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+
+    run = load_run(
+        DEFAULT_PLANS.parent
+        / f"cases/local-{size}-{profile}{'-hybrid' if size == 128 else ''}.json",
+        DEFAULT_PLANS.with_name("plans-local-hybrid.json")
+        if size == 128
+        else LOCAL_PLANS,
+    )
+    p = initialize(run.case)
+    assert p.shape == (round(0.05 * size * size), 4)
+    assert torch.equal(p, initialize(run.case))
+    q = decode(local_product_state(birth=1), p)
+    sigma = q[:, 1].rsqrt()
+    assert ((sigma >= 1 - 1e-6) & (sigma <= 16 + 1e-5)).all()
+    if profile != "mixed":
+        target = {"sharp": 1, "few": 2, "broad": 3, "wide": 16}[profile]
+        torch.testing.assert_close(
+            sigma, torch.full_like(sigma, target), atol=2e-5, rtol=2e-6
+        )
+
+    if profile == "sharp":
+        from torchcst._backends.cuda.algorithms.local_product.contract import Domain
+        from torchcst._backends.cuda.algorithms.local_product.support import summarize
+
+        report = summarize(q, Domain(size, size))
+        assert report["onehot_both_live_atoms"] == len(p)
+
+
+@pytest.mark.parametrize("size", [64, 128])
+def test_rho_sweep_only_changes_initial_radius(size, tmp_path):
+    from benchmarks.cuda.linear.fixtures import local_product_state
+    from benchmarks.cuda.linear.local_product import initialize
+    from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+
+    reference = None
+    for suffix, rho in [
+        ("1", 1),
+        ("1_5", 1.5),
+        ("2", 2),
+        ("3", 3),
+        ("4", 4),
+        ("8", 8),
+        ("16", 16),
+    ]:
+        run = load_run(
+            DEFAULT_PLANS.parent / f"cases/local-{size}-rho{suffix}.json",
+            DEFAULT_PLANS.with_name("plans-local-rho.json"),
+        )
+        p = initialize(run.case)
+        q = decode(local_product_state(birth=1), p)
+        torch.testing.assert_close(
+            q[:, 1].rsqrt(), torch.full_like(q[:, 1], rho), atol=2e-5, rtol=2e-6
+        )
+        if reference is None:
+            reference = p, q
+        else:
+            torch.testing.assert_close(p[:, 2:], reference[0][:, 2:], rtol=0, atol=0)
+            torch.testing.assert_close(
+                q[:, 0], reference[1][:, 0], rtol=2e-6, atol=2e-6
+            )
+        assert {entry.plan.recipe.route for entry in run.plans} >= {
+            "polar_support",
+            "polar_support_saved",
+        }
+        snapshot = save(tmp_path / f"rho{suffix}.json", run.snapshot())
+        digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+        assert load_snapshot(snapshot, expected_hash=digest) == run

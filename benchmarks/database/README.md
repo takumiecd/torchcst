@@ -34,9 +34,19 @@ JSONB は検索用であり、元のバイト列を復元する役割は `artifa
 
 ## 現在の指標と検証
 
-現在の adapter は `cuda.linear.complete-step` revision 2、入力は
+adapter は `cuda.linear.complete-step`、normalized Strip は revision 2、
+研究用 local product は revision 3。入力は
 [`benchmarks.cuda.linear.run`](../cuda/linear/README.md) の完成した schema v1 JSON。
 Strip/Torus 診断、wheel driver の別形式はこの入口では受け付けない。
+
+local product は benchmark-local Registry の `research_local_product@v2` を検証する。
+width bounds・初期 rho mixture を Case に保存し、共有幅の normalized Triweight product の
+Operator を Case から復元する。`polar_update` の実装と production polar optimizer 契約も
+protocol に含め、異なる更新方式を同じ比較集合に混ぜない。本番 Registry は変更しない。
+local oracle の指標は Y / dX / 全 atom 勾配 / polar update の各誤差であり、W 誤差を捏造しない。
+小さい oracle と独立した full-shape 検証記録は区別する。
+研究 snapshot の非 SHA 識別子は `recorded_source_label` に保持し、commit は `unrecorded` とする。
+実コードの比較は source hashes に基づく。normalized revision 2 の読み取り・ID は維持する。
 
 protocol は CPU 初期値生成 (`torch.cpu.v1`、CPU capability を記録) と、
 初期化情報を持たない旧 CUDA 生成 (`torch.cuda.legacy-v1`) を区別する。

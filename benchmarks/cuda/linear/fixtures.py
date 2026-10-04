@@ -97,3 +97,78 @@ def normalized_chart(
         ),
     )
     return compile_chart(spec, device=device, dtype=dtype or torch.float64)
+
+
+def local_product_state(*, minimum=1.0, maximum=16.0, birth=3.0, w_c=1e6):
+    """Production polar contract; one shared set of bounds, normalized Triweight."""
+
+    from torchcst.kernels import BandwidthBounds, TriweightSpec, presets
+    from torchcst.kernels.state import KernelState
+
+    return KernelState(
+        presets.polar_activity(
+            amplitude_max=1.0,
+            input_bounds=BandwidthBounds(
+                minimum=minimum, maximum=maximum, birth=birth, upper_floor=birth
+            ),
+            w_c=w_c,
+            profile=presets.profile(TriweightSpec()),
+            radial_regularization=0.1,
+            activity_gain=1.0,
+            activity_mode="finite_chord",
+            dormant_expansion_rate=0.02,
+        )
+    )
+
+
+def local_product_reference(x, p, value, charts, domain):
+    """Production full-chart factors, sliced AFTER discrete L2 normalization."""
+
+    from torchcst._backends.torch.kernels import execution
+
+    v, u = execution.factors(value, *charts, p)
+    j = slice(domain.input_start, domain.input_start + domain.input_count)
+    i = slice(domain.output_start, domain.output_start + domain.output_count)
+    return (x @ v[j]) @ u[i].T
+
+
+def local_product_dense_factors(p, value, domain):
+    """Graph-safe Torch baseline, verified against production full-chart factors."""
+
+    import torch
+
+    from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+
+    q = decode(value, p)
+    j = torch.arange(domain.input_size, device=p.device, dtype=p.dtype)
+    i = torch.arange(domain.output_size, device=p.device, dtype=p.dtype)
+    v = (
+        (
+            1
+            - (
+                domain.input_origin + j[:, None] * domain.spacing - q[None, :, 2]
+            ).square()
+            * q[None, :, 1]
+        )
+        .clamp_min(0)
+        .pow(3)
+    )
+    u = (
+        (
+            1
+            - (
+                domain.output_origin + i[:, None] * domain.spacing - q[None, :, 3]
+            ).square()
+            * q[None, :, 1]
+        )
+        .clamp_min(0)
+        .pow(3)
+    )
+    v = v / torch.linalg.vector_norm(v, dim=0).clamp_min(1e-6)[None]
+    u = u / torch.linalg.vector_norm(u, dim=0).clamp_min(1e-6)[None]
+    v = v[domain.input_start : domain.input_start + domain.input_count]
+    u = (
+        u[domain.output_start : domain.output_start + domain.output_count]
+        * q[None, :, 0]
+    )
+    return v, u
