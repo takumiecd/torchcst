@@ -221,3 +221,24 @@ backward/loss/optimizerは含まない。dense診断は同じCST演算子のWを
 候補はWを生成しない。FP64 Torch factor参照との一致を確認するが、独立したscalar
 全勾配oracleと完全step測定は別のgate。完全stepのpeakは診断の前に保存する。
 診断時間を完全stepから差し引いて残りの時間を推定しない。
+
+
+## Local contraction tuning (2026-10-05)
+
+The consolidated `plans-local-tuned.json` includes warp/block tuning, bounded
+middle-band unrolling and the measured negative vector-reduction alternatives.
+`local-tuned-{64-middle,64-narrow-only,64-sigma3,128-early}.json` compares the
+control and atom32/4-warp variants in the existing runner:
+
+```bash
+python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-local-tuned.json \
+  --case benchmarks/cuda/linear/cases/local-tuned-128-early.json \
+  --polar-update fused --phase-diagnostics --kernel-diagnostics \
+  --output benchmarks/cuda/linear/evidence/local-tuned-128-early.json
+```
+
+Use the catalog to explicitly select `persistent-supportprep-band-unroll` when
+comparing ordinary initial-sigma3. These remain research recipes; shared sigma
+is refreshed on every step. No public default selection is changed.
+See the [measured record](../../../docs/research-history/local-product/20261005-contraction-launch.md).
