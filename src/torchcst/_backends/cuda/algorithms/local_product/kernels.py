@@ -157,8 +157,12 @@ def _support_contract(
     O: tl.constexpr,
     BB: tl.constexpr,
     BA: tl.constexpr,
+    NARROW_ONLY: tl.constexpr = False,
+    RHO: tl.constexpr = 4.0,
 ):
     lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    if NARROW_ONLY:
+        width = tl.where(_wide(P, a, A, S, RHO), 0, width)
     h, dh = tl.full((BB, BA), 0.0, tl.float32), tl.full((BB, BA), 0.0, tl.float32)
     for offset in range(tl.max(width, 0)):
         j = lo + offset
@@ -186,6 +190,8 @@ def _matrix_contract(
     S: tl.constexpr,
     O: tl.constexpr,
     BK: tl.constexpr,
+    WIDE_ONLY: tl.constexpr = False,
+    RHO: tl.constexpr = 4.0,
 ):
     j = tl.arange(0, BK)
     x = tl.load(
@@ -193,6 +199,9 @@ def _matrix_contract(
     )
     v, dv = _factor(P, a, START + j, A, OUT, S, O)
     v, dv = tl.where(j[:, None] < K, v, 0.0), tl.where(j[:, None] < K, dv, 0.0)
+    if WIDE_ONLY:
+        wide = _wide(P, a, A, S, RHO)
+        v, dv = tl.where(wide[None, :], v, 0.0), tl.where(wide[None, :], dv, 0.0)
     return tl.dot(x, v, input_precision="ieee"), tl.dot(x, dv, input_precision="ieee")
 
 
@@ -245,9 +254,14 @@ def fused(
             narrow = (a < A) & ~wide
             h = tl.full((BM, BA), 0.0, tl.float32)
             if tl.sum(narrow.to(tl.int32), 0) > 0:
-                v_local, _dv_local = _factor(P, a, JS + j, A, False, S, OI)
-                v_local = tl.where((j[:, None] < K) & narrow[None, :], v_local, 0.0)
-                h = tl.dot(x, v_local, input_precision="ieee")
+                if SPARSE:
+                    h, _dh_local_support = _support_contract(
+                        X, P, a, b, A, B, K, JS, False, S, OI, BM, BA, True, RHO
+                    )
+                else:
+                    v_local, _dv_local_matrix = _factor(P, a, JS + j, A, False, S, OI)
+                    v_local = tl.where((j[:, None] < K) & narrow[None, :], v_local, 0.0)
+                    h = tl.dot(x, v_local, input_precision="ieee")
             if tl.sum(wide.to(tl.int32), 0) > 0:
                 stored = tl.load(
                     H + b[:, None] * A + a[None, :],
@@ -335,12 +349,13 @@ def from_h(
 
 
 @tr.jit
-def param_vjp(
+def _param_sums(
     X,
     DY,
     P,
     H,
-    DQ,
+    a,
+    b,
     B: tl.constexpr,
     K: tl.constexpr,
     N: tl.constexpr,
@@ -355,17 +370,41 @@ def param_vjp(
     BB: tl.constexpr,
     BA: tl.constexpr,
     SAVED: tl.constexpr,
-    SPARSE: tl.constexpr = False,
-    LIMIT: tl.constexpr = 8,
-    POLAR: tl.constexpr = False,
-    Source=None,
-    AmplitudeMax=None,
-    HYBRID: tl.constexpr = False,
-    RHO: tl.constexpr = 4.0,
+    SPARSE: tl.constexpr,
+    HYBRID: tl.constexpr,
+    RHO: tl.constexpr,
+    LIMIT: tl.constexpr,
 ):
-    a = tl.program_id(0) * BA + tl.arange(0, BA)
-    b, j, i = tl.arange(0, BB), tl.arange(0, BK), tl.arange(0, BN)
-    if SPARSE:
+    j, i = tl.arange(0, BK), tl.arange(0, BN)
+    if HYBRID and SPARSE:
+        h, dh = _support_contract(
+            X, P, a, b, A, B, K, JS, False, S, OI, BB, BA, True, RHO
+        )
+        g, dg = _support_contract(
+            DY, P, a, b, A, B, N, IS, True, S, OO, BB, BA, True, RHO
+        )
+        wide = _wide(P, a, A, S, RHO)
+        if tl.sum(wide.to(tl.int32), 0) > 0:
+            _h_wide_unused, dh_wide = _matrix_contract(
+                X, P, a, b, A, B, K, JS, False, S, OI, BK, True, RHO
+            )
+            g_wide, dg_wide = _matrix_contract(
+                DY, P, a, b, A, B, N, IS, True, S, OO, BN, True, RHO
+            )
+            stored_wide_h = tl.load(
+                H + b[:, None] * A + a[None, :],
+                (b[:, None] < B) & wide[None, :],
+                0.0,
+            )
+            h, dh = (
+                tl.where(wide[None, :], stored_wide_h, h),
+                tl.where(wide[None, :], dh_wide, dh),
+            )
+            g, dg = (
+                tl.where(wide[None, :], g_wide, g),
+                tl.where(wide[None, :], dg_wide, dg),
+            )
+    elif SPARSE:
         _vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
         _ulo, _uhi, uw = _interval(P, a, A, True, IS, N)
         if tl.maximum(tl.max(vw, 0), tl.max(uw, 0)) <= LIMIT:
@@ -413,6 +452,73 @@ def param_vjp(
     da = tl.sum(h * g, 0)
     dci = amp * tl.sum(dh * g, 0)
     dco = amp * tl.sum(h * dg, 0)
+    return da, dci, dco
+
+
+@tr.jit
+def param_vjp(
+    X,
+    DY,
+    P,
+    H,
+    DQ,
+    B: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    A: tl.constexpr,
+    S: tl.constexpr,
+    OI: tl.constexpr,
+    OO: tl.constexpr,
+    JS: tl.constexpr,
+    IS: tl.constexpr,
+    BK: tl.constexpr,
+    BN: tl.constexpr,
+    BB: tl.constexpr,
+    BA: tl.constexpr,
+    SAVED: tl.constexpr,
+    SPARSE: tl.constexpr = False,
+    LIMIT: tl.constexpr = 8,
+    POLAR: tl.constexpr = False,
+    Source=None,
+    AmplitudeMax=None,
+    HYBRID: tl.constexpr = False,
+    RHO: tl.constexpr = 4.0,
+):
+    a = tl.program_id(0) * BA + tl.arange(0, BA)
+    da = tl.full((BA,), 0.0, tl.float32)
+    dci = tl.full((BA,), 0.0, tl.float32)
+    dco = tl.full((BA,), 0.0, tl.float32)
+    for b0 in range(0, B, BB):
+        b = b0 + tl.arange(0, BB)
+        partial_a, partial_i, partial_o = _param_sums(
+            X,
+            DY,
+            P,
+            H,
+            a,
+            b,
+            B,
+            K,
+            N,
+            A,
+            S,
+            OI,
+            OO,
+            JS,
+            IS,
+            BK,
+            BN,
+            BB,
+            BA,
+            SAVED,
+            SPARSE,
+            HYBRID,
+            RHO,
+            LIMIT,
+        )
+        da += partial_a
+        dci += partial_i
+        dco += partial_o
     if POLAR:
         z0 = tl.load(Source + 4 * a, a < A, 0.0)
         z1 = tl.load(Source + 4 * a + 1, a < A, 0.0)

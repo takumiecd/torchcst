@@ -282,7 +282,7 @@ def measure(args, run):
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
-        if recipe.route == "hybrid":
+        if recipe.route in ("hybrid", "hybrid_support"):
             limit = recipe.rho_upper[0]
             initial_wide = initial_precision < limit**-2
             final_wide = final_precision < limit**-2

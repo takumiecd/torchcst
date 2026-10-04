@@ -70,3 +70,12 @@ the transposed local contraction. Scratch capacity is fixed B*A; only wide lanes
 are written/read, without compaction or a promise of cache residency. CUDA Graph
 replay refreshes classifications and H on every forward. See
 [`20261004-hybrid-128.md`](../../../../../../docs/research-history/local-product/20261004-hybrid-128.md).
+
+`hybrid=True, sparse=True` adds support-aware narrow contractions: prepare13*A
+metadata, read narrow input support for H and both supports for narrow parameter
+VJP, and retain matrix derivatives/saved H for wide lanes. H->Y remains a padded
+dot and dX remains the transposed local path. Parameter VJP bounds its batch
+working set to16 when either local side exceeds64 and accumulates all batch
+chunks in the same CTA. The benchmark route is `hybrid_support`; see
+[`20261004-hybrid-support.md`](../../../../../../docs/research-history/local-product/20261004-hybrid-support.md)
+for verification and measurements.

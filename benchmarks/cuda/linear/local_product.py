@@ -33,9 +33,13 @@ class LocalRecipe(Recipe):
             "polar",
             "polar_saved",
             "hybrid",
+            "hybrid_support",
         ):
             raise ValueError("unknown local H route")
-        if self.route in ("polar", "polar_saved", "hybrid") and self.pack:
+        if (
+            self.route in ("polar", "polar_saved", "hybrid", "hybrid_support")
+            and self.pack
+        ):
             raise ValueError("fused polar routes require canonical order")
         if (
             type(self.pack) is not bool
@@ -123,9 +127,10 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
             value,
             domain,
             saved=recipe.route in ("saved", "polar_saved"),
-            sparse=recipe.route == "support",
-            fused_polar=recipe.route in ("polar", "polar_saved", "hybrid"),
-            hybrid=recipe.route == "hybrid",
+            sparse=recipe.route in ("support", "hybrid_support"),
+            fused_polar=recipe.route
+            in ("polar", "polar_saved", "hybrid", "hybrid_support"),
+            hybrid=recipe.route in ("hybrid", "hybrid_support"),
             recipe=recipe,
         )
 

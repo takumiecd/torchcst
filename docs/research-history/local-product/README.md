@@ -42,3 +42,7 @@ versus the existing unsorted route, with evolving sigma. Dense remains faster.
 2026-10-04: [128-site transforms and per-atom hybrid H](20261004-hybrid-128.md),
 166 L4-host checks pass; all-H storage gains at N128, while naive hybrid is slower
 and parameter VJP spills. Further optimization is required.
+
+2026-10-04: [Bounded-batch VJP and support-aware hybrid H](20261004-hybrid-support.md),
+172 L4-host checks pass; support hybrid removes reported spills but remains slower
+than all saved H. Output grouping/ownership and atom ordering remain priorities.

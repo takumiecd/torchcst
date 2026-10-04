@@ -256,7 +256,7 @@ def test_fused_polar_nontrivial_envelopes_at_max_batch(saved):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("route", ["local", "saved", "hybrid"])
+@pytest.mark.parametrize("route", ["local", "saved", "hybrid", "hybrid_support"])
 @pytest.mark.parametrize("batch", [32, 64])
 def test_full_128_transform_all_atom_gradients(route, batch):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
@@ -275,7 +275,8 @@ def test_full_128_transform_all_atom_gradients(route, batch):
         s,
         d,
         saved=route == "saved",
-        hybrid=route == "hybrid",
+        hybrid=route in ("hybrid", "hybrid_support"),
+        sparse=route == "hybrid_support",
         fused_polar=True,
         recipe=recipe,
     )
@@ -289,7 +290,8 @@ def test_full_128_transform_all_atom_gradients(route, batch):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("limit", [2.0, 4.0, 8.0])
-def test_hybrid_graph_switches_both_directions_without_stale_h(limit):
+@pytest.mark.parametrize("sparse", [False, True])
+def test_hybrid_graph_switches_both_directions_without_stale_h(limit, sparse):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
 
     d = Domain(128, 128, input_start=3, input_count=73, output_start=5, output_count=97)
@@ -304,7 +306,9 @@ def test_hybrid_graph_switches_both_directions_without_stale_h(limit):
     dy = torch.randn(7, d.output_count, device="cuda")
 
     def step():
-        y = local_h(x, p, s, d, hybrid=True, fused_polar=True, recipe=recipe)
+        y = local_h(
+            x, p, s, d, hybrid=True, sparse=sparse, fused_polar=True, recipe=recipe
+        )
         return y, *torch.autograd.grad(y, (x, p), dy)
 
     stream = torch.cuda.Stream()
@@ -455,6 +459,7 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
         "local-polar",
         "local-polar-saved",
         "local-hybrid",
+        "local-hybrid-support",
     ],
 )
 def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
@@ -467,11 +472,11 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     from benchmarks.cuda.linear.run import PlanLinear
     from torchcst import CSTLinear, CSTOptimizer
 
-    size = 128 if plan_id == "local-hybrid" else 32
+    size = 128 if plan_id.startswith("local-hybrid") else 32
     batch = 32 if size == 128 else 16
     catalog = DEFAULT_PLANS.with_name(
-        "plans-local-hybrid.json"
-        if plan_id == "local-hybrid"
+        "plans-local-hybrid-support.json"
+        if plan_id.startswith("local-hybrid")
         else "plans-local-polar.json"
         if plan_id.startswith("local-polar")
         else "plans-local-support.json"

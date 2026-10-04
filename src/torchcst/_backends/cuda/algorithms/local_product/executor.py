@@ -60,7 +60,15 @@ def _fused(x, packed, domain, recipe, swap=False, sparse=False, hybrid=False, h=
         enable_fp_fusion=False,
     )
     _report(
-        ("hybrid_" if hybrid else "support_" if sparse else "")
+        (
+            "hybrid_support_"
+            if hybrid and sparse
+            else "hybrid_"
+            if hybrid
+            else "support_"
+            if sparse
+            else ""
+        )
         + ("dx" if swap else "fused_forward"),
         compiled,
     )
@@ -164,7 +172,7 @@ class _LocalH(torch.autograd.Function):
         domain, recipe, saved, sparse, fused_polar, hybrid = ctx.settings
         dy = dy.contiguous()
         dx = (
-            _fused(dy, packed, domain, recipe, swap=True, sparse=sparse)
+            _fused(dy, packed, domain, recipe, swap=True, sparse=sparse and not hybrid)
             if ctx.needs_input_grad[0]
             else None
         )
@@ -190,7 +198,9 @@ class _LocalH(torch.autograd.Function):
                     domain.output_start,
                     max(16, tr.next_power_of_2(domain.input_count)),
                     max(16, tr.next_power_of_2(domain.output_count)),
-                    max(16, tr.next_power_of_2(len(x))),
+                    16
+                    if max(domain.input_count, domain.output_count) > 64
+                    else max(16, tr.next_power_of_2(len(x))),
                     recipe.atom_block,
                     saved,
                     sparse,
@@ -206,7 +216,9 @@ class _LocalH(torch.autograd.Function):
                     enable_fp_fusion=False,
                 )
                 _report(
-                    "hybrid_param"
+                    "hybrid_support_param"
+                    if hybrid and sparse
+                    else "hybrid_param"
                     if hybrid
                     else "polar_param"
                     if fused_polar
@@ -237,9 +249,9 @@ def local_h(
     """
     if sparse and saved:
         raise ValueError("initial support route recomputes local H")
-    if hybrid and (saved or sparse or recipe.pack):
+    if hybrid and (saved or recipe.pack):
         raise ValueError(
-            "hybrid requires canonical order and no whole-call saved/support route"
+            "hybrid requires canonical order and no whole-call saved route"
         )
     if (
         not x.is_cuda
