@@ -139,3 +139,9 @@ An explicitly empty table represents a zero operator; integer counts must be pos
 This package is a research API. Historical measurements describe their recorded
 source revision, model and hardware and do not establish performance of a
 different optimizer or the current revision.
+
+## License
+
+Copyright 2026 takumiecd and contributors.
+Licensed under the [Apache License, Version 2.0](LICENSE).
+See [NOTICE](NOTICE) for attribution.
