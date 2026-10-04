@@ -116,6 +116,16 @@ Artifact内の各実行の `artifacts/benchmark.json` を取り出し、同じIs
 
 ## コードを改善する
 
+CUDA kernelを追加・改善する場合は、[開発手順](docs/kernel-development.ja.md)に
+実装先、宣言検査、正しさ・完全step測定、記録とPR統合の手順をまとめています。
+GPUを使う前に、repoルートでPlanとCaseを確認できます。
+
+```bash
+python -m tools.kernel_dev check \
+  --plans benchmarks/cuda/linear/plans-local-contraction.json \
+  --case benchmarks/cuda/linear/cases/local-contraction-64-sigma3.json
+```
+
 1. ブランチを作成し、必要なコード・テスト・説明を変更します。外部参加者はforkからPRを作成できます。
 2. 変更に対応するテストを実行します。GPU実装では正しさと実GPUでの速度・メモリを確認します。
 3. 計測結果は上記のIssue経路で提出し、PRから提出Issueや観測IDを参照します。
@@ -127,6 +137,10 @@ Artifact内の各実行の `artifacts/benchmark.json` を取り出し、同じIs
 python -m pip install -e '.[dev]'
 python -m pytest -q
 ```
+
+`python -m tools.kernel_dev test --suite cpu` でもCPU環境で全テストを実行できます。
+PRの **CPU validation** Actionsは宣言検査、CPUテスト、配布物buildを実行します。
+GPU・実DBの検証は別途必要です。
 
 GPUやDBが必要なテストは環境に依存します。実行できなかった検証をPRに明記してください。
 新しいPlanや結果形式は中央registry / adapterが対応してから受け付けられるため、

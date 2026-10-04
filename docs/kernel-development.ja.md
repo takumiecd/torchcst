@@ -3,6 +3,38 @@
 2026-10-05時点。小さいCST線形変換の研究は既存のLinear runner、PostgreSQL保存、
 ディスパッチ生成を使う。main統合はGitHub PRで行う。
 
+## 開発環境と確認コマンド
+
+すべてrepoルートから実行する。`tools.kernel_dev`はrepo内の開発用入口で、
+配布wheelには含めない。GPUの割当・DBへの保存・dispatchの更新は行わない。
+
+```bash
+python -m pip install -e '.[dev]'
+python -m tools.kernel_dev check \
+  --plans benchmarks/cuda/linear/plans-local-contraction.json \
+  --case benchmarks/cuda/linear/cases/local-contraction-64-sigma3.json \
+  --case benchmarks/cuda/linear/cases/local-contraction-64-middle.json \
+  --case benchmarks/cuda/linear/cases/local-contraction-128-early.json
+python -m tools.kernel_dev test --suite cpu
+```
+
+`check`は既存runnerのmanifest / Registryを使って、全Planの登録・JSON往復、
+各Caseの候補・baseline・数学的契約、worker用snapshotの往復を検査する。
+結果には入力ファイルのSHA256を含める。GPU実装をimportせず、GPUもDBも不要。
+`--case`は繰り返し指定でき、省略時はcatalogのみ検査する。
+ここでのPASSは宣言の整合性だけで、勾配や性能を検証したことにはならない。
+
+`test --suite cpu`はCUDAのない環境で全pytestを実行する。GPUホストでCPU検証する場合は
+`CUDA_VISIBLE_DEVICES='' python -m tools.kernel_dev test --suite cpu`とする。
+GPU・実DBのテストは条件に応じてskipされるので、pytestのskip件数も記録する。
+
+GPU開発環境では`python -m pip install -e '.[dev,cuda]'`を実行し、対象に応じて
+`python -m tools.kernel_dev test --suite local-product`または
+`python -m tools.kernel_dev test --suite normalized-strip`を使う。
+この二つはCUDA / Tritonがない環境では失敗し、GPU検証をskipだけで通さない。
+テスト群は入口の回帰検証であり、変更対象に応じて境界・勾配・配置などの追加テストを選ぶ。
+性能測定は引き続き既存Linear runnerを使う。
+
 ## ソースと比較条件
 
 1. mainから名前付き`codex/`研究ブランチとworktreeを作る。
@@ -13,6 +45,10 @@
    dense参照を明示する。固定σを導入せず、初期幅と各stepの幅更新を区別する。
 4. 既存runnerの`--validate-only`で宣言を確認する。同じ初期Parameter・入力・dtype・
    optimizer契約で、時間とメモリを比較する。
+
+`tools.kernel_dev check`で複数Caseをまとめて確認できる。新しいrouteを追加したら、
+宣言をregistryから復元できることと、候補を含むCaseでbaseline / denseが明示されている
+ことを確認する。幅・shapeを変える比較は別Caseとして記録する。
 
 新方式の実装をbenchmarkフォルダへ埋め込まず、別runnerを追加しない。
 既存の`research_local_product`は研究用registryであり、公開CSTLinearの既定ではない。
@@ -63,6 +99,10 @@ source/result hash、再現コマンドを記録する。raw logs・tensors・so
 `evidence/`へ保存し、bulk-addしない。検証済みのまとまりをcommitする。
 
 named branchをpushし、GitHub PRを作成して必要な検証後にGitHubでmergeする。
+PRテンプレートには、変更の契約、検証結果、未実施の検証、測定の条件と証拠を記載する。
+**CPU validation** Actionsが宣言検査・CPUテスト・wheel / sdist buildを実行する。
+このCIはGPUの時間・メモリや実DBへの保存を検証しない。GPU実装の採用時は上記の
+実機検証を別途完了し、PRから証拠を参照する。
 mainへ直接pushしない。ローカルmainのmergeをリモート統合の代わりにしない。
 GitHubでmergeされた後だけ、origin/mainをfetchしてローカルmainをfast-forwardする。
 worktree整理前に必要なignored evidenceを保全し、復旧先を研究ノートへ残す。
