@@ -289,6 +289,93 @@ def _support_contract(
 
 
 @tr.jit
+def _unrolled_support_h(
+    X,
+    P,
+    a,
+    b,
+    enabled,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    K: tl.constexpr,
+    START: tl.constexpr,
+    OUT: tl.constexpr,
+    S: tl.constexpr,
+    O: tl.constexpr,
+    BB: tl.constexpr,
+    BA: tl.constexpr,
+):
+    lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    width = tl.where(enabled, width, 0)
+    h = tl.full((BB, BA), 0.0, tl.float32)
+    # The caller checks the actual span. Sigma remains a per-step value.
+    for offset in tl.static_range(8):
+        j = lo + offset
+        live = enabled & (offset < width) & (j < K)
+        x = tl.load(
+            X + b[:, None] * K + j[None, :], (b[:, None] < B) & live[None, :], 0.0
+        )
+        f, _dc = _site_factor(P, a, START + j, A, OUT, S, O)
+        h += x * f[None, :]
+    return h
+
+
+@tr.jit
+def _vector_support_contract(
+    X,
+    P,
+    a,
+    b,
+    enabled,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    K: tl.constexpr,
+    START: tl.constexpr,
+    OUT: tl.constexpr,
+    S: tl.constexpr,
+    O: tl.constexpr,
+    BB: tl.constexpr,
+    BA: tl.constexpr,
+    BS: tl.constexpr = 8,
+):
+    # Runtime support counts certify the bounded reduction. Larger spans retain
+    # the ordinary loop, including coordinate-rounding and sliced-domain cases.
+    lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    width = tl.where(enabled, width, 0)
+    if tl.max(width, 0) <= BS:
+        offset = tl.arange(0, BS)
+        j = lo[:, None] + offset[None, :]
+        live = enabled[:, None] & (offset[None, :] < width[:, None]) & (j < K)
+        x = tl.load(
+            X + b[:, None, None] * K + j[None, :, :],
+            (b[:, None, None] < B) & live[None, :, :],
+            0.0,
+        )
+        f, dc = _site_factor(P, a[:, None], START + j, A, OUT, S, O)
+        f, dc = tl.where(live, f, 0.0), tl.where(live, dc, 0.0)
+        h = tl.sum(x * f[None, :, :], 2)
+        dh = tl.sum(x * dc[None, :, :], 2)
+    else:
+        h, dh = _support_contract(
+            X,
+            P,
+            a,
+            b,
+            A,
+            B,
+            K,
+            START,
+            OUT,
+            S,
+            O,
+            BB,
+            BA,
+            Enabled=enabled,
+        )
+    return h, dh
+
+
+@tr.jit
 def _matrix_contract(
     X,
     P,
@@ -524,6 +611,8 @@ def fused_packed(
     H_A: tl.constexpr = 0,
     SAVED_G: tl.constexpr = False,
     BAND_DISPATCH: tl.constexpr = False,
+    VECTOR_SUPPORT: tl.constexpr = False,
+    UNROLL_SUPPORT: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     tile = tl.program_id(1)
@@ -610,6 +699,8 @@ def fused_packed(
                             True,
                             HOrder=Order,
                             H_A=H_A,
+                            VECTOR_SUPPORT=VECTOR_SUPPORT,
+                            UNROLL_SUPPORT=UNROLL_SUPPORT and phase == 2,
                         )
     tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
 
@@ -647,6 +738,8 @@ def _fused_general_block(
     DenseX=None,
     HOrder=None,
     H_A: tl.constexpr = 0,
+    VECTOR_SUPPORT: tl.constexpr = False,
+    UNROLL_SUPPORT: tl.constexpr = False,
 ):
     if not SPARSE:
         x = DenseX
@@ -692,7 +785,41 @@ def _fused_general_block(
             h = tl.where(wide[None, :], stored, h)
     elif SPARSE:
         _lo, _hi, width = _interval(P, a, A, SWAP, JS, K)
-        if SUPPORT_ONLY or tl.max(width, 0) <= LIMIT:
+        if UNROLL_SUPPORT and tl.max(width, 0) <= 8:
+            h = _unrolled_support_h(
+                X,
+                P,
+                a,
+                b,
+                enabled,
+                A,
+                B,
+                K,
+                JS,
+                SWAP,
+                S,
+                OI,
+                BM,
+                BA,
+            )
+        elif VECTOR_SUPPORT and tl.max(width, 0) <= 8:
+            h, _dh_support = _vector_support_contract(
+                X,
+                P,
+                a,
+                b,
+                enabled,
+                A,
+                B,
+                K,
+                JS,
+                SWAP,
+                S,
+                OI,
+                BM,
+                BA,
+            )
+        elif SUPPORT_ONLY or tl.max(width, 0) <= LIMIT:
             h, _dh_support = _support_contract(
                 X, P, a, b, A, B, K, JS, SWAP, S, OI, BM, BA, Enabled=enabled
             )

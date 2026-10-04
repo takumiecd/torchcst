@@ -1,6 +1,8 @@
 # CUDA Linear benchmarks
 
 現在の backend の正しさ・速度・メモリを確認する入口。
+新しい研究候補の追加からPR統合までの手順は
+[カーネル開発手順](../../../docs/kernel-development.ja.md)を参照。
 試作実装をここへ置かず、測定対象は `src/torchcst/_backends/` にある実装とする。
 公開 API の統合確認と、registry の plan を強制する比較を分ける。
 

@@ -1,0 +1,1713 @@
+{
+  "schema_version": 1,
+  "scope": "L4 FP32 TF32-off batch32 complete evolving-width training step; graph capture/replay peak",
+  "jobs": [
+    {
+      "id": "l4job-61ff22a7218e406e89b059b4287a1602",
+      "snapshot_sha256": "3ac6f4b20c05ef1ed001bc94a738d57e567b14b3e446008427e8a8f38b7a7c81",
+      "result_archive_sha256": "29c12568ad8ab98ba5c18c018d666f437bed288a00cd30bc333ffcba039b693e",
+      "runtime": {
+        "id": "l4job-61ff22a7218e406e89b059b4287a1602",
+        "source_sha256": "3ac6f4b20c05ef1ed001bc94a738d57e567b14b3e446008427e8a8f38b7a7c81",
+        "gpu": "NVIDIA L4, GPU-847c9916-2063-3e23-cf93-fa56a668dfa8, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791130724.1988273,
+        "finished": 1791131243.1915512,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "measurements": [
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band",
+          "step_us": 191.78399998054374,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 185.26200005908322,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-contract8",
+          "step_us": 193.86199994642084,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-param4",
+          "step_us": 193.93599995964905,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g",
+          "step_us": 180.9359999924709,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 175.95900010292098,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-contract8",
+          "step_us": 181.57100009830174,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-param4",
+          "step_us": 182.56400005611795,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": null,
+          "step_us": 45.7289999076238,
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band",
+          "step_us": 66.54800000660543,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 66.72600000001694,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-contract8",
+          "step_us": 68.17000007686147,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-param4",
+          "step_us": 66.28599999203288,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g",
+          "step_us": 67.30299992341315,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 67.34699991284288,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-contract8",
+          "step_us": 69.90399992901075,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-param4",
+          "step_us": 67.64600004771637,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": null,
+          "step_us": 39.30800005491619,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band",
+          "step_us": 44.2049999946903,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 44.61900005026109,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-contract8",
+          "step_us": 46.42299995794019,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-param4",
+          "step_us": 44.503000026452355,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g",
+          "step_us": 45.05300000801071,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 44.74100001061743,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-contract8",
+          "step_us": 46.44499995265505,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-param4",
+          "step_us": 44.88699994453782,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": null,
+          "step_us": 39.022000009936164,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band",
+          "step_us": 85.29600006568216,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 85.15699994404713,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-contract8",
+          "step_us": 84.42400007879769,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-param4",
+          "step_us": 85.46100002604362,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g",
+          "step_us": 85.40800001810567,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 85.8099999732076,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-contract8",
+          "step_us": 85.44800004983699,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-param4",
+          "step_us": 85.40600003925647,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": null,
+          "step_us": 39.26899989892263,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        }
+      ],
+      "oracle_comparisons": 32,
+      "max_abs_y_dx_dp": [
+        2.1796626441528133e-06,
+        2.203414453116892e-06,
+        2.4905508482220284e-06
+      ]
+    },
+    {
+      "id": "l4job-169ba5506c814ae2b5e41190491c88ca",
+      "snapshot_sha256": "19172ecc6e480cf4ce5796cee6da9c0944f4c3f2e281e799575dbc1c63c3a215",
+      "result_archive_sha256": "466b0e8ff8a2f5adecace667d91e9d317f9f4081ba53f80ff8a6eb982bd71ea2",
+      "runtime": {
+        "id": "l4job-169ba5506c814ae2b5e41190491c88ca",
+        "source_sha256": "19172ecc6e480cf4ce5796cee6da9c0944f4c3f2e281e799575dbc1c63c3a215",
+        "gpu": "NVIDIA L4, GPU-847c9916-2063-3e23-cf93-fa56a668dfa8, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791131258.494303,
+        "finished": 1791131609.533362,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "measurements": [
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band",
+          "step_us": 192.20300009692437,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-vector",
+          "step_us": 223.49999994730751,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g",
+          "step_us": 180.91600009029207,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-vector",
+          "step_us": 212.50300005704048,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": null,
+          "step_us": 45.948000206408324,
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band",
+          "step_us": 66.33100008457404,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-vector",
+          "step_us": 78.44800006751029,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g",
+          "step_us": 67.49400006356154,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-vector",
+          "step_us": 77.7329998982168,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": null,
+          "step_us": 39.17799995178939,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band",
+          "step_us": 44.36399990481732,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-vector",
+          "step_us": 45.038000052954885,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g",
+          "step_us": 44.857000148113,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-vector",
+          "step_us": 45.0889999683568,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": null,
+          "step_us": 39.34599999411148,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band",
+          "step_us": 85.4209999943123,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-vector",
+          "step_us": 104.49100000187173,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g",
+          "step_us": 85.2529999519902,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-vector",
+          "step_us": 106.40000004968897,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": null,
+          "step_us": 39.114999935918604,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        }
+      ],
+      "oracle_comparisons": 16,
+      "max_abs_y_dx_dp": [
+        2.1796626441528133e-06,
+        2.203414453116892e-06,
+        2.4905508482220284e-06
+      ]
+    },
+    {
+      "id": "l4job-2f62a874b4fb4d15bb2052cff0f93e21",
+      "snapshot_sha256": "481224e311f5adf71a327d9825b08a31b2209e2869b580bddc58021b4b4be84d",
+      "result_archive_sha256": "10ff1958c140f9f7759d2462d332ff50eac729294e4e09f62e2b052f701c5d3e",
+      "runtime": {
+        "id": "l4job-2f62a874b4fb4d15bb2052cff0f93e21",
+        "source_sha256": "481224e311f5adf71a327d9825b08a31b2209e2869b580bddc58021b4b4be84d",
+        "gpu": "NVIDIA L4, GPU-847c9916-2063-3e23-cf93-fa56a668dfa8, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791131674.892863,
+        "finished": 1791132160.4828267,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "measurements": [
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band",
+          "step_us": 191.49800004925055,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 183.59000000600645,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-vector",
+          "step_us": 236.66199990657333,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-vector4",
+          "step_us": 253.52400007250253,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g",
+          "step_us": 180.99499993695645,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 176.06300002626085,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-vector",
+          "step_us": 225.5990000321617,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-vector4",
+          "step_us": 244.06199986515276,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": null,
+          "step_us": 45.98800001076597,
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band",
+          "step_us": 66.23600006605557,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 66.46599990745017,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-vector",
+          "step_us": 78.2810000146128,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-vector4",
+          "step_us": 78.54699993004033,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g",
+          "step_us": 67.41999982295965,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 67.51099999746657,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-vector",
+          "step_us": 78.54599994061573,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-vector4",
+          "step_us": 78.26999990356853,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": null,
+          "step_us": 39.31899982489995,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band",
+          "step_us": 44.55499993127887,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 44.56400006347394,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-vector",
+          "step_us": 45.0949999049044,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-vector4",
+          "step_us": 45.1340001745848,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g",
+          "step_us": 45.17399997894245,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 44.92599987315771,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-vector",
+          "step_us": 45.6330001270544,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-vector4",
+          "step_us": 45.52199993668182,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": null,
+          "step_us": 39.12500005753827,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band",
+          "step_us": 85.26400006303447,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 85.63400001548871,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-vector",
+          "step_us": 108.41000016625912,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-vector4",
+          "step_us": 108.22900003404357,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g",
+          "step_us": 85.28099988325266,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 85.83299995734706,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-vector",
+          "step_us": 108.89400004998606,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-vector4",
+          "step_us": 109.1480000923184,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": null,
+          "step_us": 39.160999904197524,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        }
+      ],
+      "oracle_comparisons": 32,
+      "max_abs_y_dx_dp": [
+        2.1796626441528133e-06,
+        2.203414453116892e-06,
+        2.4905508482220284e-06
+      ]
+    },
+    {
+      "id": "l4job-0c52d4dcb1ae4a6aa4c6cfb67616c8bb",
+      "snapshot_sha256": "440ed00d2c1b2e3414de2f966c75b4080874eda8693ed925e585ce771c4b27cf",
+      "result_archive_sha256": "cfb22ff85fd48622d98180479a535faa8ad8d460a5e3758baea7972bc22a4ffd",
+      "runtime": {
+        "id": "l4job-0c52d4dcb1ae4a6aa4c6cfb67616c8bb",
+        "source_sha256": "440ed00d2c1b2e3414de2f966c75b4080874eda8693ed925e585ce771c4b27cf",
+        "gpu": "NVIDIA L4, GPU-847c9916-2063-3e23-cf93-fa56a668dfa8, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791132169.5364504,
+        "finished": 1791132542.4567935,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "measurements": [
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band",
+          "step_us": 192.5329997902736,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 184.548000106588,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-atom32",
+          "step_us": 183.54699977862765,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 167.37700025259983,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g",
+          "step_us": 181.3179997043335,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 175.9279998623242,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-atom32",
+          "step_us": 174.11199996786308,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 160.28600020945305,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": null,
+          "step_us": 45.77799973048968,
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band",
+          "step_us": 66.45600001320418,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 66.32200006606581,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-atom32",
+          "step_us": 71.8060000508558,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 72.11799993456225,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g",
+          "step_us": 67.40899993928906,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 67.649000129677,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-atom32",
+          "step_us": 71.41799983401143,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 71.5850001142826,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": null,
+          "step_us": 39.386000025842804,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band",
+          "step_us": 44.5910000053118,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 44.51800009519502,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-atom32",
+          "step_us": 47.296000047936104,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 47.38500001622015,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g",
+          "step_us": 44.742000000042026,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 44.75499986256182,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-atom32",
+          "step_us": 47.467000058531994,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 47.49799995806825,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": null,
+          "step_us": 39.23000008398958,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band",
+          "step_us": 85.5309999678866,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-contract4",
+          "step_us": 85.52199983569153,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-atom32",
+          "step_us": 84.58499996777391,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 84.42299986199941,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g",
+          "step_us": 85.77900007367134,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-contract4",
+          "step_us": 85.8030000472354,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-atom32",
+          "step_us": 82.62200003628095,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 82.9439998142334,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": null,
+          "step_us": 39.20900007869932,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        }
+      ],
+      "oracle_comparisons": 32,
+      "max_abs_y_dx_dp": [
+        2.1796626441528133e-06,
+        2.203414453116892e-06,
+        2.4905508482220284e-06
+      ]
+    },
+    {
+      "id": "l4job-acc9c75f5b99438cbc06c4edaee71b62",
+      "snapshot_sha256": "f2f02e9f29c24f3afa5e28b2a4bb97f0a11bd8024e1aaff795dd3e9d030d0d3d",
+      "result_archive_sha256": "9c7d1bd09d8ae63c4ed6d97c741aabc8af66f1343a974f134a55e4fa45bb0d1b",
+      "runtime": {
+        "id": "l4job-acc9c75f5b99438cbc06c4edaee71b62",
+        "source_sha256": "f2f02e9f29c24f3afa5e28b2a4bb97f0a11bd8024e1aaff795dd3e9d030d0d3d",
+        "gpu": "NVIDIA L4, GPU-847c9916-2063-3e23-cf93-fa56a668dfa8, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791132551.008716,
+        "finished": 1791132587.4481716,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "measurements": []
+    },
+    {
+      "id": "l4job-d43efefc91cd4c08bb6786df0f34550e",
+      "snapshot_sha256": "de796104953c5088c218501ff18dc4aca1a1f48beae87fdad7bdf260e4e68b30",
+      "result_archive_sha256": "40a3a206f8574fe5da180339769089484855d261a96036b10e529b688695496d",
+      "runtime": {
+        "id": "l4job-d43efefc91cd4c08bb6786df0f34550e",
+        "source_sha256": "de796104953c5088c218501ff18dc4aca1a1f48beae87fdad7bdf260e4e68b30",
+        "gpu": "NVIDIA L4, GPU-847c9916-2063-3e23-cf93-fa56a668dfa8, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791132594.8842256,
+        "finished": 1791132839.3268068,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "measurements": [
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band",
+          "step_us": 192.43599990659277,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-band-unroll",
+          "step_us": 178.1989999471989,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g",
+          "step_us": 181.6200001485413,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": "persistent-supportprep-g-unroll",
+          "step_us": 171.0769997771422,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early",
+          "plan": null,
+          "step_us": 45.84299995258334,
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band",
+          "step_us": 66.74099995507277,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-band-unroll",
+          "step_us": 65.43000017700251,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g",
+          "step_us": 67.71900007151999,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": "persistent-supportprep-g-unroll",
+          "step_us": 66.74399992334656,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle",
+          "plan": null,
+          "step_us": 39.21100005754852,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band",
+          "step_us": 44.3520002590958,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-band-unroll",
+          "step_us": 44.599000375455944,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g",
+          "step_us": 44.93300002650358,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": "persistent-supportprep-g-unroll",
+          "step_us": 44.641999920713715,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only",
+          "plan": null,
+          "step_us": 39.51400003643357,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band",
+          "step_us": 85.46700018996489,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-band-unroll",
+          "step_us": 78.47300003049895,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g",
+          "step_us": 85.5339999361604,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": "persistent-supportprep-g-unroll",
+          "step_us": 79.77299992489861,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3",
+          "plan": null,
+          "step_us": 39.44099989894312,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        }
+      ],
+      "oracle_comparisons": 16,
+      "max_abs_y_dx_dp": [
+        2.1796626441528133e-06,
+        2.203414453116892e-06,
+        2.4905508482220284e-06
+      ]
+    },
+    {
+      "id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+      "snapshot_sha256": "3d853b6071221082d0029860c2f444335afdf9cfe20c2e7aa14239dd4ceef21f",
+      "result_archive_sha256": "f2b954f318fc86e616a2e2c965daeff921dde0c7acdb3fd4c2c85045b83d87ab",
+      "runtime": {
+        "id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+        "source_sha256": "3d853b6071221082d0029860c2f444335afdf9cfe20c2e7aa14239dd4ceef21f",
+        "gpu": "NVIDIA L4, GPU-847c9916-2063-3e23-cf93-fa56a668dfa8, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791132847.2772071,
+        "finished": 1791133267.8618693,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "measurements": [
+        {
+          "case": "local-size-128-early-repeat1",
+          "plan": "persistent-supportprep-band",
+          "step_us": 192.521999906603,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early-repeat1",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 167.93199984022067,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early-repeat1",
+          "plan": "persistent-supportprep-g",
+          "step_us": 180.9059999686724,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early-repeat1",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 160.25100012484472,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early-repeat1",
+          "plan": null,
+          "step_us": 45.864999719924526,
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-128-early-repeat2",
+          "plan": "persistent-supportprep-band",
+          "step_us": 192.16999999116524,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early-repeat2",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 167.48600000937586,
+          "peak_allocated_bytes": 417280,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early-repeat2",
+          "plan": "persistent-supportprep-g",
+          "step_us": 181.60299987357575,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early-repeat2",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 159.3359997968946,
+          "peak_allocated_bytes": 509952,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 819
+        },
+        {
+          "case": "local-size-128-early-repeat2",
+          "plan": null,
+          "step_us": 45.68600024867919,
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-middle-repeat1",
+          "plan": "persistent-supportprep-band",
+          "step_us": 66.25400010307203,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle-repeat1",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 71.90200039985939,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle-repeat1",
+          "plan": "persistent-supportprep-g",
+          "step_us": 67.79400018785964,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle-repeat1",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 71.17199993444956,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle-repeat1",
+          "plan": null,
+          "step_us": 39.29699960281141,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-middle-repeat2",
+          "plan": "persistent-supportprep-band",
+          "step_us": 66.3870000607858,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle-repeat2",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 71.88700010374305,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle-repeat2",
+          "plan": "persistent-supportprep-g",
+          "step_us": 68.04399981774623,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle-repeat2",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 71.68100000853883,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-middle-repeat2",
+          "plan": null,
+          "step_us": 39.27899979316862,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat1",
+          "plan": "persistent-supportprep-band",
+          "step_us": 44.95100029089372,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat1",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 47.55000009026844,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat1",
+          "plan": "persistent-supportprep-g",
+          "step_us": 44.825999793829396,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat1",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 47.6949999210774,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat1",
+          "plan": null,
+          "step_us": 39.22299993064371,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat2",
+          "plan": "persistent-supportprep-band",
+          "step_us": 44.36900007931399,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat2",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 47.70699979417259,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat2",
+          "plan": "persistent-supportprep-g",
+          "step_us": 44.88500007937546,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat2",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 47.652000375819625,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-narrow-only-repeat2",
+          "plan": null,
+          "step_us": 39.10300029019709,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-sigma3-repeat1",
+          "plan": "persistent-supportprep-band",
+          "step_us": 85.15500030625844,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3-repeat1",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 84.981999862066,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3-repeat1",
+          "plan": "persistent-supportprep-g",
+          "step_us": 85.41199986211723,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3-repeat1",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 82.79299981950317,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3-repeat1",
+          "plan": null,
+          "step_us": 39.22199994121911,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        },
+        {
+          "case": "local-size-64-sigma3-repeat2",
+          "plan": "persistent-supportprep-band",
+          "step_us": 85.21200015820796,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3-repeat2",
+          "plan": "persistent-supportprep-band-contract4-atom32",
+          "step_us": 87.0799999574956,
+          "peak_allocated_bytes": 152064,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3-repeat2",
+          "plan": "persistent-supportprep-g",
+          "step_us": 85.67199984099716,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3-repeat2",
+          "plan": "persistent-supportprep-g-contract4-atom32",
+          "step_us": 83.0409999252879,
+          "peak_allocated_bytes": 178176,
+          "peak_reserved_bytes": 6291456,
+          "changed_sigmas": 204
+        },
+        {
+          "case": "local-size-64-sigma3-repeat2",
+          "plan": null,
+          "step_us": 39.34300002583768,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "changed_sigmas": null
+        }
+      ],
+      "oracle_comparisons": 32,
+      "max_abs_y_dx_dp": [
+        2.1796626441528133e-06,
+        2.203414453116892e-06,
+        2.4905508482220284e-06
+      ]
+    }
+  ]
+}

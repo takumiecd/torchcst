@@ -237,7 +237,9 @@ def _packed_fused(
         H_A=canonical_atoms,
         SAVED_G=saved_g is not None,
         BAND_DISPATCH=recipe.band_dispatch,
-        num_warps=8 if max(k, n) > 64 else 4,
+        VECTOR_SUPPORT=recipe.vector_support,
+        UNROLL_SUPPORT=recipe.unroll_support,
+        num_warps=recipe.contraction_warps or (8 if max(k, n) > 64 else 4),
         enable_fp_fusion=False,
     )
     _report(
@@ -492,9 +494,8 @@ class _LocalH(torch.autograd.Function):
                     H_A=canonical_atoms if persistent else 0,
                     G=g,
                     SAVE_G=use_g,
-                    num_warps=8
-                    if max(domain.input_count, domain.output_count) > 64
-                    else 4,
+                    num_warps=recipe.parameter_warps
+                    or (8 if max(domain.input_count, domain.output_count) > 64 else 4),
                     enable_fp_fusion=False,
                 )
                 _report(

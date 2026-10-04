@@ -19,8 +19,42 @@ class LocalRecipe(Recipe):
     route: str = "fused"
 
     @property
+    def base_route(self):
+        for suffix in (
+            "_contract4",
+            "_contract8",
+            "_param4",
+            "_vector",
+            "_vector4",
+            "_unroll",
+        ):
+            if self.route.endswith(suffix):
+                return self.route[: -len(suffix)]
+        return self.route
+
+    @property
+    def unroll_support(self):
+        return self.route.endswith("_unroll")
+
+    @property
+    def vector_support(self):
+        return self.route.endswith(("_vector", "_vector4"))
+
+    @property
+    def contraction_warps(self):
+        if self.route.endswith(("_contract4", "_vector4")):
+            return 4
+        if self.route.endswith("_contract8"):
+            return 8
+        return 0
+
+    @property
+    def parameter_warps(self):
+        return 4 if self.route.endswith("_param4") else 0
+
+    @property
     def execution_route(self):
-        if self.route in (
+        if self.base_route in (
             "persistent_supportprep",
             "persistent_saved_g",
             "persistent_supportprep_g",
@@ -28,11 +62,11 @@ class LocalRecipe(Recipe):
             "persistent_supportprep_band",
         ):
             return "hybrid_persistent"
-        return self.route
+        return self.base_route
 
     @property
     def support_prepare(self):
-        return self.route in (
+        return self.base_route in (
             "persistent_supportprep",
             "persistent_supportprep_g",
             "persistent_supportprep_band",
@@ -40,23 +74,30 @@ class LocalRecipe(Recipe):
 
     @property
     def save_g(self):
-        return self.route in ("persistent_saved_g", "persistent_supportprep_g")
+        return self.base_route in ("persistent_saved_g", "persistent_supportprep_g")
 
     @property
     def band_dispatch(self):
-        return self.save_g or self.route in (
+        return self.save_g or self.base_route in (
             "persistent_band_dispatch",
             "persistent_supportprep_band",
         )
 
     def __post_init__(self):
+        if type(self.route) is not str:
+            raise ValueError("local execution route must be a string")
         if type(self.rho_upper) not in (tuple, list) or any(
             type(x) not in (int, float) for x in self.rho_upper
         ):
             raise ValueError("requires a numeric boundary array")
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
-        if self.route not in (
+        if self.route != self.base_route and self.base_route not in (
+            "persistent_supportprep_band",
+            "persistent_supportprep_g",
+        ):
+            raise ValueError("launch variants require prepared persistent bands")
+        if self.base_route not in (
             "persistent_band_dispatch",
             "persistent_supportprep_band",
             "persistent_supportprep",
