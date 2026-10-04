@@ -479,7 +479,9 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
         "hybrid-persistent-mid4",
     ],
 )
-def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
+def test_graph_training_updates_width_and_matches_public_optimizer(
+    plan_id, size_override=None
+):
     from benchmarks.cuda.linear.local_product import (
         fixture_operator,
         initialize,
@@ -491,8 +493,10 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
 
     is_persistent = plan_id == "hybrid-persistent-mid4"
     is_packed = plan_id in ("hybrid-packed-mid4", "hybrid-persistent-mid4")
-    size = 128 if plan_id.startswith("local-hybrid") or is_packed else 32
-    batch = 32 if size == 128 else 16
+    size = size_override or (
+        128 if plan_id.startswith("local-hybrid") or is_packed else 32
+    )
+    batch = 32 if size_override is not None or size == 128 else 16
     catalog = DEFAULT_PLANS.with_name(
         "plans-local-persistent.json"
         if is_persistent
@@ -509,7 +513,9 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     case = load_run(
         DEFAULT_PLANS.parent
         / (
-            "cases/local-128-persistent-middle.json"
+            f"cases/local-size-{size}-middle.json"
+            if size_override is not None
+            else "cases/local-128-persistent-middle.json"
             if is_persistent
             else "cases/local-128-packed-middle.json"
             if is_packed
@@ -556,6 +562,11 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
         kernel=model.local_state.spec,
         backend="factored",
     )
+    # Singleton centre derivatives are mathematically zero; FP32 factored
+    # normalization leaves ~1e-9 residuals amplified by Adam epsilon. The new
+    # matched-size campaign uses the public FP64 oracle without relaxing checks.
+    if size_override is not None:
+        truth = truth.double()
     base = torch.optim.AdamW(
         truth.parameters(), lr=0.0001, weight_decay=0.01, fused=True
     )
@@ -565,7 +576,7 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     for group in base.param_groups:
         group["capturable"] = False
     oracle = CSTOptimizer(base, model=truth)
-    tx = x.detach().clone().requires_grad_()
+    tx = x.detach().clone().to(truth.atoms.p.dtype).requires_grad_()
     for _ in range(4):
         oracle.zero_grad()
         tx.grad = None
@@ -574,15 +585,27 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
         oracle.step()
         graph.replay()
         torch.cuda.synchronize()
-        torch.testing.assert_close(actual_y, expected_y, atol=4e-4, rtol=4e-4)
-        torch.testing.assert_close(x.grad, tx.grad, atol=4e-4, rtol=4e-4)
         torch.testing.assert_close(
-            model.p.grad, truth.atoms.p.grad, atol=4e-4, rtol=4e-4
+            actual_y.to(expected_y.dtype), expected_y, atol=4e-4, rtol=4e-4
         )
-        torch.testing.assert_close(model.p, truth.atoms.p, atol=3e-6, rtol=3e-6)
+        torch.testing.assert_close(
+            x.grad.to(tx.grad.dtype), tx.grad, atol=4e-4, rtol=4e-4
+        )
+        torch.testing.assert_close(
+            model.p.grad.to(truth.atoms.p.dtype),
+            truth.atoms.p.grad,
+            atol=4e-4,
+            rtol=4e-4,
+        )
+        torch.testing.assert_close(
+            model.p.to(truth.atoms.p.dtype), truth.atoms.p, atol=3e-6, rtol=3e-6
+        )
         for key, tensor in opt.state[model.p].items():
             torch.testing.assert_close(
-                tensor, base.state[truth.atoms.p][key], atol=3e-6, rtol=3e-6
+                tensor.to(base.state[truth.atoms.p][key].dtype),
+                base.state[truth.atoms.p][key],
+                atol=3e-6,
+                rtol=3e-6,
             )
     after = decode(model.local_state, model.p).detach()[:, 1].rsqrt()
     assert torch.count_nonzero(after != before) > len(after) // 2

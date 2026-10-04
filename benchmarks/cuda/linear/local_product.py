@@ -369,3 +369,161 @@ def optimizer_step(model, optimizer, *, step_size):
                 model.local_state, previous, model.p - previous, step_size=step_size
             )
         )
+
+
+def measure_prepared_forward(case, recipe=None):
+    """Fixed initial-state H+Y diagnosis; excludes preparation and training.
+
+    Reuse the backend's kernels without a replacement mathematical algorithm.
+    Capture100 repeated forwards in one graph to avoid Python replay gaps.
+    Dense uses the same initial CST operator, materialized only as a reference.
+    """
+    import hashlib
+    import statistics
+
+    import triton as tr
+
+    from benchmarks.cuda.linear.fixtures import local_product_dense_factors
+    from benchmarks.cuda.linear.run import generate_inputs
+    from torchcst._backends.cuda.algorithms.local_product import kernels
+    from torchcst._backends.cuda.algorithms.local_product.executor import (
+        _packed_fused,
+        prepare_metadata,
+        tile_layout,
+    )
+    from torchcst._backends.cuda.algorithms.local_product.persistent import (
+        PersistentLayout,
+    )
+    from torchcst._backends.cuda.algorithms.local_product.preparation import (
+        polar_scalars,
+    )
+
+    if recipe is not None and recipe.route not in (
+        "polar_support_saved",
+        "hybrid_packed",
+        "hybrid_persistent",
+    ):
+        raise ValueError("prepared diagnostic supports saved/packed/persistent routes")
+    source = initialize(case).cuda()
+    state, domain = fixture_state(case).cuda(), Domain(case.size, case.size)
+    x = generate_inputs(case.seed, case.rows, case.size)[0].cuda()
+    v, u = local_product_dense_factors(
+        source.double(), fixture_state(case).double().cuda(), domain
+    )
+    weight = u @ v.T
+    expected = x.double() @ weight.T
+    initial_hash = hashlib.sha256(source.cpu().numpy().tobytes()).hexdigest()
+    del v, u
+    route = recipe.route if recipe is not None else "dense_same_operator"
+    if recipe is None:
+        dense_weight = weight.float().contiguous()
+
+        def forward():
+            return x @ dense_weight.T
+    else:
+        a, b, n = len(source), len(x), case.size
+        hybrid = recipe.route != "polar_support_saved"
+        packed = prepare_metadata(
+            source, domain, sparse=True, scalars=polar_scalars(state)
+        )
+        h = source.new_empty((b, a))
+        ends = None
+        if recipe.route == "hybrid_persistent":
+            layout = PersistentLayout(source, state, domain, recipe)
+            views, orders, offsets, ends = layout.refresh(packed)
+        elif hybrid:
+            views, orders, offsets = tile_layout(packed, domain, recipe)
+
+        def forward():
+            kernels.save_h[
+                (tr.cdiv(b, recipe.batch_block), tr.cdiv(a, recipe.atom_block))
+            ](
+                x,
+                packed,
+                h,
+                b,
+                n,
+                a,
+                domain.spacing,
+                domain.input_origin,
+                domain.input_start,
+                max(16, tr.next_power_of_2(n)),
+                recipe.batch_block,
+                recipe.atom_block,
+                hybrid,
+                recipe.rho_upper[1],
+                not hybrid,
+                THREE_BAND=hybrid,
+                SINGLETON_FAST=hybrid,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            if hybrid:
+                return _packed_fused(
+                    x,
+                    views[0],
+                    h,
+                    orders[0],
+                    offsets[0],
+                    domain,
+                    recipe,
+                    ends=ends[0] if ends is not None else None,
+                    canonical_atoms=a if ends is not None else 0,
+                )
+            y = x.new_empty((b, n))
+            kernels.from_h[(tr.cdiv(b, recipe.batch_block),)](
+                h,
+                packed,
+                y,
+                b,
+                n,
+                a,
+                domain.spacing,
+                domain.output_origin,
+                domain.output_start,
+                max(16, tr.next_power_of_2(n)),
+                recipe.batch_block,
+                recipe.atom_block,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            return y
+
+    with torch.no_grad():
+        for _ in range(3):
+            result = forward()
+        torch.testing.assert_close(result.double(), expected, atol=4e-4, rtol=4e-4)
+        graph = torch.cuda.CUDAGraph()
+        repetitions = 100
+        with torch.cuda.graph(graph):
+            for _ in range(repetitions):
+                result = forward()
+        for _ in range(3):
+            graph.replay()
+        torch.cuda.synchronize()
+        begin, end = (
+            torch.cuda.Event(enable_timing=True),
+            torch.cuda.Event(enable_timing=True),
+        )
+        samples = []
+        for _ in range(case.rounds):
+            begin.record()
+            graph.replay()
+            end.record()
+            end.synchronize()
+            samples.append(begin.elapsed_time(end) / repetitions)
+        torch.testing.assert_close(result.double(), expected, atol=4e-4, rtol=4e-4)
+    return {
+        "status": "PASS",
+        "route": route,
+        "scope": "fixed initial-state prepared forward; includes H producer and Y; excludes normalization/layout/backward/loss/optimizer",
+        "timing_method": "GPU events; 100 repeated forwards within one CUDA Graph; warm reused inputs; not complete-step latency",
+        "reference_scope": "FP64 Torch normalized factors; independent full-shape scalar gradient gates are separate",
+        "initial_p_sha256": initial_hash,
+        "size": case.size,
+        "batch": case.rows,
+        "atoms": case.atoms,
+        "median_ms": statistics.median(samples),
+        "samples_ms": samples,
+        "max_abs_y": float((result.double() - expected).abs().max()),
+    }

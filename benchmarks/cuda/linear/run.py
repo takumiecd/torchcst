@@ -405,6 +405,14 @@ def measure(args, run):
                 for name, values in samples.items()
             },
         }
+    core = None
+    if args.core_diagnostics:
+        from benchmarks.cuda.linear.local_product import measure_prepared_forward
+
+        core = measure_prepared_forward(
+            case,
+            None if args.worker == "dense" else run.entry(args.plan_id).plan.recipe,
+        )
     return {
         "status": "PASS",
         "reference": "dense_linear" if args.worker == "dense" else args.plan_id,
@@ -417,6 +425,7 @@ def measure(args, run):
         "eager": eager,
         "graph": graph_times,
         "phase_diagnostics": phases,
+        "prepared_forward_diagnostics": core,
         "allocated_before_capture_bytes": before,
         "peak_allocated_capture_replay_bytes": peak_allocated,
         "peak_reserved_capture_replay_bytes": peak_reserved,
@@ -469,6 +478,7 @@ def main():
     ap.add_argument("--source-commit", default="unrecorded")
     ap.add_argument("--correctness-only", action="store_true")
     ap.add_argument("--phase-diagnostics", action="store_true")
+    ap.add_argument("--core-diagnostics", action="store_true")
     ap.add_argument("--output", type=Path)
     ap.add_argument(
         "--worker", choices=("correctness", "measure", "dense"), help=argparse.SUPPRESS
@@ -513,6 +523,8 @@ def main():
         if args.validate_only:
             print(json.dumps(run.snapshot(), indent=2))
             return
+    if args.core_diagnostics and run.case.fixture != "local_polar_product":
+        ap.error("--core-diagnostics requires the local product fixture")
     if not args.output:
         ap.error("--output is required for GPU execution")
     args.output = args.output.resolve()
@@ -578,6 +590,8 @@ def main():
             cmd += ["--plan-id", plan_id]
         if args.phase_diagnostics:
             cmd += ["--phase-diagnostics"]
+        if args.core_diagnostics:
+            cmd += ["--core-diagnostics"]
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join(sys.path)
         returncode = None

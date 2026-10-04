@@ -196,3 +196,26 @@ optimizer phases with instrumentation overhead; training continues, with no
 sigma freezing. Primary uninstrumented complete-step timing and capture/replay
 memory peaks remain the comparison metrics. Reported final sigma is the end of
 the primary measurement, before phase diagnostics run.
+
+## 小さい積カーネルのサイズ比較（研究）
+
+`local-size-{32,64,128}-{early,middle,late,narrow-only}.json` はbatch32、
+約5% atoms、同じ初期rho分布・PolarAmpWidth更新を使う研究用Case。
+`plans-local-persistent.json` のsaved-H、毎回pack、配置を保持するhybridを
+既存runnerで比較する。各Caseに同じshapeのdense完全step参照を含む。
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-local-persistent.json \
+  --case benchmarks/cuda/linear/cases/local-size-64-middle.json \
+  --phase-diagnostics --core-diagnostics \
+  --output benchmarks/cuda/linear/evidence/local-size-64-middle.json
+```
+
+`--core-diagnostics` は測定後、初期状態を別途再構築し、正規化と配置の準備を
+除いたforward（H生成とY）をGPUイベントで測る。100回のforwardを一つのGraphに
+入れ、Pythonからのreplay間隔の影響を避ける。入力・係数を反復利用する診断であり、
+backward/loss/optimizerは含まない。dense診断は同じCST演算子のWを参照用に準備する。
+候補はWを生成しない。FP64 Torch factor参照との一致を確認するが、独立したscalar
+全勾配oracleと完全step測定は別のgate。完全stepのpeakは診断の前に保存する。
+診断時間を完全stepから差し引いて残りの時間を推定しない。

@@ -77,3 +77,13 @@ reduces the previous singleton route's complete-step time27.6–41.1%; memory ri
 slots and avoids sorting; complete-step medians are1–5% lower with more memory.
 Only crossing atoms move. Repeated8/32-atom migrations are slower than full pack;
 this negative maintenance result is retained with exact counters.
+
+2026-10-04: [Matched32/64/128 size comparison](20261004-size-comparison.md),
+134 L4-host checks,36 independent full-shape gradient comparisons and48
+prepared-forward gates. N32 all-singleton prepared forward beats same-operator
+dense in this warm diagnostic; all-singleton complete training steps remain
+about3x slower.
+N64 is the primary development fixture; small-shape slack and mixed widths still
+cost time/memory. Public FP32 singleton-gradient residuals were isolated with an
+independent FP64 check; new captured-update oracles use public FP64 with unchanged
+tolerances and measured candidates remain FP32.

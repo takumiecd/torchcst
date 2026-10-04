@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "local-size-128-late",
+    "fixture": "local_polar_product",
+    "size": 128,
+    "rows": 32,
+    "atoms": 819,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 0.25,
+      "birth": 0.25,
+      "maximum": 16,
+      "rho": [
+        0.25,
+        0.75,
+        2,
+        8
+      ],
+      "fractions": [
+        0.85,
+        0.1,
+        0.04,
+        0.01
+      ],
+      "center_jitter": 0.1
+    }
+  },
+  "plans": [
+    "support-saved",
+    "hybrid-packed-mid4",
+    "hybrid-persistent-mid4"
+  ],
+  "baseline": "support-saved",
+  "dense": true
+}
