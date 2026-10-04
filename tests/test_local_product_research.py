@@ -311,3 +311,88 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
             torch.testing.assert_close(
                 tensor, base.state[model.atoms.p][key], atol=1e-12, rtol=1e-12
             )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("plan_id", ["local-unpacked", "local-saved"])
+def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
+    from benchmarks.cuda.linear.local_product import (
+        initialize,
+        operator_spec,
+        optimizer_step,
+    )
+    from benchmarks.cuda.linear.manifest import DEFAULT_PLANS, load_run
+    from benchmarks.cuda.linear.run import PlanLinear
+    from torchcst import CSTLinear, CSTOptimizer
+
+    case = load_run(
+        DEFAULT_PLANS.parent / "cases/local-32-mixed.json",
+        DEFAULT_PLANS.with_name("plans-local-product.json"),
+    )
+    model = PlanLinear(
+        initialize(case.case).cuda(), operator_spec(32), case.entry(plan_id).plan
+    )
+    opt = torch.optim.AdamW(
+        [model.p], lr=0.0001, weight_decay=0.01, fused=True, capturable=True
+    )
+    gen = torch.Generator().manual_seed(193)
+    x = torch.randn(16, 32, generator=gen).cuda().requires_grad_()
+    target = torch.randn(16, 32, generator=gen).cuda()
+
+    def step():
+        opt.zero_grad(set_to_none=True)
+        x.grad = None
+        y = model(x)
+        ((y * target).sum() / x.numel()).backward()
+        optimizer_step(model, opt, step_size=0.0001)
+        return y
+
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(3):
+            step()
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        actual_y = step()
+    torch.cuda.synchronize()
+    before = decode(model.local_state, model.p).detach()[:, 1].rsqrt().clone()
+    # Start the public, eager optimizer from the same post-capture state/moments.
+    d = Domain(32, 32)
+    truth = CSTLinear(
+        *d.charts(device="cuda"),
+        atoms=model.p.detach().clone(),
+        kernel=model.local_state.spec,
+        backend="factored",
+    )
+    base = torch.optim.AdamW(
+        truth.parameters(), lr=0.0001, weight_decay=0.01, fused=True
+    )
+    import copy
+
+    base.load_state_dict(copy.deepcopy(opt.state_dict()))
+    for group in base.param_groups:
+        group["capturable"] = False
+    oracle = CSTOptimizer(base, model=truth)
+    tx = x.detach().clone().requires_grad_()
+    for _ in range(4):
+        oracle.zero_grad()
+        tx.grad = None
+        expected_y = truth(tx)
+        ((expected_y * target).sum() / tx.numel()).backward()
+        oracle.step()
+        graph.replay()
+        torch.cuda.synchronize()
+        torch.testing.assert_close(actual_y, expected_y, atol=4e-4, rtol=4e-4)
+        torch.testing.assert_close(x.grad, tx.grad, atol=4e-4, rtol=4e-4)
+        torch.testing.assert_close(
+            model.p.grad, truth.atoms.p.grad, atol=4e-4, rtol=4e-4
+        )
+        torch.testing.assert_close(model.p, truth.atoms.p, atol=3e-6, rtol=3e-6)
+        for key, tensor in opt.state[model.p].items():
+            torch.testing.assert_close(
+                tensor, base.state[truth.atoms.p][key], atol=3e-6, rtol=3e-6
+            )
+    after = decode(model.local_state, model.p).detach()[:, 1].rsqrt()
+    assert torch.count_nonzero(after != before) > len(after) // 2

@@ -157,7 +157,14 @@ N*K. Profiles `sharp`, `few`, `broad`, `wide`, and `mixed` initialize rho=1, 2, 
 16, or mixed widths through the **production polar activity map**. Minimum sigma
 and spacing are both 1 in these fixtures. `sharp` also aligns centers to grid
 sites; one-hot eligibility is checked from actual support and the norm floor.
-These are different initial states, not guaranteed constant widths during training.
+These specify **only the initial state**. Sigma is recomputed from the current
+PolarAmpWidth angle/activity radius every forward, including graph replay.
+`sigma_updates` records initial/final per-atom widths, the count that changed,
+and maximum change. The dynamic fixture fails if no widths change. Width changes
+follow the existing CST update policy, including radial regularization and dormant
+expansion; no fixed sigma tensor is injected into the forward or backward.
+Initial and final diagnostics are outside timing and outside the measured peak;
+peak statistics are saved immediately after capture/replay.
 
 Plans compare fused local H, saved H, fused without ordering, and the same
 normalized CST computed with Torch factors. An ordinary dense Linear is a

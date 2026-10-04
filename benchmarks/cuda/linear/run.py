@@ -208,6 +208,11 @@ def measure(args, run):
     else:
         model = PlanLinear(p.cuda(), op, run.entry(args.plan_id).plan)
     del p
+    initial_sigma = None
+    if local and args.worker != "dense":
+        from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+
+        initial_sigma = decode(model.local_state, model.p).detach()[:, 1].rsqrt().cpu()
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=case.optimizer.lr,
@@ -255,6 +260,23 @@ def measure(args, run):
         step()
     graph_times = timed(graph.replay)
     torch.cuda.synchronize()
+    # Save the measured peaks before post-run diagnostics allocate buffers.
+    peak_allocated = torch.cuda.max_memory_allocated()
+    peak_reserved = torch.cuda.max_memory_reserved()
+    sigma_updates = None
+    if initial_sigma is not None:
+        final_sigma = decode(model.local_state, model.p).detach()[:, 1].rsqrt().cpu()
+        change = final_sigma - initial_sigma
+        sigma_updates = {
+            "fixed": False,
+            "source": "current polar activity every forward/replay",
+            "initial": initial_sigma.tolist(),
+            "final": final_sigma.tolist(),
+            "changed_atoms": int((change != 0).sum()),
+            "max_abs_change": float(change.abs().max()),
+        }
+        if not sigma_updates["changed_atoms"]:
+            raise AssertionError("dynamic-width fixture did not update sigma")
     if local:
         assert all(torch.isfinite(p).all() for p in model.parameters())
         if args.worker != "dense":
@@ -272,8 +294,8 @@ def measure(args, run):
         "eager": eager,
         "graph": graph_times,
         "allocated_before_capture_bytes": before,
-        "peak_allocated_capture_replay_bytes": torch.cuda.max_memory_allocated(),
-        "peak_reserved_capture_replay_bytes": torch.cuda.max_memory_reserved(),
+        "peak_allocated_capture_replay_bytes": peak_allocated,
+        "peak_reserved_capture_replay_bytes": peak_reserved,
         "total_gpu_process_bytes": None,
         "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
         "optimizer": asdict(case.optimizer),
@@ -282,6 +304,7 @@ def measure(args, run):
         if local and args.worker != "dense"
         else "ordinary AdamW",
         "initial_support": support_report if args.worker != "dense" else None,
+        "sigma_updates": sigma_updates,
         "h_policy": run.entry(args.plan_id).plan.recipe.route
         if local and args.worker != "dense"
         else None,

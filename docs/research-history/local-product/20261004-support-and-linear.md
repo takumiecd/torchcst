@@ -2,6 +2,12 @@
 
 Branch: `codex/local-product-hybrid`, based on validated `eed4b61` local-H kernels.
 
+Sigma is **dynamic**. Profile labels rho1/rho2/rho3/rho16 describe initialization
+only. Every forward and CUDA Graph replay decodes the current polar amplitude and
+activity radius; H/norm/support are refreshed from that state. The existing
+width stop-gradient in the task derivative and the polar activity update policy
+are retained. They do not freeze the width.
+
 The small transform remains X -> H -> Y using one shared sigma per atom and
 production normalized Triweight/PolarAmpWidth. Outer GEMM composition and
 Strip/Torus dispatch are deferred. Sizes 16/32/64 have 13/51/205 atoms (about 5%
@@ -134,3 +140,57 @@ created tiny positive neighbors; the dedicated sharp fixture now uses an FP32
 unit-radius pair and verifies actual singleton counts. This was a fixture failure,
 not a measured negative kernel performance result. Raw failure evidence and its
 verified receipt are retained alongside the successful run.
+
+## Dynamic sigma verification (user clarification)
+
+The user explicitly rejected fixed sigma. The existing operator already decoded
+sigma every step; labels such as rho3 were initial states, but that distinction
+was insufficiently clear. The runner now records initial/final per-atom sigma,
+changed atom count and maximum change for every CST timing worker. It fails this
+dynamic fixture if no widths change. Diagnostics execute outside timing, and
+peak values are now saved immediately after capture/replay before post-run
+validation or width reporting allocates buffers.
+
+Two new CUDA checks compare **actual captured training steps** (fused unsorted
+and saved H) with the public eager CSTOptimizer from identical parameters and
+independently cloned AdamW moments. Four replays check Y, dX, all atom gradients,
+updated parameters, and AdamW state, and verify that a majority of widths change.
+No manual sigma writes or direct width-SGD replacement is used.
+
+Verified job: `l4job-a88054c2984c47ff95751789cf8d75eb`;
+frozen source SHA256:
+`1a360984c31269a5a339ffe2756ef50a824ec5b834a9d9f9df6fa5c816456952`;
+verified result archive SHA256:
+`f8e564c9c47b822b56f88bf2e0e313af4212bf3d88d46c4b7ddf281a3ef94ea6`.
+Submitted from parent checkpoint `47b4bd0`; the external driver's worker label
+still says `eed4b61-workingtree`, so use the frozen hash/file hashes as the source
+identity. Raw driver/source/receipt/results are preserved in the ignored evidence
+job directory and the pool. The final source changes only documentation after
+this run. Hardware/runtime/precision are the same versions listed above; owned
+runtime stopped and slot verified `stopped`.
+
+**129 GPU checks passed**, plus both complete Linear cases and all workers:
+
+| Initial state | Changed sigma atoms, all four CST routes | Maximum absolute sigma change |
+| --- | ---: | ---: |
+| 32, B16, A51, mixed | 51/51 | 0.1038227081 |
+| 64, B32, A205, initial rho3 | 205/205 | 0.0054390430 |
+
+Warmups, eager timing, capture and replay all perform real updates, so these
+changes cover the runner's full evolution, not just its timed replays. The
+four routes reported the same sigma changes; that does not imply sigma is
+constant across atoms or across steps.
+
+Graph complete-step medians in milliseconds, with unchanged settings:
+
+| Case | Fused + ordering | Saved + ordering | Fused unsorted | Same CST Torch | Dense |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 32 mixed | 0.2377 | 0.2391 | 0.1975 | 0.3306 | 0.0289 |
+| 64 initial rho3 | 0.3057 | 0.3020 | 0.2450 | 0.3912 | 0.0410 |
+
+Measured capture/replay-only allocated peaks in MiB:
+32: fused/saved/unsorted 0.0366, Torch 32.6265, dense 32.5259;
+64: fused/unsorted 0.0767, saved 0.0933, Torch 33.3628, dense 32.5962.
+Reserved peaks remain 6 MiB custom and 46 MiB Torch/dense; process usage is
+unmeasured. Complete-step performance is still short of dense. Support-shortened
+and per-atom hybrid reuse remain the next implementation work.
