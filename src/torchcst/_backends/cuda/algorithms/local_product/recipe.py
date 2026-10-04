@@ -13,6 +13,22 @@ class Recipe:
     support_limit: int = 8
 
     @property
+    def unroll_support(self):
+        return False
+
+    @property
+    def vector_support(self):
+        return False
+
+    @property
+    def contraction_warps(self):
+        return 0  # Preserve the size-dependent launch when unspecified.
+
+    @property
+    def parameter_warps(self):
+        return 0
+
+    @property
     def support_prepare(self):
         return False
 

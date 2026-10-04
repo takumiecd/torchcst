@@ -1,5 +1,11 @@
 # Small linear product / hybrid H
 
+2026-10-05: [Contraction launch tuning and bounded unrolling](20261005-contraction-launch.md).
+N128 atom32/4-warp complete steps improve about12% with savedG and13% without,
+with unchanged allocated peaks; N64 ordinary sigma3 benefits from unrolling.
+Negative vectorization/warp alternatives are preserved. The
+[kernel development workflow](../../kernel-development.ja.md) documents the shared process.
+
 2026-10-05: [Main integration and CPU endpoint compatibility](20261005-main-integration.md).
 Validated local-product implementation, database projection and research selector
 generation are integrated into main. Full CPU suite:778 passed /302 skipped.
