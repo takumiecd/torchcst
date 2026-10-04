@@ -37,6 +37,7 @@ def _fused(
     h=None,
     support_only=False,
     three_band=False,
+    singletons=False,
 ):
     import triton as tr
 
@@ -44,7 +45,12 @@ def _fused(
 
     k, n, oi, oo, js, i = _sizes(domain, swap)
     y = x.new_empty((len(x), n))
-    compiled = kernels.fused[(tr.cdiv(len(x), recipe.batch_block),)](
+    grid = (
+        (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(n, 16))
+        if singletons
+        else (tr.cdiv(len(x), recipe.batch_block),)
+    )
+    compiled = kernels.fused[grid](
         x,
         packed,
         y,
@@ -58,7 +64,7 @@ def _fused(
         js,
         i,
         max(16, tr.next_power_of_2(k)),
-        max(16, tr.next_power_of_2(n)),
+        16 if singletons else max(16, tr.next_power_of_2(n)),
         recipe.batch_block,
         recipe.atom_block,
         swap,
@@ -69,11 +75,13 @@ def _fused(
         recipe.rho_upper[1 if three_band else 0],
         support_only,
         THREE_BAND=three_band,
+        SINGLETON_FAST=singletons,
         num_warps=8 if max(k, n) > 64 else 4,
         enable_fp_fusion=False,
     )
     _report(
-        (
+        ("singleton_" if singletons else "")
+        + (
             "hybrid_support_"
             if hybrid and sparse
             else "hybrid_"
@@ -102,6 +110,7 @@ class _LocalH(torch.autograd.Function):
         hybrid,
         support_only,
         three_band,
+        singletons,
     ):
         fused_polar = bool(scalars)
         import triton as tr
@@ -157,6 +166,7 @@ class _LocalH(torch.autograd.Function):
                 recipe.rho_upper[1 if three_band else 0],
                 support_only,
                 THREE_BAND=three_band,
+                SINGLETON_FAST=singletons,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
@@ -191,6 +201,7 @@ class _LocalH(torch.autograd.Function):
                 h=h,
                 support_only=support_only,
                 three_band=three_band,
+                singletons=singletons,
             )
         ctx.save_for_backward(
             x, packed, h, q if fused_polar else q.new_empty((0,)), *scalars
@@ -204,6 +215,7 @@ class _LocalH(torch.autograd.Function):
             hybrid,
             support_only,
             three_band,
+            singletons,
         )
         return y
 
@@ -215,9 +227,17 @@ class _LocalH(torch.autograd.Function):
         from . import kernels
 
         x, packed, h, source, *scalars = ctx.saved_tensors
-        domain, recipe, saved, sparse, fused_polar, hybrid, support_only, three_band = (
-            ctx.settings
-        )
+        (
+            domain,
+            recipe,
+            saved,
+            sparse,
+            fused_polar,
+            hybrid,
+            support_only,
+            three_band,
+            singletons,
+        ) = ctx.settings
         dy = dy.contiguous()
         dx = (
             _fused(
@@ -228,6 +248,7 @@ class _LocalH(torch.autograd.Function):
                 swap=True,
                 sparse=sparse and not hybrid,
                 support_only=support_only,
+                singletons=singletons,
             )
             if ctx.needs_input_grad[0]
             else None
@@ -268,13 +289,16 @@ class _LocalH(torch.autograd.Function):
                     recipe.rho_upper[1 if three_band else 0],
                     support_only,
                     THREE_BAND=three_band,
+                    SINGLETON_FAST=singletons,
                     num_warps=8
                     if max(domain.input_count, domain.output_count) > 64
                     else 4,
                     enable_fp_fusion=False,
                 )
                 _report(
-                    "hybrid_support_param"
+                    "singleton_param"
+                    if singletons
+                    else "hybrid_support_param"
                     if hybrid and sparse
                     else "hybrid_param"
                     if hybrid
@@ -285,7 +309,7 @@ class _LocalH(torch.autograd.Function):
                     else ("param_saved" if saved else "param_recomputed"),
                     compiled,
                 )
-        return dx, dq, None, None, None, None, None, None, None, None
+        return dx, dq, None, None, None, None, None, None, None, None, None
 
 
 def local_h(
@@ -300,6 +324,7 @@ def local_h(
     hybrid=False,
     support_only=False,
     three_band=False,
+    singletons=False,
     recipe=DEFAULT_RECIPE,
 ):
     """Y_local from X_local, normalized full-domain profiles, and polar atoms.
@@ -324,6 +349,8 @@ def local_h(
         raise ValueError(
             "three-band requires sparse hybrid with boundaries [1, mid, ...]"
         )
+    if singletons and not three_band:
+        raise ValueError("singleton split requires the three-band hybrid")
     if (
         not x.is_cuda
         or x.dtype != torch.float32
@@ -356,4 +383,5 @@ def local_h(
             hybrid,
             support_only,
             three_band,
+            singletons,
         )

@@ -91,6 +91,15 @@ initial rho/fraction mixture, including minimum<spacing. Widths continue to
 evolve during training and graph replay. See
 [`20261004-subspacing-mixtures.md`](../../../../../../docs/research-history/local-product/20261004-subspacing-mixtures.md).
 
+`singletons=True` additionally splits full-domain live singleton pairs into
+direct X*amplitude contributions. Forward/dX have 16-site output owners; exact
+singleton parameter VJP uses X*dY and zero center task derivatives. Flags and
+support intervals are refreshed on each forward, so sigma can change and atoms
+can leave this path. Floor-active singletons keep the general normalized path.
+The benchmark route is `hybrid_singletons` in `plans-local-singletons.json`.
+This is not yet physical output sorting/compaction and does not materialize W.
+See [`20261004-exact-singleton-split.md`](../../../../../../docs/research-history/local-product/20261004-exact-singleton-split.md).
+
 `support_only=True, sparse=True` isolates support-aware whole-call local/saved H
 without hybrid classification or group-wide matrix fallback. In saved mode the
 producer also reads only positive input support; parameter VJP reuses H while

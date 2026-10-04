@@ -290,9 +290,14 @@ def measure(args, run):
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
-        if recipe.route in ("hybrid", "hybrid_support", "hybrid_three"):
-            limit = recipe.rho_upper[1 if recipe.route == "hybrid_three" else 0]
-            inclusive = recipe.route == "hybrid_three"
+        if recipe.route in (
+            "hybrid",
+            "hybrid_support",
+            "hybrid_three",
+            "hybrid_singletons",
+        ):
+            inclusive = recipe.route in ("hybrid_three", "hybrid_singletons")
+            limit = recipe.rho_upper[1 if inclusive else 0]
             initial_wide = (
                 initial_precision <= limit**-2
                 if inclusive
@@ -314,7 +319,7 @@ def measure(args, run):
                 "scratch_capacity_elements": m * case.atoms,
                 "capacity_policy": "fixed B*A; only wide H lanes written/read; not compacted",
             }
-            if recipe.route == "hybrid_three":
+            if inclusive:
                 for label, precision in (
                     ("initial", initial_precision),
                     ("final", final_precision),
@@ -332,6 +337,16 @@ def measure(args, run):
         final_support = summarize(
             decode(model.local_state, model.p).detach().cpu(), Domain(n, n)
         )
+        if recipe.route == "hybrid_singletons":
+            hybrid_routing["singleton_direct_initial_atoms"] = support_report[
+                "onehot_both_live_atoms"
+            ]
+            hybrid_routing["singleton_direct_final_atoms"] = final_support[
+                "onehot_both_live_atoms"
+            ]
+            hybrid_routing["saved_scope"] = (
+                "rho>=mid excluding full-domain live singletons; width-only saved counts above are pre-exclusion"
+            )
     else:
         final_support = None
     if local:

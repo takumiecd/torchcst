@@ -75,7 +75,10 @@ def test_width_fixture_rejects_invalid_mixtures(change):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("mid", [2.0, 4.0, 8.0])
 @pytest.mark.parametrize("spacing,sliced", [(1.0, False), (0.5, True)])
-def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced):
+@pytest.mark.parametrize("singletons", [False, True])
+def test_three_band_subspacing_graph_and_all_gradients(
+    mid, spacing, sliced, singletons
+):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
     from torchcst._backends.cuda.algorithms.local_product.polar import graph_update
     from torchcst._backends.torch.kernels import execution
@@ -104,6 +107,7 @@ def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced):
             hybrid=True,
             sparse=True,
             three_band=True,
+            singletons=singletons,
             fused_polar=True,
             recipe=recipe,
         )
@@ -157,6 +161,42 @@ def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced):
             s, *d.charts(device="cuda"), p, -1e-4 * actual[2], step_size=1e-4
         )
         torch.testing.assert_close(proposed, production, atol=2e-6, rtol=2e-6)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.parametrize("batch", [1, 32, 64])
+def test_singleton_output_collisions_and_all_local_h(batch):
+    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+
+    d = Domain(32, 32)
+    s = state(minimum=0.25, birth=0.25, maximum=16).cuda()
+    p = fixture(s, d, device="cuda", dtype=torch.float32, atoms=41)
+    with torch.no_grad():
+        p[:, :2] = p.new_tensor([0.6, 0.8])
+        p[:, 2] = (torch.arange(len(p), device="cuda") % 17).to(torch.float32)
+        p[:, 3] = 5  # overlapping atoms must sum in the output owner
+    x = torch.randn(batch, 32, device="cuda", requires_grad=True)
+    dy = torch.randn_like(x)
+    y = local_h(
+        x,
+        p,
+        s,
+        d,
+        hybrid=True,
+        sparse=True,
+        three_band=True,
+        singletons=True,
+        fused_polar=True,
+        recipe=Recipe(pack=False, rho_upper=(1, 4, 16)),
+    )
+    actual = (y, *torch.autograd.grad(y, (x, p), dy))
+    xx, pp = x.detach().double().requires_grad_(), p.detach().double().requires_grad_()
+    truth = scalar_oracle(
+        xx, pp, state(minimum=0.25, birth=0.25, maximum=16).double().cuda(), d
+    )
+    expected = (truth, *torch.autograd.grad(truth, (xx, pp), dy.double()))
+    for a, e in zip(actual, expected):
+        torch.testing.assert_close(a.double(), e, atol=4e-4, rtol=4e-4)
 
 
 def test_subspacing_changes_sigma_under_production_update():

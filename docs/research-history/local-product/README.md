@@ -61,3 +61,8 @@ with production width updates; no new GPU speed or memory claim.
 214 L4-host checks and28 full-shape oracle comparisons. All819 sigmas evolve;
 narrow shares10/50/95/100% reduce support contraction time. The three-band
 hybrid remains slower than saved-H controls; retained as a negative result.
+
+2026-10-04: [Exact singleton output ownership and direct VJP](20261004-exact-singleton-split.md),
+223 L4-host checks and20 full-shape oracle comparisons. At100% live singletons,
+complete-step time improves33.6% versus prior hybrid and15.3% versus saved
+support H. At10/50%, saved controls remain faster; H capacity is not compacted.

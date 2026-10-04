@@ -160,8 +160,11 @@ def _support_contract(
     NARROW_ONLY: tl.constexpr = False,
     RHO: tl.constexpr = 4.0,
     THREE_BAND: tl.constexpr = False,
+    Enabled=None,
 ):
     lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    if Enabled is not None:
+        width = tl.where(Enabled, width, 0)
     if NARROW_ONLY:
         width = tl.where(_wide(P, a, A, S, RHO, THREE_BAND), 0, width)
     h, dh = tl.full((BB, BA), 0.0, tl.float32), tl.full((BB, BA), 0.0, tl.float32)
@@ -211,6 +214,7 @@ def _matrix_contract(
     WIDE_ONLY: tl.constexpr = False,
     RHO: tl.constexpr = 4.0,
     THREE_BAND: tl.constexpr = False,
+    Enabled=None,
 ):
     j = tl.arange(0, BK)
     x = tl.load(
@@ -221,6 +225,8 @@ def _matrix_contract(
     if WIDE_ONLY:
         wide = _wide(P, a, A, S, RHO, THREE_BAND)
         v, dv = tl.where(wide[None, :], v, 0.0), tl.where(wide[None, :], dv, 0.0)
+    if Enabled is not None:
+        v, dv = tl.where(Enabled[None, :], v, 0.0), tl.where(Enabled[None, :], dv, 0.0)
     return tl.dot(x, v, input_precision="ieee"), tl.dot(x, dv, input_precision="ieee")
 
 
@@ -238,6 +244,13 @@ def _wide(
     if INCLUSIVE:
         return (a < A) & (inv <= 1.0 / ((S * RHO) * (S * RHO)))
     return (a < A) & (inv < 1.0 / ((S * RHO) * (S * RHO)))
+
+
+@tr.jit
+def _singletons(P, a, A: tl.constexpr):
+    # Both factors have exactly one full-domain positive site and live norms.
+    flags = tl.load(P + 8 * A + a, a < A, 0.0).to(tl.int32)
+    return (a < A) & (flags == 3)
 
 
 @tr.jit
@@ -266,9 +279,12 @@ def fused(
     RHO: tl.constexpr = 4.0,
     SUPPORT_ONLY: tl.constexpr = False,
     THREE_BAND: tl.constexpr = False,
+    SINGLETON_FAST: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     j, i = tl.arange(0, BK), tl.arange(0, BN)
+    if SINGLETON_FAST:
+        i += tl.program_id(1) * BN
     if not SPARSE:
         x = tl.load(
             X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
@@ -276,60 +292,153 @@ def fused(
     y = tl.full((BM, BN), 0.0, tl.float32)
     for a0 in range(0, A, BA):
         a = a0 + tl.arange(0, BA)
-        u, _du_full = _factor(P, a, IS + i, A, not SWAP, S, OO)
-        u = tl.where(i[:, None] < N, u, 0.0)
-        amp = tl.load(P + a, a < A, 0.0)
-        if HYBRID:
-            wide = _wide(P, a, A, S, RHO, THREE_BAND)
-            narrow = (a < A) & ~wide
-            h = tl.full((BM, BA), 0.0, tl.float32)
-            if tl.sum(narrow.to(tl.int32), 0) > 0:
-                if SPARSE:
-                    h, _dh_local_support = _support_contract(
-                        X,
-                        P,
-                        a,
-                        b,
-                        A,
-                        B,
-                        K,
-                        JS,
-                        False,
-                        S,
-                        OI,
-                        BM,
-                        BA,
-                        True,
-                        RHO,
-                        THREE_BAND,
-                    )
-                else:
-                    v_local, _dv_local_matrix = _factor(P, a, JS + j, A, False, S, OI)
-                    v_local = tl.where((j[:, None] < K) & narrow[None, :], v_local, 0.0)
-                    h = tl.dot(x, v_local, input_precision="ieee")
-            if tl.sum(wide.to(tl.int32), 0) > 0:
-                stored = tl.load(
-                    H + b[:, None] * A + a[None, :],
-                    (b[:, None] < B) & wide[None, :],
-                    0.0,
-                )
-                h = tl.where(wide[None, :], stored, h)
-        elif SPARSE:
-            _lo, _hi, width = _interval(P, a, A, SWAP, JS, K)
-            if SUPPORT_ONLY or tl.max(width, 0) <= LIMIT:
-                h, _dh_support = _support_contract(
-                    X, P, a, b, A, B, K, JS, SWAP, S, OI, BM, BA
+        if SINGLETON_FAST:
+            scalar = _singletons(P, a, A)
+            vlo, _vhi, vw = _interval(P, a, A, SWAP, JS, K)
+            ulo, uhi, uw = _interval(P, a, A, not SWAP, IS, N)
+            tile = tl.program_id(1) * BN
+            recipient = (ulo >= tile) & (ulo < tile + BN)
+            live = scalar & (vw == 1) & (uw == 1) & recipient
+            direct = tl.load(
+                X + b[:, None] * K + vlo[None, :],
+                (b[:, None] < B) & live[None, :],
+                0.0,
+            )
+            amp_single = tl.load(P + a, live, 0.0)
+            targets = ((i[:, None] == ulo[None, :]) & live[None, :]).to(tl.float32)
+            y = tl.dot(
+                direct * amp_single[None, :],
+                tl.trans(targets),
+                y,
+                input_precision="ieee",
+            )
+            enabled = (a < A) & ~scalar & (ulo < tile + BN) & (uhi > tile)
+        else:
+            enabled = a < A
+        work = tl.sum(enabled.to(tl.int32), 0) if SINGLETON_FAST else 1
+        if work > 0:
+            y = _fused_general_block(
+                X,
+                P,
+                H,
+                a,
+                b,
+                j,
+                i,
+                y,
+                enabled,
+                B,
+                K,
+                N,
+                A,
+                S,
+                OI,
+                OO,
+                JS,
+                IS,
+                BK,
+                BM,
+                BA,
+                SWAP,
+                SPARSE,
+                LIMIT,
+                HYBRID,
+                RHO,
+                SUPPORT_ONLY,
+                THREE_BAND,
+                DenseX=x if not SPARSE else None,
+            )
+    tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
+
+
+@tr.jit
+def _fused_general_block(
+    X,
+    P,
+    H,
+    a,
+    b,
+    j,
+    i,
+    y,
+    enabled,
+    B: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    A: tl.constexpr,
+    S: tl.constexpr,
+    OI: tl.constexpr,
+    OO: tl.constexpr,
+    JS: tl.constexpr,
+    IS: tl.constexpr,
+    BK: tl.constexpr,
+    BM: tl.constexpr,
+    BA: tl.constexpr,
+    SWAP: tl.constexpr,
+    SPARSE: tl.constexpr,
+    LIMIT: tl.constexpr,
+    HYBRID: tl.constexpr,
+    RHO: tl.constexpr,
+    SUPPORT_ONLY: tl.constexpr,
+    THREE_BAND: tl.constexpr,
+    DenseX=None,
+):
+    if not SPARSE:
+        x = DenseX
+    u, _du_full = _factor(P, a, IS + i, A, not SWAP, S, OO)
+    u = tl.where((i[:, None] < N) & enabled[None, :], u, 0.0)
+    amp = tl.load(P + a, a < A, 0.0)
+    if HYBRID:
+        wide = _wide(P, a, A, S, RHO, THREE_BAND) & enabled
+        narrow = enabled & ~wide
+        h = tl.full((BM, BA), 0.0, tl.float32)
+        if tl.sum(narrow.to(tl.int32), 0) > 0:
+            if SPARSE:
+                h, _dh_local_support = _support_contract(
+                    X,
+                    P,
+                    a,
+                    b,
+                    A,
+                    B,
+                    K,
+                    JS,
+                    False,
+                    S,
+                    OI,
+                    BM,
+                    BA,
+                    True,
+                    RHO,
+                    THREE_BAND,
+                    Enabled=enabled,
                 )
             else:
-                h, _dh_matrix = _matrix_contract(
-                    X, P, a, b, A, B, K, JS, SWAP, S, OI, BK
-                )
+                v_local, _dv_local_matrix = _factor(P, a, JS + j, A, False, S, OI)
+                v_local = tl.where((j[:, None] < K) & narrow[None, :], v_local, 0.0)
+                h = tl.dot(x, v_local, input_precision="ieee")
+        if tl.sum(wide.to(tl.int32), 0) > 0:
+            stored = tl.load(
+                H + b[:, None] * A + a[None, :],
+                (b[:, None] < B) & wide[None, :],
+                0.0,
+            )
+            h = tl.where(wide[None, :], stored, h)
+    elif SPARSE:
+        _lo, _hi, width = _interval(P, a, A, SWAP, JS, K)
+        if SUPPORT_ONLY or tl.max(width, 0) <= LIMIT:
+            h, _dh_support = _support_contract(
+                X, P, a, b, A, B, K, JS, SWAP, S, OI, BM, BA, Enabled=enabled
+            )
         else:
-            v, _dv_full = _factor(P, a, JS + j, A, SWAP, S, OI)
-            v = tl.where(j[:, None] < K, v, 0.0)
-            h = tl.dot(x, v, input_precision="ieee")
-        y = tl.dot(h * amp[None, :], tl.trans(u), y, input_precision="ieee")
-    tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
+            h, _dh_matrix = _matrix_contract(
+                X, P, a, b, A, B, K, JS, SWAP, S, OI, BK, Enabled=enabled
+            )
+    else:
+        v, _dv_full = _factor(P, a, JS + j, A, SWAP, S, OI)
+        v = tl.where((j[:, None] < K) & enabled[None, :], v, 0.0)
+        h = tl.dot(x, v, input_precision="ieee")
+    return tl.dot(h * amp[None, :], tl.trans(u), y, input_precision="ieee")
 
 
 @tr.jit
@@ -350,11 +459,14 @@ def save_h(
     RHO: tl.constexpr = 4.0,
     SUPPORT_ONLY: tl.constexpr = False,
     THREE_BAND: tl.constexpr = False,
+    SINGLETON_FAST: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     a = tl.program_id(1) * BA + tl.arange(0, BA)
     j = tl.arange(0, BK)
     save = _wide(P, a, A, S, RHO, THREE_BAND) if HYBRID else (a < A)
+    if SINGLETON_FAST:
+        save &= ~_singletons(P, a, A)
     if not HYBRID or tl.sum(save.to(tl.int32), 0) > 0:
         if SUPPORT_ONLY:
             h, _dh_saved = _support_contract(
@@ -430,22 +542,86 @@ def _param_sums(
     LIMIT: tl.constexpr,
     SUPPORT_ONLY: tl.constexpr,
     THREE_BAND: tl.constexpr,
+    SINGLETON_FAST: tl.constexpr,
 ):
     j, i = tl.arange(0, BK), tl.arange(0, BN)
+    enabled = (a < A) & ~_singletons(P, a, A) if SINGLETON_FAST else (a < A)
     if HYBRID and SPARSE:
         h, dh = _support_contract(
-            X, P, a, b, A, B, K, JS, False, S, OI, BB, BA, True, RHO, THREE_BAND
+            X,
+            P,
+            a,
+            b,
+            A,
+            B,
+            K,
+            JS,
+            False,
+            S,
+            OI,
+            BB,
+            BA,
+            True,
+            RHO,
+            THREE_BAND,
+            Enabled=enabled,
         )
         g, dg = _support_contract(
-            DY, P, a, b, A, B, N, IS, True, S, OO, BB, BA, True, RHO, THREE_BAND
+            DY,
+            P,
+            a,
+            b,
+            A,
+            B,
+            N,
+            IS,
+            True,
+            S,
+            OO,
+            BB,
+            BA,
+            True,
+            RHO,
+            THREE_BAND,
+            Enabled=enabled,
         )
-        wide = _wide(P, a, A, S, RHO, THREE_BAND)
+        wide = _wide(P, a, A, S, RHO, THREE_BAND) & enabled
         if tl.sum(wide.to(tl.int32), 0) > 0:
             _h_wide_unused, dh_wide = _matrix_contract(
-                X, P, a, b, A, B, K, JS, False, S, OI, BK, True, RHO, THREE_BAND
+                X,
+                P,
+                a,
+                b,
+                A,
+                B,
+                K,
+                JS,
+                False,
+                S,
+                OI,
+                BK,
+                True,
+                RHO,
+                THREE_BAND,
+                Enabled=enabled,
             )
             g_wide, dg_wide = _matrix_contract(
-                DY, P, a, b, A, B, N, IS, True, S, OO, BN, True, RHO, THREE_BAND
+                DY,
+                P,
+                a,
+                b,
+                A,
+                B,
+                N,
+                IS,
+                True,
+                S,
+                OO,
+                BN,
+                True,
+                RHO,
+                THREE_BAND,
+                Enabled=enabled,
             )
             stored_wide_h = tl.load(
                 H + b[:, None] * A + a[None, :],
@@ -547,6 +723,7 @@ def param_vjp(
     RHO: tl.constexpr = 4.0,
     SUPPORT_ONLY: tl.constexpr = False,
     THREE_BAND: tl.constexpr = False,
+    SINGLETON_FAST: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     da = tl.full((BA,), 0.0, tl.float32)
@@ -554,34 +731,59 @@ def param_vjp(
     dco = tl.full((BA,), 0.0, tl.float32)
     for b0 in range(0, B, BB):
         b = b0 + tl.arange(0, BB)
-        partial_a, partial_i, partial_o = _param_sums(
-            X,
-            DY,
-            P,
-            H,
-            a,
-            b,
-            B,
-            K,
-            N,
-            A,
-            S,
-            OI,
-            OO,
-            JS,
-            IS,
-            BK,
-            BN,
-            BB,
-            BA,
-            SAVED,
-            SPARSE,
-            HYBRID,
-            RHO,
-            LIMIT,
-            SUPPORT_ONLY,
-            THREE_BAND,
-        )
+        partial_a = tl.full((BA,), 0.0, tl.float32)
+        partial_i = tl.full((BA,), 0.0, tl.float32)
+        partial_o = tl.full((BA,), 0.0, tl.float32)
+        if SINGLETON_FAST:
+            scalar = _singletons(P, a, A)
+            general_count = tl.sum(((a < A) & ~scalar).to(tl.int32), 0)
+        else:
+            general_count = 1
+        if general_count > 0:
+            partial_a, partial_i, partial_o = _param_sums(
+                X,
+                DY,
+                P,
+                H,
+                a,
+                b,
+                B,
+                K,
+                N,
+                A,
+                S,
+                OI,
+                OO,
+                JS,
+                IS,
+                BK,
+                BN,
+                BB,
+                BA,
+                SAVED,
+                SPARSE,
+                HYBRID,
+                RHO,
+                LIMIT,
+                SUPPORT_ONLY,
+                THREE_BAND,
+                SINGLETON_FAST,
+            )
+        if SINGLETON_FAST:
+            vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
+            ulo, _uhi, uw = _interval(P, a, A, True, IS, N)
+            live = scalar & (vw == 1) & (uw == 1)
+            sx = tl.load(
+                X + b[:, None] * K + vlo[None, :], (b[:, None] < B) & live[None, :], 0.0
+            )
+            sy = tl.load(
+                DY + b[:, None] * N + ulo[None, :],
+                (b[:, None] < B) & live[None, :],
+                0.0,
+            )
+            partial_a = tl.where(scalar, tl.sum(sx * sy, 0), partial_a)
+            partial_i = tl.where(scalar, 0.0, partial_i)
+            partial_o = tl.where(scalar, 0.0, partial_o)
         da += partial_a
         dci += partial_i
         dco += partial_o

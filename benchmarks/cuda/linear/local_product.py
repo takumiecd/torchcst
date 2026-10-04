@@ -35,6 +35,7 @@ class LocalRecipe(Recipe):
             "hybrid",
             "hybrid_support",
             "hybrid_three",
+            "hybrid_singletons",
             "polar_support",
             "polar_support_saved",
         ):
@@ -47,13 +48,14 @@ class LocalRecipe(Recipe):
                 "hybrid",
                 "hybrid_support",
                 "hybrid_three",
+                "hybrid_singletons",
                 "polar_support",
                 "polar_support_saved",
             )
             and self.pack
         ):
             raise ValueError("fused polar routes require canonical order")
-        if self.route == "hybrid_three" and (
+        if self.route in ("hybrid_three", "hybrid_singletons") and (
             len(self.rho_upper) < 3 or self.rho_upper[0] != 1.0
         ):
             raise ValueError("three-band route requires boundaries [1, mid, ...]")
@@ -174,6 +176,7 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "support",
                 "hybrid_support",
                 "hybrid_three",
+                "hybrid_singletons",
                 "polar_support",
                 "polar_support_saved",
             ),
@@ -184,11 +187,14 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "hybrid",
                 "hybrid_support",
                 "hybrid_three",
+                "hybrid_singletons",
                 "polar_support",
                 "polar_support_saved",
             ),
-            hybrid=recipe.route in ("hybrid", "hybrid_support", "hybrid_three"),
-            three_band=recipe.route == "hybrid_three",
+            hybrid=recipe.route
+            in ("hybrid", "hybrid_support", "hybrid_three", "hybrid_singletons"),
+            three_band=recipe.route in ("hybrid_three", "hybrid_singletons"),
+            singletons=recipe.route == "hybrid_singletons",
             support_only=recipe.route in ("polar_support", "polar_support_saved"),
             recipe=recipe,
         )
