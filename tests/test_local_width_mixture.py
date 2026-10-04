@@ -75,7 +75,7 @@ def test_width_fixture_rejects_invalid_mixtures(change):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("mid", [2.0, 4.0, 8.0])
 @pytest.mark.parametrize("spacing,sliced", [(1.0, False), (0.5, True)])
-@pytest.mark.parametrize("route", ["three", "singleton", "packed"])
+@pytest.mark.parametrize("route", ["three", "singleton", "packed", "persistent"])
 def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced, route):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
     from torchcst._backends.cuda.algorithms.local_product.polar import graph_update
@@ -96,6 +96,14 @@ def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced, rou
     dy = torch.randn(7, d.output_count, device="cuda")
     recipe = Recipe(pack=False, rho_upper=(1.0, mid, 16.0))
 
+    layout = None
+    if route == "persistent":
+        from torchcst._backends.cuda.algorithms.local_product.persistent import (
+            PersistentLayout,
+        )
+
+        layout = PersistentLayout(p, s, d, recipe)
+
     def step():
         y = local_h(
             x,
@@ -106,7 +114,8 @@ def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced, rou
             sparse=True,
             three_band=True,
             singletons=route != "three",
-            tile_packed=route == "packed",
+            tile_packed=route in ("packed", "persistent"),
+            persistent_layout=layout,
             fused_polar=True,
             recipe=recipe,
         )

@@ -96,6 +96,38 @@ def _fused(
     return y
 
 
+def prepare_metadata(q, domain, *, sparse, scalars):
+    import triton as tr
+
+    from . import kernels
+
+    a = len(q)
+    packed = q.new_empty((13 if sparse else 9, a))
+    if a:
+        compiled = kernels.prepare[(a,)](
+            q,
+            packed,
+            a,
+            domain.input_size,
+            domain.output_size,
+            domain.spacing,
+            domain.input_origin,
+            domain.output_origin,
+            tr.next_power_of_2(domain.input_size),
+            tr.next_power_of_2(domain.output_size),
+            sparse,
+            bool(scalars),
+            scalars,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        _report(
+            "prepare_polar" if scalars else "prepare_support" if sparse else "prepare",
+            compiled,
+        )
+    return packed
+
+
 def tile_layout(packed, domain, recipe):
     """Refresh both execution layouts from current normalized support on device."""
     import triton as tr
@@ -132,7 +164,19 @@ def tile_layout(packed, domain, recipe):
     return views, orders, offsets
 
 
-def _packed_fused(x, packed, h, order, offsets, domain, recipe, *, swap=False):
+def _packed_fused(
+    x,
+    packed,
+    h,
+    order,
+    offsets,
+    domain,
+    recipe,
+    *,
+    swap=False,
+    ends=None,
+    canonical_atoms=0,
+):
     import triton as tr
 
     from . import kernels
@@ -163,6 +207,8 @@ def _packed_fused(x, packed, h, order, offsets, domain, recipe, *, swap=False):
         swap,
         recipe.support_limit,
         recipe.rho_upper[1],
+        Ends=ends,
+        H_A=canonical_atoms,
         num_warps=8 if max(k, n) > 64 else 4,
         enable_fp_fusion=False,
     )
@@ -186,6 +232,7 @@ class _LocalH(torch.autograd.Function):
         three_band,
         singletons,
         tile_packed,
+        persistent_layout,
     ):
         fused_polar = bool(scalars)
         import triton as tr
@@ -193,32 +240,11 @@ class _LocalH(torch.autograd.Function):
         from . import kernels
 
         a = len(q)
-        packed = q.new_empty((13 if sparse else 9, a))
-        if a:
-            compiled = kernels.prepare[(a,)](
-                q,
-                packed,
-                a,
-                domain.input_size,
-                domain.output_size,
-                domain.spacing,
-                domain.input_origin,
-                domain.output_origin,
-                tr.next_power_of_2(domain.input_size),
-                tr.next_power_of_2(domain.output_size),
-                sparse,
-                fused_polar,
-                scalars,
-                num_warps=4,
-                enable_fp_fusion=False,
-            )
-            _report(
-                "prepare_polar"
-                if fused_polar
-                else ("prepare_support" if sparse else "prepare"),
-                compiled,
-            )
-        if tile_packed:
+        packed = prepare_metadata(q, domain, sparse=sparse, scalars=scalars)
+        ends = q.new_empty((0,))
+        if persistent_layout is not None:
+            views, orders, offsets, ends = persistent_layout.refresh(packed)
+        elif tile_packed:
             views, orders, offsets = tile_layout(packed, domain, recipe)
         else:
             views, orders, offsets = (q.new_empty((0,)),) * 3
@@ -251,7 +277,17 @@ class _LocalH(torch.autograd.Function):
             )
             _report("hybrid_save_h" if hybrid else "save_h", compiled)
         if tile_packed:
-            y = _packed_fused(x, views[0], h, orders[0], offsets[0], domain, recipe)
+            y = _packed_fused(
+                x,
+                views[0],
+                h,
+                orders[0],
+                offsets[0],
+                domain,
+                recipe,
+                ends=ends[0] if persistent_layout is not None else None,
+                canonical_atoms=a if persistent_layout is not None else 0,
+            )
         elif saved:
             y = x.new_empty((len(x), domain.output_count))
             compiled = kernels.from_h[(tr.cdiv(len(x), recipe.batch_block),)](
@@ -291,6 +327,7 @@ class _LocalH(torch.autograd.Function):
             views,
             orders,
             offsets,
+            ends,
             q if fused_polar else q.new_empty((0,)),
             *scalars,
         )
@@ -305,6 +342,7 @@ class _LocalH(torch.autograd.Function):
             three_band,
             singletons,
             tile_packed,
+            persistent_layout is not None,
         )
         return y
 
@@ -315,7 +353,7 @@ class _LocalH(torch.autograd.Function):
 
         from . import kernels
 
-        x, packed, h, views, orders, offsets, source, *scalars = ctx.saved_tensors
+        x, packed, h, views, orders, offsets, ends, source, *scalars = ctx.saved_tensors
         (
             domain,
             recipe,
@@ -327,12 +365,22 @@ class _LocalH(torch.autograd.Function):
             three_band,
             singletons,
             tile_packed,
+            persistent,
         ) = ctx.settings
         dy = dy.contiguous()
         dx = None
         if ctx.needs_input_grad[0] and tile_packed:
             dx = _packed_fused(
-                dy, views[1], h, orders[1], offsets[1], domain, recipe, swap=True
+                dy,
+                views[1],
+                h,
+                orders[1],
+                offsets[1],
+                domain,
+                recipe,
+                swap=True,
+                ends=ends[1] if persistent else None,
+                canonical_atoms=len(source) if persistent else 0,
             )
         elif ctx.needs_input_grad[0]:
             dx = _fused(
@@ -348,7 +396,8 @@ class _LocalH(torch.autograd.Function):
         dq = None
         if ctx.needs_input_grad[1]:
             a = packed.shape[1]
-            dq = packed.new_empty((a, 4))
+            canonical_atoms = len(source) if persistent else a
+            dq = packed.new_empty((canonical_atoms, 4))
             if a:
                 compiled = kernels.param_vjp[(tr.cdiv(a, recipe.atom_block),)](
                     x,
@@ -383,6 +432,7 @@ class _LocalH(torch.autograd.Function):
                     THREE_BAND=three_band,
                     SINGLETON_FAST=singletons,
                     Order=orders[0] if tile_packed else None,
+                    H_A=canonical_atoms if persistent else 0,
                     num_warps=8
                     if max(domain.input_count, domain.output_count) > 64
                     else 4,
@@ -402,7 +452,7 @@ class _LocalH(torch.autograd.Function):
                     else ("param_saved" if saved else "param_recomputed"),
                     compiled,
                 )
-        return dx, dq, None, None, None, None, None, None, None, None, None, None
+        return dx, dq, None, None, None, None, None, None, None, None, None, None, None
 
 
 def local_h(
@@ -419,6 +469,7 @@ def local_h(
     three_band=False,
     singletons=False,
     tile_packed=False,
+    persistent_layout=None,
     recipe=DEFAULT_RECIPE,
 ):
     """Y_local from X_local, normalized full-domain profiles, and polar atoms.
@@ -443,6 +494,12 @@ def local_h(
         raise ValueError(
             "three-band requires sparse hybrid with boundaries [1, mid, ...]"
         )
+    if persistent_layout is not None and (
+        not tile_packed
+        or persistent_layout.domain != domain
+        or persistent_layout.recipe != recipe
+    ):
+        raise ValueError("persistent layout configuration differs from execution")
     if tile_packed and (not singletons or not fused_polar):
         raise ValueError("tile packing requires fused polar singleton hybrid")
     if singletons and not three_band:
@@ -481,4 +538,5 @@ def local_h(
             three_band,
             singletons,
             tile_packed,
+            persistent_layout,
         )

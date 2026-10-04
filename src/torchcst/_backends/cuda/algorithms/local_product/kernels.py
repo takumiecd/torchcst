@@ -429,6 +429,8 @@ def fused_packed(
     SWAP: tl.constexpr,
     LIMIT: tl.constexpr,
     RHO: tl.constexpr,
+    Ends=None,
+    H_A: tl.constexpr = 0,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     tile = tl.program_id(1)
@@ -440,7 +442,11 @@ def fused_packed(
     for phase in tl.static_range(4):
         bucket = tile if phase == 0 else groups + phase - 1
         begin = tl.load(Offsets + bucket)
-        end = tl.load(Offsets + bucket + 1)
+        end = (
+            tl.load(Ends + bucket)
+            if Ends is not None
+            else tl.load(Offsets + bucket + 1)
+        )
         for a0 in range(begin, end, BA):
             a = a0 + tl.arange(0, BA)
             valid = (a < A) & (a < end)
@@ -491,6 +497,7 @@ def fused_packed(
                         False,
                         True,
                         HOrder=Order,
+                        H_A=H_A,
                     )
     tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
 
@@ -527,6 +534,7 @@ def _fused_general_block(
     THREE_BAND: tl.constexpr,
     DenseX=None,
     HOrder=None,
+    H_A: tl.constexpr = 0,
 ):
     if not SPARSE:
         x = DenseX
@@ -565,7 +573,7 @@ def _fused_general_block(
         if tl.sum(wide.to(tl.int32), 0) > 0:
             ha = tl.load(HOrder + a, wide, 0) if HOrder is not None else a
             stored = tl.load(
-                H + b[:, None] * A + ha[None, :],
+                H + b[:, None] * (H_A if H_A else A) + ha[None, :],
                 (b[:, None] < B) & wide[None, :],
                 0.0,
             )
@@ -690,10 +698,14 @@ def _param_sums(
     THREE_BAND: tl.constexpr,
     SINGLETON_FAST: tl.constexpr,
     HOrder=None,
+    H_A: tl.constexpr = 0,
 ):
     j, i = tl.arange(0, BK), tl.arange(0, BN)
     ha = tl.load(HOrder + a, a < A, 0) if HOrder is not None else a
     enabled = (a < A) & ~_singletons(P, a, A) if SINGLETON_FAST else (a < A)
+    if HOrder is not None:
+        enabled &= ha >= 0
+        ha = tl.maximum(ha, 0)
     if HYBRID and SPARSE:
         h, dh = _support_contract(
             X,
@@ -772,7 +784,7 @@ def _param_sums(
                 Enabled=enabled,
             )
             stored_wide_h = tl.load(
-                H + b[:, None] * A + ha[None, :],
+                H + b[:, None] * (H_A if H_A else A) + ha[None, :],
                 (b[:, None] < B) & wide[None, :],
                 0.0,
             )
@@ -795,7 +807,7 @@ def _param_sums(
             g, dg = _matrix_contract(DY, P, a, b, A, B, N, IS, True, S, OO, BN)
         if SAVED:
             h = tl.load(
-                H + b[:, None] * A + ha[None, :],
+                H + b[:, None] * (H_A if H_A else A) + ha[None, :],
                 (b[:, None] < B) & (a[None, :] < A),
                 0.0,
             )
@@ -812,7 +824,7 @@ def _param_sums(
         u, du = tl.where(i[:, None] < N, u, 0.0), tl.where(i[:, None] < N, du, 0.0)
         if SAVED:
             h = tl.load(
-                H + b[:, None] * A + ha[None, :],
+                H + b[:, None] * (H_A if H_A else A) + ha[None, :],
                 (b[:, None] < B) & (a[None, :] < A),
                 0.0,
             )
@@ -824,7 +836,7 @@ def _param_sums(
                 h = tl.dot(x, tl.where(narrow[None, :], v, 0.0), input_precision="ieee")
             if tl.sum(wide.to(tl.int32), 0) > 0:
                 stored_h = tl.load(
-                    H + b[:, None] * A + ha[None, :],
+                    H + b[:, None] * (H_A if H_A else A) + ha[None, :],
                     (b[:, None] < B) & wide[None, :],
                     0.0,
                 )
@@ -873,85 +885,94 @@ def param_vjp(
     THREE_BAND: tl.constexpr = False,
     SINGLETON_FAST: tl.constexpr = False,
     Order=None,
+    H_A: tl.constexpr = 0,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
-    original = tl.load(Order + a, a < A, 0) if Order is not None else a
-    da = tl.full((BA,), 0.0, tl.float32)
-    dci = tl.full((BA,), 0.0, tl.float32)
-    dco = tl.full((BA,), 0.0, tl.float32)
-    for b0 in range(0, B, BB):
-        b = b0 + tl.arange(0, BB)
-        partial_a = tl.full((BA,), 0.0, tl.float32)
-        partial_i = tl.full((BA,), 0.0, tl.float32)
-        partial_o = tl.full((BA,), 0.0, tl.float32)
-        if SINGLETON_FAST:
-            scalar = _singletons(P, a, A)
-            general_count = tl.sum(((a < A) & ~scalar).to(tl.int32), 0)
+    original = tl.load(Order + a, a < A, -1) if Order is not None else a
+    valid = (a < A) & (original >= 0)
+    if H_A:
+        valid &= original < H_A
+    original = tl.maximum(original, 0)
+    if tl.sum(valid.to(tl.int32), 0) > 0:
+        da = tl.full((BA,), 0.0, tl.float32)
+        dci = tl.full((BA,), 0.0, tl.float32)
+        dco = tl.full((BA,), 0.0, tl.float32)
+        for b0 in range(0, B, BB):
+            b = b0 + tl.arange(0, BB)
+            partial_a = tl.full((BA,), 0.0, tl.float32)
+            partial_i = tl.full((BA,), 0.0, tl.float32)
+            partial_o = tl.full((BA,), 0.0, tl.float32)
+            if SINGLETON_FAST:
+                scalar = _singletons(P, a, A)
+                general_count = tl.sum((valid & ~scalar).to(tl.int32), 0)
+            else:
+                general_count = 1
+            if general_count > 0:
+                partial_a, partial_i, partial_o = _param_sums(
+                    X,
+                    DY,
+                    P,
+                    H,
+                    a,
+                    b,
+                    B,
+                    K,
+                    N,
+                    A,
+                    S,
+                    OI,
+                    OO,
+                    JS,
+                    IS,
+                    BK,
+                    BN,
+                    BB,
+                    BA,
+                    SAVED,
+                    SPARSE,
+                    HYBRID,
+                    RHO,
+                    LIMIT,
+                    SUPPORT_ONLY,
+                    THREE_BAND,
+                    SINGLETON_FAST,
+                    HOrder=Order,
+                    H_A=H_A,
+                )
+            if SINGLETON_FAST:
+                vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
+                ulo, _uhi, uw = _interval(P, a, A, True, IS, N)
+                live = scalar & (vw == 1) & (uw == 1)
+                sx = tl.load(
+                    X + b[:, None] * K + vlo[None, :],
+                    (b[:, None] < B) & live[None, :],
+                    0.0,
+                )
+                sy = tl.load(
+                    DY + b[:, None] * N + ulo[None, :],
+                    (b[:, None] < B) & live[None, :],
+                    0.0,
+                )
+                partial_a = tl.where(scalar, tl.sum(sx * sy, 0), partial_a)
+                partial_i = tl.where(scalar, 0.0, partial_i)
+                partial_o = tl.where(scalar, 0.0, partial_o)
+            da += partial_a
+            dci += partial_i
+            dco += partial_o
+        if POLAR:
+            z0 = tl.load(Source + 4 * original, valid, 0.0)
+            z1 = tl.load(Source + 4 * original + 1, valid, 0.0)
+            r2 = z0 * z0 + z1 * z1
+            safe = tl.maximum(r2, 1.1754943508222875e-38)
+            inverse = tl.div_rn(1.0, libdevice.sqrt(safe))
+            active = r2 >= 1.1754943508222875e-38
+            scale = tl.load(AmplitudeMax).to(tl.float32) * inverse
+            d0 = da * scale * (1.0 - tl.where(active, tl.div_rn(z0 * z0, safe), 0.0))
+            d1 = -da * scale * tl.where(active, tl.div_rn(z0 * z1, safe), 0.0)
+            tl.store(DQ + 4 * original, d0, valid)
+            tl.store(DQ + 4 * original + 1, d1, valid)
         else:
-            general_count = 1
-        if general_count > 0:
-            partial_a, partial_i, partial_o = _param_sums(
-                X,
-                DY,
-                P,
-                H,
-                a,
-                b,
-                B,
-                K,
-                N,
-                A,
-                S,
-                OI,
-                OO,
-                JS,
-                IS,
-                BK,
-                BN,
-                BB,
-                BA,
-                SAVED,
-                SPARSE,
-                HYBRID,
-                RHO,
-                LIMIT,
-                SUPPORT_ONLY,
-                THREE_BAND,
-                SINGLETON_FAST,
-                HOrder=Order,
-            )
-        if SINGLETON_FAST:
-            vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
-            ulo, _uhi, uw = _interval(P, a, A, True, IS, N)
-            live = scalar & (vw == 1) & (uw == 1)
-            sx = tl.load(
-                X + b[:, None] * K + vlo[None, :], (b[:, None] < B) & live[None, :], 0.0
-            )
-            sy = tl.load(
-                DY + b[:, None] * N + ulo[None, :],
-                (b[:, None] < B) & live[None, :],
-                0.0,
-            )
-            partial_a = tl.where(scalar, tl.sum(sx * sy, 0), partial_a)
-            partial_i = tl.where(scalar, 0.0, partial_i)
-            partial_o = tl.where(scalar, 0.0, partial_o)
-        da += partial_a
-        dci += partial_i
-        dco += partial_o
-    if POLAR:
-        z0 = tl.load(Source + 4 * original, a < A, 0.0)
-        z1 = tl.load(Source + 4 * original + 1, a < A, 0.0)
-        r2 = z0 * z0 + z1 * z1
-        safe = tl.maximum(r2, 1.1754943508222875e-38)
-        inverse = tl.div_rn(1.0, libdevice.sqrt(safe))
-        active = r2 >= 1.1754943508222875e-38
-        scale = tl.load(AmplitudeMax).to(tl.float32) * inverse
-        d0 = da * scale * (1.0 - tl.where(active, tl.div_rn(z0 * z0, safe), 0.0))
-        d1 = -da * scale * tl.where(active, tl.div_rn(z0 * z1, safe), 0.0)
-        tl.store(DQ + 4 * original, d0, a < A)
-        tl.store(DQ + 4 * original + 1, d1, a < A)
-    else:
-        tl.store(DQ + 4 * original, da, a < A)
-        tl.store(DQ + 4 * original + 1, 0.0, a < A)
-    tl.store(DQ + 4 * original + 2, dci, a < A)
-    tl.store(DQ + 4 * original + 3, dco, a < A)
+            tl.store(DQ + 4 * original, da, valid)
+            tl.store(DQ + 4 * original + 1, 0.0, valid)
+        tl.store(DQ + 4 * original + 2, dci, valid)
+        tl.store(DQ + 4 * original + 3, dco, valid)

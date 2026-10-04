@@ -37,6 +37,7 @@ class LocalRecipe(Recipe):
             "hybrid_three",
             "hybrid_singletons",
             "hybrid_packed",
+            "hybrid_persistent",
             "polar_support",
             "polar_support_saved",
         ):
@@ -51,15 +52,19 @@ class LocalRecipe(Recipe):
                 "hybrid_three",
                 "hybrid_singletons",
                 "hybrid_packed",
+                "hybrid_persistent",
                 "polar_support",
                 "polar_support_saved",
             )
             and self.pack
         ):
             raise ValueError("fused polar routes require canonical order")
-        if self.route in ("hybrid_three", "hybrid_singletons", "hybrid_packed") and (
-            len(self.rho_upper) < 3 or self.rho_upper[0] != 1.0
-        ):
+        if self.route in (
+            "hybrid_three",
+            "hybrid_singletons",
+            "hybrid_packed",
+            "hybrid_persistent",
+        ) and (len(self.rho_upper) < 3 or self.rho_upper[0] != 1.0):
             raise ValueError("three-band route requires boundaries [1, mid, ...]")
         if (
             type(self.pack) is not bool
@@ -159,7 +164,7 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
         # Measured full-step CUDA peaks are reported by the runner.
         return None
 
-    def execute(self, *, x, parameters, operator, recipe):
+    def execute(self, *, x, parameters, operator, recipe, persistent_layout=None):
         from benchmarks.cuda.linear.fixtures import local_product_dense_factors
         from torchcst._backends.cuda.algorithms.local_product.executor import local_h
 
@@ -167,6 +172,8 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
         if recipe.route == "torch":
             v, u = local_product_dense_factors(parameters, value, domain)
             return (x @ v) @ u.T
+        if recipe.route == "hybrid_persistent" and persistent_layout is None:
+            raise ValueError("persistent route requires model-owned layout state")
         return local_h(
             x,
             parameters,
@@ -180,6 +187,7 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "hybrid_three",
                 "hybrid_singletons",
                 "hybrid_packed",
+                "hybrid_persistent",
                 "polar_support",
                 "polar_support_saved",
             ),
@@ -192,6 +200,7 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "hybrid_three",
                 "hybrid_singletons",
                 "hybrid_packed",
+                "hybrid_persistent",
                 "polar_support",
                 "polar_support_saved",
             ),
@@ -202,11 +211,19 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
                 "hybrid_three",
                 "hybrid_singletons",
                 "hybrid_packed",
+                "hybrid_persistent",
             ),
             three_band=recipe.route
-            in ("hybrid_three", "hybrid_singletons", "hybrid_packed"),
-            singletons=recipe.route in ("hybrid_singletons", "hybrid_packed"),
-            tile_packed=recipe.route == "hybrid_packed",
+            in (
+                "hybrid_three",
+                "hybrid_singletons",
+                "hybrid_packed",
+                "hybrid_persistent",
+            ),
+            singletons=recipe.route
+            in ("hybrid_singletons", "hybrid_packed", "hybrid_persistent"),
+            tile_packed=recipe.route in ("hybrid_packed", "hybrid_persistent"),
+            persistent_layout=persistent_layout,
             support_only=recipe.route in ("polar_support", "polar_support_saved"),
             recipe=recipe,
         )

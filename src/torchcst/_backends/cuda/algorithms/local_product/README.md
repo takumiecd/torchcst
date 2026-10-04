@@ -124,3 +124,31 @@ is `hybrid_packed`, using the existing runner's `plans-local-packed.json`.
 See [`20261004-physical-tile-layout.md`](../../../../../../docs/research-history/local-product/20261004-physical-tile-layout.md)
 for the scope, correctness gates and complete-step measurements. This small-tile
 sort is not a global scheduling strategy for large matrices.
+
+
+## Persistent incremental layout (research)
+
+`hybrid_persistent` uses a model-owned `PersistentLayout` with the same normalized
+product kernel, local/saved H hybrid and live polar updates as `hybrid_packed`.
+Canonical parameter and optimizer IDs stay fixed. Each execution view reserves
+bucket segments with spare slots. Refresh computes current ownership/width-band
+keys; unchanged atoms keep their slots, crossing atoms move into existing holes.
+Only insufficient destination capacity triggers a full rebuild. CUDA Graph
+replay keeps buffer shapes fixed even when capacities are redistributed.
+
+Every forward still refreshes numerical coefficients, normalization and support
+from current parameters. Placement reuse never means reusing stale sigma or
+coefficients. Independent per-forward views/order/segment endpoints protect
+outstanding backwards from later topology repairs. Calls must be serialized on
+the model's CUDA stream. Topology is non-checkpoint state and is constructed at
+model setup; it is not a global tensor cache.
+
+Use the existing Linear runner with `plans-local-persistent.json` and
+`cases/local-128-persistent-{early,middle,late,narrow-only}.json`. The route reports
+refresh/moved-atom/incremental-repair/overflow-rebuild counts separately for
+forward and dX. Read counters outside timed graphs. Spare capacity increases
+memory and parameter-block traversal; placement persistence alone does not
+establish a speed improvement or a cache-hit improvement.
+
+See [the persistent-layout research record](../../../../../../docs/research-history/local-product/20261004-persistent-layout.md)
+for correctness checks, full-step measurements and maintenance diagnostics.

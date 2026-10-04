@@ -49,14 +49,33 @@ class PlanLinear(nn.Module):
         self.p = nn.Parameter(p.detach().clone().contiguous())
         self.operator, self.plan = operator, plan
         self.local_state = None
+        self.persistent_layout = None
         if plan.algorithm_id == "research_local_product":
             from benchmarks.cuda.linear.local_product import runtime
 
-            self.local_state, _ = runtime(operator, self.p.device)
+            self.local_state, domain = runtime(operator, self.p.device)
+            if plan.recipe.route == "hybrid_persistent":
+                from torchcst._backends.cuda.algorithms.local_product.persistent import (
+                    PersistentLayout,
+                )
+
+                self.persistent_layout = PersistentLayout(
+                    self.p, self.local_state, domain, plan.recipe
+                )
 
     def forward(self, x):
         flat = x.reshape(-1, self.operator.in_features).contiguous()
         context = context_from_tensors(self.operator, flat, self.p)
+        if self.persistent_layout is not None:
+            algorithm = REGISTRY.validate(self.plan, context)
+            y = algorithm.execute(
+                x=flat,
+                parameters=self.p,
+                operator=self.operator,
+                recipe=self.plan.recipe,
+                persistent_layout=self.persistent_layout,
+            )
+            return y.reshape(*x.shape[:-1], self.operator.out_features)
         y = REGISTRY.execute(
             self.plan, context, x=flat, parameters=self.p, operator=self.operator
         )
@@ -296,11 +315,13 @@ def measure(args, run):
             "hybrid_three",
             "hybrid_singletons",
             "hybrid_packed",
+            "hybrid_persistent",
         ):
             inclusive = recipe.route in (
                 "hybrid_three",
                 "hybrid_singletons",
                 "hybrid_packed",
+                "hybrid_persistent",
             )
             limit = recipe.rho_upper[1 if inclusive else 0]
             initial_wide = (
@@ -342,7 +363,7 @@ def measure(args, run):
         final_support = summarize(
             decode(model.local_state, model.p).detach().cpu(), Domain(n, n)
         )
-        if recipe.route in ("hybrid_singletons", "hybrid_packed"):
+        if recipe.route in ("hybrid_singletons", "hybrid_packed", "hybrid_persistent"):
             hybrid_routing["singleton_direct_initial_atoms"] = support_report[
                 "onehot_both_live_atoms"
             ]
@@ -359,6 +380,9 @@ def measure(args, run):
         if args.worker != "dense":
             radius = model.p.detach()[:, :2].square().sum(1)
             assert ((radius >= 1 - 1e-5) & (radius <= 4 + 1e-5)).all()
+    layout_report = None
+    if args.worker != "dense" and model.persistent_layout is not None:
+        layout_report = model.persistent_layout.report()
     phases = None
     if args.phase_diagnostics:
         # A separate instrumented training graph after the primary timing/memory
@@ -406,6 +430,7 @@ def measure(args, run):
         "initial_support": support_report if args.worker != "dense" else None,
         "final_support": final_support,
         "sigma_updates": sigma_updates,
+        "persistent_layout": layout_report,
         "hybrid_routing": hybrid_routing,
         "h_policy": run.entry(args.plan_id).plan.recipe.route
         if local and args.worker != "dense"

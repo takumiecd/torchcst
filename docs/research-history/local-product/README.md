@@ -66,3 +66,14 @@ hybrid remains slower than saved-H controls; retained as a negative result.
 223 L4-host checks and20 full-shape oracle comparisons. At100% live singletons,
 complete-step time improves33.6% versus prior hybrid and15.3% versus saved
 support H. At10/50%, saved controls remain faster; H capacity is not compacted.
+
+
+2026-10-04: [Physical tile layouts](20261004-physical-tile-layout.md),
+239 L4-host checks plus12 full-shape oracle comparisons. Full per-step packing
+reduces the previous singleton route's complete-step time27.6–41.1%; memory rises.
+
+2026-10-04: [Persistent slots and incremental movement](20261004-persistent-layout.md),
+254 L4-host checks plus12 full-shape oracle comparisons. Stable membership keeps
+slots and avoids sorting; complete-step medians are1–5% lower with more memory.
+Only crossing atoms move. Repeated8/32-atom migrations are slower than full pack;
+this negative maintenance result is retained with exact counters.

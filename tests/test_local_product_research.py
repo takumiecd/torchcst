@@ -476,6 +476,7 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
         "local-polar-support",
         "local-polar-support-saved",
         "hybrid-packed-mid4",
+        "hybrid-persistent-mid4",
     ],
 )
 def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
@@ -488,11 +489,14 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     from benchmarks.cuda.linear.run import PlanLinear
     from torchcst import CSTLinear, CSTOptimizer
 
-    is_packed = plan_id == "hybrid-packed-mid4"
+    is_persistent = plan_id == "hybrid-persistent-mid4"
+    is_packed = plan_id in ("hybrid-packed-mid4", "hybrid-persistent-mid4")
     size = 128 if plan_id.startswith("local-hybrid") or is_packed else 32
     batch = 32 if size == 128 else 16
     catalog = DEFAULT_PLANS.with_name(
-        "plans-local-packed.json"
+        "plans-local-persistent.json"
+        if is_persistent
+        else "plans-local-packed.json"
         if is_packed
         else "plans-local-rho.json"
         if plan_id.startswith("local-polar-support")
@@ -505,7 +509,9 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     case = load_run(
         DEFAULT_PLANS.parent
         / (
-            "cases/local-128-packed-middle.json"
+            "cases/local-128-persistent-middle.json"
+            if is_persistent
+            else "cases/local-128-packed-middle.json"
             if is_packed
             else f"cases/local-{size}-mixed{'-hybrid' if size == 128 else ''}.json"
         ),
