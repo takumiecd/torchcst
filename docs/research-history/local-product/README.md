@@ -51,3 +51,8 @@ than all saved H. Output grouping/ownership and atom ordering remain priorities.
 196 L4-host checks plus28 full-shape oracle comparisons. Saved H benefits grow
 with width, while narrow-local speed advantage is unobserved; local allocation
 peaks are smaller. H lifetime and contraction arithmetic remain separate choices.
+
+2026-10-04: [Local atom records and full/window source audit](20261004-local-atom-full-window-audit.md),
+the old paths use evolving sigma with restricted geometry, not fixed sigma-three.
+Compact local records match the FP64 scalar oracle through six CPU comparisons
+with production width updates; no new GPU speed or memory claim.
