@@ -236,6 +236,7 @@ def fused(
     HYBRID: tl.constexpr = False,
     H=None,
     RHO: tl.constexpr = 4.0,
+    SUPPORT_ONLY: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     j, i = tl.arange(0, BK), tl.arange(0, BN)
@@ -271,7 +272,7 @@ def fused(
                 h = tl.where(wide[None, :], stored, h)
         elif SPARSE:
             _lo, _hi, width = _interval(P, a, A, SWAP, JS, K)
-            if tl.max(width, 0) <= LIMIT:
+            if SUPPORT_ONLY or tl.max(width, 0) <= LIMIT:
                 h, _dh_support = _support_contract(
                     X, P, a, b, A, B, K, JS, SWAP, S, OI, BM, BA
                 )
@@ -303,18 +304,26 @@ def save_h(
     BA: tl.constexpr,
     HYBRID: tl.constexpr = False,
     RHO: tl.constexpr = 4.0,
+    SUPPORT_ONLY: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     a = tl.program_id(1) * BA + tl.arange(0, BA)
     j = tl.arange(0, BK)
     save = _wide(P, a, A, S, RHO) if HYBRID else (a < A)
     if not HYBRID or tl.sum(save.to(tl.int32), 0) > 0:
-        x = tl.load(
-            X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
-        )
-        v, _dv_saved = _factor(P, a, JS + j, A, False, S, OI)
-        v = tl.where((j[:, None] < K) & save[None, :], v, 0.0)
-        h = tl.dot(x, v, input_precision="ieee")
+        if SUPPORT_ONLY:
+            h, _dh_saved = _support_contract(
+                X, P, a, b, A, B, K, JS, False, S, OI, BM, BA
+            )
+        else:
+            x = tl.load(
+                X + b[:, None] * K + j[None, :],
+                (b[:, None] < B) & (j[None, :] < K),
+                0.0,
+            )
+            v, _dv_saved = _factor(P, a, JS + j, A, False, S, OI)
+            v = tl.where((j[:, None] < K) & save[None, :], v, 0.0)
+            h = tl.dot(x, v, input_precision="ieee")
         tl.store(H + b[:, None] * A + a[None, :], h, (b[:, None] < B) & save[None, :])
 
 
@@ -374,6 +383,7 @@ def _param_sums(
     HYBRID: tl.constexpr,
     RHO: tl.constexpr,
     LIMIT: tl.constexpr,
+    SUPPORT_ONLY: tl.constexpr,
 ):
     j, i = tl.arange(0, BK), tl.arange(0, BN)
     if HYBRID and SPARSE:
@@ -407,12 +417,18 @@ def _param_sums(
     elif SPARSE:
         _vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
         _ulo, _uhi, uw = _interval(P, a, A, True, IS, N)
-        if tl.maximum(tl.max(vw, 0), tl.max(uw, 0)) <= LIMIT:
+        if SUPPORT_ONLY or tl.maximum(tl.max(vw, 0), tl.max(uw, 0)) <= LIMIT:
             h, dh = _support_contract(X, P, a, b, A, B, K, JS, False, S, OI, BB, BA)
             g, dg = _support_contract(DY, P, a, b, A, B, N, IS, True, S, OO, BB, BA)
         else:
             h, dh = _matrix_contract(X, P, a, b, A, B, K, JS, False, S, OI, BK)
             g, dg = _matrix_contract(DY, P, a, b, A, B, N, IS, True, S, OO, BN)
+        if SAVED:
+            h = tl.load(
+                H + b[:, None] * A + a[None, :],
+                (b[:, None] < B) & (a[None, :] < A),
+                0.0,
+            )
     else:
         x = tl.load(
             X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
@@ -483,6 +499,7 @@ def param_vjp(
     AmplitudeMax=None,
     HYBRID: tl.constexpr = False,
     RHO: tl.constexpr = 4.0,
+    SUPPORT_ONLY: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     da = tl.full((BA,), 0.0, tl.float32)
@@ -515,6 +532,7 @@ def param_vjp(
             HYBRID,
             RHO,
             LIMIT,
+            SUPPORT_ONLY,
         )
         da += partial_a
         dci += partial_i

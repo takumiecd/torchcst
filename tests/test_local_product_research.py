@@ -125,10 +125,13 @@ def test_recipe_and_shared_contract():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("saved", [False, True])
 @pytest.mark.parametrize("fused_polar", [False, True])
+@pytest.mark.parametrize("support_only", [False, True])
 @pytest.mark.parametrize(
     "batch,spacing,sliced", [(1, 1.0, False), (7, 0.5, True), (32, 1.0, True)]
 )
-def test_local_h_y_dx_polar_gradient_update(saved, fused_polar, batch, spacing, sliced):
+def test_local_h_y_dx_polar_gradient_update(
+    saved, fused_polar, support_only, batch, spacing, sliced
+):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
 
     d = Domain(
@@ -152,6 +155,8 @@ def test_local_h_y_dx_polar_gradient_update(saved, fused_polar, batch, spacing, 
         d,
         saved=saved,
         fused_polar=fused_polar,
+        sparse=support_only,
+        support_only=support_only,
         recipe=Recipe(pack=not fused_polar),
     )
     ax, ap = torch.autograd.grad(actual, (x, p), dy)
@@ -184,7 +189,10 @@ def test_local_h_y_dx_polar_gradient_update(saved, fused_polar, batch, spacing, 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("saved", [False, True])
 @pytest.mark.parametrize("fused_polar", [False, True])
-def test_graph_replay_refreshes_polar_decode_and_packing(saved, fused_polar):
+@pytest.mark.parametrize("support_only", [False, True])
+def test_graph_replay_refreshes_polar_decode_and_packing(
+    saved, fused_polar, support_only
+):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
 
     d = Domain(32, 32)
@@ -200,6 +208,8 @@ def test_graph_replay_refreshes_polar_decode_and_packing(saved, fused_polar):
             d,
             saved=saved,
             fused_polar=fused_polar,
+            sparse=support_only,
+            support_only=support_only,
             recipe=Recipe(pack=not fused_polar),
         )
         return y, *torch.autograd.grad(y, (x, p), torch.ones_like(y))
@@ -256,7 +266,9 @@ def test_fused_polar_nontrivial_envelopes_at_max_batch(saved):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("route", ["local", "saved", "hybrid", "hybrid_support"])
+@pytest.mark.parametrize(
+    "route", ["local", "saved", "hybrid", "hybrid_support", "support", "support_saved"]
+)
 @pytest.mark.parametrize("batch", [32, 64])
 def test_full_128_transform_all_atom_gradients(route, batch):
     from torchcst._backends.cuda.algorithms.local_product.executor import local_h
@@ -274,9 +286,10 @@ def test_full_128_transform_all_atom_gradients(route, batch):
         p,
         s,
         d,
-        saved=route == "saved",
+        saved=route in ("saved", "support_saved"),
         hybrid=route in ("hybrid", "hybrid_support"),
-        sparse=route == "hybrid_support",
+        sparse=route in ("hybrid_support", "support", "support_saved"),
+        support_only=route in ("support", "support_saved"),
         fused_polar=True,
         recipe=recipe,
     )
@@ -460,6 +473,8 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
         "local-polar-saved",
         "local-hybrid",
         "local-hybrid-support",
+        "local-polar-support",
+        "local-polar-support-saved",
     ],
 )
 def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
@@ -475,7 +490,9 @@ def test_graph_training_updates_width_and_matches_public_optimizer(plan_id):
     size = 128 if plan_id.startswith("local-hybrid") else 32
     batch = 32 if size == 128 else 16
     catalog = DEFAULT_PLANS.with_name(
-        "plans-local-hybrid-support.json"
+        "plans-local-rho.json"
+        if plan_id.startswith("local-polar-support")
+        else "plans-local-hybrid-support.json"
         if plan_id.startswith("local-hybrid")
         else "plans-local-polar.json"
         if plan_id.startswith("local-polar")

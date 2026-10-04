@@ -46,3 +46,8 @@ and parameter VJP spills. Further optimization is required.
 2026-10-04: [Bounded-batch VJP and support-aware hybrid H](20261004-hybrid-support.md),
 172 L4-host checks pass; support hybrid removes reported spills but remains slower
 than all saved H. Output grouping/ownership and atom ordering remain priorities.
+
+2026-10-04: [Matched sigma/spacing local versus saved H](20261004-rho-sweep.md),
+196 L4-host checks plus28 full-shape oracle comparisons. Saved H benefits grow
+with width, while narrow-local speed advantage is unobserved; local allocation
+peaks are smaller. H lifetime and contraction arithmetic remain separate choices.

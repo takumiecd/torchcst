@@ -143,7 +143,20 @@ class BenchmarkCase:
         if self.seed >= 2**63:
             raise ValueError("seed must be less than 2**63")
         profiles = (
-            ("broad", "sharp", "few", "wide", "mixed")
+            (
+                "broad",
+                "sharp",
+                "few",
+                "wide",
+                "mixed",
+                "rho1",
+                "rho1_5",
+                "rho2",
+                "rho3",
+                "rho4",
+                "rho8",
+                "rho16",
+            )
             if self.fixture == "local_polar_product"
             else ("broad", "sharp")
         )

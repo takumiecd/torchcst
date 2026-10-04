@@ -79,3 +79,14 @@ working set to16 when either local side exceeds64 and accumulates all batch
 chunks in the same CTA. The benchmark route is `hybrid_support`; see
 [`20261004-hybrid-support.md`](../../../../../../docs/research-history/local-product/20261004-hybrid-support.md)
 for verification and measurements.
+
+`support_only=True, sparse=True` isolates support-aware whole-call local/saved H
+without hybrid classification or group-wide matrix fallback. In saved mode the
+producer also reads only positive input support; parameter VJP reuses H while
+contracting support for the remaining derivatives. It uses the same13*A
+preparation metadata, current sigma, normalization and gradient contract in both
+modes. H->Y remains padded and saved forward has a separate atom-parallel
+producer, so scheduling as well as H traffic affects the measured crossover.
+The existing benchmark routes are `polar_support` / `polar_support_saved`, with
+`plans-local-rho.json` and matched `rho*` initialization cases. See
+[`20261004-rho-sweep.md`](../../../../../../docs/research-history/local-product/20261004-rho-sweep.md).

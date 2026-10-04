@@ -181,3 +181,18 @@ measurements do include polar decode, ordering, full-domain norm preparation,
 forward, dX, all atom gradients, AdamW proposal, and polar policy update.
 The current paths select fused/saved for the whole call; these reports do not
 implement a mixed per-atom routing policy or guarantee any L1/L2 residency.
+
+For the matched width/reuse experiment use `plans-local-rho.json` and
+`cases/local-{64,128}-rho{1,1_5,2,3,4,8,16}.json`. These labels select initial
+sigma/spacing; sigma is updated during every training step. Across widths only
+initial polar radius changes, keeping centers, amplitudes and inputs matched.
+`polar_support` and `polar_support_saved` both read the actual input support for
+H; the latter materializes H for reuse. See the
+[rho experiment record](../../../docs/research-history/local-product/20261004-rho-sweep.md).
+
+`--phase-diagnostics` adds a separate graph with external CUDA events after
+primary timing/memory measurement. It reports forward+loss, backward and
+optimizer phases with instrumentation overhead; training continues, with no
+sigma freezing. Primary uninstrumented complete-step timing and capture/replay
+memory peaks remain the comparison metrics. Reported final sigma is the end of
+the primary measurement, before phase diagnostics run.

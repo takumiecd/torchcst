@@ -223,17 +223,25 @@ def measure(args, run):
         capturable=case.optimizer.capturable,
     )
 
-    def step():
+    def step(events=None):
+        if events is not None:
+            events[0].record()
         optimizer.zero_grad(set_to_none=True)
         x.grad = None
         loss = (model(x) * target).sum() / (m * n)
+        if events is not None:
+            events[1].record()
         loss.backward()
+        if events is not None:
+            events[2].record()
         if local and args.worker != "dense":
             from benchmarks.cuda.linear.local_product import optimizer_step
 
             optimizer_step(model, optimizer, step_size=case.optimizer.lr)
         else:
             optimizer.step()
+        if events is not None:
+            events[3].record()
 
     def timed(call):
         samples = []
@@ -300,8 +308,30 @@ def measure(args, run):
     if local:
         assert all(torch.isfinite(p).all() for p in model.parameters())
         if args.worker != "dense":
-            radius = model.p[:, :2].square().sum(1)
+            radius = model.p.detach()[:, :2].square().sum(1)
             assert ((radius >= 1 - 1e-5) & (radius <= 4 + 1e-5)).all()
+    phases = None
+    if args.phase_diagnostics:
+        # A separate instrumented training graph after the primary timing/memory
+        # measurement. External event nodes add overhead; these are diagnostics,
+        # not replacements for uninstrumented complete-step graph timings.
+        events = [torch.cuda.Event(enable_timing=True, external=True) for _ in range(4)]
+        diagnostic = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(diagnostic, stream=stream):
+            step(events)
+        samples = {name: [] for name in ("forward_loss", "backward", "optimizer")}
+        for _ in range(case.rounds):
+            diagnostic.replay()
+            torch.cuda.synchronize()
+            for index, values in enumerate(samples.values()):
+                values.append(events[index].elapsed_time(events[index + 1]))
+        phases = {
+            "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+            "phases": {
+                name: {"median_ms": statistics.median(values), "samples_ms": values}
+                for name, values in samples.items()
+            },
+        }
     return {
         "status": "PASS",
         "reference": "dense_linear" if args.worker == "dense" else args.plan_id,
@@ -313,6 +343,7 @@ def measure(args, run):
         "initial_inputs": initial_inputs,
         "eager": eager,
         "graph": graph_times,
+        "phase_diagnostics": phases,
         "allocated_before_capture_bytes": before,
         "peak_allocated_capture_replay_bytes": peak_allocated,
         "peak_reserved_capture_replay_bytes": peak_reserved,
@@ -362,6 +393,7 @@ def main():
     ap.add_argument("--device", type=int, default=0)
     ap.add_argument("--source-commit", default="unrecorded")
     ap.add_argument("--correctness-only", action="store_true")
+    ap.add_argument("--phase-diagnostics", action="store_true")
     ap.add_argument("--output", type=Path)
     ap.add_argument(
         "--worker", choices=("correctness", "measure", "dense"), help=argparse.SUPPRESS
@@ -469,6 +501,8 @@ def main():
         ]
         if plan_id is not None:
             cmd += ["--plan-id", plan_id]
+        if args.phase_diagnostics:
+            cmd += ["--phase-diagnostics"]
         env = os.environ.copy()
         env["PYTHONPATH"] = os.pathsep.join(sys.path)
         returncode = None

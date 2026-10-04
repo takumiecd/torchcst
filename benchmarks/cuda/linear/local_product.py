@@ -34,10 +34,20 @@ class LocalRecipe(Recipe):
             "polar_saved",
             "hybrid",
             "hybrid_support",
+            "polar_support",
+            "polar_support_saved",
         ):
             raise ValueError("unknown local H route")
         if (
-            self.route in ("polar", "polar_saved", "hybrid", "hybrid_support")
+            self.route
+            in (
+                "polar",
+                "polar_saved",
+                "hybrid",
+                "hybrid_support",
+                "polar_support",
+                "polar_support_saved",
+            )
             and self.pack
         ):
             raise ValueError("fused polar routes require canonical order")
@@ -126,11 +136,25 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
             parameters,
             value,
             domain,
-            saved=recipe.route in ("saved", "polar_saved"),
-            sparse=recipe.route in ("support", "hybrid_support"),
+            saved=recipe.route in ("saved", "polar_saved", "polar_support_saved"),
+            sparse=recipe.route
+            in (
+                "support",
+                "hybrid_support",
+                "polar_support",
+                "polar_support_saved",
+            ),
             fused_polar=recipe.route
-            in ("polar", "polar_saved", "hybrid", "hybrid_support"),
+            in (
+                "polar",
+                "polar_saved",
+                "hybrid",
+                "hybrid_support",
+                "polar_support",
+                "polar_support_saved",
+            ),
             hybrid=recipe.route in ("hybrid", "hybrid_support"),
+            support_only=recipe.route in ("polar_support", "polar_support_saved"),
             recipe=recipe,
         )
 
@@ -141,12 +165,25 @@ def initialize(case):
 
     gen = torch.Generator().manual_seed(case.seed)
     direction = torch.rand(case.atoms, generator=gen) * 0.4 - 0.2
-    alpha = {
-        "sharp": 0.0,
-        "few": math.log(2) / math.log(16),
-        "broad": math.log(3) / math.log(16),
-        "wide": 1.0,
+    initial_rho = {
+        "rho1": 1,
+        "rho1_5": 1.5,
+        "rho2": 2,
+        "rho3": 3,
+        "rho4": 4,
+        "rho8": 8,
+        "rho16": 16,
     }.get(case.profile)
+    alpha = (
+        math.log(initial_rho) / math.log(16)
+        if initial_rho
+        else {
+            "sharp": 0.0,
+            "few": math.log(2) / math.log(16),
+            "broad": math.log(3) / math.log(16),
+            "wide": 1.0,
+        }.get(case.profile)
+    )
     radius = (
         (1 + 3 * torch.rand(case.atoms, generator=gen)).sqrt()
         if alpha is None
@@ -156,6 +193,11 @@ def initialize(case):
         torch.stack((direction, (1 - direction.square()).sqrt()), 1) * radius[:, None]
     )
     center = torch.rand(case.atoms, 2, generator=gen) * (case.size - 1)
+    if initial_rho is not None:
+        # Matched amplitude/direction and centers across widths. Only radius
+        # differs. These labels set initialization; training does not freeze sigma.
+        polar[:, 0] = direction.sign() * 0.6 * radius
+        polar[:, 1] = 0.8 * radius
     if case.profile == "sharp":
         # FP32 unit-radius pair: random unit-vector rounding can raise alpha
         # above zero and create tiny positive neighbors at sigma > spacing.

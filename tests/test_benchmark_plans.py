@@ -286,3 +286,44 @@ def test_local_initialization_covers_all_support_scales(size, profile):
 
         report = summarize(q, Domain(size, size))
         assert report["onehot_both_live_atoms"] == len(p)
+
+
+@pytest.mark.parametrize("size", [64, 128])
+def test_rho_sweep_only_changes_initial_radius(size, tmp_path):
+    from benchmarks.cuda.linear.fixtures import local_product_state
+    from benchmarks.cuda.linear.local_product import initialize
+    from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+
+    reference = None
+    for suffix, rho in [
+        ("1", 1),
+        ("1_5", 1.5),
+        ("2", 2),
+        ("3", 3),
+        ("4", 4),
+        ("8", 8),
+        ("16", 16),
+    ]:
+        run = load_run(
+            DEFAULT_PLANS.parent / f"cases/local-{size}-rho{suffix}.json",
+            DEFAULT_PLANS.with_name("plans-local-rho.json"),
+        )
+        p = initialize(run.case)
+        q = decode(local_product_state(birth=1), p)
+        torch.testing.assert_close(
+            q[:, 1].rsqrt(), torch.full_like(q[:, 1], rho), atol=2e-5, rtol=2e-6
+        )
+        if reference is None:
+            reference = p, q
+        else:
+            torch.testing.assert_close(p[:, 2:], reference[0][:, 2:], rtol=0, atol=0)
+            torch.testing.assert_close(
+                q[:, 0], reference[1][:, 0], rtol=2e-6, atol=2e-6
+            )
+        assert {entry.plan.recipe.route for entry in run.plans} >= {
+            "polar_support",
+            "polar_support_saved",
+        }
+        snapshot = save(tmp_path / f"rho{suffix}.json", run.snapshot())
+        digest = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+        assert load_snapshot(snapshot, expected_hash=digest) == run
