@@ -272,7 +272,7 @@
         "timeout_scope": "driver process, including any setup inside driver"
       },
       "measurements": [
-    
+
       ]
     },
     {
@@ -393,6 +393,89 @@
         2.1796626441528133e-06,
         2.203414453116892e-06,
         2.4905508482220284e-06
+      ]
+    },
+    {
+      "id": "l4job-106d362646b5451fb2e4599268d3abd3",
+      "snapshot_sha256": "9c0901735c76f644ae0804a6050f9dcf14433426339c123e7c440e26551d894a",
+      "result_archive_sha256": "c61bb0141d6eba7c4ab8afe6603aae9d5df7eb0119fe2f870ec68dc62d19a1e2",
+      "runtime": {
+        "id": "l4job-106d362646b5451fb2e4599268d3abd3",
+        "source_sha256": "9c0901735c76f644ae0804a6050f9dcf14433426339c123e7c440e26551d894a",
+        "gpu": "NVIDIA L4, GPU-172eccae-b083-84fa-d8de-28567df35328, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791134775.6441634,
+        "finished": 1791134933.5751843,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "measurements": [
+
+      ]
+    },
+    {
+      "id": "l4job-2b2a91c4e67248288f9aadcd310d839d",
+      "snapshot_sha256": "e2028be683ee9b812660b5c3fda4855290808aa7db528ffa8b677051d230827d",
+      "result_archive_sha256": "40402bd800147b0c0a9774a5cae3944658986688ab6264ba28a10d938ab60814",
+      "runtime": {
+        "id": "l4job-2b2a91c4e67248288f9aadcd310d839d",
+        "source_sha256": "e2028be683ee9b812660b5c3fda4855290808aa7db528ffa8b677051d230827d",
+        "gpu": "NVIDIA L4, GPU-172eccae-b083-84fa-d8de-28567df35328, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791134941.9188316,
+        "finished": 1791135153.9973643,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "measurements": [
+        {"case":"local-size-128-early","plan":"persistent-supportprep-band","step_us":191.97099982193322,"peak_allocated_bytes":417280,"peak_reserved_bytes":6291456,"changed_sigmas":819},
+        {"case":"local-size-128-early","plan":"persistent-supportprep-g","step_us":181.01500018019578,"peak_allocated_bytes":509952,"peak_reserved_bytes":6291456,"changed_sigmas":819},
+        {"case":"local-size-128-early","plan":"persistent-supportprep-band-contract4-atom32","step_us":167.38900012569502,"peak_allocated_bytes":417280,"peak_reserved_bytes":6291456,"changed_sigmas":819},
+        {"case":"local-size-128-early","plan":"persistent-supportprep-g-contract4-atom32","step_us":160.22400041038054,"peak_allocated_bytes":509952,"peak_reserved_bytes":6291456,"changed_sigmas":819},
+        {"case":"local-size-128-early","plan":"persistent-supportprep-band-unroll","step_us":178.62900040199747,"peak_allocated_bytes":417280,"peak_reserved_bytes":6291456,"changed_sigmas":819},
+        {"case":"local-size-128-early","plan":"persistent-supportprep-g-unroll","step_us":170.2889999251056,"peak_allocated_bytes":509952,"peak_reserved_bytes":6291456,"changed_sigmas":819},
+        {"case":"local-size-128-early","plan":null,"step_us":45.961000068928115,"peak_allocated_bytes":34408960,"peak_reserved_bytes":48234496,"changed_sigmas":null},
+        {"case":"local-size-64-sigma3","plan":"persistent-supportprep-band","step_us":85.06899985150085,"peak_allocated_bytes":152064,"peak_reserved_bytes":6291456,"changed_sigmas":204},
+        {"case":"local-size-64-sigma3","plan":"persistent-supportprep-g","step_us":85.09899998898618,"peak_allocated_bytes":178176,"peak_reserved_bytes":6291456,"changed_sigmas":204},
+        {"case":"local-size-64-sigma3","plan":"persistent-supportprep-band-contract4-atom32","step_us":84.06599999943865,"peak_allocated_bytes":152064,"peak_reserved_bytes":6291456,"changed_sigmas":204},
+        {"case":"local-size-64-sigma3","plan":"persistent-supportprep-g-contract4-atom32","step_us":82.95099996757926,"peak_allocated_bytes":178176,"peak_reserved_bytes":6291456,"changed_sigmas":204},
+        {"case":"local-size-64-sigma3","plan":"persistent-supportprep-band-unroll","step_us":78.13699994585477,"peak_allocated_bytes":152064,"peak_reserved_bytes":6291456,"changed_sigmas":204},
+        {"case":"local-size-64-sigma3","plan":"persistent-supportprep-g-unroll","step_us":80.00700017873896,"peak_allocated_bytes":178176,"peak_reserved_bytes":6291456,"changed_sigmas":204},
+        {"case":"local-size-64-sigma3","plan":null,"step_us":39.233000279637054,"peak_allocated_bytes":34179584,"peak_reserved_bytes":48234496,"changed_sigmas":null}
+      ],
+      "oracle_comparisons": 12,
+      "max_abs_y_dx_dp": [
+        2.1796626441528133e-06,
+        2.203414453116892e-06,
+        2.4905508482220284e-06
+      ]
+    }
+  ],
+  "interrupted_jobs": [
+    {
+      "job_id": "l4job-af4f8b3c817145ca97dc9d0767ed7c72",
+      "status": "interrupted",
+      "cause": "Colab CLI execution completion transport timeout after1340seconds; no verified result archive was recovered",
+      "numerical_result": "unavailable",
+      "performance_result": "unavailable",
+      "owned_runtime": "stopped by pool supervisor; pool recover returned successfully",
+      "replacement_jobs": [
+        "l4job-106d362646b5451fb2e4599268d3abd3",
+        "l4job-2b2a91c4e67248288f9aadcd310d839d"
       ]
     }
   ]

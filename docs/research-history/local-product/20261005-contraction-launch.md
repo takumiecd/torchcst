@@ -21,7 +21,7 @@ The recipe changes the loop granularity and launch only, retaining canonical
 atom IDs, full normalization, task VJP and persistent layouts.
 
 A bounded eight-iteration unroll improves ordinary initial-sigma3 N64 from
-about85.5us to78.5us in its first measurement, without increasing the152,064-byte
+about85.5us to78.5us in its first measurement; a separate L4 reproduces85.1→78.1us, without increasing the152,064-byte
 allocated peak. Only the middle band uses it, and the **current actual support
 span** must be at most8. Other spans use the original contraction. This bounds
 instructions, not sigma; widths continue to change during training.
@@ -77,3 +77,61 @@ explicit negative alternatives for evidence reconstruction. `local-tuned-*`
 cases select the four control/atom32 comparison plans. Frozen exploratory
 catalogs remain recoverable from the research branch and pool snapshots.
 Combining the unroll with atom32/4-warps remains a future measured experiment.
+
+A further candidate is to group narrow/middle atoms by the tile containing their
+first supported site, separately for output and dX. If the actual target-axis
+span is at most one tile width, each tile needs only its own and the preceding
+owner bucket. Longer/rounding-degenerate spans need a global fallback bucket.
+This could avoid scanning every middle-band atom block for every output tile;
+additional bucket slack, maintenance and peak memory must be measured first.
+
+
+## Final verification
+
+CPU full suite:779 passed /324 skipped (18 existing TorchScript deprecation
+warnings). Final independent L4 validation:23 passed, covering all new launch,
+vector and unroll routes,20-update public optimizer comparisons, sliced retained
+backward and atom32 migration/overflow/topology. The separate final measurement
+passes12 full-shape FP64 gates and12 runner gates plus2 matched dense steps.
+All173 Python source hashes in that measurement match the proposed PR source.
+Its source/environment/protocol/case IDs match the repeat cohort exactly.
+
+The combined gate `l4job-af4f8b3c817145ca97dc9d0767ed7c72` was interrupted by
+Colab CLI completion transport timeout after1340seconds. No verified numerical
+or performance result was recovered, so none is claimed. The pool stopped the
+owned runtime; documented recovery succeeded. Replacements
+`l4job-106d362646b5451fb2e4599268d3abd3` (validation) and
+`l4job-2b2a91c4e67248288f9aadcd310d839d` (measurement) both succeeded on a fresh L4.
+The second pool supervisor exited successfully and stopped its owned runtime.
+
+
+## Final storage and case-scoped candidates
+
+Thirty completed runner artifacts, including negative alternatives, are appended
+with exact byte restoration and idempotent provenance checks. DB counts move
+8→24 plans,14→44 runs,126→500 records and798→3184 metrics; the same7 cases are
+shared by content identity. The interrupted transport job is not performance
+evidence. [Storage receipt](20261005-tuned-database.json) records the30 run IDs.
+
+Eight [candidate registrations](20261005-tuned-dispatch.json) are generated from
+source `8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652`,
+with observed Torch2.11.0+cu130/Triton3.6.0 and minimum2 independent executions.
+Median-of-run medians and maximum complete-step allocated peaks:
+
+| Case | Speed route | Step(us) | Peak allocated(bytes) | Executions |
+|---|---|---:|---:|---:|
+|64 middle|prepared bands, atom16|66.387|152,064|3|
+|64 narrow-only|prepared bands, atom16|44.369|152,064|3|
+|64 ordinary initial-sigma3|bounded unroll, atom16, noG|78.305|152,064|2|
+|128 early|atom32/4-warps, savedG|160.224|509,952|3|
+
+The N128 control-peak policy selects atom32/4-warps withoutG:
+167.486us,417,280 bytes,3 executions. Other control-peak winners match speed.
+All candidates reserve6MiB in the observed runs. Exact lookup and unobserved
+batch fallback pass structural checks; executable load rejects the local
+Torch2.13 runtime mismatch. These checks do not claim GPU execution on the
+local host. Actual L4 candidate kernels were measured separately.
+
+Only the consolidated catalog and four stable case declarations enter the PR.
+Exploratory catalogs are retained at research checkpoint `afc03a81`; the173
+measured Python file hashes are unchanged by this configuration/document cleanup.

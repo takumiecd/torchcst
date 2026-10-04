@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "before": {
+    "plans": 8,
+    "cases": 7,
+    "runs": 14,
+    "projections": 14,
+    "run_plans": 56,
+    "records": 126,
+    "metrics": 798
+  },
+  "after": {
+    "plans": 24,
+    "cases": 7,
+    "runs": 44,
+    "projections": 44,
+    "run_plans": 228,
+    "records": 500,
+    "metrics": 3184
+  },
+  "completed_runner_artifacts": 30,
+  "exact_byte_restore": "PASS",
+  "idempotent_same_provenance_reimport": "PASS",
+  "runs": [
+    {
+      "run_id": "0a6306b33add0ad574910914dbaf96d5bd087f738dd9d4f476aceea31eb0e945",
+      "projection_id": "ed487e13afb497c71b1cbc995a2db59116630cc9c475eb6fb66291d70540347d",
+      "job_id": "l4job-61ff22a7218e406e89b059b4287a1602",
+      "raw_sha256": "18437f4e7be293935831fb600078367306a7e71e27f0096fa01376c8db653eea",
+      "source_id": "0dffeae911216280b0208f8737a8aa54ccbffe4fee9e31d03d076217c6fbb395",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3"
+    },
+    {
+      "run_id": "bf55a576cca2710096a487ab82b75f4e40c7ae40a73aeeb8c9be1afc7d69aa9d",
+      "projection_id": "134c11de71fa2e327f19273de9cc199458f9d5b975515c73b82f4c09d2bea19c",
+      "job_id": "l4job-61ff22a7218e406e89b059b4287a1602",
+      "raw_sha256": "0765908fefdf0eddb141fc2c8f13d9fd9aef8ede228fd70c5df9613efe28e293",
+      "source_id": "0dffeae911216280b0208f8737a8aa54ccbffe4fee9e31d03d076217c6fbb395",
+      "case_id": "a4dcc75b4777400d3abf38c44b7db16a389a2235ab02224beb96b149bb995a3e"
+    },
+    {
+      "run_id": "94fcb96fc37ac03203d37a08f9a5116c47c9106d7c169a37929f3096f045d86c",
+      "projection_id": "15f7ddd47916c8a096f28a2b6528046fdcb1fa6dab4d65db0418256347c660d5",
+      "job_id": "l4job-61ff22a7218e406e89b059b4287a1602",
+      "raw_sha256": "3e86ab7d7e010de49d8e42ebd5f759cf5ff8341b96e2627afd9b375d328bed8e",
+      "source_id": "0dffeae911216280b0208f8737a8aa54ccbffe4fee9e31d03d076217c6fbb395",
+      "case_id": "ecd024e3dc852bc3d6e9934d72e05e63b0c4ad9baefcb4b55c1afceea332e00c"
+    },
+    {
+      "run_id": "237e58cb078d88e1a24cb826c983631865bd1ee98e0e83bc4ff49d23cda101a9",
+      "projection_id": "597d94b499c2338f0d538b45304233758f02d4a025a5d7794287034692276247",
+      "job_id": "l4job-61ff22a7218e406e89b059b4287a1602",
+      "raw_sha256": "a24fa290e39ba8321b0bb7c06875fbb8be376f611deca4d69a3f53b5d960a6b1",
+      "source_id": "0dffeae911216280b0208f8737a8aa54ccbffe4fee9e31d03d076217c6fbb395",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0"
+    },
+    {
+      "run_id": "9b255b3cb8e563af903b4ea55d557475662336aff99510ea1924d85fd3d52b98",
+      "projection_id": "f60fbdedb9be37b34dc7159eb2c01f888f3e051b42666559a3e619b93b1a4d02",
+      "job_id": "l4job-169ba5506c814ae2b5e41190491c88ca",
+      "raw_sha256": "3599cb14616cb7fae1ffb453baa3b9b1b8741e502c7050467e6aabfc76cc127d",
+      "source_id": "424b3eca404eb89830485d379b0bbad2147fe94e416e28baabb1f029b9b9595c",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3"
+    },
+    {
+      "run_id": "ce2aebb6585acb3094da98ced58da1d0bd1173cf3b081e65603005043ecad6d0",
+      "projection_id": "88a30cac3d2d4cd8367c61d99f2a138b7ec0b4c62de46a33d8747ed478bff5e7",
+      "job_id": "l4job-169ba5506c814ae2b5e41190491c88ca",
+      "raw_sha256": "38f9d643ab0be5705d12c938e32e4c76713eab996816ba17dd4e8663fb28a93b",
+      "source_id": "424b3eca404eb89830485d379b0bbad2147fe94e416e28baabb1f029b9b9595c",
+      "case_id": "a4dcc75b4777400d3abf38c44b7db16a389a2235ab02224beb96b149bb995a3e"
+    },
+    {
+      "run_id": "52cafa1382ca0ea29459c0d8fe83446dfcb72f849da78608c3291aa2e8358173",
+      "projection_id": "33c6bf99f7ab6ae536403834ae4081e5897d3b20dd0f690b2e3412a6e465c277",
+      "job_id": "l4job-169ba5506c814ae2b5e41190491c88ca",
+      "raw_sha256": "88b72055dc16511327689ec853ff1823838208b59526430de973ee826931b5ad",
+      "source_id": "424b3eca404eb89830485d379b0bbad2147fe94e416e28baabb1f029b9b9595c",
+      "case_id": "ecd024e3dc852bc3d6e9934d72e05e63b0c4ad9baefcb4b55c1afceea332e00c"
+    },
+    {
+      "run_id": "11f308e16df10c2e8dc83ecabe77f015379691cc6affe6605aeff2d32b217123",
+      "projection_id": "0b81d82c79a2d64cb5dcb2d51bdc5e02f36ef47205516b3ecca9ac5ddd4c8d20",
+      "job_id": "l4job-169ba5506c814ae2b5e41190491c88ca",
+      "raw_sha256": "5384067efd3671af8388fedd20161d1130329c9518f5ef8bce894f9a7b840ed5",
+      "source_id": "424b3eca404eb89830485d379b0bbad2147fe94e416e28baabb1f029b9b9595c",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0"
+    },
+    {
+      "run_id": "f9cdb968fef2234cdd103af9a0b5405db402532492e508bd9c5feed4e5f579a2",
+      "projection_id": "740dc498197b7d29319838ba6f2a0c601f466fc63a0031f1853416adbf13ca16",
+      "job_id": "l4job-2f62a874b4fb4d15bb2052cff0f93e21",
+      "raw_sha256": "9b02c8d970f382f40d767338a2e51cdcf9b5c08e4c9dac8c9a553a95e4ac79f1",
+      "source_id": "439fcef65962067ef942f5ef8b23fe53a6eab4125dd9591090a8381d2dcc3dcf",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3"
+    },
+    {
+      "run_id": "a3b3852827cd8f3ff80907d30283568c59d38fd898ee2681fd0db20d4529b4a3",
+      "projection_id": "3cd860c4ade91863526475393cbb6f83798fd3c9c9f195e17a834c13d2b3b98d",
+      "job_id": "l4job-2f62a874b4fb4d15bb2052cff0f93e21",
+      "raw_sha256": "7ad38982f14c66db4d74508ac48a22fdaf07d86f034e9ffa9baea5500109d081",
+      "source_id": "439fcef65962067ef942f5ef8b23fe53a6eab4125dd9591090a8381d2dcc3dcf",
+      "case_id": "a4dcc75b4777400d3abf38c44b7db16a389a2235ab02224beb96b149bb995a3e"
+    },
+    {
+      "run_id": "2b4519f5be673124dc748a403c60b00b43bb162268272b85697b3a5e14f465d8",
+      "projection_id": "add30065e142972b43e81d166ad448d021e3f8fd8d2ce4c883135456f9dfb398",
+      "job_id": "l4job-2f62a874b4fb4d15bb2052cff0f93e21",
+      "raw_sha256": "d97b676efdfd03cbd32f841c895e9ffc481463398110e9527372866c84f72593",
+      "source_id": "439fcef65962067ef942f5ef8b23fe53a6eab4125dd9591090a8381d2dcc3dcf",
+      "case_id": "ecd024e3dc852bc3d6e9934d72e05e63b0c4ad9baefcb4b55c1afceea332e00c"
+    },
+    {
+      "run_id": "2036e5213ed4b6bc17e1a4bb37025d1701c6d1e430cbfaf6617594c1cb4a9dfe",
+      "projection_id": "1dfe60a2e26c4e6eb2f46e196bce9acafa2260a2580153509144ab335f07c83b",
+      "job_id": "l4job-2f62a874b4fb4d15bb2052cff0f93e21",
+      "raw_sha256": "9514733019a26b8c3f26ef44039e6cb8dd03927e3908433910bc3114a5a68f2c",
+      "source_id": "439fcef65962067ef942f5ef8b23fe53a6eab4125dd9591090a8381d2dcc3dcf",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0"
+    },
+    {
+      "run_id": "44e36cd0a147d0bdb4969849a0fa9785b5c07fb261f4ec7af97c2cc7d0a33458",
+      "projection_id": "ee43f4be4415473146f84e910cffb95c6b0c58639fd25773b2c1f9ab40c9cf1f",
+      "job_id": "l4job-0c52d4dcb1ae4a6aa4c6cfb67616c8bb",
+      "raw_sha256": "a26572c8298584ad0768c4af3fc716109cbaf8dd757e945bc5f2b185237bf197",
+      "source_id": "439fcef65962067ef942f5ef8b23fe53a6eab4125dd9591090a8381d2dcc3dcf",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3"
+    },
+    {
+      "run_id": "d379efdcec74479c3de40fbd5d6696af82fb4eae344ce7bc8dbd91413d6aa61c",
+      "projection_id": "834bbb14a7e160737076c457df339856435a4561c9f308fc915cf8113417e3ef",
+      "job_id": "l4job-0c52d4dcb1ae4a6aa4c6cfb67616c8bb",
+      "raw_sha256": "406161aa65d89ac5d4675dc1816278995ea906f0db7e14e6892ec9b566d13ea3",
+      "source_id": "439fcef65962067ef942f5ef8b23fe53a6eab4125dd9591090a8381d2dcc3dcf",
+      "case_id": "a4dcc75b4777400d3abf38c44b7db16a389a2235ab02224beb96b149bb995a3e"
+    },
+    {
+      "run_id": "011469a7a7f3ace432b5e243d3e19c7e8cc0a74a5474ab4f63971db763fc5fe0",
+      "projection_id": "8ed2e4ef511b16a58cb9162ed4512a7d4ac7db6ca646f9e3c9a3c4d0799bc561",
+      "job_id": "l4job-0c52d4dcb1ae4a6aa4c6cfb67616c8bb",
+      "raw_sha256": "11bac4f0eae8d1055343ffeec5268a46ccb801118ca0d8c7a8413740834d44e1",
+      "source_id": "439fcef65962067ef942f5ef8b23fe53a6eab4125dd9591090a8381d2dcc3dcf",
+      "case_id": "ecd024e3dc852bc3d6e9934d72e05e63b0c4ad9baefcb4b55c1afceea332e00c"
+    },
+    {
+      "run_id": "c6273b8e045d309469e1807301e83006bd395c7be3be69e5e7d5fe24f9a5921c",
+      "projection_id": "693966709a47a1831a97ea5a9be45d19b9b6cec3156d27cc0a68ca965e043f71",
+      "job_id": "l4job-0c52d4dcb1ae4a6aa4c6cfb67616c8bb",
+      "raw_sha256": "dc2a593123cbc9584f2bbd2c34edcc0c15f20ef99bd5c1e25c56749f67cff965",
+      "source_id": "439fcef65962067ef942f5ef8b23fe53a6eab4125dd9591090a8381d2dcc3dcf",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0"
+    },
+    {
+      "run_id": "e81deee85c35fa9282e9217f92ba1b5e71712b4862717ab8839df4fab33a984b",
+      "projection_id": "832a17494e049b1407d97c09c363a0471db3bf841e137fb6c82bf330bb1cada8",
+      "job_id": "l4job-d43efefc91cd4c08bb6786df0f34550e",
+      "raw_sha256": "90deb1ae3fdab98cb040a60251b313c5f39a6736973cd5a5174369a060c21308",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3"
+    },
+    {
+      "run_id": "7c4e08ec3a99e327fcbb2537814ca4123a599e28aa871eead36b9d338e23aa41",
+      "projection_id": "ae092f1ee51f1329a3c0935612a9ff85ee3b53b726b9652416b069faec6052d6",
+      "job_id": "l4job-d43efefc91cd4c08bb6786df0f34550e",
+      "raw_sha256": "1117fa819b38fe8edea1dd527c32bda462b0b7612c4943fd6cfc629fdc961f48",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "a4dcc75b4777400d3abf38c44b7db16a389a2235ab02224beb96b149bb995a3e"
+    },
+    {
+      "run_id": "3b311889837cb91ddb80104cdcf89dc2cc6c23e4b5a6067096b03f3420fde0bc",
+      "projection_id": "89133f8fb5b1e8f42e1e86e4377cb529c65b467ccb8d63ad2c5d63dcef13faf3",
+      "job_id": "l4job-d43efefc91cd4c08bb6786df0f34550e",
+      "raw_sha256": "7172d8b97836da1afa4ca9741ee2b7dd3e2b0b2f7d62570c9bff7a762528e721",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "ecd024e3dc852bc3d6e9934d72e05e63b0c4ad9baefcb4b55c1afceea332e00c"
+    },
+    {
+      "run_id": "4e6fa557bce7a8c51a10b785430588a7b02f61e936644756d1cabf0ef0212a54",
+      "projection_id": "8846fd810ea7507bececd8331dcccdb3566fc2f55c8cb183b3844777029a5a07",
+      "job_id": "l4job-d43efefc91cd4c08bb6786df0f34550e",
+      "raw_sha256": "1866f0c053db7e1dddf168f4ff304b20476d2cefb518cb6bae3a3fa25d3602c2",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0"
+    },
+    {
+      "run_id": "a553fababe0b799558160d669841286d1b0102fc79f1b791d23534221a5aca25",
+      "projection_id": "64953707da6fa45f3452525230a20f2d89cbba38dd474cb3a8b964ae1a2f8f0a",
+      "job_id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+      "raw_sha256": "6bb1076e75804fee74d3343243801fee92ae2bd0fe82e36af59a6a2d7116d221",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3"
+    },
+    {
+      "run_id": "567bec004ee85a27a8c22d7a37faeca8a6fa0d5836dc7050d47c47afbcf5c903",
+      "projection_id": "41f51a2a46d411259758af57a64592dfbad84117ca9a858557266b8f6314b617",
+      "job_id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+      "raw_sha256": "e8cf8f294c937f3bf62ae3b8fc1543625ce0f202c9848569caa3cd30b574e922",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3"
+    },
+    {
+      "run_id": "5e4be47cc7aeaa50e913c6793d265a765a7975f10271360eb43c83f0e9eca6dc",
+      "projection_id": "99776ab8c8ac6d1f585e984e7fcf01667ac43b946facc4beecaa976d8e8ca980",
+      "job_id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+      "raw_sha256": "709cea11ec0d2b564239ce8e524f576f2447d1095794532fac6426be450e999d",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "a4dcc75b4777400d3abf38c44b7db16a389a2235ab02224beb96b149bb995a3e"
+    },
+    {
+      "run_id": "4b93434ff253d64f356a2b7cf6937c7b9fd01fdb06d6878e2665d979fc5c955a",
+      "projection_id": "cbd4739820c05a5fe95652dd6f9761f4a188108bcb4e18d2a79bb65635075311",
+      "job_id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+      "raw_sha256": "0dbb9784a4af9086439cc0757702cfb8a5903627022e8ff2e9338754327cf81f",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "a4dcc75b4777400d3abf38c44b7db16a389a2235ab02224beb96b149bb995a3e"
+    },
+    {
+      "run_id": "b5770a0078a25cf79c1be83d7352f9ecdb2341cc7ea36d559899214e02c8e011",
+      "projection_id": "5a01724656bb93f725daf481b715171a7f669fd2c3062b9d08ee12d4eb9e1fec",
+      "job_id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+      "raw_sha256": "8abe9ca4eaee40a5ca10d2e23154cea446cc03c002766cd5245a383880a8ad44",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "ecd024e3dc852bc3d6e9934d72e05e63b0c4ad9baefcb4b55c1afceea332e00c"
+    },
+    {
+      "run_id": "3f42b7c12234fd7ebd3357b754e2c69940b0b150c5b50bbca62fbdd7601bf56b",
+      "projection_id": "5d239630c516eceb3fd1228d96cd38711e7f26af15ce3ebec4593ac5e5ae6622",
+      "job_id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+      "raw_sha256": "f0e21d426cbecbf454e2dc4a049deec65fd67cb7fc4bed71501f4067aab44025",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "ecd024e3dc852bc3d6e9934d72e05e63b0c4ad9baefcb4b55c1afceea332e00c"
+    },
+    {
+      "run_id": "0cb298dbb84e08a1effae7977686317b035c0e375d68a6aa5b0831efa5c8d8fe",
+      "projection_id": "af143cf51d4f38663bff70cb6df4d8b837bf5a5bc95d1f738de22bcafbea6ce6",
+      "job_id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+      "raw_sha256": "71827ee12ca37fc0b85cf2142eb715635e277706f0e2cf31a5fcabb8bd0fa1f5",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0"
+    },
+    {
+      "run_id": "dec0d1da02b521bf78708e5d0a099a7ab8f835c23b4dc5d85c0c637ecdf6f16d",
+      "projection_id": "b37cc559b52f07096697a88aa663e1af9d1b013c9352aea0046f1457a668a293",
+      "job_id": "l4job-22bdb249daf546cdb3caf6908b27dad5",
+      "raw_sha256": "dcd46cd726f755870091fe48814c4fef535f47efd725a3de88ad30c5b07a9711",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0"
+    },
+    {
+      "run_id": "e809c93e091656dbadc4aca5ba8cbb3b71140a1db75bbfe9658243b024030b7e",
+      "projection_id": "82929c8c79997fc8564e5b53a662298723b46efff3d4676e7ec6f344ea2405ab",
+      "job_id": "l4job-2b2a91c4e67248288f9aadcd310d839d",
+      "raw_sha256": "16849cc112d4500d0a9b27a8b85055b02e2334003c84bcde5c437795753634b6",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "e556e00e6864cc417b8b5cb85424c1e55a5ad7ae53f740f5c01769323a734ff3"
+    },
+    {
+      "run_id": "5517c1b61f78b2758ef2d900654f23e068b1d5dd64406977a2dfb25fff0500dc",
+      "projection_id": "d86b3b4fba1606e781627137885169697b996e9f615f9ad8255b99a9e1685637",
+      "job_id": "l4job-2b2a91c4e67248288f9aadcd310d839d",
+      "raw_sha256": "41f576d92ab10f24f08ffa336aa60cb6fcb0e97d4eadf890e1473af31d218b0a",
+      "source_id": "8429ffcb00c0300fb885e291d09a9b40279bc9e04950361f3bd653eb011bf652",
+      "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0"
+    }
+  ]
+}
