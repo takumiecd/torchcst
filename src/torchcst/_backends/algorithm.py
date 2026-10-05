@@ -49,7 +49,7 @@ class Algorithm(ABC, Generic[RecipeT]):
         """Bound managed scratch; this is not a measured memory peak."""
 
     def matches(self, context: Context, recipe: RecipeT) -> bool:
-        """Routing eligibility; Registry still enforces full support after selection."""
+        """Routing eligibility; Dispatch still enforces full support after selection."""
         return self.supports(context, recipe).supported
 
     def validate_inputs(self, state, inputs):

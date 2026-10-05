@@ -53,7 +53,13 @@ class LinearBinding:
                 "LinearBinding requires a live Operator or OperatorSpec and Tensor parameters"
             )
         self.operator = operator
-        self.parameters = parameters
+        self._atom_owner = None
+        if isinstance(operator, OperatorSpec):
+            self._atom_owner = parameters.__dict__.get("_atom_state_owner")
+            if self._atom_owner is None:
+                self.parameters = parameters
+            elif self._atom_owner.atoms.p is not parameters:
+                raise ValueError("parameters are stale for their AtomState owner")
         self.workspace_limit_bytes = workspace_limit_bytes
         self._algorithm_states = []
         self.execution_declaration()  # Warm configuration metadata outside capture.
@@ -65,8 +71,15 @@ class LinearBinding:
 
         if isinstance(self.operator, Operator):
             return AtomState.for_atoms(self.operator.atoms)
+        if self._atom_owner is not None:
+            return self._atom_owner
         owner = self.parameters.__dict__.get("_atom_state_owner")
-        return owner if owner is not None and owner.atoms.p is self.parameters else None
+        if owner is not None:
+            if owner.atoms.p is not self.parameters:
+                raise ValueError("parameters are stale for their AtomState owner")
+            self._atom_owner = owner
+            del self.parameters
+        return owner
 
     @property
     def atoms(self):
@@ -94,17 +107,22 @@ class LinearBinding:
     def declaration(self):
         return self.operator.declaration()
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_algorithm_states"] = []
+        state.pop("_execution_declaration", None)
+        return state
+
     def execution_declaration(self):
         if isinstance(self.operator, OperatorSpec):
             return self.operator
         return execution_declaration(self)
 
     def execution_parameters(self):
-        return (
-            self.operator.p
-            if not isinstance(self.operator, OperatorSpec)
-            else self.parameters
-        )
+        if not isinstance(self.operator, OperatorSpec):
+            return self.operator.p
+        owner = self.atom_state
+        return self.parameters if owner is None else owner.atoms.p
 
     def validate_inputs(self, inputs):
         validate_linear_inputs(self, inputs)

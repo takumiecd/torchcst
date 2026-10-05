@@ -229,3 +229,39 @@ def test_live_operator_direct_binding_preserves_owner_and_gradients():
         torch.testing.assert_close(actual, truth)
     with pytest.raises(ValueError, match="owner"):
         LinearBinding(model.operator, model.atoms.p.clone())
+
+
+def test_live_binding_does_not_retain_replaced_parameter_and_cache_is_transient():
+    import copy
+    import weakref
+
+    from test_cst_optimizer import site
+
+    model = site()
+    binding = LinearBinding(model.operator)
+    raw_binding = LinearBinding(model.execution_declaration(), model.atoms.p)
+    ref = weakref.ref(model.atoms.p)
+    plan = ExecutionPlan("torch_materialized", "v1", DefaultRecipe())
+    dispatcher = Dispatcher(registry=REGISTRY)
+    x = torch.ones(2, model.in_features, dtype=model.atoms.p.dtype)
+    dispatcher.run(binding, LinearInputs(x), plan=plan).sum().backward()
+    state = binding._algorithm_states[0]
+    previous = torch.__future__.get_overwrite_module_params_on_conversion()
+    try:
+        torch.__future__.set_overwrite_module_params_on_conversion(True)
+        model.float()
+    finally:
+        torch.__future__.set_overwrite_module_params_on_conversion(previous)
+    assert binding.execution_parameters() is model.atoms.p
+    assert raw_binding.execution_parameters() is model.atoms.p
+    assert raw_binding.atom_state is model.atom_state
+    assert ref() is None
+    assert not state.is_current()
+    dispatcher.run(binding, LinearInputs(x.float()), plan=plan)
+    assert state.is_current()
+    clone = copy.deepcopy(binding)
+    assert not clone._algorithm_states
+    assert clone.atom_state is not binding.atom_state
+    torch.testing.assert_close(
+        clone.execution_parameters(), binding.execution_parameters()
+    )

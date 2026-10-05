@@ -70,7 +70,8 @@ DirectAmpWidth の activity 座標や Chart ごとの正規化とは別の意味
 正規化用にも同じ live Operator / KernelState / ChartState / Atoms を使う。
 公開 Linear は CSTLinear に統一し、旧専用クラスと checkpoint adapter は削除した。
 
-共通RegistryとSelectorがPlanを選び、各Algorithmが対応条件・入力・実行を扱う。
+共通RegistryがAlgorithmを登録し、SelectorがPlan候補を選ぶ。DispatcherがInputsの検証、
+Context構築、対応判定、State取得とAlgorithm実行を接続する。
 Operatorは共通Chart/Geometry/Kernelへの入口を保ち、normalized専用のOperator型や
 adapterは追加しない。regular siteの配置情報はnormalized Algorithm内で既存宣言から得る。
 regular Product と連続 Strip は同じ点配置で実行できる。

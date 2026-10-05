@@ -21,9 +21,8 @@ class Match:
 class Selector(ABC):
     """Select using metadata only; never retain tensors or backward state.
 
-    Implementations propose one Plan in ``_match``. All implementations share
-    registry validation, workspace enforcement and an explicitly supplied
-    fallback. Ranking/training happens before construction, outside this API.
+    Implementations propose one Plan in ``_match``. Shared dispatch code validates
+    support/workspace and handles an explicitly supplied fallback. Ranking/training happens before construction, outside this API.
     """
 
     def __init__(self, *, revision: str, registry: Registry, fallback_plan=None):
