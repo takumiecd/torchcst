@@ -1,0 +1,3142 @@
+{
+  "schema_version": 1,
+  "scope": "matched initial rho > 1; complete evolving-width training step and separate component-event graph",
+  "source_commit": "e5e6cc764e348b8a4b98494dfffb1e2f94250125",
+  "source_manifests_identical": true,
+  "runtime_files_matched": 196,
+  "runner_source_hashes_matched": 203,
+  "protocol": "N64/N128, B32, A204/A819, FP32 IEEE, evolving production widths, fused AdamW/Polar, 21 samples per independent execution; reversed order in repeat 2",
+  "routes": {
+    "saved_g": "persistent-supportprep-g-contract4-atom32",
+    "recompute_parameter_h": "persistent-supportprep-band-recompute-vjp-atom32"
+  },
+  "jobs": [
+    {
+      "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+      "size": 64,
+      "repeat": 1,
+      "source_commit": "e5e6cc764e348b8a4b98494dfffb1e2f94250125",
+      "source_snapshot_sha256": "67b7771aec4a9ee5abd458dcdeaea04e0485840ea9c5722f7f0626ac6697a40c",
+      "result_archive_sha256": "77560a642c9f941e3bbaa81ac123cf48068b1d4f4345b48d3701a13df8ec1eef",
+      "runtime_files_matched": 196
+    },
+    {
+      "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+      "size": 128,
+      "repeat": 1,
+      "source_commit": "e5e6cc764e348b8a4b98494dfffb1e2f94250125",
+      "source_snapshot_sha256": "3b274d71a81bef98a3f072fe839aac92cdbff66b6dc02fd5c4579b3eb9194cf3",
+      "result_archive_sha256": "9bddc9d3c49edd26fe90e9d8cca15fbe7af66d43720eb27c2890a69019a35159",
+      "runtime_files_matched": 196
+    },
+    {
+      "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+      "size": 128,
+      "repeat": 2,
+      "source_commit": "e5e6cc764e348b8a4b98494dfffb1e2f94250125",
+      "source_snapshot_sha256": "3b274d71a81bef98a3f072fe839aac92cdbff66b6dc02fd5c4579b3eb9194cf3",
+      "result_archive_sha256": "3fa2ef5cda8a07fdef8bd6ee8bf02667ce92e315ebf2ebf733630cbf3d991b27",
+      "runtime_files_matched": 196
+    },
+    {
+      "job": "l4job-54b207090ac647a1b38300b0cd407992",
+      "size": 64,
+      "repeat": 2,
+      "source_commit": "e5e6cc764e348b8a4b98494dfffb1e2f94250125",
+      "source_snapshot_sha256": "3b274d71a81bef98a3f072fe839aac92cdbff66b6dc02fd5c4579b3eb9194cf3",
+      "result_archive_sha256": "73405d599c888f83ef2a98aa5ed3b910a29e6f6d6befa4458bb29fe358242022",
+      "runtime_files_matched": 196
+    }
+  ],
+  "validation": {
+    "full_shape_oracle_plan_comparisons": 56,
+    "small_runner_correctness_plan_gates": 56,
+    "maximum_absolute_errors": {
+      "y": 3.969271409332009e-06,
+      "dx": 2.738236065447097e-06,
+      "dp": 4.461254812682114e-06
+    },
+    "tolerance": 0.0004,
+    "initial_rho_strictly_greater_than_one": true
+  },
+  "database": [
+    {
+      "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+      "artifact": "rho-audit-64-rho16.json",
+      "run_id": "0b6d1ec1524588be065933fd87f1d3888deb7a63c340a48dcddecce0b2702dee",
+      "projection_id": "fb76fcc91e4af108c1a76721ac4a247976dec82855f6869c58a56410e9081139",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "87e772dbf8027105b253296ae982d93c614bf721a2a5f419a46dbcd96567f8b8",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+      "artifact": "rho-audit-64-rho1_25.json",
+      "run_id": "a7c3d144e69616f09325dbe2d2e54e718e2b2cf052f74d9f1e04d137ce311eda",
+      "projection_id": "43ea6049bc0558f091ba137725c0cd752c4600b293b9143ffec27a0648b71efe",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "c29f8daad64383925248434f07df72d6b8d3d890a1dad2ecac34db00f262edb0",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+      "artifact": "rho-audit-64-rho1_5.json",
+      "run_id": "b9975a13018f5e2ecea2ef1fe90fb70a707e09334d912dd44e22301f3976049e",
+      "projection_id": "4a804cc200c982a92ebedfb08f6002978d11a40af340da0741baa2d563f764da",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "b9848e5403ba8f6161fef23ab330a0e1381633e908eae32c12ff3e9f437eb69f",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+      "artifact": "rho-audit-64-rho2.json",
+      "run_id": "6223b3ee7e7155307c9c662fd88d87ac583b9c2ddbbffc563a3665554275f772",
+      "projection_id": "2ad3d9a62ef70a8a5aa84a01cad3f022215ffa96b483ca34e502662ce4fdbf3b",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "3b1080adeb67e7fa56053e375e79423bf62367970eb807414643ae538bcab672",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+      "artifact": "rho-audit-64-rho3.json",
+      "run_id": "67d83ce9c8471c7b1f356c3a17f7daf27bf9fc8bd0df6de30cfba65836ba9879",
+      "projection_id": "fd3e4b982d138028a57203146137f53713d76ba82a10d1a3791c556ddaf8b033",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "2e3fd104c098f0f8149506f8791438bac909932a460837243583e8f310a167ba",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+      "artifact": "rho-audit-64-rho4.json",
+      "run_id": "11d7566fb4a009fcf5c8ee6cb887a492e59f17fcf71fb431e91ce1e8486a1eb4",
+      "projection_id": "75540b866e9545366255dc672783f46f92879820b79e6d69649f9021a26a6bc4",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "0173fb28b36b80b015755b1d778b9f25a3b727ab9b73444d4e3aef5307829824",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+      "artifact": "rho-audit-64-rho8.json",
+      "run_id": "0a2bb5cb3495bbbca56e4aaae651eb576ed36a4a36b41c4811f040c8cc3153ed",
+      "projection_id": "3bb1dc0ba07f1e2ca39c8a72292a30d6c30b44ecd43a08645c68d1143d08f354",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "cb5a7a9bb1ed34b91b69fed9ffa92bc08f83fffa59c41782efa792fd6c9b584d",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+      "artifact": "rho-audit-128-rho16.json",
+      "run_id": "deae1b058a651edff3d309757839e4025aa64e8ef617366420fc2d4a9fd2d4de",
+      "projection_id": "89619518d5d548dfce0511db93a521d32f313537cf69a43ee79825046ef684a5",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "f31adb17f4d8c21006451de6bf08a2b365d2494cd4da22bab4ce6545a782aff5",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+      "artifact": "rho-audit-128-rho1_25.json",
+      "run_id": "8b5be1b604351fc5698e58f94eaef78fb4df9ee99b999f52ab068aba19ef3952",
+      "projection_id": "5c5727a2aad509dd6cb1d35ec265ec71d60d0a48b14f475a74c9b38bbab66868",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "3bf3c3e1a72c7e4dfcfb3dcca7b7fda7158a3b3914e281b394448b15a2179e8c",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+      "artifact": "rho-audit-128-rho1_5.json",
+      "run_id": "9cff1388e507dcf299777dc2981f8f910fcf6636545bb48a44905c94aa041a11",
+      "projection_id": "9949d956cf36c5000dbafa68151641bcf52dc4c01f6dc82b2d1d7f66141eae9c",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "5450cf6aad0bae4c4acb17d7c9cc423a94f56487a44667f83dac1ba2f4be0f30",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+      "artifact": "rho-audit-128-rho2.json",
+      "run_id": "8971be1ace668aac91d5ca9b7173991d96034ac4135bba9d8db8fe6e23f7f8c1",
+      "projection_id": "bdee2de4688d594fa796014c5e47629caf3eebdf39bb8f1cba62a6b2fc54a3c0",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "8ec0d02237f07cd848e2e7a0eb242b9255eef0a41b60b2ec6f83026b9552f6e8",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+      "artifact": "rho-audit-128-rho3.json",
+      "run_id": "5921ce597c829db31f046253bbe2260747d9666edea9fddc4c97a4cb63291258",
+      "projection_id": "f6633f73b6fae66d02e43a54aae5c92d0e3c3bfe7488304617bc9231856f1526",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "6d02c90581d8797727eb5e9dbf4876cbc3346d8588eb916172f31767736ed93e",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+      "artifact": "rho-audit-128-rho4.json",
+      "run_id": "239edf165da8ce3687c42cf641d512450c7a9c62b1d3cbb47f26ff056552fae8",
+      "projection_id": "0aaf2ffab95828baaf000801c050744919d4ca0cc7dc0d6331a3fc46bc53cf31",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "201c59f7428996ab7f53f7bc13c1d02963685ca28d6a40ca44849faa6d4abf22",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+      "artifact": "rho-audit-128-rho8.json",
+      "run_id": "a5514db1b16a2fbcf2fdf11fe6e4f6ade0a22becc97ef515f58d841a90c65b05",
+      "projection_id": "a66aaec07610a643e9729506be18dba1ab73dd39027e0702800a9106182147ae",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "768e41779f93449353de4c31beb1b50b4b8426e989b24f7c76de2348e45a1516",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+      "artifact": "rho-audit-128-rho16.json",
+      "run_id": "28c98c090e8ff8fcd2371e859d5b32bef4b92295d2197d80d9ecd05aa576bb49",
+      "projection_id": "ff2ce2ce13c69fb3103178d02dfdeeb70d215d0c423b531aa58e15101e15d0d2",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "9fadc77eda2a6160961b9a8fc0805f68cba5413233500dfb59e82dd485078b11",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+      "artifact": "rho-audit-128-rho1_25.json",
+      "run_id": "7b826872141a4c5cca9610c94cd731387c4701d39a7b5315289c2f74480caf1a",
+      "projection_id": "e3417f4e39f9f14fbc095a184a6e71f600322514d04bca7ad21737c6acd1321c",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "f2e092dfecd5ba1c21388c2386811b7284d886921a9db62daf371960f1ae7769",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+      "artifact": "rho-audit-128-rho1_5.json",
+      "run_id": "2f36e3ab99a8898fa419d767d57f987644c954e83b146e61ff1d2b9be2700520",
+      "projection_id": "21694f0ffb9cdbcbce3c0728b24bdeb6f88f422609212864ad0e5f40e6b04d3c",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "ad7901b7f858511002a6599b3838f3cada67653ba1072dff57470a01306ef438",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+      "artifact": "rho-audit-128-rho2.json",
+      "run_id": "cf12f0e413e9e9e9789fd890d8e17fb3a2e8ad10b61ea575053a08884b1faea1",
+      "projection_id": "45cfd4c85c0fa5284695fd9b657c677bc57b2d3dcb3c5ed5f2ed11c86671d1ac",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "6ceeb1ad955e7b9fbeb6b7c059b43a9d7f5f8b9cdc21751e21026a2dfcdd6399",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+      "artifact": "rho-audit-128-rho3.json",
+      "run_id": "764dc66e0896f6402adbdfeef55397d26387ed3215e498ee866aa4b9c5836065",
+      "projection_id": "0dc4dd19b29f6cf698d60e773541de34898d5038cd35f9d7dcebee3caf3b0943",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "4db41ab42d67bc11a9b155742f3e19c9e860994dd4c1b36d52f30e809ac2beae",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+      "artifact": "rho-audit-128-rho4.json",
+      "run_id": "8cab4fc930b348c784666f1b4bbb14939d2cc45dfd9ace9a923f7cce2f3b0350",
+      "projection_id": "bfc415effcb4836ede0a18c01640775ab61fe2b10a23d7d2c8e08c13ca73b95d",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "9b2f68cac9cd7b0b4acd047a452ea734bbd0b2353f9bcc540d476ae8b2caa3ec",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+      "artifact": "rho-audit-128-rho8.json",
+      "run_id": "7f00d0e9e2a638131b65606784330a16a329742082249456bb391f06ff162a16",
+      "projection_id": "8e92ba2b6ed9a98b64b15c1e8da1755bc1bfabcb6bc1bbd39c3e0e2f114354e7",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "f4d17829ee5dc3d99dc2a920cdb9c55742ef880698f000da1f8a73ecb23825b2",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-54b207090ac647a1b38300b0cd407992",
+      "artifact": "rho-audit-64-rho16.json",
+      "run_id": "4c5ff6e8da9448e65471f3d154308920861bd9c029b4b874d97d60b4e3a9d6b3",
+      "projection_id": "7c47dfd6ac41edd79c655dd8f1648e5089ea56e6c0f1c9e8dad03d434cc29205",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "f43658ddad4d4719fb4702c76e12b59c48623ba26a4fa9f5e427e2d7a8447bfc",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-54b207090ac647a1b38300b0cd407992",
+      "artifact": "rho-audit-64-rho1_25.json",
+      "run_id": "2aee5a5f5562cc39301660b4c72a40bb06143d3c7f8a1e986b783f5ed9337ac0",
+      "projection_id": "4e054f98858b760b6ec160e2c09424c24c4c4aa5f9cc4fb65590a08e01a7ab38",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "f6f5170d9c2fefa3231a17485886c0ab06e40e6b028b3cc507e99f3d6a12f94e",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-54b207090ac647a1b38300b0cd407992",
+      "artifact": "rho-audit-64-rho1_5.json",
+      "run_id": "620ff7df241a66f4287fd098be641accc6414effffaf789b22d867606dc09444",
+      "projection_id": "dbe9810f579b24d52d31b9797d34b3f0faa9c7b13679d2b19a7d3a10aa1c8da6",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "5050f412e93fbf93ff34fff31b46d57a4b530204b4d7a32cbf3aa31a3347032c",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-54b207090ac647a1b38300b0cd407992",
+      "artifact": "rho-audit-64-rho2.json",
+      "run_id": "a5e8f1fec307ce3351e45563ba035451ca2262e786ec6a9fc33fab97cbf28703",
+      "projection_id": "4c0175e8e7f0eec0ff8ce72bd45bf3c2890359b40ad2d77ab6cef995ffc5da3e",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "31d1d1613e4a69e056807ff546ee66a407cacf18bad0f58fcf5ee15fb55a8521",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-54b207090ac647a1b38300b0cd407992",
+      "artifact": "rho-audit-64-rho3.json",
+      "run_id": "a8bf618369c38d2f96ec3146fb2e5efece7b94c3f416e69fd1c8a208c2716843",
+      "projection_id": "ea57df10dca2732c4c68d211291f7259ea16ae9506b49123be674e8c1fee8478",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "daf8d25cf5242f70f34fdd9ab7b757365f57c409f0e2a5fbbc134a07583c2e26",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-54b207090ac647a1b38300b0cd407992",
+      "artifact": "rho-audit-64-rho4.json",
+      "run_id": "1c35a40dc4f82525f225eb9c0c2e95618e362b9cb8bda344e64bd3677d54a78c",
+      "projection_id": "37f058bbc9037e39d0dfe49007e449fc003c696a091a865acc101b1c20770410",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "dd1d24ede11b7646a29cdd5ba66db1d74cc4a1a77adaf6f69ba724ae05cfd0d3",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-54b207090ac647a1b38300b0cd407992",
+      "artifact": "rho-audit-64-rho8.json",
+      "run_id": "7f6f5e1db34639b539de1dfa4207455add496fe3960fffdaf7be41d10d64731b",
+      "projection_id": "707977e8053f6fcad0af2bdf5bfa1d85577c36c59b29f0f1737c4de023b8f15e",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "4596bd77e0b15278556e9e1796efcb6ea2e688ebfdb7df3742345608ffbdc13f",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    }
+  ],
+  "compiler_by_size_route": {
+    "64:persistent-supportprep-g-contract4-atom32": {
+      "prepare_bounded": {
+        "registers": 32,
+        "spill_slots": 0,
+        "shared_bytes": 0
+      },
+      "tile_layout": {
+        "registers": 32,
+        "spill_slots": 0,
+        "shared_bytes": 1024
+      },
+      "persistent_layout": {
+        "registers": 64,
+        "spill_slots": 0,
+        "shared_bytes": 2048
+      },
+      "hybrid_save_h": {
+        "registers": 40,
+        "spill_slots": 0,
+        "shared_bytes": 12288
+      },
+      "packed_forward": {
+        "registers": 80,
+        "spill_slots": 0,
+        "shared_bytes": 7296
+      },
+      "singleton_param": {
+        "registers": 255,
+        "spill_slots": 34,
+        "shared_bytes": 20480
+      },
+      "packed_dx_saved_g": {
+        "registers": 80,
+        "spill_slots": 0,
+        "shared_bytes": 14336
+      }
+    },
+    "64:persistent-supportprep-band-recompute-vjp-atom32": {
+      "prepare_bounded": {
+        "registers": 32,
+        "spill_slots": 0,
+        "shared_bytes": 0
+      },
+      "tile_layout": {
+        "registers": 32,
+        "spill_slots": 0,
+        "shared_bytes": 1024
+      },
+      "persistent_layout": {
+        "registers": 64,
+        "spill_slots": 0,
+        "shared_bytes": 2048
+      },
+      "hybrid_save_h": {
+        "registers": 40,
+        "spill_slots": 0,
+        "shared_bytes": 12288
+      },
+      "packed_forward": {
+        "registers": 80,
+        "spill_slots": 0,
+        "shared_bytes": 7296
+      },
+      "packed_dx": {
+        "registers": 72,
+        "spill_slots": 2,
+        "shared_bytes": 14336
+      },
+      "singleton_param": {
+        "registers": 224,
+        "spill_slots": 0,
+        "shared_bytes": 24576
+      }
+    },
+    "128:persistent-supportprep-g-contract4-atom32": {
+      "prepare_bounded": {
+        "registers": 42,
+        "spill_slots": 0,
+        "shared_bytes": 0
+      },
+      "tile_layout": {
+        "registers": 40,
+        "spill_slots": 0,
+        "shared_bytes": 4096
+      },
+      "persistent_layout": {
+        "registers": 168,
+        "spill_slots": 0,
+        "shared_bytes": 8192
+      },
+      "hybrid_save_h": {
+        "registers": 48,
+        "spill_slots": 0,
+        "shared_bytes": 24576
+      },
+      "packed_forward": {
+        "registers": 80,
+        "spill_slots": 0,
+        "shared_bytes": 7296
+      },
+      "singleton_param": {
+        "registers": 255,
+        "spill_slots": 106,
+        "shared_bytes": 40960
+      },
+      "packed_dx_saved_g": {
+        "registers": 80,
+        "spill_slots": 0,
+        "shared_bytes": 26624
+      }
+    },
+    "128:persistent-supportprep-band-recompute-vjp-atom32": {
+      "prepare_bounded": {
+        "registers": 42,
+        "spill_slots": 0,
+        "shared_bytes": 0
+      },
+      "tile_layout": {
+        "registers": 40,
+        "spill_slots": 0,
+        "shared_bytes": 4096
+      },
+      "persistent_layout": {
+        "registers": 168,
+        "spill_slots": 0,
+        "shared_bytes": 8192
+      },
+      "hybrid_save_h": {
+        "registers": 48,
+        "spill_slots": 0,
+        "shared_bytes": 24576
+      },
+      "packed_forward": {
+        "registers": 80,
+        "spill_slots": 0,
+        "shared_bytes": 7296
+      },
+      "packed_dx": {
+        "registers": 80,
+        "spill_slots": 0,
+        "shared_bytes": 26624
+      },
+      "singleton_param": {
+        "registers": 80,
+        "spill_slots": 0,
+        "shared_bytes": 40960
+      }
+    }
+  },
+  "conditions": [
+    {
+      "size": 64,
+      "initial_rho": 1.25,
+      "dense_median_us": 39.11900006414726,
+      "dense_execution_medians_us": [
+        39.39400005492644,
+        38.84400007336808
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 75.3205000592061,
+          "run_medians_us": [
+            75.33999996667262,
+            75.30100015173957
+          ],
+          "dense_ratio": 1.9254198710523196,
+          "peak_allocated_bytes": 180224,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 3.584000049158931,
+            "output": 18.432000651955605,
+            "dx": 19.45599913597107,
+            "parameters": 16.383999958634377
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 73.35399999419678,
+          "run_medians_us": [
+            73.1100000166407,
+            73.59799997175287
+          ],
+          "dense_ratio": 1.8751501795524181,
+          "peak_allocated_bytes": 154112,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 3.0720001086592674,
+            "output": 18.432000651955605,
+            "dx": 20.479999482631683,
+            "parameters": 13.311999849975109
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "e73efc12-bd58-4261-9bb6-d3f89bebd9c6",
+            "artifact": "rho-audit-64-rho1_25.json",
+            "initial_rho_actual_range": [
+              1.25,
+              1.25
+            ],
+            "final_rho_actual_range": [
+              1.2415528297424316,
+              1.2415693998336792
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.00844717025756836,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "a1e78bea-18fe-4a03-9092-ba331571935a",
+            "artifact": "rho-audit-64-rho1_25.json",
+            "initial_rho_actual_range": [
+              1.25,
+              1.25
+            ],
+            "final_rho_actual_range": [
+              1.2415528297424316,
+              1.2415693998336792
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.00844717025756836,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "e73efc12-bd58-4261-9bb6-d3f89bebd9c6",
+            "artifact": "rho-audit-64-rho1_25.json",
+            "initial_rho_actual_range": [
+              1.25,
+              1.25
+            ],
+            "final_rho_actual_range": [
+              1.2415528297424316,
+              1.2415693998336792
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.00844717025756836,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "a1e78bea-18fe-4a03-9092-ba331571935a",
+            "artifact": "rho-audit-64-rho1_25.json",
+            "initial_rho_actual_range": [
+              1.25,
+              1.25
+            ],
+            "final_rho_actual_range": [
+              1.2415528297424316,
+              1.2415693998336792
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.00844717025756836,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 2.9705882352941178,
+          "count_range": [
+            2,
+            3
+          ],
+          "mean_touched_tiles": 1.0931372549019607
+        },
+        "output": {
+          "mean_count": 2.9950980392156863,
+          "count_range": [
+            2,
+            3
+          ],
+          "mean_touched_tiles": 1.1029411764705883
+        }
+      }
+    },
+    {
+      "size": 64,
+      "initial_rho": 1.5,
+      "dense_median_us": 38.94349998745383,
+      "dense_execution_medians_us": [
+        38.883000001987966,
+        39.0039999729197
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 75.05700006049665,
+          "run_medians_us": [
+            75.17500000631117,
+            74.93900011468213
+          ],
+          "dense_ratio": 1.927330622175132,
+          "peak_allocated_bytes": 180224,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 4.095999989658594,
+            "output": 18.432000651955605,
+            "dx": 19.45599913597107,
+            "parameters": 16.383999958634377
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 73.4354999281095,
+          "run_medians_us": [
+            73.31199992677284,
+            73.55899992944614
+          ],
+          "dense_ratio": 1.8856933750630456,
+          "peak_allocated_bytes": 154112,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 3.584000049158931,
+            "output": 18.432000651955605,
+            "dx": 20.479999482631683,
+            "parameters": 13.311999849975109
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "f9fb60cb-00e0-481f-99b0-454461045c22",
+            "artifact": "rho-audit-64-rho1_5.json",
+            "initial_rho_actual_range": [
+              1.5000004768371582,
+              1.5000004768371582
+            ],
+            "final_rho_actual_range": [
+              1.4879287481307983,
+              1.4879525899887085
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.012071728706359863,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "a705fbbb-bb83-417a-aadb-37ce5bcff38c",
+            "artifact": "rho-audit-64-rho1_5.json",
+            "initial_rho_actual_range": [
+              1.5000004768371582,
+              1.5000004768371582
+            ],
+            "final_rho_actual_range": [
+              1.4879287481307983,
+              1.4879525899887085
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.012071728706359863,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "f9fb60cb-00e0-481f-99b0-454461045c22",
+            "artifact": "rho-audit-64-rho1_5.json",
+            "initial_rho_actual_range": [
+              1.5000004768371582,
+              1.5000004768371582
+            ],
+            "final_rho_actual_range": [
+              1.4879287481307983,
+              1.4879525899887085
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.012071728706359863,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "a705fbbb-bb83-417a-aadb-37ce5bcff38c",
+            "artifact": "rho-audit-64-rho1_5.json",
+            "initial_rho_actual_range": [
+              1.5000004768371582,
+              1.5000004768371582
+            ],
+            "final_rho_actual_range": [
+              1.4879287481307983,
+              1.4879525899887085
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.012071728706359863,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 2.9705882352941178,
+          "count_range": [
+            2,
+            3
+          ],
+          "mean_touched_tiles": 1.0931372549019607
+        },
+        "output": {
+          "mean_count": 2.9950980392156863,
+          "count_range": [
+            2,
+            3
+          ],
+          "mean_touched_tiles": 1.1029411764705883
+        }
+      }
+    },
+    {
+      "size": 64,
+      "initial_rho": 2,
+      "dense_median_us": 38.93700005619394,
+      "dense_execution_medians_us": [
+        38.92500001256849,
+        38.949000099819386
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 77.42400003962757,
+          "run_medians_us": [
+            77.38900001186266,
+            77.45900006739248
+          ],
+          "dense_ratio": 1.9884428673983392,
+          "peak_allocated_bytes": 180224,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 3.584000049158931,
+            "output": 19.45599913597107,
+            "dx": 20.479999482631683,
+            "parameters": 16.383999958634377
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 75.94849989800423,
+          "run_medians_us": [
+            75.7929999508633,
+            76.10399984514515
+          ],
+          "dense_ratio": 1.950548316213248,
+          "peak_allocated_bytes": 154112,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 3.0720001086592674,
+            "output": 19.45599913597107,
+            "dx": 21.503999829292297,
+            "parameters": 14.336000196635723
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "36b49a98-aed4-462e-9818-7d1cd0b050fd",
+            "artifact": "rho-audit-64-rho2.json",
+            "initial_rho_actual_range": [
+              2.0,
+              2.0
+            ],
+            "final_rho_actual_range": [
+              1.9794329404830933,
+              1.9794573783874512
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.02056705951690674,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "66f69ffc-9def-4113-baf0-9cb1ae537a09",
+            "artifact": "rho-audit-64-rho2.json",
+            "initial_rho_actual_range": [
+              2.0,
+              2.0
+            ],
+            "final_rho_actual_range": [
+              1.9794329404830933,
+              1.9794573783874512
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.02056705951690674,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "36b49a98-aed4-462e-9818-7d1cd0b050fd",
+            "artifact": "rho-audit-64-rho2.json",
+            "initial_rho_actual_range": [
+              2.0,
+              2.0
+            ],
+            "final_rho_actual_range": [
+              1.9794329404830933,
+              1.9794573783874512
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.02056705951690674,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "66f69ffc-9def-4113-baf0-9cb1ae537a09",
+            "artifact": "rho-audit-64-rho2.json",
+            "initial_rho_actual_range": [
+              2.0,
+              2.0
+            ],
+            "final_rho_actual_range": [
+              1.9794329404830933,
+              1.9794573783874512
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.02056705951690674,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 3.9411764705882355,
+          "count_range": [
+            2,
+            4
+          ],
+          "mean_touched_tiles": 1.142156862745098
+        },
+        "output": {
+          "mean_count": 3.9705882352941178,
+          "count_range": [
+            3,
+            4
+          ],
+          "mean_touched_tiles": 1.1225490196078431
+        }
+      }
+    },
+    {
+      "size": 64,
+      "initial_rho": 3,
+      "dense_median_us": 38.908500016532344,
+      "dense_execution_medians_us": [
+        38.92100005487009,
+        38.895999978194595
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 82.18150009042802,
+          "run_medians_us": [
+            82.11900001242611,
+            82.24400016842992
+          ],
+          "dense_ratio": 2.112173433967098,
+          "peak_allocated_bytes": 180224,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 3.0720001086592674,
+            "output": 20.99199965596199,
+            "dx": 22.52800017595291,
+            "parameters": 17.920000478625298
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 81.89649992118575,
+          "run_medians_us": [
+            81.92799998596456,
+            81.86499985640694
+          ],
+          "dense_ratio": 2.10484855202302,
+          "peak_allocated_bytes": 154112,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 3.584000049158931,
+            "output": 20.99199965596199,
+            "dx": 23.552000522613525,
+            "parameters": 16.383999958634377
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "4f395a9a-5f6f-4c6b-8ab8-db5fb204f30b",
+            "artifact": "rho-audit-64-rho3.json",
+            "initial_rho_actual_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_actual_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.04149007797241211,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "60a5965d-13f9-4374-9a5c-e109d188896d",
+            "artifact": "rho-audit-64-rho3.json",
+            "initial_rho_actual_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_actual_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.04149007797241211,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "4f395a9a-5f6f-4c6b-8ab8-db5fb204f30b",
+            "artifact": "rho-audit-64-rho3.json",
+            "initial_rho_actual_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_actual_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.04149007797241211,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "60a5965d-13f9-4374-9a5c-e109d188896d",
+            "artifact": "rho-audit-64-rho3.json",
+            "initial_rho_actual_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_actual_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.04149007797241211,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 5.852941176470588,
+          "count_range": [
+            4,
+            6
+          ],
+          "mean_touched_tiles": 1.2254901960784315
+        },
+        "output": {
+          "mean_count": 5.9068627450980395,
+          "count_range": [
+            4,
+            6
+          ],
+          "mean_touched_tiles": 1.2058823529411764
+        }
+      }
+    },
+    {
+      "size": 64,
+      "initial_rho": 4,
+      "dense_median_us": 39.08599995838813,
+      "dense_execution_medians_us": [
+        39.270999991458666,
+        38.90099992531759
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 87.3510000474198,
+          "run_medians_us": [
+            87.5200000791665,
+            87.18200001567311
+          ],
+          "dense_ratio": 2.2348411231749403,
+          "peak_allocated_bytes": 180224,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 3.584000049158931,
+            "output": 22.52800017595291,
+            "dx": 24.57600086927414,
+            "parameters": 18.943999893963337
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 87.86399990867721,
+          "run_medians_us": [
+            87.77400000781199,
+            87.95399980954244
+          ],
+          "dense_ratio": 2.2479660236969576,
+          "peak_allocated_bytes": 154112,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 3.584000049158931,
+            "output": 22.52800017595291,
+            "dx": 25.599999353289604,
+            "parameters": 18.432000651955605
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "e712a540-3d5d-428a-bd1c-c1fc928886c3",
+            "artifact": "rho-audit-64-rho4.json",
+            "initial_rho_actual_range": [
+              4.0,
+              4.0
+            ],
+            "final_rho_actual_range": [
+              3.933485746383667,
+              3.9335453510284424
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.06651425361633301,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 204
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "64e577df-1bc0-4fb3-ab4b-9aba71a25acd",
+            "artifact": "rho-audit-64-rho4.json",
+            "initial_rho_actual_range": [
+              4.0,
+              4.0
+            ],
+            "final_rho_actual_range": [
+              3.933485746383667,
+              3.9335453510284424
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.06651425361633301,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 204
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "e712a540-3d5d-428a-bd1c-c1fc928886c3",
+            "artifact": "rho-audit-64-rho4.json",
+            "initial_rho_actual_range": [
+              4.0,
+              4.0
+            ],
+            "final_rho_actual_range": [
+              3.933485746383667,
+              3.9335453510284424
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.06651425361633301,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 204
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "64e577df-1bc0-4fb3-ab4b-9aba71a25acd",
+            "artifact": "rho-audit-64-rho4.json",
+            "initial_rho_actual_range": [
+              4.0,
+              4.0
+            ],
+            "final_rho_actual_range": [
+              3.933485746383667,
+              3.9335453510284424
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.06651425361633301,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                204,
+                0
+              ],
+              "changed_routes": 204
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 7.7254901960784315,
+          "count_range": [
+            4,
+            8
+          ],
+          "mean_touched_tiles": 1.3186274509803921
+        },
+        "output": {
+          "mean_count": 7.823529411764706,
+          "count_range": [
+            5,
+            8
+          ],
+          "mean_touched_tiles": 1.3088235294117647
+        }
+      }
+    },
+    {
+      "size": 64,
+      "initial_rho": 8,
+      "dense_median_us": 38.91499989094882,
+      "dense_execution_medians_us": [
+        38.98199997820484,
+        38.8479998036928
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 72.37950006810934,
+          "run_medians_us": [
+            72.53100000070845,
+            72.22800013551023
+          ],
+          "dense_ratio": 1.8599383340855147,
+          "peak_allocated_bytes": 180224,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 5.119999870657921,
+            "output": 15.359999611973763,
+            "dx": 15.359999611973763,
+            "parameters": 19.967999309301376
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 71.85250007069044,
+          "run_medians_us": [
+            72.03300003766344,
+            71.67200010371744
+          ],
+          "dense_ratio": 1.8463959982536837,
+          "peak_allocated_bytes": 154112,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 4.6079999301582575,
+            "output": 15.359999611973763,
+            "dx": 20.479999482631683,
+            "parameters": 13.311999849975109
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "948ccc81-41d4-43ce-a812-55473616c5dd",
+            "artifact": "rho-audit-64-rho8.json",
+            "initial_rho_actual_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_actual_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.19460344314575195,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "ed3f01e8-d057-4b86-816b-e53fcf414470",
+            "artifact": "rho-audit-64-rho8.json",
+            "initial_rho_actual_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_actual_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.19460344314575195,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "948ccc81-41d4-43ce-a812-55473616c5dd",
+            "artifact": "rho-audit-64-rho8.json",
+            "initial_rho_actual_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_actual_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.19460344314575195,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "ed3f01e8-d057-4b86-816b-e53fcf414470",
+            "artifact": "rho-audit-64-rho8.json",
+            "initial_rho_actual_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_actual_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.19460344314575195,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 14.887254901960784,
+          "count_range": [
+            9,
+            16
+          ],
+          "mean_touched_tiles": 1.6666666666666667
+        },
+        "output": {
+          "mean_count": 15.137254901960784,
+          "count_range": [
+            9,
+            16
+          ],
+          "mean_touched_tiles": 1.7058823529411764
+        }
+      }
+    },
+    {
+      "size": 64,
+      "initial_rho": 16,
+      "dense_median_us": 38.81250000858927,
+      "dense_execution_medians_us": [
+        38.79500002312852,
+        38.82999999405001
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 72.3020000350516,
+          "run_medians_us": [
+            72.24399996630382,
+            72.3600001037994
+          ],
+          "dense_ratio": 1.8628534626486586,
+          "peak_allocated_bytes": 180224,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 5.119999870657921,
+            "output": 15.359999611973763,
+            "dx": 15.359999611973763,
+            "parameters": 19.45599913597107
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 71.77050002837859,
+          "run_medians_us": [
+            71.65299996358954,
+            71.88800009316765
+          ],
+          "dense_ratio": 1.8491594206118047,
+          "peak_allocated_bytes": 154112,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 6.144000217318535,
+            "h": 4.623999819159508,
+            "output": 15.359999611973763,
+            "dx": 20.479999482631683,
+            "parameters": 13.311999849975109
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "aec5d27b-4d10-4039-ab05-6a98ca683eac",
+            "artifact": "rho-audit-64-rho16.json",
+            "initial_rho_actual_range": [
+              16.0,
+              16.0
+            ],
+            "final_rho_actual_range": [
+              15.46675968170166,
+              15.467093467712402
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.5332403182983398,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "77076bd0-f18f-4661-a4d5-9a49360b629c",
+            "artifact": "rho-audit-64-rho16.json",
+            "initial_rho_actual_range": [
+              16.0,
+              16.0
+            ],
+            "final_rho_actual_range": [
+              15.46675968170166,
+              15.467093467712402
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.5332403182983398,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-99781d4e0f1e42eda695d0ee6139d1a1",
+            "execution_id": "aec5d27b-4d10-4039-ab05-6a98ca683eac",
+            "artifact": "rho-audit-64-rho16.json",
+            "initial_rho_actual_range": [
+              16.0,
+              16.0
+            ],
+            "final_rho_actual_range": [
+              15.46675968170166,
+              15.467093467712402
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.5332403182983398,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-54b207090ac647a1b38300b0cd407992",
+            "execution_id": "77076bd0-f18f-4661-a4d5-9a49360b629c",
+            "artifact": "rho-audit-64-rho16.json",
+            "initial_rho_actual_range": [
+              16.0,
+              16.0
+            ],
+            "final_rho_actual_range": [
+              15.46675968170166,
+              15.467093467712402
+            ],
+            "widths_changed": 204,
+            "width_max_abs_change": 0.5332403182983398,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                204
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 27.86764705882353,
+          "count_range": [
+            16,
+            32
+          ],
+          "mean_touched_tiles": 2.4558823529411766
+        },
+        "output": {
+          "mean_count": 28.29901960784314,
+          "count_range": [
+            17,
+            32
+          ],
+          "mean_touched_tiles": 2.4901960784313726
+        }
+      }
+    },
+    {
+      "size": 128,
+      "initial_rho": 1.25,
+      "dense_median_us": 45.53799999484909,
+      "dense_execution_medians_us": [
+        45.40500003713532,
+        45.67099995256285
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 153.5119999402923,
+          "run_medians_us": [
+            153.56599999449827,
+            153.45799988608633
+          ],
+          "dense_ratio": 3.371074705908393,
+          "peak_allocated_bytes": 512000,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 3.615999943576753,
+            "output": 52.22399905323982,
+            "dx": 62.463998794555664,
+            "parameters": 13.311999849975109
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 152.0165000670204,
+          "run_medians_us": [
+            152.14200004720624,
+            151.89100008683454
+          ],
+          "dense_ratio": 3.338234004220988,
+          "peak_allocated_bytes": 419328,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 3.584000049158931,
+            "output": 52.22399905323982,
+            "dx": 62.97599896788597,
+            "parameters": 11.264000087976456
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "0a738508-5ee0-476c-ab87-270410a7950b",
+            "artifact": "rho-audit-128-rho1_25.json",
+            "initial_rho_actual_range": [
+              1.25,
+              1.25
+            ],
+            "final_rho_actual_range": [
+              1.2415534257888794,
+              1.2415707111358643
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.008446574211120605,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "0cb49643-cf64-4ccb-ad19-3b61037ebb25",
+            "artifact": "rho-audit-128-rho1_25.json",
+            "initial_rho_actual_range": [
+              1.25,
+              1.25
+            ],
+            "final_rho_actual_range": [
+              1.2415534257888794,
+              1.2415707111358643
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.008446574211120605,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "0a738508-5ee0-476c-ab87-270410a7950b",
+            "artifact": "rho-audit-128-rho1_25.json",
+            "initial_rho_actual_range": [
+              1.25,
+              1.25
+            ],
+            "final_rho_actual_range": [
+              1.2415534257888794,
+              1.2415707111358643
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.008446574211120605,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "0cb49643-cf64-4ccb-ad19-3b61037ebb25",
+            "artifact": "rho-audit-128-rho1_25.json",
+            "initial_rho_actual_range": [
+              1.25,
+              1.25
+            ],
+            "final_rho_actual_range": [
+              1.2415534257888794,
+              1.2415707111358643
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.008446574211120605,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 2.9926739926739927,
+          "count_range": [
+            2,
+            3
+          ],
+          "mean_touched_tiles": 1.1025641025641026
+        },
+        "output": {
+          "mean_count": 2.9926739926739927,
+          "count_range": [
+            2,
+            3
+          ],
+          "mean_touched_tiles": 1.115995115995116
+        }
+      }
+    },
+    {
+      "size": 128,
+      "initial_rho": 1.5,
+      "dense_median_us": 45.56600003979838,
+      "dense_execution_medians_us": [
+        45.53200005830149,
+        45.60000002129527
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 153.2914999984314,
+          "run_medians_us": [
+            153.36500007379072,
+            153.21799992307206
+          ],
+          "dense_ratio": 3.3641640667283306,
+          "peak_allocated_bytes": 512000,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 3.584000049158931,
+            "output": 51.72799900174141,
+            "dx": 62.463998794555664,
+            "parameters": 13.311999849975109
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 151.5804999598913,
+          "run_medians_us": [
+            151.94899992820865,
+            151.21199999157398
+          ],
+          "dense_ratio": 3.3266141383377397,
+          "peak_allocated_bytes": 419328,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 3.584000049158931,
+            "output": 51.19999870657921,
+            "dx": 62.463998794555664,
+            "parameters": 11.264000087976456
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "f7150442-9fe4-4e3d-8891-d2547e500d32",
+            "artifact": "rho-audit-128-rho1_5.json",
+            "initial_rho_actual_range": [
+              1.5000004768371582,
+              1.5000004768371582
+            ],
+            "final_rho_actual_range": [
+              1.4879287481307983,
+              1.4879533052444458
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.012071728706359863,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "ed42b517-e34f-48db-a50d-5674e30ed43e",
+            "artifact": "rho-audit-128-rho1_5.json",
+            "initial_rho_actual_range": [
+              1.5000004768371582,
+              1.5000004768371582
+            ],
+            "final_rho_actual_range": [
+              1.4879287481307983,
+              1.4879533052444458
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.012071728706359863,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "f7150442-9fe4-4e3d-8891-d2547e500d32",
+            "artifact": "rho-audit-128-rho1_5.json",
+            "initial_rho_actual_range": [
+              1.5000004768371582,
+              1.5000004768371582
+            ],
+            "final_rho_actual_range": [
+              1.4879287481307983,
+              1.4879533052444458
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.012071728706359863,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "ed42b517-e34f-48db-a50d-5674e30ed43e",
+            "artifact": "rho-audit-128-rho1_5.json",
+            "initial_rho_actual_range": [
+              1.5000004768371582,
+              1.5000004768371582
+            ],
+            "final_rho_actual_range": [
+              1.4879287481307983,
+              1.4879533052444458
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.012071728706359863,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 2.9926739926739927,
+          "count_range": [
+            2,
+            3
+          ],
+          "mean_touched_tiles": 1.1025641025641026
+        },
+        "output": {
+          "mean_count": 2.9926739926739927,
+          "count_range": [
+            2,
+            3
+          ],
+          "mean_touched_tiles": 1.115995115995116
+        }
+      }
+    },
+    {
+      "size": 128,
+      "initial_rho": 2,
+      "dense_median_us": 45.54650007548844,
+      "dense_execution_medians_us": [
+        45.56900000807218,
+        45.5240001429047
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 160.92000009848562,
+          "run_medians_us": [
+            160.51600005084765,
+            161.32400014612358
+          ],
+          "dense_ratio": 3.5330925500703234,
+          "peak_allocated_bytes": 512000,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 3.584000049158931,
+            "output": 55.296000093221664,
+            "dx": 66.04800000786781,
+            "parameters": 14.336000196635723
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 159.37749992644967,
+          "run_medians_us": [
+            159.79099998730817,
+            158.96399986559118
+          ],
+          "dense_ratio": 3.499226058254719,
+          "peak_allocated_bytes": 419328,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 4.095999989658594,
+            "output": 54.78399991989136,
+            "dx": 66.56000018119812,
+            "parameters": 12.28800043463707
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "45b09711-c9b3-4327-b64f-b4b3cc9bdd92",
+            "artifact": "rho-audit-128-rho2.json",
+            "initial_rho_actual_range": [
+              2.0,
+              2.0
+            ],
+            "final_rho_actual_range": [
+              1.9794293642044067,
+              1.9794588088989258
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.02057063579559326,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "aca663d2-2e1c-4a6a-b247-0395b8a87625",
+            "artifact": "rho-audit-128-rho2.json",
+            "initial_rho_actual_range": [
+              2.0,
+              2.0
+            ],
+            "final_rho_actual_range": [
+              1.9794293642044067,
+              1.9794588088989258
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.02057063579559326,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "45b09711-c9b3-4327-b64f-b4b3cc9bdd92",
+            "artifact": "rho-audit-128-rho2.json",
+            "initial_rho_actual_range": [
+              2.0,
+              2.0
+            ],
+            "final_rho_actual_range": [
+              1.9794293642044067,
+              1.9794588088989258
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.02057063579559326,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "aca663d2-2e1c-4a6a-b247-0395b8a87625",
+            "artifact": "rho-audit-128-rho2.json",
+            "initial_rho_actual_range": [
+              2.0,
+              2.0
+            ],
+            "final_rho_actual_range": [
+              1.9794293642044067,
+              1.9794588088989258
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.02057063579559326,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 3.9755799755799757,
+          "count_range": [
+            2,
+            4
+          ],
+          "mean_touched_tiles": 1.1489621489621489
+        },
+        "output": {
+          "mean_count": 3.9792429792429793,
+          "count_range": [
+            2,
+            4
+          ],
+          "mean_touched_tiles": 1.170940170940171
+        }
+      }
+    },
+    {
+      "size": 128,
+      "initial_rho": 3,
+      "dense_median_us": 45.51000006358663,
+      "dense_execution_medians_us": [
+        45.51500001070963,
+        45.505000116463634
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 176.02150001039263,
+          "run_medians_us": [
+            175.8710000103747,
+            176.17200001041056
+          ],
+          "dense_ratio": 3.867754334529887,
+          "peak_allocated_bytes": 512000,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 4.095999989658594,
+            "output": 60.44800020754337,
+            "dx": 73.72800260782242,
+            "parameters": 15.359999611973763
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 174.76249996661863,
+          "run_medians_us": [
+            175.32599997593934,
+            174.19899995729793
+          ],
+          "dense_ratio": 3.840090083991216,
+          "peak_allocated_bytes": 419328,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 3.584000049158931,
+            "output": 60.416001826524734,
+            "dx": 73.72800260782242,
+            "parameters": 13.311999849975109
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "6cdd10cd-6405-4885-876c-c38eeb4a71d6",
+            "artifact": "rho-audit-128-rho3.json",
+            "initial_rho_actual_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_actual_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.04149055480957031,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "37852d55-6689-48f7-92e6-8687d469c4ad",
+            "artifact": "rho-audit-128-rho3.json",
+            "initial_rho_actual_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_actual_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.04149055480957031,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "6cdd10cd-6405-4885-876c-c38eeb4a71d6",
+            "artifact": "rho-audit-128-rho3.json",
+            "initial_rho_actual_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_actual_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.04149055480957031,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "37852d55-6689-48f7-92e6-8687d469c4ad",
+            "artifact": "rho-audit-128-rho3.json",
+            "initial_rho_actual_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_actual_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.04149055480957031,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 5.938949938949939,
+          "count_range": [
+            4,
+            6
+          ],
+          "mean_touched_tiles": 1.271062271062271
+        },
+        "output": {
+          "mean_count": 5.947496947496948,
+          "count_range": [
+            4,
+            6
+          ],
+          "mean_touched_tiles": 1.2905982905982907
+        }
+      }
+    },
+    {
+      "size": 128,
+      "initial_rho": 4,
+      "dense_median_us": 45.31799999085706,
+      "dense_execution_medians_us": [
+        45.52799998691626,
+        45.107999994797865
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 190.48699999757446,
+          "run_medians_us": [
+            190.6710000412204,
+            190.30299995392852
+          ],
+          "dense_ratio": 4.20334083666546,
+          "peak_allocated_bytes": 512000,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 3.0720001086592674,
+            "output": 66.56000018119812,
+            "dx": 80.38399741053581,
+            "parameters": 16.383999958634377
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 188.3999999563457,
+          "run_medians_us": [
+            188.38400001186528,
+            188.41599990082614
+          ],
+          "dense_ratio": 4.15728849451334,
+          "peak_allocated_bytes": 419328,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 4.095999989658594,
+            "output": 66.56000018119812,
+            "dx": 80.38399741053581,
+            "parameters": 13.824000023305416
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "64a6e06e-5cd0-4868-b3d3-5f57e0199895",
+            "artifact": "rho-audit-128-rho4.json",
+            "initial_rho_actual_range": [
+              4.0,
+              4.0
+            ],
+            "final_rho_actual_range": [
+              3.933471202850342,
+              3.9335453510284424
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.0665287971496582,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 819
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "e7a85b73-64f6-4ff4-8a27-9595aa8b475c",
+            "artifact": "rho-audit-128-rho4.json",
+            "initial_rho_actual_range": [
+              4.0,
+              4.0
+            ],
+            "final_rho_actual_range": [
+              3.933471202850342,
+              3.9335453510284424
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.0665287971496582,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 819
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "64a6e06e-5cd0-4868-b3d3-5f57e0199895",
+            "artifact": "rho-audit-128-rho4.json",
+            "initial_rho_actual_range": [
+              4.0,
+              4.0
+            ],
+            "final_rho_actual_range": [
+              3.933471202850342,
+              3.9335453510284424
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.0665287971496582,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 819
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "e7a85b73-64f6-4ff4-8a27-9595aa8b475c",
+            "artifact": "rho-audit-128-rho4.json",
+            "initial_rho_actual_range": [
+              4.0,
+              4.0
+            ],
+            "final_rho_actual_range": [
+              3.933471202850342,
+              3.9335453510284424
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.0665287971496582,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                819,
+                0
+              ],
+              "changed_routes": 819
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 7.886446886446887,
+          "count_range": [
+            4,
+            8
+          ],
+          "mean_touched_tiles": 1.3821733821733821
+        },
+        "output": {
+          "mean_count": 7.887667887667888,
+          "count_range": [
+            4,
+            8
+          ],
+          "mean_touched_tiles": 1.3907203907203907
+        }
+      }
+    },
+    {
+      "size": 128,
+      "initial_rho": 8,
+      "dense_median_us": 45.5040000133522,
+      "dense_execution_medians_us": [
+        45.54100007680972,
+        45.46699994989467
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 134.04100002389896,
+          "run_medians_us": [
+            133.87499996042607,
+            134.20700008737185
+          ],
+          "dense_ratio": 2.9456970812360987,
+          "peak_allocated_bytes": 512000,
+          "diagnostic_components_us": {
+            "prepare": 5.632000043988228,
+            "layout": 8.191999979317188,
+            "h": 6.144000217318535,
+            "output": 39.93599861860275,
+            "dx": 41.98399931192398,
+            "parameters": 25.088000111281872
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 157.41050003725832,
+          "run_medians_us": [
+            157.32200006368657,
+            157.49900001083006
+          ],
+          "dense_ratio": 3.4592673169626735,
+          "peak_allocated_bytes": 419328,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 5.648000165820122,
+            "output": 39.43999856710434,
+            "dx": 73.72800260782242,
+            "parameters": 16.383999958634377
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "2488d104-40d2-42cc-b659-32e4f0ed31a9",
+            "artifact": "rho-audit-128-rho8.json",
+            "initial_rho_actual_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_actual_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.19462251663208008,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "15c8dcbc-79e8-4e59-9a21-7ab251c2f7a9",
+            "artifact": "rho-audit-128-rho8.json",
+            "initial_rho_actual_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_actual_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.19462251663208008,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "2488d104-40d2-42cc-b659-32e4f0ed31a9",
+            "artifact": "rho-audit-128-rho8.json",
+            "initial_rho_actual_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_actual_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.19462251663208008,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "15c8dcbc-79e8-4e59-9a21-7ab251c2f7a9",
+            "artifact": "rho-audit-128-rho8.json",
+            "initial_rho_actual_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_actual_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.19462251663208008,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 15.542124542124542,
+          "count_range": [
+            9,
+            16
+          ],
+          "mean_touched_tiles": 1.8302808302808302
+        },
+        "output": {
+          "mean_count": 15.504273504273504,
+          "count_range": [
+            9,
+            16
+          ],
+          "mean_touched_tiles": 1.8156288156288156
+        }
+      }
+    },
+    {
+      "size": 128,
+      "initial_rho": 16,
+      "dense_median_us": 45.59549995519774,
+      "dense_execution_medians_us": [
+        45.575999934044376,
+        45.6149999763511
+      ],
+      "plans": {
+        "persistent-supportprep-g-contract4-atom32": {
+          "independent_executions": 2,
+          "median_us": 134.42149997899833,
+          "run_medians_us": [
+            134.73100000283011,
+            134.11199995516654
+          ],
+          "dense_ratio": 2.9481308486820246,
+          "peak_allocated_bytes": 512000,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 5.648000165820122,
+            "output": 39.93599861860275,
+            "dx": 41.98399931192398,
+            "parameters": 25.088000111281872
+          }
+        },
+        "persistent-supportprep-band-recompute-vjp-atom32": {
+          "independent_executions": 2,
+          "median_us": 157.8079999262627,
+          "run_medians_us": [
+            157.99099992364063,
+            157.6249999288848
+          ],
+          "dense_ratio": 3.461043306495713,
+          "peak_allocated_bytes": 419328,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 8.191999979317188,
+            "h": 5.632000043988228,
+            "output": 39.93599861860275,
+            "dx": 73.72800260782242,
+            "parameters": 16.383999958634377
+          }
+        }
+      },
+      "observations": {
+        "persistent-supportprep-g-contract4-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "a045e20a-b423-4460-9d27-2c526ed10f0f",
+            "artifact": "rho-audit-128-rho16.json",
+            "initial_rho_actual_range": [
+              16.0,
+              16.0
+            ],
+            "final_rho_actual_range": [
+              15.466718673706055,
+              15.467110633850098
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.5332813262939453,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "d08ae16a-98b1-4a51-b30a-16a211469da6",
+            "artifact": "rho-audit-128-rho16.json",
+            "initial_rho_actual_range": [
+              16.0,
+              16.0
+            ],
+            "final_rho_actual_range": [
+              15.466718673706055,
+              15.467110633850098
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.5332813262939453,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "changed_routes": 0
+            }
+          }
+        ],
+        "persistent-supportprep-band-recompute-vjp-atom32": [
+          {
+            "repeat": 1,
+            "job": "l4job-4e7cc970a8cc485a8aa9ae01fc5c039a",
+            "execution_id": "a045e20a-b423-4460-9d27-2c526ed10f0f",
+            "artifact": "rho-audit-128-rho16.json",
+            "initial_rho_actual_range": [
+              16.0,
+              16.0
+            ],
+            "final_rho_actual_range": [
+              15.466718673706055,
+              15.467110633850098
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.5332813262939453,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "changed_routes": 0
+            }
+          },
+          {
+            "repeat": 2,
+            "job": "l4job-305745517a0f4df7b69e8c2e80bba9f0",
+            "execution_id": "d08ae16a-98b1-4a51-b30a-16a211469da6",
+            "artifact": "rho-audit-128-rho16.json",
+            "initial_rho_actual_range": [
+              16.0,
+              16.0
+            ],
+            "final_rho_actual_range": [
+              15.466718673706055,
+              15.467110633850098
+            ],
+            "widths_changed": 819,
+            "width_max_abs_change": 0.5332813262939453,
+            "routing": {
+              "initial_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "final_three_band_atoms": [
+                0,
+                0,
+                819
+              ],
+              "changed_routes": 0
+            }
+          }
+        ]
+      },
+      "initial_support": {
+        "input": {
+          "mean_count": 29.945054945054945,
+          "count_range": [
+            16,
+            32
+          ],
+          "mean_touched_tiles": 2.6776556776556775
+        },
+        "output": {
+          "mean_count": 29.976800976800977,
+          "count_range": [
+            16,
+            32
+          ],
+          "mean_touched_tiles": 2.6849816849816848
+        }
+      }
+    }
+  ]
+}

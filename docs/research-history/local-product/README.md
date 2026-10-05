@@ -1,5 +1,12 @@
 # Small linear product / hybrid H
 
+2026-10-05: [Matched initial rho above one at N64/N128](20261005-rho-audit.md).
+Four L4 jobs measure14 Cases twice with common atom32/4-warp recipes and live
+width updates. Initial rho3/4 costs more than rho8/16; N128 local forward/dX is
+the next latency target. Wide N128 support benefits from saved-G reuse at a
+larger allocated peak. Full-shape scalar gradient gates and raw evidence are
+preserved; physical DRAM/L2 behavior is unmeasured.
+
 2026-10-05: [Multi-owner H reuse and parameter recomputation](20261005-onchip-h.md).
 Wide output tiles reduce saved memory but slow both target cases. Keeping16-site
 owners and recomputing parameter H improves N128's no-G control about4.5%, at
