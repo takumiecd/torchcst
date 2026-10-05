@@ -8,8 +8,9 @@ CUDA実装の詳細は [開発ガイド](kernel-development.ja.md)を参照し�
 ## Main integration must use pull requests
 
 - The user explicitly prohibits direct pushes to `main` (2026-10-05).
-- Publish changes on a named `codex/` branch, create a GitHub pull request, and
-  merge through the pull request after the required validation passes.
+- Follow the purpose-based branch naming policy in `CONTRIBUTING.md`, including
+  `kernel/<purpose>` for kernel development. Create a GitHub pull request and
+  merge through it after the required validation passes.
 - Do not substitute a local merge into `main` for remote PR integration. After
   GitHub merges the PR, fetch and fast-forward the local `main` to `origin/main`.
 - Preserve commits, uncommitted files and needed ignored evidence before
@@ -64,8 +65,9 @@ This queue coordinates one host; another computer must not operate its VMs.
 
 ## Research Git checkpoints
 
-- Keep experiment worktrees on named `codex/` branches. Commit coherent source,
-  tests and research notes at validated checkpoints; record negative results too.
+- Keep kernel experiment worktrees on named `kernel/` branches, following
+  `CONTRIBUTING.md`. Commit coherent source, tests and research notes at validated
+  checkpoints; record negative results too.
 - Keep generated logs, traces, tensors and frozen source copies in ignored
   `evidence/` directories. Preserve these files on disk; do not bulk-add them.
   Track concise results, job IDs, source hashes and reproduction commands in notes.

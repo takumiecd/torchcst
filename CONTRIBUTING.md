@@ -9,9 +9,15 @@
 開発の入口はこの文書です。CUDA kernelの具体的な実装・登録・測定は
 [カーネル開発ガイド](docs/kernel-development.ja.md)を参照してください。
 
+ブランチ名は、作成者やツール名ではなく変更の目的で選びます。
+kernelの新規実装・高速化・recipe/launch調整と、それに伴う検証・計測には
+`kernel/<目的>` を使います。その他は用途に応じて `feat/<目的>`、`fix/<目的>`、
+`refactor/<目的>`、`docs/<目的>`、`test/<目的>`、`chore/<目的>` などを使います。
+いずれもGitHub PRから統合します。
+
 ```text
 変更の数学的な契約を決める
-    → codex/ ブランチで実装・Algorithm/Recipeを登録
+    → kernel/ ブランチで実装・Algorithm/Recipeを登録
     → Plan/Caseを用意し、宣言・独立oracle・回帰テストを確認
     → 同じ条件のbaseline・candidate・denseを実GPUで測定
     → 正しさ・完全step時間・ピークメモリ・証拠を記録
@@ -24,7 +30,7 @@ repoルートで実行します。外部参加者はforkからPRを作成でき�
 
 ```bash
 python -m pip install -e '.[dev]'
-git switch -c codex/my-kernel
+git switch -c kernel/my-kernel
 python -m tools.kernel_dev test --suite cpu
 ```
 

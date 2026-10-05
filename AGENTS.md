@@ -5,8 +5,11 @@ It is the canonical contributor workflow. When using the owner's GPUs or researc
 worktrees, also read [the research operating rules](docs/research-operations.ja.md).
 For CUDA changes, read [the kernel development guide](docs/kernel-development.ja.md).
 
-- Integrate through a named `codex/` branch and GitHub PR; never push directly
-  to `main`. Fast-forward local `main` only after GitHub merges the PR.
+- Follow the purpose-based branch naming policy in `CONTRIBUTING.md`: use
+  `kernel/` for kernel development and prefixes such as `feat/`, `fix/`,
+  `refactor/` or `docs/` for other changes. Integrate through a GitHub PR;
+  never push directly to `main`. Fast-forward local `main` only after GitHub
+  merges the PR.
 - Before GPU work, read the research operating rules and the applicable resource
   skill. Allocation and shared-pool ownership limits
   remain in force; this file does not grant new resource authorization.
