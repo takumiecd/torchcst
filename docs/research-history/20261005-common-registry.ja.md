@@ -61,6 +61,9 @@ mainからAtomState導入までの約0.80 MiBのID map増加とeager overheadは
 失敗jobのsource/spec/transportとslot lifecycleをignored
 `output/common-registry-validation/interrupted/`へ保持した。成功jobのarchives/receipt/logsは
 同ディレクトリの`retrieved/`とhost poolのjob directoryに保持する。
+成功jobはresult回収・hash検証後のremote source削除で接続を失い、cleanup要求がtimeoutした。
+supervisorは所有VMを停止し、pool statusで全slotの停止を確認した。remote source削除の
+完了は未確認として記録し、最終transportとslot lifecycleもローカルへ保持した。
 
 ## 再現
 

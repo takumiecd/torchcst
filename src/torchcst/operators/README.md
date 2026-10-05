@@ -53,8 +53,8 @@ snapshot は forward / backward / CUDA Graph capture 中に行わない。traina
 座標の snapshot は固定の現在値であり、実行時の Tensor や勾配を置き換えない。
 view は live な設定を使うので、設定変更後に宣言を利用する場合は改めて取得する。
 
-CSTLinear / CSTConv2d は宣言から State を構築する。Triton / tiled の
-既存実行と normalized radial の CUDA registry を、CSTLinear の共通入口から選択する。
+CSTLinear / CSTConv2d は宣言から State を構築する。CSTLinear はbackend共通の
+Registry / SelectorからTorch・CUDAのAlgorithmを選択する。
 汎用宣言を受け入れる Algorithm は、その数学的・数値的契約に適合するものだけを
 登録する。入出力 Chart の組を将来なくす場合も、正規化領域と勾配を照合して移行する。
 
