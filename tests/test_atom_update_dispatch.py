@@ -1,4 +1,4 @@
-"""Polar is an independent operation; updates preserve the existing coordinate law."""
+"""Atom updates use common dispatch and preserve the existing coordinate laws."""
 
 import copy
 import os
