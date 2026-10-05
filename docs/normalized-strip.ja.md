@@ -126,7 +126,7 @@ Torch 参照経路を使います。中心の3座標は atom パラメーター�
 示すものではありません。統一後の検証は [Linear 統一記録](linear-unification.ja.md) に記録します。
 
 full / window は Registry に並ぶ二つの Algorithm です。専用の memory 指定はありません。
-[Selector](../src/torchcst/_backends/cuda/dispatch/README.md) が登録済み Plan を選びます。
+[Selector](../src/torchcst/_backends/dispatch/README.md) が登録済み Plan を選びます。
 window は W と dW を行窓の作業領域で再利用し、境界の勾配に
 必要な8行の halo を保持します。全体ノルムと全5パラメータの勾配は維持します。
 逆伝播で W を再生成するため、メモリ削減には追加計算が伴います。

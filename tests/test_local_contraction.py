@@ -5,7 +5,7 @@ import torch
 
 from benchmarks.cuda.linear.local_product import LocalRecipe
 from benchmarks.cuda.linear.manifest import REGISTRY, decode_catalog, read_json
-from torchcst._backends.cuda.algorithms.local_product.contract import Domain
+from torchcst._backends.cuda.algorithms.linear.local_product.contract import Domain
 
 CATALOG = "benchmarks/cuda/linear/plans-local-contraction.json"
 ROUTES = (
@@ -33,7 +33,7 @@ def test_contraction_catalog_roundtrip_and_configuration():
     "spacing,origin", [(1.0, 0.0), (0.5, 3.0), (1.3, -7.0), (0.5, 1e8)]
 )
 def test_bounded_metadata_matches_full_scan(spacing, origin):
-    from torchcst._backends.cuda.algorithms.local_product.executor import (
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import (
         prepare_metadata,
     )
 
@@ -73,8 +73,8 @@ def test_contraction_slices_gradients_and_repeated_backward(route, batch):
     from test_local_product_research import fixture, scalar_oracle
 
     from benchmarks.cuda.linear.fixtures import local_product_state
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
-    from torchcst._backends.cuda.algorithms.local_product.persistent import (
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.persistent import (
         PersistentLayout,
     )
 

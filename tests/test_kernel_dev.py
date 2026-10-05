@@ -23,7 +23,7 @@ from tools.kernel_dev.__main__ import main
 assert main(['check', '--plans', {str(PLANS)!r},
     '--case', {str(CASE)!r}, '--case', {str(CASE)!r}]) == 0
 assert 'triton' not in sys.modules
-assert 'torchcst._backends.cuda.algorithms.local_product.executor' not in sys.modules
+assert 'torchcst._backends.cuda.algorithms.linear.local_product.executor' not in sys.modules
 """
     result = subprocess.run(
         [sys.executable, "-c", code], check=True, capture_output=True, text=True

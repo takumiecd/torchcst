@@ -7,12 +7,12 @@ import torch
 
 from benchmarks.cuda.linear.fixtures import normalized_chart as chart
 from benchmarks.cuda.linear.reference import mixed, oracle
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+from torchcst._backends.catalog import REGISTRY
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
     FULL,
     WINDOW,
 )
-from torchcst._backends.cuda.dispatch import FixedSelector
+from torchcst._backends.dispatch import FixedSelector
 
 
 def public_class():

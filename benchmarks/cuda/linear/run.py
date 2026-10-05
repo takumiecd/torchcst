@@ -35,10 +35,11 @@ from benchmarks.cuda.linear.manifest import (
     load_snapshot,
     read_json,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
+from torchcst import Dispatcher, LinearInputs
+from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
     geometry,
 )
-from torchcst._backends.cuda.context import context_from_tensors
+from torchcst.operators.execution import LinearBinding
 
 
 class PlanLinear(nn.Module):
@@ -48,14 +49,26 @@ class PlanLinear(nn.Module):
         super().__init__()
         self.p = nn.Parameter(p.detach().clone().contiguous())
         self.operator, self.plan = operator, plan
+        self._algorithm_states = []
+        self.workspace_limit_bytes = None
         self.local_state = None
         self.persistent_layout = None
+        self.update_binding = None
         if plan.algorithm_id == "research_local_product":
             from benchmarks.cuda.linear.local_product import runtime
 
             self.local_state, domain = runtime(operator, self.p.device)
+            from torchcst import Atoms, AtomUpdateBinding, Operator
+
+            self.update_binding = AtomUpdateBinding(
+                Operator(
+                    charts=domain.charts(device=self.p.device, dtype=self.p.dtype),
+                    kernel=self.local_state,
+                    atoms=Atoms(self.p),
+                )
+            )
             if plan.recipe.execution_route == "hybrid_persistent":
-                from torchcst._backends.cuda.algorithms.local_product.persistent import (
+                from torchcst._backends.cuda.algorithms.linear.local_product.persistent import (
                     PersistentLayout,
                 )
 
@@ -63,22 +76,30 @@ class PlanLinear(nn.Module):
                     self.p, self.local_state, domain, plan.recipe
                 )
 
+    input_type = LinearInputs
+
+    execution_declaration = LinearBinding.execution_declaration
+
+    def execution_parameters(self):
+        return self.p
+
+    validate_inputs = LinearBinding.validate_inputs
+
+    def build_context(self, inputs):
+        from torchcst.operators.context import context_from_tensors
+
+        return context_from_tensors(self.operator, inputs.x, self.p)
+
+    def state_signature(self):
+        from torchcst._backends.state import tensor_signature
+
+        return tensor_signature(self.p), self.operator
+
+    algorithm_state = LinearBinding.algorithm_state
+
     def forward(self, x):
         flat = x.reshape(-1, self.operator.in_features).contiguous()
-        context = context_from_tensors(self.operator, flat, self.p)
-        if self.persistent_layout is not None:
-            algorithm = REGISTRY.validate(self.plan, context)
-            y = algorithm.execute(
-                x=flat,
-                parameters=self.p,
-                operator=self.operator,
-                recipe=self.plan.recipe,
-                persistent_layout=self.persistent_layout,
-            )
-            return y.reshape(*x.shape[:-1], self.operator.out_features)
-        y = REGISTRY.execute(
-            self.plan, context, x=flat, parameters=self.p, operator=self.operator
-        )
+        y = Dispatcher(registry=REGISTRY).run(self, LinearInputs(flat), plan=self.plan)
         return y.reshape(*x.shape[:-1], self.operator.out_features)
 
 
@@ -96,6 +117,7 @@ def _metadata(args, run):
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
         Path(__file__).with_name("local_product.py"),
+        Path(__file__).parent.parent / "polar_update.py",
     ]
     return {
         "schema_version": 1,
@@ -185,9 +207,15 @@ def measure(args, run):
             fixture_state,
             initialize,
         )
-        from torchcst._backends.cuda.algorithms.local_product.contract import Domain
-        from torchcst._backends.cuda.algorithms.local_product.preparation import decode
-        from torchcst._backends.cuda.algorithms.local_product.support import summarize
+        from torchcst._backends.cuda.algorithms.linear.local_product.contract import (
+            Domain,
+        )
+        from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
+            decode,
+        )
+        from torchcst._backends.cuda.algorithms.linear.local_product.support import (
+            summarize,
+        )
 
         op, p = fixture_operator(case), initialize(case)
         support_report = summarize(decode(fixture_state(case), p), Domain(n, n))
@@ -231,7 +259,9 @@ def measure(args, run):
     initial_sigma = None
     initial_precision = None
     if local and args.worker != "dense":
-        from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+        from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
+            decode,
+        )
 
         initial_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
         initial_sigma = initial_precision.rsqrt()
@@ -255,10 +285,10 @@ def measure(args, run):
         if events is not None:
             events[2].record()
         if local and args.worker != "dense":
-            from benchmarks.cuda.linear.local_product import optimizer_step
+            from benchmarks.cuda.polar_update import optimizer_step
 
             optimizer_step(
-                model,
+                model.update_binding,
                 optimizer,
                 step_size=case.optimizer.lr,
                 polar_update=args.polar_update,
@@ -408,7 +438,7 @@ def measure(args, run):
         diagnostic = torch.cuda.CUDAGraph()
         backend_events = None
         if args.kernel_diagnostics and local and args.worker != "dense":
-            from torchcst._backends.cuda.algorithms.local_product import executor
+            from torchcst._backends.cuda.algorithms.linear.local_product import executor
 
             backend_events = {
                 name: [
@@ -497,7 +527,7 @@ def measure(args, run):
         if local and args.worker != "dense"
         else None,
         "compiler_reports": __import__(
-            "torchcst._backends.cuda.algorithms.local_product.executor",
+            "torchcst._backends.cuda.algorithms.linear.local_product.executor",
             fromlist=["COMPILER_REPORTS"],
         ).COMPILER_REPORTS
         if local and args.worker != "dense"

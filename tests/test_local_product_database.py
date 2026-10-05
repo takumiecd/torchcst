@@ -21,7 +21,7 @@ from benchmarks.dispatch import generate
 from benchmarks.dispatch.generate import _context
 from tests.benchmark_database_fixtures import artifact
 from tests.test_dispatch_generation import dataset_for, reseal
-from torchcst._backends.cuda.dispatch import load_selector, validate_selector_artifact
+from torchcst._backends.dispatch import load_selector, validate_selector_artifact
 
 LINEAR = Path(__file__).resolve().parents[1] / "benchmarks/cuda/linear"
 
@@ -203,7 +203,7 @@ def test_local_speed_and_baseline_peak_ceiling_select_different_plans(monkeypatc
             validate_selector_artifact(result.artifact, registry=REGISTRY)
             == result.artifact
         )
-    from torchcst._backends.cuda.dispatch import exact
+    from torchcst._backends.dispatch import exact
 
     monkeypatch.setattr(exact.torch, "__version__", "2.8.0")
     monkeypatch.setattr(exact, "version", lambda _: "3.4.0")

@@ -54,7 +54,7 @@ def decoded_arcs(plan, arcs):
 def test_local_candidates_match_exhaustive_all_station_boundaries(
     stations, start, spacing, extra
 ):
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.preparation import (
         route_and_layout,
     )
 
@@ -89,7 +89,7 @@ def test_local_candidates_match_exhaustive_all_station_boundaries(
 
 
 def test_extreme_coordinate_scale_uses_exhaustive_fallback():
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.preparation import (
         route_and_layout,
     )
 
@@ -102,7 +102,7 @@ def test_extreme_coordinate_scale_uses_exhaustive_fallback():
 
 
 def test_captured_routing_handles_unrestricted_atom_jumps():
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.preparation import (
         route_and_layout,
     )
 

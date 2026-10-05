@@ -15,12 +15,12 @@ from benchmarks.dispatch import ScorePolicy, generate
 from benchmarks.dispatch.generate import _context
 from benchmarks.dispatch.request import validate_request
 from tests.benchmark_database_fixtures import artifact
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+from torchcst._backends.catalog import REGISTRY
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
     FULL,
     WINDOW,
 )
-from torchcst._backends.cuda.dispatch import load_selector, validate_selector_artifact
+from torchcst._backends.dispatch import load_selector, validate_selector_artifact
 
 
 def measured(*, full=2.0, window=1.0, full_peak=1200, window_peak=1500):
@@ -125,7 +125,7 @@ def test_actual_selector_roundtrip_and_unobserved_fallback(monkeypatch):
     result = generate(dataset, request, registry=REGISTRY)
     assert len(result.artifact["entries"]) == 1
     # Simulate the recorded target runtime; no CUDA kernel is executed here.
-    from torchcst._backends.cuda.dispatch import exact
+    from torchcst._backends.dispatch import exact
 
     monkeypatch.setattr(exact.torch, "__version__", "2.8.0")
     monkeypatch.setattr(exact, "version", lambda _: "3.4.0")

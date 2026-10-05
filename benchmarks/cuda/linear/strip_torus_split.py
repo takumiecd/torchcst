@@ -17,12 +17,12 @@ from benchmarks.cuda.linear.strip_torus import model, timed
 
 
 def execution_mode(name):
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.executor import (
         forward as triton_forward,
     )
 
     return patch(
-        "torchcst._backends.cuda.algorithms.strip_torus.fused.executor.forward",
+        "torchcst._backends.cuda.algorithms.linear.strip_torus.fused.executor.forward",
         partial(triton_forward, split_reductions=name == "optimized"),
     )
 

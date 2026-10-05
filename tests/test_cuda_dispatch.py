@@ -9,32 +9,34 @@ import pytest
 import torch
 
 from benchmarks.cuda.linear.fixtures import operator_spec
-from torchcst._backends.cuda.algorithm import Algorithm
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
-    geometry,
-)
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
+from torchcst import Dispatcher, LinearBinding, LinearInputs
+from torchcst._backends.algorithm import Algorithm
+from torchcst._backends.catalog import REGISTRY
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.full.recipe import (
     FullRecipe,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import (
-    WindowRecipe,
-)
-from torchcst._backends.cuda.context import context_from_tensors
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
     FULL,
     WINDOW,
 )
-from torchcst._backends.cuda.dispatch.select import FixedSelector
-from torchcst._backends.cuda.registry import Registry
-from torchcst._backends.cuda.schema import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.window.recipe import (
+    WindowRecipe,
+)
+from torchcst._backends.dispatch.select import FixedSelector
+from torchcst._backends.dispatch.validation import validate_plan_context
+from torchcst._backends.registry import Registry
+from torchcst._backends.schema import (
     DeviceInfo,
-    DispatchContext,
     ExecutionPlan,
     PrecisionPolicy,
     RequiredGrads,
     SupportResult,
 )
+from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
+    geometry,
+)
+from torchcst.operators.context import LinearContext as DispatchContext
+from torchcst.operators.context import context_from_tensors
 
 
 def replace_sites(spec, **kwargs):
@@ -101,7 +103,7 @@ def test_window_row_guard_falls_back(rows):
         == FULL
     )
     with pytest.raises(ValueError, match="divisible by 32"):
-        REGISTRY.validate(WINDOW, context(operator=op))
+        validate_plan_context(REGISTRY, WINDOW, context(operator=op))
 
 
 @pytest.mark.parametrize(
@@ -130,10 +132,10 @@ def test_registry_rejects_revision_recipe_and_duplicate_registration():
     with pytest.raises(ValueError, match="unknown"):
         REGISTRY.get("normalized_full", revision="v0")
     with pytest.raises(TypeError, match="recipe type"):
-        REGISTRY.validate(replace(FULL, recipe=WindowRecipe()), context())
+        validate_plan_context(REGISTRY, replace(FULL, recipe=WindowRecipe()), context())
     with pytest.raises(ValueError, match="unvalidated"):
-        REGISTRY.validate(
-            replace(WINDOW, recipe=WindowRecipe(window_rows=256)), context()
+        validate_plan_context(
+            REGISTRY, replace(WINDOW, recipe=WindowRecipe(window_rows=256)), context()
         )
     registry = Registry()
     entry = REGISTRY.get("normalized_full", revision="v1")
@@ -159,7 +161,8 @@ def test_context_is_metadata_and_immutable():
     with pytest.raises(FrozenInstanceError):
         ctx.atom_count = 9
     with pytest.raises(ValueError, match="contract"):
-        REGISTRY.validate(
+        validate_plan_context(
+            REGISTRY,
             FULL,
             replace(
                 ctx,
@@ -173,10 +176,10 @@ def test_context_is_metadata_and_immutable():
 
 def test_import_does_not_load_triton_or_gpu_implementations():
     code = (
-        "import sys; from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL; "
+        "import sys; from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import FULL; "
         "assert 'triton' not in sys.modules; "
-        "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.kernels' not in sys.modules; "
-        "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.executor' not in sys.modules; assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.provider' not in sys.modules"
+        "assert 'torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.full.kernels' not in sys.modules; "
+        "assert 'torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.full.executor' not in sys.modules; assert 'torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.window.provider' not in sys.modules"
     )
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(sys.path)
@@ -197,7 +200,10 @@ def test_direct_execution_checks_metadata_and_preserves_autograd_per_invocation(
         def workspace_bound(self, context, recipe):
             return 0
 
-        def execute(self, *, x, parameters, operator, recipe):
+        def execute(self, state, inputs):
+            from torchcst.operators.execution import linear_execution
+
+            x, parameters, _, _ = linear_execution(state, inputs)
             return x * parameters[0, 0]
 
     registry.register(
@@ -207,6 +213,7 @@ def test_direct_execution_checks_metadata_and_preserves_autograd_per_invocation(
             operation_id="linear",
             semantics_id="normalized-strip-triweight-l2-v1",
             recipe_type=FullRecipe,
+            input_type=LinearInputs,
         )
     )
     plan = ExecutionPlan("cpu_connection_test", "v1", FullRecipe())
@@ -214,27 +221,27 @@ def test_direct_execution_checks_metadata_and_preserves_autograd_per_invocation(
     p = torch.ones(1, 7, requires_grad=True)
     x1 = torch.ones(2, 16, requires_grad=True)
     x2 = torch.full((2, 16), 2.0, requires_grad=True)
-    c1, c2 = [context_from_tensors(op, x, p) for x in (x1, x2)]
-    y1 = registry.execute(plan, c1, x=x1, parameters=p, operator=op)
-    y2 = registry.execute(plan, c2, x=x2, parameters=p, operator=op)
+    c1, _ = [context_from_tensors(op, x, p) for x in (x1, x2)]
+    binding = LinearBinding(op, p)
+    dispatcher = Dispatcher(registry=registry)
+    y1 = dispatcher.run(binding, LinearInputs(x1), plan=plan)
+    y2 = dispatcher.run(binding, LinearInputs(x2), plan=plan)
     (y1.sum() + y2.sum()).backward()
     assert torch.equal(x1.grad, torch.ones_like(x1))
     assert torch.equal(x2.grad, torch.ones_like(x2))
     assert p.grad[0, 0] == 96
-    with pytest.raises(ValueError, match="input metadata"):
-        registry.execute(
-            plan, replace(c1, input_shape=(3, 16)), x=x1, parameters=p, operator=op
+    # Public execution cannot accept a hand-written Context as input validation.
+    with pytest.raises(TypeError, match="context"):
+        dispatcher.run(
+            binding,
+            LinearInputs(x1),
+            plan=plan,
+            context=replace(c1, input_shape=(3, 16)),
         )
     with pytest.raises(ValueError, match="dtype"):
-        registry.execute(plan, c1, x=x1.double(), parameters=p, operator=op)
-    with pytest.raises(ValueError, match="gradient requirements"):
-        registry.execute(
-            plan,
-            replace(c1, required_grads=RequiredGrads()),
-            x=x1,
-            parameters=p,
-            operator=op,
-        )
+        dispatcher.run(binding, LinearInputs(x1.double()), plan=plan)
+    with pytest.raises(ValueError, match="in_features"):
+        dispatcher.run(binding, LinearInputs(torch.ones(2, 17)), plan=plan)
 
 
 @pytest.mark.parametrize(
@@ -243,7 +250,7 @@ def test_direct_execution_checks_metadata_and_preserves_autograd_per_invocation(
 def test_recipe_field_types_cannot_alias_validated_values(recipe):
     plan = replace(FULL if type(recipe) is FullRecipe else WINDOW, recipe=recipe)
     with pytest.raises(ValueError, match="unvalidated"):
-        REGISTRY.validate(plan, context())
+        validate_plan_context(REGISTRY, plan, context())
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
@@ -266,8 +273,8 @@ def test_cuda_direct_plan_grad_subsets_and_two_live_forwards(
         x1 = torch.randn(2, 16, device="cuda", requires_grad=input_grad)
         x2 = torch.randn(3, 16, device="cuda", requires_grad=input_grad)
         y1, y2 = [
-            REGISTRY.execute(
-                plan, context_from_tensors(op, x, p), x=x, parameters=p, operator=op
+            Dispatcher(registry=REGISTRY).run(
+                LinearBinding(op, p), LinearInputs(x), plan=plan
             )
             for x in (x1, x2)
         ]
@@ -293,7 +300,7 @@ def test_cuda_direct_plan_grad_subsets_and_two_live_forwards(
 
 def test_algorithm_requires_all_four_operations():
     with pytest.raises(TypeError, match="abstract"):
-        Algorithm("incomplete", "v1", "op", "semantics", FullRecipe)
+        Algorithm("incomplete", "v1", "op", "semantics", FullRecipe, LinearInputs)
 
     class MissingExecute(Algorithm[FullRecipe]):
         def validate_recipe(self, recipe):
@@ -306,7 +313,7 @@ def test_algorithm_requires_all_four_operations():
             return None
 
     with pytest.raises(TypeError, match="execute"):
-        MissingExecute("incomplete", "v1", "op", "semantics", FullRecipe)
+        MissingExecute("incomplete", "v1", "op", "semantics", FullRecipe, LinearInputs)
 
 
 def test_registry_accepts_only_algorithm_contract_and_identity_is_immutable():
@@ -320,7 +327,7 @@ def test_registry_accepts_only_algorithm_contract_and_identity_is_immutable():
 
 
 def test_algorithm_identity_requires_valid_metadata():
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import (
+    from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import (
         NormalizedFullAlgorithm,
     )
 

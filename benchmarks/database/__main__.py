@@ -7,7 +7,7 @@ from pathlib import Path
 import psycopg
 
 from benchmarks.database.postgres import Database, connect_from_env
-from torchcst._backends.cuda.serialization import encode_json
+from torchcst._backends.serialization import encode_json
 
 
 def main():

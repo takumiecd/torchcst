@@ -19,11 +19,11 @@ from benchmarks.cuda.linear.fixtures import normalized_chart
 from benchmarks.cuda.linear.manifest import DEFAULT_PLANS, decode_catalog, read_json
 from benchmarks.cuda.linear.reference import mixed, oracle
 from torchcst import CSTLinear, presets
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.context import context_from_tensors
-from torchcst._backends.cuda.dispatch import ExactSelector, load_selector
-from torchcst._backends.cuda.dispatch.conditions import dump_condition
-from torchcst._backends.cuda.serialization import encode_json
+from torchcst._backends.catalog import REGISTRY
+from torchcst._backends.dispatch import ExactSelector, load_selector
+from torchcst._backends.dispatch.conditions import dump_condition
+from torchcst._backends.serialization import encode_json
+from torchcst.operators.context import context_from_tensors
 
 
 class RecordingSelector(ExactSelector):

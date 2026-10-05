@@ -137,7 +137,9 @@ def local_product_dense_factors(p, value, domain):
 
     import torch
 
-    from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+    from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
+        decode,
+    )
 
     q = decode(value, p)
     j = torch.arange(domain.input_size, device=p.device, dtype=p.dtype)

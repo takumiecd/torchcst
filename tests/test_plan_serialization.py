@@ -6,14 +6,20 @@ from dataclasses import asdict, dataclass, replace
 import pytest
 import torch
 
-from torchcst._backends.cuda.algorithm import Algorithm
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
+from torchcst._backends.algorithm import Algorithm
+from torchcst._backends.catalog import REGISTRY
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.full.recipe import (
     FullRecipe,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL, WINDOW
-from torchcst._backends.cuda.registry import Registry
-from torchcst._backends.cuda.schema import ExecutionPlan, SupportResult
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
+    FULL,
+    WINDOW,
+)
+from torchcst._backends.registry import Registry
+from torchcst._backends.schema import (
+    ExecutionPlan,
+    SupportResult,
+)
 
 
 @pytest.mark.parametrize("plan", [FULL, WINDOW])
@@ -73,14 +79,14 @@ class MetadataAlgorithm(Algorithm[MetadataRecipe]):
     def workspace_bound(self, context, recipe):
         return None
 
-    def execute(self, **kwargs):
+    def execute(self, state, inputs):
         raise AssertionError("serialization must not execute an Algorithm")
 
 
 def metadata_registry():
     registry = Registry()
     registry.register(
-        MetadataAlgorithm("metadata", "v1", "test", "test-v1", MetadataRecipe)
+        MetadataAlgorithm("metadata", "v1", "test", "test-v1", MetadataRecipe, tuple)
     )
     return registry
 

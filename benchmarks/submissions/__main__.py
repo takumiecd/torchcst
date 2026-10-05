@@ -10,7 +10,7 @@ from pathlib import Path
 
 from benchmarks.submissions.github import GitHub, Submission, submission_from_issue
 from benchmarks.submissions.policy import DEFAULT_POLICY, load_policy
-from torchcst._backends.cuda.serialization import decode_json, encode_json
+from torchcst._backends.serialization import decode_json, encode_json
 
 
 def validate_result(raw, policy):
@@ -106,10 +106,13 @@ def write_feedback(github, number, policy, *, receipt=None, failure=None, run_ur
             "検証はJSONの形式・内部整合性の確認です。GPU実行の真正性やkernelの採用を証明するものではありません。"
         )
     else:
-        body = "受付処理が完了しませんでした。同じ観測を再実行しても重複登録されません。" + (
-            f"\n\n{failure}"
-            if failure
-            else "\n\n受付Actionsのログで、添付形式・計測結果・提出上限を確認してください。"
+        body = (
+            "受付処理が完了しませんでした。同じ観測を再実行しても重複登録されません。"
+            + (
+                f"\n\n{failure}"
+                if failure
+                else "\n\n受付Actionsのログで、添付形式・計測結果・提出上限を確認してください。"
+            )
         )
     if run_url:
         body += f"\n\n[受付Actions]({run_url})"

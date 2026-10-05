@@ -6,10 +6,12 @@ from test_local_product_research import scalar_oracle
 
 from benchmarks.cuda.linear.fixtures import local_product_state
 from benchmarks.cuda.linear.manifest import decode_snapshot, load_run
-from torchcst._backends.cuda.algorithms.local_product.contract import Domain
-from torchcst._backends.cuda.algorithms.local_product.executor import local_h
-from torchcst._backends.cuda.algorithms.local_product.persistent import PersistentLayout
-from torchcst._backends.cuda.algorithms.local_product.recipe import Recipe
+from torchcst._backends.cuda.algorithms.linear.local_product.contract import Domain
+from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
+from torchcst._backends.cuda.algorithms.linear.local_product.persistent import (
+    PersistentLayout,
+)
+from torchcst._backends.cuda.algorithms.linear.local_product.recipe import Recipe
 
 
 @pytest.mark.parametrize("stage", ["early", "middle", "late", "narrow-only"])

@@ -2,7 +2,7 @@
 
 import pytest
 
-from torchcst._backends.cuda.algorithms.strip_torus.fused.schedule import (
+from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.schedule import (
     WORKSPACE_BYTES,
     split_count,
 )

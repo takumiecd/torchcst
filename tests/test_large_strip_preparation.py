@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.host import prepare
 from torchcst._backends.torch.geometry import execution as _geometry
 from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 
@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
 @pytest.mark.parametrize("stations,atoms", [(1025, 1), (2048, 17), (4096, 65)])
 def test_chunked_owners_layout_and_gradients(stations, atoms):
     from benchmarks.cuda.linear.fixtures import strip_torus_model as model
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.preparation import (
         route_and_layout,
     )
 

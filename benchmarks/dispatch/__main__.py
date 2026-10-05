@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from benchmarks.cuda.linear.manifest import REGISTRY
-from torchcst._backends.cuda.serialization import decode_json, encode_json
+from torchcst._backends.serialization import decode_json, encode_json
 
 from .generate import generate
 from .request import validate_request

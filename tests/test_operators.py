@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from torchcst import BandwidthBounds
-from torchcst._backends.torch.charts import construction as _construction
-
 import copy
 from dataclasses import FrozenInstanceError, replace
 
@@ -18,7 +15,15 @@ from kernel_cases import (
     triweight_state,
 )
 
-from torchcst import ChartPairSpec, CSTLinear, Operator, SingleChartSpec
+from torchcst import (
+    BandwidthBounds,
+    ChartPairSpec,
+    CSTLinear,
+    Operator,
+    SingleChartSpec,
+)
+from torchcst._backends.dispatch.validation import validate_plan_context
+from torchcst._backends.torch.charts import construction as _construction
 
 
 def make_single():
@@ -215,7 +220,7 @@ def test_operator_rebinds_after_replacing_module_state():
 
 def test_normalized_strip_is_a_distinct_single_chart_contract():
     from torchcst import CSTLinear, presets
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
+    from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
         NormalizedStripGeometry,
     )
 
@@ -261,7 +266,7 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
 
 def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
     from benchmarks.cuda.linear.fixtures import operator_spec
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
+    from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
         NormalizedStripGeometry,
     )
     from torchcst.kernels import BiweightSpec, NormalizationSpec
@@ -320,12 +325,13 @@ def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
             ),
         ),
     ]
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+    from torchcst._backends.catalog import REGISTRY
+    from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
         FULL,
         WINDOW,
     )
-    from torchcst._backends.cuda.schema import DeviceInfo, DispatchContext
+    from torchcst._backends.schema import DeviceInfo
+    from torchcst.operators.context import LinearContext as DispatchContext
 
     for candidate in variants:
         with pytest.raises(ValueError, match="contract"):
@@ -341,7 +347,7 @@ def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
         )
         for plan in (FULL, WINDOW):
             with pytest.raises(ValueError, match="contract"):
-                REGISTRY.validate(plan, context)
+                validate_plan_context(REGISTRY, plan, context)
 
 
 def test_log_width_declaration_validates_finite_positive_bounds():

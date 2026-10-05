@@ -4,8 +4,8 @@ import pytest
 import torch
 
 from benchmarks.cuda.linear.manifest import decode_snapshot, load_run
-from torchcst._backends.cuda.algorithms.local_product.contract import Domain
-from torchcst._backends.cuda.algorithms.local_product.recipe import Recipe
+from torchcst._backends.cuda.algorithms.linear.local_product.contract import Domain
+from torchcst._backends.cuda.algorithms.linear.local_product.recipe import Recipe
 
 
 @pytest.mark.parametrize("stage", ["early", "middle", "late", "narrow-only"])
@@ -20,7 +20,9 @@ def test_packed_plan_snapshot(stage):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_two_physical_layouts_and_inactive_tail():
-    from torchcst._backends.cuda.algorithms.local_product.executor import tile_layout
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import (
+        tile_layout,
+    )
 
     # Canonical fields are deliberately unsorted. The floor-active one-site
     # atom (ID6) belongs to a general band, not the certified singleton prefix.
@@ -50,7 +52,7 @@ def test_two_physical_layouts_and_inactive_tail():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_empty_packed_operator_and_gradients():
     from benchmarks.cuda.linear.fixtures import local_product_state
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     x = torch.randn(3, 32, device="cuda", requires_grad=True)
     p = torch.empty(0, 4, device="cuda", requires_grad=True)

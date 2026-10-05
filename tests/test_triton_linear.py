@@ -23,10 +23,11 @@ from kernel_cases import (
 )
 
 from torchcst import CSTLinear
-from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import (
+from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.executor import (
     forward as triton_forward,
 )
-from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.host import prepare
+from torchcst._backends.dispatch import UnsupportedPlan
 from torchcst._backends.torch.operators.strip_torus.preparation import (
     execution_plan,
     geometry_factors,
@@ -218,7 +219,7 @@ def test_triton_empty_batch_and_input_only_gradient():
 @GPU
 def test_triton_rejects_unsupported_dtype_and_deterministic_atom_backward():
     model = _model(device="cuda", backend="triton").double()
-    with pytest.raises(TypeError, match="float32"):
+    with pytest.raises(UnsupportedPlan, match="float32"):
         model(torch.randn(1, 21, device="cuda", dtype=torch.float64))
     model = model.float()
     previous = torch.are_deterministic_algorithms_enabled()
@@ -365,7 +366,7 @@ def test_triton_warm_forward_captures_updated_inputs_and_atoms():
 @pytest.mark.parametrize("rows,station_rows", [(1, 1), (9, 5), (21, 5), (64, 4)])
 @pytest.mark.parametrize("count", [0, 37, 257])
 def test_fused_routing_matches_reference_including_seams(rows, station_rows, count):
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.preparation import (
         route_and_layout,
     )
     from torchcst._backends.torch.operators.strip_torus.layout import _station_layout
@@ -411,7 +412,7 @@ def test_fused_preparation_matches_values_and_gradients(representation):
 @GPU
 @pytest.mark.parametrize("power,floor,birth", [(1.0, 0.3, 3.5), (0.4, 1.1, 2.2)])
 def test_fused_bandwidth_preserves_envelopes_and_stop_gradient(power, floor, birth):
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.preparation import (
         tile_parameters,
     )
 

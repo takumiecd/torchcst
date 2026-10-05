@@ -8,7 +8,7 @@ import urllib.request
 from dataclasses import asdict, dataclass
 
 from benchmarks.submissions.policy import account_login, positive_id
-from torchcst._backends.cuda.serialization import decode_json
+from torchcst._backends.serialization import decode_json
 
 TITLE_PREFIX = "[Benchmark result] "
 API_LIMIT = 1024**2

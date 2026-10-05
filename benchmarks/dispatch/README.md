@@ -12,7 +12,7 @@ PostgreSQLの固定snapshot（READ ONLY / REPEATABLE READ）
 DB接続・集計・評価は生成時に行う。ライブラリのforwardからDBへ接続しない。
 生成adapterは `cuda.linear.complete-step`（normalized Strip は revision 2、
 研究用 local product は revision 3）、選択器は `exact_table`。
-既存の [Selector artifact v1](../../src/torchcst/_backends/cuda/dispatch/README.md)を出力する。
+既存の [Selector artifact v1](../../src/torchcst/_backends/dispatch/README.md)を出力する。
 GPUでの再測定、kernel承認、既定dispatchへの自動採用は行わない。
 
 ## 生成依頼JSON
@@ -73,7 +73,7 @@ JSONに式・関数本体・import先を書いて実行する方式にはしな�
 
 ```python
 from benchmarks.dispatch import ScorePolicy, generate
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.catalog import REGISTRY
 
 
 def my_score(candidate):

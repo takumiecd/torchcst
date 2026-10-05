@@ -53,8 +53,8 @@ snapshot は forward / backward / CUDA Graph capture 中に行わない。traina
 座標の snapshot は固定の現在値であり、実行時の Tensor や勾配を置き換えない。
 view は live な設定を使うので、設定変更後に宣言を利用する場合は改めて取得する。
 
-CSTLinear / CSTConv2d は宣言から State を構築する。Triton / tiled の
-既存実行と normalized radial の CUDA registry を、CSTLinear の共通入口から選択する。
+CSTLinear / CSTConv2d は宣言から State を構築する。CSTLinear はbackend共通の
+Registry / SelectorからTorch・CUDAのAlgorithmを選択する。
 汎用宣言を受け入れる Algorithm は、その数学的・数値的契約に適合するものだけを
 登録する。入出力 Chart の組を将来なくす場合も、正規化領域と勾配を照合して移行する。
 
@@ -70,9 +70,10 @@ DirectAmpWidth の activity 座標や Chart ごとの正規化とは別の意味
 正規化用にも同じ live Operator / KernelState / ChartState / Atoms を使う。
 公開 Linear は CSTLinear に統一し、旧専用クラスと checkpoint adapter は削除した。
 
-`_backends/linear.py` の共通 dispatch が対応を判定し、`_backends/normalized.py` が
-CPU の局所支持計算と CUDA Registry を接続する。対応判定は
-`cuda/algorithms/normalized_euclidean_strip/contract.py` に置く。
+共通RegistryがAlgorithmを登録し、SelectorがPlan候補を選ぶ。DispatcherがInputsの検証、
+Context構築、対応判定、State取得とAlgorithm実行を接続する。
+Operatorは共通Chart/Geometry/Kernelへの入口を保ち、normalized専用のOperator型や
+adapterは追加しない。regular siteの配置情報はnormalized Algorithm内で既存宣言から得る。
 regular Product と連続 Strip は同じ点配置で実行できる。
 固定 kernel・正規化・幅・Euclidean site の意味が一致しない場合は、この専用
 algorithm に流さず一般の Torch 参照経路を使う。

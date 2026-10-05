@@ -9,8 +9,8 @@ import torch
 from test_strip_torus_gemm_prototype import _model as seam_model
 from test_triton_linear import GPU, _model
 
-from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import forward
-from torchcst._backends.cuda.algorithms.strip_torus.fused.host import prepare
+from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.executor import forward
+from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.host import prepare
 from torchcst._backends.torch.operators.strip_torus.preparation import execution_plan
 from torchcst._backends.torch.operators.strip_torus.support import (
     station_buckets,

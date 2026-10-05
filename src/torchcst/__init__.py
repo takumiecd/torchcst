@@ -1,6 +1,18 @@
 """Fixed-shape continuous operators for PyTorch."""
 
-from .atoms import Atoms
+from ._backends.algorithm import Algorithm
+from ._backends.catalog import make_registry as make_algorithm_registry
+from ._backends.dispatch import (
+    Dispatcher,
+    ExecutionBinding,
+    FixedSelector,
+    OrderedSelector,
+    Selector,
+)
+from ._backends.registry import Registry
+from ._backends.schema import DefaultRecipe, ExecutionPlan, SupportResult
+from ._backends.state import AlgorithmState
+from .atoms import AtomOptimizerState, Atoms, AtomState, OptimizerFieldSpec
 from .charts import (
     ChartSpec,
     ChartState,
@@ -41,6 +53,8 @@ from .kernels import (
 )
 from .nn import CSTConv2d, CSTLinear, CSTModule
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
+from .operators.execution import LinearBinding, LinearInputs
+from .operators.atom_update import AtomUpdateBinding, AtomUpdateInputs
 from .optim import CSTOptimizer, OptimizerStateAdapter
 from .patterns import (
     GridPatternSpec,
@@ -52,7 +66,11 @@ from .patterns import (
 from .patterns import presets as pattern_presets
 
 __all__ = [
+    "Algorithm",
+    "AlgorithmState",
     "AmpWidthSpec",
+    "AtomOptimizerState",
+    "AtomState",
     "Atoms",
     "BandwidthBounds",
     "BiweightSpec",
@@ -63,10 +81,15 @@ __all__ = [
     "ChartPairSpec",
     "ChartSpec",
     "ChartState",
+    "DefaultRecipe",
     "DirectAmpWidthSpec",
+    "Dispatcher",
     "EuclideanGeometrySpec",
+    "ExecutionBinding",
+    "ExecutionPlan",
     "ExplicitChartSpec",
     "ExplicitChartState",
+    "FixedSelector",
     "FixedWidthSpec",
     "GaussianSpec",
     "GeometrySpec",
@@ -75,22 +98,31 @@ __all__ = [
     "KernelOptions",
     "KernelSpec",
     "LinePatternSpec",
+    "LinearBinding",
+    "LinearInputs",
     "LogWidthSpec",
     "NormalizationSpec",
     "Operator",
     "OperatorSpec",
+    "OptimizerFieldSpec",
     "OptimizerStateAdapter",
+    "OrderedSelector",
     "PatternSpec",
     "PatternState",
     "PointsPatternSpec",
     "PolarAmpWidthSpec",
+    "AtomUpdateBinding",
+    "AtomUpdateInputs",
     "ProductChartSpec",
     "ProductChartState",
     "ProfileBinding",
+    "Registry",
+    "Selector",
     "SingleChartSpec",
     "SphereGeometrySpec",
     "StripChartSpec",
     "StripChartState",
+    "SupportResult",
     "TorusGeometrySpec",
     "TriangleSpec",
     "TriweightSpec",
@@ -98,6 +130,7 @@ __all__ = [
     "chart_presets",
     "compile_chart",
     "geometry_presets",
+    "make_algorithm_registry",
     "pattern_presets",
     "presets",
 ]

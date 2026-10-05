@@ -18,6 +18,13 @@
 | 同じ数学契約の新CUDA Algorithm | `algorithms/<方式>/` にAlgorithm/Recipe、必要なcontract、executor/kernels | benchmark Registryへ登録、catalog/Case、oracle・対応/非対応条件・autograd・Graph検証 |
 | 新しい数学的なKernel/演算 | `kernels/` の宣言とTorch参照実装、必要なOperator/Chart契約、対応Algorithm | 対応fixture、独立oracle、protocol、結果adapterと提出/dispatch側の検証を追加 |
 
+Linearの計算は各backendのalgorithms/linear/へ置く。Atomの座標更新は別演算の
+atom_updateで、Torch参照はalgorithms/atom_update/、Polarの具体的な更新方式は
+algorithms/polar_update/へ置く。optimizerにKernelの種類ごとのdispatcherを追加しない。
+全更新が同じAtomUpdateInputs/Contextと共通Dispatcherを使い、Sphere/Torusを含む
+一般の更新はTorch参照へ落とす。LinearのPlan、更新Plan、base optimizerを別に扱う。
+既存runnerの--polar-updateは更新候補の選択だけを行い、Linear Planを変更しない。
+
 数学的な意味が同じ候補は同じsemanticsを保つ。正規化・支持・微分の意味を変更したら
 新しい意味の版として区別する。既存Planのaliasだけを変えて同じPlanを重複登録しない。
 登録済みrecipeの意味を変える場合は実装契約のrevisionを更新し、古い結果との比較範囲を明示する。
@@ -25,9 +32,9 @@
 ### 新Algorithmの実装先とインターフェース
 
 実際に動いている最小の見本は
-[`window/algorithm.py`](../src/torchcst/_backends/cuda/algorithms/normalized_euclidean_strip/window/algorithm.py)と
-[`window/recipe.py`](../src/torchcst/_backends/cuda/algorithms/normalized_euclidean_strip/window/recipe.py)。
-共通interfaceは [`Algorithm`](../src/torchcst/_backends/cuda/algorithm.py)で定義する。
+[`window/algorithm.py`](../src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/algorithm.py)と
+[`window/recipe.py`](../src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/recipe.py)。
+共通interfaceは [`Algorithm`](../src/torchcst/_backends/algorithm.py)で定義する。
 
 | 要素 | 実装する内容 |
 | --- | --- |
@@ -36,7 +43,8 @@
 | `recipe_type` / `validate_recipe` | immutable dataclassと、実装が受け付ける設定の厳密な検査 |
 | `supports(context, recipe)` | Kernel/Chart契約、shape、stride、dtype、GPU、精度、勾配などの適合性。非対応理由を返す |
 | `workspace_bound` | 実装が管理するscratchの上界。分からなければ `None`。実測GPUピークとは区別する |
-| `execute` | executorを遅延importし、そのforwardの設定・保存状態に対応したbackwardを接続する |
+| `input_type` | 演算共通のtyped Inputs。必須fieldと任意fieldを入力型で定める |
+| `execute(state, inputs)` | binding/Recipeと実入力からexecutorを遅延importし、forwardの保存状態に対応したbackwardを接続する |
 
 Algorithm構築、recipe検査、support判定はGPUコードのimportやTensor値の読み出しを行わない。
 Algorithmインスタンスへ入力・支持・勾配bufferを保存しない。forwardごとの保存状態を
@@ -54,10 +62,10 @@ autograd呼び出しに持たせ、Parameterの更新はoptimizerが行う。
 
 ```bash
 python - <<'PY'
-from torchcst._backends.cuda.registry import Registry
-from torchcst._backends.cuda.schema import ExecutionPlan
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.algorithm import NormalizedWindowAlgorithm
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import WindowRecipe
+from torchcst._backends.registry import Registry
+from torchcst._backends.schema import ExecutionPlan
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.window.algorithm import NormalizedWindowAlgorithm
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.window.recipe import WindowRecipe
 
 registry = Registry()
 algorithm = NormalizedWindowAlgorithm()
@@ -155,7 +163,8 @@ GPU・実DBのテストは条件に応じてskipされるので、pytestのskip�
 GPU開発環境では`python -m pip install -e '.[dev,cuda]'`を実行し、対象に応じて
 `python -m tools.kernel_dev test --suite local-product`または
 `python -m tools.kernel_dev test --suite normalized-strip`を使う。
-この二つはCUDA / Tritonがない環境では失敗し、GPU検証をskipだけで通さない。
+Atom更新は`python -m tools.kernel_dev test --suite atom-update`で確認する。
+これらはCUDA / Tritonがない環境では失敗し、GPU検証をskipだけで通さない。
 テスト群は入口の回帰検証であり、変更対象に応じて境界・勾配・配置などの追加テストを選ぶ。
 性能測定は引き続き既存Linear runnerを使う。
 
@@ -163,7 +172,7 @@ GPU開発環境では`python -m pip install -e '.[dev,cuda]'`を実行し、対�
 
 1. mainから名前付き`codex/`研究ブランチとworktreeを作る。
 2. 実装は`src/torchcst/_backends/cuda/algorithms/`へ置く。数学的な仕様と実行設定を分ける。
-   local productは`local_product/`、研究Planの登録は`benchmarks/cuda/linear/local_product.py`。
+   local productは`linear/local_product/`、研究Planの登録は`benchmarks/cuda/linear/local_product.py`。
    既存Planの設定と意味を保ち、新しい候補には明示的なrouteを与える。
 3. `benchmarks/cuda/linear/plans-*.json`へ候補を追加し、`cases/`で比較対象、baseline、
    dense参照を明示する。固定σを導入せず、初期幅と各stepの幅更新を区別する。

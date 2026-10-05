@@ -12,10 +12,10 @@ from benchmarks.cuda.linear.local_product import (
     initialize,
 )
 from benchmarks.cuda.linear.manifest import WidthFixture, decode_snapshot, load_run
-from torchcst._backends.cuda.algorithms.local_product.contract import Domain
-from torchcst._backends.cuda.algorithms.local_product.preparation import decode
-from torchcst._backends.cuda.algorithms.local_product.recipe import Recipe
-from torchcst._backends.cuda.algorithms.local_product.support import summarize
+from torchcst._backends.cuda.algorithms.linear.local_product.contract import Domain
+from torchcst._backends.cuda.algorithms.linear.local_product.preparation import decode
+from torchcst._backends.cuda.algorithms.linear.local_product.recipe import Recipe
+from torchcst._backends.cuda.algorithms.linear.local_product.support import summarize
 
 CATALOG = "benchmarks/cuda/linear/plans-local-mixture.json"
 
@@ -77,8 +77,8 @@ def test_width_fixture_rejects_invalid_mixtures(change):
 @pytest.mark.parametrize("spacing,sliced", [(1.0, False), (0.5, True)])
 @pytest.mark.parametrize("route", ["three", "singleton", "packed", "persistent"])
 def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced, route):
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
-    from torchcst._backends.cuda.algorithms.local_product.polar import graph_update
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
+    from torchcst._backends.torch.algorithms.polar_update.executor import graph_update
     from torchcst._backends.torch.kernels import execution
 
     d = Domain(
@@ -98,7 +98,7 @@ def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced, rou
 
     layout = None
     if route == "persistent":
-        from torchcst._backends.cuda.algorithms.local_product.persistent import (
+        from torchcst._backends.cuda.algorithms.linear.local_product.persistent import (
             PersistentLayout,
         )
 
@@ -178,7 +178,7 @@ def test_three_band_subspacing_graph_and_all_gradients(mid, spacing, sliced, rou
 @pytest.mark.parametrize("batch", [1, 32, 64])
 @pytest.mark.parametrize("tile_packed", [False, True])
 def test_singleton_output_collisions_and_all_local_h(batch, tile_packed):
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     d = Domain(32, 32)
     s = state(minimum=0.25, birth=0.25, maximum=16).cuda()
