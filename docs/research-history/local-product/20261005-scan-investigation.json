@@ -1,0 +1,3873 @@
+{
+  "scope": "Fixed initial-state existing output/dX kernels; no complete-step speedup claim",
+  "records": [
+    {
+      "size": 64,
+      "initial_rho": 1.25,
+      "atoms": 204,
+      "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+      "census": [
+        {
+          "direction": "forward",
+          "totals": {
+            "scanned_slots": 816,
+            "scanned_live_atoms": 816,
+            "enabled_atom_visits": 225,
+            "scanned_blocks": 28,
+            "active_blocks": 28,
+            "active_block_lanes": 896,
+            "useful_output_coefficients": 611,
+            "rectangular_output_coefficients": 14336,
+            "input_site_visits": 669,
+            "input_loop_lane_steps": 2688,
+            "useful_atom_fraction": 0.2757352941176471,
+            "useful_coefficient_fraction": 0.04261997767857143
+          },
+          "hypothetical_sorted_active_blocks": 12,
+          "hypothetical_sorted_scanned_blocks": 28,
+          "hypothetical_compact_owner_blocks": 9
+        },
+        {
+          "direction": "dx",
+          "totals": {
+            "scanned_slots": 816,
+            "scanned_live_atoms": 816,
+            "enabled_atom_visits": 223,
+            "scanned_blocks": 28,
+            "active_blocks": 28,
+            "active_block_lanes": 896,
+            "useful_output_coefficients": 606,
+            "rectangular_output_coefficients": 14336,
+            "input_site_visits": 668,
+            "input_loop_lane_steps": 2688,
+            "useful_atom_fraction": 0.27328431372549017,
+            "useful_coefficient_fraction": 0.042271205357142856
+          },
+          "hypothetical_sorted_active_blocks": 10,
+          "hypothetical_sorted_scanned_blocks": 28,
+          "hypothetical_compact_owner_blocks": 8
+        }
+      ],
+      "timings": [
+        {
+          "batch": 1,
+          "gates": [
+            {
+              "max": 5.081011682506187e-07,
+              "rel_l2": 1.1628172423336359e-07
+            },
+            {
+              "max": 5.035755494126049e-07,
+              "rel_l2": 1.4110555179696343e-07
+            }
+          ],
+          "grid_blocks": 4,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 15.129599571228027,
+            "graphs": [
+              {
+                "median_us": 15.134719610214233,
+                "sample_count": 21
+              },
+              {
+                "median_us": 15.124479532241821,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 16.89087986946106,
+            "graphs": [
+              {
+                "median_us": 16.895999908447266,
+                "sample_count": 21
+              },
+              {
+                "median_us": 16.885759830474854,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.7406400293111801,
+            "graphs": [
+              {
+                "median_us": 1.740799993276596,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.7404800653457642,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 1.4950400590896606,
+            "graphs": [
+              {
+                "median_us": 1.4950400590896606,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.4950400590896606,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 8,
+          "gates": [
+            {
+              "max": 1.4077778915932981e-06,
+              "rel_l2": 1.381002805658059e-07
+            },
+            {
+              "max": 6.924222026860605e-07,
+              "rel_l2": 1.1190273824709433e-07
+            }
+          ],
+          "grid_blocks": 4,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 15.159839987754822,
+            "graphs": [
+              {
+                "median_us": 15.164480209350586,
+                "sample_count": 21
+              },
+              {
+                "median_us": 15.155199766159058,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 16.94208025932312,
+            "graphs": [
+              {
+                "median_us": 16.936960220336914,
+                "sample_count": 21
+              },
+              {
+                "median_us": 16.947200298309326,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.9140800088644028,
+            "graphs": [
+              {
+                "median_us": 1.9139200448989868,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.9142399728298187,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 2.252800017595291,
+            "graphs": [
+              {
+                "median_us": 2.252800017595291,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.252800017595291,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 32,
+          "gates": [
+            {
+              "max": 1.4077778915932981e-06,
+              "rel_l2": 1.2549104706931375e-07
+            },
+            {
+              "max": 5.925910477877494e-07,
+              "rel_l2": 1.1840882072965466e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 15.226719975471497,
+            "graphs": [
+              {
+                "median_us": 15.206400156021118,
+                "sample_count": 21
+              },
+              {
+                "median_us": 15.247039794921875,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 17.18783974647522,
+            "graphs": [
+              {
+                "median_us": 17.192959785461426,
+                "sample_count": 21
+              },
+              {
+                "median_us": 17.182719707489014,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 5.862399935722351,
+            "graphs": [
+              {
+                "median_us": 5.857279896736145,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.867519974708557,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 5.708799958229065,
+            "graphs": [
+              {
+                "median_us": 5.703679919242859,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.713919997215271,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 128,
+          "gates": [
+            {
+              "max": 1.4077778915932981e-06,
+              "rel_l2": 1.206668364301149e-07
+            },
+            {
+              "max": 9.827868545642104e-07,
+              "rel_l2": 1.1973981110847447e-07
+            }
+          ],
+          "grid_blocks": 32,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 15.257600545883179,
+            "graphs": [
+              {
+                "median_us": 15.257600545883179,
+                "sample_count": 21
+              },
+              {
+                "median_us": 15.257600545883179,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 17.21343994140625,
+            "graphs": [
+              {
+                "median_us": 17.192959785461426,
+                "sample_count": 21
+              },
+              {
+                "median_us": 17.233920097351074,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 5.504000186920166,
+            "graphs": [
+              {
+                "median_us": 5.49888014793396,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.509120225906372,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 5.335040092468262,
+            "graphs": [
+              {
+                "median_us": 5.335040092468262,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.335040092468262,
+                "sample_count": 21
+              }
+            ]
+          }
+        }
+      ],
+      "oracle": [
+        {
+          "max": 1.4077778924814766e-06,
+          "rel_l2": 1.254910470764134e-07
+        },
+        {
+          "max": 5.925910482318386e-07,
+          "rel_l2": 1.1840882072909983e-07
+        },
+        {
+          "max": 2.5220423163219152e-06,
+          "rel_l2": 1.8559840748739256e-07
+        }
+      ],
+      "compiler": {
+        "prepare_bounded": {
+          "registers": 32,
+          "spill_slots": 0,
+          "shared_bytes": 0
+        },
+        "tile_layout": {
+          "registers": 32,
+          "spill_slots": 0,
+          "shared_bytes": 1024
+        },
+        "persistent_layout": {
+          "registers": 64,
+          "spill_slots": 0,
+          "shared_bytes": 2048
+        },
+        "hybrid_save_h": {
+          "registers": 40,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        },
+        "packed_forward": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 7296
+        },
+        "packed_dx": {
+          "registers": 72,
+          "spill_slots": 2,
+          "shared_bytes": 14336
+        },
+        "singleton_param": {
+          "registers": 224,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        }
+      },
+      "job": "l4job-bd6adb242d774200a88e9637bf4d00f8"
+    },
+    {
+      "size": 64,
+      "initial_rho": 4,
+      "atoms": 204,
+      "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+      "census": [
+        {
+          "direction": "forward",
+          "totals": {
+            "scanned_slots": 816,
+            "scanned_live_atoms": 816,
+            "enabled_atom_visits": 267,
+            "scanned_blocks": 28,
+            "active_blocks": 28,
+            "active_block_lanes": 896,
+            "useful_output_coefficients": 1596,
+            "rectangular_output_coefficients": 14336,
+            "input_site_visits": 2066,
+            "input_loop_lane_steps": 7168,
+            "useful_atom_fraction": 0.3272058823529412,
+            "useful_coefficient_fraction": 0.111328125
+          },
+          "hypothetical_sorted_active_blocks": 12,
+          "hypothetical_sorted_scanned_blocks": 28,
+          "hypothetical_compact_owner_blocks": 10
+        },
+        {
+          "direction": "dx",
+          "totals": {
+            "scanned_slots": 816,
+            "scanned_live_atoms": 816,
+            "enabled_atom_visits": 269,
+            "scanned_blocks": 28,
+            "active_blocks": 28,
+            "active_block_lanes": 896,
+            "useful_output_coefficients": 1576,
+            "rectangular_output_coefficients": 14336,
+            "input_site_visits": 2114,
+            "input_loop_lane_steps": 7168,
+            "useful_atom_fraction": 0.32965686274509803,
+            "useful_coefficient_fraction": 0.10993303571428571
+          },
+          "hypothetical_sorted_active_blocks": 12,
+          "hypothetical_sorted_scanned_blocks": 28,
+          "hypothetical_compact_owner_blocks": 10
+        }
+      ],
+      "timings": [
+        {
+          "batch": 1,
+          "gates": [
+            {
+              "max": 4.517362728329033e-07,
+              "rel_l2": 2.5200773999174037e-07
+            },
+            {
+              "max": 7.119467460015017e-07,
+              "rel_l2": 2.585128436294573e-07
+            }
+          ],
+          "grid_blocks": 4,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 12.042239904403687,
+            "graphs": [
+              {
+                "median_us": 12.042239904403687,
+                "sample_count": 21
+              },
+              {
+                "median_us": 12.042239904403687,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 21.836799383163452,
+            "graphs": [
+              {
+                "median_us": 21.841919422149658,
+                "sample_count": 21
+              },
+              {
+                "median_us": 21.831679344177246,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.740799993276596,
+            "graphs": [
+              {
+                "median_us": 1.740799993276596,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.740799993276596,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 1.4950400590896606,
+            "graphs": [
+              {
+                "median_us": 1.4950400590896606,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.4950400590896606,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 8,
+          "gates": [
+            {
+              "max": 9.903829500945704e-07,
+              "rel_l2": 2.3599324603194818e-07
+            },
+            {
+              "max": 1.0926003501943171e-06,
+              "rel_l2": 2.484039762525818e-07
+            }
+          ],
+          "grid_blocks": 4,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 12.052479982376099,
+            "graphs": [
+              {
+                "median_us": 12.052479982376099,
+                "sample_count": 21
+              },
+              {
+                "median_us": 12.052479982376099,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 21.882879734039307,
+            "graphs": [
+              {
+                "median_us": 21.882879734039307,
+                "sample_count": 21
+              },
+              {
+                "median_us": 21.882879734039307,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.9148799777030945,
+            "graphs": [
+              {
+                "median_us": 1.9148799777030945,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.9148799777030945,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 2.242559939622879,
+            "graphs": [
+              {
+                "median_us": 2.242559939622879,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.242559939622879,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 32,
+          "gates": [
+            {
+              "max": 1.1002856350472712e-06,
+              "rel_l2": 2.503484053473871e-07
+            },
+            {
+              "max": 9.446115067923699e-07,
+              "rel_l2": 2.479294932925395e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 12.078080177307129,
+            "graphs": [
+              {
+                "median_us": 12.072960138320923,
+                "sample_count": 21
+              },
+              {
+                "median_us": 12.083200216293335,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 22.558400630950928,
+            "graphs": [
+              {
+                "median_us": 22.558720111846924,
+                "sample_count": 21
+              },
+              {
+                "median_us": 22.55808115005493,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 5.872640013694763,
+            "graphs": [
+              {
+                "median_us": 5.877760052680969,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.867519974708557,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 5.724160075187683,
+            "graphs": [
+              {
+                "median_us": 5.724160075187683,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.724160075187683,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 128,
+          "gates": [
+            {
+              "max": 1.4335686133737369e-06,
+              "rel_l2": 2.580334247240574e-07
+            },
+            {
+              "max": 1.3310687647649644e-06,
+              "rel_l2": 2.649660094838194e-07
+            }
+          ],
+          "grid_blocks": 32,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 12.093440294265747,
+            "graphs": [
+              {
+                "median_us": 12.093440294265747,
+                "sample_count": 21
+              },
+              {
+                "median_us": 12.093440294265747,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 22.589280605316162,
+            "graphs": [
+              {
+                "median_us": 22.578880786895752,
+                "sample_count": 21
+              },
+              {
+                "median_us": 22.599680423736572,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 5.49888014793396,
+            "graphs": [
+              {
+                "median_us": 5.49888014793396,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.49888014793396,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 5.32480001449585,
+            "graphs": [
+              {
+                "median_us": 5.32480001449585,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.32480001449585,
+                "sample_count": 21
+              }
+            ]
+          }
+        }
+      ],
+      "oracle": [
+        {
+          "max": 1.1002856354913604e-06,
+          "rel_l2": 2.50348405360221e-07
+        },
+        {
+          "max": 9.446115059041915e-07,
+          "rel_l2": 2.4792949329301166e-07
+        },
+        {
+          "max": 1.5177820715805979e-06,
+          "rel_l2": 2.534920195926613e-07
+        }
+      ],
+      "compiler": {
+        "prepare_bounded": {
+          "registers": 32,
+          "spill_slots": 0,
+          "shared_bytes": 0
+        },
+        "tile_layout": {
+          "registers": 32,
+          "spill_slots": 0,
+          "shared_bytes": 1024
+        },
+        "persistent_layout": {
+          "registers": 64,
+          "spill_slots": 0,
+          "shared_bytes": 2048
+        },
+        "hybrid_save_h": {
+          "registers": 40,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        },
+        "packed_forward": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 7296
+        },
+        "packed_dx": {
+          "registers": 72,
+          "spill_slots": 2,
+          "shared_bytes": 14336
+        },
+        "singleton_param": {
+          "registers": 224,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        }
+      },
+      "job": "l4job-bd6adb242d774200a88e9637bf4d00f8"
+    },
+    {
+      "size": 64,
+      "initial_rho": 8,
+      "atoms": 204,
+      "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+      "census": [
+        {
+          "direction": "forward",
+          "totals": {
+            "scanned_slots": 816,
+            "scanned_live_atoms": 816,
+            "enabled_atom_visits": 348,
+            "scanned_blocks": 28,
+            "active_blocks": 28,
+            "active_block_lanes": 896,
+            "useful_output_coefficients": 3088,
+            "rectangular_output_coefficients": 14336,
+            "input_site_visits": 5189,
+            "input_loop_lane_steps": 14336,
+            "useful_atom_fraction": 0.4264705882352941,
+            "useful_coefficient_fraction": 0.21540178571428573
+          },
+          "hypothetical_sorted_active_blocks": 15,
+          "hypothetical_sorted_scanned_blocks": 28,
+          "hypothetical_compact_owner_blocks": 14
+        },
+        {
+          "direction": "dx",
+          "totals": {
+            "scanned_slots": 816,
+            "scanned_live_atoms": 816,
+            "enabled_atom_visits": 340,
+            "scanned_blocks": 28,
+            "active_blocks": 28,
+            "active_block_lanes": 896,
+            "useful_output_coefficients": 3037,
+            "rectangular_output_coefficients": 14336,
+            "input_site_visits": 5148,
+            "input_loop_lane_steps": 14336,
+            "useful_atom_fraction": 0.4166666666666667,
+            "useful_coefficient_fraction": 0.21184430803571427
+          },
+          "hypothetical_sorted_active_blocks": 14,
+          "hypothetical_sorted_scanned_blocks": 28,
+          "hypothetical_compact_owner_blocks": 13
+        }
+      ],
+      "timings": [
+        {
+          "batch": 1,
+          "gates": [
+            {
+              "max": 7.797122019148617e-07,
+              "rel_l2": 2.615254158259589e-07
+            },
+            {
+              "max": 4.282882044570613e-07,
+              "rel_l2": 2.1089951272291318e-07
+            }
+          ],
+          "grid_blocks": 4,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 12.093440294265747,
+            "graphs": [
+              {
+                "median_us": 12.093440294265747,
+                "sample_count": 21
+              },
+              {
+                "median_us": 12.093440294265747,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 16.22015953063965,
+            "graphs": [
+              {
+                "median_us": 16.22015953063965,
+                "sample_count": 21
+              },
+              {
+                "median_us": 16.22015953063965,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.7459200322628021,
+            "graphs": [
+              {
+                "median_us": 1.740799993276596,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.7510400712490082,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 1.4950400590896606,
+            "graphs": [
+              {
+                "median_us": 1.4950400590896606,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.4950400590896606,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 8,
+          "gates": [
+            {
+              "max": 9.703663894633507e-07,
+              "rel_l2": 2.3233142975106677e-07
+            },
+            {
+              "max": 1.0580196714293777e-06,
+              "rel_l2": 2.1704666104721307e-07
+            }
+          ],
+          "grid_blocks": 4,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 12.098560333251953,
+            "graphs": [
+              {
+                "median_us": 12.10368037223816,
+                "sample_count": 21
+              },
+              {
+                "median_us": 12.093440294265747,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 16.27120018005371,
+            "graphs": [
+              {
+                "median_us": 16.261119842529297,
+                "sample_count": 21
+              },
+              {
+                "median_us": 16.281280517578125,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.9148799777030945,
+            "graphs": [
+              {
+                "median_us": 1.9148799777030945,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.9148799777030945,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 2.232320010662079,
+            "graphs": [
+              {
+                "median_us": 2.232320010662079,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.232320010662079,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 32,
+          "gates": [
+            {
+              "max": 1.300702298756562e-06,
+              "rel_l2": 2.378030601173456e-07
+            },
+            {
+              "max": 1.1431897859459639e-06,
+              "rel_l2": 2.2248087697992828e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 12.108800411224365,
+            "graphs": [
+              {
+                "median_us": 12.113920450210571,
+                "sample_count": 21
+              },
+              {
+                "median_us": 12.10368037223816,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 16.373759508132935,
+            "graphs": [
+              {
+                "median_us": 16.373759508132935,
+                "sample_count": 21
+              },
+              {
+                "median_us": 16.373759508132935,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 5.857279896736145,
+            "graphs": [
+              {
+                "median_us": 5.857279896736145,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.857279896736145,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 5.713919997215271,
+            "graphs": [
+              {
+                "median_us": 5.713919997215271,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.713919997215271,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 128,
+          "gates": [
+            {
+              "max": 1.320841997554112e-06,
+              "rel_l2": 2.3821941834265683e-07
+            },
+            {
+              "max": 1.328192796634653e-06,
+              "rel_l2": 2.2371280274331054e-07
+            }
+          ],
+          "grid_blocks": 32,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 12.1343994140625,
+            "graphs": [
+              {
+                "median_us": 12.1343994140625,
+                "sample_count": 21
+              },
+              {
+                "median_us": 12.1343994140625,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 16.40447974205017,
+            "graphs": [
+              {
+                "median_us": 16.40447974205017,
+                "sample_count": 21
+              },
+              {
+                "median_us": 16.40447974205017,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 5.488319993019104,
+            "graphs": [
+              {
+                "median_us": 5.48799991607666,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.488640069961548,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 5.3196799755096436,
+            "graphs": [
+              {
+                "median_us": 5.3145599365234375,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.32480001449585,
+                "sample_count": 21
+              }
+            ]
+          }
+        }
+      ],
+      "oracle": [
+        {
+          "max": 1.300702296536116e-06,
+          "rel_l2": 2.378030601180904e-07
+        },
+        {
+          "max": 1.1431897855018747e-06,
+          "rel_l2": 2.224808769841277e-07
+        },
+        {
+          "max": 1.458369096596357e-06,
+          "rel_l2": 2.3044808574457348e-07
+        }
+      ],
+      "compiler": {
+        "prepare_bounded": {
+          "registers": 32,
+          "spill_slots": 0,
+          "shared_bytes": 0
+        },
+        "tile_layout": {
+          "registers": 32,
+          "spill_slots": 0,
+          "shared_bytes": 1024
+        },
+        "persistent_layout": {
+          "registers": 64,
+          "spill_slots": 0,
+          "shared_bytes": 2048
+        },
+        "hybrid_save_h": {
+          "registers": 40,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        },
+        "packed_forward": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 7296
+        },
+        "packed_dx": {
+          "registers": 72,
+          "spill_slots": 2,
+          "shared_bytes": 14336
+        },
+        "singleton_param": {
+          "registers": 224,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        }
+      },
+      "job": "l4job-bd6adb242d774200a88e9637bf4d00f8"
+    },
+    {
+      "size": 128,
+      "initial_rho": 1.25,
+      "atoms": 819,
+      "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+      "census": [
+        {
+          "direction": "forward",
+          "totals": {
+            "scanned_slots": 6552,
+            "scanned_live_atoms": 6552,
+            "enabled_atom_visits": 914,
+            "scanned_blocks": 208,
+            "active_blocks": 208,
+            "active_block_lanes": 6656,
+            "useful_output_coefficients": 2451,
+            "rectangular_output_coefficients": 106496,
+            "input_site_visits": 2736,
+            "input_loop_lane_steps": 19968,
+            "useful_atom_fraction": 0.1394993894993895,
+            "useful_coefficient_fraction": 0.023014948918269232
+          },
+          "hypothetical_sorted_active_blocks": 33,
+          "hypothetical_sorted_scanned_blocks": 208,
+          "hypothetical_compact_owner_blocks": 33
+        },
+        {
+          "direction": "dx",
+          "totals": {
+            "scanned_slots": 6552,
+            "scanned_live_atoms": 6552,
+            "enabled_atom_visits": 903,
+            "scanned_blocks": 208,
+            "active_blocks": 203,
+            "active_block_lanes": 6496,
+            "useful_output_coefficients": 2451,
+            "rectangular_output_coefficients": 103936,
+            "input_site_visits": 2703,
+            "input_loop_lane_steps": 19488,
+            "useful_atom_fraction": 0.13782051282051283,
+            "useful_coefficient_fraction": 0.023581819581280788
+          },
+          "hypothetical_sorted_active_blocks": 36,
+          "hypothetical_sorted_scanned_blocks": 208,
+          "hypothetical_compact_owner_blocks": 32
+        }
+      ],
+      "timings": [
+        {
+          "batch": 1,
+          "gates": [
+            {
+              "max": 6.027591967772139e-07,
+              "rel_l2": 1.3436155210747385e-07
+            },
+            {
+              "max": 5.812344125999402e-07,
+              "rel_l2": 1.1476075082862897e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 48.38912010192871,
+            "graphs": [
+              {
+                "median_us": 48.39424133300781,
+                "sample_count": 21
+              },
+              {
+                "median_us": 48.38399887084961,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 54.92192029953003,
+            "graphs": [
+              {
+                "median_us": 54.94719982147217,
+                "sample_count": 21
+              },
+              {
+                "median_us": 54.89664077758789,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.5715199708938599,
+            "graphs": [
+              {
+                "median_us": 1.5667200088500977,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.576319932937622,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 1.5769599378108978,
+            "graphs": [
+              {
+                "median_us": 1.5769599378108978,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.5769599378108978,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 8,
+          "gates": [
+            {
+              "max": 1.5414005991587487e-06,
+              "rel_l2": 1.4064141584491504e-07
+            },
+            {
+              "max": 1.1323451705180787e-06,
+              "rel_l2": 1.2963706277590452e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 48.41984033584595,
+            "graphs": [
+              {
+                "median_us": 48.42495918273926,
+                "sample_count": 21
+              },
+              {
+                "median_us": 48.41472148895264,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 56.87295913696289,
+            "graphs": [
+              {
+                "median_us": 56.83199882507324,
+                "sample_count": 21
+              },
+              {
+                "median_us": 56.91391944885254,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 2.170879989862442,
+            "graphs": [
+              {
+                "median_us": 2.170879989862442,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.170879989862442,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 2.7187199890613556,
+            "graphs": [
+              {
+                "median_us": 2.7238398790359497,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.7136000990867615,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 32,
+          "gates": [
+            {
+              "max": 1.5414005991587487e-06,
+              "rel_l2": 1.3204185742568622e-07
+            },
+            {
+              "max": 1.3603886692692413e-06,
+              "rel_l2": 1.318131455718242e-07
+            }
+          ],
+          "grid_blocks": 16,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 48.59903812408447,
+            "graphs": [
+              {
+                "median_us": 48.59903812408447,
+                "sample_count": 21
+              },
+              {
+                "median_us": 48.59903812408447,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 59.898879528045654,
+            "graphs": [
+              {
+                "median_us": 59.852800369262695,
+                "sample_count": 21
+              },
+              {
+                "median_us": 59.94495868682861,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 7.1987199783325195,
+            "graphs": [
+              {
+                "median_us": 7.1987199783325195,
+                "sample_count": 21
+              },
+              {
+                "median_us": 7.1987199783325195,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 7.377920150756836,
+            "graphs": [
+              {
+                "median_us": 7.37280011177063,
+                "sample_count": 21
+              },
+              {
+                "median_us": 7.383040189743042,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 128,
+          "gates": [
+            {
+              "max": 1.5414005991587487e-06,
+              "rel_l2": 1.301892962360249e-07
+            },
+            {
+              "max": 1.2885311564403423e-06,
+              "rel_l2": 1.3297577828676584e-07
+            }
+          ],
+          "grid_blocks": 64,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 63.11935901641846,
+            "graphs": [
+              {
+                "median_us": 63.11935901641846,
+                "sample_count": 21
+              },
+              {
+                "median_us": 63.11935901641846,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 73.7177586555481,
+            "graphs": [
+              {
+                "median_us": 73.70751857757568,
+                "sample_count": 21
+              },
+              {
+                "median_us": 73.72799873352051,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 4.659200012683868,
+            "graphs": [
+              {
+                "median_us": 4.659200012683868,
+                "sample_count": 21
+              },
+              {
+                "median_us": 4.659200012683868,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 4.94592010974884,
+            "graphs": [
+              {
+                "median_us": 4.94592010974884,
+                "sample_count": 21
+              },
+              {
+                "median_us": 4.94592010974884,
+                "sample_count": 21
+              }
+            ]
+          }
+        }
+      ],
+      "oracle": [
+        {
+          "max": 1.5414005982705703e-06,
+          "rel_l2": 1.3204185742628772e-07
+        },
+        {
+          "max": 1.3603886692692413e-06,
+          "rel_l2": 1.3181314558747967e-07
+        },
+        {
+          "max": 4.461254812682114e-06,
+          "rel_l2": 1.8847189745931626e-07
+        }
+      ],
+      "compiler": {
+        "prepare_bounded": {
+          "registers": 42,
+          "spill_slots": 0,
+          "shared_bytes": 0
+        },
+        "tile_layout": {
+          "registers": 40,
+          "spill_slots": 0,
+          "shared_bytes": 4096
+        },
+        "persistent_layout": {
+          "registers": 168,
+          "spill_slots": 0,
+          "shared_bytes": 8192
+        },
+        "hybrid_save_h": {
+          "registers": 48,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        },
+        "packed_forward": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 7296
+        },
+        "packed_dx": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 26624
+        },
+        "singleton_param": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 40960
+        }
+      },
+      "cold_instrumented_counters": [
+        {
+          "dram__bytes_read.sum": {
+            "unit": "byte",
+            "value": "123,520"
+          },
+          "dram__bytes_write.sum": {
+            "unit": "byte",
+            "value": "0"
+          },
+          "lts__t_sector_hit_rate.pct": {
+            "unit": "%",
+            "value": "89.61"
+          },
+          "DRAM Frequency": {
+            "unit": "hz",
+            "value": "6,240,371,229.70"
+          },
+          "SM Frequency": {
+            "unit": "hz",
+            "value": "795,265,371.23"
+          },
+          "Elapsed Cycles": {
+            "unit": "cycle",
+            "value": "110,134"
+          },
+          "Memory Throughput": {
+            "unit": "%",
+            "value": "11.54"
+          },
+          "DRAM Throughput": {
+            "unit": "%",
+            "value": "0.30"
+          },
+          "Duration": {
+            "unit": "ns",
+            "value": "137,920"
+          },
+          "L1/TEX Cache Throughput": {
+            "unit": "%",
+            "value": "42.48"
+          },
+          "L2 Cache Throughput": {
+            "unit": "%",
+            "value": "0.62"
+          },
+          "SM Active Cycles": {
+            "unit": "cycle",
+            "value": "29,823.98"
+          },
+          "Compute (SM) Throughput": {
+            "unit": "%",
+            "value": "7.22"
+          },
+          "Block Size": {
+            "unit": "",
+            "value": "128"
+          },
+          "Function Cache Configuration": {
+            "unit": "",
+            "value": "CachePreferNone"
+          },
+          "Grid Size": {
+            "unit": "",
+            "value": "16"
+          },
+          "Registers Per Thread": {
+            "unit": "register/thread",
+            "value": "80"
+          },
+          "Shared Memory Configuration Size": {
+            "unit": "byte",
+            "value": "65,536"
+          },
+          "Driver Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "1,024"
+          },
+          "Dynamic Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "7,296"
+          },
+          "Static Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "0"
+          },
+          "# SMs": {
+            "unit": "SM",
+            "value": "58"
+          },
+          "Stack Size": {
+            "unit": "",
+            "value": "1,024"
+          },
+          "Threads": {
+            "unit": "thread",
+            "value": "2,048"
+          },
+          "# TPCs": {
+            "unit": "",
+            "value": "29"
+          },
+          "Enabled TPC IDs": {
+            "unit": "",
+            "value": "all"
+          },
+          "Uses Green Context": {
+            "unit": "",
+            "value": "0"
+          },
+          "Waves Per SM": {
+            "unit": "",
+            "value": "0.05"
+          },
+          "Block Limit SM": {
+            "unit": "block",
+            "value": "24"
+          },
+          "Block Limit Registers": {
+            "unit": "block",
+            "value": "6"
+          },
+          "Block Limit Shared Mem": {
+            "unit": "block",
+            "value": "7"
+          },
+          "Block Limit Warps": {
+            "unit": "block",
+            "value": "12"
+          },
+          "Theoretical Active Warps per SM": {
+            "unit": "warp",
+            "value": "24"
+          },
+          "Theoretical Occupancy": {
+            "unit": "%",
+            "value": "50"
+          },
+          "Achieved Occupancy": {
+            "unit": "%",
+            "value": "8.32"
+          },
+          "Achieved Active Warps Per SM": {
+            "unit": "warp",
+            "value": "3.99"
+          }
+        },
+        {
+          "dram__bytes_read.sum": {
+            "unit": "byte",
+            "value": "153,472"
+          },
+          "dram__bytes_write.sum": {
+            "unit": "byte",
+            "value": "0"
+          },
+          "lts__t_sector_hit_rate.pct": {
+            "unit": "%",
+            "value": "89.97"
+          },
+          "DRAM Frequency": {
+            "unit": "hz",
+            "value": "6,240,482,059.71"
+          },
+          "SM Frequency": {
+            "unit": "hz",
+            "value": "795,327,906.74"
+          },
+          "Elapsed Cycles": {
+            "unit": "cycle",
+            "value": "124,361"
+          },
+          "Memory Throughput": {
+            "unit": "%",
+            "value": "9.58"
+          },
+          "DRAM Throughput": {
+            "unit": "%",
+            "value": "0.33"
+          },
+          "Duration": {
+            "unit": "ns",
+            "value": "155,776"
+          },
+          "L1/TEX Cache Throughput": {
+            "unit": "%",
+            "value": "35.98"
+          },
+          "L2 Cache Throughput": {
+            "unit": "%",
+            "value": "0.63"
+          },
+          "SM Active Cycles": {
+            "unit": "cycle",
+            "value": "32,945.09"
+          },
+          "Compute (SM) Throughput": {
+            "unit": "%",
+            "value": "4.55"
+          },
+          "Block Size": {
+            "unit": "",
+            "value": "128"
+          },
+          "Function Cache Configuration": {
+            "unit": "",
+            "value": "CachePreferNone"
+          },
+          "Grid Size": {
+            "unit": "",
+            "value": "16"
+          },
+          "Registers Per Thread": {
+            "unit": "register/thread",
+            "value": "80"
+          },
+          "Shared Memory Configuration Size": {
+            "unit": "byte",
+            "value": "102,400"
+          },
+          "Driver Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "1,024"
+          },
+          "Dynamic Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "26,624"
+          },
+          "Static Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "0"
+          },
+          "# SMs": {
+            "unit": "SM",
+            "value": "58"
+          },
+          "Stack Size": {
+            "unit": "",
+            "value": "1,024"
+          },
+          "Threads": {
+            "unit": "thread",
+            "value": "2,048"
+          },
+          "# TPCs": {
+            "unit": "",
+            "value": "29"
+          },
+          "Enabled TPC IDs": {
+            "unit": "",
+            "value": "all"
+          },
+          "Uses Green Context": {
+            "unit": "",
+            "value": "0"
+          },
+          "Waves Per SM": {
+            "unit": "",
+            "value": "0.09"
+          },
+          "Block Limit SM": {
+            "unit": "block",
+            "value": "24"
+          },
+          "Block Limit Registers": {
+            "unit": "block",
+            "value": "6"
+          },
+          "Block Limit Shared Mem": {
+            "unit": "block",
+            "value": "3"
+          },
+          "Block Limit Warps": {
+            "unit": "block",
+            "value": "12"
+          },
+          "Theoretical Active Warps per SM": {
+            "unit": "warp",
+            "value": "12"
+          },
+          "Theoretical Occupancy": {
+            "unit": "%",
+            "value": "25"
+          },
+          "Achieved Occupancy": {
+            "unit": "%",
+            "value": "8.33"
+          },
+          "Achieved Active Warps Per SM": {
+            "unit": "warp",
+            "value": "4.00"
+          }
+        }
+      ],
+      "job": "l4job-bd6adb242d774200a88e9637bf4d00f8"
+    },
+    {
+      "size": 128,
+      "initial_rho": 4,
+      "atoms": 819,
+      "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+      "census": [
+        {
+          "direction": "forward",
+          "totals": {
+            "scanned_slots": 6552,
+            "scanned_live_atoms": 6552,
+            "enabled_atom_visits": 1139,
+            "scanned_blocks": 208,
+            "active_blocks": 208,
+            "active_block_lanes": 6656,
+            "useful_output_coefficients": 6460,
+            "rectangular_output_coefficients": 106496,
+            "input_site_visits": 8976,
+            "input_loop_lane_steps": 53248,
+            "useful_atom_fraction": 0.17384004884004883,
+            "useful_coefficient_fraction": 0.060659555288461536
+          },
+          "hypothetical_sorted_active_blocks": 45,
+          "hypothetical_sorted_scanned_blocks": 208,
+          "hypothetical_compact_owner_blocks": 39
+        },
+        {
+          "direction": "dx",
+          "totals": {
+            "scanned_slots": 6552,
+            "scanned_live_atoms": 6552,
+            "enabled_atom_visits": 1132,
+            "scanned_blocks": 208,
+            "active_blocks": 206,
+            "active_block_lanes": 6592,
+            "useful_output_coefficients": 6459,
+            "rectangular_output_coefficients": 105472,
+            "input_site_visits": 8925,
+            "input_loop_lane_steps": 52736,
+            "useful_atom_fraction": 0.17277167277167277,
+            "useful_coefficient_fraction": 0.06123900182038835
+          },
+          "hypothetical_sorted_active_blocks": 43,
+          "hypothetical_sorted_scanned_blocks": 208,
+          "hypothetical_compact_owner_blocks": 39
+        }
+      ],
+      "timings": [
+        {
+          "batch": 1,
+          "gates": [
+            {
+              "max": 1.0135884433992715e-06,
+              "rel_l2": 3.0144764744390464e-07
+            },
+            {
+              "max": 1.58200099464878e-06,
+              "rel_l2": 2.8511922036420376e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 36.46448016166687,
+            "graphs": [
+              {
+                "median_us": 36.464641094207764,
+                "sample_count": 21
+              },
+              {
+                "median_us": 36.46431922912598,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 74.26048040390015,
+            "graphs": [
+              {
+                "median_us": 74.27072048187256,
+                "sample_count": 21
+              },
+              {
+                "median_us": 74.25024032592773,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.58720001578331,
+            "graphs": [
+              {
+                "median_us": 1.58720001578331,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.58720001578331,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 1.5769599378108978,
+            "graphs": [
+              {
+                "median_us": 1.5769599378108978,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.5769599378108978,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 8,
+          "gates": [
+            {
+              "max": 1.8828461181286116e-06,
+              "rel_l2": 2.75839730418979e-07
+            },
+            {
+              "max": 1.902032384037966e-06,
+              "rel_l2": 2.7054087569620675e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 36.469600200653076,
+            "graphs": [
+              {
+                "median_us": 36.47455930709839,
+                "sample_count": 21
+              },
+              {
+                "median_us": 36.464641094207764,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 74.25008058547974,
+            "graphs": [
+              {
+                "median_us": 74.20928001403809,
+                "sample_count": 21
+              },
+              {
+                "median_us": 74.29088115692139,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 2.170879989862442,
+            "graphs": [
+              {
+                "median_us": 2.170879989862442,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.170879989862442,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 2.7952000498771667,
+            "graphs": [
+              {
+                "median_us": 2.7955201268196106,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.794879972934723,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 32,
+          "gates": [
+            {
+              "max": 1.8828461181286116e-06,
+              "rel_l2": 2.789791379152153e-07
+            },
+            {
+              "max": 2.2331753148918665e-06,
+              "rel_l2": 2.8467670135703823e-07
+            }
+          ],
+          "grid_blocks": 16,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 36.51583909988403,
+            "graphs": [
+              {
+                "median_us": 36.51583909988403,
+                "sample_count": 21
+              },
+              {
+                "median_us": 36.51583909988403,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 79.84640121459961,
+            "graphs": [
+              {
+                "median_us": 79.88224029541016,
+                "sample_count": 21
+              },
+              {
+                "median_us": 79.81056213378906,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 7.208960056304932,
+            "graphs": [
+              {
+                "median_us": 7.219200134277344,
+                "sample_count": 21
+              },
+              {
+                "median_us": 7.1987199783325195,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 7.388160228729248,
+            "graphs": [
+              {
+                "median_us": 7.393280267715454,
+                "sample_count": 21
+              },
+              {
+                "median_us": 7.383040189743042,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 128,
+          "gates": [
+            {
+              "max": 2.7564660021184295e-06,
+              "rel_l2": 2.855272197700605e-07
+            },
+            {
+              "max": 2.3912640134682306e-06,
+              "rel_l2": 2.927255226108358e-07
+            }
+          ],
+          "grid_blocks": 64,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 52.93055772781372,
+            "graphs": [
+              {
+                "median_us": 52.94079780578613,
+                "sample_count": 21
+              },
+              {
+                "median_us": 52.92031764984131,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 95.764479637146,
+            "graphs": [
+              {
+                "median_us": 95.77471733093262,
+                "sample_count": 21
+              },
+              {
+                "median_us": 95.75424194335938,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 4.659200012683868,
+            "graphs": [
+              {
+                "median_us": 4.659200012683868,
+                "sample_count": 21
+              },
+              {
+                "median_us": 4.659200012683868,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 4.9510399997234344,
+            "graphs": [
+              {
+                "median_us": 4.956159889698029,
+                "sample_count": 21
+              },
+              {
+                "median_us": 4.94592010974884,
+                "sample_count": 21
+              }
+            ]
+          }
+        }
+      ],
+      "oracle": [
+        {
+          "max": 1.8828461163522547e-06,
+          "rel_l2": 2.7897913791528434e-07
+        },
+        {
+          "max": 2.233175315780045e-06,
+          "rel_l2": 2.8467670135028685e-07
+        },
+        {
+          "max": 1.8538079875618507e-06,
+          "rel_l2": 2.567587328277798e-07
+        }
+      ],
+      "compiler": {
+        "prepare_bounded": {
+          "registers": 42,
+          "spill_slots": 0,
+          "shared_bytes": 0
+        },
+        "tile_layout": {
+          "registers": 40,
+          "spill_slots": 0,
+          "shared_bytes": 4096
+        },
+        "persistent_layout": {
+          "registers": 168,
+          "spill_slots": 0,
+          "shared_bytes": 8192
+        },
+        "hybrid_save_h": {
+          "registers": 48,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        },
+        "packed_forward": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 7296
+        },
+        "packed_dx": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 26624
+        },
+        "singleton_param": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 40960
+        }
+      },
+      "cold_instrumented_counters": [
+        {
+          "dram__bytes_read.sum": {
+            "unit": "byte",
+            "value": "269,312"
+          },
+          "dram__bytes_write.sum": {
+            "unit": "byte",
+            "value": "0"
+          },
+          "lts__t_sector_hit_rate.pct": {
+            "unit": "%",
+            "value": "88.82"
+          },
+          "DRAM Frequency": {
+            "unit": "hz",
+            "value": "6,238,402,818.56"
+          },
+          "SM Frequency": {
+            "unit": "hz",
+            "value": "794,313,344.10"
+          },
+          "Elapsed Cycles": {
+            "unit": "cycle",
+            "value": "86,577"
+          },
+          "Memory Throughput": {
+            "unit": "%",
+            "value": "12.46"
+          },
+          "DRAM Throughput": {
+            "unit": "%",
+            "value": "0.83"
+          },
+          "Duration": {
+            "unit": "ns",
+            "value": "108,992"
+          },
+          "L1/TEX Cache Throughput": {
+            "unit": "%",
+            "value": "46.24"
+          },
+          "L2 Cache Throughput": {
+            "unit": "%",
+            "value": "1.24"
+          },
+          "SM Active Cycles": {
+            "unit": "cycle",
+            "value": "23,306.21"
+          },
+          "Compute (SM) Throughput": {
+            "unit": "%",
+            "value": "7.44"
+          },
+          "Block Size": {
+            "unit": "",
+            "value": "128"
+          },
+          "Function Cache Configuration": {
+            "unit": "",
+            "value": "CachePreferNone"
+          },
+          "Grid Size": {
+            "unit": "",
+            "value": "16"
+          },
+          "Registers Per Thread": {
+            "unit": "register/thread",
+            "value": "80"
+          },
+          "Shared Memory Configuration Size": {
+            "unit": "byte",
+            "value": "65,536"
+          },
+          "Driver Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "1,024"
+          },
+          "Dynamic Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "7,296"
+          },
+          "Static Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "0"
+          },
+          "# SMs": {
+            "unit": "SM",
+            "value": "58"
+          },
+          "Stack Size": {
+            "unit": "",
+            "value": "1,024"
+          },
+          "Threads": {
+            "unit": "thread",
+            "value": "2,048"
+          },
+          "# TPCs": {
+            "unit": "",
+            "value": "29"
+          },
+          "Enabled TPC IDs": {
+            "unit": "",
+            "value": "all"
+          },
+          "Uses Green Context": {
+            "unit": "",
+            "value": "0"
+          },
+          "Waves Per SM": {
+            "unit": "",
+            "value": "0.05"
+          },
+          "Block Limit SM": {
+            "unit": "block",
+            "value": "24"
+          },
+          "Block Limit Registers": {
+            "unit": "block",
+            "value": "6"
+          },
+          "Block Limit Shared Mem": {
+            "unit": "block",
+            "value": "7"
+          },
+          "Block Limit Warps": {
+            "unit": "block",
+            "value": "12"
+          },
+          "Theoretical Active Warps per SM": {
+            "unit": "warp",
+            "value": "24"
+          },
+          "Theoretical Occupancy": {
+            "unit": "%",
+            "value": "50"
+          },
+          "Achieved Occupancy": {
+            "unit": "%",
+            "value": "8.36"
+          },
+          "Achieved Active Warps Per SM": {
+            "unit": "warp",
+            "value": "4.01"
+          }
+        },
+        {
+          "dram__bytes_read.sum": {
+            "unit": "byte",
+            "value": "162,048"
+          },
+          "dram__bytes_write.sum": {
+            "unit": "byte",
+            "value": "0"
+          },
+          "lts__t_sector_hit_rate.pct": {
+            "unit": "%",
+            "value": "90.10"
+          },
+          "DRAM Frequency": {
+            "unit": "hz",
+            "value": "6,242,231,958.50"
+          },
+          "SM Frequency": {
+            "unit": "hz",
+            "value": "794,601,714.76"
+          },
+          "Elapsed Cycles": {
+            "unit": "cycle",
+            "value": "168,305"
+          },
+          "Memory Throughput": {
+            "unit": "%",
+            "value": "9.17"
+          },
+          "DRAM Throughput": {
+            "unit": "%",
+            "value": "0.26"
+          },
+          "Duration": {
+            "unit": "ns",
+            "value": "211,808"
+          },
+          "L1/TEX Cache Throughput": {
+            "unit": "%",
+            "value": "34.34"
+          },
+          "L2 Cache Throughput": {
+            "unit": "%",
+            "value": "0.54"
+          },
+          "SM Active Cycles": {
+            "unit": "cycle",
+            "value": "45,110.21"
+          },
+          "Compute (SM) Throughput": {
+            "unit": "%",
+            "value": "5.63"
+          },
+          "Block Size": {
+            "unit": "",
+            "value": "128"
+          },
+          "Function Cache Configuration": {
+            "unit": "",
+            "value": "CachePreferNone"
+          },
+          "Grid Size": {
+            "unit": "",
+            "value": "16"
+          },
+          "Registers Per Thread": {
+            "unit": "register/thread",
+            "value": "80"
+          },
+          "Shared Memory Configuration Size": {
+            "unit": "byte",
+            "value": "102,400"
+          },
+          "Driver Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "1,024"
+          },
+          "Dynamic Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "26,624"
+          },
+          "Static Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "0"
+          },
+          "# SMs": {
+            "unit": "SM",
+            "value": "58"
+          },
+          "Stack Size": {
+            "unit": "",
+            "value": "1,024"
+          },
+          "Threads": {
+            "unit": "thread",
+            "value": "2,048"
+          },
+          "# TPCs": {
+            "unit": "",
+            "value": "29"
+          },
+          "Enabled TPC IDs": {
+            "unit": "",
+            "value": "all"
+          },
+          "Uses Green Context": {
+            "unit": "",
+            "value": "0"
+          },
+          "Waves Per SM": {
+            "unit": "",
+            "value": "0.09"
+          },
+          "Block Limit SM": {
+            "unit": "block",
+            "value": "24"
+          },
+          "Block Limit Registers": {
+            "unit": "block",
+            "value": "6"
+          },
+          "Block Limit Shared Mem": {
+            "unit": "block",
+            "value": "3"
+          },
+          "Block Limit Warps": {
+            "unit": "block",
+            "value": "12"
+          },
+          "Theoretical Active Warps per SM": {
+            "unit": "warp",
+            "value": "12"
+          },
+          "Theoretical Occupancy": {
+            "unit": "%",
+            "value": "25"
+          },
+          "Achieved Occupancy": {
+            "unit": "%",
+            "value": "8.35"
+          },
+          "Achieved Active Warps Per SM": {
+            "unit": "warp",
+            "value": "4.01"
+          }
+        }
+      ],
+      "job": "l4job-bd6adb242d774200a88e9637bf4d00f8"
+    },
+    {
+      "size": 128,
+      "initial_rho": 8,
+      "atoms": 819,
+      "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+      "census": [
+        {
+          "direction": "forward",
+          "totals": {
+            "scanned_slots": 6552,
+            "scanned_live_atoms": 6552,
+            "enabled_atom_visits": 1487,
+            "scanned_blocks": 208,
+            "active_blocks": 208,
+            "active_block_lanes": 6656,
+            "useful_output_coefficients": 12698,
+            "rectangular_output_coefficients": 106496,
+            "input_site_visits": 23131,
+            "input_loop_lane_steps": 106496,
+            "useful_atom_fraction": 0.22695360195360195,
+            "useful_coefficient_fraction": 0.11923452524038461
+          },
+          "hypothetical_sorted_active_blocks": 51,
+          "hypothetical_sorted_scanned_blocks": 208,
+          "hypothetical_compact_owner_blocks": 50
+        },
+        {
+          "direction": "dx",
+          "totals": {
+            "scanned_slots": 6552,
+            "scanned_live_atoms": 6552,
+            "enabled_atom_visits": 1499,
+            "scanned_blocks": 208,
+            "active_blocks": 207,
+            "active_block_lanes": 6624,
+            "useful_output_coefficients": 12729,
+            "rectangular_output_coefficients": 105984,
+            "input_site_visits": 23227,
+            "input_loop_lane_steps": 105984,
+            "useful_atom_fraction": 0.22878510378510378,
+            "useful_coefficient_fraction": 0.12010303442028986
+          },
+          "hypothetical_sorted_active_blocks": 54,
+          "hypothetical_sorted_scanned_blocks": 208,
+          "hypothetical_compact_owner_blocks": 51
+        }
+      ],
+      "timings": [
+        {
+          "batch": 1,
+          "gates": [
+            {
+              "max": 1.3323359802086543e-06,
+              "rel_l2": 2.393494522305746e-07
+            },
+            {
+              "max": 1.2500803694415197e-06,
+              "rel_l2": 2.1060886502544407e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 36.45952105522156,
+            "graphs": [
+              {
+                "median_us": 36.45440101623535,
+                "sample_count": 21
+              },
+              {
+                "median_us": 36.464641094207764,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 68.55168104171753,
+            "graphs": [
+              {
+                "median_us": 68.54656219482422,
+                "sample_count": 21
+              },
+              {
+                "median_us": 68.55679988861084,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.5667200088500977,
+            "graphs": [
+              {
+                "median_us": 1.5667200088500977,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.5667200088500977,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 1.5769599378108978,
+            "graphs": [
+              {
+                "median_us": 1.5769599378108978,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.5769599378108978,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 8,
+          "gates": [
+            {
+              "max": 2.2611439671749167e-06,
+              "rel_l2": 2.5457029305954397e-07
+            },
+            {
+              "max": 1.475031866871035e-06,
+              "rel_l2": 2.7854825486001434e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 36.47487998008728,
+            "graphs": [
+              {
+                "median_us": 36.4851188659668,
+                "sample_count": 21
+              },
+              {
+                "median_us": 36.464641094207764,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 68.34128141403198,
+            "graphs": [
+              {
+                "median_us": 68.34080219268799,
+                "sample_count": 21
+              },
+              {
+                "median_us": 68.34176063537598,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 2.165760025382042,
+            "graphs": [
+              {
+                "median_us": 2.160640060901642,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.170879989862442,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 2.7852800488471985,
+            "graphs": [
+              {
+                "median_us": 2.7852800488471985,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.7852800488471985,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 32,
+          "gates": [
+            {
+              "max": 2.2611439671749167e-06,
+              "rel_l2": 2.6346415903249213e-07
+            },
+            {
+              "max": 2.4945664289788283e-06,
+              "rel_l2": 2.6069083561393615e-07
+            }
+          ],
+          "grid_blocks": 16,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 36.51071906089783,
+            "graphs": [
+              {
+                "median_us": 36.51583909988403,
+                "sample_count": 21
+              },
+              {
+                "median_us": 36.50559902191162,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 68.5260820388794,
+            "graphs": [
+              {
+                "median_us": 68.5260820388794,
+                "sample_count": 21
+              },
+              {
+                "median_us": 68.5260820388794,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 7.178239822387695,
+            "graphs": [
+              {
+                "median_us": 7.178239822387695,
+                "sample_count": 21
+              },
+              {
+                "median_us": 7.178239822387695,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 7.383040189743042,
+            "graphs": [
+              {
+                "median_us": 7.383040189743042,
+                "sample_count": 21
+              },
+              {
+                "median_us": 7.383040189743042,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 128,
+          "gates": [
+            {
+              "max": 2.7463297564978006e-06,
+              "rel_l2": 2.619320019650904e-07
+            },
+            {
+              "max": 2.529106789772584e-06,
+              "rel_l2": 2.7019791890592655e-07
+            }
+          ],
+          "grid_blocks": 64,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 52.86400079727173,
+            "graphs": [
+              {
+                "median_us": 52.85888195037842,
+                "sample_count": 21
+              },
+              {
+                "median_us": 52.86911964416504,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 99.10783767700195,
+            "graphs": [
+              {
+                "median_us": 99.11295890808105,
+                "sample_count": 21
+              },
+              {
+                "median_us": 99.10271644592285,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 4.659200012683868,
+            "graphs": [
+              {
+                "median_us": 4.659200012683868,
+                "sample_count": 21
+              },
+              {
+                "median_us": 4.659200012683868,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 4.94592010974884,
+            "graphs": [
+              {
+                "median_us": 4.94592010974884,
+                "sample_count": 21
+              },
+              {
+                "median_us": 4.94592010974884,
+                "sample_count": 21
+              }
+            ]
+          }
+        }
+      ],
+      "oracle": [
+        {
+          "max": 2.2611439685071844e-06,
+          "rel_l2": 2.634641590319604e-07
+        },
+        {
+          "max": 2.4945664272024715e-06,
+          "rel_l2": 2.6069083560946604e-07
+        },
+        {
+          "max": 2.078502605584731e-06,
+          "rel_l2": 2.399893422063272e-07
+        }
+      ],
+      "compiler": {
+        "prepare_bounded": {
+          "registers": 42,
+          "spill_slots": 0,
+          "shared_bytes": 0
+        },
+        "tile_layout": {
+          "registers": 40,
+          "spill_slots": 0,
+          "shared_bytes": 4096
+        },
+        "persistent_layout": {
+          "registers": 168,
+          "spill_slots": 0,
+          "shared_bytes": 8192
+        },
+        "hybrid_save_h": {
+          "registers": 48,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        },
+        "packed_forward": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 7296
+        },
+        "packed_dx": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 26624
+        },
+        "singleton_param": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 40960
+        }
+      },
+      "job": "l4job-bd6adb242d774200a88e9637bf4d00f8"
+    },
+    {
+      "size": 64,
+      "initial_rho": 3,
+      "atoms": 204,
+      "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+      "census": [
+        {
+          "direction": "forward",
+          "totals": {
+            "scanned_slots": 816,
+            "scanned_live_atoms": 816,
+            "enabled_atom_visits": 246,
+            "scanned_blocks": 28,
+            "active_blocks": 28,
+            "active_block_lanes": 896,
+            "useful_output_coefficients": 1205,
+            "rectangular_output_coefficients": 14336,
+            "input_site_visits": 1445,
+            "input_loop_lane_steps": 5376,
+            "useful_atom_fraction": 0.3014705882352941,
+            "useful_coefficient_fraction": 0.08405412946428571
+          },
+          "hypothetical_sorted_active_blocks": 12,
+          "hypothetical_sorted_scanned_blocks": 28,
+          "hypothetical_compact_owner_blocks": 9
+        },
+        {
+          "direction": "dx",
+          "totals": {
+            "scanned_slots": 816,
+            "scanned_live_atoms": 816,
+            "enabled_atom_visits": 250,
+            "scanned_blocks": 28,
+            "active_blocks": 28,
+            "active_block_lanes": 896,
+            "useful_output_coefficients": 1194,
+            "rectangular_output_coefficients": 14336,
+            "input_site_visits": 1481,
+            "input_loop_lane_steps": 5376,
+            "useful_atom_fraction": 0.30637254901960786,
+            "useful_coefficient_fraction": 0.08328683035714286
+          },
+          "hypothetical_sorted_active_blocks": 11,
+          "hypothetical_sorted_scanned_blocks": 28,
+          "hypothetical_compact_owner_blocks": 10
+        }
+      ],
+      "timings": [
+        {
+          "batch": 1,
+          "gates": [
+            {
+              "max": 5.676491191541899e-07,
+              "rel_l2": 1.788247588031208e-07
+            },
+            {
+              "max": 4.472533488009134e-07,
+              "rel_l2": 1.3718498863481996e-07
+            }
+          ],
+          "grid_blocks": 4,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 17.663999795913696,
+            "graphs": [
+              {
+                "median_us": 17.663999795913696,
+                "sample_count": 21
+              },
+              {
+                "median_us": 17.663999795913696,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 19.742720127105713,
+            "graphs": [
+              {
+                "median_us": 19.7324800491333,
+                "sample_count": 21
+              },
+              {
+                "median_us": 19.752960205078125,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.730560064315796,
+            "graphs": [
+              {
+                "median_us": 1.730560064315796,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.730560064315796,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 1.4950400590896606,
+            "graphs": [
+              {
+                "median_us": 1.4950400590896606,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.4950400590896606,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 8,
+          "gates": [
+            {
+              "max": 7.480546746485572e-07,
+              "rel_l2": 1.5142993337940162e-07
+            },
+            {
+              "max": 6.293213372643436e-07,
+              "rel_l2": 1.5641881520011583e-07
+            }
+          ],
+          "grid_blocks": 4,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 17.694720029830933,
+            "graphs": [
+              {
+                "median_us": 17.694720029830933,
+                "sample_count": 21
+              },
+              {
+                "median_us": 17.694720029830933,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 19.768159985542297,
+            "graphs": [
+              {
+                "median_us": 19.763200283050537,
+                "sample_count": 21
+              },
+              {
+                "median_us": 19.773119688034058,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.9046400487422943,
+            "graphs": [
+              {
+                "median_us": 1.9046400487422943,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.9046400487422943,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 2.252800017595291,
+            "graphs": [
+              {
+                "median_us": 2.252800017595291,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.252800017595291,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 32,
+          "gates": [
+            {
+              "max": 7.480546746485572e-07,
+              "rel_l2": 1.5770718032559434e-07
+            },
+            {
+              "max": 8.50082947145836e-07,
+              "rel_l2": 1.5454497075937018e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 17.85856008529663,
+            "graphs": [
+              {
+                "median_us": 17.85856008529663,
+                "sample_count": 21
+              },
+              {
+                "median_us": 17.85856008529663,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 20.285439491271973,
+            "graphs": [
+              {
+                "median_us": 20.285439491271973,
+                "sample_count": 21
+              },
+              {
+                "median_us": 20.285439491271973,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 5.857279896736145,
+            "graphs": [
+              {
+                "median_us": 5.857279896736145,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.857279896736145,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 5.693439841270447,
+            "graphs": [
+              {
+                "median_us": 5.693439841270447,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.693439841270447,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 128,
+          "gates": [
+            {
+              "max": 1.0012231290712492e-06,
+              "rel_l2": 1.627715362592654e-07
+            },
+            {
+              "max": 8.475559827303414e-07,
+              "rel_l2": 1.5991512621899578e-07
+            }
+          ],
+          "grid_blocks": 32,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 17.88911998271942,
+            "graphs": [
+              {
+                "median_us": 17.888959646224976,
+                "sample_count": 21
+              },
+              {
+                "median_us": 17.889280319213867,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 20.311039686203003,
+            "graphs": [
+              {
+                "median_us": 20.31615972518921,
+                "sample_count": 21
+              },
+              {
+                "median_us": 20.305919647216797,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 5.49888014793396,
+            "graphs": [
+              {
+                "median_us": 5.49888014793396,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.49888014793396,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 5.32480001449585,
+            "graphs": [
+              {
+                "median_us": 5.32480001449585,
+                "sample_count": 21
+              },
+              {
+                "median_us": 5.32480001449585,
+                "sample_count": 21
+              }
+            ]
+          }
+        }
+      ],
+      "oracle": [
+        {
+          "max": 7.480546728722004e-07,
+          "rel_l2": 1.57707180311428e-07
+        },
+        {
+          "max": 8.50082947145836e-07,
+          "rel_l2": 1.5454497077862753e-07
+        },
+        {
+          "max": 1.5400313504443375e-06,
+          "rel_l2": 1.8740664171822084e-07
+        }
+      ],
+      "compiler": {
+        "prepare_bounded": {
+          "registers": 32,
+          "spill_slots": 0,
+          "shared_bytes": 0
+        },
+        "tile_layout": {
+          "registers": 32,
+          "spill_slots": 0,
+          "shared_bytes": 1024
+        },
+        "persistent_layout": {
+          "registers": 64,
+          "spill_slots": 0,
+          "shared_bytes": 2048
+        },
+        "hybrid_save_h": {
+          "registers": 40,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        },
+        "packed_forward": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 7296
+        },
+        "packed_dx": {
+          "registers": 72,
+          "spill_slots": 2,
+          "shared_bytes": 14336
+        },
+        "singleton_param": {
+          "registers": 224,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        }
+      },
+      "job": "l4job-fdbb2c06015d426ebb936052f66926dd"
+    },
+    {
+      "size": 128,
+      "initial_rho": 3,
+      "atoms": 819,
+      "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+      "census": [
+        {
+          "direction": "forward",
+          "totals": {
+            "scanned_slots": 6552,
+            "scanned_live_atoms": 6552,
+            "enabled_atom_visits": 1057,
+            "scanned_blocks": 208,
+            "active_blocks": 208,
+            "active_block_lanes": 6656,
+            "useful_output_coefficients": 4871,
+            "rectangular_output_coefficients": 106496,
+            "input_site_visits": 6274,
+            "input_loop_lane_steps": 39936,
+            "useful_atom_fraction": 0.16132478632478633,
+            "useful_coefficient_fraction": 0.04573880709134615
+          },
+          "hypothetical_sorted_active_blocks": 39,
+          "hypothetical_sorted_scanned_blocks": 208,
+          "hypothetical_compact_owner_blocks": 36
+        },
+        {
+          "direction": "dx",
+          "totals": {
+            "scanned_slots": 6552,
+            "scanned_live_atoms": 6552,
+            "enabled_atom_visits": 1041,
+            "scanned_blocks": 208,
+            "active_blocks": 206,
+            "active_block_lanes": 6592,
+            "useful_output_coefficients": 4864,
+            "rectangular_output_coefficients": 105472,
+            "input_site_visits": 6194,
+            "input_loop_lane_steps": 39552,
+            "useful_atom_fraction": 0.15888278388278387,
+            "useful_coefficient_fraction": 0.04611650485436893
+          },
+          "hypothetical_sorted_active_blocks": 39,
+          "hypothetical_sorted_scanned_blocks": 208,
+          "hypothetical_compact_owner_blocks": 38
+        }
+      ],
+      "timings": [
+        {
+          "batch": 1,
+          "gates": [
+            {
+              "max": 1.0210304348667876e-06,
+              "rel_l2": 2.1216422707864237e-07
+            },
+            {
+              "max": 9.050030493895633e-07,
+              "rel_l2": 1.4484705857471297e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 57.67168045043945,
+            "graphs": [
+              {
+                "median_us": 57.67168045043945,
+                "sample_count": 21
+              },
+              {
+                "median_us": 57.67168045043945,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 65.02400159835815,
+            "graphs": [
+              {
+                "median_us": 65.01376152038574,
+                "sample_count": 21
+              },
+              {
+                "median_us": 65.03424167633057,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 1.5564799308776855,
+            "graphs": [
+              {
+                "median_us": 1.5564799308776855,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.5564799308776855,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 1.5769599378108978,
+            "graphs": [
+              {
+                "median_us": 1.5769599378108978,
+                "sample_count": 21
+              },
+              {
+                "median_us": 1.5769599378108978,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 8,
+          "gates": [
+            {
+              "max": 1.2942201106369566e-06,
+              "rel_l2": 1.7214133352601058e-07
+            },
+            {
+              "max": 1.1584742027892503e-06,
+              "rel_l2": 1.8059199070168876e-07
+            }
+          ],
+          "grid_blocks": 8,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 57.70751953125,
+            "graphs": [
+              {
+                "median_us": 57.7126407623291,
+                "sample_count": 21
+              },
+              {
+                "median_us": 57.7023983001709,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 66.65216207504272,
+            "graphs": [
+              {
+                "median_us": 66.64192199707031,
+                "sample_count": 21
+              },
+              {
+                "median_us": 66.66240215301514,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 2.2118400037288666,
+            "graphs": [
+              {
+                "median_us": 2.2118400037288666,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.2118400037288666,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 2.6982399821281433,
+            "graphs": [
+              {
+                "median_us": 2.7033600211143494,
+                "sample_count": 21
+              },
+              {
+                "median_us": 2.6931199431419373,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 32,
+          "gates": [
+            {
+              "max": 1.2942201106369566e-06,
+              "rel_l2": 1.7733841497106445e-07
+            },
+            {
+              "max": 1.525834006699256e-06,
+              "rel_l2": 1.7668294126110878e-07
+            }
+          ],
+          "grid_blocks": 16,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 58.071041107177734,
+            "graphs": [
+              {
+                "median_us": 58.09152126312256,
+                "sample_count": 21
+              },
+              {
+                "median_us": 58.05056095123291,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 70.98880052566528,
+            "graphs": [
+              {
+                "median_us": 70.96320152282715,
+                "sample_count": 21
+              },
+              {
+                "median_us": 71.01439952850342,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 7.208960056304932,
+            "graphs": [
+              {
+                "median_us": 7.208960056304932,
+                "sample_count": 21
+              },
+              {
+                "median_us": 7.208960056304932,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 7.383040189743042,
+            "graphs": [
+              {
+                "median_us": 7.383040189743042,
+                "sample_count": 21
+              },
+              {
+                "median_us": 7.383040189743042,
+                "sample_count": 21
+              }
+            ]
+          }
+        },
+        {
+          "batch": 128,
+          "gates": [
+            {
+              "max": 1.7444239013286733e-06,
+              "rel_l2": 1.8085963306859274e-07
+            },
+            {
+              "max": 1.5866002005537894e-06,
+              "rel_l2": 1.8409915875668418e-07
+            }
+          ],
+          "grid_blocks": 64,
+          "forward_only": {
+            "median_of_two_graph_medians_us": 74.27040100097656,
+            "graphs": [
+              {
+                "median_us": 74.27072048187256,
+                "sample_count": 21
+              },
+              {
+                "median_us": 74.27008152008057,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dx_only": {
+            "median_of_two_graph_medians_us": 86.94272041320801,
+            "graphs": [
+              {
+                "median_us": 86.91712379455566,
+                "sample_count": 21
+              },
+              {
+                "median_us": 86.96831703186035,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_forward_only": {
+            "median_of_two_graph_medians_us": 4.648959934711456,
+            "graphs": [
+              {
+                "median_us": 4.648959934711456,
+                "sample_count": 21
+              },
+              {
+                "median_us": 4.648959934711456,
+                "sample_count": 21
+              }
+            ]
+          },
+          "dense_dx_only": {
+            "median_of_two_graph_medians_us": 4.94592010974884,
+            "graphs": [
+              {
+                "median_us": 4.94592010974884,
+                "sample_count": 21
+              },
+              {
+                "median_us": 4.94592010974884,
+                "sample_count": 21
+              }
+            ]
+          }
+        }
+      ],
+      "oracle": [
+        {
+          "max": 1.2942201124133135e-06,
+          "rel_l2": 1.7733841496093788e-07
+        },
+        {
+          "max": 1.5258340075874344e-06,
+          "rel_l2": 1.7668294124533512e-07
+        },
+        {
+          "max": 2.1199747537448133e-06,
+          "rel_l2": 1.902680093823149e-07
+        }
+      ],
+      "compiler": {
+        "prepare_bounded": {
+          "registers": 42,
+          "spill_slots": 0,
+          "shared_bytes": 0
+        },
+        "tile_layout": {
+          "registers": 40,
+          "spill_slots": 0,
+          "shared_bytes": 4096
+        },
+        "persistent_layout": {
+          "registers": 168,
+          "spill_slots": 0,
+          "shared_bytes": 8192
+        },
+        "hybrid_save_h": {
+          "registers": 48,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        },
+        "packed_forward": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 7296
+        },
+        "packed_dx": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 26624
+        },
+        "singleton_param": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 40960
+        }
+      },
+      "cold_instrumented_counters": [
+        {
+          "dram__bytes_read.sum": {
+            "unit": "byte",
+            "value": "123,648"
+          },
+          "dram__bytes_write.sum": {
+            "unit": "byte",
+            "value": "0"
+          },
+          "lts__t_sector_hit_rate.pct": {
+            "unit": "%",
+            "value": "89.65"
+          },
+          "DRAM Frequency": {
+            "unit": "hz",
+            "value": "6,240,911,770.49"
+          },
+          "SM Frequency": {
+            "unit": "hz",
+            "value": "794,409,510.71"
+          },
+          "Elapsed Cycles": {
+            "unit": "cycle",
+            "value": "129,370"
+          },
+          "Memory Throughput": {
+            "unit": "%",
+            "value": "11.40"
+          },
+          "DRAM Throughput": {
+            "unit": "%",
+            "value": "0.25"
+          },
+          "Duration": {
+            "unit": "ns",
+            "value": "162,848"
+          },
+          "L1/TEX Cache Throughput": {
+            "unit": "%",
+            "value": "41.76"
+          },
+          "L2 Cache Throughput": {
+            "unit": "%",
+            "value": "0.54"
+          },
+          "SM Active Cycles": {
+            "unit": "cycle",
+            "value": "35,173.02"
+          },
+          "Compute (SM) Throughput": {
+            "unit": "%",
+            "value": "6.69"
+          },
+          "Block Size": {
+            "unit": "",
+            "value": "128"
+          },
+          "Function Cache Configuration": {
+            "unit": "",
+            "value": "CachePreferNone"
+          },
+          "Grid Size": {
+            "unit": "",
+            "value": "16"
+          },
+          "Registers Per Thread": {
+            "unit": "register/thread",
+            "value": "80"
+          },
+          "Shared Memory Configuration Size": {
+            "unit": "byte",
+            "value": "65,536"
+          },
+          "Driver Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "1,024"
+          },
+          "Dynamic Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "7,296"
+          },
+          "Static Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "0"
+          },
+          "# SMs": {
+            "unit": "SM",
+            "value": "58"
+          },
+          "Stack Size": {
+            "unit": "",
+            "value": "1,024"
+          },
+          "Threads": {
+            "unit": "thread",
+            "value": "2,048"
+          },
+          "# TPCs": {
+            "unit": "",
+            "value": "29"
+          },
+          "Enabled TPC IDs": {
+            "unit": "",
+            "value": "all"
+          },
+          "Uses Green Context": {
+            "unit": "",
+            "value": "0"
+          },
+          "Waves Per SM": {
+            "unit": "",
+            "value": "0.05"
+          },
+          "Block Limit SM": {
+            "unit": "block",
+            "value": "24"
+          },
+          "Block Limit Registers": {
+            "unit": "block",
+            "value": "6"
+          },
+          "Block Limit Shared Mem": {
+            "unit": "block",
+            "value": "7"
+          },
+          "Block Limit Warps": {
+            "unit": "block",
+            "value": "12"
+          },
+          "Theoretical Active Warps per SM": {
+            "unit": "warp",
+            "value": "24"
+          },
+          "Theoretical Occupancy": {
+            "unit": "%",
+            "value": "50"
+          },
+          "Achieved Occupancy": {
+            "unit": "%",
+            "value": "8.33"
+          },
+          "Achieved Active Warps Per SM": {
+            "unit": "warp",
+            "value": "4.00"
+          }
+        },
+        {
+          "dram__bytes_read.sum": {
+            "unit": "byte",
+            "value": "151,296"
+          },
+          "dram__bytes_write.sum": {
+            "unit": "byte",
+            "value": "0"
+          },
+          "lts__t_sector_hit_rate.pct": {
+            "unit": "%",
+            "value": "87.98"
+          },
+          "DRAM Frequency": {
+            "unit": "hz",
+            "value": "6,241,836,620.97"
+          },
+          "SM Frequency": {
+            "unit": "hz",
+            "value": "794,548,228.02"
+          },
+          "Elapsed Cycles": {
+            "unit": "cycle",
+            "value": "152,097"
+          },
+          "Memory Throughput": {
+            "unit": "%",
+            "value": "9.20"
+          },
+          "DRAM Throughput": {
+            "unit": "%",
+            "value": "0.26"
+          },
+          "Duration": {
+            "unit": "ns",
+            "value": "191,424"
+          },
+          "L1/TEX Cache Throughput": {
+            "unit": "%",
+            "value": "34.13"
+          },
+          "L2 Cache Throughput": {
+            "unit": "%",
+            "value": "0.54"
+          },
+          "SM Active Cycles": {
+            "unit": "cycle",
+            "value": "41,003.48"
+          },
+          "Compute (SM) Throughput": {
+            "unit": "%",
+            "value": "5.24"
+          },
+          "Block Size": {
+            "unit": "",
+            "value": "128"
+          },
+          "Function Cache Configuration": {
+            "unit": "",
+            "value": "CachePreferNone"
+          },
+          "Grid Size": {
+            "unit": "",
+            "value": "16"
+          },
+          "Registers Per Thread": {
+            "unit": "register/thread",
+            "value": "80"
+          },
+          "Shared Memory Configuration Size": {
+            "unit": "byte",
+            "value": "102,400"
+          },
+          "Driver Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "1,024"
+          },
+          "Dynamic Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "26,624"
+          },
+          "Static Shared Memory Per Block": {
+            "unit": "byte/block",
+            "value": "0"
+          },
+          "# SMs": {
+            "unit": "SM",
+            "value": "58"
+          },
+          "Stack Size": {
+            "unit": "",
+            "value": "1,024"
+          },
+          "Threads": {
+            "unit": "thread",
+            "value": "2,048"
+          },
+          "# TPCs": {
+            "unit": "",
+            "value": "29"
+          },
+          "Enabled TPC IDs": {
+            "unit": "",
+            "value": "all"
+          },
+          "Uses Green Context": {
+            "unit": "",
+            "value": "0"
+          },
+          "Waves Per SM": {
+            "unit": "",
+            "value": "0.09"
+          },
+          "Block Limit SM": {
+            "unit": "block",
+            "value": "24"
+          },
+          "Block Limit Registers": {
+            "unit": "block",
+            "value": "6"
+          },
+          "Block Limit Shared Mem": {
+            "unit": "block",
+            "value": "3"
+          },
+          "Block Limit Warps": {
+            "unit": "block",
+            "value": "12"
+          },
+          "Theoretical Active Warps per SM": {
+            "unit": "warp",
+            "value": "12"
+          },
+          "Theoretical Occupancy": {
+            "unit": "%",
+            "value": "25"
+          },
+          "Achieved Occupancy": {
+            "unit": "%",
+            "value": "8.31"
+          },
+          "Achieved Active Warps Per SM": {
+            "unit": "warp",
+            "value": "3.99"
+          }
+        }
+      ],
+      "job": "l4job-fdbb2c06015d426ebb936052f66926dd"
+    }
+  ],
+  "provenance": [
+    {
+      "job": "l4job-bd6adb242d774200a88e9637bf4d00f8",
+      "source_sha256": "b8ba11c8fded0b772c7b6bbb3b1c24c805533ee77c1160c9ebf14b932f203298",
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-187ba32df12f-1",
+        "downloaded": 1791206979.275093,
+        "archive_sha256": "0258d4084fd6d11828830eb8e8418545168361083e5178fbde4647886e3a0d95"
+      },
+      "runtime": {
+        "id": "l4job-bd6adb242d774200a88e9637bf4d00f8",
+        "source_sha256": "b8ba11c8fded0b772c7b6bbb3b1c24c805533ee77c1160c9ebf14b932f203298",
+        "gpu": "NVIDIA L4, GPU-91451f4a-2e9b-f6f5-e9df-225ff06a69a8, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791206859.108245,
+        "finished": 1791206977.352153,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "verified_package_python_files": 196
+    },
+    {
+      "job": "l4job-fdbb2c06015d426ebb936052f66926dd",
+      "source_sha256": "1115483a6fbb5a0fecb7c8d347e9327e0e5890d4674e3a1dfca6ad5b6fcfe6bf",
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-1eba9146b972-1",
+        "downloaded": 1791207187.084075,
+        "archive_sha256": "1c18ff1a163520f0a9cc723cc7e6ad3defa137c9f9e957d2ce0acc598b859faa"
+      },
+      "runtime": {
+        "id": "l4job-fdbb2c06015d426ebb936052f66926dd",
+        "source_sha256": "1115483a6fbb5a0fecb7c8d347e9327e0e5890d4674e3a1dfca6ad5b6fcfe6bf",
+        "gpu": "NVIDIA L4, GPU-f45ee8db-bc13-447b-04ff-19cde89195f9, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791207088.4129045,
+        "finished": 1791207186.1271465,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "verified_package_python_files": 196
+    }
+  ]
+}

@@ -1,5 +1,13 @@
 # Small linear product / hybrid H
 
+2026-10-05: [Atom scans, rectangular work and exposed parallelism](20261005-scan-investigation.md).
+Eight fixed-initial-state probes isolate output/dX at B1/8/32/128 with rho>1.
+N128 scans6,552 general-atom entries for914 useful visits at rho1.25; all208
+forward atom blocks execute, with2.3% nonzero output coefficients. B32 launches
+only16 GPU blocks. Cold Nsight probes show low aggregate DRAM throughput;
+warm cache residency remains unproven. Offline spatial ordering reduces active
+blocks, but has not been implemented or timed. No complete-step speedup claimed.
+
 2026-10-05: [Matched initial rho above one at N64/N128](20261005-rho-audit.md).
 Four L4 jobs measure14 Cases twice with common atom32/4-warp recipes and live
 width updates. Initial rho3/4 costs more than rho8/16; N128 local forward/dX is
