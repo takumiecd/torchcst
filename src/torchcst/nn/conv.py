@@ -160,7 +160,7 @@ class CSTConv2d(CSTModule):
             )
         if p.device != input_chart.reference.device or p.dtype != target_dtype:
             raise ValueError("kernel.initialize must match the module device and dtype")
-        self.atoms = Atoms(p)
+        self._bind_atoms(Atoms(p))
 
     def _checkpoint_layout(self) -> dict[str, object]:
         return {
@@ -314,11 +314,12 @@ class CSTConv2d(CSTModule):
                 f"expected input shape [N, {self.in_channels}, H, W], "
                 f"got {tuple(inputs.shape)}"
             )
-        return self._forward_from_p(
+        result = self._forward_from_p(
             inputs,
-            self.atoms.p,
+            self.atom_state.parameters_for_execution(),
             backend=self._resolved_backend(),
         )
+        return self.atom_state.guard_result(result)
 
     def extra_repr(self) -> str:
         return (

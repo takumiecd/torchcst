@@ -7,7 +7,9 @@ KernelSpec and ProfileBinding declare shape, amplitude, width and normalization.
 GeometrySpec declare observation sites and distances. Operator exposes the operation;
 backend algorithms implement forward and backward. Atom count and parameter
 shapes stay fixed during training. Models accept pure KernelSpec declarations and
-own common ChartState and KernelState modules. The former Kernel/Profile and
+own common ChartState, KernelState and AtomState modules. AtomState owns stable
+atom identities, physical placement and AtomOptimizerState learning storage.
+The former Kernel/Profile and
 Chart/Geometry classes and checkpoint compatibility loaders have been removed.
 
 ## Installation
@@ -93,7 +95,10 @@ scheduler.load_state_dict(checkpoint["scheduler"])
 
 The wrapper shares parameter groups and state with the base optimizer. Its
 checkpoint also records optimizer type, vector-state keys, parameter names,
-shapes, the mathematical KernelSpec and policy ownership. Move the model to its target device before creating
+shapes, the mathematical KernelSpec, optimizer field axes, atom row identities
+and policy ownership. Module checkpoints include the atom-owned learning state;
+Algorithm workspace is reconstructed. Restore the model before the optimizer.
+The new checkpoint formats reject older formats. Move the model to its target device before creating
 the optimizer; rebuild after replacing an atom Parameter.
 
 ## Coordinates and execution
@@ -121,11 +126,21 @@ constructor conversion never silently replaces them. Prepare the final device
 before binding an optimizer. Parameters are available as `layer.atoms.p`.
 An explicitly empty table represents a zero operator; integer counts must be positive.
 
+`layer.atom_state` owns ID/row correspondence and optimizer state. Connect
+`CSTOptimizer` before relocating learning state, then use
+`layer.atom_state.relayout(new_row_to_id)` at an eager step boundary. The int64
+Tensor lists every atom ID once in the desired physical row order. Parameter,
+gradient and declared optimizer state move together, preserving Tensor identities.
+Pending/retained backward blocks relocation. One AtomState has one optimizer
+updater; custom state axes are declared with `OptimizerFieldSpec` via
+`CSTOptimizer(..., state_specs=...)`. See [Atom/Algorithm state ownership](docs/atom-state.ja.md).
+
 ## Documentation
 
 - [Contributing: code and GPU benchmark results](CONTRIBUTING.md)
 - [CUDA kernel development: validation, measurements and PR integration](docs/kernel-development.ja.md)
 - [CSTOptimizer](docs/cst-optimizer.ja.md)
+- [Atom and Algorithm state ownership](docs/atom-state.ja.md)
 - [Declaration and backend layout](src/torchcst/_backends/README.md)
 - [Kernel and Profile](src/torchcst/kernels/README.md)
 - [Geometry](src/torchcst/geometry/README.md)

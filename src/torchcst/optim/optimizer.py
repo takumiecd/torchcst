@@ -9,16 +9,18 @@ import torch
 from torch import nn
 from torch.optim import LBFGS, Optimizer
 
+from torchcst.atoms import OptimizerFieldSpec
 from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.nn import CSTModule
 
+from .binding import bind_atom_states, field_specs, validate_binding
 from .state import OptimizerStateAdapter, default_state_adapter
 
 
 class CSTOptimizer(Optimizer):
     """Delegate proposals to ``optimizer`` and apply Kernel update policies.
 
-    Parameters and state remain owned by the supplied optimizer. Ordinary
+    Managed atom state is owned by AtomState and shared with the supplied optimizer. Ordinary
     model parameters, including Euclidean chart coordinates, pass through.
     Each managed atom table gets a parameter-sized old-point snapshot, never
     a dense weight matrix. Use this wrapper for step/zero_grad/checkpoint and
@@ -31,6 +33,7 @@ class CSTOptimizer(Optimizer):
         *,
         model: nn.Module,
         state_adapter: OptimizerStateAdapter | None = None,
+        state_specs: dict[str, OptimizerFieldSpec] | None = None,
     ):
         if not isinstance(optimizer, Optimizer) or isinstance(optimizer, CSTOptimizer):
             raise TypeError("optimizer must be an unwrapped torch.optim.Optimizer")
@@ -50,6 +53,10 @@ class CSTOptimizer(Optimizer):
             default_state_adapter(optimizer) if self._sites else OptimizerStateAdapter()
         )
         self._validate_groups(optimizer.param_groups)
+        self._state_specs = field_specs(
+            optimizer, self.state_adapter.vector_keys, state_specs
+        )
+        bind_atom_states(optimizer, self._sites, self._state_specs)
         # Initialize PyTorch's scheduler and step-hook infrastructure, then
         # share the actual groups and state rather than copying their contents.
         super().__init__(optimizer.param_groups, optimizer.defaults)
@@ -97,7 +104,14 @@ class CSTOptimizer(Optimizer):
         params = group["params"]
         group["params"] = [params] if isinstance(params, torch.Tensor) else list(params)
         self._validate_groups([*self.param_groups, group])
+        validate_binding(
+            self.base_optimizer,
+            self._sites,
+            self._state_specs,
+            groups=[*self.param_groups, group],
+        )
         self.base_optimizer.add_param_group(group)
+        bind_atom_states(self.base_optimizer, self._sites, self._state_specs)
         self._sync_from_base()
 
     def zero_grad(self, set_to_none: bool = True):
@@ -177,10 +191,11 @@ class CSTOptimizer(Optimizer):
     def _manifest(self):
         names = {id(p): name for name, p in self.model.named_parameters()}
         return {
-            "version": 2,
+            "version": 3,
             "optimizer_type": f"{type(self.base_optimizer).__module__}.{type(self.base_optimizer).__qualname__}",
             "vector_keys": self.state_adapter.vector_keys,
             "state_adapter_type": f"{type(self.state_adapter).__module__}.{type(self.state_adapter).__qualname__}",
+            "state_specs": {k: v.atom_axis for k, v in self._state_specs.items()},
             "groups": [
                 [(names[id(p)], tuple(p.shape)) for p in group["params"]]
                 for group in self.param_groups
@@ -189,6 +204,7 @@ class CSTOptimizer(Optimizer):
                 (
                     names[id(site.atoms.p)],
                     asdict(site.kernel.declaration()),
+                    tuple(site.atom_state.row_to_id.cpu().tolist()),
                 )
                 for site in self._sites
             ],
@@ -231,3 +247,7 @@ class CSTOptimizer(Optimizer):
         super().load_state_dict(payload)
         self.base_optimizer.state = self.state
         self.base_optimizer.param_groups = self.param_groups
+        bind_atom_states(
+            self.base_optimizer, self._sites, self._state_specs, restored=True
+        )
+        self._sync_from_base()

@@ -6,7 +6,7 @@ from typing import Literal
 
 from torch import Tensor, nn
 
-from torchcst.atoms import Atoms
+from torchcst.atoms import Atoms, AtomState
 from torchcst.charts import ChartState
 
 RepulsionKind = Literal["cosine", "raw", "abs"]
@@ -19,13 +19,51 @@ class CSTModule(nn.Module):
     supplies gradients. The Kernel owns the coordinate update policy.
     """
 
-    atoms: Atoms
+    atom_state: AtomState
+
+    @property
+    def atoms(self) -> Atoms:
+        return self.atom_state.atoms
+
+    def _bind_atoms(self, atoms: Atoms) -> None:
+        self.atom_state = AtomState.for_atoms(atoms)
+
+    def __setattr__(self, name, value):
+        if name == "atoms":
+            if hasattr(self, "atom_state"):
+                self.atom_state._require_boundary()
+            self._bind_atoms(value)
+            return
+        super().__setattr__(name, value)
+
+    def algorithm_state(self, algorithm, **configuration):
+        """Own transient state for an algorithm/configuration, not in checkpoints."""
+        from torchcst._backends.algorithm import Algorithm
+
+        if not isinstance(algorithm, Algorithm):
+            raise TypeError("expected Algorithm")
+        states = self.__dict__.setdefault("_algorithm_states", [])
+        for state in states:
+            if (
+                state.algorithm is algorithm
+                and state.atom_state is self.atom_state
+                and state.configuration == configuration
+            ):
+                return state
+        state = algorithm.create_state(self.atom_state, **configuration)
+        states.append(state)
+        return state
+
+    def __getstate__(self):
+        state = super().__getstate__()
+        state.pop("_algorithm_states", None)
+        return state
 
     def get_extra_state(self) -> dict[str, object]:
         """Record the CST site family and its operator layout."""
 
         return {
-            "format_version": 1,
+            "format_version": 2,
             "site_type": f"{type(self).__module__}.{type(self).__qualname__}",
             "layout": self._checkpoint_layout(),
         }

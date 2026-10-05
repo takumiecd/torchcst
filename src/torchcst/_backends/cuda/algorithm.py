@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from torch import Tensor
 
+from torchcst._backends.algorithm import Algorithm as BaseAlgorithm
 from torchcst._backends.cuda.schema import (
     DispatchContext,
     SupportResult,
@@ -18,7 +19,7 @@ RecipeT = TypeVar("RecipeT")
 
 
 @dataclass(frozen=True)
-class Algorithm(ABC, Generic[RecipeT]):
+class Algorithm(BaseAlgorithm, Generic[RecipeT]):
     """Immutable identity and recipe-specific execution interface.
 
     Construction, recipe validation and support checks must not import GPU
@@ -44,6 +45,16 @@ class Algorithm(ABC, Generic[RecipeT]):
                 raise ValueError(f"algorithm {name} must be a nonempty string")
         if not isinstance(self.recipe_type, type):
             raise TypeError("algorithm recipe_type must be a type")
+
+    def _execute_state(self, state, **inputs):
+        if state.configuration.get("recipe") != inputs.get("recipe"):
+            raise ValueError("algorithm state recipe differs")
+        operator = state.configuration.get("operator")
+        if operator is not None and operator != inputs.get("operator"):
+            raise ValueError("algorithm state operator differs")
+        # Existing CUDA executors consume their established tensor interfaces.
+        # They may specialize create_state/prepare as placement is introduced.
+        return self.execute(**inputs)
 
     @abstractmethod
     def validate_recipe(self, recipe: RecipeT) -> None:

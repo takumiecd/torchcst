@@ -277,7 +277,10 @@ def test_checkpoint_rejects_wrong_optimizer_order_and_state_shape():
     model.atoms.p.grad = torch.ones_like(model.atoms.p)
     optimizer.step()
     checkpoint = copy.deepcopy(optimizer.state_dict())
-    wrong = CSTOptimizer(torch.optim.SGD(model.parameters(), lr=0.1), model=model)
+    wrong_model = site()
+    wrong = CSTOptimizer(
+        torch.optim.SGD(wrong_model.parameters(), lr=0.1), model=wrong_model
+    )
     with pytest.raises(ValueError, match="contract"):
         wrong.load_state_dict(checkpoint)
     index = checkpoint["param_groups"][0]["params"][0]
@@ -346,8 +349,9 @@ def test_trainable_euclidean_chart_and_parameter_subset_pass_through():
 def test_mismatched_parameter_order_is_rejected_by_checkpoint():
     model = nn.Sequential(site(), nn.Linear(4, 2, dtype=torch.float64))
     optimizer = CSTOptimizer(torch.optim.Adam(model.parameters()), model=model)
+    other = copy.deepcopy(model)
     reversed_optimizer = CSTOptimizer(
-        torch.optim.Adam(list(model.parameters())[::-1]), model=model
+        torch.optim.Adam(list(other.parameters())[::-1]), model=other
     )
     with pytest.raises(ValueError, match="contract"):
         reversed_optimizer.load_state_dict(optimizer.state_dict())

@@ -86,8 +86,18 @@ def forward(site, inputs, p):
         context = context_from_tensors(operator, flat, parameters)
         selector = site.selector if site.selector is not None else BOOTSTRAP_SELECTOR
         decision = selector.select(context)
+        algorithm = REGISTRY.get(
+            decision.plan.algorithm_id, revision=decision.plan.algorithm_revision
+        )
         result = REGISTRY.execute(
-            decision.plan, context, x=flat, parameters=parameters, operator=operator
+            decision.plan,
+            context,
+            x=flat,
+            parameters=parameters,
+            operator=operator,
+            state=site.algorithm_state(
+                algorithm, recipe=decision.plan.recipe, operator=operator
+            ),
         )
     else:
         raise ValueError("normalized radial algorithms require CPU or CUDA")

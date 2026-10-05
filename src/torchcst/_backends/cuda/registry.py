@@ -13,6 +13,7 @@ from torchcst._backends.cuda.schema import (
     ExecutionPlan,
 )
 from torchcst._backends.cuda.serialization import decode_json, encode_json
+from torchcst._backends.state import AlgorithmState
 from torchcst.operators.spec import OperatorSpec
 
 
@@ -138,6 +139,7 @@ class Registry:
         x: Tensor,
         parameters: Tensor,
         operator: OperatorSpec,
+        state: AlgorithmState | None = None,
     ) -> Tensor:
         # Check tensor metadata against the context even for directly forced plans.
         if operator != context.operator:
@@ -178,6 +180,10 @@ class Registry:
             ):
                 raise ValueError("CUDA execution settings differ from dispatch context")
         algorithm = self.validate(plan, context)
+        if state is not None:
+            return algorithm.run(
+                state, x=x, parameters=parameters, operator=operator, recipe=plan.recipe
+            )
         return algorithm.execute(
             x=x, parameters=parameters, operator=operator, recipe=plan.recipe
         )

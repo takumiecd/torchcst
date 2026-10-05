@@ -1,6 +1,6 @@
 """Fixed-shape continuous operators for PyTorch."""
 
-from .atoms import Atoms
+from .atoms import AtomOptimizerState, Atoms, AtomState, OptimizerFieldSpec
 from .charts import (
     ChartSpec,
     ChartState,
@@ -53,6 +53,8 @@ from .patterns import presets as pattern_presets
 
 __all__ = [
     "AmpWidthSpec",
+    "AtomOptimizerState",
+    "AtomState",
     "Atoms",
     "BandwidthBounds",
     "BiweightSpec",
@@ -79,6 +81,7 @@ __all__ = [
     "NormalizationSpec",
     "Operator",
     "OperatorSpec",
+    "OptimizerFieldSpec",
     "OptimizerStateAdapter",
     "PatternSpec",
     "PatternState",

@@ -4,6 +4,12 @@
 宣言には backend の選択、forward / backward、GPU の launch 設定を入れない。
 backend は宣言の意味を変えず、対応する Algorithm と Recipe で実行する。
 
+共通Algorithmの処理/state lifecycleは`_backends/algorithm.py`と`state.py`に置く。
+`atoms/state.py`のAtomStateはModule所有の学習状態の正本で、optimizer状態の
+保持と配置への追従宣言は`atoms/optimizer_state.py`、Torchとの接続は`optim/binding.py`。
+具体的な計算・配置・bufferは各Algorithm内に置く。
+[状態所有と配置変更の契約](../../../docs/atom-state.ja.md)を参照。
+
 ## 現在の配置
 
 ```text

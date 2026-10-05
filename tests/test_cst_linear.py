@@ -109,8 +109,10 @@ def test_constructor_dtype_covers_charts_kernel_and_atoms() -> None:
     assert all(
         value.dtype == torch.float64
         for value in model.state_dict().values()
-        if isinstance(value, torch.Tensor)
+        if isinstance(value, torch.Tensor) and value.is_floating_point()
     )
+    assert model.atom_state.row_to_id.dtype == torch.int64
+    assert model.atom_state.id_to_row.dtype == torch.int64
     assert model(torch.ones(1, 3, dtype=torch.float64)).dtype == torch.float64
 
 

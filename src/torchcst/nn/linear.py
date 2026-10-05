@@ -5,6 +5,7 @@ from __future__ import annotations
 import torch
 from torch import Tensor, nn
 
+from torchcst._backends.cuda.dispatch.base import Selector
 from torchcst._backends.linear import (
     Backend,
     ResolvedBackend,
@@ -12,7 +13,6 @@ from torchcst._backends.linear import (
     resolve_backend,
     validate_backend,
 )
-from torchcst._backends.cuda.dispatch.base import Selector
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.charts import ChartSpec, ChartState, StripChartState, compile_chart
@@ -123,7 +123,7 @@ class CSTLinear(CSTModule):
             raise ValueError(
                 "atom parameters must match the module device and dtype; convert shared parameters before binding"
             )
-        self.atoms = atom_state
+        self._bind_atoms(atom_state)
         # A plain view keeps existing Parameter/buffer ownership and state keys.
         self.__dict__["_operator"] = Operator(
             charts=self.cst_charts(), kernel=self.kernel, atoms=self.atoms
@@ -294,9 +294,12 @@ class CSTLinear(CSTModule):
                 f"got {tuple(inputs.shape)}"
             )
 
-        return self._forward_from_p(
-            inputs, self.atoms.p, backend=self._resolved_backend()
+        result = self._forward_from_p(
+            inputs,
+            self.atom_state.parameters_for_execution(),
+            backend=self._resolved_backend(),
         )
+        return self.atom_state.guard_result(result)
 
     def extra_repr(self) -> str:
         return (

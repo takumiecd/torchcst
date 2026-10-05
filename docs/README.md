@@ -9,6 +9,7 @@ details and runnable examples are in the [kernel development guide](kernel-devel
 - [Chart geometry](chart-geometry.ja.md)
 - [Direct amplitude and bandwidth coordinates](direct-amplitude-bandwidth.ja.md)
 - [CSTOptimizer](cst-optimizer.ja.md)
+- [Atom and Algorithm state ownership](atom-state.ja.md)
 
 Implementation notes live beside the relevant code:
 
