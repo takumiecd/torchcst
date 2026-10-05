@@ -1,7 +1,8 @@
 # Repository instructions
 
-Follow [AGENTS.md](AGENTS.md). The shared developer workflow and research
-operating rules live in [CONTRIBUTING.md](CONTRIBUTING.md).
+Follow [AGENTS.md](AGENTS.md). The shared developer workflow lives in
+[CONTRIBUTING.md](CONTRIBUTING.md). For the owner's GPUs and research worktrees,
+also read [the research operating rules](docs/research-operations.ja.md).
 
 For kernel implementation, registration, correctness and measurement, read
 [the kernel development guide](docs/kernel-development.ja.md).

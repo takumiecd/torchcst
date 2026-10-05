@@ -25,6 +25,7 @@ Implementation notes live beside the relevant code:
 - [Historical CUDA Linear research and decisions](research-history/cuda-linear/README.md)
 - [CUDA Linear benchmarks and measurements](../benchmarks/cuda/linear/README.md)
 - [CUDA kernel development workflow and tools](kernel-development.ja.md)
+- [Owner research resources and operating rules](research-operations.ja.md)
 - [Benchmark cleanup and validation](benchmark-cleanup.ja.md)
 
 Historical GPU measurements are retained under research-history and benchmark
