@@ -163,7 +163,8 @@ GPU・実DBのテストは条件に応じてskipされるので、pytestのskip�
 GPU開発環境では`python -m pip install -e '.[dev,cuda]'`を実行し、対象に応じて
 `python -m tools.kernel_dev test --suite local-product`または
 `python -m tools.kernel_dev test --suite normalized-strip`を使う。
-この二つはCUDA / Tritonがない環境では失敗し、GPU検証をskipだけで通さない。
+Atom更新は`python -m tools.kernel_dev test --suite atom-update`で確認する。
+これらはCUDA / Tritonがない環境では失敗し、GPU検証をskipだけで通さない。
 テスト群は入口の回帰検証であり、変更対象に応じて境界・勾配・配置などの追加テストを選ぶ。
 性能測定は引き続き既存Linear runnerを使う。
 

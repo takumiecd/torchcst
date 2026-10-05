@@ -144,6 +144,28 @@ def test_optimizer_rejects_incompatible_update_plan_before_base_step():
     assert not any(base.state.values())
 
 
+def test_update_context_round_trips_through_the_common_exact_selector():
+    from torchcst._backends.dispatch import ExactEntry, ExactSelector, load_selector
+    from torchcst._backends.torch.algorithms.atom_update.plans import REFERENCE
+
+    model = layer()
+    binding = AtomUpdateBinding(model.operator)
+    inputs = AtomUpdateInputs(model.atoms.p.detach().clone(), 0.01)
+    context = binding.build_context(inputs)
+    registry = make_algorithm_registry()
+    selector = ExactSelector.from_entries(
+        (ExactEntry(context, REFERENCE, ("coordinate-fixture",)),),
+        registry=registry,
+        fallback_plan=REFERENCE,
+        revision="coordinate-exact-v1",
+        score_policy={"id": "fixture", "revision": "v1", "parameters": {}},
+        dataset_snapshot="coordinate-metadata-only",
+    )
+    restored = load_selector(selector.dumps(), registry=registry)
+    assert restored.select(context).evidence_ids == ("coordinate-fixture",)
+    Dispatcher(selector=restored).run(binding, inputs)
+
+
 def test_torus_uses_general_torch_update_and_keeps_centers_on_geometry():
     from torchcst import CSTLinear
     from torchcst._backends.torch.algorithms.atom_update.plans import REFERENCE

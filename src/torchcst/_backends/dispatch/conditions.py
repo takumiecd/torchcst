@@ -10,6 +10,8 @@ from torchcst.operators.context import LinearContext
 
 
 def _declaration(value):
+    if isinstance(value, torch.dtype):
+        return {"type": "torch.dtype", "fields": {"name": str(value)}}
     if is_dataclass(value) and not isinstance(value, type):
         return {
             "type": f"{type(value).__module__}.{type(value).__qualname__}",

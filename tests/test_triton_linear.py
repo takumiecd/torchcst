@@ -27,6 +27,7 @@ from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.executor import
     forward as triton_forward,
 )
 from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.host import prepare
+from torchcst._backends.dispatch import UnsupportedPlan
 from torchcst._backends.torch.operators.strip_torus.preparation import (
     execution_plan,
     geometry_factors,
@@ -218,7 +219,7 @@ def test_triton_empty_batch_and_input_only_gradient():
 @GPU
 def test_triton_rejects_unsupported_dtype_and_deterministic_atom_backward():
     model = _model(device="cuda", backend="triton").double()
-    with pytest.raises(TypeError, match="float32"):
+    with pytest.raises(UnsupportedPlan, match="float32"):
         model(torch.randn(1, 21, device="cuda", dtype=torch.float64))
     model = model.float()
     previous = torch.are_deterministic_algorithms_enabled()

@@ -24,7 +24,14 @@ from benchmarks.cuda.linear.manifest import (
 
 ROOT = Path(__file__).resolve().parents[2]
 GPU_SUITES = {
+    "atom-update": (
+        "tests/test_atom_update_dispatch.py",
+        "tests/test_local_polar_update.py",
+        "tests/test_cst_optimizer.py",
+        "tests/test_geometry.py",
+    ),
     "local-product": (
+        "tests/test_atom_update_dispatch.py",
         "tests/test_local_product_research.py",
         "tests/test_local_polar_update.py",
         "tests/test_local_persistent_layout.py",
