@@ -3,8 +3,9 @@
 2026-10-05時点。小さいCST線形変換の研究は既存のLinear runner、PostgreSQL保存、
 ディスパッチ生成を使う。main統合はGitHub PRで行う。
 
-開発の入口・PR手順・研究環境の運用規則は
-[CONTRIBUTING.md](../CONTRIBUTING.md)に集約する。この文書は実装・登録・検証の詳細を扱う。
+開発の入口・PR手順は [CONTRIBUTING.md](../CONTRIBUTING.md)、
+所有者のGPU・研究worktreeの運用規則は [研究環境の運用規則](research-operations.ja.md)に置く。
+この文書は実装・登録・検証の詳細を扱う。
 
 ## 追加する種類と変更箇所
 
@@ -217,8 +218,9 @@ source snapshot SHA256、結果archive SHA256を付け、資格情報はGPUに�
 
 ## 記録と統合
 
-手順・PRの検証項目・共有GPUの制約・証拠保全は
-[CONTRIBUTING.md](../CONTRIBUTING.md)を正本とする。
+開発・提出・PRの検証項目は [CONTRIBUTING.md](../CONTRIBUTING.md)、
+所有者の共有GPUの制約・研究worktreeの証拠保全は
+[研究環境の運用規則](research-operations.ja.md)を正本とする。
 local productの簡潔な記録は `docs/research-history/local-product/`、
 CUDA Linearの記録は `docs/research-history/cuda-linear/` に置く。
 採否、誤差、完全step時間とピーク、独立run数、job ID、source/result hash、
