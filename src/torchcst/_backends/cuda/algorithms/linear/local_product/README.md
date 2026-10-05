@@ -26,7 +26,7 @@ wide H for forward, but recomputes parameter contractions instead of mixing
 saved/local H in the VJP. This isolates the backward simplification from output
 tile widening. Its `_unroll` variant keeps the bounded middle-support unroll.
 
-Development branch: `codex/local-product-hybrid`. Optimize small linear
+Development branch: `kernel/local-product-onchip-h`. Optimize small linear
 transformations first, with about 5% atoms relative to dense weight elements.
 The mathematical kernel is the existing normalized, shared-width
 PolarAmpWidth product. Sigma/spacing is the basis for choosing H's reuse range.

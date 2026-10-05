@@ -1,5 +1,12 @@
 # Small linear product / hybrid H
 
+2026-10-05: [Support-ordered values and owner ranges](20261005-layout-design.md).
+Offline layout design uses eight actual CUDA snapshots and two CPU mixed-width
+fixtures, all initial rho>1. Contiguous per-direction values plus owner ranges
+avoid repeated full-list scans without per-owner metadata replication. Mixed
+N128 forward needs1,130 candidate visits for1,072 useful contributions.
+Coverage and tensor budgets are checked; GPU construction and speed remain untested.
+
 2026-10-05: [Atom scans, rectangular work and exposed parallelism](20261005-scan-investigation.md).
 Eight fixed-initial-state probes isolate output/dX at B1/8/32/128 with rho>1.
 N128 scans6,552 general-atom entries for914 useful visits at rho1.25; all208
@@ -52,7 +59,7 @@ thresholds/partition count configurable. Preserve production PolarAmpWidth,
 full-domain normalization, support, all task gradients and its activity update.
 
 Implementation is under
-[`src/torchcst/_backends/cuda/algorithms/local_product`](../../../src/torchcst/_backends/cuda/algorithms/local_product/README.md).
+[`src/torchcst/_backends/cuda/algorithms/linear/local_product`](../../../src/torchcst/_backends/cuda/algorithms/linear/local_product/README.md).
 The existing `benchmarks/cuda/linear/fixtures.py` provides reference/fixture
 helpers. No additional benchmark tree/runner is created. Registry and the
 existing 1024/8192 benchmark run behavior are unchanged at this setup checkpoint;

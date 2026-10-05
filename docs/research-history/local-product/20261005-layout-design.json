@@ -1,0 +1,404 @@
+[
+  {
+    "size": 64,
+    "initial_rho": [
+      1.25
+    ],
+    "snapshot_sha256": "a88b29204f13ad4eb07fab432517911b5fb11e07c5d100c304e7364fbc5b1cd8",
+    "original_view_bytes": 48256,
+    "original_order_bytes": 3712,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 204,
+        "useful_owner_references": 225,
+        "sorted_range_visits": 225,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 9,
+        "compact_owner_blocks": 9,
+        "unique_padded_atom_slots": 224,
+        "compact_padded_reference_slots": 288,
+        "unique_soa_payload_bytes": 11648,
+        "compact_soa_payload_bytes": 14976,
+        "range_index_bytes": 96
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 204,
+        "useful_owner_references": 223,
+        "sorted_range_visits": 223,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 8,
+        "compact_owner_blocks": 8,
+        "unique_padded_atom_slots": 224,
+        "compact_padded_reference_slots": 256,
+        "unique_soa_payload_bytes": 11648,
+        "compact_soa_payload_bytes": 13312,
+        "range_index_bytes": 96
+      }
+    ]
+  },
+  {
+    "size": 64,
+    "initial_rho": [
+      4
+    ],
+    "snapshot_sha256": "a5ac3a7da9b0ae01510a0b4ca8daadd37d108346b710b3d21172c050a4d555d1",
+    "original_view_bytes": 48256,
+    "original_order_bytes": 3712,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 204,
+        "useful_owner_references": 267,
+        "sorted_range_visits": 267,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 10,
+        "compact_owner_blocks": 10,
+        "unique_padded_atom_slots": 224,
+        "compact_padded_reference_slots": 320,
+        "unique_soa_payload_bytes": 11648,
+        "compact_soa_payload_bytes": 16640,
+        "range_index_bytes": 96
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 204,
+        "useful_owner_references": 269,
+        "sorted_range_visits": 269,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 10,
+        "compact_owner_blocks": 10,
+        "unique_padded_atom_slots": 224,
+        "compact_padded_reference_slots": 320,
+        "unique_soa_payload_bytes": 11648,
+        "compact_soa_payload_bytes": 16640,
+        "range_index_bytes": 96
+      }
+    ]
+  },
+  {
+    "size": 64,
+    "initial_rho": [
+      8
+    ],
+    "snapshot_sha256": "ba4b360175dd1a97c1db039516cd6653f7f9b21dd5e6d6eb4be843ef5f99e588",
+    "original_view_bytes": 48256,
+    "original_order_bytes": 3712,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 204,
+        "useful_owner_references": 348,
+        "sorted_range_visits": 348,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 14,
+        "compact_owner_blocks": 14,
+        "unique_padded_atom_slots": 224,
+        "compact_padded_reference_slots": 448,
+        "unique_soa_payload_bytes": 11648,
+        "compact_soa_payload_bytes": 23296,
+        "range_index_bytes": 96
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 204,
+        "useful_owner_references": 340,
+        "sorted_range_visits": 340,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 13,
+        "compact_owner_blocks": 13,
+        "unique_padded_atom_slots": 224,
+        "compact_padded_reference_slots": 416,
+        "unique_soa_payload_bytes": 11648,
+        "compact_soa_payload_bytes": 21632,
+        "range_index_bytes": 96
+      }
+    ]
+  },
+  {
+    "size": 128,
+    "initial_rho": [
+      1.25
+    ],
+    "snapshot_sha256": "5d3d4e949814652d10040782a6f07f6a806d9e4451c19dfdf8528ee80f540cc9",
+    "original_view_bytes": 124800,
+    "original_order_bytes": 9600,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 819,
+        "useful_owner_references": 914,
+        "sorted_range_visits": 914,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 33,
+        "compact_owner_blocks": 33,
+        "unique_padded_atom_slots": 832,
+        "compact_padded_reference_slots": 1056,
+        "unique_soa_payload_bytes": 43264,
+        "compact_soa_payload_bytes": 54912,
+        "range_index_bytes": 192
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 819,
+        "useful_owner_references": 903,
+        "sorted_range_visits": 903,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 32,
+        "compact_owner_blocks": 32,
+        "unique_padded_atom_slots": 832,
+        "compact_padded_reference_slots": 1024,
+        "unique_soa_payload_bytes": 43264,
+        "compact_soa_payload_bytes": 53248,
+        "range_index_bytes": 192
+      }
+    ]
+  },
+  {
+    "size": 128,
+    "initial_rho": [
+      4
+    ],
+    "snapshot_sha256": "27c5b0270db165dd1e303a84d096635bdeb8cf76c8aafdcca106cb8471d9d4a4",
+    "original_view_bytes": 124800,
+    "original_order_bytes": 9600,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 819,
+        "useful_owner_references": 1139,
+        "sorted_range_visits": 1139,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 39,
+        "compact_owner_blocks": 39,
+        "unique_padded_atom_slots": 832,
+        "compact_padded_reference_slots": 1248,
+        "unique_soa_payload_bytes": 43264,
+        "compact_soa_payload_bytes": 64896,
+        "range_index_bytes": 192
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 819,
+        "useful_owner_references": 1132,
+        "sorted_range_visits": 1132,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 39,
+        "compact_owner_blocks": 39,
+        "unique_padded_atom_slots": 832,
+        "compact_padded_reference_slots": 1248,
+        "unique_soa_payload_bytes": 43264,
+        "compact_soa_payload_bytes": 64896,
+        "range_index_bytes": 192
+      }
+    ]
+  },
+  {
+    "size": 128,
+    "initial_rho": [
+      8
+    ],
+    "snapshot_sha256": "6f26e4aa16000401cb0c093704332aa8d4253fb1a9a065bcca93aa1bf9b7a023",
+    "original_view_bytes": 124800,
+    "original_order_bytes": 9600,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 819,
+        "useful_owner_references": 1487,
+        "sorted_range_visits": 1487,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 50,
+        "compact_owner_blocks": 50,
+        "unique_padded_atom_slots": 832,
+        "compact_padded_reference_slots": 1600,
+        "unique_soa_payload_bytes": 43264,
+        "compact_soa_payload_bytes": 83200,
+        "range_index_bytes": 192
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 819,
+        "useful_owner_references": 1499,
+        "sorted_range_visits": 1499,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 51,
+        "compact_owner_blocks": 51,
+        "unique_padded_atom_slots": 832,
+        "compact_padded_reference_slots": 1632,
+        "unique_soa_payload_bytes": 43264,
+        "compact_soa_payload_bytes": 84864,
+        "range_index_bytes": 192
+      }
+    ]
+  },
+  {
+    "size": 64,
+    "initial_rho": [
+      3
+    ],
+    "snapshot_sha256": "50054d618582e59a702ffae186ca1e1befa969bcda8282a25e45072e7a53132f",
+    "original_view_bytes": 48256,
+    "original_order_bytes": 3712,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 204,
+        "useful_owner_references": 246,
+        "sorted_range_visits": 246,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 9,
+        "compact_owner_blocks": 9,
+        "unique_padded_atom_slots": 224,
+        "compact_padded_reference_slots": 288,
+        "unique_soa_payload_bytes": 11648,
+        "compact_soa_payload_bytes": 14976,
+        "range_index_bytes": 96
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 204,
+        "useful_owner_references": 250,
+        "sorted_range_visits": 250,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 10,
+        "compact_owner_blocks": 10,
+        "unique_padded_atom_slots": 224,
+        "compact_padded_reference_slots": 320,
+        "unique_soa_payload_bytes": 11648,
+        "compact_soa_payload_bytes": 16640,
+        "range_index_bytes": 96
+      }
+    ]
+  },
+  {
+    "size": 128,
+    "initial_rho": [
+      3
+    ],
+    "snapshot_sha256": "ad637cd3ae811656ca32ca7ceae8e0e18007f92060b3290b4127f28e1f10c7b7",
+    "original_view_bytes": 124800,
+    "original_order_bytes": 9600,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 819,
+        "useful_owner_references": 1057,
+        "sorted_range_visits": 1057,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 36,
+        "compact_owner_blocks": 36,
+        "unique_padded_atom_slots": 832,
+        "compact_padded_reference_slots": 1152,
+        "unique_soa_payload_bytes": 43264,
+        "compact_soa_payload_bytes": 59904,
+        "range_index_bytes": 192
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 819,
+        "useful_owner_references": 1041,
+        "sorted_range_visits": 1041,
+        "range_false_positives": 0,
+        "sorted_range_blocks": 38,
+        "compact_owner_blocks": 38,
+        "unique_padded_atom_slots": 832,
+        "compact_padded_reference_slots": 1216,
+        "unique_soa_payload_bytes": 43264,
+        "compact_soa_payload_bytes": 63232,
+        "range_index_bytes": 192
+      }
+    ]
+  },
+  {
+    "size": 64,
+    "initial_rho": [
+      1.25,
+      3,
+      8
+    ],
+    "fractions": [
+      0.5,
+      0.3,
+      0.2
+    ],
+    "source": "CPU production decoding and exact support arithmetic; no CUDA execution",
+    "actual_initial_rho_min": 1.25,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 204,
+        "useful_owner_references": 256,
+        "sorted_range_visits": 263,
+        "range_false_positives": 7,
+        "sorted_range_blocks": 12,
+        "compact_owner_blocks": 12,
+        "unique_padded_atom_slots": 256,
+        "compact_padded_reference_slots": 384,
+        "unique_soa_payload_bytes": 13312,
+        "compact_soa_payload_bytes": 19968,
+        "range_index_bytes": 96
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 204,
+        "useful_owner_references": 256,
+        "sorted_range_visits": 263,
+        "range_false_positives": 7,
+        "sorted_range_blocks": 12,
+        "compact_owner_blocks": 12,
+        "unique_padded_atom_slots": 256,
+        "compact_padded_reference_slots": 384,
+        "unique_soa_payload_bytes": 13312,
+        "compact_soa_payload_bytes": 19968,
+        "range_index_bytes": 96
+      }
+    ]
+  },
+  {
+    "size": 128,
+    "initial_rho": [
+      1.25,
+      3,
+      8
+    ],
+    "fractions": [
+      0.5,
+      0.3,
+      0.2
+    ],
+    "source": "CPU production decoding and exact support arithmetic; no CUDA execution",
+    "actual_initial_rho_min": 1.25,
+    "directions": [
+      {
+        "direction": "forward",
+        "canonical_atoms": 819,
+        "useful_owner_references": 1072,
+        "sorted_range_visits": 1130,
+        "range_false_positives": 58,
+        "sorted_range_blocks": 45,
+        "compact_owner_blocks": 42,
+        "unique_padded_atom_slots": 864,
+        "compact_padded_reference_slots": 1344,
+        "unique_soa_payload_bytes": 44928,
+        "compact_soa_payload_bytes": 69888,
+        "range_index_bytes": 192
+      },
+      {
+        "direction": "dx",
+        "canonical_atoms": 819,
+        "useful_owner_references": 1067,
+        "sorted_range_visits": 1142,
+        "range_false_positives": 75,
+        "sorted_range_blocks": 45,
+        "compact_owner_blocks": 41,
+        "unique_padded_atom_slots": 864,
+        "compact_padded_reference_slots": 1312,
+        "unique_soa_payload_bytes": 44928,
+        "compact_soa_payload_bytes": 68224,
+        "range_index_bytes": 192
+      }
+    ]
+  }
+]
