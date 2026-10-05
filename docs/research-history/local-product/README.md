@@ -1,5 +1,12 @@
 # Small linear product / hybrid H
 
+2026-10-05: [Multi-owner H reuse and parameter recomputation](20261005-onchip-h.md).
+Wide output tiles reduce saved memory but slow both target cases. Keeping16-site
+owners and recomputing parameter H improves N128's no-G control about4.5%, at
+similar speed to saved-G with18.1% less allocated memory; N64 improves about1.5%.
+Two paired pool jobs, negative results and case-scoped selector candidates are
+preserved. L2 residency and complete-step DRAM reduction remain unproven.
+
 2026-10-05: [Contraction launch tuning and bounded unrolling](20261005-contraction-launch.md).
 N128 atom32/4-warp complete steps improve about12% with savedG and13% without,
 with unchanged allocated peaks; N64 ordinary sigma3 benefits from unrolling.

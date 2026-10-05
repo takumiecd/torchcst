@@ -1,0 +1,4115 @@
+{
+  "schema_version": 1,
+  "candidate_status": "case-scoped research; public default unchanged",
+  "scope": "uninstrumented complete training step; separate diagnostic graphs",
+  "branch": "kernel/local-product-onchip-h",
+  "public_dispatch_changed": false,
+  "process_memory_measured": false,
+  "cpu": {
+    "passed": 856,
+    "skipped": 381,
+    "existing_warnings": 18
+  },
+  "jobs": [
+    {
+      "id": "l4job-6b757164c6994f1e90b53e11d0713545",
+      "source_snapshot_sha256": "078db9372710acf6e9101890bffa49eab08bab5397f8945b6f19bda4d6e09044",
+      "result_archive_sha256": "b8a12a6108d7e56428c3107f7ad692136ad06f9d384ab0a0d62be27e32a42d5a",
+      "gpu": "NVIDIA L4, GPU-04bc3fde-6551-1850-8e43-c5c58392d00f, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-6b757164c6994f1e90b53e11d0713545/results",
+      "benchmarks": [],
+      "validation": {
+        "stage": "smoke",
+        "exit_code": 0,
+        "ncu_available": "/usr/local/cuda/bin/ncu",
+        "pytest_summary": "8 passed in 109.16s (0:01:49)"
+      }
+    },
+    {
+      "id": "l4job-f38c5c4440b14344ab1a11a96711860b",
+      "source_snapshot_sha256": "de029b210d49c0ab2ccc8b6ea742b4a6fafe50fe5f6fe2801a930f14028e5882",
+      "result_archive_sha256": "b967187c80293bbd35c865757bc21d8adf718939f29b472ee34a14c50ec6d729",
+      "gpu": "NVIDIA L4, GPU-90e74811-1aa2-d509-f3de-83b40bb30ada, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-f38c5c4440b14344ab1a11a96711860b/results",
+      "benchmarks": [],
+      "validation": {
+        "stage": "training",
+        "exit_code": 0,
+        "ncu_available": "/usr/local/cuda/bin/ncu",
+        "pytest_summary": "8 passed in 145.13s (0:02:25)"
+      }
+    },
+    {
+      "id": "l4job-824b71ba51a54f1f95c14af5cb0983c4",
+      "source_snapshot_sha256": "4731a2f72c0886dfeece4a035c6137456c70b95f3d5b196246da1096e636ed06",
+      "result_archive_sha256": "9907b3e8fd8104787f83a7c666efe18386d4b206ba732ca11172f867c47b7597",
+      "gpu": "NVIDIA L4, GPU-90e74811-1aa2-d509-f3de-83b40bb30ada, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-824b71ba51a54f1f95c14af5cb0983c4/results",
+      "benchmarks": [],
+      "validation": {
+        "stage": "remaining",
+        "exit_code": 0,
+        "ncu_available": "/usr/local/cuda/bin/ncu",
+        "pytest_summary": "12 passed in 114.95s (0:01:54)"
+      }
+    },
+    {
+      "id": "l4job-02ebac298a16486cb925569786904793",
+      "source_snapshot_sha256": "7b53d0b2a7440b3b582d3a795c2f3996ab482f65e75773e32324a1bedb44077a",
+      "result_archive_sha256": "d1b47e3ff499299dd278df49a300117e418ec80f26e5cd8cb3f7f2d9b3221d03",
+      "gpu": "NVIDIA L4, GPU-90e74811-1aa2-d509-f3de-83b40bb30ada, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-02ebac298a16486cb925569786904793/results",
+      "benchmarks": [],
+      "validation": {
+        "stage": "training32",
+        "exit_code": 0,
+        "ncu_available": "/usr/local/cuda/bin/ncu",
+        "pytest_summary": "4 passed in 48.58s"
+      }
+    },
+    {
+      "id": "l4job-89c08f0c1a264704a6c784eaf6302106",
+      "source_snapshot_sha256": "7b53d0b2a7440b3b582d3a795c2f3996ab482f65e75773e32324a1bedb44077a",
+      "result_archive_sha256": "edd875f3adea0b81a1a258bbdd773e5e6a2f09cc8619ceb30ed5326d39f0dbf0",
+      "gpu": "NVIDIA L4, GPU-90e74811-1aa2-d509-f3de-83b40bb30ada, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-89c08f0c1a264704a6c784eaf6302106/results",
+      "benchmarks": [],
+      "validation": {
+        "stage": "regression",
+        "exit_code": 0,
+        "ncu_available": "/usr/local/cuda/bin/ncu",
+        "pytest_summary": "23 passed in 116.47s (0:01:56)"
+      }
+    },
+    {
+      "id": "l4job-48e43502922a4b79942310f962dfe352",
+      "source_snapshot_sha256": "0fabf7621d5431196183d4cef99fff3c7002bccce85b0e62b7cb8b115dc9a616",
+      "result_archive_sha256": "8efeab8495e01ebd22677bf86d75bfe650e1af6281926c8a03b3eb0f062851f6",
+      "gpu": "NVIDIA L4, GPU-90e74811-1aa2-d509-f3de-83b40bb30ada, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-48e43502922a4b79942310f962dfe352/results",
+      "benchmarks": [
+        {
+          "artifact": "onchip-128-early.json",
+          "artifact_sha256": "7b1c4e4f93a9d1ad120d5f2027f783c97eabb2a54a82fcaf269e370ee25de050",
+          "execution_id": "7985e52b-bfbb-4cfe-a006-b0fba949cbf2",
+          "snapshot_sha256": "daedb2074899b459d6aeb4bdafbe2bf818d269b051f6942ed5e147c43e70a7de",
+          "status": "PASS",
+          "case": {
+            "id": "local-onchip-128-early",
+            "fixture": "local_polar_product",
+            "size": 128,
+            "rows": 32,
+            "atoms": 819,
+            "profile": "mixed",
+            "dtype": "float32",
+            "seed": 41,
+            "warmup": 5,
+            "rounds": 21,
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.0001,
+              "weight_decay": 0.01,
+              "fused": true,
+              "capturable": true
+            },
+            "widths": {
+              "minimum": 0.25,
+              "birth": 0.25,
+              "maximum": 16,
+              "rho": [
+                0.25,
+                0.75,
+                2,
+                8
+              ],
+              "fractions": [
+                0.05,
+                0.05,
+                0.65,
+                0.25
+              ],
+              "center_jitter": 0.1
+            }
+          },
+          "workers": [
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-contract4-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 2.217788904784062e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-g-contract4-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 2.217788904784062e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-tile32-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 2.217788904784062e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-tile64-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 2.217788904784062e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-onchip-h32-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.592090688522842e-06,
+                  "rel_l2": 2.222415241642393e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-onchip-h64-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.592090688522842e-06,
+                  "rel_l2": 2.222415241642393e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-contract4-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 167.96600004909124,
+              "graph_samples_ms": [
+                0.20686400000613503,
+                0.17051500003617548,
+                0.1681359999565757,
+                0.16924400006246287,
+                0.17219800008660968,
+                0.16832899996188644,
+                0.16818200003854145,
+                0.1676079999697322,
+                0.16795399994862237,
+                0.1681049999433526,
+                0.16796600004909124,
+                0.1690090000465716,
+                0.16713799993794964,
+                0.16694700002517493,
+                0.16777400003320508,
+                0.16930100002809922,
+                0.1667960000304447,
+                0.1674280000543149,
+                0.16731799996705377,
+                0.1672930000040651,
+                0.16776699999354605
+              ],
+              "peak_allocated_bytes": 419328,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                },
+                "singleton_param": {
+                  "registers": 255,
+                  "spill_slots": 110,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08294399827718735,
+                  "backward": 0.09932799637317657,
+                  "optimizer": 0.020479999482631683
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.005119999870657921,
+                  "output": 0.048128001391887665,
+                  "dx": 0.06451199948787689,
+                  "parameters": 0.02457600086927414
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-g-contract4-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 159.67199999522563,
+              "graph_samples_ms": [
+                0.2011530000345374,
+                0.16298399998504465,
+                0.15984999993179372,
+                0.1591340000004493,
+                0.15935199996874871,
+                0.15823100000034174,
+                0.15896200000042882,
+                0.16020900000057736,
+                0.15909500007182942,
+                0.15978499993707374,
+                0.15967199999522563,
+                0.15920399994229228,
+                0.15970300000844873,
+                0.16000200002963538,
+                0.15938500007450784,
+                0.159312999926442,
+                0.15985499999260355,
+                0.15915999995286256,
+                0.16009700004815386,
+                0.15985300001375435,
+                0.15901699998721597
+              ],
+              "peak_allocated_bytes": 512000,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "singleton_param": {
+                  "registers": 255,
+                  "spill_slots": 106,
+                  "shared_bytes": 40960
+                },
+                "packed_dx_saved_g": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08294399827718735,
+                  "backward": 0.09011200070381165,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.006144000217318535,
+                  "output": 0.048128001391887665,
+                  "dx": 0.05632000043988228,
+                  "parameters": 0.02457600086927414
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-tile32-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 200.5229999895164,
+              "graph_samples_ms": [
+                0.25273000005654467,
+                0.2069329999585534,
+                0.20064199998159893,
+                0.2005229999895164,
+                0.2016450000610348,
+                0.20038800005295343,
+                0.2002650001031725,
+                0.22166500002640532,
+                0.22877799995058012,
+                0.20220299995798996,
+                0.19859500002894492,
+                0.19952299999204115,
+                0.19853399999192334,
+                0.19986600000265753,
+                0.21817900005771662,
+                0.2755750000460466,
+                0.2019349999500264,
+                0.19956200003434788,
+                0.19952600007400179,
+                0.1991139999972802,
+                0.19955100003699044
+              ],
+              "peak_allocated_bytes": 419328,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 9344
+                },
+                "packed_dx": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 28672
+                },
+                "singleton_param": {
+                  "registers": 255,
+                  "spill_slots": 110,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.09728000313043594,
+                  "backward": 0.1157120019197464,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.004095999989658594,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.005119999870657921,
+                  "output": 0.06252799928188324,
+                  "dx": 0.08191999793052673,
+                  "parameters": 0.02457600086927414
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-tile64-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 221.60100002110994,
+              "graph_samples_ms": [
+                0.25868000000173197,
+                0.22432999992361147,
+                0.22129000001314125,
+                0.22160100002110994,
+                0.2207070000395106,
+                0.23079400000369787,
+                0.2212399999734771,
+                0.22127800002635922,
+                0.22138400004223513,
+                0.22152400003960793,
+                0.22158599995236727,
+                0.221483000018452,
+                0.22118799995496374,
+                0.22248000004765345,
+                0.22274300010849402,
+                0.22274299999480718,
+                0.22198599992862,
+                0.23076800005128462,
+                0.22198900001058064,
+                0.22066799999720388,
+                0.22477499999240536
+              ],
+              "peak_allocated_bytes": 419328,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 111,
+                  "spill_slots": 0,
+                  "shared_bytes": 13440
+                },
+                "packed_dx": {
+                  "registers": 150,
+                  "spill_slots": 0,
+                  "shared_bytes": 32768
+                },
+                "singleton_param": {
+                  "registers": 255,
+                  "spill_slots": 110,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.11059200018644333,
+                  "backward": 0.12492799758911133,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.006144000217318535,
+                  "output": 0.07577600330114365,
+                  "dx": 0.09113600105047226,
+                  "parameters": 0.02457600086927414
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-onchip-h32-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 202.15400002143724,
+              "graph_samples_ms": [
+                0.23781400000189024,
+                0.2047460000085266,
+                0.20322000000305707,
+                0.2017319999367828,
+                0.2025979999871197,
+                0.20227400000294438,
+                0.20215400002143724,
+                0.2022139999553474,
+                0.20134700002927275,
+                0.20155000004251633,
+                0.21489499999916006,
+                0.21307299994077766,
+                0.20226000003731315,
+                0.20187400002669165,
+                0.20186099993679818,
+                0.20252799993158987,
+                0.2020360000187793,
+                0.20145999997112085,
+                0.20214199992096837,
+                0.2014059999737583,
+                0.20185399989713915
+              ],
+              "peak_allocated_bytes": 314368,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 96,
+                  "spill_slots": 2,
+                  "shared_bytes": 28672
+                },
+                "packed_dx": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 28672
+                },
+                "singleton_param": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.10649599879980087,
+                  "backward": 0.10751999914646149,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.002047999994829297,
+                  "output": 0.07580800354480743,
+                  "dx": 0.08191999793052673,
+                  "parameters": 0.016383999958634377
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-onchip-h64-atom32",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 224.2570000134947,
+              "graph_samples_ms": [
+                0.26001300000189076,
+                0.22717699994245777,
+                0.22459299998445204,
+                0.22441400005845935,
+                0.22420200002670754,
+                0.2243039999711982,
+                0.22418300000026647,
+                0.22448100003202853,
+                0.22383399993941566,
+                0.2242570000134947,
+                0.22477899995010375,
+                0.22456300007434038,
+                0.2236660000107804,
+                0.22444600006110704,
+                0.22354600002927327,
+                0.2239799999870229,
+                0.2238399999896501,
+                0.224864999950114,
+                0.2238340000531025,
+                0.22374800005309226,
+                0.22425599991038325
+              ],
+              "peak_allocated_bytes": 314368,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 141,
+                  "spill_slots": 0,
+                  "shared_bytes": 32768
+                },
+                "packed_dx": {
+                  "registers": 150,
+                  "spill_slots": 0,
+                  "shared_bytes": 32768
+                },
+                "singleton_param": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.1207680031657219,
+                  "backward": 0.11776000261306763,
+                  "optimizer": 0.020479999482631683
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.004095999989658594,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.002047999994829297,
+                  "output": 0.08908800035715103,
+                  "dx": 0.09113600105047226,
+                  "parameters": 0.016383999958634377
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "dense",
+              "plan": null,
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 45.781000039823994,
+              "graph_samples_ms": [
+                0.07908899999620189,
+                0.04695999996329192,
+                0.04651599999760947,
+                0.045781000039823994,
+                0.04596999997374951,
+                0.045804000023963454,
+                0.04530400008206925,
+                0.045641000042451196,
+                0.04576100002395833,
+                0.04516299998158502,
+                0.04566100005831686,
+                0.046328999928846315,
+                0.04553499991288845,
+                0.0454749999789783,
+                0.04588699994201306,
+                0.04530400008206925,
+                0.04580099994200282,
+                0.04615599993940123,
+                0.04663000004256901,
+                0.045506999981625995,
+                0.04519499998423271
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496,
+              "compiler": null,
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.014336000196635723,
+                  "backward": 0.018432000651955605,
+                  "optimizer": 0.01228800043463707
+                },
+                "backend_components": {}
+              },
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "l4job-409b5908078f4f3fb8eb095854134374",
+      "source_snapshot_sha256": "2893fc81aafb6894b137fa9c5f99d0a72a07705710074724f77cca7bb57f7ce8",
+      "result_archive_sha256": "88f0a2411b29ca4341aab92c106ee3a34d66110d2b9c9ba043c1a839f66b2cc8",
+      "gpu": "NVIDIA L4, GPU-90e74811-1aa2-d509-f3de-83b40bb30ada, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-409b5908078f4f3fb8eb095854134374/results",
+      "benchmarks": [
+        {
+          "artifact": "onchip-64-sigma3.json",
+          "artifact_sha256": "7f8fe55049fc420a44cf1c56f28cbcc91b787ced87e84c84a4429d45b73b3b72",
+          "execution_id": "d449341e-3c4c-4d61-8fac-664e7858c487",
+          "snapshot_sha256": "bc997fd4378d9d098135eb66b7d5892db9bfa7d098e3f174b2400e94b8cbed26",
+          "status": "PASS",
+          "case": {
+            "id": "local-onchip-64-sigma3",
+            "fixture": "local_polar_product",
+            "size": 64,
+            "rows": 32,
+            "atoms": 204,
+            "profile": "mixed",
+            "dtype": "float32",
+            "seed": 41,
+            "warmup": 5,
+            "rounds": 21,
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.0001,
+              "weight_decay": 0.01,
+              "fused": true,
+              "capturable": true
+            },
+            "widths": {
+              "minimum": 0.25,
+              "birth": 0.25,
+              "maximum": 16,
+              "rho": [
+                3
+              ],
+              "fractions": [
+                1
+              ],
+              "center_jitter": 0.1
+            }
+          },
+          "workers": [
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-unroll",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2941438048258507e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-tile32-atom16",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2941438048258507e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-tile64-atom16",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2941438048258507e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-onchip-h32-atom16",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2943905719621952e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-onchip-h64-atom16",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2943905719621952e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-unroll",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 79.20400003058603,
+              "graph_samples_ms": [
+                0.11555100002169638,
+                0.08184700004676415,
+                0.08034999996198167,
+                0.07927499996185361,
+                0.07878200005961844,
+                0.08005100005448185,
+                0.07959899994602893,
+                0.07889799996974034,
+                0.07868500006225077,
+                0.07920400003058603,
+                0.07913499996448081,
+                0.07911700004115119,
+                0.08226199997807271,
+                0.07949399991957762,
+                0.07883199998559576,
+                0.07894299994859466,
+                0.08699499994690996,
+                0.07941100000152801,
+                0.07884299998295319,
+                0.07879400004640047,
+                0.0785590000305092
+              ],
+              "peak_allocated_bytes": 154112,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "hybrid_save_h": {
+                  "registers": 44,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 56,
+                  "spill_slots": 0,
+                  "shared_bytes": 3648
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 9216
+                },
+                "singleton_param": {
+                  "registers": 195,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.05119999870657921,
+                  "backward": 0.04403200000524521,
+                  "optimizer": 0.018432000651955605
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.004095999989658594,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.0030720001086592674,
+                  "output": 0.02252800017595291,
+                  "dx": 0.02252800017595291,
+                  "parameters": 0.01228800043463707
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-tile32-atom16",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 96.52899996126507,
+              "graph_samples_ms": [
+                0.13452400003188814,
+                0.09840999996413302,
+                0.09774599993761512,
+                0.09755999997196341,
+                0.09652899996126507,
+                0.0966720000405985,
+                0.09637699997711024,
+                0.09634399998503795,
+                0.09713400004329742,
+                0.0969530000247687,
+                0.0961849999612241,
+                0.0962889999982508,
+                0.09615900000881084,
+                0.09693200001947844,
+                0.09625899997445231,
+                0.09610099994006305,
+                0.09615900000881084,
+                0.09638599999561848,
+                0.09668699999565433,
+                0.09659299996656046,
+                0.0963200000114739
+              ],
+              "peak_allocated_bytes": 154112,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "hybrid_save_h": {
+                  "registers": 44,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 72,
+                  "spill_slots": 0,
+                  "shared_bytes": 4672
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 10240
+                },
+                "singleton_param": {
+                  "registers": 195,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.05734400078654289,
+                  "backward": 0.055296000093221664,
+                  "optimizer": 0.018432000651955605
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.0030720001086592674,
+                  "output": 0.028672000393271446,
+                  "dx": 0.03379200026392937,
+                  "parameters": 0.01228800043463707
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-tile64-atom16",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 104.07399997802713,
+              "graph_samples_ms": [
+                0.142646999961471,
+                0.10597799996503454,
+                0.10425800007851649,
+                0.10369599999648926,
+                0.10407399997802713,
+                0.10425099992517062,
+                0.10434500006795133,
+                0.10437399998863839,
+                0.10473100007857283,
+                0.10396100003617903,
+                0.10358100007579196,
+                0.1036720000229252,
+                0.10377700004937651,
+                0.10390600004939188,
+                0.10438399999657122,
+                0.10330800000701856,
+                0.10419000000183587,
+                0.10452899994106701,
+                0.10350399998060311,
+                0.10349000001497188,
+                0.10358100007579196
+              ],
+              "peak_allocated_bytes": 154112,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "hybrid_save_h": {
+                  "registers": 44,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 88,
+                  "spill_slots": 0,
+                  "shared_bytes": 6720
+                },
+                "packed_dx": {
+                  "registers": 106,
+                  "spill_slots": 0,
+                  "shared_bytes": 12288
+                },
+                "singleton_param": {
+                  "registers": 195,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.062463998794555664,
+                  "backward": 0.058368001133203506,
+                  "optimizer": 0.01945599913597107
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.004095999989658594,
+                  "output": 0.03379200026392937,
+                  "dx": 0.03686400130391121,
+                  "parameters": 0.011264000087976456
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-onchip-h32-atom16",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 93.97799999533163,
+              "graph_samples_ms": [
+                0.12923499991757126,
+                0.09740400003011018,
+                0.09552699998494063,
+                0.0939679999873988,
+                0.09394899996095774,
+                0.09360000001379376,
+                0.09448599996630946,
+                0.09451500000068336,
+                0.09349900005872769,
+                0.09391700007199688,
+                0.09356800001114607,
+                0.09447599995837663,
+                0.09442800001124851,
+                0.09412099996097822,
+                0.09365500000058091,
+                0.09397799999533163,
+                0.0981420000698563,
+                0.09400700002970552,
+                0.09345299997676193,
+                0.0934690000349292,
+                0.09351300002435892
+              ],
+              "peak_allocated_bytes": 128000,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "packed_forward": {
+                  "registers": 72,
+                  "spill_slots": 0,
+                  "shared_bytes": 10240
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 10240
+                },
+                "singleton_param": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.05628800019621849,
+                  "backward": 0.05427199974656105,
+                  "optimizer": 0.01945599913597107
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.002047999994829297,
+                  "output": 0.028672000393271446,
+                  "dx": 0.03379200026392937,
+                  "parameters": 0.010239999741315842
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-onchip-h64-atom16",
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 103.71600001235493,
+              "graph_samples_ms": [
+                0.15076800002589152,
+                0.10740199991232657,
+                0.10447099998600606,
+                0.10389299995949841,
+                0.10418600004413747,
+                0.10327200004667247,
+                0.10325799996735441,
+                0.11320999999497872,
+                0.10530199995173462,
+                0.10615999997298786,
+                0.10463600006005436,
+                0.1032889999805775,
+                0.10371600001235493,
+                0.10346099998059799,
+                0.10338899994621897,
+                0.10316399993826053,
+                0.10357999997268053,
+                0.10396800007583806,
+                0.10340899996208464,
+                0.103035000051932,
+                0.10302300006514997
+              ],
+              "peak_allocated_bytes": 128000,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "packed_forward": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 12288
+                },
+                "packed_dx": {
+                  "registers": 106,
+                  "spill_slots": 0,
+                  "shared_bytes": 12288
+                },
+                "singleton_param": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.062463998794555664,
+                  "backward": 0.05632000043988228,
+                  "optimizer": 0.01945599913597107
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.002047999994829297,
+                  "output": 0.035840000957250595,
+                  "dx": 0.03686400130391121,
+                  "parameters": 0.010239999741315842
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "dense",
+              "plan": null,
+              "source_commit": "6aac9703beda55f2b3a643926b0efa37e436de39",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 38.917999972909456,
+              "graph_samples_ms": [
+                0.06969300000037038,
+                0.040537000018048275,
+                0.039076999996723316,
+                0.03849200004424347,
+                0.038475999986076204,
+                0.039750999917487206,
+                0.03868399994644278,
+                0.03897399994912121,
+                0.038760999927944795,
+                0.03895800000464078,
+                0.03919599998880585,
+                0.038917999972909456,
+                0.03883499994117301,
+                0.038760999927944795,
+                0.03859000003103574,
+                0.039853999965089315,
+                0.038793000044279324,
+                0.03905300002315926,
+                0.038689999996677216,
+                0.038691999975526414,
+                0.03899599994383607
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496,
+              "compiler": null,
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.013311999849975109,
+                  "backward": 0.01740800030529499,
+                  "optimizer": 0.008191999979317188
+                },
+                "backend_components": {}
+              },
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "l4job-28b86e4cecfa4d30b4af3d5bfb6a02c3",
+      "source_snapshot_sha256": "34e19886a55d32705282270b14a994b0c2179e52daaa6f90019efe795a8bb902",
+      "result_archive_sha256": "b26389d38534ad7158e1d71fcd55e5d13b170d3179c9f937cf324d86a683632d",
+      "gpu": "NVIDIA L4, GPU-90e74811-1aa2-d509-f3de-83b40bb30ada, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-28b86e4cecfa4d30b4af3d5bfb6a02c3/results",
+      "benchmarks": [],
+      "counters": {
+        "scope": "one warmed output kernel, no graph; excludes H producer, metadata, backward and optimizer",
+        "cache_control": "none",
+        "valid_for_cache_residency_claim": false,
+        "reason": "Uncontrolled-cache warning; tiny-kernel L2 hit ratios exceed 100 percent",
+        "plans": [
+          {
+            "plan": "persistent-onchip-h64-atom32",
+            "metrics": {
+              "dram__bytes_read.sum": {
+                "unit": "byte",
+                "value": "0"
+              },
+              "dram__bytes_write.sum": {
+                "unit": "byte",
+                "value": "0"
+              },
+              "lts__t_sector_hit_rate.pct": {
+                "unit": "%",
+                "value": "191.99"
+              }
+            }
+          },
+          {
+            "plan": "persistent-supportprep-band-contract4-atom32",
+            "metrics": {
+              "dram__bytes_read.sum": {
+                "unit": "byte",
+                "value": "0"
+              },
+              "dram__bytes_write.sum": {
+                "unit": "byte",
+                "value": "384"
+              },
+              "lts__t_sector_hit_rate.pct": {
+                "unit": "%",
+                "value": "128.79"
+              }
+            }
+          },
+          {
+            "plan": "persistent-supportprep-band-tile64-atom32",
+            "metrics": {
+              "dram__bytes_read.sum": {
+                "unit": "byte",
+                "value": "0"
+              },
+              "dram__bytes_write.sum": {
+                "unit": "byte",
+                "value": "0"
+              },
+              "lts__t_sector_hit_rate.pct": {
+                "unit": "%",
+                "value": "206.29"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "l4job-f54d5d953a3846f09caee989f2477de2",
+      "source_snapshot_sha256": "5e79436a44336eb42051c03b6d11851332fcb31ba0d94f48a068c20ae55aeef1",
+      "result_archive_sha256": "6346a6fffeecff479ff2d549aa8141be4edb671662b9b5399b8feb7f2db24316",
+      "gpu": "NVIDIA L4, GPU-146e8eb1-c451-e6fa-2f33-57cab0abe3fd, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 1,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-f54d5d953a3846f09caee989f2477de2/results",
+      "benchmarks": [],
+      "validation": {
+        "stage": "followup",
+        "exit_code": 1,
+        "ncu_available": "/usr/local/cuda/bin/ncu",
+        "pytest_summary": "2 failed, 14 passed, 33 deselected in 146.52s (0:02:26)"
+      }
+    },
+    {
+      "id": "l4job-929b63dc2a23447e8cdb2cfb1bce8f42",
+      "source_snapshot_sha256": "b073d6ee7e77f210593b10c1b8fbdd0363125f1c3044bfc301afeae1a183e228",
+      "result_archive_sha256": "36057b42603ef300efdd6257a7bd1afc5b8ce3dab1be06ead24251353af94ea6",
+      "gpu": "NVIDIA L4, GPU-146e8eb1-c451-e6fa-2f33-57cab0abe3fd, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-929b63dc2a23447e8cdb2cfb1bce8f42/results",
+      "benchmarks": [],
+      "validation": {
+        "stage": "followup",
+        "exit_code": 0,
+        "ncu_available": "/usr/local/cuda/bin/ncu",
+        "pytest_summary": "16 passed, 33 deselected in 15.36s"
+      }
+    },
+    {
+      "id": "l4job-988431de9c42426296aa3c2dfa1a43e6",
+      "source_snapshot_sha256": "5d5cda37b22b0e2e3adb4f9965ce92fcfbd1e63abdedc8b7a4b7954db13c11b8",
+      "result_archive_sha256": "6f173c2c910137ca5e17d66474a6ba54c48a388b0175e765c52b3da6a10f63ff",
+      "gpu": "NVIDIA L4, GPU-146e8eb1-c451-e6fa-2f33-57cab0abe3fd, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-988431de9c42426296aa3c2dfa1a43e6/results",
+      "benchmarks": [
+        {
+          "artifact": "onchip-vjp-128-early.json",
+          "artifact_sha256": "3d3174fa80fb11b0376409264ca58ec323ec7f2bdce1d8c2d6d329fdfbdfd32e",
+          "execution_id": "96e28b95-6630-4ddd-8039-4149e2c28408",
+          "snapshot_sha256": "977d90d44d8d7bfcf247b2aa1763c2147805189dabed8bb7ea035f3e6d8def98",
+          "status": "PASS",
+          "case": {
+            "id": "local-onchip-128-early",
+            "fixture": "local_polar_product",
+            "size": 128,
+            "rows": 32,
+            "atoms": 819,
+            "profile": "mixed",
+            "dtype": "float32",
+            "seed": 41,
+            "warmup": 5,
+            "rounds": 21,
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.0001,
+              "weight_decay": 0.01,
+              "fused": true,
+              "capturable": true
+            },
+            "widths": {
+              "minimum": 0.25,
+              "birth": 0.25,
+              "maximum": 16,
+              "rho": [
+                0.25,
+                0.75,
+                2,
+                8
+              ],
+              "fractions": [
+                0.05,
+                0.05,
+                0.65,
+                0.25
+              ],
+              "center_jitter": 0.1
+            }
+          },
+          "workers": [
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-g-contract4-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 2.217788904784062e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-contract4-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 2.217788904784062e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.592090688522842e-06,
+                  "rel_l2": 2.222415241642393e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-recompute-vjp-unroll-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.592090688522842e-06,
+                  "rel_l2": 2.222415241642393e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-g-contract4-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 158.35600015634554,
+              "graph_samples_ms": [
+                0.20660700010921573,
+                0.1623650000510679,
+                0.15892600004008273,
+                0.15792299973327317,
+                0.15814199969099718,
+                0.15835600015634554,
+                0.15815500000826432,
+                0.159654000071896,
+                0.15813599975444959,
+                0.15837799992368673,
+                0.15822900013517938,
+                0.1580520001880359,
+                0.15869500020926353,
+                0.15961500002958928,
+                0.1584410001669312,
+                0.15824299998712377,
+                0.15799399989191443,
+                0.15787999973326805,
+                0.1590470001247013,
+                0.15889800033619395,
+                0.15820499993424164
+              ],
+              "peak_allocated_bytes": 512000,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "singleton_param": {
+                  "registers": 255,
+                  "spill_slots": 106,
+                  "shared_bytes": 40960
+                },
+                "packed_dx_saved_g": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08294399827718735,
+                  "backward": 0.09011200070381165,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.006144000217318535,
+                  "output": 0.048128001391887665,
+                  "dx": 0.055296000093221664,
+                  "parameters": 0.02457600086927414
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-contract4-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 166.91899963916512,
+              "graph_samples_ms": [
+                0.20510000013018725,
+                0.16920400003073155,
+                0.1666260000092734,
+                0.1677499999459542,
+                0.16794499970274046,
+                0.16728799982956843,
+                0.16686500021023676,
+                0.16623100009383052,
+                0.16598399997747038,
+                0.1670249998824147,
+                0.1674950003689446,
+                0.16691899963916512,
+                0.16606500003035762,
+                0.16626800015728804,
+                0.19066799995925976,
+                0.16785700017862837,
+                0.16667499994582613,
+                0.1671200002419937,
+                0.16588800008321414,
+                0.16636500004096888,
+                0.16659199991408968
+              ],
+              "peak_allocated_bytes": 419328,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                },
+                "singleton_param": {
+                  "registers": 255,
+                  "spill_slots": 110,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08294399827718735,
+                  "backward": 0.09728000313043594,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.006144000217318535,
+                  "output": 0.048128001391887665,
+                  "dx": 0.06348799914121628,
+                  "parameters": 0.023552000522613525
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 158.83600008237408,
+              "graph_samples_ms": [
+                0.19344199972692877,
+                0.1602040001671412,
+                0.15870899960646057,
+                0.15945799987093778,
+                0.16008599959604908,
+                0.15885299990259227,
+                0.1586560001669568,
+                0.1587909996487724,
+                0.15869099979681778,
+                0.15874100017754245,
+                0.15902400036793551,
+                0.1590659999237687,
+                0.15817500025150366,
+                0.15800999972270802,
+                0.15923299997666618,
+                0.15951900013533304,
+                0.159654000071896,
+                0.15883600008237408,
+                0.15796400020917645,
+                0.1585099998919759,
+                0.1581269998496282
+              ],
+              "peak_allocated_bytes": 419328,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                },
+                "singleton_param": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08294399827718735,
+                  "backward": 0.09011200070381165,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.005119999870657921,
+                  "output": 0.04915200173854828,
+                  "dx": 0.06451199948787689,
+                  "parameters": 0.016383999958634377
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-recompute-vjp-unroll-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 166.10800003036275,
+              "graph_samples_ms": [
+                0.2032430002145702,
+                0.16979100018943427,
+                0.16706499991414603,
+                0.16575900008319877,
+                0.1653049998822098,
+                0.1660969996919448,
+                0.16633899986118195,
+                0.16650899988235324,
+                0.16620199994576978,
+                0.16566999966016738,
+                0.16534299993509194,
+                0.16532300014659995,
+                0.16610800003036275,
+                0.16680600037943805,
+                0.16628000003038323,
+                0.16554700005144696,
+                0.16567600005146232,
+                0.16652400017846958,
+                0.16616099992461386,
+                0.16606300005150842,
+                0.16560499989282107
+              ],
+              "peak_allocated_bytes": 419328,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 89,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "packed_dx": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                },
+                "singleton_param": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08905600011348724,
+                  "backward": 0.09216000139713287,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.006144000217318535,
+                  "output": 0.053279999643564224,
+                  "dx": 0.06656000018119812,
+                  "parameters": 0.016383999958634377
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "dense",
+              "plan": null,
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 45.67699988911045,
+              "graph_samples_ms": [
+                0.0773990000197955,
+                0.047525999889330706,
+                0.05747300019720569,
+                0.04631399997379049,
+                0.045792000037181424,
+                0.04551899974103435,
+                0.04567699988911045,
+                0.04550499988908996,
+                0.04576999981509289,
+                0.04515799992077518,
+                0.04572200032271212,
+                0.04557100010060822,
+                0.04525300028035417,
+                0.04521899973042309,
+                0.045404000047710724,
+                0.045262999719852814,
+                0.045819999741070205,
+                0.045622000016010134,
+                0.046393000047828536,
+                0.04545199999483884,
+                0.04587400007949327
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496,
+              "compiler": null,
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.014336000196635723,
+                  "backward": 0.018432000651955605,
+                  "optimizer": 0.01228800043463707
+                },
+                "backend_components": {}
+              },
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            }
+          ]
+        },
+        {
+          "artifact": "onchip-vjp-64-sigma3.json",
+          "artifact_sha256": "34d18a42552f405e92232f1fc37b6e568553bb05f7ac1dcfa91bbc7e43f55760",
+          "execution_id": "6465a60c-8a5b-472d-89b9-7d2b1894a4c6",
+          "snapshot_sha256": "b969a778d8a88aa7e6885f2e7435fbcdebe67dfbdd905b52108dbca070cd8c28",
+          "status": "PASS",
+          "case": {
+            "id": "local-onchip-64-sigma3",
+            "fixture": "local_polar_product",
+            "size": 64,
+            "rows": 32,
+            "atoms": 204,
+            "profile": "mixed",
+            "dtype": "float32",
+            "seed": 41,
+            "warmup": 5,
+            "rounds": 21,
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.0001,
+              "weight_decay": 0.01,
+              "fused": true,
+              "capturable": true
+            },
+            "widths": {
+              "minimum": 0.25,
+              "birth": 0.25,
+              "maximum": 16,
+              "rho": [
+                3
+              ],
+              "fractions": [
+                1
+              ],
+              "center_jitter": 0.1
+            }
+          },
+          "workers": [
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-unroll",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2941438048258507e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-recompute-vjp-atom16",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2943905719621952e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-recompute-vjp-unroll-atom16",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2943905719621952e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-unroll",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 79.25099998828955,
+              "graph_samples_ms": [
+                0.11636700037342962,
+                0.08235499990405515,
+                0.08053900000959402,
+                0.08006799998838687,
+                0.07997900002010283,
+                0.0793230001363554,
+                0.07934099994599819,
+                0.07884499973442871,
+                0.07873200001995428,
+                0.07925099998828955,
+                0.07887499987191404,
+                0.0790870003584132,
+                0.07924100009404356,
+                0.08023099962883862,
+                0.0795649998508452,
+                0.07928900004117168,
+                0.07868300008340157,
+                0.07888299978731084,
+                0.07879699978730059,
+                0.07911000011517899,
+                0.0785530000939616
+              ],
+              "peak_allocated_bytes": 154112,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "hybrid_save_h": {
+                  "registers": 44,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 56,
+                  "spill_slots": 0,
+                  "shared_bytes": 3648
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 9216
+                },
+                "singleton_param": {
+                  "registers": 195,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.05222399905323982,
+                  "backward": 0.04403200000524521,
+                  "optimizer": 0.01945599913597107
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.004095999989658594,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.0030720001086592674,
+                  "output": 0.02252800017595291,
+                  "dx": 0.02252800017595291,
+                  "parameters": 0.01228800043463707
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-recompute-vjp-atom16",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 84.91099970342475,
+              "graph_samples_ms": [
+                0.11906200006706058,
+                0.08739899976717425,
+                0.08542500017938437,
+                0.0973209998846869,
+                0.08614500029580086,
+                0.08481899976686691,
+                0.08450699988316046,
+                0.08511599980920437,
+                0.08546699973521754,
+                0.08491099970342475,
+                0.08442999978797161,
+                0.08448200014754548,
+                0.0844369997139438,
+                0.08446599986200454,
+                0.08516900015820283,
+                0.085773999671801,
+                0.08441700038019917,
+                0.08462300002065604,
+                0.08931399997891276,
+                0.08419100004175561,
+                0.08435300014753011
+              ],
+              "peak_allocated_bytes": 154112,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "hybrid_save_h": {
+                  "registers": 44,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 56,
+                  "spill_slots": 0,
+                  "shared_bytes": 3648
+                },
+                "packed_dx": {
+                  "registers": 72,
+                  "spill_slots": 0,
+                  "shared_bytes": 9216
+                },
+                "singleton_param": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.05321599915623665,
+                  "backward": 0.048128001391887665,
+                  "optimizer": 0.01945599913597107
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.004095999989658594,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.004095999989658594,
+                  "output": 0.023552000522613525,
+                  "dx": 0.028672000393271446,
+                  "parameters": 0.010239999741315842
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-recompute-vjp-unroll-atom16",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 77.88299990352243,
+              "graph_samples_ms": [
+                0.11589700034164707,
+                0.08058600042204489,
+                0.09368100018036785,
+                0.07812199964973843,
+                0.07886799994594185,
+                0.07828900015738327,
+                0.07777399969199905,
+                0.07770699994580355,
+                0.07788299990352243,
+                0.0777730001573218,
+                0.07752400006211246,
+                0.07745500033706776,
+                0.07758300034765853,
+                0.07823900023140595,
+                0.07813499996700557,
+                0.0781759999881615,
+                0.07760200014672591,
+                0.07771499986120034,
+                0.07754499984002905,
+                0.07725900013610953,
+                0.07790800009388477
+              ],
+              "peak_allocated_bytes": 154112,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "hybrid_save_h": {
+                  "registers": 44,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 56,
+                  "spill_slots": 0,
+                  "shared_bytes": 3648
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 9216
+                },
+                "singleton_param": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.05119999870657921,
+                  "backward": 0.043007999658584595,
+                  "optimizer": 0.01945599913597107
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.004095999989658594,
+                  "output": 0.02252800017595291,
+                  "dx": 0.02252800017595291,
+                  "parameters": 0.010239999741315842
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "dense",
+              "plan": null,
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 39.64300003644894,
+              "graph_samples_ms": [
+                0.07348700000875397,
+                0.04288000036467565,
+                0.040055000226857373,
+                0.03981200006819563,
+                0.03946600008930545,
+                0.0395530000787403,
+                0.03940899978260859,
+                0.03898899967680336,
+                0.03927199986719643,
+                0.03980699966632528,
+                0.04091600021638442,
+                0.03973899993070518,
+                0.03909899987775134,
+                0.03928400019503897,
+                0.03949699976146803,
+                0.03964300003644894,
+                0.03909500037480029,
+                0.03903300012098043,
+                0.04508199981501093,
+                0.039895000099932076,
+                0.041075000353885116
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496,
+              "compiler": null,
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.01228800043463707,
+                  "backward": 0.01740800030529499,
+                  "optimizer": 0.008191999979317188
+                },
+                "backend_components": {}
+              },
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "l4job-a21145ae0c7d459e9f8f078ef8726723",
+      "source_snapshot_sha256": "e15336c195fe808f123296e9168bccd01f9f22df2e30acf52d580fe1b526ac77",
+      "result_archive_sha256": "71bba3b45ca1a3f95990e0e21690d3d8a1557f228faa3e68f518d8c85d844f6f",
+      "gpu": "NVIDIA L4, GPU-146e8eb1-c451-e6fa-2f33-57cab0abe3fd, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-a21145ae0c7d459e9f8f078ef8726723/results",
+      "benchmarks": [
+        {
+          "artifact": "onchip-vjp-128-early.json",
+          "artifact_sha256": "74955b9637d5923e3e97e5363aea5b8dfa4dbc0ed3c5a655a5f1be245c2bb97f",
+          "execution_id": "98ad7906-745b-489e-945d-0f0ad7ba54d1",
+          "snapshot_sha256": "977d90d44d8d7bfcf247b2aa1763c2147805189dabed8bb7ea035f3e6d8def98",
+          "status": "PASS",
+          "case": {
+            "id": "local-onchip-128-early",
+            "fixture": "local_polar_product",
+            "size": 128,
+            "rows": 32,
+            "atoms": 819,
+            "profile": "mixed",
+            "dtype": "float32",
+            "seed": 41,
+            "warmup": 5,
+            "rounds": 21,
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.0001,
+              "weight_decay": 0.01,
+              "fused": true,
+              "capturable": true
+            },
+            "widths": {
+              "minimum": 0.25,
+              "birth": 0.25,
+              "maximum": 16,
+              "rho": [
+                0.25,
+                0.75,
+                2,
+                8
+              ],
+              "fractions": [
+                0.05,
+                0.05,
+                0.65,
+                0.25
+              ],
+              "center_jitter": 0.1
+            }
+          },
+          "workers": [
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-g-contract4-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 2.217788904784062e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-contract4-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 2.217788904784062e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.592090688522842e-06,
+                  "rel_l2": 2.222415241642393e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-recompute-vjp-unroll-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 6.1423103270286106e-09,
+                  "rel_l2": 2.6847692393610464e-08
+                },
+                "dx": {
+                  "max": 3.92557587824971e-09,
+                  "rel_l2": 1.9758300326171676e-08
+                },
+                "dp": {
+                  "max": 3.592090688522842e-06,
+                  "rel_l2": 2.222415241642393e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-g-contract4-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 158.84599997662008,
+              "graph_samples_ms": [
+                0.19915299981221324,
+                0.16033000019888277,
+                0.15892599958533538,
+                0.15879400007179356,
+                0.1582800000505813,
+                0.16842600007294095,
+                0.15934800012473715,
+                0.15941799983920646,
+                0.1584960000400315,
+                0.15837799992368673,
+                0.16118300027301302,
+                0.1592630001141515,
+                0.15836800002944074,
+                0.15847099984966917,
+                0.1581899996381253,
+                0.15826699973331415,
+                0.15832099961698987,
+                0.15934600014588796,
+                0.15892000010353513,
+                0.15884599997662008,
+                0.1578999999765074
+              ],
+              "peak_allocated_bytes": 512000,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "singleton_param": {
+                  "registers": 255,
+                  "spill_slots": 106,
+                  "shared_bytes": 40960
+                },
+                "packed_dx_saved_g": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08294399827718735,
+                  "backward": 0.09011200070381165,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.006144000217318535,
+                  "output": 0.048128001391887665,
+                  "dx": 0.055296000093221664,
+                  "parameters": 0.02457600086927414
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-contract4-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 166.41799993522,
+              "graph_samples_ms": [
+                0.2043179997599509,
+                0.16837799967106548,
+                0.16662100006215042,
+                0.16727299998819944,
+                0.16698499985068338,
+                0.1670179999564425,
+                0.166159000400512,
+                0.1657330003581592,
+                0.16634099984003115,
+                0.16679199961799895,
+                0.16633499990348355,
+                0.16641799993522,
+                0.1657069997236249,
+                0.16573999982938403,
+                0.1669380003477272,
+                0.1668579998295172,
+                0.1663380003265047,
+                0.16618999961792724,
+                0.1658629998928518,
+                0.16648400014673825,
+                0.16594699991401285
+              ],
+              "peak_allocated_bytes": 419328,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                },
+                "singleton_param": {
+                  "registers": 255,
+                  "spill_slots": 110,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08294399827718735,
+                  "backward": 0.09728000313043594,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.006144000217318535,
+                  "output": 0.048128001391887665,
+                  "dx": 0.06348799914121628,
+                  "parameters": 0.023552000522613525
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-recompute-vjp-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 159.38899969114573,
+              "graph_samples_ms": [
+                0.19608699994932977,
+                0.16298700029437896,
+                0.15939600007186527,
+                0.1584840001669363,
+                0.15820499993424164,
+                0.15838200033613248,
+                0.15892000010353513,
+                0.15976600025169319,
+                0.1587299998391245,
+                0.15824999991309596,
+                0.1577339999130345,
+                0.15825199989194516,
+                0.15938899969114573,
+                0.15931600000840263,
+                0.15846900032556732,
+                0.16058899973359075,
+                0.1629140001568885,
+                0.16253799958576565,
+                0.162985999850207,
+                0.16436699979749392,
+                0.16390400014643092
+              ],
+              "peak_allocated_bytes": 419328,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                },
+                "singleton_param": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08294399827718735,
+                  "backward": 0.09011200070381165,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.006144000217318535,
+                  "output": 0.048128001391887665,
+                  "dx": 0.06451199948787689,
+                  "parameters": 0.016383999958634377
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-recompute-vjp-unroll-atom32",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 165.92600013609626,
+              "graph_samples_ms": [
+                0.20160600024610176,
+                0.16860899995663203,
+                0.16591699977652752,
+                0.16592600013609626,
+                0.1667250003265508,
+                0.16723399994589272,
+                0.1662489999034733,
+                0.16549700012546964,
+                0.16591099983997992,
+                0.16579699968133355,
+                0.16592800011494546,
+                0.1672459998189879,
+                0.1667390001784952,
+                0.16529999993508682,
+                0.16516400000909925,
+                0.16537499959667912,
+                0.16630300024189637,
+                0.16693299994585686,
+                0.16516400000909925,
+                0.16510900013599894,
+                0.1646340001570934
+              ],
+              "peak_allocated_bytes": 419328,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 42,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 40,
+                  "spill_slots": 0,
+                  "shared_bytes": 4096
+                },
+                "persistent_layout": {
+                  "registers": 168,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "hybrid_save_h": {
+                  "registers": 48,
+                  "spill_slots": 0,
+                  "shared_bytes": 24576
+                },
+                "packed_forward": {
+                  "registers": 89,
+                  "spill_slots": 0,
+                  "shared_bytes": 7296
+                },
+                "packed_dx": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 26624
+                },
+                "singleton_param": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 40960
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.08806400001049042,
+                  "backward": 0.09216000139713287,
+                  "optimizer": 0.021503999829292297
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.004095999989658594,
+                  "adamw": 0.009216000325977802,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.006144000217318535,
+                  "layout": 0.008191999979317188,
+                  "h": 0.006144000217318535,
+                  "output": 0.05427199974656105,
+                  "dx": 0.06656000018119812,
+                  "parameters": 0.016383999958634377
+                }
+              },
+              "initial_p_sha256": "56ed61fd9ef95bc5e74b014ac14fbe791af0b553b6ae963677f59869c2da2327",
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            },
+            {
+              "kind": "dense",
+              "plan": null,
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 45.5160002275079,
+              "graph_samples_ms": [
+                0.07689000040045357,
+                0.04765699986819527,
+                0.04615300031218794,
+                0.045449000026565045,
+                0.04570600003717118,
+                0.04721100003735046,
+                0.047311999878729694,
+                0.045590000354422955,
+                0.05315099997460493,
+                0.04606299989973195,
+                0.045838000005460344,
+                0.045480000153474975,
+                0.045322999994823476,
+                0.04498899988902849,
+                0.04533700030151522,
+                0.04541000043900567,
+                0.0455160002275079,
+                0.04508399979386013,
+                0.04532200000539888,
+                0.04525100030150497,
+                0.04537700033324654
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496,
+              "compiler": null,
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.014336000196635723,
+                  "backward": 0.018432000651955605,
+                  "optimizer": 0.01228800043463707
+                },
+                "backend_components": {}
+              },
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+              }
+            }
+          ]
+        },
+        {
+          "artifact": "onchip-vjp-64-sigma3.json",
+          "artifact_sha256": "ef4dd19c7deedb53b612267b6bfb1bb19f7f61162e1cdb7bdb96ece30bafda3b",
+          "execution_id": "c8b73148-b787-4d68-93b9-8a4ab39edd3d",
+          "snapshot_sha256": "b969a778d8a88aa7e6885f2e7435fbcdebe67dfbdd905b52108dbca070cd8c28",
+          "status": "PASS",
+          "case": {
+            "id": "local-onchip-64-sigma3",
+            "fixture": "local_polar_product",
+            "size": 64,
+            "rows": 32,
+            "atoms": 204,
+            "profile": "mixed",
+            "dtype": "float32",
+            "seed": 41,
+            "warmup": 5,
+            "rounds": 21,
+            "optimizer": {
+              "name": "AdamW",
+              "lr": 0.0001,
+              "weight_decay": 0.01,
+              "fused": true,
+              "capturable": true
+            },
+            "widths": {
+              "minimum": 0.25,
+              "birth": 0.25,
+              "maximum": 16,
+              "rho": [
+                3
+              ],
+              "fractions": [
+                1
+              ],
+              "center_jitter": 0.1
+            }
+          },
+          "workers": [
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-unroll",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2941438048258507e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-recompute-vjp-atom16",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2943905719621952e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "correctness",
+              "plan": "persistent-supportprep-band-recompute-vjp-unroll-atom16",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "errors": {
+                "status": "PASS",
+                "scope": "independent FP64 scalar Y/dX/all atom gradients; production polar update",
+                "y": {
+                  "max": 9.814300971910939e-08,
+                  "rel_l2": 1.235031022751281e-07
+                },
+                "dx": {
+                  "max": 1.4042322060703327e-07,
+                  "rel_l2": 1.743822090856114e-07
+                },
+                "dp": {
+                  "max": 3.5771895273289944e-06,
+                  "rel_l2": 1.2943905719621952e-06
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-unroll",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 78.95500039012404,
+              "graph_samples_ms": [
+                0.11558899996089167,
+                0.08044500009418698,
+                0.07922499980850262,
+                0.07882500040068408,
+                0.07973399988259189,
+                0.08014500008357572,
+                0.07938099997772952,
+                0.07926799980850774,
+                0.0782349998189602,
+                0.07902700008344254,
+                0.07841500018912484,
+                0.0783210002737178,
+                0.07797999978720327,
+                0.0783190002948686,
+                0.07815899971319595,
+                0.07857899981900118,
+                0.07895500039012404,
+                0.07898000012573902,
+                0.07836300028429832,
+                0.07900500031610136,
+                0.07830000004105386
+              ],
+              "peak_allocated_bytes": 154112,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "hybrid_save_h": {
+                  "registers": 44,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 56,
+                  "spill_slots": 0,
+                  "shared_bytes": 3648
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 9216
+                },
+                "singleton_param": {
+                  "registers": 195,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.05119999870657921,
+                  "backward": 0.04403200000524521,
+                  "optimizer": 0.018432000651955605
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.0030720001086592674,
+                  "output": 0.02252800017595291,
+                  "dx": 0.02252800017595291,
+                  "parameters": 0.01228800043463707
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-recompute-vjp-atom16",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 84.64299980914802,
+              "graph_samples_ms": [
+                0.12057799995091045,
+                0.08690000004207832,
+                0.08526200008418527,
+                0.08509300005243858,
+                0.08464299980914802,
+                0.08469800013699569,
+                0.08525199973519193,
+                0.08453800001007039,
+                0.08435600011580391,
+                0.08558599984098691,
+                0.08504900006300886,
+                0.08372199999939767,
+                0.08400900014748913,
+                0.08377799986192258,
+                0.08411399994656676,
+                0.08440000010523363,
+                0.08452099973510485,
+                0.08469199974570074,
+                0.0841470000523259,
+                0.08388300011574756,
+                0.08489099991493276
+              ],
+              "peak_allocated_bytes": 154112,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "hybrid_save_h": {
+                  "registers": 44,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 56,
+                  "spill_slots": 0,
+                  "shared_bytes": 3648
+                },
+                "packed_dx": {
+                  "registers": 72,
+                  "spill_slots": 0,
+                  "shared_bytes": 9216
+                },
+                "singleton_param": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.053247999399900436,
+                  "backward": 0.048128001391887665,
+                  "optimizer": 0.01945599913597107
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.004095999989658594,
+                  "output": 0.023552000522613525,
+                  "dx": 0.028672000393271446,
+                  "parameters": 0.010239999741315842
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "measure",
+              "plan": "persistent-supportprep-band-recompute-vjp-unroll-atom16",
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 78.0059999669902,
+              "graph_samples_ms": [
+                0.11281399974905071,
+                0.08013900014702813,
+                0.07809199996700045,
+                0.07754699981887825,
+                0.0778599996920093,
+                0.07759200025247992,
+                0.07843999992473982,
+                0.07889400012572878,
+                0.07835699989300338,
+                0.07827699982954073,
+                0.07771600030537229,
+                0.0773970000409463,
+                0.07773900006213808,
+                0.07743000014670542,
+                0.0777730001573218,
+                0.07748899997750414,
+                0.07736499992461177,
+                0.07883099988248432,
+                0.07887700030551059,
+                0.0780059999669902,
+                0.07852999988244846
+              ],
+              "peak_allocated_bytes": 154112,
+              "peak_reserved_bytes": 6291456,
+              "compiler": {
+                "prepare_bounded": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 0
+                },
+                "tile_layout": {
+                  "registers": 32,
+                  "spill_slots": 0,
+                  "shared_bytes": 1024
+                },
+                "persistent_layout": {
+                  "registers": 64,
+                  "spill_slots": 0,
+                  "shared_bytes": 2048
+                },
+                "hybrid_save_h": {
+                  "registers": 44,
+                  "spill_slots": 0,
+                  "shared_bytes": 8192
+                },
+                "packed_forward": {
+                  "registers": 56,
+                  "spill_slots": 0,
+                  "shared_bytes": 3648
+                },
+                "packed_dx": {
+                  "registers": 80,
+                  "spill_slots": 0,
+                  "shared_bytes": 9216
+                },
+                "singleton_param": {
+                  "registers": 96,
+                  "spill_slots": 0,
+                  "shared_bytes": 16384
+                }
+              },
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.05119999870657921,
+                  "backward": 0.043007999658584595,
+                  "optimizer": 0.01945599913597107
+                },
+                "optimizer_components": {
+                  "old_snapshot": 0.0030720001086592674,
+                  "adamw": 0.0071680000983178616,
+                  "polar": 0.005119999870657921
+                },
+                "backend_components": {
+                  "prepare": 0.005119999870657921,
+                  "layout": 0.006144000217318535,
+                  "h": 0.004095999989658594,
+                  "output": 0.02252800017595291,
+                  "dx": 0.02252800017595291,
+                  "parameters": 0.010239999741315842
+                }
+              },
+              "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            },
+            {
+              "kind": "dense",
+              "plan": null,
+              "source_commit": "00d8ae642e7b0bb297ed9625dc3f01a77f31efd6",
+              "runtime_sources_match_commit": true,
+              "source_hashes_count": 203,
+              "graph_median_us": 38.98000022672932,
+              "graph_samples_ms": [
+                0.0693269998919277,
+                0.040686999909667065,
+                0.039247000131581444,
+                0.0390039999729197,
+                0.038518000110343564,
+                0.038952000068093184,
+                0.03860700007862761,
+                0.038765999761380954,
+                0.039180999920063186,
+                0.038561999645025935,
+                0.03979599978265469,
+                0.03852600002574036,
+                0.03815699983533705,
+                0.05100599992147181,
+                0.03958099978262908,
+                0.03871199987770524,
+                0.03898000022672932,
+                0.03840099998342339,
+                0.03914099988833186,
+                0.038998000036372105,
+                0.03878799998346949
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496,
+              "compiler": null,
+              "phases": {
+                "scope": "separate graph with external CUDA events; sigma continues updating; after primary timing/memory measurement",
+                "phases": {
+                  "forward_loss": 0.01228800043463707,
+                  "backward": 0.01740800030529499,
+                  "optimizer": 0.008191999979317188
+                },
+                "backend_components": {}
+              },
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "interrupted_validation": {
+    "id": "l4job-f1ea63f18aa54c069459bf991397bd85",
+    "source_snapshot_sha256": "81ab600056aadcfb357886926927f021e3979cbacb986ccd5215e03d241856dc",
+    "result_archive_sha256": null,
+    "correctness_evidence": false,
+    "reason": "CLI completion/retrieval interrupted; owned runtime stopped and pool recovered",
+    "raw_path": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-f1ea63f18aa54c069459bf991397bd85"
+  },
+  "database": [
+    {
+      "job": "l4job-48e43502922a4b79942310f962dfe352",
+      "artifact": "onchip-128-early.json",
+      "run_id": "aace8d7892f63a10d936771890fc9e62e979bc4d7d5061e279ea6322059ce9d3",
+      "projection_id": "512a7a27ea47fbe89bfca661545e7ea4c3938003ec1fabdd1caf47194601b064",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "7b1c4e4f93a9d1ad120d5f2027f783c97eabb2a54a82fcaf269e370ee25de050",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-409b5908078f4f3fb8eb095854134374",
+      "artifact": "onchip-64-sigma3.json",
+      "run_id": "707637f56366ee39f4560aaefe29cfa41f0bbc84b1d3a622e53e213e3f0bc4ee",
+      "projection_id": "04d9f8b4c8830a842eefe33925cec9e02f1823246fe8a6f8acf7ca1d1b94eeb5",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "7f8fe55049fc420a44cf1c56f28cbcc91b787ced87e84c84a4429d45b73b3b72",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-988431de9c42426296aa3c2dfa1a43e6",
+      "artifact": "onchip-vjp-128-early.json",
+      "run_id": "7edc1eaa4e3826cb2d00c46cf13f51f6fdd90331ac457f75c95ea95860f151ad",
+      "projection_id": "35dce78710b0c67461a9c2023346f36abc9369149c411f3b5b0a3dcf09549bda",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "3d3174fa80fb11b0376409264ca58ec323ec7f2bdce1d8c2d6d329fdfbdfd32e",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-988431de9c42426296aa3c2dfa1a43e6",
+      "artifact": "onchip-vjp-64-sigma3.json",
+      "run_id": "547b74d18da0737c850f317f771a08682d635b1a401d06a1aaccf0d27d7c7dcb",
+      "projection_id": "db1d808c305b7b64204a1bc514fac1611684301334d31154bdc11632c37935a4",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "34d18a42552f405e92232f1fc37b6e568553bb05f7ac1dcfa91bbc7e43f55760",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-a21145ae0c7d459e9f8f078ef8726723",
+      "artifact": "onchip-vjp-128-early.json",
+      "run_id": "d463337b858415737e61c0ae07492a8ee5cfae23c724e55a1c168421a6409ccc",
+      "projection_id": "2ad56ac0aa54b79dd3a96f81b0c92e40b4ce2304b89c70a3179ad89279ab1d38",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "74955b9637d5923e3e97e5363aea5b8dfa4dbc0ed3c5a655a5f1be245c2bb97f",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-a21145ae0c7d459e9f8f078ef8726723",
+      "artifact": "onchip-vjp-64-sigma3.json",
+      "run_id": "9fb3a6da51fd867183125a6ac6a9737250411ee07f81adfe9504f9ecaa0faeff",
+      "projection_id": "4b2e04ef65216464c8a2afcd0918793cc6a4e029e5cecef6e28aa8ccc112e9b2",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "ef4dd19c7deedb53b612267b6bfb1bb19f7f61162e1cdb7bdb96ece30bafda3b",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    }
+  ],
+  "dispatch_candidates": [
+    {
+      "candidate": "128-early-speed",
+      "winner": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "support_limit": 8,
+          "route": "persistent_supportprep_g_contract4"
+        }
+      },
+      "evidence_ids": [
+        "35dce78710b0c67461a9c2023346f36abc9369149c411f3b5b0a3dcf09549bda:4",
+        "2ad56ac0aa54b79dd3a96f81b0c92e40b4ce2304b89c70a3179ad89279ab1d38:4"
+      ],
+      "dataset_id": "037aa27dd6072d685156652259fd59f715cb354fe9a1de8f4b838b5c3434aec3",
+      "dispatch_sha256": "fed8a7be852c2badd9928b07bc86a9aefaacec57569d1a42a4be92ca6172ba33",
+      "request": "benchmarks/dispatch/requests/local-product-onchip-l4-20261005/128-early-speed.json",
+      "artifacts": "benchmarks/cuda/linear/evidence/onchip-h-20261005/dispatch/128-early-speed",
+      "offline_structure_and_unknown_fallback": "PASS",
+      "runtime_mismatch_rejected": "PASS",
+      "frozen_dataset_regeneration": "PASS"
+    },
+    {
+      "candidate": "128-early-control-peak",
+      "winner": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "support_limit": 8,
+          "route": "persistent_supportprep_band_recompute_vjp"
+        }
+      },
+      "evidence_ids": [
+        "35dce78710b0c67461a9c2023346f36abc9369149c411f3b5b0a3dcf09549bda:6",
+        "2ad56ac0aa54b79dd3a96f81b0c92e40b4ce2304b89c70a3179ad89279ab1d38:6"
+      ],
+      "dataset_id": "037aa27dd6072d685156652259fd59f715cb354fe9a1de8f4b838b5c3434aec3",
+      "dispatch_sha256": "86db13ae7de7882c2b4784317391c483f50c94fc927d86b4a740907698f0fbfc",
+      "request": "benchmarks/dispatch/requests/local-product-onchip-l4-20261005/128-early-control-peak.json",
+      "artifacts": "benchmarks/cuda/linear/evidence/onchip-h-20261005/dispatch/128-early-control-peak",
+      "offline_structure_and_unknown_fallback": "PASS",
+      "runtime_mismatch_rejected": "PASS",
+      "frozen_dataset_regeneration": "PASS"
+    },
+    {
+      "candidate": "64-sigma3-speed",
+      "winner": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "support_limit": 8,
+          "route": "persistent_supportprep_band_recompute_vjp_unroll"
+        }
+      },
+      "evidence_ids": [
+        "db1d808c305b7b64204a1bc514fac1611684301334d31154bdc11632c37935a4:5",
+        "4b2e04ef65216464c8a2afcd0918793cc6a4e029e5cecef6e28aa8ccc112e9b2:5"
+      ],
+      "dataset_id": "16ed72e1aa0bcadcd6c4e17ef9296e290ea9a7c326f0faf7a87c061ccd4a157f",
+      "dispatch_sha256": "af920661bace8dca769c3a94f3ca24ac4e036f8310a4a90d69a4dc5b95c45faa",
+      "request": "benchmarks/dispatch/requests/local-product-onchip-l4-20261005/64-sigma3-speed.json",
+      "artifacts": "benchmarks/cuda/linear/evidence/onchip-h-20261005/dispatch/64-sigma3-speed",
+      "offline_structure_and_unknown_fallback": "PASS",
+      "runtime_mismatch_rejected": "PASS",
+      "frozen_dataset_regeneration": "PASS"
+    },
+    {
+      "candidate": "64-sigma3-control-peak",
+      "winner": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "support_limit": 8,
+          "route": "persistent_supportprep_band_recompute_vjp_unroll"
+        }
+      },
+      "evidence_ids": [
+        "db1d808c305b7b64204a1bc514fac1611684301334d31154bdc11632c37935a4:5",
+        "4b2e04ef65216464c8a2afcd0918793cc6a4e029e5cecef6e28aa8ccc112e9b2:5"
+      ],
+      "dataset_id": "16ed72e1aa0bcadcd6c4e17ef9296e290ea9a7c326f0faf7a87c061ccd4a157f",
+      "dispatch_sha256": "b7bfda5deccc3b532958d08e7117324d32225ecfe7dbf35754341a2129721c8a",
+      "request": "benchmarks/dispatch/requests/local-product-onchip-l4-20261005/64-sigma3-control-peak.json",
+      "artifacts": "benchmarks/cuda/linear/evidence/onchip-h-20261005/dispatch/64-sigma3-control-peak",
+      "offline_structure_and_unknown_fallback": "PASS",
+      "runtime_mismatch_rejected": "PASS",
+      "frozen_dataset_regeneration": "PASS"
+    }
+  ]
+}
