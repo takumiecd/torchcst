@@ -8,10 +8,10 @@ import torch
 
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.catalog import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.full.recipe import (
     FullRecipe,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
     FULL,
     WINDOW,
 )

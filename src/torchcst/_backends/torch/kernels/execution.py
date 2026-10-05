@@ -95,7 +95,13 @@ def family(state):
 
 
 def _operation(state, operation, area="kernels"):
-    module = import_module("torchcst._backends.torch." + area + "." + family(state))
+    name = family(state)
+    path = (
+        "algorithms.polar_update.executor"
+        if area == "updates" and name == "polar_amp_width"
+        else area + "." + name
+    )
+    module = import_module("torchcst._backends.torch." + path)
     return getattr(module, operation)
 
 

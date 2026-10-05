@@ -6,15 +6,20 @@ from .registry import Registry
 
 
 def make_registry():
-    from .cuda.algorithms.normalized_euclidean_strip import (
+    from .cuda.algorithms.linear.normalized_euclidean_strip import (
         NormalizedFullAlgorithm,
         NormalizedWindowAlgorithm,
     )
-    from .cuda.algorithms.strip_torus.fused.algorithm import FusedStripTorusAlgorithm
-    from .torch.algorithms.factored import FactoredAlgorithm
-    from .torch.algorithms.materialized import MaterializedAlgorithm
-    from .torch.algorithms.normalized_radial import NormalizedRadialAlgorithm
-    from .torch.algorithms.tiled import TiledAlgorithm
+    from .cuda.algorithms.linear.strip_torus.fused.algorithm import (
+        FusedStripTorusAlgorithm,
+    )
+    from .cuda.algorithms.polar_update import FusedPolarUpdateAlgorithm
+    from .torch.algorithms.atom_update import AtomUpdateAlgorithm
+    from .torch.algorithms.linear.factored import FactoredAlgorithm
+    from .torch.algorithms.linear.materialized import MaterializedAlgorithm
+    from .torch.algorithms.linear.normalized_radial import NormalizedRadialAlgorithm
+    from .torch.algorithms.linear.tiled import TiledAlgorithm
+    from .torch.algorithms.polar_update import PolarUpdateAlgorithm
 
     registry = Registry()
     for algorithm in (
@@ -25,6 +30,9 @@ def make_registry():
         NormalizedFullAlgorithm(),
         NormalizedWindowAlgorithm(),
         FusedStripTorusAlgorithm(),
+        AtomUpdateAlgorithm(),
+        PolarUpdateAlgorithm(),
+        FusedPolarUpdateAlgorithm(),
     ):
         registry.register(algorithm)
     return registry

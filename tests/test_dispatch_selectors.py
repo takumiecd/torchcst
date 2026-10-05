@@ -10,7 +10,7 @@ from benchmarks.cuda.linear.fixtures import operator_spec
 from torchcst import Dispatcher, LinearBinding, LinearInputs
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.catalog import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
     FULL,
     WINDOW,
 )

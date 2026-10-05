@@ -83,7 +83,7 @@ def test_launch_captured_training(route):
 def test_atom32_graph_migration_and_retained_topology(route, monkeypatch):
     import test_local_persistent_layout as original
 
-    from torchcst._backends.cuda.algorithms.local_product.persistent import (
+    from torchcst._backends.cuda.algorithms.linear.local_product.persistent import (
         PersistentLayout,
     )
 

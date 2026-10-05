@@ -220,7 +220,7 @@ def test_operator_rebinds_after_replacing_module_state():
 
 def test_normalized_strip_is_a_distinct_single_chart_contract():
     from torchcst import CSTLinear, presets
-    from torchcst._backends.torch.algorithms.normalized_radial.layout import (
+    from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
         NormalizedStripGeometry,
     )
 
@@ -266,7 +266,7 @@ def test_normalized_strip_is_a_distinct_single_chart_contract():
 
 def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
     from benchmarks.cuda.linear.fixtures import operator_spec
-    from torchcst._backends.torch.algorithms.normalized_radial.layout import (
+    from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
         NormalizedStripGeometry,
     )
     from torchcst.kernels import BiweightSpec, NormalizationSpec
@@ -326,7 +326,7 @@ def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
         ),
     ]
     from torchcst._backends.catalog import REGISTRY
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+    from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
         FULL,
         WINDOW,
     )

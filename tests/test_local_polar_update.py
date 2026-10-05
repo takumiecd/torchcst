@@ -4,10 +4,8 @@ import pytest
 import torch
 
 from benchmarks.cuda.linear.fixtures import local_product_state
-from torchcst._backends.cuda.algorithms.local_product.polar import (
-    fused_update_,
-    graph_update,
-)
+from torchcst._backends.cuda.algorithms.polar_update.executor import fused_update_
+from torchcst._backends.torch.algorithms.polar_update.executor import graph_update
 
 
 def test_fused_update_rejects_cpu_and_aliases():
@@ -21,7 +19,7 @@ def test_fused_update_rejects_cpu_and_aliases():
 @pytest.mark.parametrize("mode", ["finite_chord", "time_energy"])
 @pytest.mark.parametrize("step_size", [0.0001, 0.01, 0.7])
 def test_fused_update_matches_production_and_live_scalars(mode, step_size):
-    from torchcst._backends.cuda.algorithms.local_product.contract import Domain
+    from torchcst._backends.cuda.algorithms.linear.local_product.contract import Domain
     from torchcst._backends.torch.kernels import execution
     from torchcst.kernels import BandwidthBounds, TriweightSpec, presets
     from torchcst.kernels.state import KernelState

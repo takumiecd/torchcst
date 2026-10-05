@@ -179,7 +179,9 @@ def test_linear_can_select_a_torch_plan_through_the_common_selector():
 def test_linear_uses_the_registry_owned_by_its_selector():
     from test_cst_optimizer import site
 
-    from torchcst._backends.torch.algorithms.materialized import MaterializedAlgorithm
+    from torchcst._backends.torch.algorithms.linear.materialized import (
+        MaterializedAlgorithm,
+    )
 
     registry = Registry()
     algorithm = MaterializedAlgorithm(id="custom_materialized")

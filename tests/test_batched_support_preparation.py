@@ -24,7 +24,7 @@ def test_compact_layout_matches_legacy(
     rows, station_rows, columns, atoms, with_support
 ):
     from benchmarks.cuda.linear.fixtures import strip_torus_model as model
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.preparation import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.preparation import (
         route_and_layout,
         tile_parameters,
     )

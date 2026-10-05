@@ -41,6 +41,8 @@ torchcst/
     spec.py                    単一 Chart / Chart の組 / linear Operator の宣言
     binding.py                 Module の live state を参照する Operator
     context.py / execution.py  Linear metadata・typed Inputs・直接実行のbinding
+    atom_update.py            全Atom共通の更新Inputs・Context・live binding
+    metadata.py               演算bindingで共有する宣言cache
   _backends/
     algorithm.py / state.py    backend・演算共通のAlgorithmと所有者ごとの実行状態
     schema.py                  Context protocol / Plan / support / decision
@@ -50,14 +52,19 @@ torchcst/
     catalog.py                 組込みTorch/CUDA Algorithmの遅延登録
     cuda/
       algorithms/
-        normalized_euclidean_strip/
-          _shared/             full / window が実際に共用する計算
-          full/                algorithm / recipe / executor / kernels
-          window/              algorithm / recipe / executor / provider / kernels
-        strip_torus/fused/     現行の融合計算・準備・autograd・schedule
+        linear/
+          normalized_euclidean_strip/
+            _shared/           full / window が実際に共用する計算
+            full/              algorithm / recipe / executor / kernels
+            window/            algorithm / recipe / executor / provider / kernels
+          strip_torus/fused/   現行の融合計算・準備・autograd・schedule
+          local_product/      小さい積演算・支持・tile配置・autograd
+        polar_update/         Atom更新のCUDA最適化候補・executor・kernel
     torch/
-      algorithms/              materialized / factored / tiled / normalized_radial
-                               各Algorithmのrecipe・配置・実行
+      algorithms/
+        linear/               materialized / factored / tiled / normalized_radial
+        atom_update/          全Kernel・Geometryの座標更新の参照Algorithm
+        polar_update/         Polar更新のAlgorithm・座標法則・Graph対応経路
       geometry/                埋め込み・距離・射影・更新・輸送
       patterns/                格子展開・点選択・bounds
       charts/                  Chart の座標生成・部分領域・支持域
@@ -65,6 +72,7 @@ torchcst/
       parameterizations/       振幅・幅・activity の実際の解釈
       kernels/                 atom 合成・重み生成・初期化・factor 微分
       updates/                 Kernel 座標の更新と optimizer 状態輸送
+                               Polarの法則はpolar_update/executor.pyに置く
       operators/               Operator を受け取る Torch linear 実行
   nn/
     公開 Module                Parameter / buffer / checkpoint の所有
@@ -121,6 +129,14 @@ Algorithmはbinding/RecipeからStateを作り、execute(state, inputs)で演算
 Atomsを使わない演算のStateも同じ経路に乗る。CSTLinearのbackend名は既存Planへのaliasで、
 実行にはselector自身のRegistryを使う。登録はcompute codeを読み込まない。
 
+CSTOptimizerは全siteにAtomUpdateBindingを作り、AtomUpdateInputs(previous, step_size)を
+共通Dispatcherへ渡す。operation_idは全候補でatom_update。optimizerにPolarの型判定や
+専用dispatcherを置かない。既定はtorch_atom_updateで、Kernelの座標法則とGeometryの
+retractionを通す。update_selectorはLinearのselectorと独立して差し替えられる。
+torch_polar_updateとcuda_polar_update_fusedは同じ演算の候補で、対応条件はAlgorithmに置く。
+勾配射影とOptimizerStateAdapterのベクトル輸送は既存Torch参照処理を維持する。
+AdamW等の提案・moment更新・step計数はbase optimizer、状態の所有はAtomStateが担当する。
+
 Chart/Geometry/Kernelを取得する入口は既存Operatorだけにする。normalized専用Operatorは
 追加しない。regular siteの配置抽出と対応判定はTorch normalized Algorithmの`layout.py`にあり、
 CUDA FULL/WINDOWもその純粋metadata処理を再利用する。具体的な実行・準備・kernelは各方式内に
@@ -151,7 +167,7 @@ CUDA FULL/WINDOWもその純粋metadata処理を再利用する。具体的な�
 ```python
 from pathlib import Path
 from torchcst._backends.catalog import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import WINDOW
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import WINDOW
 
 path = Path("plan.json")
 path.write_text(REGISTRY.dumps_plan(WINDOW), encoding="utf-8")

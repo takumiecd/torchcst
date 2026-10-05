@@ -3,7 +3,8 @@
 2026-10-05の境界方針を実装した契約。公開APIは[README](../README.md)、
 所有関係は[AtomとAlgorithmの状態所有](atom-state.ja.md)を参照する。
 DispatcherとExecutionBindingはbackend共通、LinearInputsとLinearBindingは
-演算側のinterfaceである。Concrete Polar/optimizer Algorithmsの本番登録は含まない。
+演算側のinterfaceである。LinearとAtom座標更新はそれぞれ別のInputs/Contextを持ち、
+同じRegistryとDispatcherを使う。
 
 ## 責務
 
@@ -43,7 +44,9 @@ Registryにrequired/optional一覧を複製したり、全演算に任意の`x`�
 同じ演算を実行する候補は同じInputsと出力・更新契約を使う。各Algorithmは受け入れる
 入力型を宣言し、演算側の共通検証に加えて自身の制約を判定する。fast pathだけに必要な
 packやsupport表を利用者の必須入力にしない。それらはAlgorithmが準備する。
-Polarやoptimizerの具体的なInputsは、それぞれの演算を実装するときに定める。
+AtomUpdateInputs(previous, step_size)は更新前snapshotと外側のstepを必須とし、
+optimizerの提案はbindingが参照する現在のParameterから取得する。snapshotのshape・
+dtype・device、非alias、detachと正のstepを選択前に検査する。
 
 ## bindingと所有者
 
@@ -73,7 +76,21 @@ metadataの型・範囲・整合性だけを検証できる。
 共通境界は`operation_id`と`workspace_limit_bytes`に絞る。それ以外は演算ごとの
 必要なmetadataとする。LinearContextならOperator宣言、入力shape/stride、dtype、
 device、atom数、座標幅、必要勾配、精度・決定性・eager/Graph設定を持つ。
-PolarやoptimizerにLinearのshapeやOperatorSpecを要求しない。
+AtomUpdateContextはKernel、中心のGeometry、Parameter配置とscalar配置を記述する。
+Linearの入力shapeや必要勾配を要求せず、実行Contextのoperation_idはatom_updateとする。
+
+## optimizerからのAtom更新
+
+CSTOptimizerはKernelの種類を判定せず、全siteのAtom更新を共通Dispatcherへ渡す。
+既定はtorch_atom_update。PolarのTorch/融合CUDA実装も同じatom_updateの候補であり、
+update_selectorで選ぶ。LinearのPlanと更新Planは独立する。選択と対応判定はbase optimizerの
+更新前にも行い、非対応・不正なPlanでParameterやmomentを進めない。
+
+Sphere/TorusのTorch fallbackはGeometryのretractionを通す。既存の勾配射影と
+OptimizerStateAdapterによるベクトル状態輸送も維持し、Torch optimizerの提案を
+そのまま採用する経路へ短絡しない。既存optimizer checkpoint形式とAtomStateの所有は維持する。
+融合Polar候補の登録は既定採用を意味しない。Graph対応は個々のAlgorithmの対応範囲であり、
+CSTOptimizer全体のcapture対応は今回追加しない。
 
 公開実行では利用者がContextを手入力せず、Dispatcherがbindingを通して生成する。
 宣言検査・候補の比較ではmetadataから構築してよいが、そのContextを実データの

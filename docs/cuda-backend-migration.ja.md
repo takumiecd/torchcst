@@ -12,8 +12,8 @@
 
 - `_backends/linear.py`: 公開 Module の backend 選択と遅延接続。
 - `_backends/torch/operators/`: Torch の linear と Strip + Torus の参照計算・固定座標計画。
-- `_backends/cuda/algorithms/normalized_euclidean_strip/`: 正規化した Euclidean Strip の full / window と実際に共用する `_shared/`。
-- `_backends/cuda/algorithms/strip_torus/fused/`: Strip + Torus の融合準備・forward / backward・schedule。
+- `_backends/cuda/algorithms/linear/normalized_euclidean_strip/`: 正規化した Euclidean Strip の full / window と実際に共用する `_shared/`。
+- `_backends/cuda/algorithms/linear/strip_torus/fused/`: Strip + Torus の融合準備・forward / backward・schedule。
 - `docs/backend-history/`: 以前の設計・GPU 計測ノート。本文中の旧 source path は当時の記録。
 
 normalized Euclidean Strip と Strip + Torus は数学契約が異なるため分ける。

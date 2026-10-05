@@ -7,12 +7,12 @@ import torch
 
 from benchmarks.cuda.linear.fixtures import local_product_reference as reference
 from benchmarks.cuda.linear.fixtures import local_product_state as state
-from torchcst._backends.cuda.algorithms.local_product.contract import Domain
-from torchcst._backends.cuda.algorithms.local_product.preparation import (
+from torchcst._backends.cuda.algorithms.linear.local_product.contract import Domain
+from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
     decode,
     validate_state,
 )
-from torchcst._backends.cuda.algorithms.local_product.recipe import Recipe
+from torchcst._backends.cuda.algorithms.linear.local_product.recipe import Recipe
 from torchcst._backends.torch.kernels import execution
 
 
@@ -132,7 +132,7 @@ def test_recipe_and_shared_contract():
 def test_local_h_y_dx_polar_gradient_update(
     saved, fused_polar, support_only, batch, spacing, sliced
 ):
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     d = Domain(
         32,
@@ -193,7 +193,7 @@ def test_local_h_y_dx_polar_gradient_update(
 def test_graph_replay_refreshes_polar_decode_and_packing(
     saved, fused_polar, support_only
 ):
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     d = Domain(32, 32)
     s = state(minimum=1, birth=1, w_c=0.2).cuda()
@@ -240,7 +240,7 @@ def test_graph_replay_refreshes_polar_decode_and_packing(
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("saved", [False, True])
 def test_fused_polar_nontrivial_envelopes_at_max_batch(saved):
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     d = Domain(
         64,
@@ -271,7 +271,7 @@ def test_fused_polar_nontrivial_envelopes_at_max_batch(saved):
 )
 @pytest.mark.parametrize("batch", [32, 64])
 def test_full_128_transform_all_atom_gradients(route, batch):
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     d = Domain(128, 128)
     s = state(birth=1).cuda()
@@ -305,7 +305,7 @@ def test_full_128_transform_all_atom_gradients(route, batch):
 @pytest.mark.parametrize("limit", [2.0, 4.0, 8.0])
 @pytest.mark.parametrize("sparse", [False, True])
 def test_hybrid_graph_switches_both_directions_without_stale_h(limit, sparse):
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     d = Domain(128, 128, input_start=3, input_count=73, output_start=5, output_count=97)
     s = state(birth=1).cuda()
@@ -360,7 +360,7 @@ def test_graph_update_and_dense_baseline_match_production():
     from benchmarks.cuda.linear.fixtures import (
         local_product_dense_factors as dense_factors,
     )
-    from torchcst._backends.cuda.algorithms.local_product.polar import graph_update
+    from torchcst._backends.torch.algorithms.polar_update.executor import graph_update
 
     d = Domain(32, 32, input_start=4, input_count=17, output_start=2, output_count=19)
     s = state(minimum=1, birth=1, w_c=0.2).double()
@@ -382,7 +382,7 @@ def test_graph_update_and_dense_baseline_match_production():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("saved", [False, True])
 def test_max_batch_atom32_and_unsorted_preserve_gradients(saved):
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     d = Domain(64, 64, input_start=7, output_start=3, input_count=33, output_count=47)
     s = state(minimum=1, birth=1, w_c=0.2).cuda()
@@ -399,7 +399,7 @@ def test_max_batch_atom32_and_unsorted_preserve_gradients(saved):
 
 
 def test_actual_support_count_floor_and_slice():
-    from torchcst._backends.cuda.algorithms.local_product.support import (
+    from torchcst._backends.cuda.algorithms.linear.local_product.support import (
         analyze_side,
         summarize,
     )
@@ -432,7 +432,7 @@ def test_actual_support_count_floor_and_slice():
 def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
     from types import SimpleNamespace
 
-    from benchmarks.cuda.linear.local_product import optimizer_step
+    from benchmarks.cuda.polar_update import optimizer_step
     from torchcst import CSTLinear, CSTOptimizer
 
     d = Domain(16, 16)
@@ -445,7 +445,16 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
         dtype=torch.float64,
         backend="factored",
     )
+    from torchcst import Atoms, AtomUpdateBinding, Operator
+
     actual = SimpleNamespace(p=torch.nn.Parameter(p.clone()), local_state=s)
+    actual.update_binding = AtomUpdateBinding(
+        Operator(
+            charts=d.charts(dtype=p.dtype),
+            kernel=s,
+            atoms=Atoms(actual.p),
+        )
+    )
     proposal = torch.optim.AdamW([actual.p], lr=0.0001, weight_decay=0.01)
     base = torch.optim.AdamW(model.parameters(), lr=0.0001, weight_decay=0.01)
     oracle = CSTOptimizer(base, model=model)
@@ -453,7 +462,7 @@ def test_benchmark_polar_adamw_policy_matches_cst_optimizer():
     for _ in range(4):
         grad = torch.randn(p.shape, generator=gen, dtype=p.dtype)
         actual.p.grad, model.atoms.p.grad = grad.clone(), grad.clone()
-        optimizer_step(actual, proposal, step_size=0.0001)
+        optimizer_step(actual.update_binding, proposal, step_size=0.0001)
         oracle.step()
         torch.testing.assert_close(actual.p, model.atoms.p, atol=1e-12, rtol=1e-12)
         for key, tensor in proposal.state[actual.p].items():
@@ -485,10 +494,10 @@ def test_graph_training_updates_width_and_matches_public_optimizer(
     from benchmarks.cuda.linear.local_product import (
         fixture_operator,
         initialize,
-        optimizer_step,
     )
     from benchmarks.cuda.linear.manifest import DEFAULT_PLANS, load_run
     from benchmarks.cuda.linear.run import PlanLinear
+    from benchmarks.cuda.polar_update import optimizer_step
     from torchcst import CSTLinear, CSTOptimizer
 
     is_persistent = plan_id == "hybrid-persistent-mid4"
@@ -542,7 +551,9 @@ def test_graph_training_updates_width_and_matches_public_optimizer(
         x.grad = None
         y = model(x)
         ((y * target).sum() / x.numel()).backward()
-        optimizer_step(model, opt, step_size=0.0001, polar_update=polar_update)
+        optimizer_step(
+            model.update_binding, opt, step_size=0.0001, polar_update=polar_update
+        )
         return y
 
     stream = torch.cuda.Stream()
@@ -617,7 +628,7 @@ def test_graph_training_updates_width_and_matches_public_optimizer(
 @pytest.mark.parametrize("limit", [1, 2, 4, 8])
 @pytest.mark.parametrize("spacing", [1.0, 0.5])
 def test_support_route_handles_narrow_wide_floor_and_slices(limit, spacing):
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     d = Domain(
         64,
@@ -651,7 +662,7 @@ def test_support_route_handles_narrow_wide_floor_and_slices(limit, spacing):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_support_graph_refreshes_bounds_across_threshold():
-    from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import local_h
 
     d = Domain(32, 32)
     s = state(birth=1).cuda()

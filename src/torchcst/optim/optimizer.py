@@ -34,6 +34,7 @@ class CSTOptimizer(Optimizer):
         model: nn.Module,
         state_adapter: OptimizerStateAdapter | None = None,
         state_specs: dict[str, OptimizerFieldSpec] | None = None,
+        update_selector=None,
     ):
         if not isinstance(optimizer, Optimizer) or isinstance(optimizer, CSTOptimizer):
             raise TypeError("optimizer must be an unwrapped torch.optim.Optimizer")
@@ -45,6 +46,10 @@ class CSTOptimizer(Optimizer):
             state_adapter, OptimizerStateAdapter
         ):
             raise TypeError("state_adapter must be an OptimizerStateAdapter")
+        from torchcst._backends.dispatch import Selector
+
+        if update_selector is not None and not isinstance(update_selector, Selector):
+            raise TypeError("update_selector must be a Selector")
         self.model = model
         self._sites = tuple(
             module for module in model.modules() if isinstance(module, CSTModule)
@@ -63,6 +68,24 @@ class CSTOptimizer(Optimizer):
         self.base_optimizer = optimizer
         self._sync_from_base()
         self._bound_parameters = {site: site.atoms.p for site in self._sites}
+        # Every atom site uses one coordinate-update dispatcher. Kernel and
+        # Geometry select the implementation; optimizer code has no Polar branch.
+        from torchcst._backends.catalog import get_registry
+        from torchcst._backends.dispatch import Dispatcher, FixedSelector
+        from torchcst._backends.torch.algorithms.atom_update.plans import REFERENCE
+        from torchcst.operators import Operator
+        from torchcst.operators.atom_update import AtomUpdateBinding
+
+        self._update_dispatcher = Dispatcher(
+            selector=update_selector
+            or FixedSelector(REFERENCE, registry=get_registry())
+        )
+        self._update_bindings = {
+            site: AtomUpdateBinding(
+                Operator(charts=site.cst_charts(), kernel=site.kernel, atoms=site.atoms)
+            )
+            for site in self._sites
+        }
 
     def _sync_from_base(self):
         self.param_groups = self.base_optimizer.param_groups
@@ -91,7 +114,7 @@ class CSTOptimizer(Optimizer):
             for chart in site.cst_charts():
                 if (
                     chart.trainable
-                    and not type(chart.geometry.spec) is EuclideanGeometrySpec
+                    and type(chart.geometry.spec) is not EuclideanGeometrySpec
                 ):
                     raise ValueError(
                         "trainable non-Euclidean charts need a chart update policy"
@@ -167,25 +190,37 @@ class CSTOptimizer(Optimizer):
                 raise ValueError("projected atom gradient has the wrong shape")
             if not bool(torch.isfinite(projected).all()):
                 raise FloatingPointError("non-finite projected atom gradient")
+            old = point.detach().clone()
+            plan = None
+            if rate != 0:
+                from torchcst.operators.atom_update import AtomUpdateInputs
+
+                inputs = AtomUpdateInputs(old, rate)
+                binding = self._update_bindings[site]
+                binding.validate_inputs(inputs)
+                plan = self._update_dispatcher.select(
+                    binding.build_context(inputs)
+                ).plan
             point.grad.copy_(projected)
-            old_points.append((site, point, rate, point.detach().clone()))
+            old_points.append((site, point, rate, old, plan))
         if closure is None:
             result = self.base_optimizer.step()
         else:
             result = self.base_optimizer.step(closure=lambda: loss)
         self._sync_from_base()
-        for site, point, rate, old in old_points:
+        for site, point, rate, old, plan in old_points:
             if rate == 0:
                 continue
-            new = _kernel.apply_parameter_update(
-                site.kernel, *site.cst_charts(), old, point - old, step_size=rate
+            from torchcst.operators.atom_update import AtomUpdateInputs
+
+            new = self._update_dispatcher.run(
+                self._update_bindings[site], AtomUpdateInputs(old, rate), plan=plan
             )
             if new.shape != point.shape:
                 raise ValueError("updated atom parameters have the wrong shape")
             if not bool(torch.isfinite(new).all()):
                 raise FloatingPointError("non-finite CST parameter update")
             self.state_adapter.transport(site, old, new, self.state.get(point, {}))
-            point.copy_(new)
         return loss if closure is not None else result
 
     def _manifest(self):

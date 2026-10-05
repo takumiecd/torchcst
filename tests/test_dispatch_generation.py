@@ -16,7 +16,7 @@ from benchmarks.dispatch.generate import _context
 from benchmarks.dispatch.request import validate_request
 from tests.benchmark_database_fixtures import artifact
 from torchcst._backends.catalog import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
     FULL,
     WINDOW,
 )

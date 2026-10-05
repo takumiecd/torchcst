@@ -173,7 +173,7 @@ def test_non_regular_layout_uses_general_reference():
 
 def test_selector_is_separate_from_declaration_and_checkpoint():
     from torchcst._backends.catalog import REGISTRY
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+    from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
         WINDOW,
     )
     from torchcst._backends.dispatch import FixedSelector

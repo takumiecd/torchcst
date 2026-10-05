@@ -33,7 +33,7 @@ def timed(fn, repeats):
 
 
 def prepare(layer):
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.host import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.host import (
         prepare as prepare_atoms,
     )
 
@@ -43,10 +43,10 @@ def prepare(layer):
 def probe(batch, atoms, repeats):
     from triton.testing import do_bench_cudagraph
 
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.executor import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.executor import (
         _FusedLinear,
     )
-    from torchcst._backends.cuda.algorithms.strip_torus.fused.kernels import (
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.kernels import (
         materialize_weights,
     )
 

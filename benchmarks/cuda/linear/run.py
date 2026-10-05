@@ -36,7 +36,7 @@ from benchmarks.cuda.linear.manifest import (
     read_json,
 )
 from torchcst import Dispatcher, LinearInputs
-from torchcst._backends.torch.algorithms.normalized_radial.layout import (
+from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
     geometry,
 )
 from torchcst.operators.execution import LinearBinding
@@ -53,12 +53,22 @@ class PlanLinear(nn.Module):
         self.workspace_limit_bytes = None
         self.local_state = None
         self.persistent_layout = None
+        self.update_binding = None
         if plan.algorithm_id == "research_local_product":
             from benchmarks.cuda.linear.local_product import runtime
 
             self.local_state, domain = runtime(operator, self.p.device)
+            from torchcst import Atoms, AtomUpdateBinding, Operator
+
+            self.update_binding = AtomUpdateBinding(
+                Operator(
+                    charts=domain.charts(device=self.p.device, dtype=self.p.dtype),
+                    kernel=self.local_state,
+                    atoms=Atoms(self.p),
+                )
+            )
             if plan.recipe.execution_route == "hybrid_persistent":
-                from torchcst._backends.cuda.algorithms.local_product.persistent import (
+                from torchcst._backends.cuda.algorithms.linear.local_product.persistent import (
                     PersistentLayout,
                 )
 
@@ -107,6 +117,7 @@ def _metadata(args, run):
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
         Path(__file__).with_name("local_product.py"),
+        Path(__file__).parent.parent / "polar_update.py",
     ]
     return {
         "schema_version": 1,
@@ -196,9 +207,15 @@ def measure(args, run):
             fixture_state,
             initialize,
         )
-        from torchcst._backends.cuda.algorithms.local_product.contract import Domain
-        from torchcst._backends.cuda.algorithms.local_product.preparation import decode
-        from torchcst._backends.cuda.algorithms.local_product.support import summarize
+        from torchcst._backends.cuda.algorithms.linear.local_product.contract import (
+            Domain,
+        )
+        from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
+            decode,
+        )
+        from torchcst._backends.cuda.algorithms.linear.local_product.support import (
+            summarize,
+        )
 
         op, p = fixture_operator(case), initialize(case)
         support_report = summarize(decode(fixture_state(case), p), Domain(n, n))
@@ -242,7 +259,9 @@ def measure(args, run):
     initial_sigma = None
     initial_precision = None
     if local and args.worker != "dense":
-        from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+        from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
+            decode,
+        )
 
         initial_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
         initial_sigma = initial_precision.rsqrt()
@@ -266,10 +285,10 @@ def measure(args, run):
         if events is not None:
             events[2].record()
         if local and args.worker != "dense":
-            from benchmarks.cuda.linear.local_product import optimizer_step
+            from benchmarks.cuda.polar_update import optimizer_step
 
             optimizer_step(
-                model,
+                model.update_binding,
                 optimizer,
                 step_size=case.optimizer.lr,
                 polar_update=args.polar_update,
@@ -419,7 +438,7 @@ def measure(args, run):
         diagnostic = torch.cuda.CUDAGraph()
         backend_events = None
         if args.kernel_diagnostics and local and args.worker != "dense":
-            from torchcst._backends.cuda.algorithms.local_product import executor
+            from torchcst._backends.cuda.algorithms.linear.local_product import executor
 
             backend_events = {
                 name: [
@@ -508,7 +527,7 @@ def measure(args, run):
         if local and args.worker != "dense"
         else None,
         "compiler_reports": __import__(
-            "torchcst._backends.cuda.algorithms.local_product.executor",
+            "torchcst._backends.cuda.algorithms.linear.local_product.executor",
             fromlist=["COMPILER_REPORTS"],
         ).COMPILER_REPORTS
         if local and args.worker != "dense"

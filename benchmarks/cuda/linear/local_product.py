@@ -6,8 +6,8 @@ from functools import lru_cache
 import torch
 
 from torchcst._backends.algorithm import Algorithm
-from torchcst._backends.cuda.algorithms.local_product.contract import Domain
-from torchcst._backends.cuda.algorithms.local_product.recipe import Recipe
+from torchcst._backends.cuda.algorithms.linear.local_product.contract import Domain
+from torchcst._backends.cuda.algorithms.linear.local_product.recipe import Recipe
 from torchcst._backends.schema import SupportResult
 from torchcst.operators.execution import LinearInputs, linear_execution
 from torchcst.operators.spec import ChartPairSpec, OperatorSpec
@@ -198,7 +198,7 @@ def runtime(operator, device):
 
     Initialize at the model configuration boundary before CUDA Graph capture.
     """
-    from torchcst._backends.cuda.algorithms.local_product.preparation import (
+    from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
         validate_state,
     )
     from torchcst.kernels.state import KernelState
@@ -249,7 +249,9 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
         recipe = state.recipe
         persistent_layout = getattr(binding, "persistent_layout", None)
         from benchmarks.cuda.linear.fixtures import local_product_dense_factors
-        from torchcst._backends.cuda.algorithms.local_product.executor import local_h
+        from torchcst._backends.cuda.algorithms.linear.local_product.executor import (
+            local_h,
+        )
 
         value, domain = runtime(operator, x.device)
         if recipe.execution_route == "torch":
@@ -394,10 +396,8 @@ def initialize(case):
 def correctness(args, run, model_type):
     """Independent FP64 scalar oracle, including live/floor singleton gradients."""
     from benchmarks.cuda.linear.check_normalized import check
-    from torchcst._backends.cuda.algorithms.local_product.polar import (
-        fused_update_,
-        graph_update,
-    )
+    from torchcst._backends.cuda.algorithms.polar_update.executor import fused_update_
+    from torchcst._backends.torch.algorithms.polar_update.executor import graph_update
     from torchcst._backends.torch.kernels import execution
 
     domain = Domain(16, 16)
@@ -414,7 +414,9 @@ def correctness(args, run, model_type):
     dy = torch.randn(7, 16, generator=gen).cuda()
     y = model(x)
     tp, tx = p.double().requires_grad_(), x.detach().double().requires_grad_()
-    from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+    from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
+        decode,
+    )
 
     q = decode(fixture_state(run.case).double().cuda(), tp)
     j = torch.arange(16, device="cuda", dtype=torch.float64)
@@ -453,39 +455,6 @@ def correctness(args, run, model_type):
     }
 
 
-def optimizer_step(model, optimizer, *, step_size, polar_update="torch", events=None):
-    """Graph-safe specialization, checked against CSTOptimizer for this fixture."""
-    from torchcst._backends.cuda.algorithms.local_product.polar import (
-        fused_update_,
-        graph_update,
-    )
-
-    if polar_update not in ("torch", "fused"):
-        raise ValueError("unknown polar update implementation")
-
-    if events is not None:
-        events[0].record()
-    previous = model.p.detach().clone()
-    if events is not None:
-        events[1].record()
-    optimizer.step()
-    if events is not None:
-        events[2].record()
-    with torch.no_grad():
-        if polar_update == "fused":
-            fused_update_(model.local_state, previous, model.p, step_size=step_size)
-            if events is not None:
-                events[3].record()
-            return
-        model.p.copy_(
-            graph_update(
-                model.local_state, previous, model.p - previous, step_size=step_size
-            )
-        )
-    if events is not None:
-        events[3].record()
-
-
 def measure_prepared_forward(case, recipe=None):
     """Fixed initial-state H+Y diagnosis; excludes preparation and training.
 
@@ -500,16 +469,16 @@ def measure_prepared_forward(case, recipe=None):
 
     from benchmarks.cuda.linear.fixtures import local_product_dense_factors
     from benchmarks.cuda.linear.run import generate_inputs
-    from torchcst._backends.cuda.algorithms.local_product import kernels
-    from torchcst._backends.cuda.algorithms.local_product.executor import (
+    from torchcst._backends.cuda.algorithms.linear.local_product import kernels
+    from torchcst._backends.cuda.algorithms.linear.local_product.executor import (
         _packed_fused,
         prepare_metadata,
         tile_layout,
     )
-    from torchcst._backends.cuda.algorithms.local_product.persistent import (
+    from torchcst._backends.cuda.algorithms.linear.local_product.persistent import (
         PersistentLayout,
     )
-    from torchcst._backends.cuda.algorithms.local_product.preparation import (
+    from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
         polar_scalars,
     )
 

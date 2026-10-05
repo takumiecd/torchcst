@@ -68,9 +68,9 @@ class CSTModule(nn.Module):
 
     def execution_declaration(self):
         """Refresh static configuration metadata outside capture; atom values stay live."""
-        from torchcst.operators.execution import execution_declaration
+        from torchcst.operators.metadata import operator_declaration
 
-        return execution_declaration(self)
+        return operator_declaration(self)
 
     def get_extra_state(self) -> dict[str, object]:
         """Record the CST site family and its operator layout."""

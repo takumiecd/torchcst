@@ -110,6 +110,16 @@ motion. Sphere and Torus atom centers use Geometry projection, retraction and
 vector transport. Trainable non-Euclidean observation charts require a separate
 chart policy and are currently rejected by the optimizer wrapper.
 
+Every atom coordinate update goes through the common `Dispatcher` with
+`AtomUpdateBinding` and `AtomUpdateInputs(previous, step_size)`. `CSTOptimizer`
+uses the `torch_atom_update` reference by default; its `update_selector=` can
+select another compatible Plan independently of the Linear selector. Polar
+Torch/CUDA implementations are candidates for this same `atom_update` operation.
+The optimizer has no Polar-specific dispatcher. Torch fallback preserves Kernel
+coordinate laws and Sphere/Torus retraction, gradient projection and vector-state
+transport. The base optimizer still owns proposal generation and step counting.
+`CSTOptimizer` as a whole still requires eager execution.
+
 `CSTLinear(chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT)`
 uses the globally L2-normalized Euclidean Triweight operator. Its amplitude / log
 width / center coordinates use ordinary optimizer updates. Common dispatch selects

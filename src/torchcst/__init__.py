@@ -54,6 +54,7 @@ from .kernels import (
 from .nn import CSTConv2d, CSTLinear, CSTModule
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
 from .operators.execution import LinearBinding, LinearInputs
+from .operators.atom_update import AtomUpdateBinding, AtomUpdateInputs
 from .optim import CSTOptimizer, OptimizerStateAdapter
 from .patterns import (
     GridPatternSpec,
@@ -110,6 +111,8 @@ __all__ = [
     "PatternState",
     "PointsPatternSpec",
     "PolarAmpWidthSpec",
+    "AtomUpdateBinding",
+    "AtomUpdateInputs",
     "ProductChartSpec",
     "ProductChartState",
     "ProfileBinding",

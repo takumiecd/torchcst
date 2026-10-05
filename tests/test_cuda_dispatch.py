@@ -12,14 +12,14 @@ from benchmarks.cuda.linear.fixtures import operator_spec
 from torchcst import Dispatcher, LinearBinding, LinearInputs
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.catalog import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.full.recipe import (
     FullRecipe,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
     FULL,
     WINDOW,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.window.recipe import (
     WindowRecipe,
 )
 from torchcst._backends.dispatch.select import FixedSelector
@@ -32,7 +32,7 @@ from torchcst._backends.schema import (
     RequiredGrads,
     SupportResult,
 )
-from torchcst._backends.torch.algorithms.normalized_radial.layout import (
+from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
     geometry,
 )
 from torchcst.operators.context import LinearContext as DispatchContext
@@ -176,10 +176,10 @@ def test_context_is_metadata_and_immutable():
 
 def test_import_does_not_load_triton_or_gpu_implementations():
     code = (
-        "import sys; from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL; "
+        "import sys; from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import FULL; "
         "assert 'triton' not in sys.modules; "
-        "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.kernels' not in sys.modules; "
-        "assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.executor' not in sys.modules; assert 'torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.provider' not in sys.modules"
+        "assert 'torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.full.kernels' not in sys.modules; "
+        "assert 'torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.full.executor' not in sys.modules; assert 'torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.window.provider' not in sys.modules"
     )
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(sys.path)
@@ -327,7 +327,7 @@ def test_registry_accepts_only_algorithm_contract_and_identity_is_immutable():
 
 
 def test_algorithm_identity_requires_valid_metadata():
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import (
+    from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import (
         NormalizedFullAlgorithm,
     )
 

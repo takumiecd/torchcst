@@ -303,7 +303,9 @@ def test_cuda_relayout_registry_state_and_independent_gradients(plan_name):
     from benchmarks.cuda.linear.reference import mixed, oracle
     from torchcst import CSTLinear, presets
     from torchcst._backends.catalog import REGISTRY
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import plans
+    from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import (
+        plans,
+    )
     from torchcst._backends.dispatch import FixedSelector
 
     old_tf32 = torch.backends.cuda.matmul.allow_tf32

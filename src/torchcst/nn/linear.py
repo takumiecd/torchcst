@@ -45,7 +45,9 @@ _PLANS = {
 
 @cache
 def _default_selector():
-    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL
+    from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
+        FULL,
+    )
 
     return OrderedSelector(
         (FULL, _PLANS["normalized"], _PLANS["factored"], _PLANS["materialized"]),

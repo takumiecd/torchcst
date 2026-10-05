@@ -18,6 +18,13 @@
 | 同じ数学契約の新CUDA Algorithm | `algorithms/<方式>/` にAlgorithm/Recipe、必要なcontract、executor/kernels | benchmark Registryへ登録、catalog/Case、oracle・対応/非対応条件・autograd・Graph検証 |
 | 新しい数学的なKernel/演算 | `kernels/` の宣言とTorch参照実装、必要なOperator/Chart契約、対応Algorithm | 対応fixture、独立oracle、protocol、結果adapterと提出/dispatch側の検証を追加 |
 
+Linearの計算は各backendのalgorithms/linear/へ置く。Atomの座標更新は別演算の
+atom_updateで、Torch参照はalgorithms/atom_update/、Polarの具体的な更新方式は
+algorithms/polar_update/へ置く。optimizerにKernelの種類ごとのdispatcherを追加しない。
+全更新が同じAtomUpdateInputs/Contextと共通Dispatcherを使い、Sphere/Torusを含む
+一般の更新はTorch参照へ落とす。LinearのPlan、更新Plan、base optimizerを別に扱う。
+既存runnerの--polar-updateは更新候補の選択だけを行い、Linear Planを変更しない。
+
 数学的な意味が同じ候補は同じsemanticsを保つ。正規化・支持・微分の意味を変更したら
 新しい意味の版として区別する。既存Planのaliasだけを変えて同じPlanを重複登録しない。
 登録済みrecipeの意味を変える場合は実装契約のrevisionを更新し、古い結果との比較範囲を明示する。
@@ -25,8 +32,8 @@
 ### 新Algorithmの実装先とインターフェース
 
 実際に動いている最小の見本は
-[`window/algorithm.py`](../src/torchcst/_backends/cuda/algorithms/normalized_euclidean_strip/window/algorithm.py)と
-[`window/recipe.py`](../src/torchcst/_backends/cuda/algorithms/normalized_euclidean_strip/window/recipe.py)。
+[`window/algorithm.py`](../src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/algorithm.py)と
+[`window/recipe.py`](../src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/recipe.py)。
 共通interfaceは [`Algorithm`](../src/torchcst/_backends/algorithm.py)で定義する。
 
 | 要素 | 実装する内容 |
@@ -57,8 +64,8 @@ autograd呼び出しに持たせ、Parameterの更新はoptimizerが行う。
 python - <<'PY'
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.algorithm import NormalizedWindowAlgorithm
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import WindowRecipe
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.window.algorithm import NormalizedWindowAlgorithm
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.window.recipe import WindowRecipe
 
 registry = Registry()
 algorithm = NormalizedWindowAlgorithm()

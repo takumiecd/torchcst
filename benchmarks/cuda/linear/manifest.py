@@ -10,14 +10,14 @@ from pathlib import Path
 
 from benchmarks.cuda.linear.local_product import SEMANTICS as LOCAL_SEMANTICS
 from benchmarks.cuda.linear.local_product import LocalAlgorithm
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import (
     NormalizedFullAlgorithm,
     NormalizedWindowAlgorithm,
 )
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.serialization import decode_json
-from torchcst._backends.torch.algorithms.normalized_radial.layout import (
+from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
     OPERATION,
     SEMANTICS,
 )

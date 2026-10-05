@@ -23,7 +23,7 @@ from benchmarks.cuda.linear.manifest import (
     load_snapshot,
     read_json,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import (
     FULL,
     WINDOW,
 )
@@ -127,7 +127,7 @@ from benchmarks.cuda.linear.run import main
 sys.argv = ['run', '--case', {str(CASE)!r}, '--validate-only']
 main()
 from torchcst._backends.catalog import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL, WINDOW
+from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans import FULL, WINDOW
 for plan in (FULL, WINDOW):
     assert REGISTRY.loads_plan(REGISTRY.dumps_plan(plan)) == plan
 assert 'triton' not in sys.modules
@@ -244,7 +244,7 @@ sys.argv = ['run', '--case', {str(DEFAULT_PLANS.parent / "cases/local-16-sharp.j
             '--plans', {str(LOCAL_PLANS)!r}, '--validate-only']
 main()
 assert 'triton' not in sys.modules
-assert 'torchcst._backends.cuda.algorithms.local_product.kernels' not in sys.modules
+assert 'torchcst._backends.cuda.algorithms.linear.local_product.kernels' not in sys.modules
 """
     subprocess.run(
         [sys.executable, "-c", code],
@@ -259,7 +259,9 @@ assert 'torchcst._backends.cuda.algorithms.local_product.kernels' not in sys.mod
 def test_local_initialization_covers_all_support_scales(size, profile):
     from benchmarks.cuda.linear.fixtures import local_product_state
     from benchmarks.cuda.linear.local_product import initialize
-    from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+    from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
+        decode,
+    )
 
     run = load_run(
         DEFAULT_PLANS.parent
@@ -281,8 +283,12 @@ def test_local_initialization_covers_all_support_scales(size, profile):
         )
 
     if profile == "sharp":
-        from torchcst._backends.cuda.algorithms.local_product.contract import Domain
-        from torchcst._backends.cuda.algorithms.local_product.support import summarize
+        from torchcst._backends.cuda.algorithms.linear.local_product.contract import (
+            Domain,
+        )
+        from torchcst._backends.cuda.algorithms.linear.local_product.support import (
+            summarize,
+        )
 
         report = summarize(q, Domain(size, size))
         assert report["onehot_both_live_atoms"] == len(p)
@@ -292,7 +298,9 @@ def test_local_initialization_covers_all_support_scales(size, profile):
 def test_rho_sweep_only_changes_initial_radius(size, tmp_path):
     from benchmarks.cuda.linear.fixtures import local_product_state
     from benchmarks.cuda.linear.local_product import initialize
-    from torchcst._backends.cuda.algorithms.local_product.preparation import decode
+    from torchcst._backends.cuda.algorithms.linear.local_product.preparation import (
+        decode,
+    )
 
     reference = None
     for suffix, rho in [
