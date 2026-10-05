@@ -20,10 +20,84 @@ See the [measurement record](../../../../../../docs/research-history/local-produ
 | --- | --- |
 | `contract.py` | Fixed regular local domains and full-domain normalization scope |
 | `recipe.py` | Rho boundaries, atom/batch blocks and physical ordering option |
+| `layout.py` | Numerical metadata schema and per-forward execution snapshots |
+| `persistent.py` | Model-owned bucket capacity, ID/slot topology and refresh launch |
+| `layout_kernels.py` | Current membership classification, slot repair and snapshot writes |
 | `preparation.py` | Production polar decode, width stop-gradient, atom ordering |
 | `polar.py` | Production-equivalent graph-safe Euclidean polar update |
 | `kernels.py` | Fused local H, saved H, dX and parameter contractions |
 | `executor.py` | Execute one small local transform with autograd |
+
+## Layout ownership and extension
+
+Keep this execution placement inside the local-product algorithm. `Atoms` owns
+fixed Parameter rows; optimizer moments use the same canonical rows. An atom ID
+is that row index, while a slot is its current execution position. Placement
+never changes Parameter order, atom count or optimizer state. Classification
+and the numerical metadata schema belong to this algorithm; a backend-wide
+layout API is deferred until another implementation actually shares the contract.
+Allocation belongs to an algorithm's execution implementation, not its immutable
+Registry identity or the mathematical Operator. Algorithms that need no retained
+placement can use the compact snapshot alone. This separation also applies to
+future decode/update algorithms: each needs its own input/output, gradient and
+mutation contract, with the owner retaining any execution buffers it requires.
+The current `OperatorSpec` remains linear-specific; no universal operation API
+or parameterization-family execution hierarchy is introduced here. A future
+Torch fallback must implement the same operation and update contract.
+
+There are two different lifetimes:
+
+| Owner | Buffers | Lifetime |
+| --- | --- | --- |
+| `PersistentLayout` on the model | `ids`, `reverse`, `keys`, `starts`, `ends`, `free`, `stats` | Across calls/steps; rebuilt on model setup; excluded from checkpoints |
+| `LayoutSnapshot` returned by `tile_layout`/`refresh` | `views`, `orders`, `starts`, optional `ends` | One forward and its retained/delayed backwards |
+| Autograd invocation | saved H, X, source parameters and scalar references | Until saved tensors are released |
+| Backward invocation | optional G, dX and atom gradient buffers | Backward outputs/scratch |
+
+`layout.py` lists the thirteen SoA metadata fields. `LayoutSnapshot.allocate`
+allocates the existing `[2,13,slots]` numerical views, `[2,slots]` canonical ID
+maps and two direction-specific boundary tables. It does not select buckets,
+move atoms or reuse numerical values. Compact placement uses adjacent `starts`
+as interval boundaries (`ends=None`). Persistent placement keeps spare slots
+and holes; `ends` is each bucket's occupied high-water endpoint, not its capacity.
+
+```python
+# Current polar values, full-domain norms and exact supports are prepared first.
+metadata = prepare_metadata(parameters, domain, sparse=True, scalars=scalars)
+snapshot = model.persistent_layout.refresh(metadata)
+# Use snapshot.views[0] / snapshot.orders[0] / snapshot.starts[0] for forward.
+# Save these exact snapshot tensors for backward; do not save mutable model IDs.
+```
+
+Forward uses direction0; dX uses direction1 because ownership differs by axis.
+The parameter VJP returns canonical gradients using `snapshot.orders[0]`.
+Saved H/G are also canonical-ID indexed, independent of spare slots. Serial
+calls on the model's CUDA stream may update persistent topology, while older
+snapshots remain independent. Do not recycle a snapshot while autograd can still
+read it, including retained backward. Graph replay refreshes values/classification;
+it must not freeze widths, support or normalizers. PyTorch's allocator/Graph pool
+may keep physical memory after the logical tensor lifetime ends.
+
+To add another placement policy, change these operation-local responsibilities:
+
+1. Define the current-state bucket rule (rho, exact singleton certificate,
+   target-axis tile, inactive tail). Match `pack_tiles` in `kernels.py` and
+   `refresh` in `layout_kernels.py`; compact/persistent classification must agree.
+2. Update bucket counts, segment capacity and stride in `tile_layout` and
+   `PersistentLayout.__init__` together. Keep bounded capacity and Graph shapes.
+3. If the metadata format changes, update `METADATA_FIELDS`, producer addresses,
+   hole defaults and every consumer together. A schema name alone does not
+   change Triton pointer arithmetic. Preserve full-domain normalization/VJP.
+4. Adjust consumers (`fused_packed`, `param_vjp`) and register a new research
+   recipe when execution behavior changes. Keep canonical IDs and H/G addressing.
+5. Check exact membership, no lost/duplicated live IDs, migration/overflow,
+   width expansion, sliced domains, multiple outstanding forwards and retained
+   backward against independent oracles, then measure complete-step time/peaks.
+
+All-hole blocks may be skipped; active general atoms still need support overlap
+checks. Persistent repair uses one CTA per direction for small operators. The
+Strip+Torus sort/pack route has a different classification and scale; sharing
+code later must not imply substituting this small repair implementation there.
 
 Whole-call routes are fused H and globally saved H. The experimental support
 route refreshes intervals on the GPU and uses direct contractions for narrow

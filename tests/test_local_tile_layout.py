@@ -37,9 +37,11 @@ def test_two_physical_layouts_and_inactive_tail():
         ]
     )
     original = p.clone()
-    views, orders, offsets = tile_layout(
+    snapshot = tile_layout(
         p, Domain(32, 32), Recipe(pack=False, rho_upper=(1, 4, 16))
     )
+    views, orders, offsets = snapshot.views, snapshot.orders, snapshot.starts
+    assert snapshot.ends is None
     for axis, expected in enumerate(([1, 0, 2, 6, 3, 4, 5], [0, 1, 2, 6, 3, 4, 5])):
         assert orders[axis].tolist() == expected
         assert offsets[axis].tolist() == [0, 1, 2, 4, 5, 6, 7]

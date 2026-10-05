@@ -151,22 +151,21 @@ def prepare_metadata(q, domain, *, sparse, scalars, support_bounded=False):
 
 
 def tile_layout(packed, domain, recipe):
-    """Refresh both execution layouts from current normalized support on device."""
+    """Create a compact snapshot from current support; no retained topology."""
     import triton as tr
 
     from . import kernels
+    from .layout import LayoutSnapshot
 
     a = packed.shape[1]
-    views = packed.new_empty((2, 13, a))
-    orders = packed.new_empty((2, a), dtype=torch.int32)
     stride = max(tr.cdiv(domain.input_count, 16), tr.cdiv(domain.output_count, 16)) + 5
-    offsets = packed.new_empty((2, stride), dtype=torch.int32)
+    snapshot = LayoutSnapshot.allocate(packed, slots=a, stride=stride, persistent=False)
     if a:
         compiled = kernels.pack_tiles[(2,)](
             packed,
-            views,
-            orders,
-            offsets,
+            snapshot.views,
+            snapshot.orders,
+            snapshot.starts,
             a,
             domain.input_count,
             domain.output_count,
@@ -182,8 +181,8 @@ def tile_layout(packed, domain, recipe):
         )
         _report("tile_layout", compiled)
     else:
-        offsets.zero_()
-    return views, orders, offsets
+        snapshot.starts.zero_()
+    return snapshot
 
 
 def _packed_fused(
@@ -289,11 +288,14 @@ class _LocalH(torch.autograd.Function):
         ends = q.new_empty((0,))
         _stamp("layout", 0)
         if persistent_layout is not None:
-            views, orders, offsets, ends = persistent_layout.refresh(packed)
+            snapshot = persistent_layout.refresh(packed)
+            ends = snapshot.ends
         elif tile_packed:
-            views, orders, offsets = tile_layout(packed, domain, recipe)
+            snapshot = tile_layout(packed, domain, recipe)
         else:
             views, orders, offsets = (q.new_empty((0,)),) * 3
+        if tile_packed:
+            views, orders, offsets = snapshot.views, snapshot.orders, snapshot.starts
         _stamp("layout", 1)
         # Fixed capacity keeps graph replay independent of a changing wide count.
         # Hybrid writes/reads only wide lanes; compact capacity is future work.

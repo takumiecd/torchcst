@@ -112,6 +112,12 @@ buffer version による固定座標計画の invalidation と fresh な atom �
 区別し、Triton というだけの理由で複数の計算方式を一つのファイルへ集めない。
 未実装のディレクトリや空の雛形は作らない。
 
+Algorithm固有の実行bufferはmodel / optimizer / 呼び出し側が所有し、immutableな
+RegistryのAlgorithmへ保存しない。常駐配置とforward固有の保存Tensorを分ける。
+小さいlocal productは演算内の`layout.py` / `persistent.py`でこの寿命を明示する。
+具体的な責務と将来の更新演算の扱いは
+[Algorithmの実行メモリと所有者](../../../docs/execution-state.ja.md)を参照。
+
 検証は `tests/`、継続する正しさ・時間・メモリ測定は `benchmarks/` に置く。
 未採用方式は独立した研究 branch で扱い、本体ツリーへ試作ディレクトリを残さない。
 過去の採否は `docs/research-history/` に保存する。登録、対応判定、承認、既定 dispatch への採用は別の段階とする。

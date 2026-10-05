@@ -3,12 +3,15 @@
 import torch
 from torch import nn
 
+from .layout import LayoutSnapshot
+
 
 class PersistentLayout(nn.Module):
     """Fixed-capacity bucket segments with incremental atom-ID migration.
 
+    This owner retains topology across steps, not numerical coefficients/H.
     Calls must be serialized on the model's CUDA stream. No autograd invocation
-    saves the mutable topology: refresh returns independent execution snapshots.
+    saves the mutable topology: refresh returns independent LayoutSnapshots.
     Initialization may synchronize; refresh/rebuild never reads device data on host.
     """
 
@@ -31,8 +34,7 @@ class PersistentLayout(nn.Module):
             scalars=polar_scalars(value),
             support_bounded=recipe.support_prepare,
         )
-        _views, _order, compact = tile_layout(packed, domain, recipe)
-        compact = compact.cpu()
+        compact = tile_layout(packed, domain, recipe).starts.cpu()
         starts = torch.zeros((2, self.stride), dtype=torch.int32)
         for direction, size in enumerate((domain.output_count, domain.input_count)):
             buckets = tr.cdiv(size, 16) + 4
@@ -65,11 +67,8 @@ class PersistentLayout(nn.Module):
 
         if packed.shape != (13, self.atoms) or packed.device != self.ids.device:
             raise ValueError("persistent layout atom shape/device changed")
-        views = packed.new_empty((2, 13, self.slots))
-        orders = self.ids.new_empty((2, self.slots))
-        starts, ends = (
-            self.starts.new_empty(self.starts.shape),
-            self.ends.new_empty(self.ends.shape),
+        snapshot = LayoutSnapshot.allocate(
+            packed, slots=self.slots, stride=self.stride, persistent=True
         )
         compiled = layout_kernels.refresh[(2,)](
             packed,
@@ -80,10 +79,10 @@ class PersistentLayout(nn.Module):
             self.ends,
             self.free,
             self.stats,
-            views,
-            orders,
-            starts,
-            ends,
+            snapshot.views,
+            snapshot.orders,
+            snapshot.starts,
+            snapshot.ends,
             self.atoms,
             self.slots,
             self.domain.input_count,
@@ -100,7 +99,7 @@ class PersistentLayout(nn.Module):
             enable_fp_fusion=False,
         )
         _report("persistent_layout", compiled)
-        return views, orders, starts, ends
+        return snapshot
 
     def report(self):
         """Host diagnostics outside the measured step."""

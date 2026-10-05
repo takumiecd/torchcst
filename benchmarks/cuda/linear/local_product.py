@@ -543,9 +543,12 @@ def measure_prepared_forward(case, recipe=None):
         ends = None
         if recipe.execution_route == "hybrid_persistent":
             layout = PersistentLayout(source, state, domain, recipe)
-            views, orders, offsets, ends = layout.refresh(packed)
+            snapshot = layout.refresh(packed)
+            ends = snapshot.ends
         elif hybrid:
-            views, orders, offsets = tile_layout(packed, domain, recipe)
+            snapshot = tile_layout(packed, domain, recipe)
+        if hybrid:
+            views, orders, offsets = snapshot.views, snapshot.orders, snapshot.starts
 
         def forward():
             kernels.save_h[
