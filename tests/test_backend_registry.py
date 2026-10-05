@@ -50,7 +50,7 @@ class DecodeAlgorithm(Algorithm[DefaultRecipe]):
     def supports(self, context, recipe):
         return (
             SupportResult()
-            if isinstance(context, DecodeContext)
+            if isinstance(context, DecodeContext) and context.width == 2
             else SupportResult(("requires decode metadata",))
         )
 
@@ -84,7 +84,7 @@ def test_non_linear_algorithm_selection_serialization_state_and_live_values():
     )
     loaded = load_selector(exact.dumps(), registry=registry)
     assert loaded.select(context).evidence_ids == ("decode-fixture",)
-    assert loaded.select(replace(context, width=3)).evidence_ids == ()
+    assert loaded.select(replace(context, workspace_limit_bytes=0)).evidence_ids == ()
     first = registry.execute(
         plan, context, state=state, coordinates=owner.parameters_for_execution()
     )
