@@ -45,13 +45,18 @@ def test_onchip_partial_tiles_and_retained_backward(route, batch):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("route", ROUTES)
-def test_onchip_captured_public_optimizer(route):
+@pytest.mark.parametrize("atom_block", [16, 32])
+def test_onchip_captured_public_optimizer(route, atom_block):
     from test_local_product_research import (
         test_graph_training_updates_width_and_matches_public_optimizer,
     )
 
     entries = decode_catalog(read_json(CATALOG)[0])
-    plan = next(e.plan for e in entries if e.plan.recipe.route == route)
+    plan = next(
+        e.plan
+        for e in entries
+        if e.plan.recipe.route == route and e.plan.recipe.atom_block == atom_block
+    )
     test_graph_training_updates_width_and_matches_public_optimizer(
         "hybrid-persistent-mid4",
         size_override=128,
