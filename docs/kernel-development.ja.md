@@ -170,7 +170,9 @@ Atom更新は`python -m tools.kernel_dev test --suite atom-update`で確認す�
 
 ## ソースと比較条件
 
-1. mainから名前付き`codex/`研究ブランチとworktreeを作る。
+1. mainから名前付き`kernel/<目的>`研究ブランチとworktreeを作る。
+   新規kernel・高速化・recipe/launch調整のブランチ命名は
+   [CONTRIBUTING.md](../CONTRIBUTING.md)に従う。
 2. 実装は`src/torchcst/_backends/cuda/algorithms/`へ置く。数学的な仕様と実行設定を分ける。
    local productは`linear/local_product/`、研究Planの登録は`benchmarks/cuda/linear/local_product.py`。
    既存Planの設定と意味を保ち、新しい候補には明示的なrouteを与える。
