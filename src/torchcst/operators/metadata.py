@@ -6,12 +6,13 @@ import torch
 def operator_declaration(binding):
     """Cache immutable live-operator metadata; refresh configuration outside capture."""
     roots = (*binding.cst_charts(), binding.kernel)
+    modules = tuple(m for root in roots for m in root.modules())
     signature = tuple(
-        (id(m), getattr(m, "spec", None), getattr(m, "binding", None))
-        for root in roots
-        for m in root.modules()
+        (id(m), getattr(m, "spec", None), getattr(m, "binding", None)) for m in modules
     )
-    buffers = tuple(t for root in roots for t in root.buffers())
+    # We already visited every submodule. Reading its registered buffers directly
+    # avoids another recursive named-buffer traversal at each state check.
+    buffers = tuple(t for m in modules for t in m._buffers.values() if t is not None)
     reusable = not any(t.is_inference() for t in buffers)
     if reusable:
         signature += tuple((id(t), t._version, t.dtype, t.device) for t in buffers)
