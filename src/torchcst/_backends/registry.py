@@ -4,17 +4,9 @@ from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
 
-import torch
-from torch import Tensor
-
-from torchcst._backends.cuda.algorithm import Algorithm
-from torchcst._backends.cuda.schema import (
-    DispatchContext,
-    ExecutionPlan,
-)
-from torchcst._backends.cuda.serialization import decode_json, encode_json
-from torchcst._backends.state import AlgorithmState
-from torchcst.operators.spec import OperatorSpec
+from torchcst._backends.algorithm import Algorithm
+from torchcst._backends.schema import Context, ExecutionPlan
+from torchcst._backends.serialization import decode_json, encode_json
 
 
 class Registry:
@@ -110,9 +102,9 @@ class Registry:
         self.validate_plan(plan)
         return plan
 
-    def validate(self, plan: ExecutionPlan, context: DispatchContext) -> Algorithm:
+    def validate(self, plan: ExecutionPlan, context: Context) -> Algorithm:
         algorithm = self.validate_plan(plan)
-        if algorithm.operation_id != context.operator.operation_id:
+        if algorithm.operation_id != context.operation_id:
             raise ValueError("plan and operator mathematical contract differ")
         support = algorithm.supports(context, plan.recipe)
         if not support.supported:
@@ -123,6 +115,11 @@ class Registry:
         if bound is not None and (type(bound) is not int or bound < 0):
             raise ValueError("invalid workspace upper bound")
         if context.workspace_limit_bytes is not None:
+            if (
+                type(context.workspace_limit_bytes) is not int
+                or context.workspace_limit_bytes < 0
+            ):
+                raise ValueError("workspace limit must be nonnegative or None")
             if bound is None:
                 raise ValueError(
                     "workspace upper bound is unknown; cannot enforce limit"
@@ -131,59 +128,10 @@ class Registry:
                 raise ValueError("plan exceeds workspace limit")
         return algorithm
 
-    def execute(
-        self,
-        plan: ExecutionPlan,
-        context: DispatchContext,
-        *,
-        x: Tensor,
-        parameters: Tensor,
-        operator: OperatorSpec,
-        state: AlgorithmState | None = None,
-    ) -> Tensor:
-        # Check tensor metadata against the context even for directly forced plans.
-        if operator != context.operator:
-            raise ValueError("operator differs from dispatch context")
-        if (
-            tuple(x.shape) != context.input_shape
-            or tuple(x.stride()) != context.input_strides
-        ):
-            raise ValueError("input metadata differs from dispatch context")
-        if parameters.shape != (context.atom_count, context.parameter_dim):
-            raise ValueError("parameters shape differs from dispatch context")
-        if parameters.stride() != (context.parameter_dim, 1):
-            raise ValueError("parameters must be contiguous [atoms, D]")
-        if x.dtype != context.dtype or parameters.dtype != context.dtype:
-            raise ValueError("tensor dtype differs from dispatch context")
-        if x.device != parameters.device or x.device.type != context.device.type:
-            raise ValueError("tensor device differs from dispatch context")
-        if x.device.index != context.device.index:
-            raise ValueError("tensor device index differs from dispatch context")
-        actual_grads = (
-            torch.is_grad_enabled() and x.requires_grad,
-            torch.is_grad_enabled() and parameters.requires_grad,
-        )
-        if actual_grads != (
-            context.required_grads.inputs,
-            context.required_grads.parameters,
-        ):
-            raise ValueError("gradient requirements differ from dispatch context")
-        if x.is_cuda:
-            from torchcst._backends.cuda.context import context_from_tensors
-
-            actual = context_from_tensors(operator, x, parameters)
-            if (
-                actual.precision != context.precision
-                or actual.deterministic != context.deterministic
-                or actual.execution_mode != context.execution_mode
-                or actual.device != context.device
-            ):
-                raise ValueError("CUDA execution settings differ from dispatch context")
+    def execute(self, plan: ExecutionPlan, context: Context, *, state=None, **inputs):
+        """Validate then invoke an operation's own inputs, without a Linear API."""
         algorithm = self.validate(plan, context)
+        algorithm.validate_inputs(context, state=state, **inputs)
         if state is not None:
-            return algorithm.run(
-                state, x=x, parameters=parameters, operator=operator, recipe=plan.recipe
-            )
-        return algorithm.execute(
-            x=x, parameters=parameters, operator=operator, recipe=plan.recipe
-        )
+            return algorithm.run(state, recipe=plan.recipe, **inputs)
+        return algorithm.execute(recipe=plan.recipe, **inputs)

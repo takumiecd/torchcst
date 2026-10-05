@@ -9,32 +9,32 @@ import pytest
 import torch
 
 from benchmarks.cuda.linear.fixtures import operator_spec
-from torchcst._backends.cuda.algorithm import Algorithm
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
-    geometry,
-)
+from torchcst._backends.algorithm import Algorithm
+from torchcst._backends.catalog import REGISTRY
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
     FullRecipe,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import (
-    WindowRecipe,
-)
-from torchcst._backends.cuda.context import context_from_tensors
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
     FULL,
     WINDOW,
 )
-from torchcst._backends.cuda.dispatch.select import FixedSelector
-from torchcst._backends.cuda.registry import Registry
-from torchcst._backends.cuda.schema import (
+from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import (
+    WindowRecipe,
+)
+from torchcst._backends.dispatch.select import FixedSelector
+from torchcst._backends.registry import Registry
+from torchcst._backends.schema import (
     DeviceInfo,
-    DispatchContext,
     ExecutionPlan,
     PrecisionPolicy,
     RequiredGrads,
     SupportResult,
 )
+from torchcst._backends.torch.algorithms.normalized_radial.layout import (
+    geometry,
+)
+from torchcst.operators.context import LinearContext as DispatchContext
+from torchcst.operators.context import context_from_tensors
 
 
 def replace_sites(spec, **kwargs):

@@ -8,7 +8,6 @@ import torch
 from kernel_cases import direct_state, triweight_state
 
 from torchcst import BandwidthBounds, CSTLinear, CSTOptimizer
-from torchcst._backends.linear import resolve_backend
 from torchcst._backends.torch.charts import construction as _construction
 from torchcst._backends.torch.charts import execution as _charts
 from torchcst._backends.torch.geometry import execution as _geometry
@@ -47,7 +46,7 @@ def test_auto_keeps_the_exact_single_chart_backend() -> None:
     model = CSTLinear(
         chart=chart, atoms=2, kernel=direct_kernel(1.0).declaration(), backend="auto"
     )
-    assert resolve_backend(model) == "materialized"
+    assert model._resolved_backend() == "materialized"
     expected = model.dense_weight()
     x = torch.randn(4, model.in_features)
     torch.testing.assert_close(model(x), torch.nn.functional.linear(x, expected))

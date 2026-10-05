@@ -5,10 +5,10 @@ from functools import lru_cache
 
 import torch
 
-from torchcst._backends.cuda.algorithm import Algorithm
+from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.cuda.algorithms.local_product.contract import Domain
 from torchcst._backends.cuda.algorithms.local_product.recipe import Recipe
-from torchcst._backends.cuda.schema import SupportResult
+from torchcst._backends.schema import SupportResult
 from torchcst.operators.spec import ChartPairSpec, OperatorSpec
 
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"

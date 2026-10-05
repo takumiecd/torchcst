@@ -4,7 +4,8 @@ import math
 import statistics
 from dataclasses import dataclass
 
-from torchcst._backends.cuda.schema import DispatchContext, ExecutionPlan
+from torchcst._backends.schema import ExecutionPlan
+from torchcst.operators.context import LinearContext as DispatchContext
 
 
 @dataclass(frozen=True, order=True)

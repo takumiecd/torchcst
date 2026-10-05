@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
+from functools import cache
+from typing import Literal
+
 import torch
 from torch import Tensor, nn
 
-from torchcst._backends.cuda.dispatch.base import Selector
-from torchcst._backends.linear import (
-    Backend,
-    ResolvedBackend,
-    linear_forward,
-    resolve_backend,
-    validate_backend,
-)
+from torchcst._backends.catalog import get_registry
+from torchcst._backends.dispatch import FixedSelector, OrderedSelector, Selector
+from torchcst._backends.schema import DefaultRecipe, ExecutionPlan
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
 from torchcst.charts import ChartSpec, ChartState, StripChartState, compile_chart
@@ -20,8 +18,34 @@ from torchcst.kernels import AtomInit, KernelSpec
 from torchcst.kernels.options import KernelOptions
 from torchcst.kernels.state import KernelState
 from torchcst.operators import Operator
+from torchcst.operators.context import context_from_metadata, context_from_tensors
 
 from .module import CSTModule, RepulsionKind
+
+Backend = Literal["auto", "factored", "materialized", "tiled", "triton"]
+ResolvedBackend = Literal["factored", "materialized", "tiled", "triton", "normalized"]
+
+_PLANS = {
+    name: ExecutionPlan(algorithm_id, "v1", DefaultRecipe())
+    for name, algorithm_id in (
+        ("materialized", "torch_materialized"),
+        ("factored", "torch_factored"),
+        ("tiled", "torch_tiled"),
+        ("triton", "cuda_strip_torus_fused"),
+        ("normalized", "torch_normalized_radial"),
+    )
+}
+
+
+@cache
+def _default_selector():
+    from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL
+
+    return OrderedSelector(
+        (FULL, _PLANS["normalized"], _PLANS["factored"], _PLANS["materialized"]),
+        registry=get_registry(),
+        revision="linear-bootstrap-v1",
+    )
 
 
 class CSTLinear(CSTModule):
@@ -158,7 +182,13 @@ class CSTLinear(CSTModule):
 
     @backend.setter
     def backend(self, value: Backend) -> None:
-        validate_backend(value, self.cst_charts(), self.kernel)
+        if value != "auto":
+            if value not in ("factored", "materialized", "tiled", "triton"):
+                raise ValueError(
+                    "backend must be one of 'auto', 'factored', 'materialized', 'tiled', 'triton'"
+                )
+            plan = _PLANS[value]
+            get_registry().validate_plan(plan).validate_configuration(self)
         self._backend = value
 
     def _checkpoint_layout(self) -> dict[str, object]:
@@ -280,12 +310,26 @@ class CSTLinear(CSTModule):
         return summed, kappa
 
     def _resolved_backend(self) -> ResolvedBackend:
-        return resolve_backend(self)
-
-    def _forward_from_p(
-        self, inputs: Tensor, p: Tensor, *, backend: ResolvedBackend
-    ) -> Tensor:
-        return linear_forward(self, inputs, p, backend=backend)
+        declaration = self.execution_declaration()
+        if self.backend != "auto":
+            return self.backend
+        context = context_from_metadata(
+            declaration,
+            input_shape=(1, self.in_features),
+            input_strides=(self.in_features, 1),
+            dtype=self.atoms.p.dtype,
+            device=self.atoms.p.device,
+            atom_count=self.atom_count,
+            parameter_dim=self.atoms.parameter_dim,
+        )
+        # Reporting binds configuration at construction; actual calls use their
+        # runtime context and the user's selector, including gradient requirements.
+        plan = _default_selector()._match(context).plan
+        return (
+            "normalized"
+            if plan.algorithm_id in ("normalized_full", "torch_normalized_radial")
+            else next(name for name, value in _PLANS.items() if value == plan)
+        )
 
     def forward(self, inputs: Tensor) -> Tensor:
         if inputs.ndim < 1 or inputs.shape[-1] != self.in_features:
@@ -294,12 +338,41 @@ class CSTLinear(CSTModule):
                 f"got {tuple(inputs.shape)}"
             )
 
-        result = self._forward_from_p(
-            inputs,
-            self.atom_state.parameters_for_execution(),
-            backend=self._resolved_backend(),
+        flat = inputs.reshape(-1, self.in_features).contiguous()
+        parameters = self.atom_state.parameters_for_execution().contiguous()
+        operator = self.execution_declaration()
+        context = context_from_tensors(operator, flat, parameters)
+        if len(parameters) == 0 or len(flat) == 0:
+            result = (
+                flat.new_zeros((len(flat), self.out_features))
+                + flat.reshape(-1)[:1].mul(0).sum()
+                + parameters.reshape(-1)[:1].mul(0).sum()
+            )
+        else:
+            selector = self.selector
+            if selector is None:
+                selector = (
+                    _default_selector()
+                    if self.backend == "auto"
+                    else FixedSelector(_PLANS[self.backend], registry=get_registry())
+                )
+            plan = selector.select(context).plan
+            registry = selector.registry
+            algorithm = registry.validate_plan(plan)
+            result = registry.execute(
+                plan,
+                context,
+                x=flat,
+                parameters=parameters,
+                operator=operator,
+                site=self,
+                state=self.algorithm_state(
+                    algorithm, recipe=plan.recipe, operator=operator
+                ),
+            )
+        return self.atom_state.guard_result(
+            result.reshape(*inputs.shape[:-1], self.out_features)
         )
-        return self.atom_state.guard_result(result)
 
     def extra_repr(self) -> str:
         return (

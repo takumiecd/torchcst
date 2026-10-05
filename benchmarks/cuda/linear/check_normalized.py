@@ -5,7 +5,6 @@ Run from a checkout or an extracted wheel; fixtures and oracle are local modules
 """
 
 # Wheel selection deliberately precedes imports of torchcst.
-# ruff: noqa: E402
 
 import argparse
 import copy
@@ -28,13 +27,13 @@ import torch
 from benchmarks.cuda.linear.fixtures import normalized_chart
 from benchmarks.cuda.linear.reference import mixed, oracle
 from torchcst import CSTLinear, presets
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.dispatch import FixedSelector
+from torchcst._backends.catalog import REGISTRY
+from torchcst._backends.dispatch import FixedSelector
 
 
 def algorithm_selector(algorithm_id):
     algorithm = REGISTRY.get(algorithm_id, revision="v1")
-    from torchcst._backends.cuda.schema import ExecutionPlan
+    from torchcst._backends.schema import ExecutionPlan
 
     plan = ExecutionPlan(algorithm.id, algorithm.revision, algorithm.recipe_type())
     return FixedSelector(plan, registry=REGISTRY)

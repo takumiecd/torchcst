@@ -6,6 +6,8 @@ from functools import lru_cache
 
 import torch
 
+from torchcst.operators.context import LinearContext
+
 
 def _declaration(value):
     if is_dataclass(value) and not isinstance(value, type):
@@ -36,6 +38,12 @@ def _freeze(value):
     return (type(value).__name__, value)
 
 
+def _context_declaration(context):
+    if not is_dataclass(context) or not context.__dataclass_params__.frozen:
+        raise TypeError("exact context requires a frozen dataclass")
+    return _declaration(context)
+
+
 @lru_cache(maxsize=128)
 def _operator_key(operator):
     return _freeze(_declaration(operator))
@@ -64,11 +72,15 @@ def _metadata(context):
 
 def context_key(context):
     """Hashable metadata; no JSON, file I/O, atom inspection or device queries."""
+    if not isinstance(context, LinearContext):
+        return ("context", _freeze(_context_declaration(context)))
     return (_operator_key(context.operator), _metadata(context))
 
 
 def dump_condition(context):
     """Export readable conditions; device index is intentionally not portable."""
+    if not isinstance(context, LinearContext):
+        return {"context": _context_declaration(context)}
     return {
         "operator": _declaration(context.operator),
         "input_shape": list(context.input_shape),
@@ -126,9 +138,12 @@ def _declaration_data(value):
     elif type(value) is list:
         for item in value:
             _declaration_data(item)
-    elif value is None or type(value) in (str, bool, int):
-        return
-    elif type(value) is float and math.isfinite(value):
+    elif (
+        value is None
+        or type(value) in (str, bool, int)
+        or type(value) is float
+        and math.isfinite(value)
+    ):
         return
     else:
         raise ValueError("invalid declaration value")
@@ -136,6 +151,12 @@ def _declaration_data(value):
 
 def condition_key(data):
     """Decode keys only; declaration type strings never import or execute code."""
+    if type(data) is dict and set(data) == {"context"}:
+        value = data["context"]
+        if type(value) is not dict:
+            raise ValueError("context condition requires a typed declaration")
+        _declaration_data(value)
+        return ("context", _freeze(value))
     exact_fields(
         data,
         (

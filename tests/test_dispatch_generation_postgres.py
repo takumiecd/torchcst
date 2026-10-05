@@ -12,7 +12,7 @@ from benchmarks.dispatch.database import read_dataset
 from tests.benchmark_database_fixtures import raw_artifact
 from tests.test_benchmark_database_postgres import db as database_fixture
 from tests.test_dispatch_generation import measured, request_for
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.catalog import REGISTRY
 
 psycopg = pytest.importorskip("psycopg")
 from benchmarks.database.postgres import Database

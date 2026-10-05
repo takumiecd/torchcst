@@ -70,9 +70,9 @@ DirectAmpWidth の activity 座標や Chart ごとの正規化とは別の意味
 正規化用にも同じ live Operator / KernelState / ChartState / Atoms を使う。
 公開 Linear は CSTLinear に統一し、旧専用クラスと checkpoint adapter は削除した。
 
-`_backends/linear.py` の共通 dispatch が対応を判定し、`_backends/normalized.py` が
-CPU の局所支持計算と CUDA Registry を接続する。対応判定は
-`cuda/algorithms/normalized_euclidean_strip/contract.py` に置く。
+共通RegistryとSelectorがPlanを選び、各Algorithmが対応条件・入力・実行を扱う。
+Operatorは共通Chart/Geometry/Kernelへの入口を保ち、normalized専用のOperator型や
+adapterは追加しない。regular siteの配置情報はnormalized Algorithm内で既存宣言から得る。
 regular Product と連続 Strip は同じ点配置で実行できる。
 固定 kernel・正規化・幅・Euclidean site の意味が一致しない場合は、この専用
 algorithm に流さず一般の Torch 参照経路を使う。

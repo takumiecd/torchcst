@@ -7,8 +7,8 @@ from types import MappingProxyType
 
 import torch
 
-from torchcst._backends.cuda.schema import DispatchContext, ExecutionPlan
-from torchcst._backends.cuda.serialization import decode_json, encode_json
+from torchcst._backends.schema import Context, ExecutionPlan
+from torchcst._backends.serialization import decode_json, encode_json
 
 from .base import Match, Selector
 from .conditions import condition_key, context_key, dump_condition, exact_fields
@@ -21,13 +21,13 @@ def _identifier(value, label):
 
 @dataclass(frozen=True)
 class ExactEntry:
-    context: DispatchContext
+    context: Context
     plan: ExecutionPlan
     evidence_ids: tuple[str, ...]
 
     def __post_init__(self):
-        if not isinstance(self.context, DispatchContext):
-            raise TypeError("exact entry requires a DispatchContext")
+        if not isinstance(self.context, Context):
+            raise TypeError("exact entry requires an operation Context")
         if type(self.plan) is not ExecutionPlan:
             raise TypeError("exact entry requires an ExecutionPlan")
         if type(self.evidence_ids) is not tuple or not self.evidence_ids:

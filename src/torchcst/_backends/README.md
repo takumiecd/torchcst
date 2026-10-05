@@ -38,21 +38,21 @@ torchcst/
     spec.py                    単一 Chart / Chart の組 / linear Operator の宣言
     binding.py                 Module の live state を参照する Operator
   _backends/
-    linear.py                  Module の共通 backend 選択・遅延接続
-    normalized.py              fixed regular radial と CPU / CUDA Registry の接続
+    algorithm.py / state.py    backend・演算共通のAlgorithmと所有者ごとの実行状態
+    schema.py                  Context protocol / Plan / support / decision
+    registry.py / dispatch/    共通登録・検証・差し替え可能な選択器
+    serialization.py           宣言metadataの厳密なJSON codec
+    catalog.py                 組込みTorch/CUDA Algorithmの遅延登録
     cuda/
-      algorithm.py             Algorithm ABC
-      context.py / schema.py   共通 OperatorSpec と実行条件・plan・診断
-      registry.py / dispatch/  登録・検証・差し替え可能な選択器
-      serialization.py         宣言 metadata の厳密な JSON codec
       algorithms/
         normalized_euclidean_strip/
-          contract.py          対応する数学契約の判定・固定 site metadata
           _shared/             full / window が実際に共用する計算
           full/                algorithm / recipe / executor / kernels
           window/              algorithm / recipe / executor / provider / kernels
         strip_torus/fused/     現行の融合計算・準備・autograd・schedule
     torch/
+      algorithms/              materialized / factored / tiled / normalized_radial
+                               各Algorithmのrecipe・配置・実行
       geometry/                埋め込み・距離・射影・更新・輸送
       patterns/                格子展開・点選択・bounds
       charts/                  Chart の座標生成・部分領域・支持域
@@ -102,17 +102,21 @@ layout の型で区別する。Torch の評価・更新は backend の関数で�
 宣言 snapshot を forward ごとに作らず、現在の Tensor / buffer を使う。
 詳細は [Operator](../operators/README.md)を参照。
 
-CUDA Registry も共通 `OperatorSpec` を受け取る。対応する数学契約の判定は
-各 Algorithm にあり、Registry 自体は normalized Strip の shape や 5 列の atom を
-前提にしない。Recipe は対応する Algorithm のディレクトリに置く。数学的な宣言は
-Kernel / Geometry / Chart にあり、`contract.py` はその対応判定と metadata 抽出だけを
-行う。`operators/` に normalized Strip 専用の実装や互換 adapter は置かない。
+Registryはbackend・演算のどちらにも依存しない。Context protocolに必要なのは
+operation_id、workspace_limit_bytes、入力検証の境界。Registry.executeはAlgorithmへ
+任意の名前付き入力を渡し、x・parameters・OperatorSpecを要求しない。Linear用metadataと
+入力検証は`operators/context.py`のLinearContextにある。Polarやoptimizerは自身のContextと
+入力を使える。Algorithmのidentity・recipe・対応条件・入力検証・処理/state lifecycleは一つの
+共通ABCに統一し、CUDA専用のRegistry/Algorithm ABCは持たない。
 
-Strip + Torus の現行 `backend="triton"` は `_backends/linear.py` から fused executor
-へ接続する。Module の live Chart / Kernel を使う既存経路で、共通 Spec による
-Registry 登録はまだ行っていない。設定 snapshot を forward ごとに作らず、既存の
-buffer version による固定座標計画の invalidation と fresh な atom 準備を維持する。
-この接続は次の統一段階で扱う。新しい既定選択や性能による自動採用は行わない。
+CSTLinearのbackend名は既存Planへのalias。forwardはselectorでPlanを決め、同じRegistryから
+取得したAlgorithmをModule所有のAlgorithmStateで実行する。Strip + Torus fusedも登録済みで、
+同じ経路を使う。selectorにcustom Registryを渡せる。登録はcompute codeを読み込まない。
+
+Chart/Geometry/Kernelを取得する入口は既存Operatorだけにする。normalized専用Operatorは
+追加しない。regular siteの配置抽出と対応判定はTorch normalized Algorithmの`layout.py`にあり、
+CUDA FULL/WINDOWもその純粋metadata処理を再利用する。具体的な実行・準備・kernelは各方式内に
+維持する。Moduleはbuffer versionで宣言を更新し、数値的なatom準備は毎回現在値を使う。
 
 演算の契約は backend の外に置く。Algorithm / Recipe の設定と kernel 技術の名前を
 区別し、Triton というだけの理由で複数の計算方式を一つのファイルへ集めない。
@@ -138,7 +142,7 @@ buffer version による固定座標計画の invalidation と fresh な atom �
 
 ```python
 from pathlib import Path
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.catalog import REGISTRY
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import WINDOW
 
 path = Path("plan.json")
@@ -161,6 +165,6 @@ JSON text はキーをソートして決定的に出力する。
 
 ## 選択器
 
-[Selector の契約と完全一致 artifact](cuda/dispatch/README.md)を参照。
+[Selector の契約と完全一致 artifact](dispatch/README.md)を参照。
 full / window の専用選択 API は廃止し、両者を通常の Algorithm 候補にする。
 選択器は `CSTLinear(selector=...)` に渡し、数学的宣言・checkpoint から分離する。

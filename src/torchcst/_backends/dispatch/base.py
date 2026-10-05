@@ -3,9 +3,9 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from torchcst._backends.cuda.registry import Registry
-from torchcst._backends.cuda.schema import (
-    DispatchContext,
+from torchcst._backends.registry import Registry
+from torchcst._backends.schema import (
+    Context,
     DispatchDecision,
     ExecutionPlan,
 )
@@ -42,11 +42,15 @@ class Selector(ABC):
     def revision(self):
         return self._revision
 
+    @property
+    def registry(self):
+        return self._registry
+
     @abstractmethod
-    def _match(self, context: DispatchContext) -> Match | None:
+    def _match(self, context: Context) -> Match | None:
         """Return a proposed Plan, or abstain for an unobserved condition."""
 
-    def select(self, context: DispatchContext) -> DispatchDecision:
+    def select(self, context: Context) -> DispatchDecision:
         match = self._match(context)
         failure = "unobserved condition"
         if match is not None:

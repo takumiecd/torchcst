@@ -10,9 +10,13 @@ import torch
 
 from benchmarks.cuda.linear.protocol import LOCAL_OPTIMIZER_POLICY, measurement_operator
 from benchmarks.database.model import digest
-from torchcst._backends.cuda.dispatch.conditions import condition_key, dump_condition
-from torchcst._backends.cuda.dispatch.exact import validate_selector_artifact
-from torchcst._backends.cuda.schema import DeviceInfo, DispatchContext, RequiredGrads
+from torchcst._backends.dispatch.conditions import condition_key, dump_condition
+from torchcst._backends.dispatch.exact import validate_selector_artifact
+from torchcst._backends.schema import (
+    DeviceInfo,
+    RequiredGrads,
+)
+from torchcst.operators.context import LinearContext as DispatchContext
 
 from .model import Candidate, MetricKey, Summary
 from .request import validate_request

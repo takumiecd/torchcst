@@ -115,8 +115,33 @@ uses the globally L2-normalized Euclidean Triweight operator. Its amplitude / lo
 width / center coordinates use ordinary optimizer updates. Common dispatch selects
 support-local Torch or registered CUDA algorithms from the chart and kernel.
 `CSTLinear(selector=...)` accepts a Plan selector; full and window are ordinary
-Algorithm candidates. See the [selector contract](src/torchcst/_backends/cuda/dispatch/README.md).
+Algorithm candidates. See the [selector contract](src/torchcst/_backends/dispatch/README.md).
 See the [normalized Strip guide](docs/normalized-strip.ja.md).
+
+Algorithms use one backend-independent contract and registry. `Algorithm` owns
+immutable identity, recipe validation, support, input validation and execution;
+`AlgorithmState` owns placement and reusable buffers for one atom owner. Registry
+execution accepts each operation's named inputs without requiring a Linear
+`OperatorSpec`. Registering metadata does not import compute kernels.
+
+```python
+from torchcst import (
+    DefaultRecipe, ExecutionPlan, FixedSelector, make_algorithm_registry,
+)
+
+registry = make_algorithm_registry()  # Torch and CUDA builtins
+plan = ExecutionPlan("torch_materialized", "v1", DefaultRecipe())
+layer.selector = FixedSelector(plan, registry=registry)
+```
+
+`Registry` also accepts custom `Algorithm` implementations. Their context declares
+`operation_id`, an optional workspace limit and input validation; their input
+names and results can differ from Linear. `Selector`, `FixedSelector` and
+`OrderedSelector` share this contract. `CSTLinear` executes through its selector's
+registry on both Torch and CUDA. Existing `backend=` names are builtin Plan
+aliases; an explicit selector takes precedence. The default order preserves
+FULL, the CPU normalized reference and the factored/materialized size policy.
+Full CUDA support checks still reject incompatible precision settings.
 
 `atoms=` accepts an integer (initialize), a Tensor (detach and copy), an
 `nn.Parameter` (reuse its identity, gradients and existing optimizer state), or

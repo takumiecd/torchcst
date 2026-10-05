@@ -1,17 +1,20 @@
 """Common metadata guards for the full and window implementations."""
 
-from torchcst._backends.cuda.algorithm import Algorithm, RecipeT
+from torchcst._backends.algorithm import Algorithm, RecipeT
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import (
     WindowRecipe,
 )
-from torchcst._backends.cuda.schema import DispatchContext, SupportResult
+from torchcst._backends.schema import SupportResult
+from torchcst._backends.torch.algorithms.normalized_radial.layout import geometry
+from torchcst.operators.context import LinearContext as DispatchContext
 
 from ..constraints import routing_reasons
-from ..contract import geometry
 
 
 def _supports(context, recipe):
     reasons = []
+    if not isinstance(context, DispatchContext):
+        return SupportResult(("requires a LinearContext",))
     try:
         op = geometry(context.operator)
     except (TypeError, ValueError) as error:
@@ -48,6 +51,22 @@ def _supports(context, recipe):
 
 
 class _NormalizedAlgorithm(Algorithm[RecipeT]):
+    def matches(self, context, recipe):
+        try:
+            op = geometry(context.operator)
+        except (AttributeError, TypeError, ValueError):
+            return False
+        return (
+            context.device.type == "cuda"
+            and str(context.dtype) == "torch.float32"
+            and not routing_reasons(op)
+        )
+
+    def _execute_state(self, state, **inputs):
+        if state.configuration.get("operator") != inputs.get("operator"):
+            raise ValueError("algorithm state operator differs")
+        return super()._execute_state(state, **inputs)
+
     def supports(self, context: DispatchContext, recipe: RecipeT) -> SupportResult:
         return _supports(context, recipe)
 

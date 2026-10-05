@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from benchmarks.database.model import digest
-from torchcst._backends.cuda.serialization import decode_json
+from torchcst._backends.serialization import decode_json
 
 DEFAULT_POLICY = (
     Path(__file__).resolve().parents[2] / ".github/benchmark-submissions.json"

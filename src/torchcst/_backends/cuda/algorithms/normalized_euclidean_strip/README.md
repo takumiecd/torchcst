@@ -20,7 +20,7 @@ Window routing also requires quarter-grid origins and rows divisible by 32;
 otherwise the validated full route is used. Coordinate guards reject ranges
 outside the demonstrated FP32 routing regime. Atomic accumulation is not
 bitwise deterministic. Autocast and TF32 are rejected. CUDA supports first
-derivatives; CPU uses `_backends/torch/operators/normalized_radial.py`.
+derivatives; CPU uses `_backends/torch/algorithms/normalized_radial/executor.py`.
 
 The independent oracle and full/window Graph/optimizer integration check are
 in `tests/test_normalized_strip_public.py` and

@@ -70,15 +70,17 @@ Algorithm専用slotの並替えは、そのAlgorithmState内で完結させる�
 Tensor以外の複合結果を持つ実装は、個々のTensorの寿命を自身で保護する。
 
 具体的な配置・buffer・準備・演算は各Algorithmのディレクトリ内に実装する。
-CUDAのAlgorithm ABCは共通契約を継承し、既存のrecipe/support/実行interfaceを保つ。
-公開normalized CSTLinearはModule所有のAlgorithmStateをRegistryへ渡す。
+Algorithmのimmutable ID/revision/operation/semantics、recipe検証、support、workspace上界と
+処理/state lifecycleはbackend共通のABCで定義する。CUDA専用ABCは廃止する。
+公開CSTLinearの全経路はModule所有のAlgorithmStateを共通Registryへ渡す。
 強制Planの直接実行は従来のTensor interfaceも利用できる。
 
 AlgorithmStateは配置version、Parameterとoptimizer状態Tensorの実体/device/dtype/
 shape/stride/storageを確認する。checkpoint復元・model変換・moment遅延初期化でも
 古いviewを再利用しない。数値の変更は配置versionで判断せず、Polar decodeなどは
 execute時に現在値を準備する。Polarやoptimizer proposalの具体的なAlgorithmは
-その演算契約を定めて追加する。この変更は汎用CSTOperationやPolar Registryを追加しない。
+その演算契約を定めて同じRegistryへ追加できる。RegistryにはLinearやCSTOperationの入力形を
+要求しない。具体的なPolar/optimizer Algorithmの本番登録はこの変更に含めない。
 
 ## checkpoint
 

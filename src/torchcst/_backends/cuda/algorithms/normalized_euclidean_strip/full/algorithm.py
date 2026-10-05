@@ -7,10 +7,13 @@ from torch import Tensor
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
     FullRecipe,
 )
+from torchcst._backends.torch.algorithms.normalized_radial.layout import (
+    OPERATION,
+    SEMANTICS,
+)
 from torchcst.operators.spec import OperatorSpec
 
 from .._shared.algorithm import _NormalizedAlgorithm
-from ..contract import OPERATION, SEMANTICS
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,8 @@ class NormalizedFullAlgorithm(_NormalizedAlgorithm[FullRecipe]):
         parameters: Tensor,
         operator: OperatorSpec,
         recipe: FullRecipe,
+        site=None,
+        state=None,
     ) -> Tensor:
         from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.executor import (
             execute_full,

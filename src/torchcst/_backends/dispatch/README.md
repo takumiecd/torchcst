@@ -19,13 +19,14 @@ full / window を特別な分岐にせず、Registry の Algorithm ID / revision
 `score_policy` はその関数の ID / revision / parameters を記録する metadata。
 関数本体を JSON に埋め込んだり、forward で任意コードを評価したりしない。
 DBからの固定snapshot抽出・評価関数・leaderboard・exact artifact生成は
-[生成ツール](../../../../../benchmarks/dispatch/README.md)に用意する。
+[生成ツール](../../../../benchmarks/dispatch/README.md)に用意する。
 評価関数は生成ツール側で実行する。DB内のPython実行や既定policyへの自動採用は含めない。
 
 | 選択器 | 現在の状態 | 選択方法 |
 | --- | --- | --- |
 | FixedSelector | 実装済み | 明示した一つの Plan。bootstrap・直接比較用 |
 | ExactSelector | 実装済み | 観測された条件の完全一致表 |
+| OrderedSelector | 実装済み | 明示したPlan順でAlgorithmのrouting条件を確認 |
 | ルール / 決定木 | 将来の候補 | 同じ `_match(context)` 境界から Plan または未選択を返す |
 | MLP 等 | 将来の候補 | 同じ境界から Plan または未選択を返す |
 
@@ -65,8 +66,8 @@ atom の Tensor 値、初期幅の broad / sharp ラベル、optimizer 状態は
 ```python
 from pathlib import Path
 from torchcst import CSTLinear, presets
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
-from torchcst._backends.cuda.dispatch import load_selector
+from torchcst._backends.catalog import REGISTRY
+from torchcst._backends.dispatch import load_selector
 
 selector = load_selector(Path("dispatch.json").read_bytes(), registry=REGISTRY)
 layer = CSTLinear(chart=chart, atoms=p,
@@ -74,17 +75,23 @@ layer = CSTLinear(chart=chart, atoms=p,
                   selector=selector)
 ```
 
-`selector` は CUDA Registry を使う CSTLinear の経路に適用する。
-CPU の参照計算、未対応宣言の一般 Torch 計算、既存 Strip/Torus fused 経路は現行の接続を使う。
-選択器は数学的な宣言や `state_dict` に含めず、別 artifact として保存する。
-同じ数学的 checkpoint を異なる選択器で利用できる。
-未指定時は演算グループに明示された bootstrap Plan を使う。現在の normalized グループは
-既存の normalized_full を設定するが、leaderboard の勝者と主張しない。
+`selector`はすべてのCSTLinear経路に適用する。CPUのTorch参照、CUDA、
+Strip/Torus fusedも同じRegistry/Plan/Algorithmを使う。実行にはselector自身のRegistryを使い、
+custom Registryも渡せる。selectorは数学的宣言やstate_dictに含めず、別artifactとして保持する。
+未指定時はModuleに明示したOrderedSelectorを使う。FULL、Torch normalized、
+factored、materializedの順で各Algorithmのrouting条件を確認する。性能による自動採用ではない。
+
+FixedSelectorとOrderedSelectorはoperation固有のContextを受け取る。ExactSelectorも
+Linear以外のContextを扱える。その場合、frozen dataclassのContextを型名とscalar/tuple/
+不変なdataclassのfieldとして保存する。conditionは`{"context": typed_declaration}`になり、
+Tensorや可変な値は拒否する。Linearの既存artifact v1条件形式は維持する。
+汎用Contextでは全fieldを比較し、GPU indexを無視する既存Linear条件の規則を暗黙に適用しない。
+型名は比較に使う文字列であり、読み込み時にimportや任意コードの実行を行わない。
 
 生成側は、順位付け済みの条件と Plan から artifact を構築できる。
 
 ```python
-from torchcst._backends.cuda.dispatch import ExactEntry, ExactSelector
+from torchcst._backends.dispatch import ExactEntry, ExactSelector
 
 selector = ExactSelector.from_entries(
     [ExactEntry(context, winning_plan, (observation_id,))],
@@ -129,4 +136,4 @@ JSON 往復、条件の全フィールド、未観測条件、明示的 fallback
 CUDA と PostgreSQL の専用テストは環境未接続のため skip。
 L4 上で実ファイルからの公開経路、独立 oracle、Graph replay と完全 step の時間・peak を確認した。
 対象4ファイルは108 passed / 0 failed / 0 skipped。
-[実機検証記録](../../../../../docs/dispatch-json-verification.ja.md)を参照。
+[実機検証記録](../../../../docs/dispatch-json-verification.ja.md)を参照。

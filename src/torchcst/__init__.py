@@ -1,5 +1,11 @@
 """Fixed-shape continuous operators for PyTorch."""
 
+from ._backends.algorithm import Algorithm
+from ._backends.catalog import make_registry as make_algorithm_registry
+from ._backends.dispatch import FixedSelector, OrderedSelector, Selector
+from ._backends.registry import Registry
+from ._backends.schema import DefaultRecipe, ExecutionPlan, SupportResult
+from ._backends.state import AlgorithmState
 from .atoms import AtomOptimizerState, Atoms, AtomState, OptimizerFieldSpec
 from .charts import (
     ChartSpec,
@@ -52,6 +58,8 @@ from .patterns import (
 from .patterns import presets as pattern_presets
 
 __all__ = [
+    "Algorithm",
+    "AlgorithmState",
     "AmpWidthSpec",
     "AtomOptimizerState",
     "AtomState",
@@ -65,10 +73,13 @@ __all__ = [
     "ChartPairSpec",
     "ChartSpec",
     "ChartState",
+    "DefaultRecipe",
     "DirectAmpWidthSpec",
     "EuclideanGeometrySpec",
+    "ExecutionPlan",
     "ExplicitChartSpec",
     "ExplicitChartState",
+    "FixedSelector",
     "FixedWidthSpec",
     "GaussianSpec",
     "GeometrySpec",
@@ -83,6 +94,7 @@ __all__ = [
     "OperatorSpec",
     "OptimizerFieldSpec",
     "OptimizerStateAdapter",
+    "OrderedSelector",
     "PatternSpec",
     "PatternState",
     "PointsPatternSpec",
@@ -90,10 +102,13 @@ __all__ = [
     "ProductChartSpec",
     "ProductChartState",
     "ProfileBinding",
+    "Registry",
+    "Selector",
     "SingleChartSpec",
     "SphereGeometrySpec",
     "StripChartSpec",
     "StripChartState",
+    "SupportResult",
     "TorusGeometrySpec",
     "TriangleSpec",
     "TriweightSpec",
@@ -101,6 +116,7 @@ __all__ = [
     "chart_presets",
     "compile_chart",
     "geometry_presets",
+    "make_algorithm_registry",
     "pattern_presets",
     "presets",
 ]

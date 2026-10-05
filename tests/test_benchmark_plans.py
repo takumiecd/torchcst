@@ -126,7 +126,7 @@ import sys
 from benchmarks.cuda.linear.run import main
 sys.argv = ['run', '--case', {str(CASE)!r}, '--validate-only']
 main()
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import REGISTRY
+from torchcst._backends.catalog import REGISTRY
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import FULL, WINDOW
 for plan in (FULL, WINDOW):
     assert REGISTRY.loads_plan(REGISTRY.dumps_plan(plan)) == plan

@@ -27,7 +27,7 @@
 実際に動いている最小の見本は
 [`window/algorithm.py`](../src/torchcst/_backends/cuda/algorithms/normalized_euclidean_strip/window/algorithm.py)と
 [`window/recipe.py`](../src/torchcst/_backends/cuda/algorithms/normalized_euclidean_strip/window/recipe.py)。
-共通interfaceは [`Algorithm`](../src/torchcst/_backends/cuda/algorithm.py)で定義する。
+共通interfaceは [`Algorithm`](../src/torchcst/_backends/algorithm.py)で定義する。
 
 | 要素 | 実装する内容 |
 | --- | --- |
@@ -54,8 +54,8 @@ autograd呼び出しに持たせ、Parameterの更新はoptimizerが行う。
 
 ```bash
 python - <<'PY'
-from torchcst._backends.cuda.registry import Registry
-from torchcst._backends.cuda.schema import ExecutionPlan
+from torchcst._backends.registry import Registry
+from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.algorithm import NormalizedWindowAlgorithm
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import WindowRecipe
 

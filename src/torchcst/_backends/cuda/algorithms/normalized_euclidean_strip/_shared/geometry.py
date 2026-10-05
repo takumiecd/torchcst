@@ -3,7 +3,7 @@
 from functools import cache
 from types import SimpleNamespace
 
-from ..contract import geometry
+from torchcst._backends.torch.algorithms.normalized_radial.layout import geometry
 
 
 @cache

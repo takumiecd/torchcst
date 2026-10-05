@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from torchcst._backends.cuda.serialization import encode_json
+from torchcst._backends.serialization import encode_json
 
 
 def digest(value):

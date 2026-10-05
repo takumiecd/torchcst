@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+import torch
 from torch import Tensor, nn
 
 from torchcst.atoms import Atoms, AtomState
@@ -57,7 +58,31 @@ class CSTModule(nn.Module):
     def __getstate__(self):
         state = super().__getstate__()
         state.pop("_algorithm_states", None)
+        state.pop("_execution_declaration", None)
         return state
+
+    def execution_declaration(self):
+        """Refresh static configuration metadata outside capture; atom values stay live."""
+        roots = (*self.cst_charts(), self.kernel)
+        signature = tuple(
+            (id(m), getattr(m, "spec", None), getattr(m, "binding", None))
+            for root in roots
+            for m in root.modules()
+        )
+        buffers = tuple(t for root in roots for t in root.buffers())
+        reusable = not any(t.is_inference() for t in buffers)
+        if reusable:
+            signature += tuple((id(t), t._version, t.dtype, t.device) for t in buffers)
+        previous = self.__dict__.get("_execution_declaration")
+        if reusable and previous is not None and previous[0] == signature:
+            return previous[1]
+        if self.atoms.p.is_cuda and torch.cuda.is_current_stream_capturing():
+            raise RuntimeError(
+                "chart/kernel metadata must be refreshed outside CUDA graph capture"
+            )
+        declaration = self.declaration()
+        self.__dict__["_execution_declaration"] = (signature, declaration)
+        return declaration
 
     def get_extra_state(self) -> dict[str, object]:
         """Record the CST site family and its operator layout."""

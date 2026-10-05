@@ -35,10 +35,10 @@ from benchmarks.cuda.linear.manifest import (
     load_snapshot,
     read_json,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
+from torchcst._backends.torch.algorithms.normalized_radial.layout import (
     geometry,
 )
-from torchcst._backends.cuda.context import context_from_tensors
+from torchcst.operators.context import context_from_tensors
 
 
 class PlanLinear(nn.Module):

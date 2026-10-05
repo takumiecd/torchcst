@@ -6,15 +6,26 @@ from test_cst_optimizer import site
 
 from torchcst import CSTOptimizer
 from torchcst._backends.algorithm import Algorithm
+from torchcst._backends.schema import DefaultRecipe, SupportResult
 from torchcst._backends.state import AlgorithmState
 
 
 class SumAlgorithm(Algorithm):
     def __init__(self):
-        self.preparations = 0
+        super().__init__("test_sum", "v1", "sum", "sum-v1", DefaultRecipe)
+        object.__setattr__(self, "preparations", 0)
+
+    def validate_recipe(self, recipe):
+        pass
+
+    def supports(self, context, recipe):
+        return SupportResult()
+
+    def workspace_bound(self, context, recipe):
+        return 0
 
     def prepare(self, state):
-        self.preparations += 1
+        object.__setattr__(self, "preparations", self.preparations + 1)
         state.invalidate()
         state.layout = state.atom_state.row_to_id
         state.mark_current()

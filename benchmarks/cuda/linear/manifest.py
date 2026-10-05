@@ -14,13 +14,13 @@ from torchcst._backends.cuda.algorithms.normalized_euclidean_strip import (
     NormalizedFullAlgorithm,
     NormalizedWindowAlgorithm,
 )
-from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.contract import (
+from torchcst._backends.registry import Registry
+from torchcst._backends.schema import ExecutionPlan
+from torchcst._backends.serialization import decode_json
+from torchcst._backends.torch.algorithms.normalized_radial.layout import (
     OPERATION,
     SEMANTICS,
 )
-from torchcst._backends.cuda.registry import Registry
-from torchcst._backends.cuda.schema import ExecutionPlan
-from torchcst._backends.cuda.serialization import decode_json
 
 
 class BenchmarkRegistry(Registry):

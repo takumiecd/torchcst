@@ -13,7 +13,7 @@ from psycopg.types.json import Jsonb
 
 from benchmarks.database.adapters.linear import project
 from benchmarks.database.model import digest, execution_identity
-from torchcst._backends.cuda.serialization import decode_json, encode_json
+from torchcst._backends.serialization import decode_json, encode_json
 
 MIGRATIONS = Path(__file__).with_name("migrations")
 TABLES = ("plans", "cases", "runs", "projections", "run_plans", "records", "metrics")

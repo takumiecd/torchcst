@@ -2,8 +2,8 @@
 
 import re
 
-from torchcst._backends.cuda.dispatch.conditions import exact_fields
-from torchcst._backends.cuda.serialization import decode_json, encode_json
+from torchcst._backends.dispatch.conditions import exact_fields
+from torchcst._backends.serialization import decode_json, encode_json
 
 
 def validate_request(value):
