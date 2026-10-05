@@ -66,6 +66,9 @@ def route_and_layout(
         offsets.zero_()
         order = torch.empty(0, device=decoded.device, dtype=torch.long)
         return owners if retain_owners else None, order, offsets
+    # Share Torch's angle primitive: CUDA/libdevice atan2 can differ by one
+    # FP32 ULP and choose the opposite owner at an exactly tied boundary.
+    arcs = routing.arcs(decoded)
     bg = (
         min(256, tr.next_power_of_2(stations))
         if stations > 1024
@@ -76,8 +79,7 @@ def route_and_layout(
     with torch.cuda.device(decoded.device):
         if routing.local_candidates:
             kernels.owners_local[(tr.cdiv(count, 128),)](
-                decoded,
-                routing.major_radius,
+                arcs,
                 routing.period,
                 routing.starts,
                 routing.spans,
@@ -88,7 +90,6 @@ def route_and_layout(
                 owner_rows,
                 count,
                 stations,
-                *decoded.stride(),
                 128,
                 support[3] if support is not None else 0,
                 support_fast_witness,
@@ -96,8 +97,7 @@ def route_and_layout(
             )
         else:
             owner_kernel[(tr.cdiv(count, ba),)](
-                decoded,
-                routing.major_radius,
+                arcs,
                 routing.period,
                 routing.starts,
                 routing.spans,
@@ -106,7 +106,6 @@ def route_and_layout(
                 owners,
                 count,
                 stations,
-                *decoded.stride(),
                 ba,
                 bg,
                 enable_fp_fusion=False,

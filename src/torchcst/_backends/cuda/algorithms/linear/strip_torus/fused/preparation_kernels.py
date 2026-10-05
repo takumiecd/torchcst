@@ -52,8 +52,7 @@ def _remainder(x, period):
 
 @tr.jit
 def owners(
-    Centers,
-    Major,
+    Arcs,
     Period,
     Starts,
     Spans,
@@ -62,16 +61,12 @@ def owners(
     Owners,
     A: tl.constexpr,
     G: tl.constexpr,
-    S0: tl.constexpr,
-    S1: tl.constexpr,
     BA: tl.constexpr,
     BG: tl.constexpr,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     g = tl.arange(0, BG)
-    cx = tl.load(Centers + a * S0, a < A, 0.0)
-    cy = tl.load(Centers + a * S0 + S1, a < A, 0.0)
-    arc = tl.load(Major) * libdevice.atan2(cy, cx)
+    arc = tl.load(Arcs + a, a < A, 0.0)
     period = tl.load(Period)
     starts = tl.load(Starts + g, g < G, 0.0)
     spans = tl.load(Spans + g, g < G, 0.0)
@@ -96,8 +91,7 @@ def owners(
 
 @tr.jit
 def owners_local(
-    Centers,
-    Major,
+    Arcs,
     Period,
     Starts,
     Spans,
@@ -108,17 +102,13 @@ def owners_local(
     OwnerRows,
     A: tl.constexpr,
     G: tl.constexpr,
-    S0: tl.constexpr,
-    S1: tl.constexpr,
     BLOCK: tl.constexpr,
     STATION_ROWS: tl.constexpr,
     SAVE_ROW: tl.constexpr,
 ):
     """Seven candidates for guarded, ordered, disjoint Strip intervals."""
     a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    cx = tl.load(Centers + a * S0, a < A, 0.0)
-    cy = tl.load(Centers + a * S0 + S1, a < A, 0.0)
-    arc = tl.load(Major) * libdevice.atan2(cy, cx)
+    arc = tl.load(Arcs + a, a < A, 0.0)
     period, spacing = tl.load(Period), tl.load(Spacing)
     relative_start = _remainder(arc - tl.load(Starts), period)
     base = tl.floor(tl.div_rn(relative_start, tl.load(Pitch))).to(tl.int32)
@@ -158,8 +148,7 @@ def owners_local(
 
 @tr.jit
 def owners_chunked(
-    Centers,
-    Major,
+    Arcs,
     Period,
     Starts,
     Spans,
@@ -168,16 +157,12 @@ def owners_chunked(
     Owners,
     A: tl.constexpr,
     G: tl.constexpr,
-    S0: tl.constexpr,
-    S1: tl.constexpr,
     BA: tl.constexpr,
     BG: tl.constexpr,
 ):
     """Bounded station scan; never form a global atom-by-station tensor."""
     a = tl.program_id(0) * BA + tl.arange(0, BA)
-    cx = tl.load(Centers + a * S0, a < A, 0.0)
-    cy = tl.load(Centers + a * S0 + S1, a < A, 0.0)
-    arc = tl.load(Major) * libdevice.atan2(cy, cx)
+    arc = tl.load(Arcs + a, a < A, 0.0)
     period, spacing = tl.load(Period), tl.load(Spacing)
     best = tl.full((BA,), float("inf"), tl.float32)
     owner = tl.full((BA,), 2147483647, tl.int32)
