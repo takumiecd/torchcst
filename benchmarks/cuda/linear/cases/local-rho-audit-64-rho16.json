@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "local-rho-audit-64-rho16",
+    "fixture": "local_polar_product",
+    "size": 64,
+    "rows": 32,
+    "atoms": 204,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 0.25,
+      "birth": 0.25,
+      "maximum": 16,
+      "rho": [
+        16
+      ],
+      "fractions": [
+        1
+      ],
+      "center_jitter": 0.1
+    }
+  },
+  "plans": [
+    "persistent-supportprep-g-contract4-atom32",
+    "persistent-supportprep-band-recompute-vjp-atom32"
+  ],
+  "baseline": "persistent-supportprep-g-contract4-atom32",
+  "dense": true
+}
