@@ -613,28 +613,33 @@ def fused_packed(
     BAND_DISPATCH: tl.constexpr = False,
     VECTOR_SUPPORT: tl.constexpr = False,
     UNROLL_SUPPORT: tl.constexpr = False,
+    BN: tl.constexpr = 16,
+    RECOMPUTE_H: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     tile = tl.program_id(1)
-    i = tile * 16 + tl.arange(0, 16)
+    i = tile * BN + tl.arange(0, BN)
     j = tl.arange(0, BK)
-    y = tl.full((BM, 16), 0.0, tl.float32)
+    y = tl.full((BM, BN), 0.0, tl.float32)
     groups: tl.constexpr = (N + 15) // 16
-    # Read only this tile's singleton interval, then the nonempty general bands.
-    for phase in tl.static_range(4):
-        bucket = tile if phase == 0 else groups + phase - 1
-        begin = tl.load(Offsets + bucket)
+    owners: tl.constexpr = BN // 16
+    # Keep 16-site placement ownership, but reuse each general H across BN sites.
+    # A partial final tile must not read a general bucket as a singleton owner.
+    for phase in tl.static_range(owners + 3):
+        bucket = tile * owners + phase if phase < owners else groups + phase - owners
+        has_bucket = bucket < groups if phase < owners else True
+        begin = tl.load(Offsets + bucket, has_bucket, 0)
         end = (
-            tl.load(Ends + bucket)
+            tl.load(Ends + bucket, has_bucket, 0)
             if Ends is not None
-            else tl.load(Offsets + bucket + 1)
+            else tl.load(Offsets + bucket + 1, has_bucket, 0)
         )
         for a0 in range(begin, end, BA):
             a = a0 + tl.arange(0, BA)
             valid = (a < A) & (a < end)
             vlo, _vhi, vw = _interval(P, a, A, SWAP, JS, K)
             ulo, uhi, uw = _interval(P, a, A, not SWAP, IS, N)
-            if phase == 0:
+            if phase < owners:
                 live = valid & (vw == 1) & (uw == 1)
                 direct = tl.load(
                     X + b[:, None] * K + vlo[None, :],
@@ -647,9 +652,14 @@ def fused_packed(
                     direct * amp[None, :], tl.trans(targets), y, input_precision="ieee"
                 )
             else:
-                enabled = valid & (ulo < (tile + 1) * 16) & (uhi > tile * 16)
+                enabled = valid & (ulo < (tile + 1) * BN) & (uhi > tile * BN)
                 if tl.sum(enabled.to(tl.int32), 0) > 0:
-                    if BAND_DISPATCH and phase == 3 and (not SWAP or SAVED_G):
+                    if (
+                        BAND_DISPATCH
+                        and phase == owners + 2
+                        and (not SWAP or SAVED_G)
+                        and not RECOMPUTE_H
+                    ):
                         # The persistent bucket already certifies wide,
                         # non-singleton atoms. Do not classify each block again.
                         ha = tl.load(Order + a, enabled, 0)
@@ -693,14 +703,18 @@ def fused_packed(
                             SWAP,
                             True,
                             LIMIT,
-                            (not SWAP or SAVED_G) and not BAND_DISPATCH,
+                            (not SWAP or SAVED_G)
+                            and not BAND_DISPATCH
+                            and not RECOMPUTE_H,
                             RHO,
-                            BAND_DISPATCH and not SWAP,
+                            BAND_DISPATCH
+                            and not SWAP
+                            and (not RECOMPUTE_H or phase != owners + 2),
                             True,
                             HOrder=Order,
                             H_A=H_A,
                             VECTOR_SUPPORT=VECTOR_SUPPORT,
-                            UNROLL_SUPPORT=UNROLL_SUPPORT and phase == 2,
+                            UNROLL_SUPPORT=UNROLL_SUPPORT and phase == owners + 1,
                         )
     tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
 

@@ -4,6 +4,23 @@ Integrated into main on2026-10-05 as explicit research algorithms and benchmark
 tooling; see the [integration record](../../../../../../../docs/research-history/local-product/20261005-main-integration.md).
 Public CSTLinear defaults and production Registry remain separate from these recipes.
 
+## Multi-owner H reuse experiment
+
+The `plans-local-onchip.json` research catalog compares 32/64-site output tiles
+with the existing 16-site controls. Placement still uses 16-site singleton
+owners; a larger tile reads each of its owner buckets and contracts general H
+once across all its output sites. Both forward and dX retain output ownership
+without atomics or partial-output buffers.
+
+`persistent_supportprep_band_tile32` / `tile64` retain the wide H buffer.
+`persistent_onchip_h32` / `h64` eliminate the whole H buffer and producer launch;
+forward and backward recompute each needed H/G tile. Live normalization, widths,
+support and canonical parameter gradients are unchanged. Register/shared-memory
+placement is compiler-controlled: inspect spills before claiming on-chip
+residency. No L2 persistence or measured DRAM-traffic claim follows from this
+implementation alone. Use the existing runner with `local-onchip-128-early`
+and `local-onchip-64-sigma3` cases for complete-step time and capture/replay peaks.
+
 Development branch: `codex/local-product-hybrid`. Optimize small linear
 transformations first, with about 5% atoms relative to dense weight elements.
 The mathematical kernel is the existing normalized, shared-width

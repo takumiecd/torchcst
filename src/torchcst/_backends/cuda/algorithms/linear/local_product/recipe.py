@@ -13,6 +13,14 @@ class Recipe:
     support_limit: int = 8
 
     @property
+    def output_block(self):
+        return 16
+
+    @property
+    def recompute_h(self):
+        return False
+
+    @property
     def unroll_support(self):
         return False
 

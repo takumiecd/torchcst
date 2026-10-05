@@ -210,7 +210,7 @@ def _packed_fused(
     k, n, oi, oo, js, i = _sizes(domain, swap)
     y = x.new_empty((len(x), n))
     compiled = kernels.fused_packed[
-        (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(n, 16))
+        (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(n, recipe.output_block))
     ](
         x,
         packed,
@@ -239,6 +239,8 @@ def _packed_fused(
         BAND_DISPATCH=recipe.band_dispatch,
         VECTOR_SUPPORT=recipe.vector_support,
         UNROLL_SUPPORT=recipe.unroll_support,
+        BN=recipe.output_block,
+        RECOMPUTE_H=recipe.recompute_h,
         num_warps=recipe.contraction_warps or (8 if max(k, n) > 64 else 4),
         enable_fp_fusion=False,
     )
@@ -298,8 +300,9 @@ class _LocalH(torch.autograd.Function):
         # Fixed capacity keeps graph replay independent of a changing wide count.
         # Hybrid writes/reads only wide lanes; compact capacity is future work.
         _stamp("h", 0)
-        h = q.new_empty((len(x), a)) if saved or hybrid else q.new_empty((0,))
-        if (saved or hybrid) and a:
+        keep_h = (saved or hybrid) and not recipe.recompute_h
+        h = q.new_empty((len(x), a)) if keep_h else q.new_empty((0,))
+        if keep_h and a:
             compiled = kernels.save_h[
                 (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(a, recipe.atom_block))
             ](
@@ -485,7 +488,7 @@ class _LocalH(torch.autograd.Function):
                     fused_polar,
                     source if fused_polar else None,
                     scalars[0] if fused_polar else None,
-                    hybrid,
+                    hybrid and not recipe.recompute_h,
                     recipe.rho_upper[1 if three_band else 0],
                     support_only,
                     THREE_BAND=three_band,
@@ -552,6 +555,8 @@ def local_h(
     Call validate_state once at configuration. Bounds stay shared during updates.
     No outer GEMM scheduling or production Strip/Torus dispatch is added here.
     """
+    if recipe.recompute_h and (not tile_packed or not hybrid):
+        raise ValueError("on-chip H requires the packed hybrid execution route")
     if support_only and (not sparse or hybrid):
         raise ValueError("support-only requires sparse and no hybrid classification")
     if sparse and saved and not support_only:
