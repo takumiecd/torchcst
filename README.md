@@ -166,6 +166,7 @@ updater; custom state axes are declared with `OptimizerFieldSpec` via
 - [CUDA kernel development: validation, measurements and PR integration](docs/kernel-development.ja.md)
 - [CSTOptimizer](docs/cst-optimizer.ja.md)
 - [Atom and Algorithm state ownership](docs/atom-state.ja.md)
+- [Next dispatch design: inputs, context and execution boundaries](docs/algorithm-dispatch-boundaries.ja.md)
 - [Declaration and backend layout](src/torchcst/_backends/README.md)
 - [Kernel and Profile](src/torchcst/kernels/README.md)
 - [Geometry](src/torchcst/geometry/README.md)

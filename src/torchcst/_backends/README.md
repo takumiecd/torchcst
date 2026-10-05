@@ -9,6 +9,9 @@ backend は宣言の意味を変えず、対応する Algorithm と Recipe で�
 保持と配置への追従宣言は`atoms/optimizer_state.py`、Torchとの接続は`optim/binding.py`。
 具体的な計算・配置・bufferは各Algorithm内に置く。
 [状態所有と配置変更の契約](../../../docs/atom-state.ja.md)を参照。
+次の実装で分離するInputs・Context・Registry・Dispatcherの境界は
+[Algorithm実行の設計契約](../../../docs/algorithm-dispatch-boundaries.ja.md)に記録する。
+同文書は設計段階であり、下記は現在の実装を示す。
 
 ## 現在の配置
 
