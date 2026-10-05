@@ -129,3 +129,6 @@ PYTHONPATH=src:. python -m benchmarks.cuda.linear.run --plans benchmarks/cuda/li
 
 計測driverはcatalogをbaseline Planだけに絞った複製で実行する。上の直接runnerコマンドは
 元catalogの全candidateを含む。source_commitとfrozen source/result hashを合わせて確認する。
+
+後続のCUDA境界routing修正と検証は
+[Torus境界の記録](20261005-torus-routing-boundary.ja.md)を参照。

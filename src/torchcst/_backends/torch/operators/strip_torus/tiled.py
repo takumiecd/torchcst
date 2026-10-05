@@ -139,8 +139,13 @@ class CircleRouting:
         )
 
     @torch.no_grad()
+    def arcs(self, decoded: Tensor) -> Tensor:
+        """Shared signed arc coordinates for reference and CUDA ownership."""
+        return self.major_radius * torch.atan2(decoded[:, 1], decoded[:, 0])
+
+    @torch.no_grad()
     def owners(self, decoded: Tensor) -> Tensor:
-        arc = self.major_radius * torch.atan2(decoded[:, 1], decoded[:, 0])
+        arc = self.arcs(decoded)
         relative = (
             torch.remainder(
                 arc[:, None] - (self.starts + self.spans / 2) + self.period / 2,

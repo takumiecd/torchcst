@@ -363,6 +363,66 @@ def test_triton_warm_forward_captures_updated_inputs_and_atoms():
 
 
 @GPU
+@pytest.mark.parametrize("route", ["local", "exhaustive", "chunked"])
+def test_routing_boundary_and_neighbors_match_reference_on_graph_replay(route):
+    from dataclasses import replace
+
+    from torchcst._backends.cuda.algorithms.linear.strip_torus.fused.preparation import (
+        route_and_layout,
+    )
+    from torchcst._backends.torch.operators.strip_torus.layout import _station_layout
+
+    model = _model(rows=64, station_rows=4, device="cuda")
+    routing = execution_plan(model).routing
+    if route == "exhaustive":
+        routing = replace(routing, local_candidates=False)
+    elif route == "chunked":
+        # Repeated intervals exercise equal-distance ties across scan chunks.
+        routing = replace(
+            routing,
+            starts=routing.starts.repeat(65),
+            spans=routing.spans.repeat(65),
+            last_row=routing.last_row.repeat(65),
+            local_candidates=False,
+        )
+    boundary = torch.tensor([-0.7730104923248291, 0.6343932747840881], device="cuda")
+    neighbors = torch.stack(
+        (
+            boundary,
+            torch.nextafter(boundary, torch.full_like(boundary, -torch.inf)),
+            torch.nextafter(boundary, torch.full_like(boundary, torch.inf)),
+        )
+    )
+    # Preserve noncontiguous input coverage after moving angle evaluation.
+    storage = torch.empty((3, 4), device="cuda")
+    decoded = storage[:, ::2]
+    decoded.copy_(neighbors)
+
+    def check(actual):
+        owners, order, offsets = actual
+        expected = routing.owners(decoded)
+        layout = _station_layout(expected, routing.starts.numel())
+        assert torch.equal(owners, expected)
+        assert torch.equal(order, layout.order)
+        assert torch.equal(offsets, layout.offsets)
+
+    check(route_and_layout(routing, decoded))
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(3):
+            route_and_layout(routing, decoded)
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        actual = route_and_layout(routing, decoded)
+    for centers in (neighbors, -neighbors, neighbors.flip(0)):
+        decoded.copy_(centers)
+        graph.replay()
+        check(actual)
+
+
+@GPU
 @pytest.mark.parametrize("rows,station_rows", [(1, 1), (9, 5), (21, 5), (64, 4)])
 @pytest.mark.parametrize("count", [0, 37, 257])
 def test_fused_routing_matches_reference_including_seams(rows, station_rows, count):
