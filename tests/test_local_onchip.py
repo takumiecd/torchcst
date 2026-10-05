@@ -17,6 +17,8 @@ ROUTES = (
     "persistent_supportprep_band_tile64",
     "persistent_onchip_h32",
     "persistent_onchip_h64",
+    "persistent_supportprep_band_recompute_vjp",
+    "persistent_supportprep_band_recompute_vjp_unroll",
 )
 
 

@@ -21,6 +21,10 @@ class Recipe:
         return False
 
     @property
+    def recompute_param_h(self):
+        return self.recompute_h
+
+    @property
     def unroll_support(self):
         return False
 

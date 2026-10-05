@@ -21,6 +21,11 @@ residency. No L2 persistence or measured DRAM-traffic claim follows from this
 implementation alone. Use the existing runner with `local-onchip-128-early`
 and `local-onchip-64-sigma3` cases for complete-step time and capture/replay peaks.
 
+`persistent_supportprep_band_recompute_vjp` retains 16-site owners and cached
+wide H for forward, but recomputes parameter contractions instead of mixing
+saved/local H in the VJP. This isolates the backward simplification from output
+tile widening. Its `_unroll` variant keeps the bounded middle-support unroll.
+
 Development branch: `codex/local-product-hybrid`. Optimize small linear
 transformations first, with about 5% atoms relative to dense weight elements.
 The mathematical kernel is the existing normalized, shared-width

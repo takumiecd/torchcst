@@ -48,6 +48,13 @@ class LocalRecipe(Recipe):
         return self.base_route in ("persistent_onchip_h32", "persistent_onchip_h64")
 
     @property
+    def recompute_param_h(self):
+        return (
+            self.recompute_h
+            or self.base_route == "persistent_supportprep_band_recompute_vjp"
+        )
+
+    @property
     def unroll_support(self):
         return self.route.endswith("_unroll")
 
@@ -57,6 +64,8 @@ class LocalRecipe(Recipe):
 
     @property
     def contraction_warps(self):
+        if self.base_route == "persistent_supportprep_band_recompute_vjp":
+            return 4
         if self.output_block != 16:
             return 4
         if self.route.endswith(("_contract4", "_vector4")):
@@ -77,6 +86,7 @@ class LocalRecipe(Recipe):
             "persistent_supportprep_g",
             "persistent_band_dispatch",
             "persistent_supportprep_band",
+            "persistent_supportprep_band_recompute_vjp",
             "persistent_onchip_h32",
             "persistent_onchip_h64",
         ):
@@ -89,6 +99,7 @@ class LocalRecipe(Recipe):
             "persistent_supportprep",
             "persistent_supportprep_g",
             "persistent_supportprep_band",
+            "persistent_supportprep_band_recompute_vjp",
             "persistent_onchip_h32",
             "persistent_onchip_h64",
         )
@@ -102,6 +113,7 @@ class LocalRecipe(Recipe):
         return self.save_g or self.base_route in (
             "persistent_band_dispatch",
             "persistent_supportprep_band",
+            "persistent_supportprep_band_recompute_vjp",
             "persistent_onchip_h32",
             "persistent_onchip_h64",
         )
@@ -115,9 +127,19 @@ class LocalRecipe(Recipe):
             raise ValueError("requires a numeric boundary array")
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
+        if (
+            self.base_route == "persistent_supportprep_band_recompute_vjp"
+            and self.route
+            not in (
+                self.base_route,
+                self.base_route + "_unroll",
+            )
+        ):
+            raise ValueError("recomputed parameter VJP supports base/unroll launches")
         if self.route != self.base_route and self.base_route not in (
             "persistent_supportprep_band",
             "persistent_supportprep_g",
+            "persistent_supportprep_band_recompute_vjp",
         ):
             raise ValueError("launch variants require prepared persistent bands")
         if self.base_route not in (
@@ -125,6 +147,7 @@ class LocalRecipe(Recipe):
             "persistent_onchip_h64",
             "persistent_band_dispatch",
             "persistent_supportprep_band",
+            "persistent_supportprep_band_recompute_vjp",
             "persistent_supportprep",
             "persistent_saved_g",
             "persistent_supportprep_g",

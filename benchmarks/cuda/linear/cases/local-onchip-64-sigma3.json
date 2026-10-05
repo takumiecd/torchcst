@@ -36,7 +36,9 @@
     "persistent-supportprep-band-tile32-atom16",
     "persistent-supportprep-band-tile64-atom16",
     "persistent-onchip-h32-atom16",
-    "persistent-onchip-h64-atom16"
+    "persistent-onchip-h64-atom16",
+    "persistent-supportprep-band-recompute-vjp-unroll-atom16",
+    "persistent-supportprep-band-recompute-vjp-atom16"
   ],
   "baseline": "persistent-supportprep-band-unroll",
   "dense": true

@@ -488,7 +488,7 @@ class _LocalH(torch.autograd.Function):
                     fused_polar,
                     source if fused_polar else None,
                     scalars[0] if fused_polar else None,
-                    hybrid and not recipe.recompute_h,
+                    hybrid and not recipe.recompute_param_h,
                     recipe.rho_upper[1 if three_band else 0],
                     support_only,
                     THREE_BAND=three_band,
