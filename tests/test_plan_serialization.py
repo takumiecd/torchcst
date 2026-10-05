@@ -79,14 +79,14 @@ class MetadataAlgorithm(Algorithm[MetadataRecipe]):
     def workspace_bound(self, context, recipe):
         return None
 
-    def execute(self, **kwargs):
+    def execute(self, state, inputs):
         raise AssertionError("serialization must not execute an Algorithm")
 
 
 def metadata_registry():
     registry = Registry()
     registry.register(
-        MetadataAlgorithm("metadata", "v1", "test", "test-v1", MetadataRecipe)
+        MetadataAlgorithm("metadata", "v1", "test", "test-v1", MetadataRecipe, tuple)
     )
     return registry
 

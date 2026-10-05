@@ -118,30 +118,54 @@ support-local Torch or registered CUDA algorithms from the chart and kernel.
 Algorithm candidates. See the [selector contract](src/torchcst/_backends/dispatch/README.md).
 See the [normalized Strip guide](docs/normalized-strip.ja.md).
 
-Algorithms use one backend-independent contract and registry. `Algorithm` owns
-immutable identity, recipe validation, support, input validation and execution;
-`AlgorithmState` owns placement and reusable buffers for one atom owner. Registry
-execution accepts each operation's named inputs without requiring a Linear
-`OperatorSpec`. Registering metadata does not import compute kernels.
+Algorithms use one backend-independent contract and registry. `Registry` registers
+implementations and validates/serializes Plan declarations. `Dispatcher` is the
+execution entrance: validate typed inputs, build metadata-only Context through the
+binding, select/validate a Plan, obtain binding-owned state, prepare and execute.
+The registry owns neither tensors nor per-binding state and has no execution API.
 
 ```python
 from torchcst import (
-    DefaultRecipe, ExecutionPlan, FixedSelector, make_algorithm_registry,
+    DefaultRecipe, Dispatcher, ExecutionPlan, FixedSelector,
+    LinearBinding, LinearInputs, make_algorithm_registry,
 )
 
 registry = make_algorithm_registry()  # Torch and CUDA builtins
 plan = ExecutionPlan("torch_materialized", "v1", DefaultRecipe())
 layer.selector = FixedSelector(plan, registry=registry)
+y = layer(x)
+
+# Direct execution uses the same validation and state lifecycle.
+binding = LinearBinding(layer.operator)  # existing live state; no Parameter copy
+flat = x.reshape(-1, layer.in_features).contiguous()
+y_direct = Dispatcher(registry=registry).run(binding, LinearInputs(flat), plan=plan)
 ```
 
-`Registry` also accepts custom `Algorithm` implementations. Their context declares
-`operation_id`, an optional workspace limit and input validation; their input
-names and results can differ from Linear. `Selector`, `FixedSelector` and
-`OrderedSelector` share this contract. `CSTLinear` executes through its selector's
-registry on both Torch and CUDA. Existing `backend=` names are builtin Plan
-aliases; an explicit selector takes precedence. The default order preserves
-FULL, the CPU normalized reference and the factored/materialized size policy.
-Full CUDA support checks still reject incompatible precision settings.
+`LinearInputs.x` is required. Other operations define their own input types and
+explicit defaults; no universal Linear arguments are required. A binding validates
+those inputs, builds Context, and provides cached `AlgorithmState`. An Algorithm
+declares `input_type`, owns recipe/support validation and executes with
+`execute(state, inputs)`. State holds its binding/recipe, placement and reusable
+buffers. Atom-backed state references `AtomState`; other operations need no Atoms
+or Operator. Context contains only operation-specific immutable metadata,
+`operation_id` and an optional workspace limit; it does not validate actual tensors.
+
+`LinearBinding` accepts a live `Operator`, or an `OperatorSpec` plus a live Tensor
+for declaration-based implementations such as normalized FULL/WINDOW/reference.
+The general Torch and Strip/Torus implementations require live Chart/Kernel state.
+`Dispatcher.run` builds Context from actual inputs even for a forced Plan; it does
+not accept a caller-supplied Context. `Dispatcher.select` and `Selector.select`
+provide metadata-only decisions for declarations and diagnostics. Fixed, ordered
+and exact selectors share the same support/workspace validation as execution.
+Only unsupported/unobserved candidates use an explicit fallback; invalid inputs,
+invalid Plans and failures after preparation/execution starts are errors.
+
+`CSTLinear` provides the binding and retains state ownership. Its selector's registry
+is used on both Torch and CUDA. Existing `backend=` names are builtin Plan aliases;
+an explicit selector takes precedence. The default order preserves FULL, the CPU
+normalized reference and the factored/materialized size policy. Full CUDA support
+checks still reject incompatible precision settings. See the
+[execution boundaries](docs/algorithm-dispatch-boundaries.ja.md).
 
 `atoms=` accepts an integer (initialize), a Tensor (detach and copy), an
 `nn.Parameter` (reuse its identity, gradients and existing optimizer state), or
@@ -166,7 +190,7 @@ updater; custom state axes are declared with `OptimizerFieldSpec` via
 - [CUDA kernel development: validation, measurements and PR integration](docs/kernel-development.ja.md)
 - [CSTOptimizer](docs/cst-optimizer.ja.md)
 - [Atom and Algorithm state ownership](docs/atom-state.ja.md)
-- [Next dispatch design: inputs, context and execution boundaries](docs/algorithm-dispatch-boundaries.ja.md)
+- [Dispatch inputs, context and execution boundaries](docs/algorithm-dispatch-boundaries.ja.md)
 - [Declaration and backend layout](src/torchcst/_backends/README.md)
 - [Kernel and Profile](src/torchcst/kernels/README.md)
 - [Geometry](src/torchcst/geometry/README.md)

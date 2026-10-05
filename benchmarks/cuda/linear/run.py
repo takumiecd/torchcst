@@ -35,10 +35,11 @@ from benchmarks.cuda.linear.manifest import (
     load_snapshot,
     read_json,
 )
+from torchcst import Dispatcher, LinearInputs
 from torchcst._backends.torch.algorithms.normalized_radial.layout import (
     geometry,
 )
-from torchcst.operators.context import context_from_tensors
+from torchcst.operators.execution import LinearBinding
 
 
 class PlanLinear(nn.Module):
@@ -48,6 +49,8 @@ class PlanLinear(nn.Module):
         super().__init__()
         self.p = nn.Parameter(p.detach().clone().contiguous())
         self.operator, self.plan = operator, plan
+        self._algorithm_states = []
+        self.workspace_limit_bytes = None
         self.local_state = None
         self.persistent_layout = None
         if plan.algorithm_id == "research_local_product":
@@ -63,22 +66,30 @@ class PlanLinear(nn.Module):
                     self.p, self.local_state, domain, plan.recipe
                 )
 
+    input_type = LinearInputs
+
+    execution_declaration = LinearBinding.execution_declaration
+
+    def execution_parameters(self):
+        return self.p
+
+    validate_inputs = LinearBinding.validate_inputs
+
+    def build_context(self, inputs):
+        from torchcst.operators.context import context_from_tensors
+
+        return context_from_tensors(self.operator, inputs.x, self.p)
+
+    def state_signature(self):
+        from torchcst._backends.state import tensor_signature
+
+        return tensor_signature(self.p), self.operator
+
+    algorithm_state = LinearBinding.algorithm_state
+
     def forward(self, x):
         flat = x.reshape(-1, self.operator.in_features).contiguous()
-        context = context_from_tensors(self.operator, flat, self.p)
-        if self.persistent_layout is not None:
-            algorithm = REGISTRY.validate(self.plan, context)
-            y = algorithm.execute(
-                x=flat,
-                parameters=self.p,
-                operator=self.operator,
-                recipe=self.plan.recipe,
-                persistent_layout=self.persistent_layout,
-            )
-            return y.reshape(*x.shape[:-1], self.operator.out_features)
-        y = REGISTRY.execute(
-            self.plan, context, x=flat, parameters=self.p, operator=self.operator
-        )
+        y = Dispatcher(registry=REGISTRY).run(self, LinearInputs(flat), plan=self.plan)
         return y.reshape(*x.shape[:-1], self.operator.out_features)
 
 

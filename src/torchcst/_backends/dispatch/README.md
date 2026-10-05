@@ -12,7 +12,7 @@ full / window を特別な分岐にせず、Registry の Algorithm ID / revision
   → 各条件の候補と証拠を得る
   → 選択器を生成・検証し artifact を保存
   → 読み込み時に Selector を構築
-  → select(context) → Registry の適合性検証 → Plan の実行
+  → Inputs/binding → Context → select(context) → Algorithm適合性検証 → State準備 → 実行
 ```
 
 評価関数は速度・メモリ等の任意の指標を使う。実行時には評価関数を呼ばない。
@@ -30,11 +30,16 @@ DBからの固定snapshot抽出・評価関数・leaderboard・exact artifact生
 | ルール / 決定木 | 将来の候補 | 同じ `_match(context)` 境界から Plan または未選択を返す |
 | MLP 等 | 将来の候補 | 同じ境界から Plan または未選択を返す |
 
-`Selector` ABC の `_match` が候補を返し、共通の `select` が Registry の対応条件・
-workspace 上限を検証する。未選択や非対応時は、方針に明示された fallback Plan を検証する。
-fallback も非対応なら例外にする。Algorithm 名による特別扱いはしない。
-実行時にも `Registry.execute` が実機・Tensor metadata・数学契約を検証する。
-backward は forward の Plan と保存状態を使い、再選択しない。
+`Selector` ABCの`_match`は候補を返し、metadataだけの`select`は共通runtimeへ委譲する。
+Dispatcherも同じ候補検証/fallback処理を使う。Algorithmのsupportとworkspace上限を
+確認し、未選択・非対応時だけ明示されたfallback Planを判定する。不正Planや実装例外を
+fallbackで隠さない。Algorithm名による特別扱いはしない。
+
+公開実行はDispatcher.run(binding, inputs, plan=...)。bindingが実入力を検証してContextを
+生成し、対応するStateを取得する。Contextを手入力した直接実行は受け付けない。
+強制Planでは選択とfallbackを省略するが、実入力・対応条件・Stateの検証は省略しない。
+Registryは登録とPlan宣言検証/codecだけを持つ。backwardはforwardのAlgorithmと保存状態を
+使い再選択しない。詳細は[実行の境界](../../../../docs/algorithm-dispatch-boundaries.ja.md)を参照。
 
 ## Artifact v1
 
@@ -70,9 +75,9 @@ from torchcst._backends.catalog import REGISTRY
 from torchcst._backends.dispatch import load_selector
 
 selector = load_selector(Path("dispatch.json").read_bytes(), registry=REGISTRY)
-layer = CSTLinear(chart=chart, atoms=p,
-                  kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT,
-                  selector=selector)
+layer = CSTLinear(
+    chart=chart, atoms=p, kernel=presets.NORMALIZED_RADIAL_TRIWEIGHT, selector=selector
+)
 ```
 
 `selector`はすべてのCSTLinear経路に適用する。CPUのTorch参照、CUDA、
@@ -102,7 +107,10 @@ selector = ExactSelector.from_entries(
     dataset_snapshot=snapshot_id,
 )
 Path("dispatch.json").write_text(selector.dumps(), encoding="utf-8")
-assert load_selector(selector.dumps(), registry=REGISTRY).select(context).plan == winning_plan
+assert (
+    load_selector(selector.dumps(), registry=REGISTRY).select(context).plan
+    == winning_plan
+)
 ```
 
 JSON の解析と辞書の構築は読み込み時だけ。forward は metadata の key で辞書を引く。

@@ -9,9 +9,9 @@ backend は宣言の意味を変えず、対応する Algorithm と Recipe で�
 保持と配置への追従宣言は`atoms/optimizer_state.py`、Torchとの接続は`optim/binding.py`。
 具体的な計算・配置・bufferは各Algorithm内に置く。
 [状態所有と配置変更の契約](../../../docs/atom-state.ja.md)を参照。
-次の実装で分離するInputs・Context・Registry・Dispatcherの境界は
+Inputs・Context・Registry・Dispatcherの境界は
 [Algorithm実行の設計契約](../../../docs/algorithm-dispatch-boundaries.ja.md)に記録する。
-同文書は設計段階であり、下記は現在の実装を示す。
+下記は現在の実装を示す。
 
 ## 現在の配置
 
@@ -40,10 +40,12 @@ torchcst/
   operators/
     spec.py                    単一 Chart / Chart の組 / linear Operator の宣言
     binding.py                 Module の live state を参照する Operator
+    context.py / execution.py  Linear metadata・typed Inputs・直接実行のbinding
   _backends/
     algorithm.py / state.py    backend・演算共通のAlgorithmと所有者ごとの実行状態
     schema.py                  Context protocol / Plan / support / decision
-    registry.py / dispatch/    共通登録・検証・差し替え可能な選択器
+    registry.py                共通登録とPlan宣言/JSON検証
+    dispatch/                  runtime・候補検証・差し替え可能な選択器
     serialization.py           宣言metadataの厳密なJSON codec
     catalog.py                 組込みTorch/CUDA Algorithmの遅延登録
     cuda/
@@ -105,16 +107,19 @@ layout の型で区別する。Torch の評価・更新は backend の関数で�
 宣言 snapshot を forward ごとに作らず、現在の Tensor / buffer を使う。
 詳細は [Operator](../operators/README.md)を参照。
 
-Registryはbackend・演算のどちらにも依存しない。Context protocolに必要なのは
-operation_id、workspace_limit_bytes、入力検証の境界。Registry.executeはAlgorithmへ
-任意の名前付き入力を渡し、x・parameters・OperatorSpecを要求しない。Linear用metadataと
-入力検証は`operators/context.py`のLinearContextにある。Polarやoptimizerは自身のContextと
-入力を使える。Algorithmのidentity・recipe・対応条件・入力検証・処理/state lifecycleは一つの
-共通ABCに統一し、CUDA専用のRegistry/Algorithm ABCは持たない。
+Registryはbackend・演算のどちらにも依存せず、登録・取得・Planの宣言検証だけを扱う。
+共通Dispatcher.run(binding, inputs, plan=...)が入力検証、Context構築、選択/対応判定、
+State取得、Algorithm.runを接続する。強制Planも同じ経路を使う。Context protocolは
+operation_idとworkspace_limit_bytesだけで、Tensor検証や学習状態を持たない。
+Selector.selectのmetadata検証もdispatch/validation.pyとruntime.pyの同じ処理を使う。
+Registry.validate/executeは削除し、実行の互換wrapperを置かない。
 
-CSTLinearのbackend名は既存Planへのalias。forwardはselectorでPlanを決め、同じRegistryから
-取得したAlgorithmをModule所有のAlgorithmStateで実行する。Strip + Torus fusedも登録済みで、
-同じ経路を使う。selectorにcustom Registryを渡せる。登録はcompute codeを読み込まない。
+CSTLinearはLinearInputs(x)とbinding interfaceを提供し、AlgorithmStateを引き続き所有する。
+LinearBindingはModule外で既存Operator、または宣言とParameterを結び付ける。具体的な
+演算入力はAlgorithm.input_typeで宣言し、PolarやoptimizerにLinearの入力を要求しない。
+Algorithmはbinding/RecipeからStateを作り、execute(state, inputs)で演算する。
+Atomsを使わない演算のStateも同じ経路に乗る。CSTLinearのbackend名は既存Planへのaliasで、
+実行にはselector自身のRegistryを使う。登録はcompute codeを読み込まない。
 
 Chart/Geometry/Kernelを取得する入口は既存Operatorだけにする。normalized専用Operatorは
 追加しない。regular siteの配置抽出と対応判定はTorch normalized Algorithmの`layout.py`にあり、
@@ -154,8 +159,9 @@ restored = REGISTRY.loads_plan(path.read_text(encoding="utf-8"))
 assert restored == WINDOW
 ```
 
-dispatcher の `decision.plan` も同じ API で保存できる。復元した Plan は
-`REGISTRY.execute(restored, context, x=x, parameters=p, operator=operator)` へ渡す。
+dispatcher の `decision.plan` も同じ API で保存できる。復元したPlanは
+`Dispatcher(registry=REGISTRY).run(binding, inputs, plan=restored)`へ渡す。
+Linearでは`LinearBinding(operator, p)`と`LinearInputs(x)`を使える。
 実機・tensor・数学契約の適合性は実行時に検証する。
 
 保存対象は `schema_version`、`algorithm_id`、`algorithm_revision`、`recipe`。

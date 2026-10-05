@@ -11,6 +11,7 @@ from torchcst._backends.torch.algorithms.normalized_radial.layout import (
     geometry,
 )
 from torchcst.operators.context import LinearContext
+from torchcst.operators.execution import LinearInputs, linear_execution
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,8 @@ class NormalizedRadialAlgorithm(Algorithm[DefaultRecipe]):
     operation_id: str = "linear"
     semantics_id: str = SEMANTICS
     recipe_type: type = DefaultRecipe
+
+    input_type: type = LinearInputs
 
     def validate_recipe(self, recipe):
         if type(recipe) is not DefaultRecipe:
@@ -44,7 +47,8 @@ class NormalizedRadialAlgorithm(Algorithm[DefaultRecipe]):
     def workspace_bound(self, context, recipe):
         return None
 
-    def execute(self, *, x, parameters, operator, recipe, site=None, state=None):
+    def execute(self, state, inputs):
+        x, parameters, operator, _ = linear_execution(state, inputs)
         from .executor import apply
 
         return apply(x, parameters, geometry(operator))

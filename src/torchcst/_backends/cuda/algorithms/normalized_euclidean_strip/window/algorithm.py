@@ -2,8 +2,6 @@
 
 from dataclasses import dataclass
 
-from torch import Tensor
-
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.recipe import (
     WindowRecipe,
 )
@@ -11,7 +9,7 @@ from torchcst._backends.torch.algorithms.normalized_radial.layout import (
     OPERATION,
     SEMANTICS,
 )
-from torchcst.operators.spec import OperatorSpec
+from torchcst.operators.execution import LinearInputs, linear_execution
 
 from .._shared.algorithm import _NormalizedAlgorithm
 
@@ -24,6 +22,8 @@ class NormalizedWindowAlgorithm(_NormalizedAlgorithm[WindowRecipe]):
     semantics_id: str = SEMANTICS
     recipe_type: type[WindowRecipe] = WindowRecipe
 
+    input_type: type = LinearInputs
+
     def validate_recipe(self, recipe: WindowRecipe) -> None:
         if type(recipe) is not WindowRecipe or (
             recipe != WindowRecipe()
@@ -32,16 +32,9 @@ class NormalizedWindowAlgorithm(_NormalizedAlgorithm[WindowRecipe]):
         ):
             raise ValueError("unvalidated window recipe; only rows512 is registered")
 
-    def execute(
-        self,
-        *,
-        x: Tensor,
-        parameters: Tensor,
-        operator: OperatorSpec,
-        recipe: WindowRecipe,
-        site=None,
-        state=None,
-    ) -> Tensor:
+    def execute(self, state, inputs):
+        x, parameters, operator, _ = linear_execution(state, inputs)
+        recipe = state.recipe
         from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.window.executor import (
             execute_window,
         )

@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from benchmarks.cuda.linear.fixtures import operator_spec
+from torchcst import Dispatcher, LinearBinding, LinearInputs
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.catalog import REGISTRY
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.plans import (
@@ -262,7 +263,7 @@ class Recipe:
 
 class ToyAlgorithm(Algorithm):
     def __init__(self, name):
-        super().__init__(name, "v1", "linear", "toy-sum-v1", Recipe)
+        super().__init__(name, "v1", "linear", "toy-sum-v1", Recipe, LinearInputs)
 
     def validate_recipe(self, recipe):
         if type(recipe.scratch) is not int or recipe.scratch < 0:
@@ -274,7 +275,10 @@ class ToyAlgorithm(Algorithm):
     def workspace_bound(self, context, recipe):
         return recipe.scratch
 
-    def execute(self, *, x, parameters, operator, recipe):
+    def execute(self, state, inputs):
+        from torchcst.operators.execution import linear_execution
+
+        x, parameters, operator, _ = linear_execution(state, inputs)
         return (
             x.sum(-1, keepdim=True).expand(*x.shape[:-1], operator.out_features)
             * parameters[0, 0]
@@ -300,12 +304,10 @@ def test_other_algorithm_ids_use_same_selector_and_budget_guards():
     assert not decision.evidence_ids
     x = torch.randn(2, 16, requires_grad=True)
     p = torch.randn(8, 5, requires_grad=True)
-    first = registry.execute(
-        decision.plan, ctx, x=x, parameters=p, operator=ctx.operator
-    )
-    second = registry.execute(
-        decision.plan, ctx, x=x * 2, parameters=p, operator=ctx.operator
-    )
+    binding = LinearBinding(ctx.operator, p, workspace_limit_bytes=128)
+    dispatcher = Dispatcher(selector=selector)
+    first = dispatcher.run(binding, LinearInputs(x))
+    second = dispatcher.run(binding, LinearInputs(x * 2))
     (first.sum() + second.sum()).backward()
     torch.testing.assert_close(x.grad, torch.full_like(x, 3 * 64) * p.detach()[0, 0])
     expected = torch.zeros_like(p)
@@ -373,8 +375,8 @@ def test_written_json_selects_and_executes_both_exact_and_fallback(tmp_path):
         actual_context = replace(ctx, input_shape=tuple(x.shape))
         decision = selector.select(actual_context)
         assert decision.plan == expected
-        y = registry.execute(
-            decision.plan, actual_context, x=x, parameters=p, operator=ctx.operator
+        y = Dispatcher(selector=selector).run(
+            LinearBinding(ctx.operator, p), LinearInputs(x)
         )
         expected_y = (x.detach().sum(-1) * p.detach()[0, 0])[:, None].repeat(1, 64)
         torch.testing.assert_close(y, expected_y)

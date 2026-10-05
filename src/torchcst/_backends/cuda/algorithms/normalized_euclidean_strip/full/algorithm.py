@@ -2,8 +2,6 @@
 
 from dataclasses import dataclass
 
-from torch import Tensor
-
 from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.recipe import (
     FullRecipe,
 )
@@ -11,7 +9,7 @@ from torchcst._backends.torch.algorithms.normalized_radial.layout import (
     OPERATION,
     SEMANTICS,
 )
-from torchcst.operators.spec import OperatorSpec
+from torchcst.operators.execution import LinearInputs, linear_execution
 
 from .._shared.algorithm import _NormalizedAlgorithm
 
@@ -23,6 +21,8 @@ class NormalizedFullAlgorithm(_NormalizedAlgorithm[FullRecipe]):
     operation_id: str = OPERATION
     semantics_id: str = SEMANTICS
     recipe_type: type[FullRecipe] = FullRecipe
+
+    input_type: type = LinearInputs
 
     def validate_recipe(self, recipe: FullRecipe) -> None:
         # Initial registration exposes precisely the legacy default configuration.
@@ -44,16 +44,9 @@ class NormalizedFullAlgorithm(_NormalizedAlgorithm[FullRecipe]):
                 "unvalidated full recipe; only the legacy default is registered"
             )
 
-    def execute(
-        self,
-        *,
-        x: Tensor,
-        parameters: Tensor,
-        operator: OperatorSpec,
-        recipe: FullRecipe,
-        site=None,
-        state=None,
-    ) -> Tensor:
+    def execute(self, state, inputs):
+        x, parameters, operator, _ = linear_execution(state, inputs)
+        recipe = state.recipe
         from torchcst._backends.cuda.algorithms.normalized_euclidean_strip.full.executor import (
             execute_full,
         )

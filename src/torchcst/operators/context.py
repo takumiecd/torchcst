@@ -66,51 +66,6 @@ class LinearContext:
         ):
             raise ValueError("workspace limit must be nonnegative or None")
 
-    def validate_inputs(self, *, x, parameters, operator, site=None, state=None):
-        if operator != self.operator:
-            raise ValueError("operator differs from dispatch context")
-        if (
-            tuple(x.shape) != self.input_shape
-            or tuple(x.stride()) != self.input_strides
-        ):
-            raise ValueError("input metadata differs from dispatch context")
-        if parameters.shape != (self.atom_count, self.parameter_dim):
-            raise ValueError("parameters shape differs from dispatch context")
-        if parameters.stride() != (self.parameter_dim, 1):
-            raise ValueError("parameters must be contiguous [atoms, D]")
-        if x.dtype != self.dtype or parameters.dtype != self.dtype:
-            raise ValueError("tensor dtype differs from dispatch context")
-        if x.device != parameters.device or x.device.type != self.device.type:
-            raise ValueError("tensor device differs from dispatch context")
-        if x.device.index != self.device.index:
-            raise ValueError("tensor device index differs from dispatch context")
-        actual_grads = (
-            torch.is_grad_enabled() and x.requires_grad,
-            torch.is_grad_enabled() and parameters.requires_grad,
-        )
-        if actual_grads != (self.required_grads.inputs, self.required_grads.parameters):
-            raise ValueError("gradient requirements differ from dispatch context")
-        actual = context_from_tensors(operator, x, parameters)
-        if (
-            actual.precision != self.precision
-            or actual.deterministic != self.deterministic
-            or actual.execution_mode != self.execution_mode
-            or actual.device != self.device
-        ):
-            raise ValueError("execution settings differ from dispatch context")
-        if site is not None:
-            if site.execution_declaration() != operator:
-                raise ValueError("site configuration differs from dispatch context")
-            if parameters.shape != site.atoms.p.shape:
-                raise ValueError("site atom shape differs from dispatch context")
-            if state is not None and state.atom_state is not site.atom_state:
-                raise ValueError("algorithm state belongs to a different atom owner")
-        elif (
-            state is not None
-            and parameters.data_ptr() != state.atom_state.atoms.p.data_ptr()
-        ):
-            raise ValueError("algorithm state belongs to a different parameter storage")
-
     @property
     def operation_id(self):
         return self.operator.operation_id

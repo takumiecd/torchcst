@@ -12,6 +12,7 @@ from benchmarks.cuda.linear.protocol import LOCAL_OPTIMIZER_POLICY, measurement_
 from benchmarks.database.model import digest
 from torchcst._backends.dispatch.conditions import condition_key, dump_condition
 from torchcst._backends.dispatch.exact import validate_selector_artifact
+from torchcst._backends.dispatch.validation import validate_plan_context
 from torchcst._backends.schema import (
     DeviceInfo,
     RequiredGrads,
@@ -104,7 +105,7 @@ def _context(row, mode):
 def _candidate(context, cohort, rows, registry):
     declaration = rows[0]["plan_declaration"]
     plan = registry.load_plan(declaration)
-    registry.validate(plan, context)
+    validate_plan_context(registry, plan, context)
     values = {}
     for row in rows:
         seen = set()
@@ -241,7 +242,7 @@ def generate(dataset, request, *, registry, policy=None):
     for cohort_id, ranking in sorted(candidates.items()):
         ranking.sort(key=lambda pair: (pair[0], pair[1].plan_id))
         winner = ranking[0][1]
-        registry.validate(fallback, winner.context)
+        validate_plan_context(registry, fallback, winner.context)
         env = winner.cohort["environment"]
         runtimes.append({"torch": env["torch"], "triton": env["triton"]})
         evidence = [f"{r['projection_id']}:{r['ordinal']}" for r in winner.observations]

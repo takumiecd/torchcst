@@ -64,22 +64,25 @@ Algorithm専用slotの並替えは、そのAlgorithmState内で完結させる�
 
 ## Algorithmの処理と状態
 
-共通Algorithmは`create_state(atom_state, **configuration)`、`prepare(state)`、
-`run(state, **inputs)`を持つ。runはAlgorithmの同一性と準備済み世代を確認し、
+共通Algorithmは`create_state(binding, recipe=..., **configuration)`、`prepare(state)`、
+`run(state, inputs)`を持つ。runはAlgorithmの同一性と準備済み世代を確認し、
 必要ならprepareしてexecuteへ接続する。Tensor結果のautograd寿命も保護する。
 Tensor以外の複合結果を持つ実装は、個々のTensorの寿命を自身で保護する。
 
 具体的な配置・buffer・準備・演算は各Algorithmのディレクトリ内に実装する。
 Algorithmのimmutable ID/revision/operation/semantics、recipe検証、support、workspace上界と
 処理/state lifecycleはbackend共通のABCで定義する。CUDA専用ABCは廃止する。
-公開CSTLinearの全経路はModule所有のAlgorithmStateを共通Registryへ渡す。
-強制Planの直接実行は従来のTensor interfaceも利用できる。
+公開CSTLinearはInputsとbinding interfaceをDispatcherに渡し、Module所有のAlgorithmStateを
+取得して実行する。強制PlanもDispatcher.runの同じ検証を使う。
+StateはbindingとRecipeを保持し、atomを使う方式ではbindingのAtomStateを参照する。
+atomを使わない方式は同じStateを空の保持メモリとして使える。
 
 AlgorithmStateは配置version、Parameterとoptimizer状態Tensorの実体/device/dtype/
 shape/stride/storageを確認する。checkpoint復元・model変換・moment遅延初期化でも
-古いviewを再利用しない。数値の変更は配置versionで判断せず、Polar decodeなどは
+古いviewを再利用しない。Contextのshape・dtype等やbinding.state_signatureの変更も
+再準備の条件になる。数値の変更は配置versionで判断せず、Polar decodeなどは
 execute時に現在値を準備する。Polarやoptimizer proposalの具体的なAlgorithmは
-その演算契約を定めて同じRegistryへ追加できる。RegistryにはLinearやCSTOperationの入力形を
+その演算契約を定めて同じRegistryへ追加できる。DispatcherにもLinearやCSTOperationの入力形を
 要求しない。具体的なPolar/optimizer Algorithmの本番登録はこの変更に含めない。
 
 ## checkpoint

@@ -62,11 +62,6 @@ class _NormalizedAlgorithm(Algorithm[RecipeT]):
             and not routing_reasons(op)
         )
 
-    def _execute_state(self, state, **inputs):
-        if state.configuration.get("operator") != inputs.get("operator"):
-            raise ValueError("algorithm state operator differs")
-        return super()._execute_state(state, **inputs)
-
     def supports(self, context: DispatchContext, recipe: RecipeT) -> SupportResult:
         return _supports(context, recipe)
 

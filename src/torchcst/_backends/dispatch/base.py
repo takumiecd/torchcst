@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import (
     Context,
-    DispatchDecision,
     ExecutionPlan,
 )
 
@@ -50,38 +49,12 @@ class Selector(ABC):
     def _match(self, context: Context) -> Match | None:
         """Return a proposed Plan, or abstain for an unobserved condition."""
 
-    def select(self, context: Context) -> DispatchDecision:
-        match = self._match(context)
-        failure = "unobserved condition"
-        if match is not None:
-            if not isinstance(match, Match):
-                raise TypeError("selector must return a Match or None")
-            try:
-                algorithm = self._registry.validate(match.plan, context)
-            except ValueError as error:
-                failure = str(error)
-                if self._fallback_plan is None:
-                    raise
-            else:
-                return DispatchDecision(
-                    plan=match.plan,
-                    selector_revision=self.revision,
-                    matched_path=match.path,
-                    reason=match.reason,
-                    evidence_ids=match.evidence_ids,
-                    workspace_upper_bound_bytes=algorithm.workspace_bound(
-                        context, match.plan.recipe
-                    ),
-                )
-        if self._fallback_plan is None:
-            raise ValueError(f"selector has no fallback: {failure}")
-        algorithm = self._registry.validate(self._fallback_plan, context)
-        return DispatchDecision(
-            plan=self._fallback_plan,
-            selector_revision=self.revision,
-            matched_path=("fallback", self._fallback_plan.algorithm_id),
-            reason=f"fallback to {self._fallback_plan.algorithm_id}: {failure}",
-            workspace_upper_bound_bytes=algorithm.workspace_bound(
-                context, self._fallback_plan.recipe
-            ),
-        )
+    @property
+    def fallback_plan(self):
+        return self._fallback_plan
+
+    def select(self, context: Context):
+        """Metadata-only convenience; use the shared dispatch validation path."""
+        from .runtime import select_plan
+
+        return select_plan(self, context)

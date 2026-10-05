@@ -1,11 +1,11 @@
-"""Explicit ID-to-implementation registry, with strict direct-plan execution."""
+"""Explicit ID-to-implementation registry and strict Plan declaration codec."""
 
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
 
 from torchcst._backends.algorithm import Algorithm
-from torchcst._backends.schema import Context, ExecutionPlan
+from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.serialization import decode_json, encode_json
 
 
@@ -101,37 +101,3 @@ class Registry:
         )
         self.validate_plan(plan)
         return plan
-
-    def validate(self, plan: ExecutionPlan, context: Context) -> Algorithm:
-        algorithm = self.validate_plan(plan)
-        if algorithm.operation_id != context.operation_id:
-            raise ValueError("plan and operator mathematical contract differ")
-        support = algorithm.supports(context, plan.recipe)
-        if not support.supported:
-            raise ValueError(
-                "unsupported execution plan: " + "; ".join(support.reasons)
-            )
-        bound = algorithm.workspace_bound(context, plan.recipe)
-        if bound is not None and (type(bound) is not int or bound < 0):
-            raise ValueError("invalid workspace upper bound")
-        if context.workspace_limit_bytes is not None:
-            if (
-                type(context.workspace_limit_bytes) is not int
-                or context.workspace_limit_bytes < 0
-            ):
-                raise ValueError("workspace limit must be nonnegative or None")
-            if bound is None:
-                raise ValueError(
-                    "workspace upper bound is unknown; cannot enforce limit"
-                )
-            if bound > context.workspace_limit_bytes:
-                raise ValueError("plan exceeds workspace limit")
-        return algorithm
-
-    def execute(self, plan: ExecutionPlan, context: Context, *, state=None, **inputs):
-        """Validate then invoke an operation's own inputs, without a Linear API."""
-        algorithm = self.validate(plan, context)
-        algorithm.validate_inputs(context, state=state, **inputs)
-        if state is not None:
-            return algorithm.run(state, recipe=plan.recipe, **inputs)
-        return algorithm.execute(recipe=plan.recipe, **inputs)

@@ -36,7 +36,8 @@
 | `recipe_type` / `validate_recipe` | immutable dataclassと、実装が受け付ける設定の厳密な検査 |
 | `supports(context, recipe)` | Kernel/Chart契約、shape、stride、dtype、GPU、精度、勾配などの適合性。非対応理由を返す |
 | `workspace_bound` | 実装が管理するscratchの上界。分からなければ `None`。実測GPUピークとは区別する |
-| `execute` | executorを遅延importし、そのforwardの設定・保存状態に対応したbackwardを接続する |
+| `input_type` | 演算共通のtyped Inputs。必須fieldと任意fieldを入力型で定める |
+| `execute(state, inputs)` | binding/Recipeと実入力からexecutorを遅延importし、forwardの保存状態に対応したbackwardを接続する |
 
 Algorithm構築、recipe検査、support判定はGPUコードのimportやTensor値の読み出しを行わない。
 Algorithmインスタンスへ入力・支持・勾配bufferを保存しない。forwardごとの保存状態を

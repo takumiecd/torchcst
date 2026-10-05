@@ -13,8 +13,6 @@ class Context(Protocol):
     operation_id: str
     workspace_limit_bytes: int | None
 
-    def validate_inputs(self, **inputs) -> None: ...
-
 
 @dataclass(frozen=True)
 class DeviceInfo:

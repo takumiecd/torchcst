@@ -1,9 +1,9 @@
 # Algorithm実行の境界
 
-2026-10-05の境界方針を具体化した、次の実装の設計契約。今回は文書だけを追加し、公開APIと実行コードは
-変更しない。本文のDispatcher、Inputs、bindingのinterfaceは設計上の名称であり、
-現在importできるAPIを示すものではない。現行APIは[README](../README.md)、
-現在の所有関係は[AtomとAlgorithmの状態所有](atom-state.ja.md)を参照する。
+2026-10-05の境界方針を実装した契約。公開APIは[README](../README.md)、
+所有関係は[AtomとAlgorithmの状態所有](atom-state.ja.md)を参照する。
+DispatcherとExecutionBindingはbackend共通、LinearInputsとLinearBindingは
+演算側のinterfaceである。Concrete Polar/optimizer Algorithmsの本番登録は含まない。
 
 ## 責務
 
@@ -85,7 +85,7 @@ Contextの一致はParameter値やdecode結果の一致を意味しない。配�
 
 ## 選択から実行まで
 
-次の呼び出しは設計を示す擬似interfaceである。
+公開実行は次の順序で進む。
 
 ```text
 dispatcher.run(binding, inputs)
@@ -148,15 +148,15 @@ CUDA Graph replayはcaptureした実行を使い、Selectorやbindingの変更�
 
 ## 配置と移行
 
-将来の共通実装は`_backends/dispatch/`に置く。Registry、Algorithm、AlgorithmStateは
+共通実装は`_backends/dispatch/`に置く。Registry、Algorithm、AlgorithmStateは
 既存の共通ファイルを使う。Inputsとbindingの具体処理は演算の契約を定義する側に置き、
 Algorithm固有の配置・kernel・実入力制約は各Algorithm内に置く。
 Linearの呼び出し元は既存Module/Operatorを利用する。共通Dispatcherはoperatorsやnnの
 具体型に依存しない。演算契約をbackendの都合で変えない。
 
-現行と次の実装の違いは次のとおり。
+移行した境界は次のとおり。
 
-| 現行 | 次の実装 |
+| 移行前 | 現在 |
 | --- | --- |
 | Context.validate_inputsがTensor検証を持つ | Inputs/bindingが共通検証し、Contextはmetadataだけ |
 | Registry.validateが対応条件/workspaceも確認する | 共通dispatch処理がAlgorithmへ問い合わせる |
@@ -165,11 +165,11 @@ Linearの呼び出し元は既存Module/Operatorを利用する。共通Dispatch
 | ModuleがPlan選択とnamed inputsの組立てを行う | Moduleがbindingを提供し、DispatcherにInputsを渡す |
 | create_state(atom_state, **configuration) | binding/Recipeから参照と専用Stateを構築する |
 
-移行時には公開READMEを同時に更新し、Plan/selector artifactの既存形式を保つか、
-形式変更が必要な場合は明示的に版を進める。文書だけを変えて旧APIの意味を変えない。
-Registry.executeの互換wrapperを恒久的に残す前提にはしない。
+公開READMEを更新し、Plan/selector artifactの既存形式を維持した。Registry.validate/executeと
+Context.validate_inputsは削除し、互換wrapperは追加しない。Selector.selectはmetadataだけの
+便宜APIで、Dispatcherと同じ候補検証/fallback処理を呼ぶ。強制PlanはDispatcher.runのplan引数を使う。
 
-実装完了の確認項目は、必須/任意/未知入力、Contextと実データの一致、custom Registry、
+回帰確認項目は、必須/任意/未知入力、Contextと実データの一致、custom Registry、
 無関係な演算入力、Torch fallback、強制Plan、不正Planの拒否、状態の再利用/無効化、
 共有Atomsとmoment、backward/Graphの寿命、宣言importの計算コード非読込みとする。
-既存CPU回帰に加え、実行コードを移行する段階でGPU oracle・完全step・peakを比較する。
+既存CPU回帰に加え、GPU oracle・完全step・peakを比較する。

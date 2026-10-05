@@ -9,7 +9,12 @@ import torch
 from torch import Tensor, nn
 
 from torchcst._backends.catalog import get_registry
-from torchcst._backends.dispatch import FixedSelector, OrderedSelector, Selector
+from torchcst._backends.dispatch import (
+    Dispatcher,
+    FixedSelector,
+    OrderedSelector,
+    Selector,
+)
 from torchcst._backends.schema import DefaultRecipe, ExecutionPlan
 from torchcst._derivatives import AtomDerivatives, AutogradFrameGeometry
 from torchcst.atoms import Atoms
@@ -19,6 +24,7 @@ from torchcst.kernels.options import KernelOptions
 from torchcst.kernels.state import KernelState
 from torchcst.operators import Operator
 from torchcst.operators.context import context_from_metadata, context_from_tensors
+from torchcst.operators.execution import LinearInputs, validate_linear_inputs
 
 from .module import CSTModule, RepulsionKind
 
@@ -331,6 +337,19 @@ class CSTLinear(CSTModule):
             else next(name for name, value in _PLANS.items() if value == plan)
         )
 
+    input_type = LinearInputs
+
+    def execution_parameters(self):
+        return self.atoms.p
+
+    def validate_inputs(self, inputs):
+        validate_linear_inputs(self, inputs)
+
+    def build_context(self, inputs):
+        return context_from_tensors(
+            self.execution_declaration(), inputs.x, self.atoms.p
+        )
+
     def forward(self, inputs: Tensor) -> Tensor:
         if inputs.ndim < 1 or inputs.shape[-1] != self.in_features:
             raise ValueError(
@@ -339,9 +358,7 @@ class CSTLinear(CSTModule):
             )
 
         flat = inputs.reshape(-1, self.in_features).contiguous()
-        parameters = self.atom_state.parameters_for_execution().contiguous()
-        operator = self.execution_declaration()
-        context = context_from_tensors(operator, flat, parameters)
+        parameters = self.atoms.p
         if len(parameters) == 0 or len(flat) == 0:
             result = (
                 flat.new_zeros((len(flat), self.out_features))
@@ -356,20 +373,7 @@ class CSTLinear(CSTModule):
                     if self.backend == "auto"
                     else FixedSelector(_PLANS[self.backend], registry=get_registry())
                 )
-            plan = selector.select(context).plan
-            registry = selector.registry
-            algorithm = registry.validate_plan(plan)
-            result = registry.execute(
-                plan,
-                context,
-                x=flat,
-                parameters=parameters,
-                operator=operator,
-                site=self,
-                state=self.algorithm_state(
-                    algorithm, recipe=plan.recipe, operator=operator
-                ),
-            )
+            result = Dispatcher(selector=selector).run(self, LinearInputs(flat))
         return self.atom_state.guard_result(
             result.reshape(*inputs.shape[:-1], self.out_features)
         )

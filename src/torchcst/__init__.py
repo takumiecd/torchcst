@@ -2,7 +2,13 @@
 
 from ._backends.algorithm import Algorithm
 from ._backends.catalog import make_registry as make_algorithm_registry
-from ._backends.dispatch import FixedSelector, OrderedSelector, Selector
+from ._backends.dispatch import (
+    Dispatcher,
+    ExecutionBinding,
+    FixedSelector,
+    OrderedSelector,
+    Selector,
+)
 from ._backends.registry import Registry
 from ._backends.schema import DefaultRecipe, ExecutionPlan, SupportResult
 from ._backends.state import AlgorithmState
@@ -47,6 +53,7 @@ from .kernels import (
 )
 from .nn import CSTConv2d, CSTLinear, CSTModule
 from .operators import ChartPairSpec, Operator, OperatorSpec, SingleChartSpec
+from .operators.execution import LinearBinding, LinearInputs
 from .optim import CSTOptimizer, OptimizerStateAdapter
 from .patterns import (
     GridPatternSpec,
@@ -75,7 +82,9 @@ __all__ = [
     "ChartState",
     "DefaultRecipe",
     "DirectAmpWidthSpec",
+    "Dispatcher",
     "EuclideanGeometrySpec",
+    "ExecutionBinding",
     "ExecutionPlan",
     "ExplicitChartSpec",
     "ExplicitChartState",
@@ -88,6 +97,8 @@ __all__ = [
     "KernelOptions",
     "KernelSpec",
     "LinePatternSpec",
+    "LinearBinding",
+    "LinearInputs",
     "LogWidthSpec",
     "NormalizationSpec",
     "Operator",

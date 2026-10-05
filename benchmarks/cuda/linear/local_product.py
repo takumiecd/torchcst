@@ -9,6 +9,7 @@ from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.cuda.algorithms.local_product.contract import Domain
 from torchcst._backends.cuda.algorithms.local_product.recipe import Recipe
 from torchcst._backends.schema import SupportResult
+from torchcst.operators.execution import LinearInputs, linear_execution
 from torchcst.operators.spec import ChartPairSpec, OperatorSpec
 
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
@@ -217,6 +218,8 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
     semantics_id: str = SEMANTICS
     recipe_type: type = LocalRecipe
 
+    input_type: type = LinearInputs
+
     def validate_recipe(self, recipe):
         if type(recipe) is not LocalRecipe:
             raise TypeError("requires LocalRecipe")
@@ -241,7 +244,10 @@ class LocalAlgorithm(Algorithm[LocalRecipe]):
         # Measured full-step CUDA peaks are reported by the runner.
         return None
 
-    def execute(self, *, x, parameters, operator, recipe, persistent_layout=None):
+    def execute(self, state, inputs):
+        x, parameters, operator, binding = linear_execution(state, inputs)
+        recipe = state.recipe
+        persistent_layout = getattr(binding, "persistent_layout", None)
         from benchmarks.cuda.linear.fixtures import local_product_dense_factors
         from torchcst._backends.cuda.algorithms.local_product.executor import local_h
 

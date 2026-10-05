@@ -22,6 +22,7 @@ from torchcst import (
     Operator,
     SingleChartSpec,
 )
+from torchcst._backends.dispatch.validation import validate_plan_context
 from torchcst._backends.torch.charts import construction as _construction
 
 
@@ -346,7 +347,7 @@ def test_specialized_cuda_bridge_rejects_different_mathematical_meanings():
         )
         for plan in (FULL, WINDOW):
             with pytest.raises(ValueError, match="contract"):
-                REGISTRY.validate(plan, context)
+                validate_plan_context(REGISTRY, plan, context)
 
 
 def test_log_width_declaration_validates_finite_positive_bounds():
