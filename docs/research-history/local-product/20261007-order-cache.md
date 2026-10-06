@@ -67,7 +67,7 @@ pool supervisor22376は異常終了し、owned L4 session停止とserver no-acti
 後続未実行jobsをcancelし、検証とサイズ別の短いmeasure jobsへ置き換える。
 回収済みの3 screen jobs / 12 artifactsは独立にhash検証・DB保存済み。
 
-## 03:08 JST: 再提出
+## 03:02 JST: 再提出
 
 長い旧jobは実行前にcancel済み。source `652b5fb9f47771a942d4683c5d66ac9945cdbb5d`
 (runtimeは`df02c89f57330640f4b4090be8eedf469cb790ac`と同一)を凍結して、
@@ -79,3 +79,38 @@ one L4 queueへ短い3 jobsをsubmitした。
 
 検証とscreenは未完了。測定の各候補はfull-shape FP64 oracle比較を先に行う。
 独立反復やG4比較はL4結果から有望な候補を選んで実施する。
+
+## 03:44 JST: GPU検証と全8ケースscreen完了
+
+cache4候補の40 GPU tests + declaration (41 passed、75.80s)成功。source/result archives
+とsubmitted/committed/worker197 runtime hashes一致。2測定jobsも成功、56 full-shape
+FP64候補比較と各case内の初期Parameters/inputs hash一致を確認した。
+各1 executionの21sample median、単位us。独立反復前。
+
+|size/rho|copy8 baseline|cache copy4|cache copy8|cache range4|cache range8|dense|
+|---|---:|---:|---:|---:|---:|---:|
+|64/1_25|55.23|54.41|54.56|54.14|53.95|39.32|
+|64/3|59.44|59.29|59.88|59.28|58.92|39.12|
+|64/8|56.65|56.30|55.97|55.11|55.21|39.18|
+|64/mixed|62.68|62.56|63.00|61.94|62.01|39.09|
+|128/1_25|65.82|62.32|62.14|64.92|65.93|45.90|
+|128/3|70.28|74.11|71.45|75.92|73.27|45.43|
+|128/8|73.49|70.19|69.82|72.42|72.37|45.57|
+|128/mixed|76.06|79.76|76.99|81.83|79.48|45.79|
+
+cache allocated peakはN64 120832 (baseline115712)、N128 317440 (303104) bytes。
+N128 copy8はrho1.25と8で約5%改善するがrho3/mixedを悪化させるため、一律採用しない。
+N64改善は小さく、cacheなしparallel4またはparameter splitを優先する。
+
+copy8 counter (refreshes/rebuilds/reuses):N128 rho1.25は両方向52/0/52、rho3は
+fwd52/49/3、dX52/50/2、rho8両方向52/28/24、mixed52/43/9と52/45/7。
+`run.py`はprimary timing後、phase diagnostics前にreportを取得する。旧raw stringの
+"includes diagnostics"は過大だったため、解釈を同名JSONへ保存し、report labelを
+"counts executed refreshes"へ修正した。counter値とGPU処理は変更しない。
+
+次の仮説:現在のfull composite keysをcached permutation順で読み、隣接比較が
+すべて昇順なら、キーが変わってもsortを省ける。offsetsは現在bucket histogramから
+毎回構築し、coefficients/支持/位置VJPも毎回更新する。この条件はexactで、
+cacheにkey値を保存する必要もない。初期cache IDsをidentity permutationにし、
+sort後もpermutationであることを保つ必要がある。これは未実装・未検証。
+8 screen artifactsのDB保存、byte-identical export/idempotent再取込を確認。
