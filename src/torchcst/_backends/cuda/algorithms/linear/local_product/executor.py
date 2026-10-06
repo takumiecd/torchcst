@@ -329,7 +329,7 @@ def _packed_fused(
         recipe.support_limit,
         recipe.rho_upper[1],
         Ends=ends,
-        H_A=canonical_atoms,
+        H_A=packed.shape[1] if recipe.ordered_layout else canonical_atoms,
         SAVED_G=saved_g is not None,
         BAND_DISPATCH=recipe.band_dispatch,
         VECTOR_SUPPORT=recipe.vector_support,
