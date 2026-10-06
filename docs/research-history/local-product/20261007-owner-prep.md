@@ -87,6 +87,11 @@ source/result原本はhost-wide poolのjobsディレクトリにも保持する�
 pool supervisor: tool session `22376`, one L4, idle-seconds 0。
 CPU/buildは完了。最初のscreenが成功、copyがrunning、vectorがqueued。
 PR #35 (draft): https://github.com/takumiecd/torchcst/pull/35、base PR #34。
-GitHub CPU checks成功(9081f0e0時点)。DB import/export検証はtool session58919で進行中。
+GitHub CPU checks成功(9081f0e0時点)。最初の4 artifactsはDB保存・byte-identical export・idempotent再取込成功。
+次はcopy/vectorの結果を回収・hash確認して全screenを同じ表にまとめ、
+有望な1–2候補＋baselineでfull8ケースを独立2回測定する。
+その後の仮説は32次元output tileでH再計算回数を減らす方式。owner16区間を
+結合するときはempty rangeをminから除外し、隣接ownerのmin/maxと正確な支持maskを
+維持する必要がある。これは未実装・未測定。新たな実験で位置勾配を失わせない。
 他のGPUは停止済み。直接CLIでpool sessionへ介入しない。
 再開時はpool statusとjob resultを確認し、同じjobを重複submitしない。
