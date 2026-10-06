@@ -7,3 +7,5 @@ N64 cached atom32 is slower than uncached atom16 in prior screen; this separates
 N64/N128 B32 A204/A819 seed41 FP32 IEEE/TF32off, initial decodedrho>1,production fused AdamW/Polar evolving sigma,21 samples/execution. Independent FP64 Y/dX/all atom gradients/nonzero positions, support/normalization/slices/B1/32/64,20 captured reference updates/moments/steps N64/N128,old backward.
 
 Host886 passed/841 skipped (22.24s), changed-file ruff,diff checks,8 prepare/check,isolated wheel/sdist build passed. GPU correctness/time pending; raw evidence order-cache-atom16-20261007 ignored and preserved.
+
+Frozen source4aa6823f; PR47. Check `l4job-6b7bad148a734e33a093493f964a64f0`,64screen `l4job-337c739d866946f8a6e954b1e04da9a7`,128screen `l4job-48f55393ade9438ca2b07140ec062f39` queued after combined full repeats on supervisor65855.
