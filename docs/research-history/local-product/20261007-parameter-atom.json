@@ -13057,5 +13057,38 @@
     "tests": "............................                                             [100%]\n28 passed in 47.66s"
   },
   "g4_param2_reference_update_validation": "pending separate9-GPU-test probe",
-  "g4_param2_reference_update_job": "colabjob-5527c4b067834aca947755c81bbb1418"
+  "g4_param2_reference_update_job": "colabjob-5527c4b067834aca947755c81bbb1418",
+  "g4_param2_reference_updates_proof": {
+    "job": "colabjob-5527c4b067834aca947755c81bbb1418",
+    "source_commit": "74d1baf765fe798c315c0a894fd3d4f6ad384052",
+    "source_snapshot_sha256": "02fbcae5afd82d05658c118bee8439a8bea82df63ccda408570656b3927a8b53",
+    "archive_sha256": "9f453656fddf3230fd1da4696d3df87a6dcb2bc390ca04dd5d0751499bc1924a",
+    "runtime_files_matched": 196,
+    "result": {
+      "id": "colabjob-5527c4b067834aca947755c81bbb1418",
+      "source_sha256": "02fbcae5afd82d05658c118bee8439a8bea82df63ccda408570656b3927a8b53",
+      "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition, GPU-3030aec7-306b-d364-b513-a4b9a068e558, 580.82.07, 97887 MiB",
+      "requested_accelerator": "G4",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "started": 1791317915.2158837,
+      "finished": 1791317958.7913241,
+      "timeout_scope": "driver process, including any setup inside driver"
+    },
+    "tests": ".........                                                                [100%]\n9 passed, 46 deselected in 40.67s",
+    "hardware": {
+      "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "capability": [
+        12,
+        0
+      ],
+      "sm_count": 188
+    }
+  }
 }
