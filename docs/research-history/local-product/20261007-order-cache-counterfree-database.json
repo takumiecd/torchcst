@@ -42,5 +42,49 @@
     "artifact_sha256": "b294f263ddd58d848ae749865f4cb689e2931da46a05699a11023be91dcc23d8",
     "byte_identical_export": true,
     "idempotent_reimport": true
+  },
+  {
+    "job": "l4job-18003608919a4373a77c55e8fdeddc6c",
+    "artifact": "order-cache-counterfree-128-rho1_25.json",
+    "run_id": "e29004dc2ec725b83c67c29e6f679798bf26b278ccf344642b1b7d315a8bec19",
+    "projection_id": "9dfef8ba95c9a292fe0f82ef804771b63a8b4b4b92e6e570dc45c777601a2ec0",
+    "run_inserted": true,
+    "projection_inserted": true,
+    "artifact_sha256": "a4f5a9cb73b67fa8e3b2089b68af5c096d9845643035ff36b6a8ca9ec8c2763b",
+    "byte_identical_export": true,
+    "idempotent_reimport": true
+  },
+  {
+    "job": "l4job-18003608919a4373a77c55e8fdeddc6c",
+    "artifact": "order-cache-counterfree-128-rho8.json",
+    "run_id": "8ac01113ca6bbb324b8d18bae6896d08e850889ff381558f278cce80bb3a7c9d",
+    "projection_id": "0459e574d3d15be4ccf96e8e3e977482e5b2b16ea345160c59fc554d0e325f21",
+    "run_inserted": true,
+    "projection_inserted": true,
+    "artifact_sha256": "6642b1f00886d0c6f9beb1908d59ce063087722232e77023ba5a7056cf551cb9",
+    "byte_identical_export": true,
+    "idempotent_reimport": true
+  },
+  {
+    "job": "l4job-18003608919a4373a77c55e8fdeddc6c",
+    "artifact": "order-cache-counterfree-128-rho3.json",
+    "run_id": "08cc696bc2b65e3b405718c9fbd18a80c581fa068c994ef7e0a0edfa45cee4fb",
+    "projection_id": "f50f53034fa744614e1e7b6ce4bf3a9714ebbee591a5f482ca1bedef681e66d4",
+    "run_inserted": true,
+    "projection_inserted": true,
+    "artifact_sha256": "072e0b389a3481afc893f26339119ba0937c2131eb6ea96d47f4f0af0343b0d6",
+    "byte_identical_export": true,
+    "idempotent_reimport": true
+  },
+  {
+    "job": "l4job-18003608919a4373a77c55e8fdeddc6c",
+    "artifact": "order-cache-counterfree-128-rhomixed.json",
+    "run_id": "4e0a9e6b1ecaa4151beda0b271168f9cc11e86f1a9775cd324c830140c541202",
+    "projection_id": "2a5f2fa856eaa6a72c6ff43aa7283a0526fad5976d3d54e5b713bbea17d7b142",
+    "run_inserted": true,
+    "projection_inserted": true,
+    "artifact_sha256": "ab8b501ad7cd574261bdf367765062c6a83dbf8833043051fa1acbcf7676407f",
+    "byte_identical_export": true,
+    "idempotent_reimport": true
   }
 ]
