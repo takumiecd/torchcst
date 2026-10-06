@@ -21,4 +21,4 @@ Frozen source889d9ef1; PR46 (base PR44). Check `l4job-824b070a35da4bfc9e60d8a005
 |128/3|70.25|67.88|69.11|67.56|69.09|70.41|45.69|
 |128/8|73.68|69.45|70.19|69.35|70.28|80.42|45.92|
 
-Complete-step median us. Owner4 peaks115712/303104 bytes;owner2 99328/270336;reserved6291456. Batch16 loop does not beat same-job parameter split2 in any screened case. N128 owner4 loop and atom16 single are identical configs; tiny alias timing differences are noise. Owner2 memory/time tradeoff retained; no route promoted. Raw negatives/proof saved,measurement DB checks pending/completing in one matching-branch ingest.
+Complete-step median us. Owner4 peaks115712/303104 bytes;owner2 99328/270336;reserved6291456. Batch16 loop does not beat same-job parameter split2 in any screened case. N128 owner4 loop and atom16 single are identical configs; tiny alias timing differences are noise. Owner2 memory/time tradeoff retained; no route promoted. Raw negatives/proof saved,4 measurement artifacts DB byte-identical export/idempotent reimport checks passed in matching branch.
