@@ -22,6 +22,8 @@ def index_owners(
     AC: tl.constexpr,
     CAP: tl.constexpr,
     GROUPS: tl.constexpr,
+    ForwardIds=None,
+    BackwardIds=None,
 ):
     """Per-call general-atom indices; payloads and H keep their existing order."""
     direction, owner = tl.program_id(0), tl.program_id(1)
@@ -39,12 +41,17 @@ def index_owners(
     physical = tl.load(Reverse + direction * C + a, a < C, -1)
     enabled &= physical >= 0
     row = direction * GROUPS + owner
+    if ForwardIds is not None:
+        destination = ForwardIds if direction == 0 else BackwardIds
+        row_ids = destination + owner * CAP
+    else:
+        row_ids = Ids + row * CAP
     begin = tl.full((), 0, tl.int32)
     for phase in tl.static_range(3):
         live = enabled & (band == phase)
         rank = tl.cumsum(live.to(tl.int32), 0) - 1
         count = tl.sum(live.to(tl.int32), 0)
-        tl.store(Ids + row * CAP + begin + rank, physical, live)
+        tl.store(row_ids + begin + rank, physical, live)
         tl.store(Offsets + row * 4 + phase, begin)
         begin += count
     tl.store(Offsets + row * 4 + 3, begin)
@@ -76,6 +83,11 @@ def refresh(
     LC: tl.constexpr,
     BINS: tl.constexpr,
     STRIDE: tl.constexpr,
+    ForwardIds=None,
+    BackwardIds=None,
+    OwnerOffsets=None,
+    INDEX_CAP: tl.constexpr = 0,
+    INDEX_GROUPS: tl.constexpr = 0,
 ):
     direction = tl.program_id(0)
     a = tl.arange(0, AC)
@@ -93,8 +105,8 @@ def refresh(
     ends = Ends + direction * STRIDE
     free = Free + direction * L
     stats = Stats + direction * 4
-    vlo, _vhi, vw = _interval(P, a, C, False, JS, K)
-    ulo, _uhi, uw = _interval(P, a, C, True, IS, N)
+    vlo, vhi, vw = _interval(P, a, C, False, JS, K)
+    ulo, uhi, uw = _interval(P, a, C, True, IS, N)
     site = ulo if direction == 0 else vlo
     flags = tl.load(P + 8 * C + a, a < C, 0.0).to(tl.int32)
     inv = tl.load(P + C + a, a < C, 0.0)
@@ -165,6 +177,25 @@ def refresh(
     tl.store(stats + 1, tl.load(stats + 1) + moved_count)
     # Per-invocation snapshots protect outstanding backwards from later repair.
     source = tl.load(ids + slot, slot < L, -1)
+    if ForwardIds is not None:
+        # Canonical traversal matches the standalone builder's ID order exactly.
+        destination = ForwardIds if direction == 0 else BackwardIds
+        lo, hi = tl.where(direction == 0, ulo, vlo), tl.where(direction == 0, uhi, vhi)
+        physical = tl.load(reverse + a, a < C, -1)
+        enabled = active & (flags != 3) & (physical >= 0)
+        for owner in range(INDEX_GROUPS):
+            incoming = enabled & (lo < (owner + 1) * 16) & (hi > owner * 16)
+            begin = tl.full((), 0, tl.int32)
+            for phase in tl.static_range(3):
+                live = incoming & (band == phase)
+                rank = tl.cumsum(live.to(tl.int32), 0) - 1
+                count = tl.sum(live.to(tl.int32), 0)
+                tl.store(destination + owner * INDEX_CAP + begin + rank, physical, live)
+                tl.store(
+                    OwnerOffsets + (direction * INDEX_GROUPS + owner) * 4 + phase, begin
+                )
+                begin += count
+            tl.store(OwnerOffsets + (direction * INDEX_GROUPS + owner) * 4 + 3, begin)
     live = (slot < L) & (source >= 0)
     safe_source = tl.maximum(source, 0)
     tl.store(Orders + direction * L + slot, source, slot < L)

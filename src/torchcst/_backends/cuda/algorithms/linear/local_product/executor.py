@@ -186,6 +186,21 @@ def tile_layout(packed, domain, recipe):
     return views, orders, offsets
 
 
+def allocate_owner_index(prototype, atoms, groups, recipe):
+    """Shape-only int16 safety check includes every possible persistent slot."""
+    slots = ((atoms + 31 * (groups + 4) + 15) // 16) * 16
+    dtype = torch.int16 if recipe.index_bits == 16 and slots <= 32768 else torch.int32
+    capacity = max(32, ((atoms + 31) // 32) * 32)
+    if recipe.release_forward_index:
+        ids = tuple(
+            prototype.new_empty((groups, capacity), dtype=dtype) for _ in range(2)
+        )
+    else:
+        ids = prototype.new_empty((2, groups, capacity), dtype=dtype)
+    offsets = prototype.new_empty((2, groups, 4), dtype=torch.int32)
+    return ids, offsets, capacity
+
+
 def build_owner_index(packed, reverse, domain, recipe):
     import triton as tr
 
@@ -193,13 +208,11 @@ def build_owner_index(packed, reverse, domain, recipe):
 
     atoms = packed.shape[1]
     groups = max(tr.cdiv(domain.input_count, 16), tr.cdiv(domain.output_count, 16))
-    capacity = max(32, tr.cdiv(atoms, 32) * 32)
-    ids = reverse.new_empty((2, groups, capacity))
-    offsets = reverse.new_empty((2, groups, 4))
+    ids, offsets, capacity = allocate_owner_index(reverse, atoms, groups, recipe)
     compiled = layout_kernels.index_owners[(2, groups)](
         packed,
         reverse,
-        ids,
+        ids[0] if recipe.release_forward_index else ids,
         offsets,
         atoms,
         domain.input_count,
@@ -211,6 +224,8 @@ def build_owner_index(packed, reverse, domain, recipe):
         max(32, tr.next_power_of_2(atoms)),
         capacity,
         groups,
+        ForwardIds=ids[0] if recipe.release_forward_index else None,
+        BackwardIds=ids[1] if recipe.release_forward_index else None,
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -327,14 +342,18 @@ class _LocalH(torch.autograd.Function):
         )
         ends = q.new_empty((0,))
         _stamp("layout", 0)
-        if persistent_layout is not None:
+        owner_ids, owner_offsets = (q.new_empty((0,)),) * 2
+        if persistent_layout is not None and recipe.fuse_owner_index:
+            views, orders, offsets, ends, owner_ids, owner_offsets = (
+                persistent_layout.refresh(packed, owner_index=True)
+            )
+        elif persistent_layout is not None:
             views, orders, offsets, ends = persistent_layout.refresh(packed)
         elif tile_packed:
             views, orders, offsets = tile_layout(packed, domain, recipe)
         else:
             views, orders, offsets = (q.new_empty((0,)),) * 3
-        owner_ids, owner_offsets = (q.new_empty((0,)),) * 2
-        if recipe.owner_index:
+        if recipe.owner_index and not recipe.fuse_owner_index:
             if persistent_layout is None:
                 raise ValueError("owner index requires persistent layout")
             owner_ids, owner_offsets = build_owner_index(
@@ -428,8 +447,8 @@ class _LocalH(torch.autograd.Function):
             orders,
             offsets,
             ends,
-            owner_ids,
-            owner_offsets,
+            owner_ids[1] if recipe.release_forward_index else owner_ids,
+            owner_offsets[1] if recipe.release_forward_index else owner_offsets,
             q if fused_polar else q.new_empty((0,)),
             *scalars,
         )
@@ -481,6 +500,20 @@ class _LocalH(torch.autograd.Function):
             tile_packed,
             persistent,
         ) = ctx.settings
+        dx_ids = (
+            owner_ids
+            if recipe.release_forward_index
+            else owner_ids[1]
+            if recipe.owner_index
+            else None
+        )
+        dx_offsets = (
+            owner_offsets
+            if recipe.release_forward_index
+            else owner_offsets[1]
+            if recipe.owner_index
+            else None
+        )
         dy = dy.contiguous()
         dx = None
         use_g = (
@@ -502,8 +535,8 @@ class _LocalH(torch.autograd.Function):
                 swap=True,
                 ends=ends[1] if persistent else None,
                 canonical_atoms=len(source) if persistent else 0,
-                owner_ids=owner_ids[1] if recipe.owner_index else None,
-                owner_offsets=owner_offsets[1] if recipe.owner_index else None,
+                owner_ids=dx_ids,
+                owner_offsets=dx_offsets,
             )
         elif ctx.needs_input_grad[0] and not use_g:
             dx = _fused(
@@ -591,8 +624,8 @@ class _LocalH(torch.autograd.Function):
                 ends=ends[1] if persistent else None,
                 canonical_atoms=len(source),
                 saved_g=g,
-                owner_ids=owner_ids[1] if recipe.owner_index else None,
-                owner_offsets=owner_offsets[1] if recipe.owner_index else None,
+                owner_ids=dx_ids,
+                owner_offsets=dx_offsets,
             )
         return dx, dq, None, None, None, None, None, None, None, None, None, None, None
 

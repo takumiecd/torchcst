@@ -646,7 +646,9 @@ def fused_packed(
             valid = (a < A) & (a < end)
             if OwnerIds is not None and phase >= owners:
                 position = a
-                a = tl.load(OwnerIds + tile * INDEX_A + position, position < end, 0)
+                a = tl.load(OwnerIds + tile * INDEX_A + position, position < end, 0).to(
+                    tl.int32
+                )
                 valid = (position < end) & (a >= 0) & (a < A)
             vlo, _vhi, vw = _interval(P, a, A, SWAP, JS, K)
             ulo, uhi, uw = _interval(P, a, A, not SWAP, IS, N)

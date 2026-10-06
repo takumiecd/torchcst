@@ -30,6 +30,9 @@ class LocalRecipe(Recipe):
             "_vector",
             "_vector4",
             "_unroll",
+            "_index16_release",
+            "_index16_fused",
+            "_index16",
             "_index",
         ):
             if self.route.endswith(suffix):
@@ -57,7 +60,21 @@ class LocalRecipe(Recipe):
 
     @property
     def owner_index(self):
-        return self.route.endswith("_index")
+        return self.route.endswith(
+            ("_index", "_index16", "_index16_release", "_index16_fused")
+        )
+
+    @property
+    def index_bits(self):
+        return 16 if "_index16" in self.route else 32
+
+    @property
+    def release_forward_index(self):
+        return self.route.endswith(("_index16_release", "_index16_fused"))
+
+    @property
+    def fuse_owner_index(self):
+        return self.route.endswith("_index16_fused")
 
     @property
     def unroll_support(self):
@@ -139,9 +156,12 @@ class LocalRecipe(Recipe):
                 self.base_route,
                 self.base_route + "_unroll",
                 self.base_route + "_index",
+                self.base_route + "_index16",
+                self.base_route + "_index16_release",
+                self.base_route + "_index16_fused",
             )
         ):
-            raise ValueError("recomputed parameter VJP supports base/unroll launches")
+            raise ValueError("unsupported recomputed parameter VJP variant")
         if (
             self.owner_index
             and self.base_route != "persistent_supportprep_band_recompute_vjp"

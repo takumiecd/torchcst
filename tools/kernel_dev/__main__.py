@@ -38,6 +38,7 @@ GPU_SUITES = {
         "tests/test_local_contraction.py",
         "tests/test_local_launch.py",
         "tests/test_local_owner_index.py",
+        "tests/test_local_owner_index_refine.py",
     ),
     "normalized-strip": (
         "tests/test_normalized_strip_public.py",
