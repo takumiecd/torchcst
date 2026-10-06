@@ -1,5 +1,14 @@
 # Small linear product / hybrid H
 
+2026-10-06: [Compact owner IDs and H lifetime on L4/G4](20261006-owner-index-refine.md).
+Five refinements retain normalized position gradients. Removing the B*A H
+buffer reduces complete-step allocated peak19.3% at N64 and27.8% at N128;
+paired rho3 timings stay close to indexed32 on L4 and Blackwell/G4. Wide
+N128 rho8 becomes5.9% slower on L4, so cached-H remains the latency candidate.
+Fused list construction is slower and dropping saved H alone does not reduce
+the peak. Two independent runs/device,72 full-shape scalar oracle comparisons
+and raw/DB evidence are preserved. Public selection and cache policy are unchanged.
+
 2026-10-06: [Exact owner indexing before payload/cache tuning](20261006-owner-index.md).
 GPU-built per-owner general-atom lists keep existing physical metadata/H order
 and normalized position gradients. Two independent matched complete-step runs

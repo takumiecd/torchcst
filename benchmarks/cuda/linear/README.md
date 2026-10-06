@@ -273,6 +273,37 @@ Use `local-index-{64,128}-rho{1_25,3,8,mixed}.json` to stratify the comparison.
 All initial decoded rho exceed1; the mixed Case uses1.25/3/8 at fractions0.5/0.3/0.2.
 Batch32, FP32 IEEE, ~5% atoms and production width updates are matched.
 
+## Owner-index memory refinements (2026-10-06)
+
+`plans-local-index-refine.json` compares the indexed32 control with compact
+IDs, separate forward/dX list lifetimes, list-building fusion, forward-only H
+retention and local H recomputation. Use
+`local-index-refine-{64,128}-rho{1_25,3,8,mixed}.json` for the same initial-rho>1
+strata. Widths remain live, with minimum/birth rho0.25. Keep L4 and G4 results
+separate and measure dense on each device.
+
+```bash
+python -m tools.kernel_dev prepare \
+  --plans benchmarks/cuda/linear/plans-local-index-refine.json \
+  --case benchmarks/cuda/linear/cases/local-index-refine-128-rho3.json \
+  --candidate persistent-supportprep-band-recompute-vjp-index16-release-atom32 \
+  --candidate persistent-supportprep-band-recompute-vjp-index16-local-atom32 \
+  --output output/owner-index-refine
+python -m tools.kernel_dev check \
+  --plans output/owner-index-refine/plans.json \
+  --case output/owner-index-refine/case.json
+python -m benchmarks.cuda.linear.run \
+  --plans output/owner-index-refine/plans.json \
+  --case output/owner-index-refine/case.json \
+  --source-commit "$(git rev-parse HEAD)" \
+  --polar-update fused --phase-diagnostics --kernel-diagnostics \
+  --output output/owner-index-refine/result.json
+```
+
+The [refinement record](../../../docs/research-history/local-product/20261006-owner-index-refine.md)
+reports complete-step tradeoffs and negative trials. These recipes remain
+explicit research selections.
+
 ## Matched initial-rho audit (2026-10-05)
 
 `local-rho-audit-{64,128}-rho{1_25,1_5,2,3,4,8,16}.json` initializes every

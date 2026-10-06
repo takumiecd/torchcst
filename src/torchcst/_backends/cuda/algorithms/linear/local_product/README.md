@@ -49,6 +49,21 @@ All performance fixtures decode initial rho>1, with live updates and minimum
 rho0.25. The full-shape oracle and migration checks also retain the valid
 singleton, two-site, empty and normalization-floor correctness cases.
 
+`plans-local-index-refine.json` adds five explicit follow-up recipes. `_index16`
+uses signed 16-bit physical IDs only when every persistent slot fits, otherwise
+falling back to 32 bits. `_index16_release` allocates forward and dX lists
+separately and saves only dX IDs for backward. `_index16_local` additionally
+eliminates the B*A H buffer and recomputes H in the existing 16-site owners;
+it preserves center gradients and may cost more for wide support.
+
+Two diagnostic alternatives isolate remaining costs: `_index16_fused` constructs
+lists within the two-direction persistent refresh launch; `_index16_release_h`
+keeps cached H for forward but omits it from backward saved state. Launch
+fusion and shorter saved-state lifetime do not imply better complete-step time
+or a smaller allocated peak. See the
+[measured refinement record](../../../../../../../docs/research-history/local-product/20261006-owner-index-refine.md)
+for matched L4/G4 results and retained negative alternatives.
+
 Development branch: `kernel/local-product-onchip-h`. Optimize small linear
 transformations first, with about 5% atoms relative to dense weight elements.
 The mathematical kernel is the existing normalized, shared-width
