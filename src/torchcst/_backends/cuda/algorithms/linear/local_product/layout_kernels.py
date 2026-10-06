@@ -22,6 +22,7 @@ def ordered_owner_ranges(
     Views=None,
     Orders=None,
     COPY: tl.constexpr = False,
+    RANGES: tl.constexpr = True,
 ):
     """Build exact overlap envelopes independently for each physical owner."""
     direction, owner = tl.program_id(0), tl.program_id(1)
@@ -38,24 +39,25 @@ def ordered_owner_ranges(
     else:
         P = P + direction * 13 * C
         source = a
-    vlo, vhi, vw = _interval(P, source, C, False, JS, K)
-    ulo, uhi, uw = _interval(P, source, C, True, IS, N)
-    lo, hi = tl.where(direction == 0, ulo, vlo), tl.where(direction == 0, uhi, vhi)
-    flags = tl.load(P + 8 * C + source, a < C, -1).to(tl.int32)
-    inv = tl.load(P + C + source, a < C, 0.0)
-    band = tl.where(
-        inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
-    )
-    overlap = (a < C) & (flags != 3) & (vw > 0) & (uw > 0)
-    overlap &= (lo < (owner + 1) * 16) & (hi > owner * 16)
-    for phase in tl.static_range(3):
-        live = overlap & (band == phase)
-        begin = tl.min(tl.where(live, a, C), 0)
-        end = tl.max(tl.where(live, a + 1, 0), 0)
-        begin = tl.minimum(begin, end)
-        target = Ranges + (direction * GROUPS + owner) * 6 + phase * 2
-        tl.store(target, begin)
-        tl.store(target + 1, end)
+    if RANGES:
+        vlo, vhi, vw = _interval(P, source, C, False, JS, K)
+        ulo, uhi, uw = _interval(P, source, C, True, IS, N)
+        lo, hi = tl.where(direction == 0, ulo, vlo), tl.where(direction == 0, uhi, vhi)
+        flags = tl.load(P + 8 * C + source, a < C, -1).to(tl.int32)
+        inv = tl.load(P + C + source, a < C, 0.0)
+        band = tl.where(
+            inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
+        )
+        overlap = (a < C) & (flags != 3) & (vw > 0) & (uw > 0)
+        overlap &= (lo < (owner + 1) * 16) & (hi > owner * 16)
+        for phase in tl.static_range(3):
+            live = overlap & (band == phase)
+            begin = tl.min(tl.where(live, a, C), 0)
+            end = tl.max(tl.where(live, a + 1, 0), 0)
+            begin = tl.minimum(begin, end)
+            target = Ranges + (direction * GROUPS + owner) * 6 + phase * 2
+            tl.store(target, begin)
+            tl.store(target + 1, end)
 
 
 @tr.jit
@@ -269,6 +271,11 @@ def refresh(
 
 
 @tr.jit
+def _prefix_max(a, b):
+    return tl.maximum(a, b)
+
+
+@tr.jit
 def ordered_views(
     P,
     Views,
@@ -291,6 +298,8 @@ def ordered_views(
     COPY: tl.constexpr = True,
     VECTOR_RANGES: tl.constexpr = False,
     OWNER_BLOCK: tl.constexpr = 1,
+    PREFIX_RANGES: tl.constexpr = False,
+    SEARCH_STEPS: tl.constexpr = 1,
     CachedKeys=None,
     CachedOrder=None,
     CachedOffsets=None,
@@ -310,8 +319,8 @@ def ordered_views(
     atom = a
     if CACHE and CACHE_VALIDATE and not CACHE_GATHER:
         atom = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
-    vlo, _vhi, vw = _interval(P, atom, C, False, JS, K)
-    ulo, _uhi, uw = _interval(P, atom, C, True, IS, N)
+    vlo, vhi, vw = _interval(P, atom, C, False, JS, K)
+    ulo, uhi, uw = _interval(P, atom, C, True, IS, N)
     lo = tl.where(direction == 0, ulo, vlo)
     flags = tl.load(P + 8 * C + atom, a < C, -1).to(tl.int32)
     inv = tl.load(P + C + atom, a < C, 0.0)
@@ -434,6 +443,47 @@ def ordered_views(
         sorted_bucket = (key // (span * C)).to(tl.int32)
         counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
         starts = tl.cumsum(counts, 0) - counts
+    if PREFIX_RANGES:
+        tl.static_assert(
+            POSITION and not CACHE, "prefix search uses canonical current keys"
+        )
+        # lo is monotone within each band; hi need not be. Its prefix maximum
+        # crosses j0 at the first possible overlapping atom. All values stay
+        # within this CTA; no global prefix/H scratch or additional launch.
+        slo = tl.gather(lo, source, 0)
+        shi = tl.gather(tl.where(direction == 0, uhi, vhi), source, 0)
+        sbucket = tl.gather(bucket, source, 0)
+        owner = tl.arange(0, OWNER_BLOCK)
+        for phase in tl.static_range(3):
+            eligible = (a < C) & (sbucket == groups + phase)
+            prefix_hi = tl.associative_scan(tl.where(eligible, shi, 0), 0, _prefix_max)
+            band_start = tl.sum(tl.where(g == groups + phase, starts, 0), 0)
+            band_end = tl.sum(tl.where(g == groups + phase + 1, starts, 0), 0)
+            lower = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_start
+            upper = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_end
+            # Fixed iterations cover empty and non-power-of-two band lengths.
+            for _ in tl.static_range(SEARCH_STEPS):
+                mid = (lower + upper) // 2
+                value = tl.gather(prefix_hi, tl.minimum(mid, AC - 1), 0)
+                advance = value <= owner * 16
+                live = lower < upper
+                lower = tl.where(live & advance, mid + 1, lower)
+                upper = tl.where(live & ~advance, mid, upper)
+            begin = lower
+            lower = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_start
+            upper = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_end
+            for _ in tl.static_range(SEARCH_STEPS):
+                mid = (lower + upper) // 2
+                value = tl.gather(slo, tl.minimum(mid, AC - 1), 0)
+                advance = value < (owner + 1) * 16
+                live = lower < upper
+                lower = tl.where(live & advance, mid + 1, lower)
+                upper = tl.where(live & ~advance, mid, upper)
+            end = lower
+            begin = tl.minimum(begin, end)
+            target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
+            tl.store(target, begin, owner < STRIDE - 5)
+            tl.store(target + 1, end, owner < STRIDE - 5)
     if COPY:
         for field in tl.static_range(13):
             value = tl.load(P + field * C + source, a < C, 0.0)

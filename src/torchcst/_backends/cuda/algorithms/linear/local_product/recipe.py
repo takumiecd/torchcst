@@ -89,6 +89,10 @@ class Recipe:
         return False
 
     @property
+    def prefix_owner_ranges(self):
+        return False
+
+    @property
     def parallel_owner_ranges(self):
         return False
 

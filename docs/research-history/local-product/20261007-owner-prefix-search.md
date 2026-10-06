@@ -1,0 +1,11 @@
+# 2026-10-07: CTA-local prefix-maximum owner search
+
+Branch kernel/owner-prefix-search based on combined PR44. Exact normalized triweight/source Polar contract unchanged. This prototype reduces repeated range exploration, independently of key cache reuse.
+
+For each current band, sorted support starts l[a] are monotone; support ends h[a] can be nonmonotone. Compute m[a]=max_{k<=a, same band} h[k] in the order-building CTA. For owner [j0,j1), begin=first a with m[a]>j0, end=first a with l[a]>=j1, clamp begin<=end. The first relevant atom is retained and every overlapping atom satisfies a<end. Trailing noncontributors can remain in the safe envelope; existing exact site-factor evaluation eliminates them. This does not assume width/geometry makes h monotone. Singleton buckets remain separate.
+
+Prefix maxima and sorted interval arrays stay CTA-local; no global prefix/H buffer and no extra launch. Current sort CTA computes all owner bounds by bounded bisections into these arrays. The subsequent parallel-copy CTA only copies its disjoint physical segment; it no longer recomputes all13-field intervals over all C for every owner. API uses Triton associative_scan with JIT maximum reducer ([official documentation](https://triton-lang.org/main/python-api/generated/triton.language.associative_scan.html)). Compiler registers/shared/spills and complete-step time/peak decide whether this theoretical search reduction helps. Cache+prefix combination is not implemented.
+
+Two routes keep output16/input16, atom chunk32, owner split4, batch16 rows: parameter atom32/batch split2 control variant and atom16/warps4/batch split2. Controls copy8, param2, atom16/warps4/batch2, same dense operator. N64/N128 B32 A204/A819, seed41, initial decodedrho>1, FP32 IEEE/TF32off, production fused AdamW/Polar with live sigma. 21 samples/execution; rho3/8 screen first.
+
+Host first CPU run caught wrong test expectation atom16 for atom32 route (885 passed/1 failed); fixture assertion corrected before submission. 8 prepare/check and isolated wheel/sdist build passed. GPU tests check full normalized support/snapshot coverage, slices/B1/32/64, independent FP64 Y/dX/all atom gradients/positions,20 reference optimizer updates/moments/steps N64/N128 and old backward. Runtime and speed remain unverified. Ignored evidence owner-prefix-search-20261007 preserved.

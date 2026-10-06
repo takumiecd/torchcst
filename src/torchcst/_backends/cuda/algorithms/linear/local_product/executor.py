@@ -272,6 +272,8 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             COPY=not recipe.parallel_order_copy,
             VECTOR_RANGES=recipe.vector_owner_ranges,
             OWNER_BLOCK=tr.next_power_of_2(groups),
+            PREFIX_RANGES=recipe.prefix_owner_ranges,
+            SEARCH_STEPS=max(32, tr.next_power_of_2(atoms)).bit_length(),
             CachedKeys=cache.keys if cache is not None else None,
             CachedOrder=cache.order if cache is not None else None,
             CachedOffsets=cache.offsets if cache is not None else None,
@@ -301,6 +303,7 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
                 Views=views,
                 Orders=orders,
                 COPY=recipe.parallel_order_copy,
+                RANGES=not recipe.prefix_owner_ranges,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
