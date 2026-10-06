@@ -45,3 +45,34 @@ GPU実行前に、他のinactive recordsの両方向loをclipped終端へ固定�
 ## 04:40 JST: GPU25 tests成功
 
 `l4job-27edc1ed3886455aa1926156c720b24e`:25 passed (20 GPU +5 CPU)、74.17s。actual NVIDIA L4 / torch2.11.0+cu130 / CUDA13 / Triton3.6、source/result archivesと197 runtime hashes一致。キー変更なしだけでなく、キーは変わるが順序が変わらない場合、support endとbucket offsetのlive更新、両方向と片方向のみの逆転、slices/位置勾配/旧backward/20captured optimizer更新も通過した。独立snapshot保持を確認。screen実行中。
+
+## N64 screen: 確認できた探索削減と費用
+
+1 execution /21 samples、完全step us。source/result/197 runtime files、16 full-shape FP64比較、case内初期Parameter/input bytes一致。
+
+|rho|copy8|compact keycache|validated copy8|validated range8|dense|
+|---|---:|---:|---:|---:|---:|
+|1_25|55.27|54.44|54.86|54.40|38.98|
+|3|59.39|58.87|59.53|59.27|38.92|
+|8|56.33|55.75|55.97|55.44|38.79|
+|mixed|62.86|63.38|62.60|62.41|39.08|
+
+mixed forwardは52 refresh中22 sorts→15 sorts、dX21→19。rho3 forward26→26/dX27→25、rho8は27/26で変わらない。単にkeyが変わっただけのsortを一部省けたが、常に省けるわけではない。
+allocated peak118784(compact keycache)→117248(ID-only)、base115712より1536高い。reserved6291456 bytes。validated copy8のlayout eventはmetadata間接load/順序検査/histogram更新の費用を含み、compactより約1us高い場合がある。range8はN64で少し良いが、param2/atom16単独の方が完全stepでは速い。次はcanonical順の連続metadata load＋キーだけgatherで検査するPR41と比較する。N128 screenは進行中。
+
+N64 screen4 artifactsをDB保存、byte-identical export/idempotent再取込成功。
+
+## 04:46 JST: N128 screen完了、近傍修復へ
+
+N128 job成功、source/result/197 runtime hashes、16 full-shape FP64候補比較、case内初期Parameter/input bytes一致。両size合計32 comparisons。単位us、各1 execution /21 samples。
+
+|N128 rho|copy8|compact keycache|validated copy8|validated range8|dense|
+|---|---:|---:|---:|---:|---:|
+|1_25|65.81|61.80|62.31|62.55|45.55|
+|3|69.87|70.73|73.28|73.83|45.43|
+|8|73.61|70.25|69.90|70.45|45.27|
+|mixed|75.86|76.84|78.38|78.77|45.28|
+
+N128 allocated compact311296→validated307200 bytes (−4096)、base303104より4096高い、reserved6291456 bytes。rho3は52 refresh中forward49/dX50 sortsでcompactと同じ。mixedはforward43同じ/dX45→44、rho8は28/28同じ。実際の逆転が存在しており、単にキー変化で誤って全sortしているだけではなかった。
+rho3/mixedのvalidated layout eventは14.34→16.38us、完全stepも遅い。現在の検査だけを有効な高速化として採用しない。次にmetadataをcanonical順で読むPR41を測る。さらに近傍の少数回の正確な交換で順序を修復し、まだ逆転が残る場合だけfull sortへfallbackする案を実装・独立検証する。
+L4 supervisor66084 terminal exit0、全slots stopped、lifecycle Session terminated /server No active sessionsを確認後、explicit G4 supervisor45682でselected3 jobsを開始した。G4未回収。screen8 artifacts全てDB保存、byte-identical export /idempotent再取込成功。
