@@ -296,6 +296,7 @@ def ordered_views(
     CachedOffsets=None,
     Stats=None,
     CACHE: tl.constexpr = False,
+    CACHE_STATS: tl.constexpr = True,
     CACHE_LOGICAL: tl.constexpr = False,
     CACHE_VALIDATE: tl.constexpr = False,
     CACHE_GATHER: tl.constexpr = False,
@@ -412,22 +413,28 @@ def ordered_views(
                 source = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
                 starts = tl.load(CachedOffsets + direction * STRIDE + g, g < STRIDE, 0)
         sorted_bucket = tl.full((AC,), 0, tl.int32)  # RANGES is statically false.
-        stats_stride: tl.constexpr = 5 if REPAIR_ROUNDS else 3
-        calls = tl.load(Stats + direction * stats_stride)
-        rebuilds = tl.load(Stats + direction * stats_stride + 1)
-        reuses = tl.load(Stats + direction * stats_stride + 2)
-        tl.store(Stats + direction * stats_stride, calls + 1)
-        tl.store(Stats + direction * stats_stride + 1, rebuilds + changed.to(tl.int64))
-        tl.store(Stats + direction * stats_stride + 2, reuses + (~changed).to(tl.int64))
-        if REPAIR_ROUNDS:
-            fixes = tl.load(Stats + direction * stats_stride + 3)
-            sorts = tl.load(Stats + direction * stats_stride + 4)
+        if CACHE_STATS:
+            stats_stride: tl.constexpr = 5 if REPAIR_ROUNDS else 3
+            calls = tl.load(Stats + direction * stats_stride)
+            rebuilds = tl.load(Stats + direction * stats_stride + 1)
+            reuses = tl.load(Stats + direction * stats_stride + 2)
+            tl.store(Stats + direction * stats_stride, calls + 1)
             tl.store(
-                Stats + direction * stats_stride + 3, fixes + repaired.to(tl.int64)
+                Stats + direction * stats_stride + 1, rebuilds + changed.to(tl.int64)
             )
             tl.store(
-                Stats + direction * stats_stride + 4, sorts + full_sorted.to(tl.int64)
+                Stats + direction * stats_stride + 2, reuses + (~changed).to(tl.int64)
             )
+            if REPAIR_ROUNDS:
+                fixes = tl.load(Stats + direction * stats_stride + 3)
+                sorts = tl.load(Stats + direction * stats_stride + 4)
+                tl.store(
+                    Stats + direction * stats_stride + 3, fixes + repaired.to(tl.int64)
+                )
+                tl.store(
+                    Stats + direction * stats_stride + 4,
+                    sorts + full_sorted.to(tl.int64),
+                )
     else:
         key = tl.sort(key, descending=False)
         source = (key % C).to(tl.int32)
