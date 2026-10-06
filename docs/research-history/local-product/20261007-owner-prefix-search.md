@@ -25,4 +25,4 @@ Declaration correction rerun1 passed/18 GPU skipped; changed-file ruff/diff chec
 
 Complete-step median us. Peak allocated115712/303104 bytes and reserved6291456 unchanged. Separate layout event64rho3 8.19→11.26us,128rho3 13.31→17.41us. Layout compiler64prefix32regs/0spill/shared1024 vs27/0/1024,128prefix48/0/4096 vs46/0/4096. Copy-only CTA drops64regs32→24 and12856→40, shared16→0. No measured spill increase; serial prefix/bisection work in two order CTAs adds latency even though other CTAs avoid interval scan. Hardware DRAM traffic not measured.
 
-Raw correct/negative evidence preserved.4 measurement artifacts are being independently imported/exported/idempotence-checked in DB. CPU CI f5ac36a4 SUCCESS. Next distinct prototype computes conservative support-span bounds with position histogram prefix counts and direct lookup; this result is not replaced.
+Raw correct/negative evidence preserved.4 measurement artifacts DB byte-identical export/idempotent reimport checks passed. CPU CI f5ac36a4 SUCCESS. Next distinct prototype computes conservative support-span bounds with position histogram prefix counts and direct lookup; this result is not replaced.

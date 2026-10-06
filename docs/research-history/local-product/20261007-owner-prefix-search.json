@@ -3641,5 +3641,51 @@
       "timeout_scope": "driver process, including any setup inside driver"
     },
     "tests": "...................                                                      [100%]\n19 passed in 33.70s"
-  }
+  },
+  "database": [
+    {
+      "job": "l4job-9116aca8479a4ba1a23afe385b1c493c",
+      "artifact": "owner-prefix-search-64-rho3.json",
+      "run_id": "6bc27ffb3c3acd88aa173d2225bd0f207e400b175da8f5b99c0f5d88abc0be88",
+      "projection_id": "35f677d7902829f909183fad7070788da400f2341686dbd6785b1bd8cc145078",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "48d75e8e055281e0009c333326b9bfe560b246d7a4fb071c574f4852e239b95e",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-9116aca8479a4ba1a23afe385b1c493c",
+      "artifact": "owner-prefix-search-64-rho8.json",
+      "run_id": "dff52d91b76e3d5b2a008c1a90e818ac6bfccf6af3c48769138bea68968cfffe",
+      "projection_id": "18ac12e54fdb5102416a0decea9fd23d531ff372bdde07a6f8a85cdebf0c2784",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "6a34ff7dfa1914ebeed438df604a7f7ca3223053e5620b29d7f81f3c9ff55fb9",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-040d0532f0344732aae36530118b9b62",
+      "artifact": "owner-prefix-search-128-rho3.json",
+      "run_id": "6d5542f34297769a03c0ab9173bb7adde91e36e2fd5d83577ce53aef414d3cda",
+      "projection_id": "7a146f9967034ca03fbc20ee2ca6e4ec86ec7fc316c09d534937d40557c4d3cd",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "d65f9cca9eb5861599c32a91e6fb18a543560351f4943ce5499865defe4406e8",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-040d0532f0344732aae36530118b9b62",
+      "artifact": "owner-prefix-search-128-rho8.json",
+      "run_id": "08ee09566ea6db3c6c49c60c5da8c118b9da4fdcf31772f19b234cb884a3cdcd",
+      "projection_id": "9756bf6e296c4f02fb8e7709d5a715323846d7b3ddb3f10c124125baefd6b184",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "d5cd56fcdf75137c953e1369214cbdd10e49883a9b5938717d7c27ae2eefea62",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    }
+  ]
 }
