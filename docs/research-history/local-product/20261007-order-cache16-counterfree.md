@@ -4,7 +4,7 @@ This combines PR #51’s exact cached ordering without diagnostic counters with 
 
 The runtime is unchanged from PR #51. Ordering repairs still use exact neighbor checks and full-sort fallback. Disabling counters removes their allocation and writes, not correctness checks. Position gradients, full-domain discrete L2 normalization before slicing, dX and all source-parameter gradients remain part of the contract; source-width VJP follows the existing fixed-decoded-width contract while optimizer steps change forward widths.
 
-Host validation: 887 passed, 877 CUDA skips in 22.65 seconds, eight kernel comparison preparations/checks, wheel and source build. GPU correctness and performance are pending. No automatic dispatch or performance claim is introduced.
+Host validation: 887 passed, 877 CUDA skips in 22.65 seconds, eight kernel comparison preparations/checks, wheel and source build. GPU correctness passed; retrieved timing evidence is below. No automatic dispatch or performance claim is introduced.
 
 
 ## Retrieved GPU evidence
