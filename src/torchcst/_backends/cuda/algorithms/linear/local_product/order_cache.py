@@ -79,7 +79,7 @@ class OrderKeyCache(nn.Module):
             "canonical_atoms": self.atoms,
             "slot_capacity_per_view": self.atoms,
             "key_bits": self.keys.element_size() * 8,
-            "counter_scope": "since initialization; includes warmup/capture/replay/diagnostics",
+            "counter_scope": "since initialization; counts executed refreshes",
             "counter_names": ["refreshes", "rebuilds", "reuses"],
             "forward": counters[0],
             "dx": counters[1],
