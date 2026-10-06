@@ -9,3 +9,20 @@ N64/N128 B32 A204/A819 seed41 FP32 IEEE/TF32off, initial decodedrho>1,production
 Host886 passed/841 skipped (22.24s), changed-file ruff,diff checks,8 prepare/check,isolated wheel/sdist build passed. GPU correctness/time pending; raw evidence order-cache-atom16-20261007 ignored and preserved.
 
 Frozen source4aa6823f; PR47. Check `l4job-6b7bad148a734e33a093493f964a64f0`,64screen `l4job-337c739d866946f8a6e954b1e04da9a7`,128screen `l4job-48f55393ade9438ca2b07140ec062f39` queued after combined full repeats on supervisor65855.
+
+## Verified GPU screening
+
+28 tests passed (27 GPU +1 declaration),8.11s. Source4aa6823f; committed/submitted/worker197 runtime hashes and both archive SHA256 proofs agree. All32 full-shape FP64 comparisons passed, nonzero position gradients, actual initialrho>1 and evolving production widths. Same Parameter and input bytes across plans including dense. One execution per condition,21 samples; medians us, independent full reruns remain pending.
+
+|N/rho|copy8|uncached atom16split2|gather atom32|repair4 atom32|repair8 atom32|gather atom16|repair4 atom16|repair8 atom16|dense|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|64/3|59.54|51.18|53.16|52.82|53.01|51.63|51.19|51.48|39.06|
+|64/8|56.66|51.20|52.32|52.26|51.76|50.39|50.75|50.67|39.26|
+|128/3|70.50|67.88|68.58|69.69|66.09|68.94|70.03|66.29|45.73|
+|128/8|74.28|69.85|66.31|66.40|66.37|66.52|66.48|66.58|45.81|
+
+N64 wide cached atom16 improves the matching cached atom32 and uncached atom16 candidates in this screen. Middle atom16 repair4 is essentially tied with uncached atom16. N128 atom32 remains faster than each matching cached atom16 route in both screened conditions; no N128 full promotion. Peaks unchanged relative to matching routes: uncached115,712/303,104 bytes,cache117,248/307,200; reserved6,291,456. No physical DRAM/cache-residency inference.
+
+N64 full rho1.25/3/8/mixed independent repeats queued: `l4job-cebf9a04d820407d9cdb8af8819ca8e1` and `l4job-9510bc7d2b6a4ca092935cc85cd5d69e`,source4aa6823f. Five CST routes (copy8,uncached atom16split2,three cached atom16) +dense; repeat2 reverses case/plan order. No new GPU or parallel consumer allocated.
+
+All4 screening artifacts have verified byte-identical DB export and idempotent reimport. CPU CI at a9a3cb9c passed. Full repeat jobs remain queued.
