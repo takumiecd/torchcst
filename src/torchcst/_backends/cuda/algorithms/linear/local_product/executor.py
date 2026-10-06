@@ -275,6 +275,11 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             PREFIX_RANGES=recipe.prefix_owner_ranges,
             HIST_RANGES=recipe.histogram_owner_ranges,
             FUSED_HIST=recipe.fused_histogram_owner_ranges,
+            TIGHT_HIST=recipe.tight_histogram_owner_ranges,
+            JOINT_STRIDE=max(domain.input_count, domain.output_count) + 1,
+            JOINT_BINS=tr.next_power_of_2(
+                3 * (max(domain.input_count, domain.output_count) + 1) + 1
+            ),
             POSITION_BINS=tr.next_power_of_2(
                 max(domain.input_count, domain.output_count) + 1
             ),

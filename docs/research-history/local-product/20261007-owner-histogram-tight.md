@@ -1,0 +1,11 @@
+# 2026-10-07: tightly packed joint position histogram
+
+Branch kernel/owner-histogram-tight based on PR50/c6ce329d. Prior three-histogram and padded-joint routes remain. Two new inline routes preserve the safe exact-coverage owner envelope while reducing redundant joint-bin padding. No mathematical factor,normalization,source/position-gradient,Polar update or snapshot changes.
+
+Let T=max(input_count,output_count)+1. A current general-band atom at phase p=0,1,2 has joint_key=p*T+clipped_lo. Joint bins J=next_power_of_2(3T+1),nonmembers/padding useJ-1. Every active lookup p*T+t (0<=t<=direction_count) is below the sentinel; prior phases' counts remain exactly the prior-band counts. With s0 first general-band start,begin=s0+F(pT+clamp(j0-Lp+1)),end=s0+F(pT+clamp(j1)),the same safe envelope as PR48/50. No epsilon pruning,STE,global histogram/prefix/H or reduced position derivatives. Kernel static assertions enforce full range and sentinel capacity.
+
+Full N64:old position stride128/joint512bins ->stride65/joint256. N128:256/1024 ->129/512. Sliced31/41 counts:stride42/joint128 instead64/256. Fewer joint histogram/cumsum bins may reduce register/shared work,but complete-step speed remains unverified. Inline copy uses2 direction CTAs for13 current fields; output/input owner16 sites,batch16 rows,atom chunk32,owner split4;parameter atom32/batch split2 oratom16/4warps/batch split2. Canonical IDs,fresh full-domain discrete-L2 normalizers and immutable snapshots retained.
+
+N64/N128 B32 A204/A819 seed41,IEEE FP32/TF32off,initial performance rho>1 (1.25/3/8/mixed),production fused AdamW/Polar evolving widths,21samples/execution. Controls copy8,param2,atom16split2 and matching padded-joint routes. Dense is an independent nn.Linear performance reference,not equal initial matrix/update trajectory; initial Parameter hashes compare CST recipes only,input/target hashes include dense.
+
+Host890 passed/922 skips(22.93s),changed-file ruff/diff,8 prepare/check pairs and isolated wheel/sdist build passed. New18GPU+1declaration suite covers full support/snapshot coverage,independent FP64 Y/dX/all canonical source gradients/nonzero positions,slices/B1/32/64,N64/N12820 captured reference optimizer updates/moments/steps,outstanding backward andempty-neighbor bands. GPU validation/timing pending. Raw owner-histogram-tight-20261007 evidence ignored/preserved.

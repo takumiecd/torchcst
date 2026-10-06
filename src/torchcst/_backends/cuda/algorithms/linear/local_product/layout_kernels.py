@@ -301,6 +301,9 @@ def ordered_views(
     PREFIX_RANGES: tl.constexpr = False,
     HIST_RANGES: tl.constexpr = False,
     FUSED_HIST: tl.constexpr = False,
+    TIGHT_HIST: tl.constexpr = False,
+    JOINT_STRIDE: tl.constexpr = 1,
+    JOINT_BINS: tl.constexpr = 1,
     POSITION_BINS: tl.constexpr = 1,
     SEARCH_STEPS: tl.constexpr = 1,
     CachedKeys=None,
@@ -461,10 +464,15 @@ def ordered_views(
             # already includes preceding bands, so only the first band start
             # is added. Padding/singletons use a sentinel beyond all lookups.
             general = (a < C) & (bucket >= groups) & (bucket < groups + 3)
-            joint_key = (bucket - groups) * POSITION_BINS + lo
+            if TIGHT_HIST:
+                tl.static_assert(JOINT_STRIDE > N and JOINT_STRIDE > K)
+                tl.static_assert(JOINT_BINS >= 3 * JOINT_STRIDE + 1)
+            joint_stride: tl.constexpr = JOINT_STRIDE if TIGHT_HIST else POSITION_BINS
+            joint_bins: tl.constexpr = JOINT_BINS if TIGHT_HIST else 4 * POSITION_BINS
+            joint_key = (bucket - groups) * joint_stride + lo
             joint_counts = tl.histogram(
-                tl.where(general, joint_key, 4 * POSITION_BINS - 1),
-                4 * POSITION_BINS,
+                tl.where(general, joint_key, joint_bins - 1),
+                joint_bins,
             )
             joint_before = tl.cumsum(joint_counts, 0) - joint_counts
             first_band_start = tl.sum(tl.where(g == groups, starts, 0), 0)
@@ -475,10 +483,10 @@ def ordered_views(
             last_lo = tl.minimum((owner + 1) * 16, count)
             if FUSED_HIST:
                 begin = first_band_start + tl.gather(
-                    joint_before, phase * POSITION_BINS + first_lo, 0
+                    joint_before, phase * joint_stride + first_lo, 0
                 )
                 end = first_band_start + tl.gather(
-                    joint_before, phase * POSITION_BINS + last_lo, 0
+                    joint_before, phase * joint_stride + last_lo, 0
                 )
             else:
                 counts_by_lo = tl.histogram(

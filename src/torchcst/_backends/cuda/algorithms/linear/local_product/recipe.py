@@ -97,6 +97,10 @@ class Recipe:
         return False
 
     @property
+    def tight_histogram_owner_ranges(self):
+        return False
+
+    @property
     def prefix_owner_ranges(self):
         return False
 

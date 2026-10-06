@@ -22,6 +22,8 @@ REUSE_SUFFIXES = (
     "_ordered_reuse_histinline_paramatom16_param4_param2",
     "_ordered_reuse_histfusedinline_param2",
     "_ordered_reuse_histfusedinline_paramatom16_param4_param2",
+    "_ordered_reuse_histtightinline_param2",
+    "_ordered_reuse_histtightinline_paramatom16_param4_param2",
     "_ordered_reuse_hist_param2",
     "_ordered_reuse_hist_paramatom16_param4_param2",
     "_ordered_reuse_hist4_param2",
@@ -270,11 +272,18 @@ class LocalRecipe(Recipe):
             or "_hist4_" in self.route
             or "_histinline_" in self.route
             or "_histfusedinline_" in self.route
+            or "_histtightinline_" in self.route
         )
 
     @property
     def fused_histogram_owner_ranges(self):
-        return self.reuse_layout and "_histfusedinline_" in self.route
+        return self.reuse_layout and (
+            "_histfusedinline_" in self.route or "_histtightinline_" in self.route
+        )
+
+    @property
+    def tight_histogram_owner_ranges(self):
+        return self.reuse_layout and "_histtightinline_" in self.route
 
     @property
     def prefix_owner_ranges(self):
@@ -299,7 +308,9 @@ class LocalRecipe(Recipe):
     @property
     def parallel_order_copy(self):
         if self.reuse_layout and (
-            "_histinline_" in self.route or "_histfusedinline_" in self.route
+            "_histinline_" in self.route
+            or "_histfusedinline_" in self.route
+            or "_histtightinline_" in self.route
         ):
             return False
         if self.reuse_layout:
