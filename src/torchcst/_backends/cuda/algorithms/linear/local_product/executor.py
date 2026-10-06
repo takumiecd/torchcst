@@ -275,8 +275,11 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             CachedKeys=cache.keys if cache is not None else None,
             CachedOrder=cache.order if cache is not None else None,
             CachedOffsets=cache.offsets if cache is not None else None,
-            Stats=cache.stats if cache is not None else None,
+            Stats=cache.stats
+            if cache is not None and recipe.record_order_stats
+            else None,
             CACHE=cache is not None,
+            CACHE_STATS=recipe.record_order_stats,
             CACHE_LOGICAL=recipe.compact_cached_order,
             CACHE_VALIDATE=recipe.validate_cached_order,
             CACHE_GATHER=recipe.gather_validation_key,

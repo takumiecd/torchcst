@@ -43,6 +43,9 @@ CACHE_SUFFIXES = (
     "_ordered_cache_gather_param2_copy8",
     "_ordered_cache_repair4_param2_copy8",
     "_ordered_cache_repair8_param2_copy8",
+    "_ordered_cache_gather_param2_nostats_copy8",
+    "_ordered_cache_repair4_param2_nostats_copy8",
+    "_ordered_cache_repair8_param2_nostats_copy8",
 )
 
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
@@ -61,6 +64,10 @@ class LocalRecipe(Recipe):
         return self.route.endswith(CACHE_SUFFIXES)
 
     @property
+    def record_order_stats(self):
+        return "_nostats_" not in self.route
+
+    @property
     def cache_repair_rounds(self):
         if "_ordered_cache_repair4" in self.route:
             return 4
@@ -75,6 +82,7 @@ class LocalRecipe(Recipe):
                 "_ordered_cache_gather_copy8",
                 "_ordered_cache_gather_range8",
                 "_ordered_cache_gather_param2_copy8",
+                "_ordered_cache_gather_param2_nostats_copy8",
             )
         )
 

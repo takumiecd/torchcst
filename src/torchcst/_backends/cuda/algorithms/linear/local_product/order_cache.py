@@ -84,7 +84,12 @@ class OrderKeyCache(nn.Module):
         self.register_buffer(
             "stats",
             torch.zeros(
-                (2, 5 if recipe.cache_repair_rounds else 3),
+                (
+                    2,
+                    (5 if recipe.cache_repair_rounds else 3)
+                    if recipe.record_order_stats
+                    else 0,
+                ),
                 device=parameters.device,
                 dtype=torch.int64,
             ),
@@ -130,6 +135,7 @@ class OrderKeyCache(nn.Module):
             else ["refreshes", "rebuilds", "reuses"],
             "forward": counters[0][:3],
             "dx": counters[1][:3],
+            "counters_enabled": self.recipe.record_order_stats,
         }
 
         if self.recipe.cache_repair_rounds:
@@ -141,4 +147,11 @@ class OrderKeyCache(nn.Module):
                     "repair_dx": counters[1][3:],
                 }
             )
+        if not self.recipe.record_order_stats:
+            report.update(
+                counter_scope="disabled; no counter allocation or device updates",
+                counter_names=[],
+            )
+            if self.recipe.cache_repair_rounds:
+                report["repair_counter_names"] = []
         return report

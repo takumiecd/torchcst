@@ -105,6 +105,10 @@ class Recipe:
         return False
 
     @property
+    def record_order_stats(self):
+        return True
+
+    @property
     def cache_repair_rounds(self):
         return 0
 
