@@ -97,3 +97,23 @@ GPU28-test再検証とすべてのfull-shape oracle結果を揃えてから採�
 G4 frozen source `8247f9e3`。check `colabjob-3e262ce00e2c478c906e26b35931c04b` queued。最初のmeasurement2 jobsはatom16 alias誤記をsubmit後検出し実行前cancel、数値なし。driverはselected aliasesの集合検査を追加し、正しいcatalog IDsで再submitした。L4 supervisorはG4を起動せず、L4 batch停止確認後に明示G4 supervisorで短いbatchを実行する。
 
 G4正式measurement IDs: `colabjob-e698cde57c6d401f848e06ba579cd64f` repeat1、`colabjob-12c93a616fcb4dcfbd0c2a1c95bc24ae` repeat2。actual RTX PRO 6000 Blackwell / CC12.0をdriverでもassertする。
+
+## 04:34 JST: 全rho独立2回完了
+
+source `ce117f28`、4 full jobs成功。48 full-shape FP64候補比較、source/result/196 runtime hashes、caseごとの初期Parameters/input bytesが全plan・両executionで一致。21 samples/execution、repeat2順序逆転。下表は2 execution mediansのmedian、us。
+
+|size/rho|copy8|param2|atom16/warps4|dense|
+|---|---:|---:|---:|---:|
+|64-rho1_25|55.08|50.72|50.48|38.95|
+|64-rho3|59.38|52.56|53.02|39.15|
+|64-rho8|56.60|52.54|51.29|38.97|
+|64-rhomixed|63.01|58.30|57.69|38.81|
+|128-rho1_25|65.84|64.39|64.84|45.42|
+|128-rho3|69.89|67.49|68.84|45.44|
+|128-rho8|73.65|69.48|70.48|45.34|
+|128-rhomixed|76.23|71.65|72.26|45.41|
+
+atom16はcopy8を全8条件・両executionで改善。N64/rho8とmixedではparam2をさらに短縮、rho3ではparam2が速い。N128は全4条件でparam2がatom16より速い。単一構成を全条件の勝者とせず、サイズ・rhoで候補を選ぶ。
+allocated peakは115712/303104 bytes、reserved6291456 bytesでcopy8と同じ。atom16はbatch partial DQを追加せず、param2はpartial/reduction込みで同ピーク。物理DRAM trafficやcache常駐は未計測。独立2回で統計的有意性は主張しない。DB16 full artifactsの取込検証進行中。G4短比較はL4 batch drain後に実行する。
+
+parameter compiler診断: N64 atom16/warps4は127 registers/shared16384/spill0、param2は128/shared20480/spill0、copy8は218/shared24576/spill0。N128 atom16は96/shared24576/spill0、param2は80/shared40960/spill2。N128はspillのないatom16よりparam2が完全stepで速いので、spill個数だけで採否を決めない。別graphのevent診断は原因の参考に留め、完全stepの数値で評価する。
