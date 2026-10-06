@@ -184,3 +184,26 @@ copy8の狭い条件で約12.9%、mixedで約10.9%の短縮。独立repeat2待�
 別graphのdiagnosticsでlayoutは22.53–23.55→13.31us。wide/mixedのparameters
 診断は16.38usで残り、atom VJPの仕事分割も次の調査対象となる。
 イベント時間の合計から完全stepを再構成しない。
+
+## 03:13 JST: L4独立2回の比較完了
+
+4 measurement jobsすべて成功。source/result/submitted/committed/worker runtime hashes一致、各case内の初期Parameters/inputsも全候補・2反復で一致。64 full-shape oracle比較成功。以下は各executionの21 sample medianを独立2回測り、その2 mediansの中央値。単位us。
+
+|size/rho|baseline|parallel4|copy8|vector8|dense|copy8 paired短縮|
+|---|---:|---:|---:|---:|---:|---:|
+|64/1_25|56.05|54.92|55.40|56.20|39.17|1.16%|
+|64/3|59.39|58.93|59.29|58.72|39.11|0.17%|
+|64/8|57.44|56.29|56.99|56.56|40.55|0.78%|
+|64/mixed|63.21|62.34|63.01|62.37|39.25|0.30%|
+|128/1_25|75.50|71.53|66.21|69.03|45.73|12.30%|
+|128/3|79.38|75.31|70.14|73.27|47.39|11.65%|
+|128/8|83.07|79.20|73.96|77.01|45.84|10.97%|
+|128/mixed|85.44|81.83|76.16|79.22|45.78|10.86%|
+
+N128 copy8は各反復で全4条件を改善し、paired短縮中央値10.86–12.30%。N64はparallel4が0.77–2.02%程度と小さい。vector8はN64 rho1.25の2回目を悪化させ、copy8をN128で超えないため現時点の選択肢から外す。
+
+allocated/reserved peaksは全split4候補でN64 115712 / 6291456 bytes、N128 303104 / 6291456 bytes。全raw runで同じreserved peakを確認した。新copy8は追加Hやpartial allocationを作らない。
+
+N128/rho3 denseは46.14/48.64us、N64/rho8 denseは41.96/39.14usと変動がある。dense比とその限界をraw run mediansと併記し、統計的有意差を主張しない。主判断は同じjobのbaselineとcandidateの完全step比較。
+
+最初の8 artifactsはDB保存済み。repeat2の8 artifactsは保存処理中。次は残りfamilyのL4検証/screenを回収し、one-worker poolをdrainしてowned L4停止確認後、copy8/parallel4の短いG4検証・2反復へ進む。
