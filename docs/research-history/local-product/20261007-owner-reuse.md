@@ -61,3 +61,18 @@ PR #35のfull sourceは`1ea99c9369a73d1d63b766c8b2324b47a5c00dcb`で凍結して
 PR #35のvector4候補は`vector_support=True`も含むことを現在のrecipe検査で確認した。
 範囲構築単独の比較として扱わず、vector8 / copy8はこのflagがFalseである。
 既存aliasの測定契約は変更していない。後続報告にはこの交絡を明記する。
+
+## 03:05 JST: 短いjobへ分割
+
+長い親jobが接続timeoutで回収不能となったため、未実行の
+`l4job-cf4ed3f8c10844d78a1bcee71f5f7401`をcancelした。数値はない。
+source `aad657e4d029a61bfea437ac3b4c88d0cb42c5f7`
+(runtimeは`140562ce8d36a81d7d98a6038cbeb1abfa56f179`と同一)から、
+L4 one-worker queueへ以下をsubmitした。
+
+- `l4job-f7a31fcb157644a6a15e5e4909d39c7d`: 新候補55 testsのみ。
+- `l4job-282e9895051b41ddb37cc5e468f6f0e0`: N64 rho3/8、6新候補と3controls。
+- `l4job-a0d84b85e3b649139b497bb63dffce9c`: N128 rho3/8、同じ比較。
+
+GPU検証・screenは未完了。各測定はfull-shape FP64 Y/dX/全atom勾配oracleを
+通してから行う。初期rho>1、production width更新、21 samples、denseも維持する。
