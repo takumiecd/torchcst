@@ -110,7 +110,14 @@ def test_release_does_not_save_forward_id_storage(plan):
     )
     model = PlanLinear(initialize(run.case).cuda(), fixture_operator(run.case), plan)
     x = torch.randn(32, 128, device="cuda", requires_grad=True)
-    y = model(x)
-    saved = [t for t in y.grad_fn.saved_tensors if t.dtype == torch.int16]
-    assert len(saved) == 1 and saved[0].shape == (8, 832)
-    assert saved[0].untyped_storage().nbytes() == saved[0].numel() * 2
+    saved = []
+
+    def pack(tensor):
+        if tensor.dtype == torch.int16:
+            saved.append((tuple(tensor.shape), tensor.untyped_storage().nbytes()))
+        return tensor
+
+    with torch.autograd.graph.saved_tensors_hooks(pack, lambda tensor: tensor):
+        y = model(x)
+    assert y.shape == (32, 128)
+    assert saved == [((8, 832), 8 * 832 * 2)]
