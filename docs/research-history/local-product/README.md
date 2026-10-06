@@ -1,5 +1,16 @@
 # Small linear product / hybrid H
 
+2026-10-06: [Physical support order and split owners on L4/G4](20261006-ordered-owner.md).
+Seven recipes compare compact physical views, exact IDs/ranges, cached H,
+two/four-way atom groups and bounded int32 sort keys. Four-way local H with
+compact keys reduces paired L4 time by2.5–15.9% in seven of eight cases, with
+about11% lower allocated peak; N128/rho1.25 remains1.4% slower. G4 rho3 improves
+12.0% at N64 and9.9% at N128. Ranges save30–35% memory but usually cost time.
+120 full-shape scalar comparisons and28 DB artifacts are preserved. Cold probes
+show better load coalescing, without a large DRAM-read reduction. Initial
+Parameters match within each device; cross-device hashes differ. Public selection
+remains unchanged.
+
 2026-10-06: [Compact owner IDs and H lifetime on L4/G4](20261006-owner-index-refine.md).
 Five refinements retain normalized position gradients. Removing the B*A H
 buffer reduces complete-step allocated peak19.3% at N64 and27.8% at N128;

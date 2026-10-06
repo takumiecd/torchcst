@@ -304,6 +304,39 @@ The [refinement record](../../../docs/research-history/local-product/20261006-ow
 reports complete-step tradeoffs and negative trials. These recipes remain
 explicit research selections.
 
+## Physical support order and owner splitting (2026-10-06)
+
+`plans-local-ordered.json` compares the compact-ID controls with compact physical
+atom views, ordered by rho band and by the relevant input/output support start.
+The range recipes consume a bounded contiguous candidate range with exact
+intersection masks. Split2/4 divide disjoint32-atom chunks and include their
+partial-buffer reduction in the complete-step timing. The int32-key candidate
+keeps the same ordering and falls back to int64 when its key bound does not fit.
+
+Use `local-ordered-{64,128}-rho{1_25,3,8,mixed}.json` (B32, initial rho>1,
+minimum/birth0.25, live width updates). Parameter and Adam identities remain
+canonical; position gradients and outstanding backwards use per-call maps.
+
+```bash
+python -m tools.kernel_dev prepare \
+  --plans benchmarks/cuda/linear/plans-local-ordered.json \
+  --case benchmarks/cuda/linear/cases/local-ordered-128-rho3.json \
+  --candidate local-ordered-split4-i32-atom32 \
+  --output output/ordered-owner-comparison
+python -m tools.kernel_dev check \
+  --plans output/ordered-owner-comparison/plans.json \
+  --case output/ordered-owner-comparison/case.json
+python -m benchmarks.cuda.linear.run \
+  --plans output/ordered-owner-comparison/plans.json \
+  --case output/ordered-owner-comparison/case.json \
+  --polar-update fused --phase-diagnostics --kernel-diagnostics \
+  --output output/ordered-owner-comparison/result.json
+```
+
+The [ordered-owner record](../../../docs/research-history/local-product/20261006-ordered-owner.md)
+includes preparation overhead, time/memory tradeoffs and separate cold access
+diagnostics. These recipes remain explicit research selections.
+
 ## Matched initial-rho audit (2026-10-05)
 
 `local-rho-audit-{64,128}-rho{1_25,1_5,2,3,4,8,16}.json` initializes every
