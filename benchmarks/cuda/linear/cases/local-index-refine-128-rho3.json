@@ -36,7 +36,8 @@
     "persistent-supportprep-band-recompute-vjp-index16-atom32",
     "persistent-supportprep-band-recompute-vjp-index16-release-atom32",
     "persistent-supportprep-band-recompute-vjp-index16-fused-atom32",
-    "persistent-supportprep-band-recompute-vjp-index16-local-atom32"
+    "persistent-supportprep-band-recompute-vjp-index16-local-atom32",
+    "persistent-supportprep-band-recompute-vjp-index16-release-h-atom32"
   ],
   "baseline": "persistent-supportprep-band-recompute-vjp-index-atom32",
   "dense": true

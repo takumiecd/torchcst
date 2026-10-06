@@ -11,7 +11,7 @@ CANDIDATES = tuple(e.plan for e in PLANS[1:])
 
 
 def test_refine_declarations():
-    assert len(PLANS) == 5
+    assert len(PLANS) == 6
     assert PLANS[0].plan.recipe.index_bits == 32
     for plan in CANDIDATES:
         assert REGISTRY.load_plan(REGISTRY.dump_plan(plan)) == plan
@@ -100,19 +100,23 @@ def test_refine_old_backward_after_layout_change(plan):
     tuple(p for p in CANDIDATES if p.recipe.release_forward_index),
     ids=lambda p: p.recipe.route,
 )
-def test_release_does_not_save_forward_id_storage(plan):
+@pytest.mark.parametrize("rho", ("3", "8"))
+def test_release_does_not_save_forward_id_storage(plan, rho):
     from benchmarks.cuda.linear.local_product import fixture_operator, initialize
     from benchmarks.cuda.linear.manifest import load_run
     from benchmarks.cuda.linear.run import PlanLinear
 
     run = load_run(
-        "benchmarks/cuda/linear/cases/local-index-refine-128-rho3.json", CATALOG
+        f"benchmarks/cuda/linear/cases/local-index-refine-128-rho{rho}.json", CATALOG
     )
     model = PlanLinear(initialize(run.case).cuda(), fixture_operator(run.case), plan)
     x = torch.randn(32, 128, device="cuda", requires_grad=True)
     saved = []
+    saved_h = []
 
     def pack(tensor):
+        if tensor.dtype == torch.float32 and tensor.shape == (32, 819):
+            saved_h.append(tuple(tensor.shape))
         if tensor.dtype == torch.int16:
             saved.append((tuple(tensor.shape), tensor.untyped_storage().nbytes()))
         return tensor
@@ -121,3 +125,6 @@ def test_release_does_not_save_forward_id_storage(plan):
         y = model(x)
     assert y.shape == (32, 128)
     assert saved == [((8, 832), 8 * 832 * 2)]
+    assert bool(saved_h) == (
+        not plan.recipe.release_forward_h and not plan.recipe.recompute_h
+    )

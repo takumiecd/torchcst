@@ -68,6 +68,10 @@ class Recipe:
     def fuse_owner_index(self):
         return False
 
+    @property
+    def release_forward_h(self):
+        return False
+
     def __post_init__(self):
         if not self.rho_upper or any(
             not math.isfinite(x) or x <= 0 for x in self.rho_upper

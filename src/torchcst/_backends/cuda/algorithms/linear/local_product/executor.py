@@ -439,10 +439,14 @@ class _LocalH(torch.autograd.Function):
                 singletons=singletons,
             )
         _stamp("output", 1)
+        if recipe.release_forward_h and (
+            not recipe.recompute_param_h or recipe.save_g or saved
+        ):
+            raise ValueError("forward-only H requires recomputed parameter VJP and dX")
         ctx.save_for_backward(
             x,
             views[0] if tile_packed else packed,
-            h,
+            q.new_empty((0,)) if recipe.release_forward_h else h,
             views,
             orders,
             offsets,

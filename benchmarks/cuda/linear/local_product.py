@@ -31,6 +31,7 @@ class LocalRecipe(Recipe):
             "_vector4",
             "_unroll",
             "_index16_release",
+            "_index16_release_h",
             "_index16_fused",
             "_index16_local",
             "_index16",
@@ -69,6 +70,7 @@ class LocalRecipe(Recipe):
                 "_index",
                 "_index16",
                 "_index16_release",
+                "_index16_release_h",
                 "_index16_fused",
                 "_index16_local",
             )
@@ -81,8 +83,17 @@ class LocalRecipe(Recipe):
     @property
     def release_forward_index(self):
         return self.route.endswith(
-            ("_index16_release", "_index16_fused", "_index16_local")
+            (
+                "_index16_release",
+                "_index16_release_h",
+                "_index16_fused",
+                "_index16_local",
+            )
         )
+
+    @property
+    def release_forward_h(self):
+        return self.route.endswith("_index16_release_h")
 
     @property
     def fuse_owner_index(self):
@@ -170,6 +181,7 @@ class LocalRecipe(Recipe):
                 self.base_route + "_index",
                 self.base_route + "_index16",
                 self.base_route + "_index16_release",
+                self.base_route + "_index16_release_h",
                 self.base_route + "_index16_fused",
                 self.base_route + "_index16_local",
             )
