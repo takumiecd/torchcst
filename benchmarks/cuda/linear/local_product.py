@@ -30,6 +30,7 @@ class LocalRecipe(Recipe):
             "_vector",
             "_vector4",
             "_unroll",
+            "_index",
         ):
             if self.route.endswith(suffix):
                 return self.route[: -len(suffix)]
@@ -53,6 +54,10 @@ class LocalRecipe(Recipe):
             self.recompute_h
             or self.base_route == "persistent_supportprep_band_recompute_vjp"
         )
+
+    @property
+    def owner_index(self):
+        return self.route.endswith("_index")
 
     @property
     def unroll_support(self):
@@ -133,9 +138,15 @@ class LocalRecipe(Recipe):
             not in (
                 self.base_route,
                 self.base_route + "_unroll",
+                self.base_route + "_index",
             )
         ):
             raise ValueError("recomputed parameter VJP supports base/unroll launches")
+        if (
+            self.owner_index
+            and self.base_route != "persistent_supportprep_band_recompute_vjp"
+        ):
+            raise ValueError("owner indexing requires recomputed parameter VJP")
         if self.route != self.base_route and self.base_route not in (
             "persistent_supportprep_band",
             "persistent_supportprep_g",

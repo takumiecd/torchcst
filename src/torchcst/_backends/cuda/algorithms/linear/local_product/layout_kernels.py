@@ -7,6 +7,50 @@ from .kernels import _interval
 
 
 @tr.jit
+def index_owners(
+    P,
+    Reverse,
+    Ids,
+    Offsets,
+    C: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    JS: tl.constexpr,
+    IS: tl.constexpr,
+    S: tl.constexpr,
+    MID: tl.constexpr,
+    AC: tl.constexpr,
+    CAP: tl.constexpr,
+    GROUPS: tl.constexpr,
+):
+    """Per-call general-atom indices; payloads and H keep their existing order."""
+    direction, owner = tl.program_id(0), tl.program_id(1)
+    a = tl.arange(0, AC)
+    vlo, vhi, vw = _interval(P, a, C, False, JS, K)
+    ulo, uhi, uw = _interval(P, a, C, True, IS, N)
+    lo, hi = tl.where(direction == 0, ulo, vlo), tl.where(direction == 0, uhi, vhi)
+    flags = tl.load(P + 8 * C + a, a < C, -1).to(tl.int32)
+    inv = tl.load(P + C + a, a < C, 0.0)
+    band = tl.where(
+        inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
+    )
+    enabled = (a < C) & (flags != 3) & (vw > 0) & (uw > 0)
+    enabled &= (lo < (owner + 1) * 16) & (hi > owner * 16)
+    physical = tl.load(Reverse + direction * C + a, a < C, -1)
+    enabled &= physical >= 0
+    row = direction * GROUPS + owner
+    begin = tl.full((), 0, tl.int32)
+    for phase in tl.static_range(3):
+        live = enabled & (band == phase)
+        rank = tl.cumsum(live.to(tl.int32), 0) - 1
+        count = tl.sum(live.to(tl.int32), 0)
+        tl.store(Ids + row * CAP + begin + rank, physical, live)
+        tl.store(Offsets + row * 4 + phase, begin)
+        begin += count
+    tl.store(Offsets + row * 4 + 3, begin)
+
+
+@tr.jit
 def refresh(
     P,
     Ids,

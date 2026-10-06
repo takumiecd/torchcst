@@ -52,6 +52,10 @@ class Recipe:
     def band_dispatch(self):
         return False
 
+    @property
+    def owner_index(self):
+        return False
+
     def __post_init__(self):
         if not self.rho_upper or any(
             not math.isfinite(x) or x <= 0 for x in self.rho_upper

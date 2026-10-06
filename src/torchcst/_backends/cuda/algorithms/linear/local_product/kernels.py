@@ -615,6 +615,9 @@ def fused_packed(
     UNROLL_SUPPORT: tl.constexpr = False,
     BN: tl.constexpr = 16,
     RECOMPUTE_H: tl.constexpr = False,
+    OwnerIds=None,
+    OwnerOffsets=None,
+    INDEX_A: tl.constexpr = 0,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     tile = tl.program_id(1)
@@ -634,9 +637,17 @@ def fused_packed(
             if Ends is not None
             else tl.load(Offsets + bucket + 1, has_bucket, 0)
         )
+        if OwnerIds is not None and phase >= owners:
+            indexed_band = phase - owners
+            begin = tl.load(OwnerOffsets + tile * 4 + indexed_band)
+            end = tl.load(OwnerOffsets + tile * 4 + indexed_band + 1)
         for a0 in range(begin, end, BA):
             a = a0 + tl.arange(0, BA)
             valid = (a < A) & (a < end)
+            if OwnerIds is not None and phase >= owners:
+                position = a
+                a = tl.load(OwnerIds + tile * INDEX_A + position, position < end, 0)
+                valid = (position < end) & (a >= 0) & (a < A)
             vlo, _vhi, vw = _interval(P, a, A, SWAP, JS, K)
             ulo, uhi, uw = _interval(P, a, A, not SWAP, IS, N)
             if phase < owners:
