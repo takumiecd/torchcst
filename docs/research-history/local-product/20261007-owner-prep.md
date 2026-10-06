@@ -150,3 +150,19 @@ live supervisorがなくなってからrecoverした。full repeat2とreuse/cach
 検証2jobのsource/result archive hash、submitted/committed/worker全runtime hash一致を確認。
 合計72 GPU tests + declaration 2回。測定jobはfull-shape FP64 oracleを各候補で
 通してから同じbaseline/parallel4/copy8/vector8を測る。repeat2はcase/plan順を逆転する。
+
+## 03:05 JST: 最初のN64 full run
+
+`l4job-98265f64fd6648cda671d867835ee2ab`成功。source/result archiveと全runtime hash、
+full-shape FP64比較を確認した。4 artifactsをDB保存、byte export/idempotent再取込成功。
+隣接JSONを全3screens、最新検証2jobs、このfull runの簡潔な記録へ更新した。
+
+|rho|baseline|parallel4|copy8|vector8|dense|
+|---|---:|---:|---:|---:|---:|
+|1.25|55.73|54.85|55.50|54.99|39.14|
+|3|59.46|58.94|59.23|58.91|39.02|
+|8|57.37|56.31|57.08|56.70|41.96|
+|mixed|63.32|62.37|62.99|62.43|39.09|
+
+単位us、各1 execution。allocated peakは全候補115712 bytes。rho8のdenseは
+他条件より遅いため、独立repeatが揃うまでdense比の結論を保留する。
