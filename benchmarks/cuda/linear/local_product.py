@@ -56,6 +56,7 @@ class LocalRecipe(Recipe):
     def reuse_layout(self):
         return self.route.endswith(REUSE_SUFFIXES)
 
+    @property
     def cached_order(self):
         return self.route.endswith(CACHE_SUFFIXES)
 
@@ -70,7 +71,11 @@ class LocalRecipe(Recipe):
     @property
     def gather_validation_key(self):
         return self.cache_repair_rounds > 0 or self.route.endswith(
-            ("_ordered_cache_gather_copy8", "_ordered_cache_gather_range8", "_ordered_cache_gather_param2_copy8")
+            (
+                "_ordered_cache_gather_copy8",
+                "_ordered_cache_gather_range8",
+                "_ordered_cache_gather_param2_copy8",
+            )
         )
 
     @property
@@ -92,36 +97,40 @@ class LocalRecipe(Recipe):
 
     @property
     def base_route(self):
-        for suffix in REUSE_SUFFIXES + CACHE_SUFFIXES + (
-            "_ordered_prep_vector8",
-            "_ordered_prep_vector",
-            "_ordered_prep_copy8",
-            "_ordered_prep_copy",
-            "_ordered_prep_parallel8",
-            "_ordered_prep_parallel",
-            "_ordered_prep_warp8",
-            "_ordered_prep_range",
-            "_ordered_split4_i32",
-            "_ordered_band",
-            "_ordered_index",
-            "_ordered_cached",
-            "_ordered_split2",
-            "_ordered_split4",
-            "_ordered",
-            "_tile32",
-            "_tile64",
-            "_contract4",
-            "_contract8",
-            "_param4",
-            "_vector",
-            "_vector4",
-            "_unroll",
-            "_index16_release",
-            "_index16_release_h",
-            "_index16_fused",
-            "_index16_local",
-            "_index16",
-            "_index",
+        for suffix in (
+            REUSE_SUFFIXES
+            + CACHE_SUFFIXES
+            + (
+                "_ordered_prep_vector8",
+                "_ordered_prep_vector",
+                "_ordered_prep_copy8",
+                "_ordered_prep_copy",
+                "_ordered_prep_parallel8",
+                "_ordered_prep_parallel",
+                "_ordered_prep_warp8",
+                "_ordered_prep_range",
+                "_ordered_split4_i32",
+                "_ordered_band",
+                "_ordered_index",
+                "_ordered_cached",
+                "_ordered_split2",
+                "_ordered_split4",
+                "_ordered",
+                "_tile32",
+                "_tile64",
+                "_contract4",
+                "_contract8",
+                "_param4",
+                "_vector",
+                "_vector4",
+                "_unroll",
+                "_index16_release",
+                "_index16_release_h",
+                "_index16_fused",
+                "_index16_local",
+                "_index16",
+                "_index",
+            )
         ):
             if self.route.endswith(suffix):
                 return self.route[: -len(suffix)]
@@ -196,23 +205,27 @@ class LocalRecipe(Recipe):
 
     @property
     def ordered_layout(self):
-        return self.reuse_layout or self.cached_order or self.route.endswith(
-            (
-                "_ordered",
-                "_ordered_band",
-                "_ordered_index",
-                "_ordered_cached",
-                "_ordered_split2",
-                "_ordered_split4",
-                "_ordered_split4_i32",
-                "_ordered_prep_vector8",
-                "_ordered_prep_vector",
-                "_ordered_prep_copy8",
-                "_ordered_prep_copy",
-                "_ordered_prep_parallel8",
-                "_ordered_prep_parallel",
-                "_ordered_prep_warp8",
-                "_ordered_prep_range",
+        return (
+            self.reuse_layout
+            or self.cached_order
+            or self.route.endswith(
+                (
+                    "_ordered",
+                    "_ordered_band",
+                    "_ordered_index",
+                    "_ordered_cached",
+                    "_ordered_split2",
+                    "_ordered_split4",
+                    "_ordered_split4_i32",
+                    "_ordered_prep_vector8",
+                    "_ordered_prep_vector",
+                    "_ordered_prep_copy8",
+                    "_ordered_prep_copy",
+                    "_ordered_prep_parallel8",
+                    "_ordered_prep_parallel",
+                    "_ordered_prep_warp8",
+                    "_ordered_prep_range",
+                )
             )
         )
 
@@ -222,34 +235,44 @@ class LocalRecipe(Recipe):
 
     @property
     def compact_order_key(self):
-        return self.reuse_layout or self.cached_order or self.route.endswith(
-            (
-                "_ordered_split4_i32",
-                "_ordered_prep_vector8",
-                "_ordered_prep_vector",
-                "_ordered_prep_copy8",
-                "_ordered_prep_copy",
-                "_ordered_prep_parallel8",
-                "_ordered_prep_parallel",
-                "_ordered_prep_warp8",
-                "_ordered_prep_range",
+        return (
+            self.reuse_layout
+            or self.cached_order
+            or self.route.endswith(
+                (
+                    "_ordered_split4_i32",
+                    "_ordered_prep_vector8",
+                    "_ordered_prep_vector",
+                    "_ordered_prep_copy8",
+                    "_ordered_prep_copy",
+                    "_ordered_prep_parallel8",
+                    "_ordered_prep_parallel",
+                    "_ordered_prep_warp8",
+                    "_ordered_prep_range",
+                )
             )
         )
 
     @property
     def parallel_owner_ranges(self):
-        return self.reuse_layout or self.cached_order or self.route.endswith(
-            (
-                "_ordered_prep_parallel",
-                "_ordered_prep_parallel8",
-                "_ordered_prep_range",
-                "_ordered_prep_copy",
-                "_ordered_prep_copy8",
+        return (
+            self.reuse_layout
+            or self.cached_order
+            or self.route.endswith(
+                (
+                    "_ordered_prep_parallel",
+                    "_ordered_prep_parallel8",
+                    "_ordered_prep_range",
+                    "_ordered_prep_copy",
+                    "_ordered_prep_copy8",
+                )
             )
         )
 
     @property
     def parallel_order_copy(self):
+        if self.reuse_layout:
+            return True
         if self.cached_order:
             return self.route.endswith(("_copy4", "_copy8"))
         return self.route.endswith(("_ordered_prep_copy", "_ordered_prep_copy8"))
@@ -261,7 +284,8 @@ class LocalRecipe(Recipe):
     @property
     def preparation_warps(self):
         if self.reuse_layout:
-            if self.cached_order:
+            return 8
+        if self.cached_order:
             return 8 if self.route.endswith(("_copy8", "_range8")) else 4
         return (
             8
@@ -279,7 +303,8 @@ class LocalRecipe(Recipe):
     @property
     def owner_splits(self):
         if self.reuse_layout:
-            if self.cached_order:
+            return 2 if self.route.endswith("_split2") else 4
+        if self.cached_order:
             return 4
         return (
             2
@@ -303,7 +328,11 @@ class LocalRecipe(Recipe):
 
     @property
     def parameter_splits(self):
-        return 2 if (self.reuse_layout or self.cached_order) and "_param2" in self.route else 1
+        return (
+            2
+            if (self.reuse_layout or self.cached_order) and "_param2" in self.route
+            else 1
+        )
 
     @property
     def fuse_owner_index(self):
@@ -331,7 +360,13 @@ class LocalRecipe(Recipe):
 
     @property
     def parameter_warps(self):
-        return 4 if self.route.endswith(("_param4", "_param4_param2", "_param4_param2_split2")) else 0
+        return (
+            4
+            if self.route.endswith(
+                ("_param4", "_param4_param2", "_param4_param2_split2")
+            )
+            else 0
+        )
 
     @property
     def parameter_atom_block(self):
