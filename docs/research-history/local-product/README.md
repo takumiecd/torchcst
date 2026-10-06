@@ -1,5 +1,13 @@
 # Small linear product / hybrid H
 
+2026-10-06: [Exact owner indexing before payload/cache tuning](20261006-owner-index.md).
+GPU-built per-owner general-atom lists keep existing physical metadata/H order
+and normalized position gradients. Two independent matched complete-step runs
+improve N128 by41–52% and N64 by9–22% across initial rho1.25/3/8/mixed, including
+index rebuild cost. N128 rho3 closes70% of the time gap to dense. Allocated peak
+increases by53,760B at N128 and7,680B at N64; cache residency is unmeasured.
+L4-host60 checks and32 full-shape FP64 oracle comparisons pass.
+
 2026-10-05: [Support-ordered values and owner ranges](20261005-layout-design.md).
 Offline layout design uses eight actual CUDA snapshots and two CPU mixed-width
 fixtures, all initial rho>1. Contiguous per-direction values plus owner ranges
