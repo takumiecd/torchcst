@@ -134,3 +134,5 @@ G4の28 testsはatomtile3候補のreference optimizer更新を含む。param2は
 G4 supervisor45682 terminal exit0、slots stopped、Session terminated /server No active sessionsを確認後、新L4 supervisor97800でgather/repair検証へ戻った。G4 measurement8 artifactsのbyte-identical export/idempotent再取込成功、family合計28 artifacts保存。
 
 後続G4 reference probe `colabjob-5527c4b067834aca947755c81bbb1418`、source `74d1baf7` (runtimeは測定source8247と同じ)、selectorでparam2のみ9 testsをhost collection確認。L4 batchが終わって停止を確認後、G4でこの短い検証を行う。
+
+G4 param2の追加reference probe `colabjob-5527c4b067834aca947755c81bbb1418` は9 GPU tests passed (40.67s)。N64/N128 20 captured reference optimizer updates/moments/steps、slices、B1/32/64、old backward、empty-neighborを検証。source74d1baf7とsubmitted/workerの196runtime files・archive hashesを照合、実GPU Blackwellをproof JSONで確認。supervisor65921 terminal0、slot stopped、Session terminated/server No active sessions確認済み。
