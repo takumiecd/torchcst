@@ -62,7 +62,7 @@ PR #35のvector4候補は`vector_support=True`も含むことを現在のrecipe�
 範囲構築単独の比較として扱わず、vector8 / copy8はこのflagがFalseである。
 既存aliasの測定契約は変更していない。後続報告にはこの交絡を明記する。
 
-## 03:05 JST: 短いjobへ分割
+## 03:01 JST: 短いjobへ分割
 
 長い親jobが接続timeoutで回収不能となったため、未実行の
 `l4job-cf4ed3f8c10844d78a1bcee71f5f7401`をcancelした。数値はない。
@@ -76,3 +76,58 @@ L4 one-worker queueへ以下をsubmitした。
 
 GPU検証・screenは未完了。各測定はfull-shape FP64 Y/dX/全atom勾配oracleを
 通してから行う。初期rho>1、production width更新、21 samples、denseも維持する。
+
+## 03:20 JST: GPU validation成功
+
+`l4job-f7a31fcb157644a6a15e5e4909d39c7d`:55 passed (54 GPU + declaration)、428.50s。
+actual NVIDIA L4 / torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0。
+source/result archives、submitted/committed/workerの196 runtime filesのSHA256一致を確認。
+6新候補のY/dX/全atom・位置勾配、slices、B1/32/64、N64/N128の20 Graph更新と
+Parameter/moments/step、旧forward後のmovement/backward、empty-neighbor範囲を通過。
+同名JSONへ検証proofを保存した。
+N64測定jobへ進行。GPU test成功は速度やメモリ改善の証拠ではなく、screenを待つ。
+
+## 03:29 JST: 6候補のscreen完了
+
+N64/N128 rho3/8の2 jobsが成功。source/resultと全runtime hash一致、36 full-shape FP64候補比較、各case内の初期Parameters/input hashes一致。各1 executionの21 sample median、単位us。
+
+|size/rho|copy8 baseline|param2|tile32|tile64|tile32 split2|tile64 split2|tile32 param2|dense|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+|64/3|59.45|52.88|62.97|76.77|68.60|88.74|56.70|39.35|
+|64/8|56.51|52.74|61.04|74.38|66.56|84.32|57.03|39.24|
+|128/3|70.46|68.02|78.58|91.58|89.53|115.82|76.12|45.74|
+|128/8|73.89|69.31|85.97|100.33|98.07|126.24|81.64|46.26|
+
+param2のみが全4条件を改善。allocated peak115712/303104 bytesでcopy8と同じ。partial DQ tensorは存在するが、このprotocolのピークを増やさなかった。tile32/64は全条件で遅く、split2はallocated99328/270336 bytesへ減らすがさらに遅い。採用候補はparam2へ絞る。
+
+N64/rho3のparameter event診断は16.38→10.24us (reduction込み)、compiler218→128 registers、shared24576→20480 bytes、param spill0。N128/rho3は12.29→10.24us、param2のcompiler80 registers/shared40960 bytes/spill2。N64のforwardもcompiler spill2がある。global H allocationは作らないが、spillがある経路を完全なregister/shared常駐と主張しない。
+
+wide output tile64はforward/dXのregisters/shared使用が増え、gridのoutput owner数も1/4になる。N128/rho3 output/dX event13.31/14.34→24.58/25.60us。これらは別graph診断で、原因を一つに断定しない。完全stepの遅延から、この小さい問題ではH再計算削減より仕事分割を優先する。
+
+param VJPのPolar epilogueは各atomのdaへSourceから決まる定数を掛ける線形変換。batch部分和を別々に変換して足しても数学上同じ。FP32丸め差は全4 gradientsと20 updates/momentsのoracleで検証した。
+
+source `facab462` (runtimeは元screenと同じ)でfull rho1.25/3/8/mixedの独立2回を短い4 jobsへsubmitした。copy8/parallel4/param2+dense、repeat2はcase/plan順を逆転する。
+- `l4job-fe3049d8391a42cea38725e8e634ef24`:N64 repeat1
+- `l4job-5d8f35357380499b8207fa291192f77c`:N128 repeat1
+- `l4job-c4efe1c609814295bc519e9aa838b943`:N128 repeat2
+- `l4job-c06d9b8c534d47028f74dbd868cb3aa5`:N64 repeat2
+
+4 screen artifactsをDB保存、byte-identical export/idempotent再取込を確認。full/G4結果はまだない。
+
+## 04:25 JST: param2独立2回の完全step測定
+
+4 jobs全て成功。48 full-shape FP64 Y/dX/全atom勾配比較、source/result archivesと196 runtime hashes、各caseの初期Parameter/input bytesのplan間・独立run間一致を確認した。repeat2はcase/plan順を逆転。単位us、2 execution mediansのmedian。
+
+|size/rho|copy8|parallel4|param2|dense|param2 paired短縮率|
+|---|---:|---:|---:|---:|---:|
+|64-rho1_25|55.56|54.73|50.91|38.98|7.47–9.24%|
+|64-rho3|59.32|58.80|52.59|39.05|11.25–11.43%|
+|64-rho8|56.63|55.95|52.61|38.91|7.06–7.14%|
+|64-rhomixed|62.95|61.83|58.41|38.90|7.13–7.31%|
+|128-rho1_25|65.78|70.88|64.26|45.40|2.23–2.38%|
+|128-rho3|70.07|75.12|67.49|45.35|3.50–3.88%|
+|128-rho8|73.37|78.71|69.23|45.26|5.54–5.74%|
+|128-rhomixed|75.75|81.06|71.66|45.31|5.39–5.40%|
+
+allocated peakはN64 115712 / N128 303104 bytes、reserved 6291456 bytesでcopy8と同じ。全atomの幅はproduction optimizerで更新した。denseとの差は残るが、全8条件・両executionでparam2がcopy8を改善。2回の測定から統計的有意性までは主張しない。
+screen4＋full16 artifactsをDBへ保存し、byte-identical exportとidempotent再取込を確認。GPU正しさ55 testsは既存proofに記録。G4はこの検証済み候補の短い比較を次に行う。
