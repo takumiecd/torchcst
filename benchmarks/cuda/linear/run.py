@@ -67,7 +67,15 @@ class PlanLinear(nn.Module):
                     atoms=Atoms(self.p),
                 )
             )
-            if plan.recipe.execution_route == "hybrid_persistent":
+            if plan.recipe.cached_order:
+                from torchcst._backends.cuda.algorithms.linear.local_product.order_cache import (
+                    OrderKeyCache,
+                )
+
+                self.persistent_layout = OrderKeyCache(
+                    self.p, self.local_state, domain, plan.recipe
+                )
+            elif plan.recipe.execution_route == "hybrid_persistent":
                 from torchcst._backends.cuda.algorithms.linear.local_product.persistent import (
                     PersistentLayout,
                 )

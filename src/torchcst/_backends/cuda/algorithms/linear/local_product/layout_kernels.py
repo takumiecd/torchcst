@@ -291,6 +291,11 @@ def ordered_views(
     COPY: tl.constexpr = True,
     VECTOR_RANGES: tl.constexpr = False,
     OWNER_BLOCK: tl.constexpr = 1,
+    CachedKeys=None,
+    CachedOrder=None,
+    CachedOffsets=None,
+    Stats=None,
+    CACHE: tl.constexpr = False,
 ):
     """Per-call compact snapshots; band then support start, canonical tie-break."""
     direction = tl.program_id(0)
@@ -318,16 +323,39 @@ def ordered_views(
     else:
         key = (bucket.to(tl.int64) * span + position) * C + a
         key = tl.where(a < C, key, 9223372036854775807)
-    key = tl.sort(key, descending=False)
-    source = (key % C).to(tl.int32)
-    sorted_bucket = (key // (span * C)).to(tl.int32)
+    if CACHE:
+        tl.static_assert(not RANGES, "cached orders require freshly parallel ranges")
+        previous = tl.load(CachedKeys + direction * C + a, a < C, -1)
+        changed = tl.sum(((previous != key) & (a < C)).to(tl.int32), 0) > 0
+        if changed:
+            tl.store(CachedKeys + direction * C + a, key, a < C)
+            sorted_key = tl.sort(key, descending=False)
+            source = (sorted_key % C).to(tl.int32)
+            counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
+            starts = tl.cumsum(counts, 0) - counts
+            tl.store(CachedOrder + direction * C + a, source, a < C)
+            tl.store(CachedOffsets + direction * STRIDE + g, starts, g < STRIDE)
+        else:
+            source = tl.load(CachedOrder + direction * C + a, a < C, 0)
+            starts = tl.load(CachedOffsets + direction * STRIDE + g, g < STRIDE, 0)
+        sorted_bucket = tl.full((AC,), 0, tl.int32)  # RANGES is statically false.
+        calls = tl.load(Stats + direction * 3)
+        rebuilds = tl.load(Stats + direction * 3 + 1)
+        reuses = tl.load(Stats + direction * 3 + 2)
+        tl.store(Stats + direction * 3, calls + 1)
+        tl.store(Stats + direction * 3 + 1, rebuilds + changed.to(tl.int64))
+        tl.store(Stats + direction * 3 + 2, reuses + (~changed).to(tl.int64))
+    else:
+        key = tl.sort(key, descending=False)
+        source = (key % C).to(tl.int32)
+        sorted_bucket = (key // (span * C)).to(tl.int32)
+        counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
+        starts = tl.cumsum(counts, 0) - counts
     if COPY:
         for field in tl.static_range(13):
             value = tl.load(P + field * C + source, a < C, 0.0)
             tl.store(Views + direction * 13 * C + field * C + a, value, a < C)
     tl.store(Orders + direction * C + a, source, a < C)
-    counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
-    starts = tl.cumsum(counts, 0) - counts
     tl.store(Offsets + direction * STRIDE + g, starts, g < STRIDE)
     if RANGES:
         svlo, svhi, _svw = _interval(P, source, C, False, JS, K)

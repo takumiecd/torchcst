@@ -12,6 +12,13 @@ from torchcst._backends.schema import SupportResult
 from torchcst.operators.execution import LinearInputs, linear_execution
 from torchcst.operators.spec import ChartPairSpec, OperatorSpec
 
+CACHE_SUFFIXES = (
+    "_ordered_cache_copy4",
+    "_ordered_cache_copy8",
+    "_ordered_cache_range4",
+    "_ordered_cache_range8",
+)
+
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
 
 
@@ -20,8 +27,12 @@ class LocalRecipe(Recipe):
     route: str = "fused"
 
     @property
+    def cached_order(self):
+        return self.route.endswith(CACHE_SUFFIXES)
+
+    @property
     def base_route(self):
-        for suffix in (
+        for suffix in CACHE_SUFFIXES + (
             "_ordered_prep_vector8",
             "_ordered_prep_vector",
             "_ordered_prep_copy8",
@@ -121,7 +132,7 @@ class LocalRecipe(Recipe):
 
     @property
     def ordered_layout(self):
-        return self.route.endswith(
+        return self.cached_order or self.route.endswith(
             (
                 "_ordered",
                 "_ordered_band",
@@ -147,7 +158,7 @@ class LocalRecipe(Recipe):
 
     @property
     def compact_order_key(self):
-        return self.route.endswith(
+        return self.cached_order or self.route.endswith(
             (
                 "_ordered_split4_i32",
                 "_ordered_prep_vector8",
@@ -163,7 +174,7 @@ class LocalRecipe(Recipe):
 
     @property
     def parallel_owner_ranges(self):
-        return self.route.endswith(
+        return self.cached_order or self.route.endswith(
             (
                 "_ordered_prep_parallel",
                 "_ordered_prep_parallel8",
@@ -175,6 +186,8 @@ class LocalRecipe(Recipe):
 
     @property
     def parallel_order_copy(self):
+        if self.cached_order:
+            return self.route.endswith(("_copy4", "_copy8"))
         return self.route.endswith(("_ordered_prep_copy", "_ordered_prep_copy8"))
 
     @property
@@ -183,6 +196,8 @@ class LocalRecipe(Recipe):
 
     @property
     def preparation_warps(self):
+        if self.cached_order:
+            return 8 if self.route.endswith(("_copy8", "_range8")) else 4
         return (
             8
             if self.route.endswith(
@@ -198,6 +213,8 @@ class LocalRecipe(Recipe):
 
     @property
     def owner_splits(self):
+        if self.cached_order:
+            return 4
         return (
             2
             if self.route.endswith("_ordered_split2")
@@ -324,6 +341,7 @@ class LocalRecipe(Recipe):
                 self.base_route + "_ordered_prep_parallel",
                 self.base_route + "_ordered_prep_warp8",
                 self.base_route + "_ordered_prep_range",
+                *(self.base_route + suffix for suffix in CACHE_SUFFIXES),
             )
         ):
             raise ValueError("unsupported recomputed parameter VJP variant")
