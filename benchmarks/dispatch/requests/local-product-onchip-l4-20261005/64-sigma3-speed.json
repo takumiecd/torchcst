@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "revision": "local-product-onchip-l4-20261005-64-sigma3-speed",
+  "dataset": {
+    "adapter": "cuda.linear.complete-step",
+    "adapter_revision": 3,
+    "gpu": "NVIDIA L4",
+    "source_id": "41c19ff9f125d29ff0908e460f0b0ea03bbbd95ca16d3e81ade54fd4a75c16ad",
+    "case_id": "5376ec68fbcb35b15fed0e610e128b0d0775b4c56468a33f34ae5e291e6d7ca0",
+    "environment_id": "60f0c917cc5eabcac3103e636e1a1c2b80fc844fda4bdcf4715552090605655b",
+    "protocol_id": "8425c95a4c72b7a1a9a41c3976b593e889a673246e5b3c4685c196c898c8a33f"
+  },
+  "execution_mode": "cuda_graph",
+  "min_runs": 2,
+  "excluded_run_ids": [],
+  "score_policy": {
+    "id": "speed",
+    "revision": "v1",
+    "parameters": {}
+  },
+  "fallback_plan": {
+    "schema_version": 1,
+    "algorithm_id": "research_local_product",
+    "algorithm_revision": "v2",
+    "recipe": {
+      "rho_upper": [
+        1,
+        4,
+        16
+      ],
+      "atom_block": 16,
+      "batch_block": 16,
+      "pack": false,
+      "support_limit": 8,
+      "route": "persistent_supportprep_band_unroll"
+    }
+  }
+}

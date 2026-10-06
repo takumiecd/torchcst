@@ -379,8 +379,12 @@ def measure(args, run):
                 "final_local_atoms": int((~final_wide).sum()),
                 "final_saved_atoms": int(final_wide.sum()),
                 "changed_routes": int((initial_wide != final_wide).sum()),
-                "scratch_capacity_elements": m * case.atoms,
-                "capacity_policy": "fixed B*A; only wide H lanes written/read; not compacted",
+                "scratch_capacity_elements": 0
+                if recipe.recompute_h
+                else m * case.atoms,
+                "capacity_policy": "H recomputed within output owners and parameter VJP; no saved H"
+                if recipe.recompute_h
+                else "fixed B*A; only wide H lanes written/read; not compacted",
             }
             if inclusive:
                 for label, precision in (
@@ -412,7 +416,11 @@ def measure(args, run):
                 "onehot_both_live_atoms"
             ]
             hybrid_routing["saved_scope"] = (
-                "rho>=mid excluding full-domain live singletons; width-only saved counts above are pre-exclusion"
+                "none; H recomputed"
+                if recipe.recompute_h
+                else (
+                    "rho>=mid excluding full-domain live singletons; width-only saved counts above are pre-exclusion"
+                )
             )
     else:
         final_support = None

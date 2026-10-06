@@ -13,6 +13,18 @@ class Recipe:
     support_limit: int = 8
 
     @property
+    def output_block(self):
+        return 16
+
+    @property
+    def recompute_h(self):
+        return False
+
+    @property
+    def recompute_param_h(self):
+        return self.recompute_h
+
+    @property
     def unroll_support(self):
         return False
 
@@ -38,6 +50,10 @@ class Recipe:
 
     @property
     def band_dispatch(self):
+        return False
+
+    @property
+    def owner_index(self):
         return False
 
     def __post_init__(self):

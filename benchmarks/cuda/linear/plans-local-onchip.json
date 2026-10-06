@@ -1,0 +1,305 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "persistent-supportprep-band-contract4-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_contract4",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-g-contract4-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_g_contract4",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-band-unroll",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_unroll",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-band-tile32-atom16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_tile32",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-band-tile64-atom16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_tile64",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-onchip-h32-atom16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_onchip_h32",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-onchip-h64-atom16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_onchip_h64",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-band-tile32-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_tile32",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-band-tile64-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_tile64",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-onchip-h32-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_onchip_h32",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-onchip-h64-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_onchip_h64",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-band-recompute-vjp-atom16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-band-recompute-vjp-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-band-recompute-vjp-unroll-atom16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_unroll",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "persistent-supportprep-band-recompute-vjp-unroll-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_unroll",
+          "support_limit": 8
+        }
+      }
+    }
+  ]
+}

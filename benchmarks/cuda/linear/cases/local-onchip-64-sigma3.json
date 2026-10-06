@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "local-onchip-64-sigma3",
+    "fixture": "local_polar_product",
+    "size": 64,
+    "rows": 32,
+    "atoms": 204,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 0.25,
+      "birth": 0.25,
+      "maximum": 16,
+      "rho": [
+        3
+      ],
+      "fractions": [
+        1
+      ],
+      "center_jitter": 0.1
+    }
+  },
+  "plans": [
+    "persistent-supportprep-band-unroll",
+    "persistent-supportprep-band-tile32-atom16",
+    "persistent-supportprep-band-tile64-atom16",
+    "persistent-onchip-h32-atom16",
+    "persistent-onchip-h64-atom16",
+    "persistent-supportprep-band-recompute-vjp-unroll-atom16",
+    "persistent-supportprep-band-recompute-vjp-atom16"
+  ],
+  "baseline": "persistent-supportprep-band-unroll",
+  "dense": true
+}

@@ -242,3 +242,58 @@ Use the catalog to explicitly select `persistent-supportprep-band-unroll` when
 comparing ordinary initial-sigma3. These remain research recipes; shared sigma
 is refreshed on every step. No public default selection is changed.
 See the [measured record](../../../docs/research-history/local-product/20261005-contraction-launch.md).
+
+## Owner-index exploration reduction (2026-10-06)
+
+`plans-local-index.json` compares the recompute-VJP control with an exact
+per-owner general-atom ID list. Physical metadata/H order and coefficient
+arithmetic stay the same; preparation rebuilds the lists from current support
+on every forward and its cost is included in the complete step. The list builder
+still scans metadata once per spatial owner/direction. This experiment isolates
+removing repeated consumer exploration before tuning physical layout or caches.
+
+```bash
+python -m tools.kernel_dev prepare \
+  --plans benchmarks/cuda/linear/plans-local-index.json \
+  --case benchmarks/cuda/linear/cases/local-index-128-rho3.json \
+  --candidate persistent-supportprep-band-recompute-vjp-index-atom32 \
+  --output output/owner-index-comparison
+python -m tools.kernel_dev check \
+  --plans output/owner-index-comparison/plans.json \
+  --case output/owner-index-comparison/case.json
+python -m benchmarks.cuda.linear.run \
+  --plans output/owner-index-comparison/plans.json \
+  --case output/owner-index-comparison/case.json \
+  --source-commit "$(git rev-parse HEAD)" \
+  --polar-update fused --phase-diagnostics --kernel-diagnostics \
+  --output output/owner-index-comparison/result.json
+```
+
+Use `local-index-{64,128}-rho{1_25,3,8,mixed}.json` to stratify the comparison.
+All initial decoded rho exceed1; the mixed Case uses1.25/3/8 at fractions0.5/0.3/0.2.
+Batch32, FP32 IEEE, ~5% atoms and production width updates are matched.
+
+## Matched initial-rho audit (2026-10-05)
+
+`local-rho-audit-{64,128}-rho{1_25,1_5,2,3,4,8,16}.json` initializes every
+atom at sigma/spacing strictly greater than1. Width bounds remain0.25/0.25/16,
+so training may later produce narrower support. Centers, input and target are
+matched across widths within each size; batch32, FP32/IEEE, atom block32 and
+batch block16 are identical for both sizes. Atom counts are204/819 (~5%).
+
+These Cases use `plans-local-onchip.json` to compare the saved-G control with
+recomputed parameter H. This controls recipe settings across shapes; it is not
+a search over all previously measured N64 launch variants.
+
+```bash
+python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-local-onchip.json \
+  --case benchmarks/cuda/linear/cases/local-rho-audit-128-rho3.json \
+  --polar-update fused --phase-diagnostics --kernel-diagnostics \
+  --output benchmarks/cuda/linear/evidence/rho-audit-128-rho3.json
+```
+
+The rho label describes initialization, not a frozen width during timing.
+Record actual initial/final widths and route membership, particularly for rho4
+at the local/saved boundary. Complete-step timing and memory use the primary
+Graph; component events use a separate diagnostic Graph.

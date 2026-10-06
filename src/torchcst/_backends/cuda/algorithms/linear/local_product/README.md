@@ -4,7 +4,52 @@ Integrated into main on2026-10-05 as explicit research algorithms and benchmark
 tooling; see the [integration record](../../../../../../../docs/research-history/local-product/20261005-main-integration.md).
 Public CSTLinear defaults and production Registry remain separate from these recipes.
 
-Development branch: `codex/local-product-hybrid`. Optimize small linear
+## Multi-owner H reuse experiment
+
+The `plans-local-onchip.json` research catalog compares 32/64-site output tiles
+with the existing 16-site controls. Placement still uses 16-site singleton
+owners; a larger tile reads each of its owner buckets and contracts general H
+once across all its output sites. Both forward and dX retain output ownership
+without atomics or partial-output buffers.
+
+`persistent_supportprep_band_tile32` / `tile64` retain the wide H buffer.
+`persistent_onchip_h32` / `h64` eliminate the whole H buffer and producer launch;
+forward and backward recompute each needed H/G tile. Live normalization, widths,
+support and canonical parameter gradients are unchanged. Register/shared-memory
+placement is compiler-controlled: inspect spills before claiming on-chip
+residency. No L2 persistence or measured DRAM-traffic claim follows from this
+implementation alone. Use the existing runner with `local-onchip-128-early`
+and `local-onchip-64-sigma3` cases for complete-step time and capture/replay peaks.
+
+`persistent_supportprep_band_recompute_vjp` retains 16-site owners and cached
+wide H for forward, but recomputes parameter contractions instead of mixing
+saved/local H in the VJP. This isolates the backward simplification from output
+tile widening. Its `_unroll` variant keeps the bounded middle-support unroll.
+
+## Owner-index exploration experiment
+
+`persistent_supportprep_band_recompute_vjp_index` uses the same 16-site owners,
+32-atom blocks, coefficient arithmetic, physical metadata views and wide H as
+the recompute-VJP control. Each forward builds an exact GPU list of general
+atoms whose current support intersects each owner, separately for forward and
+dX and each rho band. Consumers traverse those IDs instead of the whole band.
+Exact singleton buckets and canonical Parameter/optimizer identity remain intact.
+
+The builder still scans canonical metadata once per owner/direction and adds
+an index launch and buffers. Its cost is part of the complete training step.
+This isolates exploration reduction; it does not implement the separate
+support-ordered payload design or a cache residency policy. Lists are saved
+per forward so outstanding backwards retain their own support snapshot.
+Current normalized coefficients and center derivatives are evaluated normally;
+the integer lists only select potentially nonzero terms.
+
+Use `benchmarks/cuda/linear/plans-local-index.json` and
+`cases/local-index-{64,128}-rho{1_25,3,8,mixed}.json` with the existing runner.
+All performance fixtures decode initial rho>1, with live updates and minimum
+rho0.25. The full-shape oracle and migration checks also retain the valid
+singleton, two-site, empty and normalization-floor correctness cases.
+
+Development branch: `kernel/local-product-onchip-h`. Optimize small linear
 transformations first, with about 5% atoms relative to dense weight elements.
 The mathematical kernel is the existing normalized, shared-width
 PolarAmpWidth product. Sigma/spacing is the basis for choosing H's reuse range.
@@ -28,8 +73,9 @@ See the [measurement record](../../../../../../../docs/research-history/local-pr
 Whole-call routes are fused H and globally saved H. The experimental support
 route refreshes intervals on the GPU and uses direct contractions for narrow
 atom groups, with the existing matrix path for wide groups. H->Y still uses the
-padded dot. General-support compaction and an explicit shared-H policy remain
-to implement; an optional small-tile singleton layout is described below. L1/L2 are caches, not direct allocation policies.
+padded dot. Owner-index compaction is an explicit research route described above;
+an explicit shared-H policy remains to implement. An optional small-tile singleton
+layout is described below. L1/L2 are caches, not direct allocation policies.
 The `fused_polar` option reads current polar parameters and live scalar buffers
 inside normalization preparation, and applies the angular amplitude chain rule
 inside parameter VJP. It skips the separate Torch decode/autograd chain while

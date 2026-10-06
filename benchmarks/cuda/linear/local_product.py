@@ -22,16 +22,42 @@ class LocalRecipe(Recipe):
     @property
     def base_route(self):
         for suffix in (
+            "_tile32",
+            "_tile64",
             "_contract4",
             "_contract8",
             "_param4",
             "_vector",
             "_vector4",
             "_unroll",
+            "_index",
         ):
             if self.route.endswith(suffix):
                 return self.route[: -len(suffix)]
         return self.route
+
+    @property
+    def output_block(self):
+        if self.route.endswith(("_tile32", "_h32")):
+            return 32
+        if self.route.endswith(("_tile64", "_h64")):
+            return 64
+        return 16
+
+    @property
+    def recompute_h(self):
+        return self.base_route in ("persistent_onchip_h32", "persistent_onchip_h64")
+
+    @property
+    def recompute_param_h(self):
+        return (
+            self.recompute_h
+            or self.base_route == "persistent_supportprep_band_recompute_vjp"
+        )
+
+    @property
+    def owner_index(self):
+        return self.route.endswith("_index")
 
     @property
     def unroll_support(self):
@@ -43,6 +69,10 @@ class LocalRecipe(Recipe):
 
     @property
     def contraction_warps(self):
+        if self.base_route == "persistent_supportprep_band_recompute_vjp":
+            return 4
+        if self.output_block != 16:
+            return 4
         if self.route.endswith(("_contract4", "_vector4")):
             return 4
         if self.route.endswith("_contract8"):
@@ -61,6 +91,9 @@ class LocalRecipe(Recipe):
             "persistent_supportprep_g",
             "persistent_band_dispatch",
             "persistent_supportprep_band",
+            "persistent_supportprep_band_recompute_vjp",
+            "persistent_onchip_h32",
+            "persistent_onchip_h64",
         ):
             return "hybrid_persistent"
         return self.base_route
@@ -71,6 +104,9 @@ class LocalRecipe(Recipe):
             "persistent_supportprep",
             "persistent_supportprep_g",
             "persistent_supportprep_band",
+            "persistent_supportprep_band_recompute_vjp",
+            "persistent_onchip_h32",
+            "persistent_onchip_h64",
         )
 
     @property
@@ -82,6 +118,9 @@ class LocalRecipe(Recipe):
         return self.save_g or self.base_route in (
             "persistent_band_dispatch",
             "persistent_supportprep_band",
+            "persistent_supportprep_band_recompute_vjp",
+            "persistent_onchip_h32",
+            "persistent_onchip_h64",
         )
 
     def __post_init__(self):
@@ -93,14 +132,33 @@ class LocalRecipe(Recipe):
             raise ValueError("requires a numeric boundary array")
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
+        if (
+            self.base_route == "persistent_supportprep_band_recompute_vjp"
+            and self.route
+            not in (
+                self.base_route,
+                self.base_route + "_unroll",
+                self.base_route + "_index",
+            )
+        ):
+            raise ValueError("recomputed parameter VJP supports base/unroll launches")
+        if (
+            self.owner_index
+            and self.base_route != "persistent_supportprep_band_recompute_vjp"
+        ):
+            raise ValueError("owner indexing requires recomputed parameter VJP")
         if self.route != self.base_route and self.base_route not in (
             "persistent_supportprep_band",
             "persistent_supportprep_g",
+            "persistent_supportprep_band_recompute_vjp",
         ):
             raise ValueError("launch variants require prepared persistent bands")
         if self.base_route not in (
+            "persistent_onchip_h32",
+            "persistent_onchip_h64",
             "persistent_band_dispatch",
             "persistent_supportprep_band",
+            "persistent_supportprep_band_recompute_vjp",
             "persistent_supportprep",
             "persistent_saved_g",
             "persistent_supportprep_g",
@@ -514,7 +572,7 @@ def measure_prepared_forward(case, recipe=None):
             scalars=polar_scalars(state),
             support_bounded=recipe.support_prepare,
         )
-        h = source.new_empty((b, a))
+        h = source.new_empty((0,)) if recipe.recompute_h else source.new_empty((b, a))
         ends = None
         if recipe.execution_route == "hybrid_persistent":
             layout = PersistentLayout(source, state, domain, recipe)
@@ -523,29 +581,30 @@ def measure_prepared_forward(case, recipe=None):
             views, orders, offsets = tile_layout(packed, domain, recipe)
 
         def forward():
-            kernels.save_h[
-                (tr.cdiv(b, recipe.batch_block), tr.cdiv(a, recipe.atom_block))
-            ](
-                x,
-                packed,
-                h,
-                b,
-                n,
-                a,
-                domain.spacing,
-                domain.input_origin,
-                domain.input_start,
-                max(16, tr.next_power_of_2(n)),
-                recipe.batch_block,
-                recipe.atom_block,
-                hybrid,
-                recipe.rho_upper[1],
-                not hybrid,
-                THREE_BAND=hybrid,
-                SINGLETON_FAST=hybrid,
-                num_warps=4,
-                enable_fp_fusion=False,
-            )
+            if not recipe.recompute_h:
+                kernels.save_h[
+                    (tr.cdiv(b, recipe.batch_block), tr.cdiv(a, recipe.atom_block))
+                ](
+                    x,
+                    packed,
+                    h,
+                    b,
+                    n,
+                    a,
+                    domain.spacing,
+                    domain.input_origin,
+                    domain.input_start,
+                    max(16, tr.next_power_of_2(n)),
+                    recipe.batch_block,
+                    recipe.atom_block,
+                    hybrid,
+                    recipe.rho_upper[1],
+                    not hybrid,
+                    THREE_BAND=hybrid,
+                    SINGLETON_FAST=hybrid,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
             if hybrid:
                 return _packed_fused(
                     x,

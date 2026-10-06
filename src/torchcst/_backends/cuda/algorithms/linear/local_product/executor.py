@@ -186,6 +186,38 @@ def tile_layout(packed, domain, recipe):
     return views, orders, offsets
 
 
+def build_owner_index(packed, reverse, domain, recipe):
+    import triton as tr
+
+    from . import layout_kernels
+
+    atoms = packed.shape[1]
+    groups = max(tr.cdiv(domain.input_count, 16), tr.cdiv(domain.output_count, 16))
+    capacity = max(32, tr.cdiv(atoms, 32) * 32)
+    ids = reverse.new_empty((2, groups, capacity))
+    offsets = reverse.new_empty((2, groups, 4))
+    compiled = layout_kernels.index_owners[(2, groups)](
+        packed,
+        reverse,
+        ids,
+        offsets,
+        atoms,
+        domain.input_count,
+        domain.output_count,
+        domain.input_start,
+        domain.output_start,
+        domain.spacing,
+        recipe.rho_upper[1],
+        max(32, tr.next_power_of_2(atoms)),
+        capacity,
+        groups,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    _report("owner_index", compiled)
+    return ids, offsets
+
+
 def _packed_fused(
     x,
     packed,
@@ -199,6 +231,8 @@ def _packed_fused(
     ends=None,
     canonical_atoms=0,
     saved_g=None,
+    owner_ids=None,
+    owner_offsets=None,
 ):
     import triton as tr
 
@@ -210,7 +244,7 @@ def _packed_fused(
     k, n, oi, oo, js, i = _sizes(domain, swap)
     y = x.new_empty((len(x), n))
     compiled = kernels.fused_packed[
-        (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(n, 16))
+        (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(n, recipe.output_block))
     ](
         x,
         packed,
@@ -239,6 +273,11 @@ def _packed_fused(
         BAND_DISPATCH=recipe.band_dispatch,
         VECTOR_SUPPORT=recipe.vector_support,
         UNROLL_SUPPORT=recipe.unroll_support,
+        BN=recipe.output_block,
+        RECOMPUTE_H=recipe.recompute_h,
+        OwnerIds=owner_ids,
+        OwnerOffsets=owner_offsets,
+        INDEX_A=owner_ids.shape[-1] if owner_ids is not None else 0,
         num_warps=recipe.contraction_warps or (8 if max(k, n) > 64 else 4),
         enable_fp_fusion=False,
     )
@@ -294,12 +333,20 @@ class _LocalH(torch.autograd.Function):
             views, orders, offsets = tile_layout(packed, domain, recipe)
         else:
             views, orders, offsets = (q.new_empty((0,)),) * 3
+        owner_ids, owner_offsets = (q.new_empty((0,)),) * 2
+        if recipe.owner_index:
+            if persistent_layout is None:
+                raise ValueError("owner index requires persistent layout")
+            owner_ids, owner_offsets = build_owner_index(
+                packed, persistent_layout.reverse, domain, recipe
+            )
         _stamp("layout", 1)
         # Fixed capacity keeps graph replay independent of a changing wide count.
         # Hybrid writes/reads only wide lanes; compact capacity is future work.
         _stamp("h", 0)
-        h = q.new_empty((len(x), a)) if saved or hybrid else q.new_empty((0,))
-        if (saved or hybrid) and a:
+        keep_h = (saved or hybrid) and not recipe.recompute_h
+        h = q.new_empty((len(x), a)) if keep_h else q.new_empty((0,))
+        if keep_h and a:
             compiled = kernels.save_h[
                 (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(a, recipe.atom_block))
             ](
@@ -337,6 +384,8 @@ class _LocalH(torch.autograd.Function):
                 recipe,
                 ends=ends[0] if persistent_layout is not None else None,
                 canonical_atoms=a if persistent_layout is not None else 0,
+                owner_ids=owner_ids[0] if recipe.owner_index else None,
+                owner_offsets=owner_offsets[0] if recipe.owner_index else None,
             )
         elif saved:
             y = x.new_empty((len(x), domain.output_count))
@@ -379,6 +428,8 @@ class _LocalH(torch.autograd.Function):
             orders,
             offsets,
             ends,
+            owner_ids,
+            owner_offsets,
             q if fused_polar else q.new_empty((0,)),
             *scalars,
         )
@@ -404,7 +455,19 @@ class _LocalH(torch.autograd.Function):
 
         from . import kernels
 
-        x, packed, h, views, orders, offsets, ends, source, *scalars = ctx.saved_tensors
+        (
+            x,
+            packed,
+            h,
+            views,
+            orders,
+            offsets,
+            ends,
+            owner_ids,
+            owner_offsets,
+            source,
+            *scalars,
+        ) = ctx.saved_tensors
         (
             domain,
             recipe,
@@ -439,6 +502,8 @@ class _LocalH(torch.autograd.Function):
                 swap=True,
                 ends=ends[1] if persistent else None,
                 canonical_atoms=len(source) if persistent else 0,
+                owner_ids=owner_ids[1] if recipe.owner_index else None,
+                owner_offsets=owner_offsets[1] if recipe.owner_index else None,
             )
         elif ctx.needs_input_grad[0] and not use_g:
             dx = _fused(
@@ -485,7 +550,7 @@ class _LocalH(torch.autograd.Function):
                     fused_polar,
                     source if fused_polar else None,
                     scalars[0] if fused_polar else None,
-                    hybrid,
+                    hybrid and not recipe.recompute_param_h,
                     recipe.rho_upper[1 if three_band else 0],
                     support_only,
                     THREE_BAND=three_band,
@@ -526,6 +591,8 @@ class _LocalH(torch.autograd.Function):
                 ends=ends[1] if persistent else None,
                 canonical_atoms=len(source),
                 saved_g=g,
+                owner_ids=owner_ids[1] if recipe.owner_index else None,
+                owner_offsets=owner_offsets[1] if recipe.owner_index else None,
             )
         return dx, dq, None, None, None, None, None, None, None, None, None, None, None
 
@@ -552,6 +619,8 @@ def local_h(
     Call validate_state once at configuration. Bounds stay shared during updates.
     No outer GEMM scheduling or production Strip/Torus dispatch is added here.
     """
+    if recipe.recompute_h and (not tile_packed or not hybrid):
+        raise ValueError("on-chip H requires the packed hybrid execution route")
     if support_only and (not sparse or hybrid):
         raise ValueError("support-only requires sparse and no hybrid classification")
     if sparse and saved and not support_only:

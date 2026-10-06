@@ -1,5 +1,42 @@
 # Small linear product / hybrid H
 
+2026-10-06: [Exact owner indexing before payload/cache tuning](20261006-owner-index.md).
+GPU-built per-owner general-atom lists keep existing physical metadata/H order
+and normalized position gradients. Two independent matched complete-step runs
+improve N128 by41–52% and N64 by9–22% across initial rho1.25/3/8/mixed, including
+index rebuild cost. N128 rho3 closes70% of the time gap to dense. Allocated peak
+increases by53,760B at N128 and7,680B at N64; cache residency is unmeasured.
+L4-host60 checks and32 full-shape FP64 oracle comparisons pass.
+
+2026-10-05: [Support-ordered values and owner ranges](20261005-layout-design.md).
+Offline layout design uses eight actual CUDA snapshots and two CPU mixed-width
+fixtures, all initial rho>1. Contiguous per-direction values plus owner ranges
+avoid repeated full-list scans without per-owner metadata replication. Mixed
+N128 forward needs1,130 candidate visits for1,072 useful contributions.
+Coverage and tensor budgets are checked; GPU construction and speed remain untested.
+
+2026-10-05: [Atom scans, rectangular work and exposed parallelism](20261005-scan-investigation.md).
+Eight fixed-initial-state probes isolate output/dX at B1/8/32/128 with rho>1.
+N128 scans6,552 general-atom entries for914 useful visits at rho1.25; all208
+forward atom blocks execute, with2.3% nonzero output coefficients. B32 launches
+only16 GPU blocks. Cold Nsight probes show low aggregate DRAM throughput;
+warm cache residency remains unproven. Offline spatial ordering reduces active
+blocks, but has not been implemented or timed. No complete-step speedup claimed.
+
+2026-10-05: [Matched initial rho above one at N64/N128](20261005-rho-audit.md).
+Four L4 jobs measure14 Cases twice with common atom32/4-warp recipes and live
+width updates. Initial rho3/4 costs more than rho8/16; N128 local forward/dX is
+the next latency target. Wide N128 support benefits from saved-G reuse at a
+larger allocated peak. Full-shape scalar gradient gates and raw evidence are
+preserved; physical DRAM/L2 behavior is unmeasured.
+
+2026-10-05: [Multi-owner H reuse and parameter recomputation](20261005-onchip-h.md).
+Wide output tiles reduce saved memory but slow both target cases. Keeping16-site
+owners and recomputing parameter H improves N128's no-G control about4.5%, at
+similar speed to saved-G with18.1% less allocated memory; N64 improves about1.5%.
+Two paired pool jobs, negative results and case-scoped selector candidates are
+preserved. L2 residency and complete-step DRAM reduction remain unproven.
+
 2026-10-05: [Contraction launch tuning and bounded unrolling](20261005-contraction-launch.md).
 N128 atom32/4-warp complete steps improve about12% with savedG and13% without,
 with unchanged allocated peaks; N64 ordinary sigma3 benefits from unrolling.
@@ -30,7 +67,7 @@ thresholds/partition count configurable. Preserve production PolarAmpWidth,
 full-domain normalization, support, all task gradients and its activity update.
 
 Implementation is under
-[`src/torchcst/_backends/cuda/algorithms/local_product`](../../../src/torchcst/_backends/cuda/algorithms/local_product/README.md).
+[`src/torchcst/_backends/cuda/algorithms/linear/local_product`](../../../src/torchcst/_backends/cuda/algorithms/linear/local_product/README.md).
 The existing `benchmarks/cuda/linear/fixtures.py` provides reference/fixture
 helpers. No additional benchmark tree/runner is created. Registry and the
 existing 1024/8192 benchmark run behavior are unchanged at this setup checkpoint;
