@@ -7,3 +7,5 @@ N64 atom16 single control defaults BB32; this variant reduces register live tile
 N64/N128 B32 A204/A819 seed41 FP32 IEEE/TF32off, initial decodedrho>1,production fused AdamW/Polar evolving sigma,21 samples/execution. Controls copy8,param2 atom32,atom16 single/4warps,atom16 split2/4warps; same dense operator. Independent FP64 Y/dX/all atom gradients/nonzero centers, singleton/norm-floor/slices/B1/32/64,20 captured reference updates/moments/steps N64/N128, old backward.
 
 Host886 passed/832 skipped (22.37s), changed-file ruff,diff checks,8 prepare/check,isolated wheel/sdist build passed. GPU correctness/speed pending. Raw evidence parameter-batch-loop-20261007 ignored and preserved.
+
+Frozen source889d9ef1; PR46 (base PR44). Check `l4job-824b070a35da4bfc9e60d8a0058c4fae`,64 screen `l4job-a1e8ab45c1d8464ba358ac562fcd5724`,128 screen `l4job-ccd359242e894bd39702625053fee898` queued on supervisor65855, following prefix jobs.
