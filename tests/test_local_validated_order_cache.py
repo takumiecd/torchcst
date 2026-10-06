@@ -100,6 +100,7 @@ def test_validated_cache_reuses_keys_but_refreshes_ends_values_and_independent_s
     # All task derivatives are separately checked above against scalar oracles.
     # Keep all other records inactive so the new owner must change its envelope.
     packed[9, 1:], packed[10, 1:] = 200, 201
+    packed[11, 1:], packed[12, 1:] = 200, 201
     packed[8, 0] = 0
     packed[1, 0] = 1 / 9
     packed[9, 0], packed[10, 0] = domain.input_start + 1, domain.input_start + 7
