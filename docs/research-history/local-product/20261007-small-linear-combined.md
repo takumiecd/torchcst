@@ -90,3 +90,22 @@ The earlier independent G4 param2 reference-update proof from PR38 has been copi
 ## Verified G4 selected-route correctness
 
 G4 check succeeded:27 cached-route tests45.48s +9 uncached atom16/4warps/batch split2 tests10.75s,36 actual GPU tests total (20 unrelated tests deselected). Source7e55e991; committed/submitted/worker197 runtime hashes and source/result archive SHA256 agree. Actual hardware NVIDIA RTX PRO 6000 Blackwell Server Edition,CC12.0,188SM,torch2.11.0+cu130/CUDA13.0/Triton3.6.0,TF32off. All selected routes retain independent FP64 Y/dX/all source gradients/nonzero positions,support/current snapshot coverage,slices/B1/32/64,20 captured reference optimizer updates/moments/steps N64/N128,old backward and empty-neighbor coverage. Correctness now verified on G4; the two timing jobs are still queued/running. No G4 performance claim from tests alone.
+
+## Completed G4 independent repeat1 + repeat2
+
+Both selected timing jobs succeeded. Source7e55e991;32 full-shape FP64 comparisons,197 runtime/hash/archive proofs and within-G4 all-plan Parameter/input bytes including dense and both executions passed. Actual Blackwell Server Edition/CC12.0/188SM,IEEE FP32/TF32off. Initial performance rho>1,production AdamW/Polar widths evolve.21 samples/execution,second reverses case/plan order. Each cell median of2 execution medians(us). These are selected rho3/mixed comparisons; no G4 narrow/wide timing claim.
+
+|N/rho|copy8|uncached atom16split2/4warps|repair4+param2|repair8+param2|dense|
+|---|---:|---:|---:|---:|---:|
+|64/3|55.59|50.20|51.00|50.98|33.72|
+|64/mixed|58.59|54.53|54.92|55.16|33.70|
+|128/3|64.17|61.44|62.57|60.46|43.26|
+|128/mixed|70.17|64.57|64.27|64.70|43.23|
+
+All selected candidates improve copy8 in every condition in both independent runs. N64 uncached atom16split2 is faster than both caches in both conditions/both runs. N128 rho3 repair8 wins both runs; at mixed repair4 wins both runs but is only0.30us below uncached atom16split2 in aggregate. No statistical significance or universal route claimed. Allocated peaks115,712/303,104 bytes for uncached,117,248/307,200 cache,reserved6,291,456. Ratios to measured dense remain about1.49–1.62x N64 and1.40–1.49x N128. G4 is still worth optimizing despite successful improvement vs copy8.
+
+N128 rho3 repair8 full sorts1/1 vsrepair4 26/34 over52 primary refreshes;mixed repair8 eliminates all full sorts while repair4 leaves6/7,yet repair4 is faster. Metadata/current refresh and repair expense continue to matter. No cross-GPU initial-byte equality or traffic attribution claimed.
+
+G4 supervisor21298 drained successfully(exit0),owned sessioncst-pool-156f0fde07df-1 stopped with lifecycle Session terminated/server No active sessions found and allslots stopped. L4 resumed via one supervisor58836 only after this confirmation. G4 raw source/results/logs preserved;8 measurement artifacts DB ingest is in progress.
+
+All8 G4 measurement artifacts now verified by byte-identical DB export/idempotent reimport;combined family total28 measurement artifacts (4L4screens+16L4full+8G4selected). Initial L4 resume supervisor58836 failed before executing an experiment: Colab assign L4 returned Service Unavailable(HTTP503),job ee834a73 became interrupted. Pool stopped/recovery confirmed no endpoint/no active server assignments; no GPU measurement is attributed to that interrupted allocation. Frozen job/source retained;explicit requeue required. Second allocation attempt supervisor40251 starts21:45UTC after backoff; remaining queued frozen jobs unchanged.

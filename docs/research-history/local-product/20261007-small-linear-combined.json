@@ -5546,6 +5546,94 @@
       "artifact_sha256": "1f1919e06a85fa6cbc0870dda0e073b2be0e445fe11cdeddfe91bf56f7ab1dc2",
       "byte_identical_export": true,
       "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+      "artifact": "small-linear-combined-128-rho3.json",
+      "run_id": "9ad6b24bbaa5db313e53005e031f1ab31ee5b95c2cd4de12a05fa90ce62114c0",
+      "projection_id": "e81be83f9d7e5d80b112796035763b07ca5539ba1f7d4e89643229ed2190c828",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "247a6d398768cd5f77d7edb32a8e24f5c59ca0ca19022eea0d1b91ba00305018",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+      "artifact": "small-linear-combined-64-rhomixed.json",
+      "run_id": "129b6e95a399cc39a293eb021f11fa425f1b17d7a1726e4c5f86813e87a64bcd",
+      "projection_id": "44d2136935760419242a4968b877ae3dbfa8ad135f616671332c7f52cf3b1006",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "80101bf6140b465997b35623cb18202d569e4ac1e70f5ee96d9d9f4c1d1238e3",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+      "artifact": "small-linear-combined-64-rho3.json",
+      "run_id": "835567d58498586306a30109702fc97a530064c42a897d5052c2f01e82a81a55",
+      "projection_id": "5c9100c789555ae54d8fb8af2abab2ea55169dbcbcbaf65032958ccbd80de8a6",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "77a83904cb83dc5c207f0a8d1d95c089d51d27b9c6f60e111e32444a2f4ce0dc",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+      "artifact": "small-linear-combined-128-rhomixed.json",
+      "run_id": "e0296a95b685c79af089d3d3d7607c722634b5cb1ce8ed4d5ff94c3d509823c8",
+      "projection_id": "1c51a7a4db2de9d4546bdd44069cb4582bbf7b123f3806eb140344bea7f6244c",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "8ac8cfcabb94a7ef777a0b9bfdac2c3863d6f20c1d01a6d3b8e9609791048879",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+      "artifact": "small-linear-combined-128-rho3.json",
+      "run_id": "c7b265d9029e21594c8771834493be7634494f71245e305e294a93b1634de5ad",
+      "projection_id": "5ced572a3239a544058b9bfa9b2f099c7991c8ad769aff09d37e706936b5c2af",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "d44302ded61656fa56ea0f07720a0bfb6b9451175d0f51fe9ee550bf8f842fef",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+      "artifact": "small-linear-combined-128-rhomixed.json",
+      "run_id": "0c7b71fc25995192aa3e4cfdb438b9297ed83660f2c74456da5ee30eaf8499b0",
+      "projection_id": "2ad6a7c830492b0b4e9e8b44db5a56e80bbc10afc591d3216ff4c0d411af855d",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "a47039232dcc9caaeef2fa4c30770302be90261316d69d5583aa5cf5b7266f40",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+      "artifact": "small-linear-combined-64-rho3.json",
+      "run_id": "81c135103467bf1fe4defcbeb50a3e2e3f00e1448c0f4ea99b761b7fec6fabb5",
+      "projection_id": "81b96ccd9951809ef59a75a48d62745363fb374800ff6bcc8f8edab7668f86e8",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "f57eaf06c3fb8c5393d3fbb667ed109782441c6970d4c251781a6530c1605e99",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+      "artifact": "small-linear-combined-64-rhomixed.json",
+      "run_id": "d99119ab83ffc46d685eb144167423ff316a18536da8de38d50288102e5ce325",
+      "projection_id": "d8d4fc44dcdcb34cd95cf865e8488f069ef24b8ce7bb99ce9e4beebaa4b2e415",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "9d4ecf5236b5c14f28e4b33b75071fbad2852e28488744fae49664317b27f1f7",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
     }
   ],
   "full_repeat1": {
@@ -13081,5 +13169,2001 @@
       ],
       "sm_count": 188
     }
+  },
+  "g4_two_runs": {
+    "schema_version": 1,
+    "source_commit": "7e55e9916c43a0955d9caf1f56d0cd808aff70b1",
+    "jobs": [
+      {
+        "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+        "repeat": 1,
+        "source_commit": "7e55e9916c43a0955d9caf1f56d0cd808aff70b1",
+        "source_snapshot_sha256": "4ba463f23d3e09708ef63af6c2edacaf958798c9819d1946ca84761808f909dc",
+        "result_archive_sha256": "4b1a54d876826123608f55392fa896a5ed7a2fd8009363c0998db6deb30ac809",
+        "runtime_files_matched": 197
+      },
+      {
+        "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+        "repeat": 2,
+        "source_commit": "7e55e9916c43a0955d9caf1f56d0cd808aff70b1",
+        "source_snapshot_sha256": "78420ec4a66a008d6486af1554f92a73c6ed1344f7eba97d3b0f8063a957b829",
+        "result_archive_sha256": "ac097cb9d9bdfee7605e6210e08a231068743362f39f4033efc9c8726d0941ce",
+        "runtime_files_matched": 197
+      }
+    ],
+    "runtime_files_matched": 197,
+    "protocol": "N64/N128 B32 A204/A819; actual initial rho > 1; FP32 IEEE; production evolving width and fused AdamW/Polar; 21 samples/execution; smoke covers rho3/8; full covers rho1.25/3/8/mixed; repeat2 reverses case/plan order",
+    "full_shape_oracles": [
+      {
+        "case": "local-combined-64-rho3",
+        "actual_initial_rho_min": 3.000002861022949,
+        "plans": [
+          {
+            "id": "local-ordered-prep-copy8-atom32",
+            "errors": [
+              {
+                "max": 7.26066119227653e-07,
+                "rel_l2": 1.567368542968966e-07
+              },
+              {
+                "max": 6.889065855553156e-07,
+                "rel_l2": 1.5289842353967682e-07
+              },
+              {
+                "max": 1.953014013622578e-06,
+                "rel_l2": 1.6363980771938272e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+            "errors": [
+              {
+                "max": 7.26066119227653e-07,
+                "rel_l2": 1.567368542968966e-07
+              },
+              {
+                "max": 6.889065855553156e-07,
+                "rel_l2": 1.5289842353967682e-07
+              },
+              {
+                "max": 2.0509594911288787e-06,
+                "rel_l2": 1.6208187998891448e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-cache-repair4-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 7.26066119227653e-07,
+                "rel_l2": 1.567368542968966e-07
+              },
+              {
+                "max": 6.889065855553156e-07,
+                "rel_l2": 1.5289842353967682e-07
+              },
+              {
+                "max": 1.953014013622578e-06,
+                "rel_l2": 1.6479746710624934e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-cache-repair8-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 7.26066119227653e-07,
+                "rel_l2": 1.567368542968966e-07
+              },
+              {
+                "max": 6.889065855553156e-07,
+                "rel_l2": 1.5289842353967682e-07
+              },
+              {
+                "max": 1.953014013622578e-06,
+                "rel_l2": 1.6479746710624934e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          }
+        ]
+      },
+      {
+        "case": "local-combined-64-rhomixed",
+        "actual_initial_rho_min": 1.2500008344650269,
+        "plans": [
+          {
+            "id": "local-ordered-prep-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.0797219243130485e-06,
+                "rel_l2": 2.0422452977771402e-07
+              },
+              {
+                "max": 9.630685076089662e-07,
+                "rel_l2": 2.0184028248647284e-07
+              },
+              {
+                "max": 8.445408155033363e-06,
+                "rel_l2": 5.023137512847861e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+            "errors": [
+              {
+                "max": 1.0797219243130485e-06,
+                "rel_l2": 2.0422452977771402e-07
+              },
+              {
+                "max": 9.630685076089662e-07,
+                "rel_l2": 2.0184028248647284e-07
+              },
+              {
+                "max": 8.445408155033363e-06,
+                "rel_l2": 5.018417727379486e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-cache-repair4-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.0797219243130485e-06,
+                "rel_l2": 2.0422452977771402e-07
+              },
+              {
+                "max": 9.630685076089662e-07,
+                "rel_l2": 2.0184028248647284e-07
+              },
+              {
+                "max": 8.445408155033363e-06,
+                "rel_l2": 5.01189529730314e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-cache-repair8-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.0797219243130485e-06,
+                "rel_l2": 2.0422452977771402e-07
+              },
+              {
+                "max": 9.630685076089662e-07,
+                "rel_l2": 2.0184028248647284e-07
+              },
+              {
+                "max": 8.445408155033363e-06,
+                "rel_l2": 5.01189529730314e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          }
+        ]
+      },
+      {
+        "case": "local-combined-128-rho3",
+        "actual_initial_rho_min": 3.000002861022949,
+        "plans": [
+          {
+            "id": "local-ordered-prep-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.3633685043146215e-06,
+                "rel_l2": 1.6588675213388918e-07
+              },
+              {
+                "max": 1.4129932801587586e-06,
+                "rel_l2": 1.6907853070076795e-07
+              },
+              {
+                "max": 2.004911545228083e-06,
+                "rel_l2": 1.690558564507075e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+            "errors": [
+              {
+                "max": 1.3633685043146215e-06,
+                "rel_l2": 1.6588675213388918e-07
+              },
+              {
+                "max": 1.4129932801587586e-06,
+                "rel_l2": 1.6907853070076795e-07
+              },
+              {
+                "max": 2.004911545228083e-06,
+                "rel_l2": 1.6699553126041661e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-cache-repair4-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.3633685043146215e-06,
+                "rel_l2": 1.6588675213388918e-07
+              },
+              {
+                "max": 1.4129932801587586e-06,
+                "rel_l2": 1.6907853070076795e-07
+              },
+              {
+                "max": 2.004911545228083e-06,
+                "rel_l2": 1.6813760385205157e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-cache-repair8-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.3633685043146215e-06,
+                "rel_l2": 1.6588675213388918e-07
+              },
+              {
+                "max": 1.4129932801587586e-06,
+                "rel_l2": 1.6907853070076795e-07
+              },
+              {
+                "max": 2.004911545228083e-06,
+                "rel_l2": 1.6813760385205157e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          }
+        ]
+      },
+      {
+        "case": "local-combined-128-rhomixed",
+        "actual_initial_rho_min": 1.2500008344650269,
+        "plans": [
+          {
+            "id": "local-ordered-prep-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.60732937448671e-06,
+                "rel_l2": 2.0623589517683063e-07
+              },
+              {
+                "max": 1.7957377936861363e-06,
+                "rel_l2": 2.046868241011289e-07
+              },
+              {
+                "max": 7.876530110806357e-06,
+                "rel_l2": 5.045093397623581e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+            "errors": [
+              {
+                "max": 1.60732937448671e-06,
+                "rel_l2": 2.0623589517683063e-07
+              },
+              {
+                "max": 1.7957377936861363e-06,
+                "rel_l2": 2.046868241011289e-07
+              },
+              {
+                "max": 7.876530110806357e-06,
+                "rel_l2": 5.066204617270434e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-cache-repair4-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.60732937448671e-06,
+                "rel_l2": 2.0623589517683063e-07
+              },
+              {
+                "max": 1.7957377936861363e-06,
+                "rel_l2": 2.046868241011289e-07
+              },
+              {
+                "max": 7.876530110806357e-06,
+                "rel_l2": 5.040342740341861e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-cache-repair8-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.60732937448671e-06,
+                "rel_l2": 2.0623589517683063e-07
+              },
+              {
+                "max": 1.7957377936861363e-06,
+                "rel_l2": 2.046868241011289e-07
+              },
+              {
+                "max": 7.876530110806357e-06,
+                "rel_l2": 5.040342740341861e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          }
+        ]
+      },
+      {
+        "case": "local-combined-128-rhomixed",
+        "actual_initial_rho_min": 1.2500008344650269,
+        "plans": [
+          {
+            "id": "local-ordered-prep-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.60732937448671e-06,
+                "rel_l2": 2.0623589517683063e-07
+              },
+              {
+                "max": 1.7957377936861363e-06,
+                "rel_l2": 2.046868241011289e-07
+              },
+              {
+                "max": 7.876530110806357e-06,
+                "rel_l2": 5.045093397623581e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+            "errors": [
+              {
+                "max": 1.60732937448671e-06,
+                "rel_l2": 2.0623589517683063e-07
+              },
+              {
+                "max": 1.7957377936861363e-06,
+                "rel_l2": 2.046868241011289e-07
+              },
+              {
+                "max": 7.876530110806357e-06,
+                "rel_l2": 5.066204617270434e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-cache-repair4-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.60732937448671e-06,
+                "rel_l2": 2.0623589517683063e-07
+              },
+              {
+                "max": 1.7957377936861363e-06,
+                "rel_l2": 2.046868241011289e-07
+              },
+              {
+                "max": 7.876530110806357e-06,
+                "rel_l2": 5.040342740341861e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-cache-repair8-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.60732937448671e-06,
+                "rel_l2": 2.0623589517683063e-07
+              },
+              {
+                "max": 1.7957377936861363e-06,
+                "rel_l2": 2.046868241011289e-07
+              },
+              {
+                "max": 7.876530110806357e-06,
+                "rel_l2": 5.040342740341861e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          }
+        ]
+      },
+      {
+        "case": "local-combined-128-rho3",
+        "actual_initial_rho_min": 3.000002861022949,
+        "plans": [
+          {
+            "id": "local-ordered-prep-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.3633685043146215e-06,
+                "rel_l2": 1.6588675213388918e-07
+              },
+              {
+                "max": 1.4129932801587586e-06,
+                "rel_l2": 1.6907853070076795e-07
+              },
+              {
+                "max": 2.004911545228083e-06,
+                "rel_l2": 1.690558564507075e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+            "errors": [
+              {
+                "max": 1.3633685043146215e-06,
+                "rel_l2": 1.6588675213388918e-07
+              },
+              {
+                "max": 1.4129932801587586e-06,
+                "rel_l2": 1.6907853070076795e-07
+              },
+              {
+                "max": 2.004911545228083e-06,
+                "rel_l2": 1.6699553126041661e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-cache-repair4-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.3633685043146215e-06,
+                "rel_l2": 1.6588675213388918e-07
+              },
+              {
+                "max": 1.4129932801587586e-06,
+                "rel_l2": 1.6907853070076795e-07
+              },
+              {
+                "max": 2.004911545228083e-06,
+                "rel_l2": 1.6813760385205157e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          },
+          {
+            "id": "local-ordered-cache-repair8-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.3633685043146215e-06,
+                "rel_l2": 1.6588675213388918e-07
+              },
+              {
+                "max": 1.4129932801587586e-06,
+                "rel_l2": 1.6907853070076795e-07
+              },
+              {
+                "max": 2.004911545228083e-06,
+                "rel_l2": 1.6813760385205157e-07
+              }
+            ],
+            "oracle_center_nonzero": 1638
+          }
+        ]
+      },
+      {
+        "case": "local-combined-64-rhomixed",
+        "actual_initial_rho_min": 1.2500008344650269,
+        "plans": [
+          {
+            "id": "local-ordered-prep-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.0797219243130485e-06,
+                "rel_l2": 2.0422452977771402e-07
+              },
+              {
+                "max": 9.630685076089662e-07,
+                "rel_l2": 2.0184028248647284e-07
+              },
+              {
+                "max": 8.445408155033363e-06,
+                "rel_l2": 5.023137512847861e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+            "errors": [
+              {
+                "max": 1.0797219243130485e-06,
+                "rel_l2": 2.0422452977771402e-07
+              },
+              {
+                "max": 9.630685076089662e-07,
+                "rel_l2": 2.0184028248647284e-07
+              },
+              {
+                "max": 8.445408155033363e-06,
+                "rel_l2": 5.018417727379486e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-cache-repair4-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.0797219243130485e-06,
+                "rel_l2": 2.0422452977771402e-07
+              },
+              {
+                "max": 9.630685076089662e-07,
+                "rel_l2": 2.0184028248647284e-07
+              },
+              {
+                "max": 8.445408155033363e-06,
+                "rel_l2": 5.01189529730314e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-cache-repair8-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 1.0797219243130485e-06,
+                "rel_l2": 2.0422452977771402e-07
+              },
+              {
+                "max": 9.630685076089662e-07,
+                "rel_l2": 2.0184028248647284e-07
+              },
+              {
+                "max": 8.445408155033363e-06,
+                "rel_l2": 5.01189529730314e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          }
+        ]
+      },
+      {
+        "case": "local-combined-64-rho3",
+        "actual_initial_rho_min": 3.000002861022949,
+        "plans": [
+          {
+            "id": "local-ordered-prep-copy8-atom32",
+            "errors": [
+              {
+                "max": 7.26066119227653e-07,
+                "rel_l2": 1.567368542968966e-07
+              },
+              {
+                "max": 6.889065855553156e-07,
+                "rel_l2": 1.5289842353967682e-07
+              },
+              {
+                "max": 1.953014013622578e-06,
+                "rel_l2": 1.6363980771938272e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+            "errors": [
+              {
+                "max": 7.26066119227653e-07,
+                "rel_l2": 1.567368542968966e-07
+              },
+              {
+                "max": 6.889065855553156e-07,
+                "rel_l2": 1.5289842353967682e-07
+              },
+              {
+                "max": 2.0509594911288787e-06,
+                "rel_l2": 1.6208187998891448e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-cache-repair4-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 7.26066119227653e-07,
+                "rel_l2": 1.567368542968966e-07
+              },
+              {
+                "max": 6.889065855553156e-07,
+                "rel_l2": 1.5289842353967682e-07
+              },
+              {
+                "max": 1.953014013622578e-06,
+                "rel_l2": 1.6479746710624934e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          },
+          {
+            "id": "local-ordered-cache-repair8-param2-copy8-atom32",
+            "errors": [
+              {
+                "max": 7.26066119227653e-07,
+                "rel_l2": 1.567368542968966e-07
+              },
+              {
+                "max": 6.889065855553156e-07,
+                "rel_l2": 1.5289842353967682e-07
+              },
+              {
+                "max": 1.953014013622578e-06,
+                "rel_l2": 1.6479746710624934e-07
+              }
+            ],
+            "oracle_center_nonzero": 408
+          }
+        ]
+      }
+    ],
+    "observations": [
+      {
+        "case": {
+          "id": "local-combined-128-rho3",
+          "fixture": "local_polar_product",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 64.17499997724008,
+            "run_medians_us": [
+              64.44999996801926,
+              63.8999999864609
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.94399992749095,
+              "layout": 13.088000006973743,
+              "h": 0.44800000614486635,
+              "output": 9.903999976813793,
+              "dx": 11.648000217974186,
+              "parameters": 11.855999939143658
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 2,
+            "median_us": 61.439999996082406,
+            "run_medians_us": [
+              61.1199999980272,
+              61.759999994137615
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.31200016848743,
+              "layout": 12.895999941974878,
+              "h": 0.44800000614486635,
+              "output": 9.967999998480082,
+              "dx": 11.632000096142292,
+              "parameters": 7.7599999494850636
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 62.56500000745291,
+            "run_medians_us": [
+              61.80000002586894,
+              63.32999998903688
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.991999827325344,
+              "layout": 14.511999674141407,
+              "h": 0.44800000614486635,
+              "output": 9.984000120311975,
+              "dx": 11.648000217974186,
+              "parameters": 9.79200005531311
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 60.459999986051116,
+            "run_medians_us": [
+              60.459999986051116,
+              60.459999986051116
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.735999973490834,
+              "layout": 11.024000123143196,
+              "h": 0.44800000614486635,
+              "output": 9.935999754816294,
+              "dx": 11.648000217974186,
+              "parameters": 9.79200005531311
+            }
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 43.260000012423916,
+            "run_medians_us": [
+              43.2200000091143,
+              43.30000001573353
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        },
+        "candidate_summary": {
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "time_reduction_percent": 4.257889348083621,
+            "allocated_reduction_bytes": 0,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 64.44999996801926,
+                "candidate_us": 61.1199999980272,
+                "time_reduction_percent": 5.166795921868794,
+                "allocated_reduction_bytes": 0
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 63.8999999864609,
+                "candidate_us": 61.759999994137615,
+                "time_reduction_percent": 3.348982774298448,
+                "allocated_reduction_bytes": 0
+              }
+            ]
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "time_reduction_percent": 2.5018665975758863,
+            "allocated_reduction_bytes": -4096,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 64.44999996801926,
+                "candidate_us": 61.80000002586894,
+                "time_reduction_percent": 4.111714419651314,
+                "allocated_reduction_bytes": -4096
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 63.8999999864609,
+                "candidate_us": 63.32999998903688,
+                "time_reduction_percent": 0.8920187755004583,
+                "allocated_reduction_bytes": -4096
+              }
+            ]
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "time_reduction_percent": 5.787128587113838,
+            "allocated_reduction_bytes": -4096,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 64.44999996801926,
+                "candidate_us": 60.459999986051116,
+                "time_reduction_percent": 6.19084559185108,
+                "allocated_reduction_bytes": -4096
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 63.8999999864609,
+                "candidate_us": 60.459999986051116,
+                "time_reduction_percent": 5.383411582376596,
+                "allocated_reduction_bytes": -4096
+              }
+            ]
+          }
+        },
+        "layout_counters": {
+          "local-ordered-cache-repair4-param2-copy8-atom32": [
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 819,
+              "slot_capacity_per_view": 819,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                49,
+                3
+              ],
+              "dx": [
+                52,
+                50,
+                2
+              ],
+              "repair_rounds": 4,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                23,
+                26
+              ],
+              "repair_dx": [
+                16,
+                34
+              ]
+            },
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 819,
+              "slot_capacity_per_view": 819,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                49,
+                3
+              ],
+              "dx": [
+                52,
+                50,
+                2
+              ],
+              "repair_rounds": 4,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                23,
+                26
+              ],
+              "repair_dx": [
+                16,
+                34
+              ]
+            }
+          ],
+          "local-ordered-cache-repair8-param2-copy8-atom32": [
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 819,
+              "slot_capacity_per_view": 819,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                49,
+                3
+              ],
+              "dx": [
+                52,
+                50,
+                2
+              ],
+              "repair_rounds": 8,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                48,
+                1
+              ],
+              "repair_dx": [
+                49,
+                1
+              ]
+            },
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 819,
+              "slot_capacity_per_view": 819,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                49,
+                3
+              ],
+              "dx": [
+                52,
+                50,
+                2
+              ],
+              "repair_rounds": 8,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                48,
+                1
+              ],
+              "repair_dx": [
+                49,
+                1
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-128-rhomixed",
+          "fixture": "local_polar_product",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              1.25,
+              3,
+              8
+            ],
+            "fractions": [
+              0.5,
+              0.3,
+              0.2
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 70.17499999051324,
+            "run_medians_us": [
+              70.14999999910287,
+              70.19999998192361
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.68800007365644,
+              "layout": 13.040000107139349,
+              "h": 0.44800000614486635,
+              "output": 10.56000031530857,
+              "dx": 13.69599997997284,
+              "parameters": 13.887999579310417
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 2,
+            "median_us": 64.57000000636981,
+            "run_medians_us": [
+              64.53999998257132,
+              64.6000000301683
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.864000016823411,
+              "layout": 12.879999820142984,
+              "h": 0.44800000614486635,
+              "output": 10.464000049978495,
+              "dx": 13.679999858140945,
+              "parameters": 7.74399982765317
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 64.26999999575855,
+            "run_medians_us": [
+              64.23000002087065,
+              64.30999997064646
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.975999938324094,
+              "layout": 11.04000024497509,
+              "h": 0.44800000614486635,
+              "output": 11.04000024497509,
+              "dx": 13.679999858140945,
+              "parameters": 9.824000298976898
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 64.70499999977619,
+            "run_medians_us": [
+              64.82000003416033,
+              64.58999996539205
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.08800009265542,
+              "layout": 10.671999771147966,
+              "h": 0.44800000614486635,
+              "output": 11.504000052809715,
+              "dx": 13.679999858140945,
+              "parameters": 9.808000177145004
+            }
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 43.23499999259184,
+            "run_medians_us": [
+              43.11999998662941,
+              43.34999999855427
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        },
+        "candidate_summary": {
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "time_reduction_percent": 7.9871784503530545,
+            "allocated_reduction_bytes": 0,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 70.14999999910287,
+                "candidate_us": 64.53999998257132,
+                "time_reduction_percent": 7.997148990168645,
+                "allocated_reduction_bytes": 0
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 70.19999998192361,
+                "candidate_us": 64.6000000301683,
+                "time_reduction_percent": 7.977207910537465,
+                "allocated_reduction_bytes": 0
+              }
+            ]
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "time_reduction_percent": 8.414686268280459,
+            "allocated_reduction_bytes": -4096,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 70.14999999910287,
+                "candidate_us": 64.23000002087065,
+                "time_reduction_percent": 8.43905912802272,
+                "allocated_reduction_bytes": -4096
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 70.19999998192361,
+                "candidate_us": 64.30999997064646,
+                "time_reduction_percent": 8.390313408538198,
+                "allocated_reduction_bytes": -4096
+              }
+            ]
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "time_reduction_percent": 7.794728621866215,
+            "allocated_reduction_bytes": -4096,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 70.14999999910287,
+                "candidate_us": 64.82000003416033,
+                "time_reduction_percent": 7.598004226672428,
+                "allocated_reduction_bytes": -4096
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 70.19999998192361,
+                "candidate_us": 64.58999996539205,
+                "time_reduction_percent": 7.991453017060001,
+                "allocated_reduction_bytes": -4096
+              }
+            ]
+          }
+        },
+        "layout_counters": {
+          "local-ordered-cache-repair4-param2-copy8-atom32": [
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 819,
+              "slot_capacity_per_view": 819,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                43,
+                9
+              ],
+              "dx": [
+                52,
+                44,
+                8
+              ],
+              "repair_rounds": 4,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                37,
+                6
+              ],
+              "repair_dx": [
+                37,
+                7
+              ]
+            },
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 819,
+              "slot_capacity_per_view": 819,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                43,
+                9
+              ],
+              "dx": [
+                52,
+                44,
+                8
+              ],
+              "repair_rounds": 4,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                37,
+                6
+              ],
+              "repair_dx": [
+                37,
+                7
+              ]
+            }
+          ],
+          "local-ordered-cache-repair8-param2-copy8-atom32": [
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 819,
+              "slot_capacity_per_view": 819,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                43,
+                9
+              ],
+              "dx": [
+                52,
+                44,
+                8
+              ],
+              "repair_rounds": 8,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                43,
+                0
+              ],
+              "repair_dx": [
+                44,
+                0
+              ]
+            },
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 819,
+              "slot_capacity_per_view": 819,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                43,
+                9
+              ],
+              "dx": [
+                52,
+                44,
+                8
+              ],
+              "repair_rounds": 8,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                43,
+                0
+              ],
+              "repair_dx": [
+                44,
+                0
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-64-rho3",
+          "fixture": "local_polar_product",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 55.58500001257016,
+            "run_medians_us": [
+              55.54000000529413,
+              55.63000001984619
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.735999973490834,
+              "layout": 8.559999987483025,
+              "h": 0.44800000614486635,
+              "output": 7.74399982765317,
+              "dx": 8.191999979317188,
+              "parameters": 13.295999728143215
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 2,
+            "median_us": 50.19500000003063,
+            "run_medians_us": [
+              50.22999999937383,
+              50.16000000068743
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.007999949157238,
+              "layout": 8.576000109314919,
+              "h": 0.44800000614486635,
+              "output": 8.336000144481659,
+              "dx": 8.144000079482794,
+              "parameters": 9.184000082314014
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 50.99500000937951,
+            "run_medians_us": [
+              51.240000004781905,
+              50.750000013977115
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.735999973490834,
+              "layout": 7.631999906152487,
+              "h": 0.44800000614486635,
+              "output": 7.74399982765317,
+              "dx": 10.17600018531084,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 50.979999969058554,
+            "run_medians_us": [
+              50.47000001923152,
+              51.48999991888559
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.880000138655305,
+              "layout": 8.78399983048439,
+              "h": 0.44800000614486635,
+              "output": 7.839999860152602,
+              "dx": 8.128000423312187,
+              "parameters": 9.200000204145908
+            }
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 33.72499998022249,
+            "run_medians_us": [
+              33.65999998550251,
+              33.789999974942475
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        },
+        "candidate_summary": {
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "time_reduction_percent": 9.696750523027902,
+            "allocated_reduction_bytes": 0,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 55.54000000529413,
+                "candidate_us": 50.22999999937383,
+                "time_reduction_percent": 9.560676999305272,
+                "allocated_reduction_bytes": 0
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 55.63000001984619,
+                "candidate_us": 50.16000000068743,
+                "time_reduction_percent": 9.832824046750533,
+                "allocated_reduction_bytes": 0
+              }
+            ]
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "time_reduction_percent": 8.257206503017184,
+            "allocated_reduction_bytes": -1536,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 55.54000000529413,
+                "candidate_us": 51.240000004781905,
+                "time_reduction_percent": 7.7421678071702305,
+                "allocated_reduction_bytes": -1536
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 55.63000001984619,
+                "candidate_us": 50.750000013977115,
+                "time_reduction_percent": 8.772245198864137,
+                "allocated_reduction_bytes": -1536
+              }
+            ]
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "time_reduction_percent": 8.285291915725079,
+            "allocated_reduction_bytes": -1536,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 55.54000000529413,
+                "candidate_us": 50.47000001923152,
+                "time_reduction_percent": 9.128555969714325,
+                "allocated_reduction_bytes": -1536
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 55.63000001984619,
+                "candidate_us": 51.48999991888559,
+                "time_reduction_percent": 7.442027861735834,
+                "allocated_reduction_bytes": -1536
+              }
+            ]
+          }
+        },
+        "layout_counters": {
+          "local-ordered-cache-repair4-param2-copy8-atom32": [
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 204,
+              "slot_capacity_per_view": 204,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                26,
+                26
+              ],
+              "dx": [
+                52,
+                25,
+                27
+              ],
+              "repair_rounds": 4,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                26,
+                0
+              ],
+              "repair_dx": [
+                25,
+                0
+              ]
+            },
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 204,
+              "slot_capacity_per_view": 204,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                26,
+                26
+              ],
+              "dx": [
+                52,
+                25,
+                27
+              ],
+              "repair_rounds": 4,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                26,
+                0
+              ],
+              "repair_dx": [
+                25,
+                0
+              ]
+            }
+          ],
+          "local-ordered-cache-repair8-param2-copy8-atom32": [
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 204,
+              "slot_capacity_per_view": 204,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                26,
+                26
+              ],
+              "dx": [
+                52,
+                25,
+                27
+              ],
+              "repair_rounds": 8,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                26,
+                0
+              ],
+              "repair_dx": [
+                25,
+                0
+              ]
+            },
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 204,
+              "slot_capacity_per_view": 204,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                26,
+                26
+              ],
+              "dx": [
+                52,
+                25,
+                27
+              ],
+              "repair_rounds": 8,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                26,
+                0
+              ],
+              "repair_dx": [
+                25,
+                0
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-64-rhomixed",
+          "fixture": "local_polar_product",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              1.25,
+              3,
+              8
+            ],
+            "fractions": [
+              0.5,
+              0.3,
+              0.2
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 58.590000037384016,
+            "run_medians_us": [
+              58.60999999640626,
+              58.57000007836177
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.9599998164922,
+              "layout": 8.86400043964386,
+              "h": 0.44800000614486635,
+              "output": 9.951999876648188,
+              "dx": 11.632000096142292,
+              "parameters": 11.839999817311764
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 2,
+            "median_us": 54.53049999459836,
+            "run_medians_us": [
+              54.569999974773964,
+              54.49100001442275
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.880000138655305,
+              "layout": 8.863999973982573,
+              "h": 0.44800000614486635,
+              "output": 9.920000098645687,
+              "dx": 11.615999974310398,
+              "parameters": 7.7599999494850636
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 54.920000025049376,
+            "run_medians_us": [
+              54.95000004884787,
+              54.89000000125088
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.9760001711547375,
+              "layout": 8.511999621987343,
+              "h": 0.44800000614486635,
+              "output": 9.984000120311975,
+              "dx": 11.648000217974186,
+              "parameters": 9.79200005531311
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 2,
+            "median_us": 55.160000016485355,
+            "run_medians_us": [
+              55.37999999205567,
+              54.94000004091504
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.056000081822276,
+              "layout": 8.431999944150448,
+              "h": 0.44800000614486635,
+              "output": 9.727999567985535,
+              "dx": 11.648000217974186,
+              "parameters": 9.79200005531311
+            }
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 33.699999960390414,
+            "run_medians_us": [
+              33.710000025166664,
+              33.689999895614164
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        },
+        "candidate_summary": {
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "time_reduction_percent": 6.928669004336069,
+            "allocated_reduction_bytes": 0,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 58.60999999640626,
+                "candidate_us": 54.569999974773964,
+                "time_reduction_percent": 6.8930217059887555,
+                "allocated_reduction_bytes": 0
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 58.57000007836177,
+                "candidate_us": 54.49100001442275,
+                "time_reduction_percent": 6.9643163026833825,
+                "allocated_reduction_bytes": 0
+              }
+            ]
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "time_reduction_percent": 6.263874127324271,
+            "allocated_reduction_bytes": -1536,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 58.60999999640626,
+                "candidate_us": 54.95000004884787,
+                "time_reduction_percent": 6.244668056275049,
+                "allocated_reduction_bytes": -1536
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 58.57000007836177,
+                "candidate_us": 54.89000000125088,
+                "time_reduction_percent": 6.283080198373492,
+                "allocated_reduction_bytes": -1536
+              }
+            ]
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "time_reduction_percent": 5.854358575342705,
+            "allocated_reduction_bytes": -1536,
+            "paired_executions": [
+              {
+                "job": "colabjob-634bd8f1c2024f21a0c6933ede97ddc0",
+                "baseline_us": 58.60999999640626,
+                "candidate_us": 55.37999999205567,
+                "time_reduction_percent": 5.511004955721955,
+                "allocated_reduction_bytes": -1536
+              },
+              {
+                "job": "colabjob-224e457f27f64dcdb630304a66a63d68",
+                "baseline_us": 58.57000007836177,
+                "candidate_us": 54.94000004091504,
+                "time_reduction_percent": 6.197712194963456,
+                "allocated_reduction_bytes": -1536
+              }
+            ]
+          }
+        },
+        "layout_counters": {
+          "local-ordered-cache-repair4-param2-copy8-atom32": [
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 204,
+              "slot_capacity_per_view": 204,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                15,
+                37
+              ],
+              "dx": [
+                52,
+                19,
+                33
+              ],
+              "repair_rounds": 4,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                15,
+                0
+              ],
+              "repair_dx": [
+                19,
+                0
+              ]
+            },
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 204,
+              "slot_capacity_per_view": 204,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                15,
+                37
+              ],
+              "dx": [
+                52,
+                19,
+                33
+              ],
+              "repair_rounds": 4,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                15,
+                0
+              ],
+              "repair_dx": [
+                19,
+                0
+              ]
+            }
+          ],
+          "local-ordered-cache-repair8-param2-copy8-atom32": [
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 204,
+              "slot_capacity_per_view": 204,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                15,
+                37
+              ],
+              "dx": [
+                52,
+                19,
+                33
+              ],
+              "repair_rounds": 8,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                15,
+                0
+              ],
+              "repair_dx": [
+                19,
+                0
+              ]
+            },
+            {
+              "kind": "exact-permutation-validation-cache",
+              "canonical_atoms": 204,
+              "slot_capacity_per_view": 204,
+              "key_bits": 0,
+              "key_encoding": "none",
+              "order_bits": 16,
+              "counter_scope": "since initialization; counts executed refreshes",
+              "counter_names": [
+                "refreshes",
+                "order_updates",
+                "reuses"
+              ],
+              "forward": [
+                52,
+                15,
+                37
+              ],
+              "dx": [
+                52,
+                19,
+                33
+              ],
+              "repair_rounds": 8,
+              "repair_counter_names": [
+                "bounded_repairs",
+                "full_sorts"
+              ],
+              "repair_forward": [
+                15,
+                0
+              ],
+              "repair_dx": [
+                19,
+                0
+              ]
+            }
+          ]
+        }
+      }
+    ]
   }
 }
