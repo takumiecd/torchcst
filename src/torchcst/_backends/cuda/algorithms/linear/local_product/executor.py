@@ -270,6 +270,8 @@ def ordered_layout(packed, domain, recipe):
             not recipe.owner_index and not recipe.parallel_owner_ranges,
             recipe.compact_order_key,
             COPY=not recipe.parallel_order_copy,
+            VECTOR_RANGES=recipe.vector_owner_ranges,
+            OWNER_BLOCK=tr.next_power_of_2(groups),
             num_warps=recipe.preparation_warps,
             enable_fp_fusion=False,
         )

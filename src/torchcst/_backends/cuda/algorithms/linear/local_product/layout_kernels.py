@@ -289,6 +289,8 @@ def ordered_views(
     RANGES: tl.constexpr,
     COMPACT_KEY: tl.constexpr = False,
     COPY: tl.constexpr = True,
+    VECTOR_RANGES: tl.constexpr = False,
+    OWNER_BLOCK: tl.constexpr = 1,
 ):
     """Per-call compact snapshots; band then support start, canonical tie-break."""
     direction = tl.program_id(0)
@@ -334,13 +336,26 @@ def ordered_views(
             tl.where(direction == 0, sulo, svlo),
             tl.where(direction == 0, suhi, svhi),
         )
-        for owner in range(STRIDE - 5):
-            overlap = (a < C) & (slo < (owner + 1) * 16) & (shi > owner * 16)
+        if VECTOR_RANGES:
+            owner = tl.arange(0, OWNER_BLOCK)
+            overlap = (a[None, :] < C) & (slo[None, :] < (owner[:, None] + 1) * 16)
+            overlap &= shi[None, :] > owner[:, None] * 16
             for phase in tl.static_range(3):
-                live = overlap & (sorted_bucket == groups + phase)
-                begin = tl.min(tl.where(live, a, C), 0)
-                end = tl.max(tl.where(live, a + 1, 0), 0)
+                live = overlap & (sorted_bucket[None, :] == groups + phase)
+                begin = tl.min(tl.where(live, a[None, :], C), 1)
+                end = tl.max(tl.where(live, a[None, :] + 1, 0), 1)
                 begin = tl.minimum(begin, end)
                 target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
-                tl.store(target, begin)
-                tl.store(target + 1, end)
+                tl.store(target, begin, owner < STRIDE - 5)
+                tl.store(target + 1, end, owner < STRIDE - 5)
+        else:
+            for owner in range(STRIDE - 5):
+                overlap = (a < C) & (slo < (owner + 1) * 16) & (shi > owner * 16)
+                for phase in tl.static_range(3):
+                    live = overlap & (sorted_bucket == groups + phase)
+                    begin = tl.min(tl.where(live, a, C), 0)
+                    end = tl.max(tl.where(live, a + 1, 0), 0)
+                    begin = tl.minimum(begin, end)
+                    target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
+                    tl.store(target, begin)
+                    tl.store(target + 1, end)

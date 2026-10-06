@@ -39,7 +39,9 @@
     "local-ordered-prep-warp8-atom32",
     "local-ordered-prep-range-atom32",
     "local-ordered-prep-copy-atom32",
-    "local-ordered-prep-copy8-atom32"
+    "local-ordered-prep-copy8-atom32",
+    "local-ordered-prep-vector-atom32",
+    "local-ordered-prep-vector8-atom32"
   ],
   "baseline": "local-ordered-split4-i32-atom32",
   "dense": true

@@ -93,6 +93,10 @@ class Recipe:
         return False
 
     @property
+    def vector_owner_ranges(self):
+        return False
+
+    @property
     def preparation_warps(self):
         return 4
 
