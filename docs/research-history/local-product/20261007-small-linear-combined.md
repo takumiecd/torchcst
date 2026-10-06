@@ -86,3 +86,7 @@ After successful inline-histogram test retrieval, L4 supervisor65855 exited1 on 
 At21:35UTC short already-queued G4 comparison started first on supervisor21298,one owned sessioncst-pool-156f0fde07df-1,endpointgpu-g4-s-ft-kkb-euw4a1-2ubn8by91reyk. No concurrent L4 or other ownedGPU allocation. After G4 drains and owned-stop/server verification, resume remaining L4 queue before08:00JST endpoint.
 
 The earlier independent G4 param2 reference-update proof from PR38 has been copied as docs-only commit869d6bb1 to preserve up-to-date inherited records. Combined runtime/benchmark measurement source remains unchanged.
+
+## Verified G4 selected-route correctness
+
+G4 check succeeded:27 cached-route tests45.48s +9 uncached atom16/4warps/batch split2 tests10.75s,36 actual GPU tests total (20 unrelated tests deselected). Source7e55e991; committed/submitted/worker197 runtime hashes and source/result archive SHA256 agree. Actual hardware NVIDIA RTX PRO 6000 Blackwell Server Edition,CC12.0,188SM,torch2.11.0+cu130/CUDA13.0/Triton3.6.0,TF32off. All selected routes retain independent FP64 Y/dX/all source gradients/nonzero positions,support/current snapshot coverage,slices/B1/32/64,20 captured reference optimizer updates/moments/steps N64/N128,old backward and empty-neighbor coverage. Correctness now verified on G4; the two timing jobs are still queued/running. No G4 performance claim from tests alone.
