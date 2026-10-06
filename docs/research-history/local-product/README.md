@@ -1,5 +1,13 @@
 # Small linear product / hybrid H
 
+2026-10-07: [Validated integration](20261007-integration.md) combines the measured
+support ordering, parameter partitions, exact repair, counter-free caches and
+tight histogram recipes. See the [morning report](20261007-overnight-morning.md)
+for L4/G4 timing and memory, and the
+[comparison scope](20261007-comparison-methodology.md) for the mathematical contract.
+The merged recipes remain explicit selections; timing is from the recorded
+constituent sources, while integration CPU/declaration checks are separate.
+
 2026-10-06: [Physical support order and split owners on L4/G4](20261006-ordered-owner.md).
 Seven recipes compare compact physical views, exact IDs/ranges, cached H,
 two/four-way atom groups and bounded int32 sort keys. Four-way local H with
