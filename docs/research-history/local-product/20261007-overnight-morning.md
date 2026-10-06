@@ -32,6 +32,17 @@ B32、N64/A204、N128/A819、初期 decoded rho 1.25/3/8/mixed（すべて >1）
 |64 / 8|57.31|50.33|39.26|1.28x|12.2%|117,248|`local-ordered-cache-repair4-paramatom16-param4-param2-copy8-atom32`|
 |64 / mixed|63.24|56.58|39.33|1.44x|10.5%|117,248|`local-ordered-cache-repair4-paramatom16-param4-param2-copy8-atom32`|
 
+### L4: 64向け cached atom16 + カウンタ除去 ([PR #53](https://github.com/takumiecd/torchcst/pull/53))
+
+最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。
+
+|N / 初期rho|copy8 µs|最速測定 µs|dense µs|dense比|copy8比改善|allocated peak B|選択した構成|
+|---|---:|---:|---:|---:|---:|---:|---|
+|64 / 1.25|55.49|49.10|39.14|1.25x|11.5%|116,736|`local-ordered-cache-gather-paramatom16-param4-param2-nostats-copy8-atom32`|
+|64 / 3|59.39|51.20|39.32|1.30x|13.8%|116,736|`local-ordered-cache-repair4-paramatom16-param4-param2-nostats-copy8-atom32`|
+|64 / 8|56.88|50.41|39.24|1.28x|11.4%|116,736|`local-ordered-cache-repair4-paramatom16-param4-param2-nostats-copy8-atom32`|
+|64 / mixed|63.04|56.61|39.28|1.44x|10.2%|116,736|`local-ordered-cache-repair4-paramatom16-param4-param2-nostats-copy8-atom32`|
+
 ### G4: middle/mixed ([PR #44](https://github.com/takumiecd/torchcst/pull/44))
 
 最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。
