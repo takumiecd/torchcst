@@ -72,6 +72,18 @@ class Recipe:
     def release_forward_h(self):
         return False
 
+    @property
+    def ordered_layout(self):
+        return False
+
+    @property
+    def order_by_position(self):
+        return False
+
+    @property
+    def owner_splits(self):
+        return 1
+
     def __post_init__(self):
         if not self.rho_upper or any(
             not math.isfinite(x) or x <= 0 for x in self.rho_upper

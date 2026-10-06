@@ -22,6 +22,12 @@ class LocalRecipe(Recipe):
     @property
     def base_route(self):
         for suffix in (
+            "_ordered_band",
+            "_ordered_index",
+            "_ordered_cached",
+            "_ordered_split2",
+            "_ordered_split4",
+            "_ordered",
             "_tile32",
             "_tile64",
             "_contract4",
@@ -51,9 +57,14 @@ class LocalRecipe(Recipe):
 
     @property
     def recompute_h(self):
-        return self.route.endswith("_index16_local") or self.base_route in (
-            "persistent_onchip_h32",
-            "persistent_onchip_h64",
+        return (
+            (self.ordered_layout and not self.route.endswith("_ordered_cached"))
+            or self.route.endswith("_index16_local")
+            or self.base_route
+            in (
+                "persistent_onchip_h32",
+                "persistent_onchip_h64",
+            )
         )
 
     @property
@@ -73,12 +84,14 @@ class LocalRecipe(Recipe):
                 "_index16_release_h",
                 "_index16_fused",
                 "_index16_local",
+                "_ordered_band",
+                "_ordered_index",
             )
         )
 
     @property
     def index_bits(self):
-        return 16 if "_index16" in self.route else 32
+        return 16 if "_index16" in self.route or self.ordered_layout else 32
 
     @property
     def release_forward_index(self):
@@ -88,12 +101,41 @@ class LocalRecipe(Recipe):
                 "_index16_release_h",
                 "_index16_fused",
                 "_index16_local",
+                "_ordered_band",
+                "_ordered_index",
             )
         )
 
     @property
     def release_forward_h(self):
-        return self.route.endswith("_index16_release_h")
+        return self.route.endswith(("_index16_release_h", "_ordered_cached"))
+
+    @property
+    def ordered_layout(self):
+        return self.route.endswith(
+            (
+                "_ordered",
+                "_ordered_band",
+                "_ordered_index",
+                "_ordered_cached",
+                "_ordered_split2",
+                "_ordered_split4",
+            )
+        )
+
+    @property
+    def order_by_position(self):
+        return self.ordered_layout and not self.route.endswith("_ordered_band")
+
+    @property
+    def owner_splits(self):
+        return (
+            2
+            if self.route.endswith("_ordered_split2")
+            else 4
+            if self.route.endswith("_ordered_split4")
+            else 1
+        )
 
     @property
     def fuse_owner_index(self):
@@ -125,6 +167,8 @@ class LocalRecipe(Recipe):
 
     @property
     def execution_route(self):
+        if self.ordered_layout:
+            return "hybrid_packed"
         if self.base_route in (
             "persistent_supportprep",
             "persistent_saved_g",
@@ -184,6 +228,12 @@ class LocalRecipe(Recipe):
                 self.base_route + "_index16_release_h",
                 self.base_route + "_index16_fused",
                 self.base_route + "_index16_local",
+                self.base_route + "_ordered",
+                self.base_route + "_ordered_band",
+                self.base_route + "_ordered_index",
+                self.base_route + "_ordered_cached",
+                self.base_route + "_ordered_split2",
+                self.base_route + "_ordered_split4",
             )
         ):
             raise ValueError("unsupported recomputed parameter VJP variant")

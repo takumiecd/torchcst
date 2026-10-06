@@ -618,9 +618,13 @@ def fused_packed(
     OwnerIds=None,
     OwnerOffsets=None,
     INDEX_A: tl.constexpr = 0,
+    OwnerRanges=None,
+    PHYSICAL_H: tl.constexpr = False,
+    SPLITS: tl.constexpr = 1,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     tile = tl.program_id(1)
+    split = tl.program_id(2) if SPLITS > 1 else 0
     i = tile * BN + tl.arange(0, BN)
     j = tl.arange(0, BK)
     y = tl.full((BM, BN), 0.0, tl.float32)
@@ -641,6 +645,15 @@ def fused_packed(
             indexed_band = phase - owners
             begin = tl.load(OwnerOffsets + tile * 4 + indexed_band)
             end = tl.load(OwnerOffsets + tile * 4 + indexed_band + 1)
+        if OwnerRanges is not None and phase >= owners:
+            indexed_band = phase - owners
+            begin = tl.load(OwnerRanges + tile * 6 + indexed_band * 2)
+            end = tl.load(OwnerRanges + tile * 6 + indexed_band * 2 + 1)
+        if SPLITS > 1:
+            blocks = tl.cdiv(end - begin, BA)
+            per_split = tl.cdiv(blocks, SPLITS)
+            begin = tl.minimum(begin + split * per_split * BA, end)
+            end = tl.minimum(begin + per_split * BA, end)
         for a0 in range(begin, end, BA):
             a = a0 + tl.arange(0, BA)
             valid = (a < A) & (a < end)
@@ -675,7 +688,7 @@ def fused_packed(
                     ):
                         # The persistent bucket already certifies wide,
                         # non-singleton atoms. Do not classify each block again.
-                        ha = tl.load(Order + a, enabled, 0)
+                        ha = a if PHYSICAL_H else tl.load(Order + a, enabled, 0)
                         stored = tl.load(
                             H + b[:, None] * H_A + ha[None, :],
                             (b[:, None] < B) & enabled[None, :],
@@ -724,12 +737,27 @@ def fused_packed(
                             and not SWAP
                             and (not RECOMPUTE_H or phase != owners + 2),
                             True,
-                            HOrder=Order,
+                            HOrder=None if PHYSICAL_H else Order,
                             H_A=H_A,
                             VECTOR_SUPPORT=VECTOR_SUPPORT,
                             UNROLL_SUPPORT=UNROLL_SUPPORT and phase == owners + 1,
                         )
-    tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
+    tl.store(
+        Y + (split * B + b[:, None]) * N + i[None, :],
+        y,
+        (b[:, None] < B) & (i[None, :] < N),
+    )
+
+
+@tr.jit
+def reduce_owner_partials(
+    P, Y, ELEMENTS: tl.constexpr, SPLITS: tl.constexpr, BLOCK: tl.constexpr
+):
+    index = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    total = tl.full((BLOCK,), 0.0, tl.float32)
+    for split in tl.static_range(SPLITS):
+        total += tl.load(P + split * ELEMENTS + index, index < ELEMENTS, 0.0)
+    tl.store(Y + index, total, index < ELEMENTS)
 
 
 @tr.jit
