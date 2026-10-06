@@ -24,3 +24,16 @@ Frozen source779564e4; PR48(base PR45). GPU check `l4job-ce9f94ea70584f91894694e
 All histogram routes lose to their matching exact owner-range scan controls in this N64 screen by about1–2us. The safe max-span envelope may include extra zero-support atom visits; exact site factors and position derivatives remain intact. Algorithmic exploration reduction is not a complete-step performance win. Peak115,712 bytes and reserved6,291,456 unchanged. No promotion from this screen; preserve the negative result. Inline metadata copy will test whether removing a launch offsets this preparation overhead.
 
 N64 two artifacts verified by byte-identical database export/idempotent reimport. Separate layout diagnostic8.192us control vs9.216–10.240us histogram, ordered_layout48/54 registers vs27, all0 compiler spill slots,shared1024 bytes. Copy-only CTA24registers/shared0 vs32/shared16; logical scan savings do not compensate order-CTA work. Diagnostics are separate from complete-step timing. CPU CI676f36c5 passed.
+
+## Completed N128 screening
+
+N128 job also succeeded. Total28 full-shape FP64 comparisons, all-plan input and Parameter hashes including dense and197 runtime/archive proofs passed. Same one-execution screening scope.
+
+|N128 rho|copy8|param2|atom16split2|hist8 param2|hist8 atom16split2|hist4 param2|hist4 atom16split2|dense|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+|3|70.52|67.88|67.86|70.32|70.36|72.92|73.30|45.58|
+|8|73.71|69.84|69.92|72.41|72.49|74.63|75.25|45.72|
+
+All histogram routes lose to matching non-histogram parameter controls;hist8 adds about2.5us,hist4 about5us. Preparation4warps worsens N128 vs8warps. Peak303,104/reserved6,291,456 bytes unchanged. No adoption or full-repeat promotion. Inline copy and one joint histogram are distinct follow-up experiments in PR49/50 with separate sources/tests. N128 DB verification is in progress.
+
+Completed N128 DB verification: all4 screening artifacts now have byte-identical export/idempotent reimport. Negative results and raw archives preserved.
