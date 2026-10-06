@@ -101,6 +101,10 @@ class Recipe:
         return False
 
     @property
+    def gather_validation_key(self):
+        return False
+
+    @property
     def validate_cached_order(self):
         return False
 

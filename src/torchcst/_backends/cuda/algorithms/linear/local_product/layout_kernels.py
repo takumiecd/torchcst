@@ -298,6 +298,7 @@ def ordered_views(
     CACHE: tl.constexpr = False,
     CACHE_LOGICAL: tl.constexpr = False,
     CACHE_VALIDATE: tl.constexpr = False,
+    CACHE_GATHER: tl.constexpr = False,
 ):
     """Per-call compact snapshots; band then support start, canonical tie-break."""
     direction = tl.program_id(0)
@@ -306,7 +307,7 @@ def ordered_views(
     # direction is a runtime scalar; shared maximum stride bounds both directions.
     groups = tl.where(direction == 0, (N + 15) // 16, (K + 15) // 16)
     atom = a
-    if CACHE and CACHE_VALIDATE:
+    if CACHE and CACHE_VALIDATE and not CACHE_GATHER:
         atom = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
     vlo, _vhi, vw = _interval(P, atom, C, False, JS, K)
     ulo, _uhi, uw = _interval(P, atom, C, True, IS, N)
@@ -335,14 +336,24 @@ def ordered_views(
         if CACHE_VALIDATE:
             # Cached IDs are a permutation. Unique full keys are sorted iff
             # every adjacent pair is increasing, even when topology changes.
-            previous = tl.gather(key, tl.maximum(a - 1, 0), 0)
-            changed = tl.sum(((a > 0) & (a < C) & (key < previous)).to(tl.int32), 0) > 0
+            ordered_key = key
+            cached_atom = atom
+            if CACHE_GATHER:
+                cached_atom = tl.load(CachedOrder + direction * C + a, a < C, 0).to(
+                    tl.int32
+                )
+                ordered_key = tl.gather(key, cached_atom, 0)
+            previous = tl.gather(ordered_key, tl.maximum(a - 1, 0), 0)
+            changed = (
+                tl.sum(((a > 0) & (a < C) & (ordered_key < previous)).to(tl.int32), 0)
+                > 0
+            )
             if changed:
                 sorted_key = tl.sort(key, descending=False)
                 source = (sorted_key % C).to(tl.int32)
                 tl.store(CachedOrder + direction * C + a, source, a < C)
             else:
-                source = atom
+                source = cached_atom
             # Membership may change without an inversion: offsets always refresh.
             counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
             starts = tl.cumsum(counts, 0) - counts

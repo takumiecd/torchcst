@@ -21,6 +21,8 @@ CACHE_SUFFIXES = (
     "_ordered_cache_compact_range8",
     "_ordered_cache_validated_copy8",
     "_ordered_cache_validated_range8",
+    "_ordered_cache_gather_copy8",
+    "_ordered_cache_gather_range8",
 )
 
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
@@ -35,14 +37,20 @@ class LocalRecipe(Recipe):
         return self.route.endswith(CACHE_SUFFIXES)
 
     @property
-    def validate_cached_order(self):
+    def gather_validation_key(self):
         return self.route.endswith(
+            ("_ordered_cache_gather_copy8", "_ordered_cache_gather_range8")
+        )
+
+    @property
+    def validate_cached_order(self):
+        return self.gather_validation_key or self.route.endswith(
             ("_ordered_cache_validated_copy8", "_ordered_cache_validated_range8")
         )
 
     @property
     def compact_cached_order(self):
-        return self.route.endswith(
+        return self.gather_validation_key or self.route.endswith(
             (
                 "_ordered_cache_compact_copy8",
                 "_ordered_cache_compact_range8",
