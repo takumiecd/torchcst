@@ -296,6 +296,7 @@ def ordered_views(
     CachedOffsets=None,
     Stats=None,
     CACHE: tl.constexpr = False,
+    CACHE_LOGICAL: tl.constexpr = False,
 ):
     """Per-call compact snapshots; band then support start, canonical tie-break."""
     direction = tl.program_id(0)
@@ -318,17 +319,21 @@ def ordered_views(
     # The maximum bucket and position must leave room for a padded sentinel.
     # Wider domains/counts keep the identical composite order using int64.
     if COMPACT_KEY and STRIDE * span * C < 2147483647:
-        key = (bucket.to(tl.int32) * span + position) * C + a
+        logical = bucket.to(tl.int32) * span + position
+        key = logical * C + a
         key = tl.where(a < C, key, 2147483647)
     else:
-        key = (bucket.to(tl.int64) * span + position) * C + a
+        logical = bucket.to(tl.int64) * span + position
+        key = logical * C + a
         key = tl.where(a < C, key, 9223372036854775807)
     if CACHE:
         tl.static_assert(not RANGES, "cached orders require freshly parallel ranges")
+        # Canonical ID is fixed at this index, so it carries no invalidation data.
+        cache_key = logical if CACHE_LOGICAL else key
         previous = tl.load(CachedKeys + direction * C + a, a < C, -1)
-        changed = tl.sum(((previous != key) & (a < C)).to(tl.int32), 0) > 0
+        changed = tl.sum(((previous != cache_key) & (a < C)).to(tl.int32), 0) > 0
         if changed:
-            tl.store(CachedKeys + direction * C + a, key, a < C)
+            tl.store(CachedKeys + direction * C + a, cache_key, a < C)
             sorted_key = tl.sort(key, descending=False)
             source = (sorted_key % C).to(tl.int32)
             counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
@@ -336,7 +341,7 @@ def ordered_views(
             tl.store(CachedOrder + direction * C + a, source, a < C)
             tl.store(CachedOffsets + direction * STRIDE + g, starts, g < STRIDE)
         else:
-            source = tl.load(CachedOrder + direction * C + a, a < C, 0)
+            source = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
             starts = tl.load(CachedOffsets + direction * STRIDE + g, g < STRIDE, 0)
         sorted_bucket = tl.full((AC,), 0, tl.int32)  # RANGES is statically false.
         calls = tl.load(Stats + direction * 3)

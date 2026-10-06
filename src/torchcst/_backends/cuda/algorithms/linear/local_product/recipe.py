@@ -101,6 +101,10 @@ class Recipe:
         return False
 
     @property
+    def compact_cached_order(self):
+        return False
+
+    @property
     def preparation_warps(self):
         return 4
 

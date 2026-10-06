@@ -4,6 +4,29 @@ import torch
 from torch import nn
 
 
+def cache_buffer_dtypes(atoms, domain, recipe):
+    """Bound every logical key and canonical ID, including the signed limits."""
+    groups = (max(domain.input_count, domain.output_count) + 15) // 16
+    logical_limit = (groups + 5) * (max(domain.input_count, domain.output_count) + 1)
+    if recipe.compact_cached_order:
+        key_dtype = (
+            torch.int16
+            if logical_limit < 32768
+            else torch.int32
+            if logical_limit < 2147483647
+            else torch.int64
+        )
+        order_dtype = torch.int16 if atoms <= 32768 else torch.int32
+    else:
+        key_dtype = (
+            torch.int32
+            if recipe.compact_order_key and logical_limit * atoms < 2147483647
+            else torch.int64
+        )
+        order_dtype = torch.int32
+    return key_dtype, order_dtype
+
+
 class OrderKeyCache(nn.Module):
     """Serialize refreshes on the model stream; never save mutable cache in autograd.
 
@@ -25,24 +48,15 @@ class OrderKeyCache(nn.Module):
         self.stride = (
             max(tr.cdiv(domain.input_count, 16), tr.cdiv(domain.output_count, 16)) + 5
         )
-        limit = (
-            self.stride
-            * (max(domain.input_count, domain.output_count) + 1)
-            * self.atoms
-        )
-        dtype = (
-            torch.int32
-            if recipe.compact_order_key and limit < 2147483647
-            else torch.int64
-        )
+        key_dtype, order_dtype = cache_buffer_dtypes(self.atoms, domain, recipe)
         self.register_buffer(
             "keys",
-            torch.full((2, self.atoms), -1, device=parameters.device, dtype=dtype),
+            torch.full((2, self.atoms), -1, device=parameters.device, dtype=key_dtype),
             persistent=False,
         )
         self.register_buffer(
             "order",
-            torch.empty((2, self.atoms), device=parameters.device, dtype=torch.int32),
+            torch.empty((2, self.atoms), device=parameters.device, dtype=order_dtype),
             persistent=False,
         )
         self.register_buffer(
@@ -79,6 +93,10 @@ class OrderKeyCache(nn.Module):
             "canonical_atoms": self.atoms,
             "slot_capacity_per_view": self.atoms,
             "key_bits": self.keys.element_size() * 8,
+            "key_encoding": "bucket-position"
+            if self.recipe.compact_cached_order
+            else "canonical-composite",
+            "order_bits": self.order.element_size() * 8,
             "counter_scope": "since initialization; includes warmup/capture/replay/diagnostics",
             "counter_names": ["refreshes", "rebuilds", "reuses"],
             "forward": counters[0],

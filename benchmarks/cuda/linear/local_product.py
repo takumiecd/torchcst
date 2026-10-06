@@ -17,6 +17,8 @@ CACHE_SUFFIXES = (
     "_ordered_cache_copy8",
     "_ordered_cache_range4",
     "_ordered_cache_range8",
+    "_ordered_cache_compact_copy8",
+    "_ordered_cache_compact_range8",
 )
 
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
@@ -29,6 +31,12 @@ class LocalRecipe(Recipe):
     @property
     def cached_order(self):
         return self.route.endswith(CACHE_SUFFIXES)
+
+    @property
+    def compact_cached_order(self):
+        return self.route.endswith(
+            ("_ordered_cache_compact_copy8", "_ordered_cache_compact_range8")
+        )
 
     @property
     def base_route(self):
