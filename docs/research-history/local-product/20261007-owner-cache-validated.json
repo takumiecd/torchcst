@@ -1,0 +1,28 @@
+{
+  "validation": {
+    "job": "l4job-27edc1ed3886455aa1926156c720b24e",
+    "source_commit": "321ef823c61b14a226842cf755285327119f90b4",
+    "source_snapshot_sha256": "1baf979ebb8c46e56db1716dae28f834f61b12569684f36a900d2a33997def1a",
+    "archive_sha256": "caaa89448d152fa4bf35f670801d187b6d5f250d4a86937e7c35b03c00ec8e2c",
+    "runtime_files_matched": 197,
+    "result": {
+      "id": "l4job-27edc1ed3886455aa1926156c720b24e",
+      "source_sha256": "1baf979ebb8c46e56db1716dae28f834f61b12569684f36a900d2a33997def1a",
+      "gpu": "NVIDIA L4, GPU-9c2285ea-b028-cd11-73c1-abea56b893bf, 580.82.07, 23034 MiB",
+      "requested_accelerator": "L4",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "started": 1791315419.600102,
+      "finished": 1791315498.5653718,
+      "timeout_scope": "driver process, including any setup inside driver"
+    },
+    "tests": ".........................                                                [100%]\n25 passed in 74.17s (0:01:14)"
+  },
+  "measurement_status": "L4 N64 running, N128 queued"
+}
