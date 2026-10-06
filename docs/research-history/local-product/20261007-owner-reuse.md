@@ -43,6 +43,8 @@ N64/N128、B32、A204/A819、seed41、FP32 IEEE、初期rho>1の1.25/3/8/mixed�
 21 samples、production可変幅fused AdamW/Polar、dense同時比較。
 
 ruff、宣言往復、8ケースprepare/check成功。
+CPU:861 passed / 611 skipped (22.02s)、wheel/sdist build成功。
+PR #36 draft: https://github.com/takumiecd/torchcst/pull/36。
 GPU testsは既存slice・repeated backward・20 Graph updates・旧snapshot backwardを再利用し、
 empty隣接ownerとsingleton/middle/wideの混在を独立FP64 oracleで追加検証する。
 性能fixtureとsingletonテストの初期幅を区別する。
