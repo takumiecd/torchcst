@@ -299,6 +299,8 @@ def ordered_views(
     VECTOR_RANGES: tl.constexpr = False,
     OWNER_BLOCK: tl.constexpr = 1,
     PREFIX_RANGES: tl.constexpr = False,
+    HIST_RANGES: tl.constexpr = False,
+    POSITION_BINS: tl.constexpr = 1,
     SEARCH_STEPS: tl.constexpr = 1,
     CachedKeys=None,
     CachedOrder=None,
@@ -443,6 +445,32 @@ def ordered_views(
         sorted_bucket = (key // (span * C)).to(tl.int32)
         counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
         starts = tl.cumsum(counts, 0) - counts
+    if HIST_RANGES:
+        tl.static_assert(
+            POSITION and not CACHE, "histogram index uses canonical current keys"
+        )
+        # lo is an integer relative to the current sliced domain. A contributor
+        # with hi > j0 must have lo >= j0 - max(hi-lo) + 1. Prefix counts locate
+        # that safe bound and lo < j1 directly, without dependent bisections.
+        hi = tl.where(direction == 0, uhi, vhi)
+        count = tl.where(direction == 0, N, K)
+        owner = tl.arange(0, OWNER_BLOCK)
+        for phase in tl.static_range(3):
+            eligible = (a < C) & (bucket == groups + phase)
+            max_span = tl.max(tl.where(eligible, hi - lo, 0), 0)
+            counts_by_lo = tl.histogram(
+                tl.where(eligible, lo, POSITION_BINS - 1), POSITION_BINS
+            )
+            before = tl.cumsum(counts_by_lo, 0) - counts_by_lo
+            band_start = tl.sum(tl.where(g == groups + phase, starts, 0), 0)
+            first_lo = tl.minimum(tl.maximum(owner * 16 - max_span + 1, 0), count)
+            last_lo = tl.minimum((owner + 1) * 16, count)
+            begin = band_start + tl.gather(before, first_lo, 0)
+            end = band_start + tl.gather(before, last_lo, 0)
+            begin = tl.minimum(begin, end)
+            target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
+            tl.store(target, begin, owner < STRIDE - 5)
+            tl.store(target + 1, end, owner < STRIDE - 5)
     if PREFIX_RANGES:
         tl.static_assert(
             POSITION and not CACHE, "prefix search uses canonical current keys"

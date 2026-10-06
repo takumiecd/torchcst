@@ -18,6 +18,10 @@ REUSE_SUFFIXES = (
     "_ordered_reuse_tile32_split2",
     "_ordered_reuse_tile64_split2",
     "_ordered_reuse_param2",
+    "_ordered_reuse_hist_param2",
+    "_ordered_reuse_hist_paramatom16_param4_param2",
+    "_ordered_reuse_hist4_param2",
+    "_ordered_reuse_hist4_paramatom16_param4_param2",
     "_ordered_reuse_prefix_param2",
     "_ordered_reuse_prefix_paramatom16_param4_param2",
     "_ordered_reuse_tile32_param2",
@@ -256,6 +260,10 @@ class LocalRecipe(Recipe):
         )
 
     @property
+    def histogram_owner_ranges(self):
+        return self.reuse_layout and ("_hist_" in self.route or "_hist4_" in self.route)
+
+    @property
     def prefix_owner_ranges(self):
         return self.reuse_layout and "_prefix_" in self.route
 
@@ -289,6 +297,8 @@ class LocalRecipe(Recipe):
 
     @property
     def preparation_warps(self):
+        if self.reuse_layout and "_hist4_" in self.route:
+            return 4
         if self.reuse_layout:
             return 8
         if self.cached_order:
