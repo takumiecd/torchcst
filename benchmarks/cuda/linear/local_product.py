@@ -18,6 +18,18 @@ REUSE_SUFFIXES = (
     "_ordered_reuse_tile32_split2",
     "_ordered_reuse_tile64_split2",
     "_ordered_reuse_param2",
+    "_ordered_reuse_histinline_param2",
+    "_ordered_reuse_histinline_paramatom16_param4_param2",
+    "_ordered_reuse_histfusedinline_param2",
+    "_ordered_reuse_histfusedinline_paramatom16_param4_param2",
+    "_ordered_reuse_histtightinline_param2",
+    "_ordered_reuse_histtightinline_paramatom16_param4_param2",
+    "_ordered_reuse_hist_param2",
+    "_ordered_reuse_hist_paramatom16_param4_param2",
+    "_ordered_reuse_hist4_param2",
+    "_ordered_reuse_hist4_paramatom16_param4_param2",
+    "_ordered_reuse_prefix_param2",
+    "_ordered_reuse_prefix_paramatom16_param4_param2",
     "_ordered_reuse_tile32_param2",
     "_ordered_reuse_paramatom16",
     "_ordered_reuse_paramatom16_param4",
@@ -270,6 +282,30 @@ class LocalRecipe(Recipe):
         )
 
     @property
+    def histogram_owner_ranges(self):
+        return self.reuse_layout and (
+            "_hist_" in self.route
+            or "_hist4_" in self.route
+            or "_histinline_" in self.route
+            or "_histfusedinline_" in self.route
+            or "_histtightinline_" in self.route
+        )
+
+    @property
+    def fused_histogram_owner_ranges(self):
+        return self.reuse_layout and (
+            "_histfusedinline_" in self.route or "_histtightinline_" in self.route
+        )
+
+    @property
+    def tight_histogram_owner_ranges(self):
+        return self.reuse_layout and "_histtightinline_" in self.route
+
+    @property
+    def prefix_owner_ranges(self):
+        return self.reuse_layout and "_prefix_" in self.route
+
+    @property
     def parallel_owner_ranges(self):
         return (
             self.reuse_layout
@@ -287,6 +323,12 @@ class LocalRecipe(Recipe):
 
     @property
     def parallel_order_copy(self):
+        if self.reuse_layout and (
+            "_histinline_" in self.route
+            or "_histfusedinline_" in self.route
+            or "_histtightinline_" in self.route
+        ):
+            return False
         if self.reuse_layout:
             return True
         if self.cached_order:
@@ -299,6 +341,8 @@ class LocalRecipe(Recipe):
 
     @property
     def preparation_warps(self):
+        if self.reuse_layout and "_hist4_" in self.route:
+            return 4
         if self.reuse_layout:
             return 8
         if self.cached_order:

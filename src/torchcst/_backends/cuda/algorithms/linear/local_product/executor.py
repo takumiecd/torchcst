@@ -272,6 +272,18 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             COPY=not recipe.parallel_order_copy,
             VECTOR_RANGES=recipe.vector_owner_ranges,
             OWNER_BLOCK=tr.next_power_of_2(groups),
+            PREFIX_RANGES=recipe.prefix_owner_ranges,
+            HIST_RANGES=recipe.histogram_owner_ranges,
+            FUSED_HIST=recipe.fused_histogram_owner_ranges,
+            TIGHT_HIST=recipe.tight_histogram_owner_ranges,
+            JOINT_STRIDE=max(domain.input_count, domain.output_count) + 1,
+            JOINT_BINS=tr.next_power_of_2(
+                3 * (max(domain.input_count, domain.output_count) + 1) + 1
+            ),
+            POSITION_BINS=tr.next_power_of_2(
+                max(domain.input_count, domain.output_count) + 1
+            ),
+            SEARCH_STEPS=max(32, tr.next_power_of_2(atoms)).bit_length(),
             CachedKeys=cache.keys if cache is not None else None,
             CachedOrder=cache.order if cache is not None else None,
             CachedOffsets=cache.offsets if cache is not None else None,
@@ -288,7 +300,10 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             enable_fp_fusion=False,
         )
         _report("ordered_layout", compiled)
-        if recipe.parallel_owner_ranges:
+        if recipe.parallel_owner_ranges and (
+            recipe.parallel_order_copy
+            or not (recipe.prefix_owner_ranges or recipe.histogram_owner_ranges)
+        ):
             compiled = layout_kernels.ordered_owner_ranges[(2, groups)](
                 packed if recipe.parallel_order_copy else views,
                 ranges,
@@ -304,6 +319,9 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
                 Views=views,
                 Orders=orders,
                 COPY=recipe.parallel_order_copy,
+                RANGES=not (
+                    recipe.prefix_owner_ranges or recipe.histogram_owner_ranges
+                ),
                 num_warps=4,
                 enable_fp_fusion=False,
             )

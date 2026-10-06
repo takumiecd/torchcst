@@ -89,6 +89,22 @@ class Recipe:
         return False
 
     @property
+    def histogram_owner_ranges(self):
+        return False
+
+    @property
+    def fused_histogram_owner_ranges(self):
+        return False
+
+    @property
+    def tight_histogram_owner_ranges(self):
+        return False
+
+    @property
+    def prefix_owner_ranges(self):
+        return False
+
+    @property
     def parallel_owner_ranges(self):
         return False
 

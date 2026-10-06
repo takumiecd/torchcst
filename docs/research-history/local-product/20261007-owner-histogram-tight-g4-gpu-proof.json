@@ -1,0 +1,25 @@
+{
+  "job": "colabjob-03098c3dbf004aa7840ae89f7f20373c",
+  "source_commit": "3314fc5702fd8ad5ac4a911f95afd90d7b28c6ba",
+  "source_snapshot_sha256": "f128558347a406428e1631cdf716232f1ae33a1202a83b2ce538283cbcc074e7",
+  "archive_sha256": "ae7cb33f34283959390c5f4559aa3dd46bc21e155c398f11be60d6fdcd43ef33",
+  "runtime_files_matched": 197,
+  "result": {
+    "id": "colabjob-03098c3dbf004aa7840ae89f7f20373c",
+    "source_sha256": "f128558347a406428e1631cdf716232f1ae33a1202a83b2ce538283cbcc074e7",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition, GPU-f004d346-be2c-5608-0076-158d2a13b7b3, 580.82.07, 97887 MiB",
+    "requested_accelerator": "G4",
+    "versions": {
+      "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "triton": "3.6.0"
+    },
+    "returncode": 0,
+    "timed_out": false,
+    "started": 1791327185.2330158,
+    "finished": 1791327235.2744722,
+    "timeout_scope": "driver process, including any setup inside driver"
+  },
+  "tests": "...................                                                      [100%]\n19 passed in 47.17s"
+}
