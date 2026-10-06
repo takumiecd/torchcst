@@ -97,7 +97,7 @@ class OrderKeyCache(nn.Module):
             if self.recipe.compact_cached_order
             else "canonical-composite",
             "order_bits": self.order.element_size() * 8,
-            "counter_scope": "since initialization; includes warmup/capture/replay/diagnostics",
+            "counter_scope": "since initialization; counts executed refreshes",
             "counter_names": ["refreshes", "rebuilds", "reuses"],
             "forward": counters[0],
             "dx": counters[1],
