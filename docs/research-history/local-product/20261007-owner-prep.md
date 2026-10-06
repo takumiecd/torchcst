@@ -55,16 +55,38 @@ Graph20更新・Parameter/moments/step・slice・支持境界・旧forward snaps
   最終8候補の宣言往復、ruff、prepare/check各8ケース成功。
   CPU suite: 860 passed / 557 skipped (23.13s)、wheel/sdist build成功。
 
-性能結果はまだ未取得。結果を取り込んで有望候補を選択し、rho1.25・mixedを加えた
-独立2回のL4比較、必要なら検証済み候補の短いG4比較へ進む。
+## 最初のL4 screen
 
-## 再開checkpoint (01:52 JST)
+`l4job-c83dcfc92f2e467e977bee4c786f9592`成功。33 tests passed
+(32 GPU + 1 declaration)、24 full-shape FP64 oracle比較成功。
+source archive、result archive、submitted/committed/worker runtime source hashを確認した。
+簡潔な数値を同名JSONに保存した。各セルは1 executionの21 sample median、単位us。
+
+| size/rho | split4 i32 baseline | parallel4 | parallel8 | warp8のみ | unsplit control | parallel unsplit | dense |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+|64/3|59.46|58.42|58.65|60.32|66.59|65.50|38.86|
+|64/8|57.07|55.80|56.07|57.83|67.26|65.49|39.08|
+|128/3|79.81|75.12|72.45|77.23|94.64|85.93|45.77|
+|128/8|82.59|79.08|75.69|80.42|111.22|101.49|45.08|
+
+parallel8はN128で8.4–9.2%改善。N64はparallel4が1.8–2.2%改善。
+split4候補のcapture/replay allocated peakはbaselineと同じ115712/303104 bytes。
+unsplitは84992/237568 bytesのままで、速度とのtradeoffを維持した。
+N128/rho3のlayout event診断は22.53→15.36us (parallel8)、sort registers94→40、
+spill0、shared4096 bytes。range kernelは44 registers、spill0、shared16 bytes。
+componentイベントは主測定とは別であり、各時間の加算からstep時間を再構成しない。
+warp8のみはN128を少し改善するがN64を悪化させる。
+まだ独立反復前なので採用判断は保留。rho1.25・mixedを加えた独立2回のL4比較へ進む。
+
+## 再開checkpoint (01:56 JST)
 
 worktree: `/Users/ware10sai/.codex/worktrees/local-product-onchip-h/torchcst`。
 raw evidence: ignored `benchmarks/cuda/linear/evidence/owner-prep-20261007/`。
 driver、hash確認analyzer、DB保存/byte export/idempotence確認scriptを保存した。
 source/result原本はhost-wide poolのjobsディレクトリにも保持する。
 pool supervisor: tool session `22376`, one L4, idle-seconds 0。
-CPU/buildは完了。最初のscreenがrunning、後続2つがqueued。
+CPU/buildは完了。最初のscreenが成功、copyがrunning、vectorがqueued。
+PR #35 (draft): https://github.com/takumiecd/torchcst/pull/35、base PR #34。
+GitHub CPU checks成功(9081f0e0時点)。DB import/export検証はtool session58919で進行中。
 他のGPUは停止済み。直接CLIでpool sessionへ介入しない。
 再開時はpool statusとjob resultを確認し、同じjobを重複submitしない。
