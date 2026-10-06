@@ -26,6 +26,9 @@ from benchmarks.cuda.linear.manifest import (
 
 CATALOG = "benchmarks/cuda/linear/plans-local-paramtile.json"
 CANDIDATES = tuple(e.plan for e in decode_catalog(read_json(CATALOG)[0])[2:])
+FIXTURE_CASE = load_run(
+    "benchmarks/cuda/linear/cases/local-paramtile-128-rho3.json", CATALOG
+).case
 CUDA = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 PLANS = pytest.mark.parametrize("plan", CANDIDATES, ids=lambda p: p.recipe.route)
 
@@ -87,9 +90,7 @@ def test_parameter_atom_empty_neighbors_do_not_admit_previous_bands(plan):
         decode,
     )
 
-    case = load_run(
-        "benchmarks/cuda/linear/cases/local-reuse-128-rho3.json", CATALOG
-    ).case
+    case = FIXTURE_CASE
     case = replace(
         case,
         atoms=12,
