@@ -43,3 +43,14 @@ N64/N128の20 Graph更新・moments/step、old backward、key reuse/end更新/
 band/singleton/inactive changesとfresh full sortのexact snapshot一致を確認する。
 GPU結果は未回収。raw driver/analyzer/DBはignored
 `benchmarks/cuda/linear/evidence/owner-cache-compact-20261007/`へ保存。
+
+## L4 queued
+
+source `3905bb9d8f8f809ac81640e26e34e3d210dd455f`を凍結してone L4 queueへ提出。
+
+- `l4job-5ac6ae53727b47619deab1632b645e3f`:20 GPU + 5 CPU tests。
+- `l4job-e7d4b461270a4dbe8f1edac09d42df0f`:N64 rho1.25/3/8/mixed、2候補+2controls+dense。
+- `l4job-d6c7b306380548288a8e1eda72db4479`:N128、同じ比較。
+
+測定ごとのfull-shape FP64 Y/dX/全atom・非零位置勾配oracleを通してから測る。
+GPU benefitとallocated/reserved peaksはまだ未検証。
