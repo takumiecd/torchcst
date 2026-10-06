@@ -8,7 +8,7 @@ B32、N64/A204、N128/A819、初期 decoded rho 1.25/3/8/mixed（すべて >1）
 
 ### L4: 合成構成 ([PR #44](https://github.com/takumiecd/torchcst/pull/44))
 
-最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。
+最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。異なるsource/job/GPU割り当て間の差を、そのままkernel単独の効果とは扱わない。
 
 |N / 初期rho|copy8 µs|最速測定 µs|dense µs|dense比|copy8比改善|allocated peak B|選択した構成|
 |---|---:|---:|---:|---:|---:|---:|---|
@@ -23,7 +23,7 @@ B32、N64/A204、N128/A819、初期 decoded rho 1.25/3/8/mixed（すべて >1）
 
 ### L4: 64向け cached atom16 ([PR #47](https://github.com/takumiecd/torchcst/pull/47))
 
-最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。
+最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。異なるsource/job/GPU割り当て間の差を、そのままkernel単独の効果とは扱わない。
 
 |N / 初期rho|copy8 µs|最速測定 µs|dense µs|dense比|copy8比改善|allocated peak B|選択した構成|
 |---|---:|---:|---:|---:|---:|---:|---|
@@ -34,7 +34,7 @@ B32、N64/A204、N128/A819、初期 decoded rho 1.25/3/8/mixed（すべて >1）
 
 ### L4: 64向け cached atom16 + カウンタ除去 ([PR #53](https://github.com/takumiecd/torchcst/pull/53))
 
-最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。
+最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。異なるsource/job/GPU割り当て間の差を、そのままkernel単独の効果とは扱わない。
 
 |N / 初期rho|copy8 µs|最速測定 µs|dense µs|dense比|copy8比改善|allocated peak B|選択した構成|
 |---|---:|---:|---:|---:|---:|---:|---|
@@ -43,9 +43,18 @@ B32、N64/A204、N128/A819、初期 decoded rho 1.25/3/8/mixed（すべて >1）
 |64 / 8|56.88|50.41|39.24|1.28x|11.4%|116,736|`local-ordered-cache-repair4-paramatom16-param4-param2-nostats-copy8-atom32`|
 |64 / mixed|63.04|56.61|39.28|1.44x|10.2%|116,736|`local-ordered-cache-repair4-paramatom16-param4-param2-nostats-copy8-atom32`|
 
+### G4: N64 tight histogram / rho3と8 ([PR #52](https://github.com/takumiecd/torchcst/pull/52))
+
+最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。異なるsource/job/GPU割り当て間の差を、そのままkernel単独の効果とは扱わない。
+
+|N / 初期rho|copy8 µs|最速測定 µs|dense µs|dense比|copy8比改善|allocated peak B|選択した構成|
+|---|---:|---:|---:|---:|---:|---:|---|
+|64 / 3|56.23|49.73|33.84|1.47x|11.6%|115,712|`local-ordered-reuse-histtightinline-paramatom16-param4-param2-atom32`|
+|64 / 8|54.19|49.06|33.87|1.45x|9.5%|115,712|`local-ordered-reuse-histtightinline-paramatom16-param4-param2-atom32`|
+
 ### G4: middle/mixed ([PR #44](https://github.com/takumiecd/torchcst/pull/44))
 
-最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。
+最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。異なるsource/job/GPU割り当て間の差を、そのままkernel単独の効果とは扱わない。
 
 |N / 初期rho|copy8 µs|最速測定 µs|dense µs|dense比|copy8比改善|allocated peak B|選択した構成|
 |---|---:|---:|---:|---:|---:|---:|---|
@@ -53,6 +62,15 @@ B32、N64/A204、N128/A819、初期 decoded rho 1.25/3/8/mixed（すべて >1）
 |128 / mixed|70.17|64.27|43.23|1.49x|8.4%|307,200|`local-ordered-cache-repair4-param2-copy8-atom32`|
 |64 / 3|55.59|50.20|33.72|1.49x|9.7%|115,712|`local-ordered-reuse-paramatom16-param4-param2-atom32`|
 |64 / mixed|58.59|54.53|33.70|1.62x|6.9%|115,712|`local-ordered-reuse-paramatom16-param4-param2-atom32`|
+
+### G4: narrow/wide ([PR #47](https://github.com/takumiecd/torchcst/pull/47))
+
+最速の列は測定後に選んだ固定構成の記述であり、自動dispatcherの性能ではない。異なるsource/job/GPU割り当て間の差を、そのままkernel単独の効果とは扱わない。
+
+|N / 初期rho|copy8 µs|最速測定 µs|dense µs|dense比|copy8比改善|allocated peak B|選択した構成|
+|---|---:|---:|---:|---:|---:|---:|---|
+|64 / 1.25|52.23|48.28|33.83|1.43x|7.6%|117,248|`local-ordered-cache-repair4-paramatom16-param4-param2-copy8-atom32`|
+|64 / 8|52.39|49.14|33.96|1.45x|6.2%|115,712|`local-ordered-reuse-paramatom16-param4-param2-atom32`|
 
 ## 数学と比較の境界
 
