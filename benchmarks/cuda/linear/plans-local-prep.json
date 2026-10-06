@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "local-ordered-split4-i32-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_split4_i32",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-prep-parallel8-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_prep_parallel8",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-prep-parallel-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_prep_parallel",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-prep-warp8-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_prep_warp8",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-prep-range-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_prep_range",
+          "support_limit": 8
+        }
+      }
+    }
+  ]
+}

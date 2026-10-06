@@ -85,6 +85,14 @@ class Recipe:
         return False
 
     @property
+    def parallel_owner_ranges(self):
+        return False
+
+    @property
+    def preparation_warps(self):
+        return 4
+
+    @property
     def owner_splits(self):
         return 1
 

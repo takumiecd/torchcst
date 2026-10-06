@@ -22,6 +22,10 @@ class LocalRecipe(Recipe):
     @property
     def base_route(self):
         for suffix in (
+            "_ordered_prep_parallel8",
+            "_ordered_prep_parallel",
+            "_ordered_prep_warp8",
+            "_ordered_prep_range",
             "_ordered_split4_i32",
             "_ordered_band",
             "_ordered_index",
@@ -122,6 +126,10 @@ class LocalRecipe(Recipe):
                 "_ordered_split2",
                 "_ordered_split4",
                 "_ordered_split4_i32",
+                "_ordered_prep_parallel8",
+                "_ordered_prep_parallel",
+                "_ordered_prep_warp8",
+                "_ordered_prep_range",
             )
         )
 
@@ -131,7 +139,29 @@ class LocalRecipe(Recipe):
 
     @property
     def compact_order_key(self):
-        return self.route.endswith("_ordered_split4_i32")
+        return self.route.endswith(
+            (
+                "_ordered_split4_i32",
+                "_ordered_prep_parallel8",
+                "_ordered_prep_parallel",
+                "_ordered_prep_warp8",
+                "_ordered_prep_range",
+            )
+        )
+
+    @property
+    def parallel_owner_ranges(self):
+        return self.route.endswith(
+            ("_ordered_prep_parallel", "_ordered_prep_parallel8", "_ordered_prep_range")
+        )
+
+    @property
+    def preparation_warps(self):
+        return (
+            8
+            if self.route.endswith(("_ordered_prep_warp8", "_ordered_prep_parallel8"))
+            else 4
+        )
 
     @property
     def owner_splits(self):
@@ -139,7 +169,15 @@ class LocalRecipe(Recipe):
             2
             if self.route.endswith("_ordered_split2")
             else 4
-            if self.route.endswith(("_ordered_split4", "_ordered_split4_i32"))
+            if self.route.endswith(
+                (
+                    "_ordered_split4",
+                    "_ordered_split4_i32",
+                    "_ordered_prep_parallel",
+                    "_ordered_prep_parallel8",
+                    "_ordered_prep_warp8",
+                )
+            )
             else 1
         )
 
@@ -241,6 +279,10 @@ class LocalRecipe(Recipe):
                 self.base_route + "_ordered_split2",
                 self.base_route + "_ordered_split4",
                 self.base_route + "_ordered_split4_i32",
+                self.base_route + "_ordered_prep_parallel8",
+                self.base_route + "_ordered_prep_parallel",
+                self.base_route + "_ordered_prep_warp8",
+                self.base_route + "_ordered_prep_range",
             )
         ):
             raise ValueError("unsupported recomputed parameter VJP variant")

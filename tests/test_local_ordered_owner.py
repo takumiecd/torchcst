@@ -8,11 +8,14 @@ from torchcst._backends.cuda.algorithms.linear.local_product.contract import Dom
 
 CATALOG = "benchmarks/cuda/linear/plans-local-ordered.json"
 ENTRIES = decode_catalog(read_json(CATALOG)[0])
-CANDIDATES = tuple(e.plan for e in ENTRIES[2:])
+PREP_ENTRIES = decode_catalog(
+    read_json("benchmarks/cuda/linear/plans-local-prep.json")[0]
+)
+CANDIDATES = tuple(e.plan for e in (*ENTRIES[2:], *PREP_ENTRIES[2:]))
 
 
 def test_ordered_recipe_roundtrip():
-    assert len(CANDIDATES) == 7
+    assert len(CANDIDATES) == 11
     for plan in CANDIDATES:
         assert REGISTRY.load_plan(REGISTRY.dump_plan(plan)) == plan
         assert plan.recipe.execution_route == "hybrid_packed"

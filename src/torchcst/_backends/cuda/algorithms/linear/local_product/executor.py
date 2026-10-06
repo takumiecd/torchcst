@@ -267,12 +267,29 @@ def ordered_layout(packed, domain, recipe):
             tr.next_power_of_2(stride),
             stride,
             recipe.order_by_position,
-            not recipe.owner_index,
+            not recipe.owner_index and not recipe.parallel_owner_ranges,
             recipe.compact_order_key,
-            num_warps=4,
+            num_warps=recipe.preparation_warps,
             enable_fp_fusion=False,
         )
         _report("ordered_layout", compiled)
+        if recipe.parallel_owner_ranges:
+            compiled = layout_kernels.ordered_owner_ranges[(2, groups)](
+                views,
+                ranges,
+                atoms,
+                domain.input_count,
+                domain.output_count,
+                domain.input_start,
+                domain.output_start,
+                domain.spacing,
+                recipe.rho_upper[1],
+                max(32, tr.next_power_of_2(atoms)),
+                groups,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            _report("ordered_owner_ranges", compiled)
     else:
         offsets.zero_()
         ranges.zero_()

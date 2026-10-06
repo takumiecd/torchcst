@@ -7,6 +7,44 @@ from .kernels import _interval
 
 
 @tr.jit
+def ordered_owner_ranges(
+    Views,
+    Ranges,
+    C: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    JS: tl.constexpr,
+    IS: tl.constexpr,
+    S: tl.constexpr,
+    MID: tl.constexpr,
+    AC: tl.constexpr,
+    GROUPS: tl.constexpr,
+):
+    """Build exact overlap envelopes independently for each physical owner."""
+    direction, owner = tl.program_id(0), tl.program_id(1)
+    P = Views + direction * 13 * C
+    a = tl.arange(0, AC)
+    vlo, vhi, vw = _interval(P, a, C, False, JS, K)
+    ulo, uhi, uw = _interval(P, a, C, True, IS, N)
+    lo, hi = tl.where(direction == 0, ulo, vlo), tl.where(direction == 0, uhi, vhi)
+    flags = tl.load(P + 8 * C + a, a < C, -1).to(tl.int32)
+    inv = tl.load(P + C + a, a < C, 0.0)
+    band = tl.where(
+        inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
+    )
+    overlap = (a < C) & (flags != 3) & (vw > 0) & (uw > 0)
+    overlap &= (lo < (owner + 1) * 16) & (hi > owner * 16)
+    for phase in tl.static_range(3):
+        live = overlap & (band == phase)
+        begin = tl.min(tl.where(live, a, C), 0)
+        end = tl.max(tl.where(live, a + 1, 0), 0)
+        begin = tl.minimum(begin, end)
+        target = Ranges + (direction * GROUPS + owner) * 6 + phase * 2
+        tl.store(target, begin)
+        tl.store(target + 1, end)
+
+
+@tr.jit
 def index_owners(
     P,
     Reverse,
