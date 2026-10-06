@@ -39,3 +39,5 @@ raw scripts/resultsはignored evidence/owner-cache-validated-20261007に保存�
 
 source `e0a0caf2362e831ecc7204d080b9fe5a57e9bd5f`、draft PR #40。
 L4 check `l4job-1d0b7a0684f04bd2946f1d038430f274`、N64 `l4job-28b05068b1944d8cbaafbf80cdf1db71`、N128 `l4job-7f8cc4e12cab427d831e9fd4acc1d6d6` queued。最初のsubmit `l4job-61dd72df4d2d4f8dad21ce7a3de6412c` はsourceラベル誤記のため実行前にcancel、数値なし。数学とsource/result hashの整合を正式jobsで確認する。
+
+GPU実行前に、他のinactive recordsの両方向loをclipped終端へ固定し、atom1のactivationが必ず逆転を作るようtest metadataを決定的にした。runtime不変。旧3 queued jobsはcancelし、source `321ef823c61b14a226842cf755285327119f90b4`でcheck `l4job-27edc1ed3886455aa1926156c720b24e`、N64 `l4job-2b8aa68e3bbb4f1d90ee44ec72864fdf`、N128 `l4job-16ee66bd4e4a46389de93ea3cb3d3bf4`へ置き換えた。CPU5 passed /20 skippedを再確認。
