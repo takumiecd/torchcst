@@ -40,3 +40,14 @@ GPU validation/screenは未実施。raw driver/analyzer/DB scriptsはignored
 広いruff checkでは変更していない`src/torchcst/__init__.py`のI001/RUF022が残る。
 HEADと作業treeのbyte一致、HEAD入力にも同じ2件が出ることを確認した。
 この研究branchでは別scopeのformat変更を加えない。
+
+## 03:12 JST: L4 queued
+
+source `7cbb318b20e788b1fc8d6a54ec5db57bc3880e84`から凍結してone-worker queueへsubmit。
+
+- `l4job-701b166db3da4900a8f488b3cdbf031b`: 28 tests (27 GPU + declaration)。
+- `l4job-5bf52062e16c48e99ba71c1695e15076`: N64 rho3/8、3候補+2controls+dense。
+- `l4job-656ac889dc834f60885bb206cf3440ae`: N128 rho3/8、同じ比較。
+
+full-shape FP64 Y/dX/全atom oracleを各候補で通してからcomplete stepを測る。
+GPU結果は未回収。新候補の位置勾配・20更新・peaksが揃うまで採用を決めない。
