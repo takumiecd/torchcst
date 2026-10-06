@@ -19,6 +19,9 @@ REUSE_SUFFIXES = (
     "_ordered_reuse_tile64_split2",
     "_ordered_reuse_param2",
     "_ordered_reuse_tile32_param2",
+    "_ordered_reuse_paramatom16",
+    "_ordered_reuse_paramatom16_param4",
+    "_ordered_reuse_paramatom32_param4",
 )
 
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
@@ -272,6 +275,12 @@ class LocalRecipe(Recipe):
     @property
     def parameter_warps(self):
         return 4 if self.route.endswith("_param4") else 0
+
+    @property
+    def parameter_atom_block(self):
+        if self.reuse_layout and "_paramatom16" in self.route:
+            return 16
+        return self.atom_block
 
     @property
     def execution_route(self):

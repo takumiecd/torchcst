@@ -41,6 +41,7 @@ GPU_SUITES = {
         "tests/test_local_owner_index_refine.py",
         "tests/test_local_ordered_owner.py",
         "tests/test_local_owner_reuse.py",
+        "tests/test_local_parameter_atom_tile.py",
     ),
     "normalized-strip": (
         "tests/test_normalized_strip_public.py",

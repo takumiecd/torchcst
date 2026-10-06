@@ -664,6 +664,7 @@ class _LocalH(torch.autograd.Function):
             a = packed.shape[1]
             canonical_atoms = len(source) if persistent else a
             parameter_splits = recipe.parameter_splits
+            parameter_atom_block = recipe.parameter_atom_block
             dq = packed.new_empty(
                 (parameter_splits, canonical_atoms, 4)
                 if parameter_splits > 1
@@ -671,7 +672,7 @@ class _LocalH(torch.autograd.Function):
             )
             if a:
                 compiled = kernels.param_vjp[
-                    (tr.cdiv(a, recipe.atom_block), parameter_splits)
+                    (tr.cdiv(a, parameter_atom_block), parameter_splits)
                 ](
                     x,
                     dy,
@@ -694,7 +695,7 @@ class _LocalH(torch.autograd.Function):
                     or use_g
                     or parameter_splits > 1
                     else max(16, tr.next_power_of_2(len(x))),
-                    recipe.atom_block,
+                    parameter_atom_block,
                     saved,
                     sparse,
                     recipe.support_limit,

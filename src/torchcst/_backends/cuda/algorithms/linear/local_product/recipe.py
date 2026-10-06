@@ -41,6 +41,10 @@ class Recipe:
         return 0
 
     @property
+    def parameter_atom_block(self):
+        return self.atom_block
+
+    @property
     def support_prepare(self):
         return False
 
