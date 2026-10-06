@@ -40,3 +40,5 @@ raw scripts/resultsはignored evidence/owner-cache-repair-20261007。
 G4 selected2候補の独立2runは完了し、supervisor45682 terminal exit0、全slots stopped、
 lifecycle Session terminated/server No active sessionsを確認。新L4 supervisorで
 先にPR41の既存queued3 jobsを実行し、この新方式を続ける。
+
+source `ae2e5faeaa2272f0cfd47c64c6df62cddc1cfa45`、draft PR #42。check `l4job-cfc1bdee05504cf885de1a7cbd3ae271`、N64 `l4job-f13a06ef293c4578a3ae90b6231a6c5d`、N128 `l4job-d0b94b21542f4aa49eac340e1d427ef5` queued。L4 supervisor tool97800でPR41のcheck/N64/N128→この3 jobsの順に実行。source snapshotsは独立で、その後のbranch editsを含めない。
