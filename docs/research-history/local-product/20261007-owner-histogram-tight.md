@@ -75,3 +75,7 @@ The table reports microseconds, median of execution medians. A screen has one ex
 ## Scoped independent repeat
 
 Two queued all-rho jobs e5fe2c10/a5f293af were cancelled before execution to prioritize independent confirmation of the promising N64 rho3/8 screen and the G4 follow-up before 08:00. One selected repeat2 reuses three fixed CST routes plus dense, reverses rho/plan order, and is paired with the original screen. Only common selected routes have two executions; other screen routes have one. Narrow/mixed histogram timing remains unmeasured. This is deliberately scoped screening, not a full all-rho claim.
+
+## Deadline and transport recovery
+
+The selected reverse repeat87a13b88 was cancelled before execution after the preceding N128 reverse-result download failed and the pool safely stopped its owned L4. This candidate therefore has only one timing screen per tested rho3/8 condition, although GPU correctness19 tests passed. N64 approx50.21/50.35us is promising but not independently replicated; N128 approx70.06/72.09us is slower than matching uncached parameter controls. No all-rho or repeatability performance promotion. Remaining time was reserved for the already-validated G4 cached-atom16 follow-up.
