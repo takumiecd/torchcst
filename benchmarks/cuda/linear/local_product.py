@@ -43,6 +43,9 @@ CACHE_SUFFIXES = (
     "_ordered_cache_gather_param2_copy8",
     "_ordered_cache_repair4_param2_copy8",
     "_ordered_cache_repair8_param2_copy8",
+    "_ordered_cache_gather_paramatom16_param4_param2_copy8",
+    "_ordered_cache_repair4_paramatom16_param4_param2_copy8",
+    "_ordered_cache_repair8_paramatom16_param4_param2_copy8",
 )
 
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
@@ -75,6 +78,7 @@ class LocalRecipe(Recipe):
                 "_ordered_cache_gather_copy8",
                 "_ordered_cache_gather_range8",
                 "_ordered_cache_gather_param2_copy8",
+                "_ordered_cache_gather_paramatom16_param4_param2_copy8",
             )
         )
 
@@ -360,6 +364,8 @@ class LocalRecipe(Recipe):
 
     @property
     def parameter_warps(self):
+        if self.cached_order and "_param4_" in self.route:
+            return 4
         return (
             4
             if self.route.endswith(
@@ -370,7 +376,7 @@ class LocalRecipe(Recipe):
 
     @property
     def parameter_atom_block(self):
-        if self.reuse_layout and "_paramatom16" in self.route:
+        if (self.reuse_layout or self.cached_order) and "_paramatom16" in self.route:
             return 16
         return self.atom_block
 
