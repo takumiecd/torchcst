@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "validation": {
+    "job": "l4job-f7a31fcb157644a6a15e5e4909d39c7d",
+    "source_commit": "aad657e4d029a61bfea437ac3b4c88d0cb42c5f7",
+    "source_snapshot_sha256": "561ace80bab15519d0795b8c16a51dd032772170074310333634f7b8550a8a72",
+    "archive_sha256": "7c0cf130083aa37d7a892e8879adc39f8a048541ef3942bb7951d9611d81755e",
+    "runtime_files_matched": 196,
+    "result": {
+      "id": "l4job-f7a31fcb157644a6a15e5e4909d39c7d",
+      "source_sha256": "561ace80bab15519d0795b8c16a51dd032772170074310333634f7b8550a8a72",
+      "gpu": "NVIDIA L4, GPU-4404dfb5-5a94-840c-dccf-acff2c67b18e, 580.82.07, 23034 MiB",
+      "requested_accelerator": "L4",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "started": 1791310341.8527303,
+      "finished": 1791310775.3627305,
+      "timeout_scope": "driver process, including any setup inside driver"
+    },
+    "tests": ".......................................................                  [100%]\n55 passed in 428.50s (0:07:08)"
+  },
+  "measurement_status": "N64/N128 rho3/8 screen queued/running; no measured benefit yet"
+}

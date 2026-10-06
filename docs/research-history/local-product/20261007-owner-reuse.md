@@ -62,7 +62,7 @@ PR #35のvector4候補は`vector_support=True`も含むことを現在のrecipe�
 範囲構築単独の比較として扱わず、vector8 / copy8はこのflagがFalseである。
 既存aliasの測定契約は変更していない。後続報告にはこの交絡を明記する。
 
-## 03:05 JST: 短いjobへ分割
+## 03:01 JST: 短いjobへ分割
 
 長い親jobが接続timeoutで回収不能となったため、未実行の
 `l4job-cf4ed3f8c10844d78a1bcee71f5f7401`をcancelした。数値はない。
@@ -76,3 +76,13 @@ L4 one-worker queueへ以下をsubmitした。
 
 GPU検証・screenは未完了。各測定はfull-shape FP64 Y/dX/全atom勾配oracleを
 通してから行う。初期rho>1、production width更新、21 samples、denseも維持する。
+
+## 03:20 JST: GPU validation成功
+
+`l4job-f7a31fcb157644a6a15e5e4909d39c7d`:55 passed (54 GPU + declaration)、428.50s。
+actual NVIDIA L4 / torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0。
+source/result archives、submitted/committed/workerの196 runtime filesのSHA256一致を確認。
+6新候補のY/dX/全atom・位置勾配、slices、B1/32/64、N64/N128の20 Graph更新と
+Parameter/moments/step、旧forward後のmovement/backward、empty-neighbor範囲を通過。
+同名JSONへ検証proofを保存した。
+N64測定jobへ進行。GPU test成功は速度やメモリ改善の証拠ではなく、screenを待つ。
