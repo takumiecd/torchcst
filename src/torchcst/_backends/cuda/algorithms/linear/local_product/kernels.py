@@ -647,8 +647,21 @@ def fused_packed(
             end = tl.load(OwnerOffsets + tile * 4 + indexed_band + 1)
         if OwnerRanges is not None and phase >= owners:
             indexed_band = phase - owners
-            begin = tl.load(OwnerRanges + tile * 6 + indexed_band * 2)
-            end = tl.load(OwnerRanges + tile * 6 + indexed_band * 2 + 1)
+            if owners == 1:
+                begin = tl.load(OwnerRanges + tile * 6 + indexed_band * 2)
+                end = tl.load(OwnerRanges + tile * 6 + indexed_band * 2 + 1)
+            else:
+                begin, end = tl.full((), A, tl.int32), tl.full((), 0, tl.int32)
+                for local_owner in tl.static_range(owners):
+                    owner = tile * owners + local_owner
+                    target = OwnerRanges + owner * 6 + indexed_band * 2
+                    low = tl.load(target, owner < groups, 0)
+                    high = tl.load(target + 1, owner < groups, 0)
+                    # Empty intervals are [0,0]; including zero in the minimum
+                    # would admit previous rho bands and count them twice.
+                    begin = tl.minimum(begin, tl.where(low < high, low, A))
+                    end = tl.maximum(end, high)
+                begin = tl.minimum(begin, end)
         if SPLITS > 1:
             blocks = tl.cdiv(end - begin, BA)
             per_split = tl.cdiv(blocks, SPLITS)
@@ -1189,8 +1202,12 @@ def param_vjp(
     H_A: tl.constexpr = 0,
     G=None,
     SAVE_G: tl.constexpr = False,
+    BATCH_SPLITS: tl.constexpr = 1,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
+    batch_split = tl.program_id(1) if BATCH_SPLITS > 1 else 0
+    if BATCH_SPLITS > 1:
+        DQ += batch_split * (H_A if H_A else A) * 4
     original = tl.load(Order + a, a < A, -1) if Order is not None else a
     valid = (a < A) & (original >= 0)
     if H_A:
@@ -1200,7 +1217,7 @@ def param_vjp(
         da = tl.full((BA,), 0.0, tl.float32)
         dci = tl.full((BA,), 0.0, tl.float32)
         dco = tl.full((BA,), 0.0, tl.float32)
-        for b0 in range(0, B, BB):
+        for b0 in range(batch_split * BB, B, BB * BATCH_SPLITS):
             b = b0 + tl.arange(0, BB)
             partial_a = tl.full((BA,), 0.0, tl.float32)
             partial_i = tl.full((BA,), 0.0, tl.float32)

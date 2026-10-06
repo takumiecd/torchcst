@@ -104,6 +104,10 @@ class Recipe:
     def owner_splits(self):
         return 1
 
+    @property
+    def parameter_splits(self):
+        return 1
+
     def __post_init__(self):
         if not self.rho_upper or any(
             not math.isfinite(x) or x <= 0 for x in self.rho_upper

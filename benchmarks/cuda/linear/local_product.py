@@ -12,6 +12,15 @@ from torchcst._backends.schema import SupportResult
 from torchcst.operators.execution import LinearInputs, linear_execution
 from torchcst.operators.spec import ChartPairSpec, OperatorSpec
 
+REUSE_SUFFIXES = (
+    "_ordered_reuse_tile32",
+    "_ordered_reuse_tile64",
+    "_ordered_reuse_tile32_split2",
+    "_ordered_reuse_tile64_split2",
+    "_ordered_reuse_param2",
+    "_ordered_reuse_tile32_param2",
+)
+
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
 
 
@@ -20,8 +29,12 @@ class LocalRecipe(Recipe):
     route: str = "fused"
 
     @property
+    def reuse_layout(self):
+        return self.route.endswith(REUSE_SUFFIXES)
+
+    @property
     def base_route(self):
-        for suffix in (
+        for suffix in REUSE_SUFFIXES + (
             "_ordered_prep_vector8",
             "_ordered_prep_vector",
             "_ordered_prep_copy8",
@@ -58,6 +71,10 @@ class LocalRecipe(Recipe):
 
     @property
     def output_block(self):
+        if self.reuse_layout:
+            return (
+                64 if "_tile64" in self.route else 32 if "_tile32" in self.route else 16
+            )
         if self.route.endswith(("_tile32", "_h32")):
             return 32
         if self.route.endswith(("_tile64", "_h64")):
@@ -121,7 +138,7 @@ class LocalRecipe(Recipe):
 
     @property
     def ordered_layout(self):
-        return self.route.endswith(
+        return self.reuse_layout or self.route.endswith(
             (
                 "_ordered",
                 "_ordered_band",
@@ -147,7 +164,7 @@ class LocalRecipe(Recipe):
 
     @property
     def compact_order_key(self):
-        return self.route.endswith(
+        return self.reuse_layout or self.route.endswith(
             (
                 "_ordered_split4_i32",
                 "_ordered_prep_vector8",
@@ -163,7 +180,7 @@ class LocalRecipe(Recipe):
 
     @property
     def parallel_owner_ranges(self):
-        return self.route.endswith(
+        return self.reuse_layout or self.route.endswith(
             (
                 "_ordered_prep_parallel",
                 "_ordered_prep_parallel8",
@@ -175,7 +192,9 @@ class LocalRecipe(Recipe):
 
     @property
     def parallel_order_copy(self):
-        return self.route.endswith(("_ordered_prep_copy", "_ordered_prep_copy8"))
+        return self.reuse_layout or self.route.endswith(
+            ("_ordered_prep_copy", "_ordered_prep_copy8")
+        )
 
     @property
     def vector_owner_ranges(self):
@@ -183,6 +202,8 @@ class LocalRecipe(Recipe):
 
     @property
     def preparation_warps(self):
+        if self.reuse_layout:
+            return 8
         return (
             8
             if self.route.endswith(
@@ -198,6 +219,8 @@ class LocalRecipe(Recipe):
 
     @property
     def owner_splits(self):
+        if self.reuse_layout:
+            return 2 if self.route.endswith("_split2") else 4
         return (
             2
             if self.route.endswith("_ordered_split2")
@@ -217,6 +240,10 @@ class LocalRecipe(Recipe):
             )
             else 1
         )
+
+    @property
+    def parameter_splits(self):
+        return 2 if self.reuse_layout and self.route.endswith("_param2") else 1
 
     @property
     def fuse_owner_index(self):
@@ -324,6 +351,7 @@ class LocalRecipe(Recipe):
                 self.base_route + "_ordered_prep_parallel",
                 self.base_route + "_ordered_prep_warp8",
                 self.base_route + "_ordered_prep_range",
+                *(self.base_route + suffix for suffix in REUSE_SUFFIXES),
             )
         ):
             raise ValueError("unsupported recomputed parameter VJP variant")

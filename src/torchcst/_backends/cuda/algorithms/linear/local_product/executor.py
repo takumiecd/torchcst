@@ -663,9 +663,16 @@ class _LocalH(torch.autograd.Function):
             _stamp("parameters", 0)
             a = packed.shape[1]
             canonical_atoms = len(source) if persistent else a
-            dq = packed.new_empty((canonical_atoms, 4))
+            parameter_splits = recipe.parameter_splits
+            dq = packed.new_empty(
+                (parameter_splits, canonical_atoms, 4)
+                if parameter_splits > 1
+                else (canonical_atoms, 4)
+            )
             if a:
-                compiled = kernels.param_vjp[(tr.cdiv(a, recipe.atom_block),)](
+                compiled = kernels.param_vjp[
+                    (tr.cdiv(a, recipe.atom_block), parameter_splits)
+                ](
                     x,
                     dy,
                     packed,
@@ -683,7 +690,9 @@ class _LocalH(torch.autograd.Function):
                     max(16, tr.next_power_of_2(domain.input_count)),
                     max(16, tr.next_power_of_2(domain.output_count)),
                     16
-                    if max(domain.input_count, domain.output_count) > 64 or use_g
+                    if max(domain.input_count, domain.output_count) > 64
+                    or use_g
+                    or parameter_splits > 1
                     else max(16, tr.next_power_of_2(len(x))),
                     recipe.atom_block,
                     saved,
@@ -701,6 +710,7 @@ class _LocalH(torch.autograd.Function):
                     H_A=canonical_atoms if persistent else 0,
                     G=g,
                     SAVE_G=use_g,
+                    BATCH_SPLITS=parameter_splits,
                     num_warps=recipe.parameter_warps
                     or (8 if max(domain.input_count, domain.output_count) > 64 else 4),
                     enable_fp_fusion=False,
@@ -719,6 +729,22 @@ class _LocalH(torch.autograd.Function):
                     else ("param_saved" if saved else "param_recomputed"),
                     compiled,
                 )
+            if parameter_splits > 1:
+                merged = packed.new_empty((canonical_atoms, 4))
+                if canonical_atoms:
+                    reduced = kernels.reduce_owner_partials[
+                        (tr.cdiv(canonical_atoms * 4, 256),)
+                    ](
+                        dq,
+                        merged,
+                        canonical_atoms * 4,
+                        parameter_splits,
+                        256,
+                        num_warps=4,
+                        enable_fp_fusion=False,
+                    )
+                    _report("parameter_partial_reduce", reduced)
+                dq = merged
             _stamp("parameters", 1)
         if use_g:
             dx = _packed_fused(
