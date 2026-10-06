@@ -11,7 +11,7 @@ CANDIDATES = tuple(e.plan for e in PLANS[1:])
 
 
 def test_refine_declarations():
-    assert len(PLANS) == 4
+    assert len(PLANS) == 5
     assert PLANS[0].plan.recipe.index_bits == 32
     for plan in CANDIDATES:
         assert REGISTRY.load_plan(REGISTRY.dump_plan(plan)) == plan
@@ -36,7 +36,7 @@ def test_index16_capacity_boundary_falls_back_without_host_tensor_reads():
     ):
         ids, _, _ = allocate_owner_index(prototype, atoms, 8, plan.recipe)
         assert ids.dtype == expected
-    for plan in CANDIDATES[1:]:
+    for plan in tuple(p for p in CANDIDATES if p.recipe.release_forward_index):
         ids, offsets, _ = allocate_owner_index(prototype, 819, 8, plan.recipe)
         assert isinstance(ids, tuple) and len(ids) == 2
         assert (
@@ -46,7 +46,7 @@ def test_index16_capacity_boundary_falls_back_without_host_tensor_reads():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("plan", CANDIDATES)
+@pytest.mark.parametrize("plan", CANDIDATES, ids=lambda p: p.recipe.route)
 @pytest.mark.parametrize("sliced", (False, True))
 def test_refine_exact_coverage_after_movement(plan, sliced):
     from test_local_owner_index import (
@@ -57,7 +57,7 @@ def test_refine_exact_coverage_after_movement(plan, sliced):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("plan", CANDIDATES)
+@pytest.mark.parametrize("plan", CANDIDATES, ids=lambda p: p.recipe.route)
 @pytest.mark.parametrize("batch", (1, 32, 64))
 def test_refine_sliced_gradients(plan, batch):
     from test_local_contraction import (
@@ -68,7 +68,7 @@ def test_refine_sliced_gradients(plan, batch):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("plan", CANDIDATES)
+@pytest.mark.parametrize("plan", CANDIDATES, ids=lambda p: p.recipe.route)
 @pytest.mark.parametrize("size", (64, 128))
 def test_refine_captured_updates(plan, size):
     from test_local_product_research import (
@@ -85,7 +85,7 @@ def test_refine_captured_updates(plan, size):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("plan", CANDIDATES)
+@pytest.mark.parametrize("plan", CANDIDATES, ids=lambda p: p.recipe.route)
 def test_refine_old_backward_after_layout_change(plan):
     from test_local_owner_index import (
         test_owner_index_old_backward_after_layout_change as check,
@@ -95,7 +95,11 @@ def test_refine_old_backward_after_layout_change(plan):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-@pytest.mark.parametrize("plan", CANDIDATES[1:])
+@pytest.mark.parametrize(
+    "plan",
+    tuple(p for p in CANDIDATES if p.recipe.release_forward_index),
+    ids=lambda p: p.recipe.route,
+)
 def test_release_does_not_save_forward_id_storage(plan):
     from benchmarks.cuda.linear.local_product import fixture_operator, initialize
     from benchmarks.cuda.linear.manifest import load_run
