@@ -1,0 +1,761 @@
+{
+  "schema_version": 1,
+  "measurement_jobs": [
+    {
+      "job": "l4job-5bf52062e16c48e99ba71c1695e15076",
+      "repeat": 1,
+      "source_commit": "7cbb318b20e788b1fc8d6a54ec5db57bc3880e84",
+      "source_snapshot_sha256": "402c6f039c1712774752427d7221099e5a342eb37707f716ab77bce321ccb708",
+      "result_archive_sha256": "aeac0c4130a8e1632623d441b994c180f44eb5267d382eb7ba7a0603a13aa3f6",
+      "runtime_files_matched": 196
+    },
+    {
+      "job": "l4job-656ac889dc834f60885bb206cf3440ae",
+      "repeat": 1,
+      "source_commit": "7cbb318b20e788b1fc8d6a54ec5db57bc3880e84",
+      "source_snapshot_sha256": "ce4a3aba5279db284ec7b884551c038a9d92f36e2d8491088afc9329eaff92b4",
+      "result_archive_sha256": "0ec99626eea082eed31b6830f44d6c3101e14780d29d38d0dd9d1f3782db9844",
+      "runtime_files_matched": 196
+    }
+  ],
+  "full_shape_oracle_comparisons": 20,
+  "validation_status": "old GPU job:25 passed (24GPU+declaration),3 fixture/catalog failures; corrected all28-test job queued",
+  "observations": [
+    {
+      "case": {
+        "id": "local-paramtile-64-rho3",
+        "fixture": "local_polar_product",
+        "size": 64,
+        "rows": 32,
+        "atoms": 204,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 59.51799994363682,
+          "run_medians_us": [
+            59.51799994363682
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 16.383999958634377
+          }
+        },
+        "local-ordered-reuse-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 52.65599975246005,
+          "run_medians_us": [
+            52.65599975246005
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 10.239999741315842,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-atom32": {
+          "independent_executions": 1,
+          "median_us": 53.062999995745486,
+          "run_medians_us": [
+            53.062999995745486
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 10.239999741315842,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-atom32": {
+          "independent_executions": 1,
+          "median_us": 53.031999868835555,
+          "run_medians_us": [
+            53.031999868835555
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom32-param4-atom32": {
+          "independent_executions": 1,
+          "median_us": 59.49800015514484,
+          "run_medians_us": [
+            59.49800015514484
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 16.383999958634377
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 39.260999983525835,
+          "run_medians_us": [
+            39.260999983525835
+          ],
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "candidate_summary": {
+        "local-ordered-reuse-param2-atom32": {
+          "time_reduction_percent": 11.5292855903677,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-5bf52062e16c48e99ba71c1695e15076",
+              "baseline_us": 59.51799994363682,
+              "candidate_us": 52.65599975246005,
+              "time_reduction_percent": 11.5292855903677,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-atom32": {
+          "time_reduction_percent": 10.845458439470724,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-5bf52062e16c48e99ba71c1695e15076",
+              "baseline_us": 59.51799994363682,
+              "candidate_us": 53.062999995745486,
+              "time_reduction_percent": 10.845458439470724,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-param4-atom32": {
+          "time_reduction_percent": 10.89754373625369,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-5bf52062e16c48e99ba71c1695e15076",
+              "baseline_us": 59.51799994363682,
+              "candidate_us": 53.031999868835555,
+              "time_reduction_percent": 10.89754373625369,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom32-param4-atom32": {
+          "time_reduction_percent": 0.03360292434376744,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-5bf52062e16c48e99ba71c1695e15076",
+              "baseline_us": 59.51799994363682,
+              "candidate_us": 59.49800015514484,
+              "time_reduction_percent": 0.03360292434376744,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "local-paramtile-64-rho8",
+        "fixture": "local_polar_product",
+        "size": 64,
+        "rows": 32,
+        "atoms": 204,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            8
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 56.40899962600088,
+          "run_medians_us": [
+            56.40899962600088
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 14.336000196635723
+          }
+        },
+        "local-ordered-reuse-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 56.40699964715168,
+          "run_medians_us": [
+            56.40699964715168
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-atom32": {
+          "independent_executions": 1,
+          "median_us": 51.66300070413854,
+          "run_medians_us": [
+            51.66300070413854
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 9.216000325977802
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-atom32": {
+          "independent_executions": 1,
+          "median_us": 51.663999329321086,
+          "run_medians_us": [
+            51.663999329321086
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 9.216000325977802
+          }
+        },
+        "local-ordered-reuse-paramatom32-param4-atom32": {
+          "independent_executions": 1,
+          "median_us": 57.06899992219405,
+          "run_medians_us": [
+            57.06899992219405
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 14.336000196635723
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 39.16400055459235,
+          "run_medians_us": [
+            39.16400055459235
+          ],
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "candidate_summary": {
+        "local-ordered-reuse-param2-atom32": {
+          "time_reduction_percent": 0.0035454960422232062,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-5bf52062e16c48e99ba71c1695e15076",
+              "baseline_us": 56.40899962600088,
+              "candidate_us": 56.40699964715168,
+              "time_reduction_percent": 0.0035454960422232062,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-atom32": {
+          "time_reduction_percent": 8.413549173587443,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-5bf52062e16c48e99ba71c1695e15076",
+              "baseline_us": 56.40899962600088,
+              "candidate_us": 51.66300070413854,
+              "time_reduction_percent": 8.413549173587443,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-param4-atom32": {
+          "time_reduction_percent": 8.4117788440493,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-5bf52062e16c48e99ba71c1695e15076",
+              "baseline_us": 56.40899962600088,
+              "candidate_us": 51.663999329321086,
+              "time_reduction_percent": 8.4117788440493,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom32-param4-atom32": {
+          "time_reduction_percent": -1.170026592510176,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-5bf52062e16c48e99ba71c1695e15076",
+              "baseline_us": 56.40899962600088,
+              "candidate_us": 57.06899992219405,
+              "time_reduction_percent": -1.170026592510176,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "local-paramtile-128-rho3",
+        "fixture": "local_polar_product",
+        "size": 128,
+        "rows": 32,
+        "atoms": 819,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 70.1809995007352,
+          "run_medians_us": [
+            70.1809995007352
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 67.86299945815699,
+          "run_medians_us": [
+            67.86299945815699
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 13.311999849975109,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-atom32": {
+          "independent_executions": 1,
+          "median_us": 68.63799990242114,
+          "run_medians_us": [
+            68.63799990242114
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 13.311999849975109,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-atom32": {
+          "independent_executions": 1,
+          "median_us": 68.99500021972926,
+          "run_medians_us": [
+            68.99500021972926
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 11.264000087976456
+          }
+        },
+        "local-ordered-reuse-paramatom32-param4-atom32": {
+          "independent_executions": 1,
+          "median_us": 72.01500011433382,
+          "run_medians_us": [
+            72.01500011433382
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 14.336000196635723
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 45.58199998427881,
+          "run_medians_us": [
+            45.58199998427881
+          ],
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "candidate_summary": {
+        "local-ordered-reuse-param2-atom32": {
+          "time_reduction_percent": 3.3028883302722467,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-656ac889dc834f60885bb206cf3440ae",
+              "baseline_us": 70.1809995007352,
+              "candidate_us": 67.86299945815699,
+              "time_reduction_percent": 3.3028883302722467,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-atom32": {
+          "time_reduction_percent": 2.19860020417334,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-656ac889dc834f60885bb206cf3440ae",
+              "baseline_us": 70.1809995007352,
+              "candidate_us": 68.63799990242114,
+              "time_reduction_percent": 2.19860020417334,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-param4-atom32": {
+          "time_reduction_percent": 1.6899150616877523,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-656ac889dc834f60885bb206cf3440ae",
+              "baseline_us": 70.1809995007352,
+              "candidate_us": 68.99500021972926,
+              "time_reduction_percent": 1.6899150616877523,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom32-param4-atom32": {
+          "time_reduction_percent": -2.613243793399378,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-656ac889dc834f60885bb206cf3440ae",
+              "baseline_us": 70.1809995007352,
+              "candidate_us": 72.01500011433382,
+              "time_reduction_percent": -2.613243793399378,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "local-paramtile-128-rho8",
+        "fixture": "local_polar_product",
+        "size": 128,
+        "rows": 32,
+        "atoms": 819,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            8
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 74.10400030494202,
+          "run_medians_us": [
+            74.10400030494202
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 16.383999958634377
+          }
+        },
+        "local-ordered-reuse-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 69.53899992367951,
+          "run_medians_us": [
+            69.53899992367951
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-paramatom16-atom32": {
+          "independent_executions": 1,
+          "median_us": 71.90100041043479,
+          "run_medians_us": [
+            71.90100041043479
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 14.336000196635723
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-atom32": {
+          "independent_executions": 1,
+          "median_us": 70.77600002958206,
+          "run_medians_us": [
+            70.77600002958206
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 13.311999849975109
+          }
+        },
+        "local-ordered-reuse-paramatom32-param4-atom32": {
+          "independent_executions": 1,
+          "median_us": 78.3989999035839,
+          "run_medians_us": [
+            78.3989999035839
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 21.503999829292297
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 46.10500036505982,
+          "run_medians_us": [
+            46.10500036505982
+          ],
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "candidate_summary": {
+        "local-ordered-reuse-param2-atom32": {
+          "time_reduction_percent": 6.160261743599915,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-656ac889dc834f60885bb206cf3440ae",
+              "baseline_us": 74.10400030494202,
+              "candidate_us": 69.53899992367951,
+              "time_reduction_percent": 6.160261743599915,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-atom32": {
+          "time_reduction_percent": 2.972848814425355,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-656ac889dc834f60885bb206cf3440ae",
+              "baseline_us": 74.10400030494202,
+              "candidate_us": 71.90100041043479,
+              "time_reduction_percent": 2.972848814425355,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-param4-atom32": {
+          "time_reduction_percent": 4.490985994905882,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-656ac889dc834f60885bb206cf3440ae",
+              "baseline_us": 74.10400030494202,
+              "candidate_us": 70.77600002958206,
+              "time_reduction_percent": 4.490985994905882,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom32-param4-atom32": {
+          "time_reduction_percent": -5.795907887519869,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-656ac889dc834f60885bb206cf3440ae",
+              "baseline_us": 74.10400030494202,
+              "candidate_us": 78.3989999035839,
+              "time_reduction_percent": -5.795907887519869,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

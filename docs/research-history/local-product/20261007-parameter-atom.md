@@ -51,3 +51,41 @@ source `7cbb318b20e788b1fc8d6a54ec5db57bc3880e84`から凍結してone-worker qu
 
 full-shape FP64 Y/dX/全atom oracleを各候補で通してからcomplete stepを測る。
 GPU結果は未回収。新候補の位置勾配・20更新・peaksが揃うまで採用を決めない。
+
+## 03:50 JST: fixture修正と最初のscreen
+
+旧GPU job `l4job-701b166db3da4900a8f488b3cdbf031b`は25 passed (24 GPU +
+declaration)、3 failed。失敗はempty-neighbor testがreuse caseとparamtile catalogを
+組み合わせた参照ミス。kernel assertionではないが全件成功とも扱わない。
+`ce117f28c86b3167ee5c4ce48d42509643740ff6`で専用caseをmodule collection時に読み、
+CPU collectionでもcatalog一致を検査するよう修正。runtime sourceは変更しない。
+修正後28 testsを`l4job-4567ca9dcf7c4d8294fe0634c8826b3c`へ再提出した。
+
+2 screen jobsは成功、source/result/runtime hashesと20 full-shape FP64比較を確認。
+初期Parameters/inputsも各case内の全候補で一致。各1 executionのmedian(us):
+
+|size/rho|copy8|param2 control|param atoms16 default warps|atoms16 warps4|atoms32 warps4|dense|
+|---|---:|---:|---:|---:|---:|---:|
+|64/3|59.52|52.66|53.06|53.03|59.50|39.26|
+|64/8|56.41|56.41|51.66|51.66|57.07|39.16|
+|128/3|70.18|67.86|68.64|69.00|72.02|45.58|
+|128/8|74.10|69.54|71.90|70.78|78.40|46.11|
+
+N64 atom16はrho3/8で約11%/8%改善、allocated115712 bytesは同じ。N128は
+param2が速いがatom16も改善する。atoms32 warps4はN128を悪化させる。
+N64/rho8のparam2 controlは前screen52.74usから56.41usへ変動。初期p hash、
+compiler register/spill/sharedとparameter event診断10.24usは一致した。
+完全stepの独立反復が必要で、component時間から結果を置き換えない。
+4 screen artifactsをDB保存、byte-identical export/idempotent再取込を確認。GPU全28-test再検証は進行中。速度候補の採用はその後。
+
+## atom16のfull反復を追加
+
+source `ce117f28` (runtimeは初回screenと同じ)からrho1.25/3/8/mixedを独立2回。
+copy8 baseline/param2 control/atom16 warps4+dense、2回目はcase/plan順を逆転。
+GPU28-test再検証とすべてのfull-shape oracle結果を揃えてから採用判断する。
+
+
+- `l4job-affdcad5f887440499f30ae86c0cc58f`:N64 repeat1
+- `l4job-f67e722e317b4792a98ec9b9d06f8674`:N128 repeat1
+- `l4job-139567da57814699921195df68a7263e`:N128 repeat2
+- `l4job-b17c0d69b92e46e39c3c1e5ff9c34cc5`:N64 repeat2
