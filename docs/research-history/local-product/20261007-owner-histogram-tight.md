@@ -71,3 +71,7 @@ The table reports microseconds, median of execution medians. A screen has one ex
 | `local-ordered-reuse-histtightinline-paramatom16-param4-param2-atom32` | 1 | 72.75 | 303104 | 6291456 |
 | `dense` | 1 | 45.89 | 34408960 | 48234496 |
 
+
+## Scoped independent repeat
+
+Two queued all-rho jobs e5fe2c10/a5f293af were cancelled before execution to prioritize independent confirmation of the promising N64 rho3/8 screen and the G4 follow-up before 08:00. One selected repeat2 reuses three fixed CST routes plus dense, reverses rho/plan order, and is paired with the original screen. Only common selected routes have two executions; other screen routes have one. Narrow/mixed histogram timing remains unmeasured. This is deliberately scoped screening, not a full all-rho claim.
