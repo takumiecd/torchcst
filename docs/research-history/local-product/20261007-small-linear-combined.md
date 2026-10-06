@@ -6,7 +6,7 @@ Three new cache routes combine current exact key-gather validation / bounded rep
 
 One route keeps output/input owner16 dimensions, atom chunk32, parameter atom16/warps4/batch split2, and reduces owner split4 to split2. This halves the output/dX partial buffer capacity at the same tensor axes, but may lose GPU parallelism. Report actual complete-step peak and time rather than predicting peak from tensor budget. H is not allocated globally; physical DRAM/cache residency is not measured.
 
-N64/N128 B32 A204/A819 seed41 FP32 IEEE/TF32off; initial decoded rho>1 (1.25/3/8/mixed), production fused AdamW/Polar with evolving sigma. Controls copy8, param2 atom32 and atom16/warps4/batch2; dense same operator. 21 samples/execution, reverse case/plan order on repeat2. Independent FP64 Y/dX/all atom gradients and nonzero centers, singleton/norm-floor/empty support, slices/B1/32/64, old backward, N64/N128 20 captured reference optimizer updates/moments/steps.
+N64/N128 B32 A204/A819 seed41 FP32 IEEE/TF32off; initial decoded rho>1 (1.25/3/8/mixed), production fused AdamW/Polar with evolving sigma. Controls copy8, param2 atom32 and atom16/warps4/batch2; dense separate Linear performance reference (same dimensions/input/target, independent matrix initialization). 21 samples/execution, reverse case/plan order on repeat2. Independent FP64 Y/dX/all atom gradients and nonzero centers, singleton/norm-floor/empty support, slices/B1/32/64, old backward, N64/N128 20 captured reference optimizer updates/moments/steps.
 
 Host:885 passed/814 GPU-or-resource skips (22.66s), changed-file ruff, isolated wheel/sdist build, 8 prepare/check passed. GPU checks and rho3/8 screening submitted only from committed snapshot. Ignored raw evidence under small-linear-combined-20261007.
 
@@ -43,7 +43,7 @@ N64 screen2 measurement artifacts DB byte-identical export/idempotent reimport p
 
 ## Full repeat1 checkpoint (repeat2 pending)
 
-Both size jobs succeeded;56 full-shape FP64 comparisons,197 runtime/archive proofs and within-case all-plan Parameter/input bytes incl dense passed. First independent full execution results only; repeat2 is in progress. Source1e1c8581.
+Both size jobs succeeded;56 full-shape FP64 comparisons,197 runtime/archive proofs and within-case CST Parameter bytes and all-plan input bytes incl dense passed. First independent full execution results only; repeat2 is in progress. Source1e1c8581.
 
 |N/rho|copy8|param2|atom16split2/4warps|gather+param2|repair4+param2|repair8+param2|owner2|dense|
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -62,7 +62,7 @@ G4 short selected comparison queued from docs-only source7e55e991 (same runtime/
 
 ## Completed independent L4 repeat1 + repeat2
 
-All four full jobs succeeded. Source1e1c8581, 112 full-shape FP64 comparisons, matching committed/submitted/worker197 runtime files and archive SHA256, all-plan initial Parameter/input bytes including dense and both executions. Actual initial rho>1; all width updates evolve. Each cell is the median of two independent execution medians (21 samples each); repeat2 reverses case/plan order. This supersedes the pending repeat2 checkpoint above. All16 full measurement artifacts and4 screen artifacts have byte-identical DB export and idempotent reimport.
+All four full jobs succeeded. Source1e1c8581, 112 full-shape FP64 comparisons, matching committed/submitted/worker197 runtime files and archive SHA256, CST initial Parameter bytes and all-plan input bytes including dense and both executions. Actual initial rho>1; all width updates evolve. Each cell is the median of two independent execution medians (21 samples each); repeat2 reverses case/plan order. This supersedes the pending repeat2 checkpoint above. All16 full measurement artifacts and4 screen artifacts have byte-identical DB export and idempotent reimport.
 
 |N/rho|copy8|param2|atom16split2/4warps|gather+param2|repair4+param2|repair8+param2|owner2|dense|
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -93,7 +93,7 @@ G4 check succeeded:27 cached-route tests45.48s +9 uncached atom16/4warps/batch s
 
 ## Completed G4 independent repeat1 + repeat2
 
-Both selected timing jobs succeeded. Source7e55e991;32 full-shape FP64 comparisons,197 runtime/hash/archive proofs and within-G4 all-plan Parameter/input bytes including dense and both executions passed. Actual Blackwell Server Edition/CC12.0/188SM,IEEE FP32/TF32off. Initial performance rho>1,production AdamW/Polar widths evolve.21 samples/execution,second reverses case/plan order. Each cell median of2 execution medians(us). These are selected rho3/mixed comparisons; no G4 narrow/wide timing claim.
+Both selected timing jobs succeeded. Source7e55e991;32 full-shape FP64 comparisons,197 runtime/hash/archive proofs and within-G4 CST Parameter bytes and all-plan input bytes including dense and both executions passed. Actual Blackwell Server Edition/CC12.0/188SM,IEEE FP32/TF32off. Initial performance rho>1,production AdamW/Polar widths evolve.21 samples/execution,second reverses case/plan order. Each cell median of2 execution medians(us). These are selected rho3/mixed comparisons; no G4 narrow/wide timing claim.
 
 |N/rho|copy8|uncached atom16split2/4warps|repair4+param2|repair8+param2|dense|
 |---|---:|---:|---:|---:|---:|
@@ -109,3 +109,7 @@ N128 rho3 repair8 full sorts1/1 vsrepair4 26/34 over52 primary refreshes;mixed r
 G4 supervisor21298 drained successfully(exit0),owned sessioncst-pool-156f0fde07df-1 stopped with lifecycle Session terminated/server No active sessions found and allslots stopped. L4 resumed via one supervisor58836 only after this confirmation. G4 raw source/results/logs preserved;8 measurement artifacts DB ingest is in progress.
 
 All8 G4 measurement artifacts now verified by byte-identical DB export/idempotent reimport;combined family total28 measurement artifacts (4L4screens+16L4full+8G4selected). Initial L4 resume supervisor58836 failed before executing an experiment: Colab assign L4 returned Service Unavailable(HTTP503),job ee834a73 became interrupted. Pool stopped/recovery confirmed no endpoint/no active server assignments; no GPU measurement is attributed to that interrupted allocation. Frozen job/source retained;explicit requeue required. Second allocation attempt supervisor40251 starts21:45UTC after backoff; remaining queued frozen jobs unchanged.
+
+## Comparison scope clarification
+
+Dense is a separately initialized nn.Linear, not the same initial CST matrix or the same parameter-update trajectory. It uses the same dimensions,dtype,input,target,loss,fused AdamW/capture/replay protocol as a performance reference; CST additionally has source Polar updates. Initial Parameter hash equality applies to CST recipes only. Input/target hash equality includes dense. FP64 correctness and20-step optimizer reference checks are for the structured CST contract,independently of dense. See20261007-comparison-methodology.md. Earlier shorthand “same operator” and Parameter/input phrasing has been corrected here; frozen raw data are unchanged.
