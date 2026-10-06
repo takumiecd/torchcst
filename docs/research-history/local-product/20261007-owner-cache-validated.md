@@ -36,3 +36,6 @@ live optimizer updates/moments/steps、old backward snapshotsに加え、
 GPU正しさ・性能は未検証。初期rho>1のN64/N128 rho1.25/3/8/mixedをcopy8と
 compact keycacheとdenseで同時比較する。21 samples/execution、IEEE FP32/TF32off。
 raw scripts/resultsはignored evidence/owner-cache-validated-20261007に保存する。
+
+source `e0a0caf2362e831ecc7204d080b9fe5a57e9bd5f`、draft PR #40。
+L4 check `l4job-1d0b7a0684f04bd2946f1d038430f274`、N64 `l4job-28b05068b1944d8cbaafbf80cdf1db71`、N128 `l4job-7f8cc4e12cab427d831e9fd4acc1d6d6` queued。最初のsubmit `l4job-61dd72df4d2d4f8dad21ce7a3de6412c` はsourceラベル誤記のため実行前にcancel、数値なし。数学とsource/result hashの整合を正式jobsで確認する。
