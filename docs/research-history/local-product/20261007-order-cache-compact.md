@@ -54,3 +54,22 @@ source `3905bb9d8f8f809ac81640e26e34e3d210dd455f`を凍結してone L4 queueへ�
 
 測定ごとのfull-shape FP64 Y/dX/全atom・非零位置勾配oracleを通してから測る。
 GPU benefitとallocated/reserved peaksはまだ未検証。
+
+## 04:09 JST: GPU proof / transport再開
+
+`l4job-5ac6ae53727b47619deab1632b645e3f`:25 passed (20 GPU + 5 CPU)、37.28s。
+source/result archivesとsubmitted/committed/worker197 runtime hashes一致。
+N64 jobも成功、16 full-shape FP64候補比較、各case内の初期Parameters/inputs hash一致。
+N64 allocated peakはfull cache120832→compact118784 bytesへ2048 bytes減少、
+cacheなし115712 bytesよりは大きい。copy8 compactはfull cacheとほぼ同時間、
+range8は54.06/58.94/55.35/62.03us (rho1.25/3/8/mixed)、各1 execution。
+
+N128旧job `l4job-d6c7b306380548288a8e1eda72db4479`はPOOL_RESULT_READY後、
+CLI downloadでresults archive not found。結果未回収なので成功や数値を主張しない。
+supervisor90589がexit1、owned L4停止とserver no-activeをlifecycleで確認した。
+recover後にsupervisor tool session66084をone L4/idle0で再開。後続queued jobsは
+重複提出せず継続する。未回収N128だけ `l4job-4f4c7473564340c5a25eb5abaf769e64`
+へsource `2dbdc411`で再提出。GPU処理は元sourceと同じでcounter_scope labelだけ
+修正済み。transport/spec/sourceログを保持する。
+
+N64の4 artifactsをDB保存、byte-identical export/idempotent再取込を確認した。
