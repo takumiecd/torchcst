@@ -5371,5 +5371,1350 @@
       "byte_identical_export": true,
       "idempotent_reimport": true
     }
-  ]
+  ],
+  "full_repeat1": {
+    "jobs": [
+      {
+        "job": "l4job-d1df360260b1426dad78bd6855942240",
+        "repeat": 1,
+        "source_commit": "1e1c85812244c61675302e1dfd17df73f79f5295",
+        "source_snapshot_sha256": "dd08ec6abe73879d69ae216792c80717ced52a44fd6d2e4d3d1370a7968c6e40",
+        "result_archive_sha256": "4678b471fdb474f2792fcc77ffdad79ca3220978825a02729be91913fac52012",
+        "runtime_files_matched": 197
+      },
+      {
+        "job": "l4job-54a1ebc8a3164a2598a4aa2d83fb3eb3",
+        "repeat": 1,
+        "source_commit": "1e1c85812244c61675302e1dfd17df73f79f5295",
+        "source_snapshot_sha256": "dd08ec6abe73879d69ae216792c80717ced52a44fd6d2e4d3d1370a7968c6e40",
+        "result_archive_sha256": "1747963faeb41da353a6d37dd8b0876004d7db31a0177bc3556a89ba9a8a92c3",
+        "runtime_files_matched": 197
+      }
+    ],
+    "runtime_files_matched": 197,
+    "full_shape_comparisons": 56,
+    "initial_input_and_parameter_hashes_verified": true,
+    "observations": [
+      {
+        "case": {
+          "id": "local-combined-64-rho1_25",
+          "fixture": "local_polar_product",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              1.25
+            ],
+            "fractions": [
+              1
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 54.99700000655139,
+            "run_medians_us": [
+              54.99700000655139
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 9.216000325977802,
+              "parameters": 13.311999849975109
+            }
+          },
+          "local-ordered-reuse-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 51.04499996377854,
+            "run_medians_us": [
+              51.04499996377854
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 9.216000325977802,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 49.722000085239415,
+            "run_medians_us": [
+              49.722000085239415
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 9.216000325977802,
+              "parameters": 8.191999979317188
+            }
+          },
+          "local-ordered-cache-gather-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 49.884999953064835,
+            "run_medians_us": [
+              49.884999953064835
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 9.216000325977802,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 50.15200008529064,
+            "run_medians_us": [
+              50.15200008529064
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 7.168000098317862,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 9.216000325977802,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 50.43600003773463,
+            "run_medians_us": [
+              50.43600003773463
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 9.216000325977802,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-split2-atom32": {
+            "independent_executions": 1,
+            "median_us": 51.751999990301556,
+            "run_medians_us": [
+              51.751999990301556
+            ],
+            "peak_allocated_bytes": 99328,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 11.264000087976456,
+              "dx": 9.216000325977802,
+              "parameters": 8.191999979317188
+            }
+          },
+          "dense": {
+            "independent_executions": 1,
+            "median_us": 39.16699984074512,
+            "run_medians_us": [
+              39.16699984074512
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-64-rho3",
+          "fixture": "local_polar_product",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 58.9750000017375,
+            "run_medians_us": [
+              58.9750000017375
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 10.239999741315842,
+              "dx": 10.239999741315842,
+              "parameters": 16.383999958634377
+            }
+          },
+          "local-ordered-reuse-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 52.5010000274051,
+            "run_medians_us": [
+              52.5010000274051
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 51.445000053718104,
+            "run_medians_us": [
+              51.445000053718104
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 10.239999741315842,
+              "dx": 10.239999741315842,
+              "parameters": 8.191999979317188
+            }
+          },
+          "local-ordered-cache-gather-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 53.077999837114476,
+            "run_medians_us": [
+              53.077999837114476
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 9.216000325977802,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 52.47100011729344,
+            "run_medians_us": [
+              52.47100011729344
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 53.109999953449005,
+            "run_medians_us": [
+              53.109999953449005
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-split2-atom32": {
+            "independent_executions": 1,
+            "median_us": 55.82199992204551,
+            "run_medians_us": [
+              55.82199992204551
+            ],
+            "peak_allocated_bytes": 99328,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 11.264000087976456,
+              "dx": 12.28800043463707,
+              "parameters": 9.216000325977802
+            }
+          },
+          "dense": {
+            "independent_executions": 1,
+            "median_us": 39.182999898912385,
+            "run_medians_us": [
+              39.182999898912385
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-64-rho8",
+          "fixture": "local_polar_product",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              8
+            ],
+            "fractions": [
+              1
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 56.407999863949954,
+            "run_medians_us": [
+              56.407999863949954
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 14.336000196635723
+            }
+          },
+          "local-ordered-reuse-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 52.64400010673853,
+            "run_medians_us": [
+              52.64400010673853
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 51.09400012770493,
+            "run_medians_us": [
+              51.09400012770493
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 8.191999979317188
+            }
+          },
+          "local-ordered-cache-gather-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 52.162999963911716,
+            "run_medians_us": [
+              52.162999963911716
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 52.07399999562767,
+            "run_medians_us": [
+              52.07399999562767
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 51.96300003262877,
+            "run_medians_us": [
+              51.96300003262877
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-split2-atom32": {
+            "independent_executions": 1,
+            "median_us": 54.77300010170438,
+            "run_medians_us": [
+              54.77300010170438
+            ],
+            "peak_allocated_bytes": 99328,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 11.264000087976456,
+              "dx": 12.28800043463707,
+              "parameters": 8.191999979317188
+            }
+          },
+          "dense": {
+            "independent_executions": 1,
+            "median_us": 39.21099983017484,
+            "run_medians_us": [
+              39.21099983017484
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-64-rhomixed",
+          "fixture": "local_polar_product",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              1.25,
+              3,
+              8
+            ],
+            "fractions": [
+              0.5,
+              0.3,
+              0.2
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 62.694000007468276,
+            "run_medians_us": [
+              62.694000007468276
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 9.216000325977802,
+              "h": 2.047999994829297,
+              "output": 11.264000087976456,
+              "dx": 12.28800043463707,
+              "parameters": 15.359999611973763
+            }
+          },
+          "local-ordered-reuse-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 58.011999954032945,
+            "run_medians_us": [
+              58.011999954032945
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 9.216000325977802,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 13.311999849975109,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 56.691999816393945,
+            "run_medians_us": [
+              56.691999816393945
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 13.311999849975109,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-cache-gather-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 57.49800016019435,
+            "run_medians_us": [
+              57.49800016019435
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 12.28800043463707,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 57.59600003329979,
+            "run_medians_us": [
+              57.59600003329979
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 12.28800043463707,
+              "parameters": 11.264000087976456
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 57.89900001218484,
+            "run_medians_us": [
+              57.89900001218484
+            ],
+            "peak_allocated_bytes": 117248,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 11.264000087976456,
+              "dx": 13.311999849975109,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-split2-atom32": {
+            "independent_executions": 1,
+            "median_us": 56.3789999432629,
+            "run_medians_us": [
+              56.3789999432629
+            ],
+            "peak_allocated_bytes": 99328,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 9.216000325977802,
+              "h": 2.047999994829297,
+              "output": 11.264000087976456,
+              "dx": 13.311999849975109,
+              "parameters": 9.216000325977802
+            }
+          },
+          "dense": {
+            "independent_executions": 1,
+            "median_us": 39.20999984075024,
+            "run_medians_us": [
+              39.20999984075024
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-128-rho1_25",
+          "fixture": "local_polar_product",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              1.25
+            ],
+            "fractions": [
+              1
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 65.95700006073457,
+            "run_medians_us": [
+              65.95700006073457
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 12.28800043463707,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-reuse-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 64.74300016634515,
+            "run_medians_us": [
+              64.74300016634515
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 12.28800043463707,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 64.45900021390116,
+            "run_medians_us": [
+              64.45900021390116
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.183999892324209,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 12.28800043463707,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-cache-gather-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 60.95999992794532,
+            "run_medians_us": [
+              60.95999992794532
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 10.239999741315842,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 12.28800043463707,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 60.981000160609256,
+            "run_medians_us": [
+              60.981000160609256
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 10.239999741315842,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 12.28800043463707,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 60.7910001235723,
+            "run_medians_us": [
+              60.7910001235723
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 10.239999741315842,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 13.311999849975109,
+              "parameters": 9.216000325977802
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-split2-atom32": {
+            "independent_executions": 1,
+            "median_us": 65.3399999919202,
+            "run_medians_us": [
+              65.3399999919202
+            ],
+            "peak_allocated_bytes": 270336,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 13.311999849975109,
+              "parameters": 9.216000325977802
+            }
+          },
+          "dense": {
+            "independent_executions": 1,
+            "median_us": 45.65399990497099,
+            "run_medians_us": [
+              45.65399990497099
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-128-rho3",
+          "fixture": "local_polar_product",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 70.34200007183244,
+            "run_medians_us": [
+              70.34200007183244
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 13.311999849975109,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-reuse-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 67.78100009796617,
+            "run_medians_us": [
+              67.78100009796617
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 14.336000196635723,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 67.83399999221729,
+            "run_medians_us": [
+              67.83399999221729
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 13.311999849975109,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-cache-gather-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 68.53800005046651,
+            "run_medians_us": [
+              68.53800005046651
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 14.336000196635723,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 13.311999849975109,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 69.4399998337758,
+            "run_medians_us": [
+              69.4399998337758
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 15.359999611973763,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 14.336000196635723,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 66.19400005547504,
+            "run_medians_us": [
+              66.19400005547504
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 10.239999741315842
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-split2-atom32": {
+            "independent_executions": 1,
+            "median_us": 68.85000016154663,
+            "run_medians_us": [
+              68.85000016154663
+            ],
+            "peak_allocated_bytes": 270336,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 15.359999611973763,
+              "parameters": 10.239999741315842
+            }
+          },
+          "dense": {
+            "independent_executions": 1,
+            "median_us": 45.689999979003915,
+            "run_medians_us": [
+              45.689999979003915
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-128-rho8",
+          "fixture": "local_polar_product",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              8
+            ],
+            "fractions": [
+              1
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 74.10099988192087,
+            "run_medians_us": [
+              74.10099988192087
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 16.383999958634377
+            }
+          },
+          "local-ordered-reuse-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 69.04300016685738,
+            "run_medians_us": [
+              69.04300016685738
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 70.01599988143425,
+            "run_medians_us": [
+              70.01599988143425
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-cache-gather-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 66.06400029340875,
+            "run_medians_us": [
+              66.06400029340875
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 10.239999741315842,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 15.359999611973763,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 66.07300019823015,
+            "run_medians_us": [
+              66.07300019823015
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 10.239999741315842,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 66.31199994444614,
+            "run_medians_us": [
+              66.31199994444614
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 10.239999741315842,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-split2-atom32": {
+            "independent_executions": 1,
+            "median_us": 79.47099993543816,
+            "run_medians_us": [
+              79.47099993543816
+            ],
+            "peak_allocated_bytes": 270336,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.216000135987997,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 17.40800030529499,
+              "dx": 19.45599913597107,
+              "parameters": 12.28800043463707
+            }
+          },
+          "dense": {
+            "independent_executions": 1,
+            "median_us": 45.54600036499323,
+            "run_medians_us": [
+              45.54600036499323
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        }
+      },
+      {
+        "case": {
+          "id": "local-combined-128-rhomixed",
+          "fixture": "local_polar_product",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 0.25,
+            "birth": 0.25,
+            "maximum": 16,
+            "rho": [
+              1.25,
+              3,
+              8
+            ],
+            "fractions": [
+              0.5,
+              0.3,
+              0.2
+            ],
+            "center_jitter": 0.1
+          }
+        },
+        "summary": {
+          "local-ordered-prep-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 75.73799985038931,
+            "run_medians_us": [
+              75.73799985038931
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 15.359999611973763,
+              "parameters": 16.383999958634377
+            }
+          },
+          "local-ordered-reuse-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 71.264999860432,
+            "run_medians_us": [
+              71.264999860432
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 15.359999611973763,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+            "independent_executions": 1,
+            "median_us": 71.55599996622186,
+            "run_medians_us": [
+              71.55599996622186
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 15.359999611973763,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-cache-gather-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 72.16899984996417,
+            "run_medians_us": [
+              72.16899984996417
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 14.336000196635723,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 15.359999611973763,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-cache-repair4-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 69.61899998714216,
+            "run_medians_us": [
+              69.61899998714216
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 11.264000087976456,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 15.359999611973763,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-cache-repair8-param2-copy8-atom32": {
+            "independent_executions": 1,
+            "median_us": 69.73100016693934,
+            "run_medians_us": [
+              69.73100016693934
+            ],
+            "peak_allocated_bytes": 307200,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 15.359999611973763,
+              "parameters": 12.28800043463707
+            }
+          },
+          "local-ordered-reuse-paramatom16-param4-param2-split2-atom32": {
+            "independent_executions": 1,
+            "median_us": 74.14900028379634,
+            "run_medians_us": [
+              74.14900028379634
+            ],
+            "peak_allocated_bytes": 270336,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 17.40800030529499,
+              "parameters": 12.28800043463707
+            }
+          },
+          "dense": {
+            "independent_executions": 1,
+            "median_us": 45.496999973693164,
+            "run_medians_us": [
+              45.496999973693164
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {}
+          }
+        }
+      }
+    ]
+  }
 }

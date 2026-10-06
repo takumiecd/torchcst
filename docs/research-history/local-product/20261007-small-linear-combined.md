@@ -40,3 +40,20 @@ N128/rho3 repair8 changes full sorts forward49/dX50 to1/1 over52 primary refresh
 Full all8conditions/two independent executions queued from docs-only source1e1c8581 (same197 runtime files): `l4job-d1df360260b1426dad78bd6855942240` N64repeat1, `l4job-54a1ebc8a3164a2598a4aa2d83fb3eb3` N128repeat1, `l4job-cacdb986f5fb4bc083b424bf811f3455` N128repeat2, `l4job-b395c46d181c48fbaa566f98e221df99` N64repeat2. Seven CST routes+dense,21samples/execution, repeat2 reverses case/plan order. Supervisor65855 remains live with queued source-isolated prefix and batch-loop checks/screens before this full batch. CPU CI at head1e1c8581 SUCCESS.
 
 N64 screen2 measurement artifacts DB byte-identical export/idempotent reimport passed. N128 screen2 artifactsもDB照合成功、screen合計4 artifacts保存。 The first direct-path ingest invocation lacked PYTHONPATH and failed before any DB action; reran with PYTHONPATH=. No evidence discarded.
+
+## Full repeat1 checkpoint (repeat2 pending)
+
+Both size jobs succeeded;56 full-shape FP64 comparisons,197 runtime/archive proofs and within-case all-plan Parameter/input bytes incl dense passed. First independent full execution results only; repeat2 is in progress. Source1e1c8581.
+
+|N/rho|copy8|param2|atom16split2/4warps|gather+param2|repair4+param2|repair8+param2|owner2|dense|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+|64/1.25|55.00|51.04|49.72|49.88|50.15|50.44|51.75|39.17|
+|64/3|58.98|52.50|51.45|53.08|52.47|53.11|55.82|39.18|
+|64/8|56.41|52.64|51.09|52.16|52.07|51.96|54.77|39.21|
+|64/mixed|62.69|58.01|56.69|57.50|57.60|57.90|56.38|39.21|
+|128/1.25|65.96|64.74|64.46|60.96|60.98|60.79|65.34|45.65|
+|128/3|70.34|67.78|67.83|68.54|69.44|66.19|68.85|45.69|
+|128/8|74.10|69.04|70.02|66.06|66.07|66.31|79.47|45.55|
+|128/mixed|75.74|71.26|71.56|72.17|69.62|69.73|74.15|45.50|
+
+Median us,21samples/execution. Peaks follow screening: controls115712/303104,cache117248/307200,owner2 99328/270336 bytes;reserved6291456. N64 mixed owner2 now trades lower peak for time near/slightly below the speed-oriented candidate; this small difference needs repeat2. N128 mixed repair4/8 improves param2;rho3 repair4 remains worse. No single universal route or statistical significance claimed. All full artifacts remain raw/ignored; DB ingest is serialized by family.
