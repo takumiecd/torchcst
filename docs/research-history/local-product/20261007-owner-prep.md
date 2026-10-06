@@ -166,3 +166,21 @@ full-shape FP64比較を確認した。4 artifactsをDB保存、byte export/idem
 
 単位us、各1 execution。allocated peakは全候補115712 bytes。rho8のdenseは
 他条件より遅いため、独立repeatが揃うまでdense比の結論を保留する。
+
+## 03:06 JST: 最初のN128 full run
+
+`l4job-1de714956be348b3b301d6d7b341bc82`成功、source/result/runtime hash一致。
+各ケース内の全候補の初期Parameter/input hashesが一致。新4ケース×4候補のFP64 oracle成功。
+各1 execution (us)、allocated peakは全候補303104 bytes。4 artifactsをDB保存、byte export/idempotent再取込を確認。
+
+|rho|baseline|parallel4|copy8|vector8|dense|
+|---|---:|---:|---:|---:|---:|
+|1.25|75.82|71.50|66.03|69.02|45.71|
+|3|79.28|75.29|70.09|73.29|46.14|
+|8|83.23|79.17|73.97|77.06|45.85|
+|mixed|85.52|81.79|76.18|79.13|45.70|
+
+copy8の狭い条件で約12.9%、mixedで約10.9%の短縮。独立repeat2待ち。
+別graphのdiagnosticsでlayoutは22.53–23.55→13.31us。wide/mixedのparameters
+診断は16.38usで残り、atom VJPの仕事分割も次の調査対象となる。
+イベント時間の合計から完全stepを再構成しない。
