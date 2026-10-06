@@ -18,6 +18,8 @@ REUSE_SUFFIXES = (
     "_ordered_reuse_tile32_split2",
     "_ordered_reuse_tile64_split2",
     "_ordered_reuse_param2",
+    "_ordered_reuse_paramatom16_param4_batch16",
+    "_ordered_reuse_paramatom16_param4_batch16_split2",
     "_ordered_reuse_tile32_param2",
     "_ordered_reuse_paramatom16",
     "_ordered_reuse_paramatom16_param4",
@@ -363,10 +365,20 @@ class LocalRecipe(Recipe):
         return (
             4
             if self.route.endswith(
-                ("_param4", "_param4_param2", "_param4_param2_split2")
+                (
+                    "_param4",
+                    "_param4_param2",
+                    "_param4_param2_split2",
+                    "_param4_batch16",
+                    "_param4_batch16_split2",
+                )
             )
             else 0
         )
+
+    @property
+    def parameter_batch_block(self):
+        return 16 if self.reuse_layout and "_batch16" in self.route else 0
 
     @property
     def parameter_atom_block(self):
