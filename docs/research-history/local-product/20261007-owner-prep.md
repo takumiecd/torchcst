@@ -206,4 +206,4 @@ allocated/reserved peaksは全split4候補でN64 115712 / 6291456 bytes、N128 3
 
 N128/rho3 denseは46.14/48.64us、N64/rho8 denseは41.96/39.14usと変動がある。dense比とその限界をraw run mediansと併記し、統計的有意差を主張しない。主判断は同じjobのbaselineとcandidateの完全step比較。
 
-最初の8 artifactsはDB保存済み。repeat2の8 artifactsは保存処理中。次は残りfamilyのL4検証/screenを回収し、one-worker poolをdrainしてowned L4停止確認後、copy8/parallel4の短いG4検証・2反復へ進む。
+全16 full artifactsと12 screen artifacts、合計28 artifactsをDB保存。全件byte-identical exportとidempotent再取込を確認。次は残りfamilyのL4検証/screenを回収し、one-worker poolをdrainしてowned L4停止確認後、copy8/parallel4の短いG4検証・2反復へ進む。
