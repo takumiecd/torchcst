@@ -107,3 +107,11 @@ hostの統括は1つ、所有GPUは同時に1つ、実験jobは逐次。subagent
 
 L4 supervisor40251はdownload失敗でexit1となり、owned sessionのSession terminated/server No active sessions foundと全slot停止を確認後にrecoverした。その後に短いG4 cached-atom16 follow-upを開始。transport失敗をkernel失敗と同一視しない。
 
+
+## 回収・停止確認
+
+最終G4 histogramも独立2回で改善（rho3:50.90→49.73us、rho8:49.99→49.06us、同じ115,712 B）。実GPU18件と宣言1件、FP64全shape12比較、197 runtime hashes、初期CST Parameter/input一致と可変幅更新を確認。G4 cached-atom16 follow-upのDB4件、G4 histogramのDB4件もbyte-identical export/idempotent reimport完了。
+
+所有GPUをすべて停止し、supervisor terminal exit、全slot stopped、Session terminated/server No active sessions foundを確認。running/queued/interrupted jobなし。失敗・cancel・生source/result archives、raw samplesと実験scriptはignored evidenceに保持し、worktreeは削除していない。primary mainはcleanで新しいdraft PRのmerge/直接pushはしていない。全研究PRをこのchatに添付した。
+
+次の実装候補は、128 middle/mixedの費用削減、ordered physical viewの未使用2 field削減、G4の少ないCTA数に対する分割の再検討。後二つは未実装・未測定で、計算上のpayload/grid数と実測を区別している。
