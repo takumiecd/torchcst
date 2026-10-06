@@ -15,7 +15,7 @@ CANDIDATES = tuple(e.plan for e in (*ENTRIES[2:], *PREP_ENTRIES[2:]))
 
 
 def test_ordered_recipe_roundtrip():
-    assert len(CANDIDATES) == 11
+    assert len(CANDIDATES) == 13
     for plan in CANDIDATES:
         assert REGISTRY.load_plan(REGISTRY.dump_plan(plan)) == plan
         assert plan.recipe.execution_route == "hybrid_packed"

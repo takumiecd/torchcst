@@ -89,6 +89,10 @@ class Recipe:
         return False
 
     @property
+    def parallel_order_copy(self):
+        return False
+
+    @property
     def preparation_warps(self):
         return 4
 

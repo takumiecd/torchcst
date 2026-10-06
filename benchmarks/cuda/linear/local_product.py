@@ -22,6 +22,8 @@ class LocalRecipe(Recipe):
     @property
     def base_route(self):
         for suffix in (
+            "_ordered_prep_copy8",
+            "_ordered_prep_copy",
             "_ordered_prep_parallel8",
             "_ordered_prep_parallel",
             "_ordered_prep_warp8",
@@ -126,6 +128,8 @@ class LocalRecipe(Recipe):
                 "_ordered_split2",
                 "_ordered_split4",
                 "_ordered_split4_i32",
+                "_ordered_prep_copy8",
+                "_ordered_prep_copy",
                 "_ordered_prep_parallel8",
                 "_ordered_prep_parallel",
                 "_ordered_prep_warp8",
@@ -142,6 +146,8 @@ class LocalRecipe(Recipe):
         return self.route.endswith(
             (
                 "_ordered_split4_i32",
+                "_ordered_prep_copy8",
+                "_ordered_prep_copy",
                 "_ordered_prep_parallel8",
                 "_ordered_prep_parallel",
                 "_ordered_prep_warp8",
@@ -152,14 +158,30 @@ class LocalRecipe(Recipe):
     @property
     def parallel_owner_ranges(self):
         return self.route.endswith(
-            ("_ordered_prep_parallel", "_ordered_prep_parallel8", "_ordered_prep_range")
+            (
+                "_ordered_prep_parallel",
+                "_ordered_prep_parallel8",
+                "_ordered_prep_range",
+                "_ordered_prep_copy",
+                "_ordered_prep_copy8",
+            )
         )
+
+    @property
+    def parallel_order_copy(self):
+        return self.route.endswith(("_ordered_prep_copy", "_ordered_prep_copy8"))
 
     @property
     def preparation_warps(self):
         return (
             8
-            if self.route.endswith(("_ordered_prep_warp8", "_ordered_prep_parallel8"))
+            if self.route.endswith(
+                (
+                    "_ordered_prep_warp8",
+                    "_ordered_prep_parallel8",
+                    "_ordered_prep_copy8",
+                )
+            )
             else 4
         )
 
@@ -174,6 +196,8 @@ class LocalRecipe(Recipe):
                     "_ordered_split4",
                     "_ordered_split4_i32",
                     "_ordered_prep_parallel",
+                    "_ordered_prep_copy8",
+                    "_ordered_prep_copy",
                     "_ordered_prep_parallel8",
                     "_ordered_prep_warp8",
                 )
@@ -279,6 +303,8 @@ class LocalRecipe(Recipe):
                 self.base_route + "_ordered_split2",
                 self.base_route + "_ordered_split4",
                 self.base_route + "_ordered_split4_i32",
+                self.base_route + "_ordered_prep_copy",
+                self.base_route + "_ordered_prep_copy8",
                 self.base_route + "_ordered_prep_parallel8",
                 self.base_route + "_ordered_prep_parallel",
                 self.base_route + "_ordered_prep_warp8",

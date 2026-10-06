@@ -8,7 +8,7 @@ from .kernels import _interval
 
 @tr.jit
 def ordered_owner_ranges(
-    Views,
+    P,
     Ranges,
     C: tl.constexpr,
     K: tl.constexpr,
@@ -19,16 +19,30 @@ def ordered_owner_ranges(
     MID: tl.constexpr,
     AC: tl.constexpr,
     GROUPS: tl.constexpr,
+    Views=None,
+    Orders=None,
+    COPY: tl.constexpr = False,
 ):
     """Build exact overlap envelopes independently for each physical owner."""
     direction, owner = tl.program_id(0), tl.program_id(1)
-    P = Views + direction * 13 * C
     a = tl.arange(0, AC)
-    vlo, vhi, vw = _interval(P, a, C, False, JS, K)
-    ulo, uhi, uw = _interval(P, a, C, True, IS, N)
+    if COPY:
+        source = tl.load(Orders + direction * C + a, a < C, 0)
+        # Each owner copies one disjoint physical segment while computing its
+        # envelope from canonical metadata; no cross-CTA read-after-write exists.
+        chunk: tl.constexpr = tl.cdiv(C, GROUPS)
+        copy_lane = (a >= owner * chunk) & (a < (owner + 1) * chunk) & (a < C)
+        for field in tl.static_range(13):
+            value = tl.load(P + field * C + source, copy_lane, 0.0)
+            tl.store(Views + direction * 13 * C + field * C + a, value, copy_lane)
+    else:
+        P = P + direction * 13 * C
+        source = a
+    vlo, vhi, vw = _interval(P, source, C, False, JS, K)
+    ulo, uhi, uw = _interval(P, source, C, True, IS, N)
     lo, hi = tl.where(direction == 0, ulo, vlo), tl.where(direction == 0, uhi, vhi)
-    flags = tl.load(P + 8 * C + a, a < C, -1).to(tl.int32)
-    inv = tl.load(P + C + a, a < C, 0.0)
+    flags = tl.load(P + 8 * C + source, a < C, -1).to(tl.int32)
+    inv = tl.load(P + C + source, a < C, 0.0)
     band = tl.where(
         inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
     )
@@ -274,6 +288,7 @@ def ordered_views(
     POSITION: tl.constexpr,
     RANGES: tl.constexpr,
     COMPACT_KEY: tl.constexpr = False,
+    COPY: tl.constexpr = True,
 ):
     """Per-call compact snapshots; band then support start, canonical tie-break."""
     direction = tl.program_id(0)
@@ -304,9 +319,10 @@ def ordered_views(
     key = tl.sort(key, descending=False)
     source = (key % C).to(tl.int32)
     sorted_bucket = (key // (span * C)).to(tl.int32)
-    for field in tl.static_range(13):
-        value = tl.load(P + field * C + source, a < C, 0.0)
-        tl.store(Views + direction * 13 * C + field * C + a, value, a < C)
+    if COPY:
+        for field in tl.static_range(13):
+            value = tl.load(P + field * C + source, a < C, 0.0)
+            tl.store(Views + direction * 13 * C + field * C + a, value, a < C)
     tl.store(Orders + direction * C + a, source, a < C)
     counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
     starts = tl.cumsum(counts, 0) - counts
