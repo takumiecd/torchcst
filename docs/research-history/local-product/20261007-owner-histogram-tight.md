@@ -79,3 +79,16 @@ Two queued all-rho jobs e5fe2c10/a5f293af were cancelled before execution to pri
 ## Deadline and transport recovery
 
 The selected reverse repeat87a13b88 was cancelled before execution after the preceding N128 reverse-result download failed and the pool safely stopped its owned L4. This candidate therefore has only one timing screen per tested rho3/8 condition, although GPU correctness19 tests passed. N64 approx50.21/50.35us is promising but not independently replicated; N128 approx70.06/72.09us is slower than matching uncached parameter controls. No all-rho or repeatability performance promotion. Remaining time was reserved for the already-validated G4 cached-atom16 follow-up.
+
+## Completed short G4 independent comparison
+
+After L419-test proof and promising N64 screening, frozen source3314fc57 ran a short G4 comparison. GPU suite19 passed (18 actual GPU + declaration,47.17s);197 committed/submitted/worker runtime hashes and source/result archives agree. Actual RTX PRO 6000 Blackwell Server Edition; decoded initial rho>1, evolving widths, FP32/TF32 off. Three selected CST routes plus independently initialized dense, two rho3/8 timing executions,21 graph samples each; repeat2 reverses rho/plan order. Twelve independent full-shape FP64 CST comparisons cover Y/dX/all source gradients/nonzero positions, and initial CST Parameter plus all-plan input bytes agree within-G4 across both repeats.
+
+|N64 rho|copy8|uncached atom16/split2|tight histogram atom16/split2|dense|
+|---|---:|---:|---:|---:|
+|3|56.23|50.90|49.73|33.84|
+|8|54.19|49.99|49.06|33.87|
+
+Tight histogram beats the matched uncached parameter control in both executions/both rho conditions (1.17/0.93us aggregate,2.3/1.9%). Allocated peak115,712 B and CST reserved6,291,456 B unchanged; dense allocated34,179,584 B/reserved48,234,496 B includes workspace. It is1.47/1.45x the measured dense reference. This is a paired comparison within this source/G4 allocation, not a causal timing comparison to older G4 allocations. No narrow/mixed histogram or arbitrary-geometry performance claim. L4 histogram timing remains a single screen; the cancelled L4 reverse repeat does not become replicated by this G4 result.
+
+Supervisor9465 drained exit0, owned sessiond778a6dc4fa2 stopped; lifecycle Session terminated/server No active sessions found and all slots stopped. No running/queued/interrupted pool work remains. All four G4 measurement artifacts now have byte-identical database export and idempotent reimport; family total8 artifacts (four L4 screens + four G4 selected repeats).
