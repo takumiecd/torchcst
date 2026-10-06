@@ -291,6 +291,15 @@ def ordered_views(
     COPY: tl.constexpr = True,
     VECTOR_RANGES: tl.constexpr = False,
     OWNER_BLOCK: tl.constexpr = 1,
+    CachedKeys=None,
+    CachedOrder=None,
+    CachedOffsets=None,
+    Stats=None,
+    CACHE: tl.constexpr = False,
+    CACHE_LOGICAL: tl.constexpr = False,
+    CACHE_VALIDATE: tl.constexpr = False,
+    CACHE_GATHER: tl.constexpr = False,
+    REPAIR_ROUNDS: tl.constexpr = 0,
 ):
     """Per-call compact snapshots; band then support start, canonical tie-break."""
     direction = tl.program_id(0)
@@ -298,11 +307,14 @@ def ordered_views(
     g = tl.arange(0, BINS)
     # direction is a runtime scalar; shared maximum stride bounds both directions.
     groups = tl.where(direction == 0, (N + 15) // 16, (K + 15) // 16)
-    vlo, _vhi, vw = _interval(P, a, C, False, JS, K)
-    ulo, _uhi, uw = _interval(P, a, C, True, IS, N)
+    atom = a
+    if CACHE and CACHE_VALIDATE and not CACHE_GATHER:
+        atom = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
+    vlo, _vhi, vw = _interval(P, atom, C, False, JS, K)
+    ulo, _uhi, uw = _interval(P, atom, C, True, IS, N)
     lo = tl.where(direction == 0, ulo, vlo)
-    flags = tl.load(P + 8 * C + a, a < C, -1).to(tl.int32)
-    inv = tl.load(P + C + a, a < C, 0.0)
+    flags = tl.load(P + 8 * C + atom, a < C, -1).to(tl.int32)
+    inv = tl.load(P + C + atom, a < C, 0.0)
     band = tl.where(
         inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
     )
@@ -313,21 +325,120 @@ def ordered_views(
     # The maximum bucket and position must leave room for a padded sentinel.
     # Wider domains/counts keep the identical composite order using int64.
     if COMPACT_KEY and STRIDE * span * C < 2147483647:
-        key = (bucket.to(tl.int32) * span + position) * C + a
+        logical = bucket.to(tl.int32) * span + position
+        key = logical * C + atom
         key = tl.where(a < C, key, 2147483647)
     else:
-        key = (bucket.to(tl.int64) * span + position) * C + a
+        logical = bucket.to(tl.int64) * span + position
+        key = logical * C + atom
         key = tl.where(a < C, key, 9223372036854775807)
-    key = tl.sort(key, descending=False)
-    source = (key % C).to(tl.int32)
-    sorted_bucket = (key // (span * C)).to(tl.int32)
+    if CACHE:
+        tl.static_assert(not RANGES, "cached orders require freshly parallel ranges")
+        repaired = tl.full((), False, tl.int1)
+        full_sorted = tl.full((), False, tl.int1)
+        if CACHE_VALIDATE:
+            # Cached IDs are a permutation. Unique full keys are sorted iff
+            # every adjacent pair is increasing, even when topology changes.
+            ordered_key = key
+            cached_atom = atom
+            if CACHE_GATHER:
+                cached_atom = tl.load(CachedOrder + direction * C + a, a < C, 0).to(
+                    tl.int32
+                )
+                ordered_key = tl.gather(key, cached_atom, 0)
+            previous = tl.gather(ordered_key, tl.maximum(a - 1, 0), 0)
+            changed = (
+                tl.sum(((a > 0) & (a < C) & (ordered_key < previous)).to(tl.int32), 0)
+                > 0
+            )
+            if changed:
+                if REPAIR_ROUNDS:
+                    # Padding in gathered order must stay a sentinel, not ID0.
+                    ordered_key = tl.where(a < C, ordered_key, key)
+                    for _round in tl.static_range(REPAIR_ROUNDS):
+                        other = tl.gather(ordered_key, a ^ 1, 0)
+                        ordered_key = tl.where(
+                            a % 2 == 0,
+                            tl.minimum(ordered_key, other),
+                            tl.maximum(ordered_key, other),
+                        )
+                        lower = a % 2 == 1
+                        partner = tl.minimum(
+                            tl.maximum(a + tl.where(lower, 1, -1), 0), AC - 1
+                        )
+                        other = tl.gather(ordered_key, partner, 0)
+                        ordered_key = tl.where(
+                            lower,
+                            tl.minimum(ordered_key, other),
+                            tl.maximum(ordered_key, other),
+                        )
+                    previous = tl.gather(ordered_key, tl.maximum(a - 1, 0), 0)
+                    remaining = (
+                        tl.sum(
+                            ((a > 0) & (a < C) & (ordered_key < previous)).to(tl.int32),
+                            0,
+                        )
+                        > 0
+                    )
+                    if remaining:
+                        sorted_key = tl.sort(ordered_key, descending=False)
+                    else:
+                        sorted_key = ordered_key
+                    repaired = ~remaining
+                    full_sorted = remaining
+                else:
+                    sorted_key = tl.sort(key, descending=False)
+                source = (sorted_key % C).to(tl.int32)
+                tl.store(CachedOrder + direction * C + a, source, a < C)
+            else:
+                source = cached_atom
+            # Membership may change without an inversion: offsets always refresh.
+            counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
+            starts = tl.cumsum(counts, 0) - counts
+        else:
+            # Canonical ID is fixed at this index: no invalidation data.
+            cache_key = logical if CACHE_LOGICAL else key
+            previous = tl.load(CachedKeys + direction * C + a, a < C, -1)
+            changed = tl.sum(((previous != cache_key) & (a < C)).to(tl.int32), 0) > 0
+            if changed:
+                tl.store(CachedKeys + direction * C + a, cache_key, a < C)
+                sorted_key = tl.sort(key, descending=False)
+                source = (sorted_key % C).to(tl.int32)
+                counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
+                starts = tl.cumsum(counts, 0) - counts
+                tl.store(CachedOrder + direction * C + a, source, a < C)
+                tl.store(CachedOffsets + direction * STRIDE + g, starts, g < STRIDE)
+            else:
+                source = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
+                starts = tl.load(CachedOffsets + direction * STRIDE + g, g < STRIDE, 0)
+        sorted_bucket = tl.full((AC,), 0, tl.int32)  # RANGES is statically false.
+        stats_stride: tl.constexpr = 5 if REPAIR_ROUNDS else 3
+        calls = tl.load(Stats + direction * stats_stride)
+        rebuilds = tl.load(Stats + direction * stats_stride + 1)
+        reuses = tl.load(Stats + direction * stats_stride + 2)
+        tl.store(Stats + direction * stats_stride, calls + 1)
+        tl.store(Stats + direction * stats_stride + 1, rebuilds + changed.to(tl.int64))
+        tl.store(Stats + direction * stats_stride + 2, reuses + (~changed).to(tl.int64))
+        if REPAIR_ROUNDS:
+            fixes = tl.load(Stats + direction * stats_stride + 3)
+            sorts = tl.load(Stats + direction * stats_stride + 4)
+            tl.store(
+                Stats + direction * stats_stride + 3, fixes + repaired.to(tl.int64)
+            )
+            tl.store(
+                Stats + direction * stats_stride + 4, sorts + full_sorted.to(tl.int64)
+            )
+    else:
+        key = tl.sort(key, descending=False)
+        source = (key % C).to(tl.int32)
+        sorted_bucket = (key // (span * C)).to(tl.int32)
+        counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
+        starts = tl.cumsum(counts, 0) - counts
     if COPY:
         for field in tl.static_range(13):
             value = tl.load(P + field * C + source, a < C, 0.0)
             tl.store(Views + direction * 13 * C + field * C + a, value, a < C)
     tl.store(Orders + direction * C + a, source, a < C)
-    counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
-    starts = tl.cumsum(counts, 0) - counts
     tl.store(Offsets + direction * STRIDE + g, starts, g < STRIDE)
     if RANGES:
         svlo, svhi, _svw = _interval(P, source, C, False, JS, K)

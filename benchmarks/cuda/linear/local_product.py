@@ -24,6 +24,25 @@ REUSE_SUFFIXES = (
     "_ordered_reuse_paramatom32_param4",
     "_ordered_reuse_paramatom16_param2",
     "_ordered_reuse_paramatom16_param4_param2",
+    "_ordered_reuse_paramatom16_param4_param2_split2",
+)
+
+CACHE_SUFFIXES = (
+    "_ordered_cache_copy4",
+    "_ordered_cache_copy8",
+    "_ordered_cache_range4",
+    "_ordered_cache_range8",
+    "_ordered_cache_compact_copy8",
+    "_ordered_cache_compact_range8",
+    "_ordered_cache_validated_copy8",
+    "_ordered_cache_validated_range8",
+    "_ordered_cache_gather_copy8",
+    "_ordered_cache_gather_range8",
+    "_ordered_cache_repair4_copy8",
+    "_ordered_cache_repair8_copy8",
+    "_ordered_cache_gather_param2_copy8",
+    "_ordered_cache_repair4_param2_copy8",
+    "_ordered_cache_repair8_param2_copy8",
 )
 
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
@@ -37,9 +56,43 @@ class LocalRecipe(Recipe):
     def reuse_layout(self):
         return self.route.endswith(REUSE_SUFFIXES)
 
+    def cached_order(self):
+        return self.route.endswith(CACHE_SUFFIXES)
+
+    @property
+    def cache_repair_rounds(self):
+        if "_ordered_cache_repair4" in self.route:
+            return 4
+        if "_ordered_cache_repair8" in self.route:
+            return 8
+        return 0
+
+    @property
+    def gather_validation_key(self):
+        return self.cache_repair_rounds > 0 or self.route.endswith(
+            ("_ordered_cache_gather_copy8", "_ordered_cache_gather_range8", "_ordered_cache_gather_param2_copy8")
+        )
+
+    @property
+    def validate_cached_order(self):
+        return self.gather_validation_key or self.route.endswith(
+            ("_ordered_cache_validated_copy8", "_ordered_cache_validated_range8")
+        )
+
+    @property
+    def compact_cached_order(self):
+        return self.gather_validation_key or self.route.endswith(
+            (
+                "_ordered_cache_compact_copy8",
+                "_ordered_cache_compact_range8",
+                "_ordered_cache_validated_copy8",
+                "_ordered_cache_validated_range8",
+            )
+        )
+
     @property
     def base_route(self):
-        for suffix in REUSE_SUFFIXES + (
+        for suffix in REUSE_SUFFIXES + CACHE_SUFFIXES + (
             "_ordered_prep_vector8",
             "_ordered_prep_vector",
             "_ordered_prep_copy8",
@@ -143,7 +196,7 @@ class LocalRecipe(Recipe):
 
     @property
     def ordered_layout(self):
-        return self.reuse_layout or self.route.endswith(
+        return self.reuse_layout or self.cached_order or self.route.endswith(
             (
                 "_ordered",
                 "_ordered_band",
@@ -169,7 +222,7 @@ class LocalRecipe(Recipe):
 
     @property
     def compact_order_key(self):
-        return self.reuse_layout or self.route.endswith(
+        return self.reuse_layout or self.cached_order or self.route.endswith(
             (
                 "_ordered_split4_i32",
                 "_ordered_prep_vector8",
@@ -185,7 +238,7 @@ class LocalRecipe(Recipe):
 
     @property
     def parallel_owner_ranges(self):
-        return self.reuse_layout or self.route.endswith(
+        return self.reuse_layout or self.cached_order or self.route.endswith(
             (
                 "_ordered_prep_parallel",
                 "_ordered_prep_parallel8",
@@ -197,9 +250,9 @@ class LocalRecipe(Recipe):
 
     @property
     def parallel_order_copy(self):
-        return self.reuse_layout or self.route.endswith(
-            ("_ordered_prep_copy", "_ordered_prep_copy8")
-        )
+        if self.cached_order:
+            return self.route.endswith(("_copy4", "_copy8"))
+        return self.route.endswith(("_ordered_prep_copy", "_ordered_prep_copy8"))
 
     @property
     def vector_owner_ranges(self):
@@ -208,7 +261,8 @@ class LocalRecipe(Recipe):
     @property
     def preparation_warps(self):
         if self.reuse_layout:
-            return 8
+            if self.cached_order:
+            return 8 if self.route.endswith(("_copy8", "_range8")) else 4
         return (
             8
             if self.route.endswith(
@@ -225,7 +279,8 @@ class LocalRecipe(Recipe):
     @property
     def owner_splits(self):
         if self.reuse_layout:
-            return 2 if self.route.endswith("_split2") else 4
+            if self.cached_order:
+            return 4
         return (
             2
             if self.route.endswith("_ordered_split2")
@@ -248,7 +303,7 @@ class LocalRecipe(Recipe):
 
     @property
     def parameter_splits(self):
-        return 2 if self.reuse_layout and self.route.endswith("_param2") else 1
+        return 2 if (self.reuse_layout or self.cached_order) and "_param2" in self.route else 1
 
     @property
     def fuse_owner_index(self):
@@ -276,7 +331,7 @@ class LocalRecipe(Recipe):
 
     @property
     def parameter_warps(self):
-        return 4 if self.route.endswith(("_param4", "_param4_param2")) else 0
+        return 4 if self.route.endswith(("_param4", "_param4_param2", "_param4_param2_split2")) else 0
 
     @property
     def parameter_atom_block(self):
@@ -363,6 +418,7 @@ class LocalRecipe(Recipe):
                 self.base_route + "_ordered_prep_warp8",
                 self.base_route + "_ordered_prep_range",
                 *(self.base_route + suffix for suffix in REUSE_SUFFIXES),
+                *(self.base_route + suffix for suffix in CACHE_SUFFIXES),
             )
         ):
             raise ValueError("unsupported recomputed parameter VJP variant")

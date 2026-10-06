@@ -236,7 +236,7 @@ def build_owner_index(packed, reverse, domain, recipe, *, physical_views=False):
     return ids, offsets
 
 
-def ordered_layout(packed, domain, recipe):
+def ordered_layout(packed, domain, recipe, *, cache=None):
     """Compact current values; per-direction position order and exact owner ranges."""
     import triton as tr
 
@@ -272,6 +272,15 @@ def ordered_layout(packed, domain, recipe):
             COPY=not recipe.parallel_order_copy,
             VECTOR_RANGES=recipe.vector_owner_ranges,
             OWNER_BLOCK=tr.next_power_of_2(groups),
+            CachedKeys=cache.keys if cache is not None else None,
+            CachedOrder=cache.order if cache is not None else None,
+            CachedOffsets=cache.offsets if cache is not None else None,
+            Stats=cache.stats if cache is not None else None,
+            CACHE=cache is not None,
+            CACHE_LOGICAL=recipe.compact_cached_order,
+            CACHE_VALIDATE=recipe.validate_cached_order,
+            CACHE_GATHER=recipe.gather_validation_key,
+            REPAIR_ROUNDS=recipe.cache_repair_rounds,
             num_warps=recipe.preparation_warps,
             enable_fp_fusion=False,
         )
@@ -432,10 +441,24 @@ class _LocalH(torch.autograd.Function):
         _stamp("layout", 0)
         owner_ids, owner_offsets = (q.new_empty((0,)),) * 2
         if recipe.ordered_layout:
+            if recipe.cached_order:
+                from .order_cache import OrderKeyCache
+
+                if not isinstance(persistent_layout, OrderKeyCache):
+                    raise ValueError("cached ordering requires model-owned key cache")
+                if (
+                    persistent_layout.domain != domain
+                    or persistent_layout.recipe != recipe
+                ):
+                    raise ValueError("key cache domain/recipe changed")
+                views, orders, offsets, owner_offsets = persistent_layout.refresh(
+                    packed
+                )
+            else:
+                views, orders, offsets, owner_offsets = ordered_layout(
+                    packed, domain, recipe
+                )
             persistent_layout = None
-            views, orders, offsets, owner_offsets = ordered_layout(
-                packed, domain, recipe
-            )
             if recipe.owner_index:
                 owner_ids, owner_offsets = build_owner_index(
                     views, None, domain, recipe, physical_views=True

@@ -101,6 +101,26 @@ class Recipe:
         return False
 
     @property
+    def cached_order(self):
+        return False
+
+    @property
+    def cache_repair_rounds(self):
+        return 0
+
+    @property
+    def gather_validation_key(self):
+        return False
+
+    @property
+    def validate_cached_order(self):
+        return False
+
+    @property
+    def compact_cached_order(self):
+        return False
+
+    @property
     def preparation_warps(self):
         return 4
 

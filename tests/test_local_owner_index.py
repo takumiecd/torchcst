@@ -141,7 +141,14 @@ def test_owner_index_old_backward_after_layout_change(plan=None):
     state = local_product_state(minimum=0.125, birth=0.125, maximum=16, w_c=0.2).cuda()
     p = fixture(state, d, device="cuda", dtype=torch.float32, atoms=41)
     recipe = (candidate() if plan is None else plan).recipe
-    layout = PersistentLayout(p, state, d, recipe)
+    if recipe.cached_order:
+        from torchcst._backends.cuda.algorithms.linear.local_product.order_cache import (
+            OrderKeyCache,
+        )
+
+        layout = OrderKeyCache(p, state, d, recipe)
+    else:
+        layout = PersistentLayout(p, state, d, recipe)
     x = torch.randn(17, 64, device="cuda", requires_grad=True)
     dy = torch.randn_like(x)
 
