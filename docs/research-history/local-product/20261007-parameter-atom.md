@@ -95,3 +95,5 @@ GPU28-test再検証とすべてのfull-shape oracle結果を揃えてから採�
 `l4job-4567ca9dcf7c4d8294fe0634c8826b3c`:28 passed (27 GPU + declaration)、77.75s。source `ce117f28`、actual NVIDIA L4 / torch2.11.0+cu130 / CUDA13 / Triton3.6。source/result archivesと196 runtime filesのsubmitted/committed/worker hash一致。fixture catalog修正後に3 empty-neighbor checksも成功。独立2回の全rho完全step測定は進行中。G4ではcopy8・検証済みparam2・atom16param4のrho3/mixed 4条件だけを2回測る。
 
 G4 frozen source `8247f9e3`。check `colabjob-3e262ce00e2c478c906e26b35931c04b` queued。最初のmeasurement2 jobsはatom16 alias誤記をsubmit後検出し実行前cancel、数値なし。driverはselected aliasesの集合検査を追加し、正しいcatalog IDsで再submitした。L4 supervisorはG4を起動せず、L4 batch停止確認後に明示G4 supervisorで短いbatchを実行する。
+
+G4正式measurement IDs: `colabjob-e698cde57c6d401f848e06ba579cd64f` repeat1、`colabjob-12c93a616fcb4dcfbd0c2a1c95bc24ae` repeat2。actual RTX PRO 6000 Blackwell / CC12.0をdriverでもassertする。
