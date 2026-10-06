@@ -73,3 +73,16 @@ recover後にsupervisor tool session66084をone L4/idle0で再開。後続queued
 修正済み。transport/spec/sourceログを保持する。
 
 N64の4 artifactsをDB保存、byte-identical export/idempotent再取込を確認した。
+
+## 04:38 JST: N128再測定回収成功
+
+`l4job-4f4c7473564340c5a25eb5abaf769e64`、source `2dbdc411`成功。report counter scope文字列だけを修正、runtimeの演算は元screenと同じ。source/result archivesと197 runtime hashes一致、16 full-shape FP64候補比較とcase内初期Parameters/input bytes一致。未回収の旧job d6c7は引き続き除外。N64/N128合計32 oracle比較。
+
+|N128 rho|copy8|full keycache copy8|compact copy8|compact range8|dense|
+|---|---:|---:|---:|---:|---:|
+|1_25|65.52|61.71|61.40|64.30|45.45|
+|3|69.68|70.58|70.50|73.26|45.35|
+|8|73.51|69.60|70.11|72.31|45.29|
+|mixed|75.85|76.32|76.93|79.23|45.33|
+
+単位us、各1 execution /21 samples。N128のallocated peakはfull317440→compact311296 bytes (−6144)、no-cache303104 bytesより8192高い。reservedは全route6291456 bytes。copy8 narrow/wideはno-cacheより速いがmiddle/mixedは遅い。compact化だけではglobal key invalidation問題を解消せず、128 range8はcopy8より遅い。低メモリ化の効果と速度を分けて記録する。次はID順序そのものの正確な検証でsort回数を減らす。screen8 artifacts全てDB保存、byte-identical export / idempotent再取込成功。
