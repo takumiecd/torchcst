@@ -11,3 +11,63 @@ N64/N128 B32 A204/A819 seed41,IEEE FP32/TF32off,initial performance rho>1 (1.25/
 Host890 passed/922 skips(22.93s),changed-file ruff/diff,8 prepare/check pairs and isolated wheel/sdist build passed. New18GPU+1declaration suite covers full support/snapshot coverage,independent FP64 Y/dX/all canonical source gradients/nonzero positions,slices/B1/32/64,N64/N12820 captured reference optimizer updates/moments/steps,outstanding backward andempty-neighbor bands. GPU validation/timing pending. Raw owner-histogram-tight-20261007 evidence ignored/preserved.
 
 Frozen source`3ae7a49d6823961c1e2f06aef9f2a8cda44ce326`; PR52(base PR50);queued check/N64/N128 `l4job-fc92633758f3456ab2c9f27693cf94d5`, `l4job-4cdcd271aece4b12a09d33e089130088`, `l4job-5bdef6df8ff340f9b07bcdd2a4cdd53d` on supervisor40251. No second GPU allocation.
+
+
+## Retrieved GPU evidence
+
+Analysis `screen` verifies 197 runtime files and source/result archive hashes. Full-shape FP64 checks cover Y, dX and all source-parameter gradients with nonzero position gradients. Initial decoded rho > 1 and forward widths change during production optimizer updates.
+
+The table reports microseconds, median of execution medians. A screen has one execution per condition; two independent repeats are required for a repeatability claim. Dense uses a separately initialized weight matrix, with matched shape/input/target/dtype/optimizer and timing boundary; it is not the same initial CST operator. Full-domain discrete L2 normalization precedes slicing. Width VJP uses the existing fixed decoded-width source contract. No physical DRAM/cache residency claim follows from allocator peaks.
+
+### local-histtight-64-rho3
+
+| Route | executions | step µs | peak allocated B | peak reserved B |
+|---|---:|---:|---:|---:|
+| `local-ordered-prep-copy8-atom32` | 1 | 59.24 | 115712 | 6291456 |
+| `local-ordered-reuse-param2-atom32` | 1 | 52.82 | 115712 | 6291456 |
+| `local-ordered-reuse-paramatom16-param4-param2-atom32` | 1 | 51.30 | 115712 | 6291456 |
+| `local-ordered-reuse-histfusedinline-param2-atom32` | 1 | 53.38 | 115712 | 6291456 |
+| `local-ordered-reuse-histfusedinline-paramatom16-param4-param2-atom32` | 1 | 51.50 | 115712 | 6291456 |
+| `local-ordered-reuse-histtightinline-param2-atom32` | 1 | 52.12 | 115712 | 6291456 |
+| `local-ordered-reuse-histtightinline-paramatom16-param4-param2-atom32` | 1 | 50.21 | 115712 | 6291456 |
+| `dense` | 1 | 39.09 | 34179584 | 48234496 |
+
+### local-histtight-64-rho8
+
+| Route | executions | step µs | peak allocated B | peak reserved B |
+|---|---:|---:|---:|---:|
+| `local-ordered-prep-copy8-atom32` | 1 | 57.07 | 115712 | 6291456 |
+| `local-ordered-reuse-param2-atom32` | 1 | 53.02 | 115712 | 6291456 |
+| `local-ordered-reuse-paramatom16-param4-param2-atom32` | 1 | 51.16 | 115712 | 6291456 |
+| `local-ordered-reuse-histfusedinline-param2-atom32` | 1 | 53.09 | 115712 | 6291456 |
+| `local-ordered-reuse-histfusedinline-paramatom16-param4-param2-atom32` | 1 | 51.47 | 115712 | 6291456 |
+| `local-ordered-reuse-histtightinline-param2-atom32` | 1 | 52.13 | 115712 | 6291456 |
+| `local-ordered-reuse-histtightinline-paramatom16-param4-param2-atom32` | 1 | 50.35 | 115712 | 6291456 |
+| `dense` | 1 | 39.17 | 34179584 | 48234496 |
+
+### local-histtight-128-rho3
+
+| Route | executions | step µs | peak allocated B | peak reserved B |
+|---|---:|---:|---:|---:|
+| `local-ordered-prep-copy8-atom32` | 1 | 70.55 | 303104 | 6291456 |
+| `local-ordered-reuse-param2-atom32` | 1 | 67.81 | 303104 | 6291456 |
+| `local-ordered-reuse-paramatom16-param4-param2-atom32` | 1 | 67.81 | 303104 | 6291456 |
+| `local-ordered-reuse-histfusedinline-param2-atom32` | 1 | 72.84 | 303104 | 6291456 |
+| `local-ordered-reuse-histfusedinline-paramatom16-param4-param2-atom32` | 1 | 73.07 | 303104 | 6291456 |
+| `local-ordered-reuse-histtightinline-param2-atom32` | 1 | 70.06 | 303104 | 6291456 |
+| `local-ordered-reuse-histtightinline-paramatom16-param4-param2-atom32` | 1 | 70.13 | 303104 | 6291456 |
+| `dense` | 1 | 45.87 | 34408960 | 48234496 |
+
+### local-histtight-128-rho8
+
+| Route | executions | step µs | peak allocated B | peak reserved B |
+|---|---:|---:|---:|---:|
+| `local-ordered-prep-copy8-atom32` | 1 | 73.67 | 303104 | 6291456 |
+| `local-ordered-reuse-param2-atom32` | 1 | 69.54 | 303104 | 6291456 |
+| `local-ordered-reuse-paramatom16-param4-param2-atom32` | 1 | 69.92 | 303104 | 6291456 |
+| `local-ordered-reuse-histfusedinline-param2-atom32` | 1 | 75.27 | 303104 | 6291456 |
+| `local-ordered-reuse-histfusedinline-paramatom16-param4-param2-atom32` | 1 | 75.47 | 303104 | 6291456 |
+| `local-ordered-reuse-histtightinline-param2-atom32` | 1 | 72.09 | 303104 | 6291456 |
+| `local-ordered-reuse-histtightinline-paramatom16-param4-param2-atom32` | 1 | 72.75 | 303104 | 6291456 |
+| `dense` | 1 | 45.89 | 34408960 | 48234496 |
+

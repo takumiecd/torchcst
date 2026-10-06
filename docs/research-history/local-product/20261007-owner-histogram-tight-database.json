@@ -1,0 +1,46 @@
+[
+  {
+    "job": "l4job-4cdcd271aece4b12a09d33e089130088",
+    "artifact": "owner-histogram-tight-64-rho3.json",
+    "run_id": "56d367d9d4b9bc2f9c702def18e5c6e71aae3cbbfdc88f7f4d9a73d7c329a50f",
+    "projection_id": "78fec83be3dc0d2629fcb0d81b2909c3069691e5361b485a97f640e0b99c43be",
+    "run_inserted": true,
+    "projection_inserted": true,
+    "artifact_sha256": "d076218a0865fb5d5232370bd69a584e2991df36687b603d96d86e971e7f60ce",
+    "byte_identical_export": true,
+    "idempotent_reimport": true
+  },
+  {
+    "job": "l4job-4cdcd271aece4b12a09d33e089130088",
+    "artifact": "owner-histogram-tight-64-rho8.json",
+    "run_id": "a3efad049c88017b0dd51801e35bb003279b3f1ed27e63ee5b1f22ca33132fe6",
+    "projection_id": "8c3436a129bd4ded3c07a641c0d415795825c967ca5394ca98099a88a647b720",
+    "run_inserted": true,
+    "projection_inserted": true,
+    "artifact_sha256": "f7838f89f2cf07d641975ec69d253f0b674f99a0c4417f39978eab9eb31bb04b",
+    "byte_identical_export": true,
+    "idempotent_reimport": true
+  },
+  {
+    "job": "l4job-5bdef6df8ff340f9b07bcdd2a4cdd53d",
+    "artifact": "owner-histogram-tight-128-rho3.json",
+    "run_id": "b6dd99d36432d2cface0168f8d00cf8d78e7a87ef568138dd538716173e7d6de",
+    "projection_id": "4cfe4ae46ad7d90e9f82074356fff8618187eb24bf9cbc6498a8394809b56598",
+    "run_inserted": true,
+    "projection_inserted": true,
+    "artifact_sha256": "96e9ce075e7107facea184bcd74fe951a154743daa383570a7838e94cfd9ce7c",
+    "byte_identical_export": true,
+    "idempotent_reimport": true
+  },
+  {
+    "job": "l4job-5bdef6df8ff340f9b07bcdd2a4cdd53d",
+    "artifact": "owner-histogram-tight-128-rho8.json",
+    "run_id": "2de6ed80e47454a4d684021a795cc5854d2fffb76ebed94203f70106253d18e5",
+    "projection_id": "95ae1e180e14525e914feccd7e39942690fee2a929dc045f20fbb771abb6a06a",
+    "run_inserted": true,
+    "projection_inserted": true,
+    "artifact_sha256": "395977598fe6d02787da022337104f6279ed7ed74d4a96ba23cb5fbbb90c0ed6",
+    "byte_identical_export": true,
+    "idempotent_reimport": true
+  }
+]
