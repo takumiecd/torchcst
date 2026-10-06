@@ -61,3 +61,18 @@ mixed forwardは52 refresh中22 sorts→15 sorts、dX21→19。rho3 forward26→
 allocated peak118784(compact keycache)→117248(ID-only)、base115712より1536高い。reserved6291456 bytes。validated copy8のlayout eventはmetadata間接load/順序検査/histogram更新の費用を含み、compactより約1us高い場合がある。range8はN64で少し良いが、param2/atom16単独の方が完全stepでは速い。次はcanonical順の連続metadata load＋キーだけgatherで検査するPR41と比較する。N128 screenは進行中。
 
 N64 screen4 artifactsをDB保存、byte-identical export/idempotent再取込成功。
+
+## 04:46 JST: N128 screen完了、近傍修復へ
+
+N128 job成功、source/result/197 runtime hashes、16 full-shape FP64候補比較、case内初期Parameter/input bytes一致。両size合計32 comparisons。単位us、各1 execution /21 samples。
+
+|N128 rho|copy8|compact keycache|validated copy8|validated range8|dense|
+|---|---:|---:|---:|---:|---:|
+|1_25|65.81|61.80|62.31|62.55|45.55|
+|3|69.87|70.73|73.28|73.83|45.43|
+|8|73.61|70.25|69.90|70.45|45.27|
+|mixed|75.86|76.84|78.38|78.77|45.28|
+
+N128 allocated compact311296→validated307200 bytes (−4096)、base303104より4096高い、reserved6291456 bytes。rho3は52 refresh中forward49/dX50 sortsでcompactと同じ。mixedはforward43同じ/dX45→44、rho8は28/28同じ。実際の逆転が存在しており、単にキー変化で誤って全sortしているだけではなかった。
+rho3/mixedのvalidated layout eventは14.34→16.38us、完全stepも遅い。現在の検査だけを有効な高速化として採用しない。次にmetadataをcanonical順で読むPR41を測る。さらに近傍の少数回の正確な交換で順序を修復し、まだ逆転が残る場合だけfull sortへfallbackする案を実装・独立検証する。
+L4 supervisor66084 terminal exit0、全slots stopped、lifecycle Session terminated /server No active sessionsを確認後、explicit G4 supervisor45682でselected3 jobsを開始した。G4未回収。screen8 artifacts全てDB保存、byte-identical export /idempotent再取込成功。
