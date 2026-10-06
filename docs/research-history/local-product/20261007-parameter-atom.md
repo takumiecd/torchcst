@@ -89,3 +89,7 @@ GPU28-test再検証とすべてのfull-shape oracle結果を揃えてから採�
 - `l4job-f67e722e317b4792a98ec9b9d06f8674`:N128 repeat1
 - `l4job-139567da57814699921195df68a7263e`:N128 repeat2
 - `l4job-b17c0d69b92e46e39c3c1e5ff9c34cc5`:N64 repeat2
+
+## 04:31 JST: 全GPU recheck成功
+
+`l4job-4567ca9dcf7c4d8294fe0634c8826b3c`:28 passed (27 GPU + declaration)、77.75s。source `ce117f28`、actual NVIDIA L4 / torch2.11.0+cu130 / CUDA13 / Triton3.6。source/result archivesと196 runtime filesのsubmitted/committed/worker hash一致。fixture catalog修正後に3 empty-neighbor checksも成功。独立2回の全rho完全step測定は進行中。G4ではcopy8・検証済みparam2・atom16param4のrho3/mixed 4条件だけを2回測る。

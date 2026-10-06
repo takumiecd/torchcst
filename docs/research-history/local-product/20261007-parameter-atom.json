@@ -19,7 +19,7 @@
     }
   ],
   "full_shape_oracle_comparisons": 20,
-  "validation_status": "old GPU job:25 passed (24GPU+declaration),3 fixture/catalog failures; corrected all28-test job queued",
+  "validation_status": "all 28 tests passed after fixture fix; full repetitions running",
   "observations": [
     {
       "case": {
@@ -757,5 +757,30 @@
         }
       }
     }
-  ]
+  ],
+  "gpu_recheck": {
+    "job": "l4job-4567ca9dcf7c4d8294fe0634c8826b3c",
+    "source_commit": "ce117f28c86b3167ee5c4ce48d42509643740ff6",
+    "source_snapshot_sha256": "cbd0bed9fa9134008f8ba36fefbcdd17fedc178f891c1c9ccfcd0227b5fea5e2",
+    "archive_sha256": "68ecf488d4a0fb6a9a5c864b69c81bf9f95f70e82a4032672d6c11150a552db3",
+    "runtime_files_matched": 196,
+    "result": {
+      "id": "l4job-4567ca9dcf7c4d8294fe0634c8826b3c",
+      "source_sha256": "cbd0bed9fa9134008f8ba36fefbcdd17fedc178f891c1c9ccfcd0227b5fea5e2",
+      "gpu": "NVIDIA L4, GPU-9c2285ea-b028-cd11-73c1-abea56b893bf, 580.82.07, 23034 MiB",
+      "requested_accelerator": "L4",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "started": 1791314435.0838022,
+      "finished": 1791314517.8230183,
+      "timeout_scope": "driver process, including any setup inside driver"
+    },
+    "tests": "............................                                             [100%]\n28 passed in 77.75s (0:01:17)"
+  }
 }
