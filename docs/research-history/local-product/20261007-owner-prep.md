@@ -21,6 +21,8 @@ rho帯・support開始位置・canonical IDの順番、正規化、全勾配は�
 | ordered_prep_range | 4 | direction × ownerのCTA | sortと同じCTA | 1 |
 | ordered_prep_copy | 4 | direction × ownerのCTA | 範囲構築CTAで分担 | 4 |
 | ordered_prep_copy8 | 8 | direction × ownerのCTA | 範囲構築CTAで分担 | 4 |
+| ordered_prep_vector | 4 | sort CTA内でowner軸をまとめてreduce | sortと同じCTA | 4 |
+| ordered_prep_vector8 | 8 | sort CTA内でowner軸をまとめてreduce | sortと同じCTA | 4 |
 
 ownerは出力または入力の16次元区間を指す。バッチは32行、contractionのbatch tileは16行。
 atom blockは32 recordsであり、16次元内に32 atomsが収まるという意味ではない。
@@ -47,16 +49,22 @@ Graph20更新・Parameter/moments/step・slice・支持境界・旧forward snaps
 - `796dd7434a57a908cf9f02b896538f6941725226`: copy/copy8を追加。
   ruff・宣言往復成功。最初のjobは独立した凍結sourceで実行を継続。
   L4 `l4job-f85284a41832476998f5ff5342f8a0a0`: copy2候補の検証と同条件screen、queued。
+- `d6ad1e4f520d0fcbb8839b1a85e1309b4276c7ea`: vector/vector8を追加。
+  追加launchなしでowner軸をまとめてreduceする。
+  L4 `l4job-94a272bd10584829a87e59948b9836d8`: vector2候補の検証と同条件screen、queued。
+  最終8候補の宣言往復、ruff、prepare/check各8ケース成功。
+  CPU suite: 860 passed / 557 skipped (23.13s)、wheel/sdist build成功。
 
 性能結果はまだ未取得。結果を取り込んで有望候補を選択し、rho1.25・mixedを加えた
 独立2回のL4比較、必要なら検証済み候補の短いG4比較へ進む。
 
-## 再開checkpoint (01:49 JST)
+## 再開checkpoint (01:52 JST)
 
 worktree: `/Users/ware10sai/.codex/worktrees/local-product-onchip-h/torchcst`。
 raw evidence: ignored `benchmarks/cuda/linear/evidence/owner-prep-20261007/`。
 driver、hash確認analyzer、DB保存/byte export/idempotence確認scriptを保存した。
 source/result原本はhost-wide poolのjobsディレクトリにも保持する。
 pool supervisor: tool session `22376`, one L4, idle-seconds 0。
-build: tool session `67499`。他のGPUは停止済み。直接CLIでpool sessionへ介入しない。
+CPU/buildは完了。最初のscreenがrunning、後続2つがqueued。
+他のGPUは停止済み。直接CLIでpool sessionへ介入しない。
 再開時はpool statusとjob resultを確認し、同じjobを重複submitしない。
