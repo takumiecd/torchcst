@@ -31,7 +31,9 @@ class OrderKeyCache(nn.Module):
     """Serialize refreshes on the model stream; never save mutable cache in autograd.
 
     A changed canonical composite key rebuilds that direction's entire order.
-    Unchanged keys reuse IDs/offsets only. Payloads, normalizers and exact support
+    Unchanged keys reuse IDs/offsets only. The validation mode instead caches
+    only IDs and tests adjacent current full keys, always refreshing offsets.
+    Payloads, normalizers and exact support
     envelopes are still refreshed, including changes to support ends alone.
     """
 
@@ -51,17 +53,32 @@ class OrderKeyCache(nn.Module):
         key_dtype, order_dtype = cache_buffer_dtypes(self.atoms, domain, recipe)
         self.register_buffer(
             "keys",
-            torch.full((2, self.atoms), -1, device=parameters.device, dtype=key_dtype),
+            torch.full(
+                (2, 0 if recipe.validate_cached_order else self.atoms),
+                -1,
+                device=parameters.device,
+                dtype=key_dtype,
+            ),
             persistent=False,
         )
         self.register_buffer(
             "order",
-            torch.empty((2, self.atoms), device=parameters.device, dtype=order_dtype),
+            torch.arange(
+                self.atoms, device=parameters.device, dtype=order_dtype
+            ).repeat(2, 1)
+            if recipe.validate_cached_order
+            else torch.empty(
+                (2, self.atoms), device=parameters.device, dtype=order_dtype
+            ),
             persistent=False,
         )
         self.register_buffer(
             "offsets",
-            torch.empty((2, self.stride), device=parameters.device, dtype=torch.int32),
+            torch.empty(
+                (2, 0 if recipe.validate_cached_order else self.stride),
+                device=parameters.device,
+                dtype=torch.int32,
+            ),
             persistent=False,
         )
         self.register_buffer(
@@ -89,11 +106,17 @@ class OrderKeyCache(nn.Module):
     def report(self):
         counters = self.stats.cpu().tolist()
         return {
-            "kind": "exact-order-key-cache",
+            "kind": "exact-permutation-validation-cache"
+            if self.recipe.validate_cached_order
+            else "exact-order-key-cache",
             "canonical_atoms": self.atoms,
             "slot_capacity_per_view": self.atoms,
-            "key_bits": self.keys.element_size() * 8,
-            "key_encoding": "bucket-position"
+            "key_bits": 0
+            if self.recipe.validate_cached_order
+            else self.keys.element_size() * 8,
+            "key_encoding": "none"
+            if self.recipe.validate_cached_order
+            else "bucket-position"
             if self.recipe.compact_cached_order
             else "canonical-composite",
             "order_bits": self.order.element_size() * 8,

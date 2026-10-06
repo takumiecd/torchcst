@@ -278,6 +278,7 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             Stats=cache.stats if cache is not None else None,
             CACHE=cache is not None,
             CACHE_LOGICAL=recipe.compact_cached_order,
+            CACHE_VALIDATE=recipe.validate_cached_order,
             num_warps=recipe.preparation_warps,
             enable_fp_fusion=False,
         )

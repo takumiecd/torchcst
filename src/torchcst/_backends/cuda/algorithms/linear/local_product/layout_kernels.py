@@ -297,6 +297,7 @@ def ordered_views(
     Stats=None,
     CACHE: tl.constexpr = False,
     CACHE_LOGICAL: tl.constexpr = False,
+    CACHE_VALIDATE: tl.constexpr = False,
 ):
     """Per-call compact snapshots; band then support start, canonical tie-break."""
     direction = tl.program_id(0)
@@ -304,11 +305,14 @@ def ordered_views(
     g = tl.arange(0, BINS)
     # direction is a runtime scalar; shared maximum stride bounds both directions.
     groups = tl.where(direction == 0, (N + 15) // 16, (K + 15) // 16)
-    vlo, _vhi, vw = _interval(P, a, C, False, JS, K)
-    ulo, _uhi, uw = _interval(P, a, C, True, IS, N)
+    atom = a
+    if CACHE and CACHE_VALIDATE:
+        atom = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
+    vlo, _vhi, vw = _interval(P, atom, C, False, JS, K)
+    ulo, _uhi, uw = _interval(P, atom, C, True, IS, N)
     lo = tl.where(direction == 0, ulo, vlo)
-    flags = tl.load(P + 8 * C + a, a < C, -1).to(tl.int32)
-    inv = tl.load(P + C + a, a < C, 0.0)
+    flags = tl.load(P + 8 * C + atom, a < C, -1).to(tl.int32)
+    inv = tl.load(P + C + atom, a < C, 0.0)
     band = tl.where(
         inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
     )
@@ -320,29 +324,44 @@ def ordered_views(
     # Wider domains/counts keep the identical composite order using int64.
     if COMPACT_KEY and STRIDE * span * C < 2147483647:
         logical = bucket.to(tl.int32) * span + position
-        key = logical * C + a
+        key = logical * C + atom
         key = tl.where(a < C, key, 2147483647)
     else:
         logical = bucket.to(tl.int64) * span + position
-        key = logical * C + a
+        key = logical * C + atom
         key = tl.where(a < C, key, 9223372036854775807)
     if CACHE:
         tl.static_assert(not RANGES, "cached orders require freshly parallel ranges")
-        # Canonical ID is fixed at this index, so it carries no invalidation data.
-        cache_key = logical if CACHE_LOGICAL else key
-        previous = tl.load(CachedKeys + direction * C + a, a < C, -1)
-        changed = tl.sum(((previous != cache_key) & (a < C)).to(tl.int32), 0) > 0
-        if changed:
-            tl.store(CachedKeys + direction * C + a, cache_key, a < C)
-            sorted_key = tl.sort(key, descending=False)
-            source = (sorted_key % C).to(tl.int32)
+        if CACHE_VALIDATE:
+            # Cached IDs are a permutation. Unique full keys are sorted iff
+            # every adjacent pair is increasing, even when topology changes.
+            previous = tl.gather(key, tl.maximum(a - 1, 0), 0)
+            changed = tl.sum(((a > 0) & (a < C) & (key < previous)).to(tl.int32), 0) > 0
+            if changed:
+                sorted_key = tl.sort(key, descending=False)
+                source = (sorted_key % C).to(tl.int32)
+                tl.store(CachedOrder + direction * C + a, source, a < C)
+            else:
+                source = atom
+            # Membership may change without an inversion: offsets always refresh.
             counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
             starts = tl.cumsum(counts, 0) - counts
-            tl.store(CachedOrder + direction * C + a, source, a < C)
-            tl.store(CachedOffsets + direction * STRIDE + g, starts, g < STRIDE)
         else:
-            source = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
-            starts = tl.load(CachedOffsets + direction * STRIDE + g, g < STRIDE, 0)
+            # Canonical ID is fixed at this index: no invalidation data.
+            cache_key = logical if CACHE_LOGICAL else key
+            previous = tl.load(CachedKeys + direction * C + a, a < C, -1)
+            changed = tl.sum(((previous != cache_key) & (a < C)).to(tl.int32), 0) > 0
+            if changed:
+                tl.store(CachedKeys + direction * C + a, cache_key, a < C)
+                sorted_key = tl.sort(key, descending=False)
+                source = (sorted_key % C).to(tl.int32)
+                counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
+                starts = tl.cumsum(counts, 0) - counts
+                tl.store(CachedOrder + direction * C + a, source, a < C)
+                tl.store(CachedOffsets + direction * STRIDE + g, starts, g < STRIDE)
+            else:
+                source = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
+                starts = tl.load(CachedOffsets + direction * STRIDE + g, g < STRIDE, 0)
         sorted_bucket = tl.full((AC,), 0, tl.int32)  # RANGES is statically false.
         calls = tl.load(Stats + direction * 3)
         rebuilds = tl.load(Stats + direction * 3 + 1)
