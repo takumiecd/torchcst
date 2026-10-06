@@ -45,3 +45,19 @@ GPU実行前に、他のinactive recordsの両方向loをclipped終端へ固定�
 ## 04:40 JST: GPU25 tests成功
 
 `l4job-27edc1ed3886455aa1926156c720b24e`:25 passed (20 GPU +5 CPU)、74.17s。actual NVIDIA L4 / torch2.11.0+cu130 / CUDA13 / Triton3.6、source/result archivesと197 runtime hashes一致。キー変更なしだけでなく、キーは変わるが順序が変わらない場合、support endとbucket offsetのlive更新、両方向と片方向のみの逆転、slices/位置勾配/旧backward/20captured optimizer更新も通過した。独立snapshot保持を確認。screen実行中。
+
+## N64 screen: 確認できた探索削減と費用
+
+1 execution /21 samples、完全step us。source/result/197 runtime files、16 full-shape FP64比較、case内初期Parameter/input bytes一致。
+
+|rho|copy8|compact keycache|validated copy8|validated range8|dense|
+|---|---:|---:|---:|---:|---:|
+|1_25|55.27|54.44|54.86|54.40|38.98|
+|3|59.39|58.87|59.53|59.27|38.92|
+|8|56.33|55.75|55.97|55.44|38.79|
+|mixed|62.86|63.38|62.60|62.41|39.08|
+
+mixed forwardは52 refresh中22 sorts→15 sorts、dX21→19。rho3 forward26→26/dX27→25、rho8は27/26で変わらない。単にkeyが変わっただけのsortを一部省けたが、常に省けるわけではない。
+allocated peak118784(compact keycache)→117248(ID-only)、base115712より1536高い。reserved6291456 bytes。validated copy8のlayout eventはmetadata間接load/順序検査/histogram更新の費用を含み、compactより約1us高い場合がある。range8はN64で少し良いが、param2/atom16単独の方が完全stepでは速い。次はcanonical順の連続metadata load＋キーだけgatherで検査するPR41と比較する。N128 screenは進行中。
+
+N64 screen4 artifactsをDB保存、byte-identical export/idempotent再取込成功。
