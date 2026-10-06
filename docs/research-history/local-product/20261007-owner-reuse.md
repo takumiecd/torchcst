@@ -86,3 +86,30 @@ source/result archives、submitted/committed/workerの196 runtime filesのSHA256
 Parameter/moments/step、旧forward後のmovement/backward、empty-neighbor範囲を通過。
 同名JSONへ検証proofを保存した。
 N64測定jobへ進行。GPU test成功は速度やメモリ改善の証拠ではなく、screenを待つ。
+
+## 03:29 JST: 6候補のscreen完了
+
+N64/N128 rho3/8の2 jobsが成功。source/resultと全runtime hash一致、36 full-shape FP64候補比較、各case内の初期Parameters/input hashes一致。各1 executionの21 sample median、単位us。
+
+|size/rho|copy8 baseline|param2|tile32|tile64|tile32 split2|tile64 split2|tile32 param2|dense|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+|64/3|59.45|52.88|62.97|76.77|68.60|88.74|56.70|39.35|
+|64/8|56.51|52.74|61.04|74.38|66.56|84.32|57.03|39.24|
+|128/3|70.46|68.02|78.58|91.58|89.53|115.82|76.12|45.74|
+|128/8|73.89|69.31|85.97|100.33|98.07|126.24|81.64|46.26|
+
+param2のみが全4条件を改善。allocated peak115712/303104 bytesでcopy8と同じ。partial DQ tensorは存在するが、このprotocolのピークを増やさなかった。tile32/64は全条件で遅く、split2はallocated99328/270336 bytesへ減らすがさらに遅い。採用候補はparam2へ絞る。
+
+N64/rho3のparameter event診断は16.38→10.24us (reduction込み)、compiler218→128 registers、shared24576→20480 bytes、param spill0。N128/rho3は12.29→10.24us、param2のcompiler80 registers/shared40960 bytes/spill2。N64のforwardもcompiler spill2がある。global H allocationは作らないが、spillがある経路を完全なregister/shared常駐と主張しない。
+
+wide output tile64はforward/dXのregisters/shared使用が増え、gridのoutput owner数も1/4になる。N128/rho3 output/dX event13.31/14.34→24.58/25.60us。これらは別graph診断で、原因を一つに断定しない。完全stepの遅延から、この小さい問題ではH再計算削減より仕事分割を優先する。
+
+param VJPのPolar epilogueは各atomのdaへSourceから決まる定数を掛ける線形変換。batch部分和を別々に変換して足しても数学上同じ。FP32丸め差は全4 gradientsと20 updates/momentsのoracleで検証した。
+
+source `facab462` (runtimeは元screenと同じ)でfull rho1.25/3/8/mixedの独立2回を短い4 jobsへsubmitした。copy8/parallel4/param2+dense、repeat2はcase/plan順を逆転する。
+- `l4job-fe3049d8391a42cea38725e8e634ef24`:N64 repeat1
+- `l4job-5d8f35357380499b8207fa291192f77c`:N128 repeat1
+- `l4job-c4efe1c609814295bc519e9aa838b943`:N128 repeat2
+- `l4job-c06d9b8c534d47028f74dbd868cb3aa5`:N64 repeat2
+
+4 screen artifactsをDB保存、byte-identical export/idempotent再取込を確認。full/G4結果はまだない。
