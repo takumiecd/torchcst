@@ -291,7 +291,10 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             enable_fp_fusion=False,
         )
         _report("ordered_layout", compiled)
-        if recipe.parallel_owner_ranges:
+        if recipe.parallel_owner_ranges and (
+            recipe.parallel_order_copy
+            or not (recipe.prefix_owner_ranges or recipe.histogram_owner_ranges)
+        ):
             compiled = layout_kernels.ordered_owner_ranges[(2, groups)](
                 packed if recipe.parallel_order_copy else views,
                 ranges,
