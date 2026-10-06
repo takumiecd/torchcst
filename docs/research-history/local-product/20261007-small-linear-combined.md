@@ -77,7 +77,7 @@ All four full jobs succeeded. Source1e1c8581, 112 full-shape FP64 comparisons, m
 
 N64 atom16/split2 improves copy8 in all four conditions in both executions. N64 mixed owner2 has lower allocated peak99,328 vs115,712 bytes and a small median-time advantage56.15 vs56.63 us; both independent runs have this direction, but this is not a statistical-significance claim. N128 rho1.25/3/8/mixed has useful cache routes; repair8 is strongest at rho3, repair4 at mixed. These exact fixed routes were measured; no dynamic dispatcher or measured universal default is claimed. N128 wide owner2 is a negative result79.35 us.
 
-N128 rho3 full sort counts over52 primary refreshes: gather49/50, repair4 forward/dX26/34, repair8 1/1 in both runs. At rho8 repair8 reduces full sorts to4/3 versus gather28/28, yet the complete time remains similar to gather and repair4. Fewer full sorts alone is insufficient; repair, current-value refresh and parameter gradients remain material. Controls peak115,712/303,104 bytes, caches117,248/307,200, owner2 99,328/270,336; all reserved6,291,456. No new global H; DRAM traffic or L2 residency is not established by these measurements.
+N128 rho3 full sort counts over52 primary refreshes: gather49/50, repair4 forward/dX26/34, repair8 1/1 in both runs. At rho8 repair8 reduces full sorts to4/3 versus gather28/28, yet the complete time remains similar to gather and repair4. Fewer full sorts alone is insufficient; repair, current-value refresh and parameter gradients remain material. Controls peak115,712/303,104 bytes, caches117,248/307,200, owner2 99,328/270,336; CST reserved6,291,456; dense reserved48,234,496. No new global H; DRAM traffic or L2 residency is not established by these measurements.
 
 ## Owned runtime recovery and G4 start
 
@@ -102,7 +102,7 @@ Both selected timing jobs succeeded. Source7e55e991;32 full-shape FP64 compariso
 |128/3|64.17|61.44|62.57|60.46|43.26|
 |128/mixed|70.17|64.57|64.27|64.70|43.23|
 
-All selected candidates improve copy8 in every condition in both independent runs. N64 uncached atom16split2 is faster than both caches in both conditions/both runs. N128 rho3 repair8 wins both runs; at mixed repair4 wins both runs but is only0.30us below uncached atom16split2 in aggregate. No statistical significance or universal route claimed. Allocated peaks115,712/303,104 bytes for uncached,117,248/307,200 cache,reserved6,291,456. Ratios to measured dense remain about1.49–1.62x N64 and1.40–1.49x N128. G4 is still worth optimizing despite successful improvement vs copy8.
+All selected candidates improve copy8 in every condition in both independent runs. N64 uncached atom16split2 is faster than both caches in both conditions/both runs. N128 rho3 repair8 wins both runs; at mixed repair4 wins both runs but is only0.30us below uncached atom16split2 in aggregate. No statistical significance or universal route claimed. Allocated peaks115,712/303,104 bytes for uncached,117,248/307,200 cache,CST reserved6,291,456; dense reserved48,234,496. Ratios to measured dense remain about1.49–1.62x N64 and1.40–1.49x N128. G4 is still worth optimizing despite successful improvement vs copy8.
 
 N128 rho3 repair8 full sorts1/1 vsrepair4 26/34 over52 primary refreshes;mixed repair8 eliminates all full sorts while repair4 leaves6/7,yet repair4 is faster. Metadata/current refresh and repair expense continue to matter. No cross-GPU initial-byte equality or traffic attribution claimed.
 
