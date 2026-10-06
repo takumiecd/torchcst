@@ -23,6 +23,8 @@ CACHE_SUFFIXES = (
     "_ordered_cache_validated_range8",
     "_ordered_cache_gather_copy8",
     "_ordered_cache_gather_range8",
+    "_ordered_cache_repair4_copy8",
+    "_ordered_cache_repair8_copy8",
 )
 
 SEMANTICS = "local_polar_product.normalized_triweight.shared_width.v1"
@@ -37,8 +39,16 @@ class LocalRecipe(Recipe):
         return self.route.endswith(CACHE_SUFFIXES)
 
     @property
+    def cache_repair_rounds(self):
+        if self.route.endswith("_ordered_cache_repair4_copy8"):
+            return 4
+        if self.route.endswith("_ordered_cache_repair8_copy8"):
+            return 8
+        return 0
+
+    @property
     def gather_validation_key(self):
-        return self.route.endswith(
+        return self.cache_repair_rounds > 0 or self.route.endswith(
             ("_ordered_cache_gather_copy8", "_ordered_cache_gather_range8")
         )
 

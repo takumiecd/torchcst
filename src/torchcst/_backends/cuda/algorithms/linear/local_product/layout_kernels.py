@@ -299,6 +299,7 @@ def ordered_views(
     CACHE_LOGICAL: tl.constexpr = False,
     CACHE_VALIDATE: tl.constexpr = False,
     CACHE_GATHER: tl.constexpr = False,
+    REPAIR_ROUNDS: tl.constexpr = 0,
 ):
     """Per-call compact snapshots; band then support start, canonical tie-break."""
     direction = tl.program_id(0)
@@ -333,6 +334,8 @@ def ordered_views(
         key = tl.where(a < C, key, 9223372036854775807)
     if CACHE:
         tl.static_assert(not RANGES, "cached orders require freshly parallel ranges")
+        repaired = tl.full((), False, tl.int1)
+        full_sorted = tl.full((), False, tl.int1)
         if CACHE_VALIDATE:
             # Cached IDs are a permutation. Unique full keys are sorted iff
             # every adjacent pair is increasing, even when topology changes.
@@ -349,7 +352,42 @@ def ordered_views(
                 > 0
             )
             if changed:
-                sorted_key = tl.sort(key, descending=False)
+                if REPAIR_ROUNDS:
+                    # Padding in gathered order must stay a sentinel, not ID0.
+                    ordered_key = tl.where(a < C, ordered_key, key)
+                    for _round in tl.static_range(REPAIR_ROUNDS):
+                        other = tl.gather(ordered_key, a ^ 1, 0)
+                        ordered_key = tl.where(
+                            a % 2 == 0,
+                            tl.minimum(ordered_key, other),
+                            tl.maximum(ordered_key, other),
+                        )
+                        lower = a % 2 == 1
+                        partner = tl.minimum(
+                            tl.maximum(a + tl.where(lower, 1, -1), 0), AC - 1
+                        )
+                        other = tl.gather(ordered_key, partner, 0)
+                        ordered_key = tl.where(
+                            lower,
+                            tl.minimum(ordered_key, other),
+                            tl.maximum(ordered_key, other),
+                        )
+                    previous = tl.gather(ordered_key, tl.maximum(a - 1, 0), 0)
+                    remaining = (
+                        tl.sum(
+                            ((a > 0) & (a < C) & (ordered_key < previous)).to(tl.int32),
+                            0,
+                        )
+                        > 0
+                    )
+                    if remaining:
+                        sorted_key = tl.sort(ordered_key, descending=False)
+                    else:
+                        sorted_key = ordered_key
+                    repaired = ~remaining
+                    full_sorted = remaining
+                else:
+                    sorted_key = tl.sort(key, descending=False)
                 source = (sorted_key % C).to(tl.int32)
                 tl.store(CachedOrder + direction * C + a, source, a < C)
             else:
@@ -374,12 +412,22 @@ def ordered_views(
                 source = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
                 starts = tl.load(CachedOffsets + direction * STRIDE + g, g < STRIDE, 0)
         sorted_bucket = tl.full((AC,), 0, tl.int32)  # RANGES is statically false.
-        calls = tl.load(Stats + direction * 3)
-        rebuilds = tl.load(Stats + direction * 3 + 1)
-        reuses = tl.load(Stats + direction * 3 + 2)
-        tl.store(Stats + direction * 3, calls + 1)
-        tl.store(Stats + direction * 3 + 1, rebuilds + changed.to(tl.int64))
-        tl.store(Stats + direction * 3 + 2, reuses + (~changed).to(tl.int64))
+        stats_stride: tl.constexpr = 5 if REPAIR_ROUNDS else 3
+        calls = tl.load(Stats + direction * stats_stride)
+        rebuilds = tl.load(Stats + direction * stats_stride + 1)
+        reuses = tl.load(Stats + direction * stats_stride + 2)
+        tl.store(Stats + direction * stats_stride, calls + 1)
+        tl.store(Stats + direction * stats_stride + 1, rebuilds + changed.to(tl.int64))
+        tl.store(Stats + direction * stats_stride + 2, reuses + (~changed).to(tl.int64))
+        if REPAIR_ROUNDS:
+            fixes = tl.load(Stats + direction * stats_stride + 3)
+            sorts = tl.load(Stats + direction * stats_stride + 4)
+            tl.store(
+                Stats + direction * stats_stride + 3, fixes + repaired.to(tl.int64)
+            )
+            tl.store(
+                Stats + direction * stats_stride + 4, sorts + full_sorted.to(tl.int64)
+            )
     else:
         key = tl.sort(key, descending=False)
         source = (key % C).to(tl.int32)

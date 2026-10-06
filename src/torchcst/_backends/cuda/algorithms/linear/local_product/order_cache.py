@@ -83,7 +83,11 @@ class OrderKeyCache(nn.Module):
         )
         self.register_buffer(
             "stats",
-            torch.zeros((2, 3), device=parameters.device, dtype=torch.int64),
+            torch.zeros(
+                (2, 5 if recipe.cache_repair_rounds else 3),
+                device=parameters.device,
+                dtype=torch.int64,
+            ),
             persistent=False,
         )
         packed = prepare_metadata(
@@ -105,7 +109,7 @@ class OrderKeyCache(nn.Module):
 
     def report(self):
         counters = self.stats.cpu().tolist()
-        return {
+        report = {
             "kind": "exact-permutation-validation-cache"
             if self.recipe.validate_cached_order
             else "exact-order-key-cache",
@@ -121,7 +125,20 @@ class OrderKeyCache(nn.Module):
             else "canonical-composite",
             "order_bits": self.order.element_size() * 8,
             "counter_scope": "since initialization; counts executed refreshes",
-            "counter_names": ["refreshes", "rebuilds", "reuses"],
-            "forward": counters[0],
-            "dx": counters[1],
+            "counter_names": ["refreshes", "order_updates", "reuses"]
+            if self.recipe.cache_repair_rounds
+            else ["refreshes", "rebuilds", "reuses"],
+            "forward": counters[0][:3],
+            "dx": counters[1][:3],
         }
+
+        if self.recipe.cache_repair_rounds:
+            report.update(
+                {
+                    "repair_rounds": self.recipe.cache_repair_rounds,
+                    "repair_counter_names": ["bounded_repairs", "full_sorts"],
+                    "repair_forward": counters[0][3:],
+                    "repair_dx": counters[1][3:],
+                }
+            )
+        return report

@@ -101,6 +101,10 @@ class Recipe:
         return False
 
     @property
+    def cache_repair_rounds(self):
+        return 0
+
+    @property
     def gather_validation_key(self):
         return False
 
