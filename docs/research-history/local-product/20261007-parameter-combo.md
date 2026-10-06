@@ -25,3 +25,5 @@ fused AdamW/Polar。最初はrho3/8の2casesずつでcopy8・param2・atom16/war
 controlsに同時比較し、有望案だけrho1.25/3/8/mixedの独立2回へ進める。
 全8caseをprepare済み、21 samples/execution。raw scripts/evidenceはignored
 parameter-combo-20261007へ保存する。L4 supervisor97800のgather/repair batchに続ける。
+
+source `8e17b2c2960cd45dd48f8838c335f367ec848036`、draft PR #43。check `l4job-23fac7b94c774159a7a4cc44ec5078a6`、N64 rho3/8 `l4job-16460a0c8a1e4fde9f31dd1d09487f36`、N128 rho3/8 `l4job-70d2d8416cba40c589cf82c7349b2124` queued。L4 supervisor97800は先のgather/repair jobsとこの3 jobsをsource分離して実行する。
