@@ -300,6 +300,7 @@ def ordered_views(
     OWNER_BLOCK: tl.constexpr = 1,
     PREFIX_RANGES: tl.constexpr = False,
     HIST_RANGES: tl.constexpr = False,
+    FUSED_HIST: tl.constexpr = False,
     POSITION_BINS: tl.constexpr = 1,
     SEARCH_STEPS: tl.constexpr = 1,
     CachedKeys=None,
@@ -455,18 +456,38 @@ def ordered_views(
         hi = tl.where(direction == 0, uhi, vhi)
         count = tl.where(direction == 0, N, K)
         owner = tl.arange(0, OWNER_BLOCK)
+        if FUSED_HIST:
+            # One histogram counts all three non-singleton bands. Its prefix
+            # already includes preceding bands, so only the first band start
+            # is added. Padding/singletons use a sentinel beyond all lookups.
+            general = (a < C) & (bucket >= groups) & (bucket < groups + 3)
+            joint_key = (bucket - groups) * POSITION_BINS + lo
+            joint_counts = tl.histogram(
+                tl.where(general, joint_key, 4 * POSITION_BINS - 1),
+                4 * POSITION_BINS,
+            )
+            joint_before = tl.cumsum(joint_counts, 0) - joint_counts
+            first_band_start = tl.sum(tl.where(g == groups, starts, 0), 0)
         for phase in tl.static_range(3):
             eligible = (a < C) & (bucket == groups + phase)
             max_span = tl.max(tl.where(eligible, hi - lo, 0), 0)
-            counts_by_lo = tl.histogram(
-                tl.where(eligible, lo, POSITION_BINS - 1), POSITION_BINS
-            )
-            before = tl.cumsum(counts_by_lo, 0) - counts_by_lo
-            band_start = tl.sum(tl.where(g == groups + phase, starts, 0), 0)
             first_lo = tl.minimum(tl.maximum(owner * 16 - max_span + 1, 0), count)
             last_lo = tl.minimum((owner + 1) * 16, count)
-            begin = band_start + tl.gather(before, first_lo, 0)
-            end = band_start + tl.gather(before, last_lo, 0)
+            if FUSED_HIST:
+                begin = first_band_start + tl.gather(
+                    joint_before, phase * POSITION_BINS + first_lo, 0
+                )
+                end = first_band_start + tl.gather(
+                    joint_before, phase * POSITION_BINS + last_lo, 0
+                )
+            else:
+                counts_by_lo = tl.histogram(
+                    tl.where(eligible, lo, POSITION_BINS - 1), POSITION_BINS
+                )
+                before = tl.cumsum(counts_by_lo, 0) - counts_by_lo
+                band_start = tl.sum(tl.where(g == groups + phase, starts, 0), 0)
+                begin = band_start + tl.gather(before, first_lo, 0)
+                end = band_start + tl.gather(before, last_lo, 0)
             begin = tl.minimum(begin, end)
             target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
             tl.store(target, begin, owner < STRIDE - 5)

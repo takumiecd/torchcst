@@ -274,6 +274,7 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             OWNER_BLOCK=tr.next_power_of_2(groups),
             PREFIX_RANGES=recipe.prefix_owner_ranges,
             HIST_RANGES=recipe.histogram_owner_ranges,
+            FUSED_HIST=recipe.fused_histogram_owner_ranges,
             POSITION_BINS=tr.next_power_of_2(
                 max(domain.input_count, domain.output_count) + 1
             ),
