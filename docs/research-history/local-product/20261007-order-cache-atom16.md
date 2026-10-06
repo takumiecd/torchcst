@@ -43,3 +43,16 @@ Narrow gather improves matched uncached atom16 in both runs (about0.76us aggrega
 Only the stable narrow/wide N64 cases are selected for short G4 follow-up from unchanged validated runtime/benchmark source4aa6823f. The selected GPU test filter collects18 tests for gather/repair4;timing comparescopy8,uncached atom16split2,gather atom16,repair4 atom16+dense,21samples/two independent runs. G4 allocation waits for L4 owned-stop/server confirmation.
 
 Frozen G4 source`4aa6823f2c475eaa2689ae0befaeb9ce778b84c4`; queued check/repeat1/repeat2 `colabjob-5da92cd7004b475f96cc0240f90c98c8`, `colabjob-5f462a23e7a9453b8de35957262bd48b`, `colabjob-66fc0ef89caf4ab3a03bc3fca1401015`. Only N64rho1.25/8 selected after consistent paired L4 gain; no new G4 allocation until current L4 drains/stops.
+
+## Completed G4 narrow/wide independent repeats
+
+Two selected executions on RTX PRO 6000 Blackwell Server Edition completed after an18-GPU-test correctness suite (40.97s,10 unrelated tests deselected). Source4aa6823f,197 runtime hashes and source/result archives match; within-G4 initial CST Parameter/input bytes agree across routes and repeats, decoded initial rho>1 and widths evolve. Four retrieved measurement artifacts have verified byte-identical DB export/idempotent reimport; family total16 artifacts. Each cell below is median of two execution medians(us),21 samples each, repeat2 reverses rho/plan order.
+
+|N64 rho|copy8|uncached atom16 split2|gather atom16|repair4 atom16|dense|
+|---|---:|---:|---:|---:|---:|
+|1.25|52.23|48.91|48.36|48.28|33.83|
+|8|52.39|49.14|49.15|49.29|33.96|
+
+Narrow gather and repair4 improve uncached in both executions, but their rank changes between runs. Wide cached routes change direction vsuncached and are effectively tied/slightly slower in aggregate; L4’s stable wide advantage is not reproduced on G4. No universal cache default. Cache allocated117,248 B vsuncached115,712 B, CST reserved6,291,456 B; dense allocated34,179,584 B/reserved48,234,496 B. All source-position/normalization derivatives retained; no new global H and no measured L2-residency/DRAM claim.
+
+Supervisor25329 exited0, owned G4 session6202ee0da80b stopped with Session terminated/server No active sessions found and all slots stopped. Only after this confirmation, one final short L4-validated N64 tight-histogram comparison was submitted on G4.
