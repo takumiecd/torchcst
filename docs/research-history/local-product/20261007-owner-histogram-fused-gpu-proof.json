@@ -1,0 +1,25 @@
+{
+  "job": "l4job-8a104834ceb04733a877f3dd96d43a07",
+  "source_commit": "10ed2a794b39827e941ff714797c4a2a9f8e44ad",
+  "source_snapshot_sha256": "ba13f22fc606a0c1b21db6d6f52ea4878b8ec91adac952013a9817001e48835a",
+  "archive_sha256": "29bf1cef2687e754334774e6fb0435aa1abf6695cc0b5944927ccc3e944ab0da",
+  "runtime_files_matched": 197,
+  "result": {
+    "id": "l4job-8a104834ceb04733a877f3dd96d43a07",
+    "source_sha256": "ba13f22fc606a0c1b21db6d6f52ea4878b8ec91adac952013a9817001e48835a",
+    "gpu": "NVIDIA L4, GPU-6e303523-4779-f05a-a84a-867b7c041ef7, 580.82.07, 23034 MiB",
+    "requested_accelerator": "L4",
+    "versions": {
+      "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "triton": "3.6.0"
+    },
+    "returncode": 0,
+    "timed_out": false,
+    "started": 1791323880.9586754,
+    "finished": 1791323965.4232402,
+    "timeout_scope": "driver process, including any setup inside driver"
+  },
+  "tests": "...................                                                      [100%]\n19 passed in 79.32s (0:01:19)"
+}
