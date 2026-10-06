@@ -59,3 +59,22 @@ Both size jobs succeeded;56 full-shape FP64 comparisons,197 runtime/archive proo
 Median us,21samples/execution. Peaks follow screening: controls115712/303104,cache117248/307200,owner2 99328/270336 bytes;reserved6291456. N64 mixed owner2 now trades lower peak for time near/slightly below the speed-oriented candidate; this small difference needs repeat2. N128 mixed repair4/8 improves param2;rho3 repair4 remains worse. No single universal route or statistical significance claimed. All full artifacts remain raw/ignored; DB ingest is serialized by family.
 
 G4 short selected comparison queued from docs-only source7e55e991 (same runtime/benchmark recipes as L4 validated source1e1c8581): check `colabjob-9e92c1692551429d86404e7a8e27fe7a` (host selectors collect27 cached+9 atom16split2 GPU tests),repeat1 `colabjob-634bd8f1c2024f21a0c6933ede97ddc0`,repeat2 `colabjob-224e457f27f64dcdb630304a66a63d68`. Only rho3/mixed N64/N128,copy8/uncached atom16split2 forced4/repair4+param2/repair8+param2+dense. Actual Blackwell/CC12.0 asserted; all within-G4 initial bytes/oracles preserved separately. G4 remains queued until L4 supervisor65855 drains and owned-stop/server confirmation; no concurrent G4 allocation.
+
+## Completed independent L4 repeat1 + repeat2
+
+All four full jobs succeeded. Source1e1c8581, 112 full-shape FP64 comparisons, matching committed/submitted/worker197 runtime files and archive SHA256, all-plan initial Parameter/input bytes including dense and both executions. Actual initial rho>1; all width updates evolve. Each cell is the median of two independent execution medians (21 samples each); repeat2 reverses case/plan order. This supersedes the pending repeat2 checkpoint above. All16 full measurement artifacts and4 screen artifacts have byte-identical DB export and idempotent reimport.
+
+|N/rho|copy8|param2|atom16split2/4warps|gather+param2|repair4+param2|repair8+param2|owner2|dense|
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+|64/1.25|54.89|51.09|49.88|49.91|50.30|50.33|51.80|39.14|
+|64/3|59.07|52.50|51.36|52.96|52.48|52.95|55.68|39.30|
+|64/8|56.44|52.61|51.14|52.29|52.01|52.02|54.81|39.11|
+|64/mixed|62.55|57.98|56.63|57.78|57.65|58.07|56.15|39.21|
+|128/1.25|65.96|64.65|64.21|60.91|60.95|60.76|65.37|45.75|
+|128/3|70.13|67.66|67.72|68.51|69.54|66.12|69.04|45.59|
+|128/8|73.86|69.10|69.73|66.20|66.18|66.34|79.35|45.49|
+|128/mixed|75.95|71.18|71.44|72.28|69.31|69.95|74.15|45.37|
+
+N64 atom16/split2 improves copy8 in all four conditions in both executions. N64 mixed owner2 has lower allocated peak99,328 vs115,712 bytes and a small median-time advantage56.15 vs56.63 us; both independent runs have this direction, but this is not a statistical-significance claim. N128 rho1.25/3/8/mixed has useful cache routes; repair8 is strongest at rho3, repair4 at mixed. These exact fixed routes were measured; no dynamic dispatcher or measured universal default is claimed. N128 wide owner2 is a negative result79.35 us.
+
+N128 rho3 full sort counts over52 primary refreshes: gather49/50, repair4 forward/dX26/34, repair8 1/1 in both runs. At rho8 repair8 reduces full sorts to4/3 versus gather28/28, yet the complete time remains similar to gather and repair4. Fewer full sorts alone is insufficient; repair, current-value refresh and parameter gradients remain material. Controls peak115,712/303,104 bytes, caches117,248/307,200, owner2 99,328/270,336; all reserved6,291,456. No new global H; DRAM traffic or L2 residency is not established by these measurements.
