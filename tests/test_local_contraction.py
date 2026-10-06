@@ -92,7 +92,14 @@ def test_contraction_slices_gradients_and_repeated_backward(route, batch):
     s = local_product_state(minimum=0.125, birth=0.125, maximum=8, w_c=0.2).cuda()
     p = fixture(s, d, device="cuda", dtype=torch.float32, atoms=41)
     recipe = LocalRecipe(route=route, pack=False, rho_upper=(1, 4, 16))
-    layout = PersistentLayout(p, s, d, recipe)
+    if recipe.cached_order:
+        from torchcst._backends.cuda.algorithms.linear.local_product.order_cache import (
+            OrderKeyCache,
+        )
+
+        layout = OrderKeyCache(p, s, d, recipe)
+    else:
+        layout = PersistentLayout(p, s, d, recipe)
     x = torch.randn(batch, d.input_count, device="cuda", requires_grad=True)
     dy = torch.randn(batch, d.output_count, device="cuda")
     y = local_h(

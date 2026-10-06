@@ -618,9 +618,13 @@ def fused_packed(
     OwnerIds=None,
     OwnerOffsets=None,
     INDEX_A: tl.constexpr = 0,
+    OwnerRanges=None,
+    PHYSICAL_H: tl.constexpr = False,
+    SPLITS: tl.constexpr = 1,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     tile = tl.program_id(1)
+    split = tl.program_id(2) if SPLITS > 1 else 0
     i = tile * BN + tl.arange(0, BN)
     j = tl.arange(0, BK)
     y = tl.full((BM, BN), 0.0, tl.float32)
@@ -641,12 +645,36 @@ def fused_packed(
             indexed_band = phase - owners
             begin = tl.load(OwnerOffsets + tile * 4 + indexed_band)
             end = tl.load(OwnerOffsets + tile * 4 + indexed_band + 1)
+        if OwnerRanges is not None and phase >= owners:
+            indexed_band = phase - owners
+            if owners == 1:
+                begin = tl.load(OwnerRanges + tile * 6 + indexed_band * 2)
+                end = tl.load(OwnerRanges + tile * 6 + indexed_band * 2 + 1)
+            else:
+                begin, end = tl.full((), A, tl.int32), tl.full((), 0, tl.int32)
+                for local_owner in tl.static_range(owners):
+                    owner = tile * owners + local_owner
+                    target = OwnerRanges + owner * 6 + indexed_band * 2
+                    low = tl.load(target, owner < groups, 0)
+                    high = tl.load(target + 1, owner < groups, 0)
+                    # Empty intervals are [0,0]; including zero in the minimum
+                    # would admit previous rho bands and count them twice.
+                    begin = tl.minimum(begin, tl.where(low < high, low, A))
+                    end = tl.maximum(end, high)
+                begin = tl.minimum(begin, end)
+        if SPLITS > 1:
+            blocks = tl.cdiv(end - begin, BA)
+            per_split = tl.cdiv(blocks, SPLITS)
+            begin = tl.minimum(begin + split * per_split * BA, end)
+            end = tl.minimum(begin + per_split * BA, end)
         for a0 in range(begin, end, BA):
             a = a0 + tl.arange(0, BA)
             valid = (a < A) & (a < end)
             if OwnerIds is not None and phase >= owners:
                 position = a
-                a = tl.load(OwnerIds + tile * INDEX_A + position, position < end, 0)
+                a = tl.load(OwnerIds + tile * INDEX_A + position, position < end, 0).to(
+                    tl.int32
+                )
                 valid = (position < end) & (a >= 0) & (a < A)
             vlo, _vhi, vw = _interval(P, a, A, SWAP, JS, K)
             ulo, uhi, uw = _interval(P, a, A, not SWAP, IS, N)
@@ -673,7 +701,7 @@ def fused_packed(
                     ):
                         # The persistent bucket already certifies wide,
                         # non-singleton atoms. Do not classify each block again.
-                        ha = tl.load(Order + a, enabled, 0)
+                        ha = a if PHYSICAL_H else tl.load(Order + a, enabled, 0)
                         stored = tl.load(
                             H + b[:, None] * H_A + ha[None, :],
                             (b[:, None] < B) & enabled[None, :],
@@ -722,12 +750,27 @@ def fused_packed(
                             and not SWAP
                             and (not RECOMPUTE_H or phase != owners + 2),
                             True,
-                            HOrder=Order,
+                            HOrder=None if PHYSICAL_H else Order,
                             H_A=H_A,
                             VECTOR_SUPPORT=VECTOR_SUPPORT,
                             UNROLL_SUPPORT=UNROLL_SUPPORT and phase == owners + 1,
                         )
-    tl.store(Y + b[:, None] * N + i[None, :], y, (b[:, None] < B) & (i[None, :] < N))
+    tl.store(
+        Y + (split * B + b[:, None]) * N + i[None, :],
+        y,
+        (b[:, None] < B) & (i[None, :] < N),
+    )
+
+
+@tr.jit
+def reduce_owner_partials(
+    P, Y, ELEMENTS: tl.constexpr, SPLITS: tl.constexpr, BLOCK: tl.constexpr
+):
+    index = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    total = tl.full((BLOCK,), 0.0, tl.float32)
+    for split in tl.static_range(SPLITS):
+        total += tl.load(P + split * ELEMENTS + index, index < ELEMENTS, 0.0)
+    tl.store(Y + index, total, index < ELEMENTS)
 
 
 @tr.jit
@@ -1159,8 +1202,12 @@ def param_vjp(
     H_A: tl.constexpr = 0,
     G=None,
     SAVE_G: tl.constexpr = False,
+    BATCH_SPLITS: tl.constexpr = 1,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
+    batch_split = tl.program_id(1) if BATCH_SPLITS > 1 else 0
+    if BATCH_SPLITS > 1:
+        DQ += batch_split * (H_A if H_A else A) * 4
     original = tl.load(Order + a, a < A, -1) if Order is not None else a
     valid = (a < A) & (original >= 0)
     if H_A:
@@ -1170,7 +1217,7 @@ def param_vjp(
         da = tl.full((BA,), 0.0, tl.float32)
         dci = tl.full((BA,), 0.0, tl.float32)
         dco = tl.full((BA,), 0.0, tl.float32)
-        for b0 in range(0, B, BB):
+        for b0 in range(batch_split * BB, B, BB * BATCH_SPLITS):
             b = b0 + tl.arange(0, BB)
             partial_a = tl.full((BA,), 0.0, tl.float32)
             partial_i = tl.full((BA,), 0.0, tl.float32)

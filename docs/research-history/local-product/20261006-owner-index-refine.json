@@ -1,0 +1,4897 @@
+{
+  "schema_version": 1,
+  "source_commit": "a7699b4765c8de0cfaa8cf9519975f0b150cb992",
+  "scope": "Five owner-index/H alternatives; exact normalized math and current support retained; no payload permutation or cache residency policy. Research plans only.",
+  "validation": {
+    "local_cpu_passed": 859,
+    "local_cpu_skipped": 437,
+    "staged_tests": [
+      {
+        "job": "l4job-297d3b9a431541d1b95784581f3336b7",
+        "source_commit": "8ce58636afb147e6d20f00939cb8e23214c10475",
+        "passed": 46,
+        "cpu_declarations": 3,
+        "gpu_tests": 43
+      },
+      {
+        "job": "l4job-4788190877124197944ab0f2db84d286",
+        "source_commit": "a7699b4765c8de0cfaa8cf9519975f0b150cb992",
+        "passed": 16,
+        "gpu_tests": 16
+      }
+    ],
+    "distinct_staged_checks": 59,
+    "distinct_gpu_checks": 56,
+    "not_a_single_final_source_test_run": true,
+    "full_shape_tolerance": 0.0004,
+    "nonzero_oracle_center_gradients_checked": true,
+    "all_performance_initial_rho_strictly_above_one": true,
+    "captured_updates_vs_public_optimizer": 20,
+    "prepared_comparisons": 8,
+    "ruff_build_and_whitespace": "PASS"
+  },
+  "l4": {
+    "protocol": "N64/N128 B32 A204/A819; initial rho 1.25,3,8 and mixed; FP32 IEEE; production evolving width and fused AdamW/Polar; 21 samples/execution; repeat2 reverses case/plan order",
+    "jobs": [
+      {
+        "job": "l4job-7d454da9e5e2490eb2acb21600d0053c",
+        "repeat": 1,
+        "source_commit": "a7699b4765c8de0cfaa8cf9519975f0b150cb992",
+        "source_snapshot_sha256": "fa745350d11631503b1d6b65f402b8883666744e8f8c911799525f394739d06f",
+        "result_archive_sha256": "d01bf969d0a90d904906373e49f39693c38ee2165757b68e07074d1d90b22c48",
+        "runtime_files_matched": 196
+      },
+      {
+        "job": "l4job-21bc32b54df9479f8dab33ec7c543e8c",
+        "repeat": 2,
+        "source_commit": "a7699b4765c8de0cfaa8cf9519975f0b150cb992",
+        "source_snapshot_sha256": "a84b8a5b6b94301b280c41c9aeeb7d7843aebf1c376322344a0ab5dba17675bc",
+        "result_archive_sha256": "f9907c0e69e099d2f756bc10277fd29e42340efcdfbd945ecf7d1b08714acbb6",
+        "runtime_files_matched": 196
+      }
+    ],
+    "runtime_files_matched": 196,
+    "full_shape_plan_comparisons": 48,
+    "maximum_absolute_errors": {
+      "y": 2.2611439685071844e-06,
+      "dx": 2.4945664272024715e-06,
+      "dp": 4.461254812682114e-06
+    },
+    "observations": [
+      {
+        "case": "local-index-refine-128-rho1_25",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            1.25
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 75.09150009354926,
+            "run_medians_us": [
+              75.02500011469238,
+              75.15800007240614
+            ],
+            "peak_allocated_bytes": 473088,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 3.584000049158931,
+              "output": 16.383999958634377,
+              "dx": 17.40800030529499,
+              "parameters": 11.264000087976456
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "4a54df51-7114-4df8-b0ec-f9840a852a46",
+                "graph_us": 75.02500011469238,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "fa6b1d8714a117a562cb89dc4f0b0e70c04fccb5141fc1b53a3aa9cc58adcb41",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.008446574211120605
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  1.2415707111358643
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "17d2bb11-3ea8-42fe-b680-d475f9178ee3",
+                "graph_us": 75.15800007240614,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "fa6b1d8714a117a562cb89dc4f0b0e70c04fccb5141fc1b53a3aa9cc58adcb41",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.008446574211120605
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  1.2415707111358643
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 74.86250012789242,
+            "run_medians_us": [
+              74.71200001418765,
+              75.01300024159718
+            ],
+            "peak_allocated_bytes": 446464,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 3.584000049158931,
+              "output": 16.383999958634377,
+              "dx": 17.40800030529499,
+              "parameters": 11.264000087976456
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "4a54df51-7114-4df8-b0ec-f9840a852a46",
+                "graph_us": 74.71200001418765,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "fa6b1d8714a117a562cb89dc4f0b0e70c04fccb5141fc1b53a3aa9cc58adcb41",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.008446574211120605
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  1.2415707111358643
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "17d2bb11-3ea8-42fe-b680-d475f9178ee3",
+                "graph_us": 75.01300024159718,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "fa6b1d8714a117a562cb89dc4f0b0e70c04fccb5141fc1b53a3aa9cc58adcb41",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.008446574211120605
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  1.2415707111358643
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.30496123445603596,
+            "allocated_reduction_bytes": 26624
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 74.2605001278207,
+            "run_medians_us": [
+              73.98699995064817,
+              74.53400030499324
+            ],
+            "peak_allocated_bytes": 341504,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 2.047999994829297,
+              "output": 17.40800030529499,
+              "dx": 17.40800030529499,
+              "parameters": 11.264000087976456
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "4a54df51-7114-4df8-b0ec-f9840a852a46",
+                "graph_us": 73.98699995064817,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "fa6b1d8714a117a562cb89dc4f0b0e70c04fccb5141fc1b53a3aa9cc58adcb41",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.008446574211120605
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  1.2415707111358643
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "17d2bb11-3ea8-42fe-b680-d475f9178ee3",
+                "graph_us": 74.53400030499324,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "fa6b1d8714a117a562cb89dc4f0b0e70c04fccb5141fc1b53a3aa9cc58adcb41",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.008446574211120605
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  1.2415707111358643
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 1.1066498401194447,
+            "allocated_reduction_bytes": 131584
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 45.56650003451068,
+            "run_medians_us": [
+              45.55800001071475,
+              45.575000058306614
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "4a54df51-7114-4df8-b0ec-f9840a852a46",
+                "graph_us": 45.55800001071475,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "17d2bb11-3ea8-42fe-b680-d475f9178ee3",
+                "graph_us": 45.575000058306614,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-128-rho3",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 83.04599998609774,
+            "run_medians_us": [
+              83.15099989886221,
+              82.94100007333327
+            ],
+            "peak_allocated_bytes": 473088,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 3.584000049158931,
+              "output": 18.432000651955605,
+              "dx": 19.45599913597107,
+              "parameters": 12.80000014230609
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "d509454e-283b-42d5-982f-5fa9f8bc2d91",
+                "graph_us": 83.15099989886221,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149055480957031
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "051ed080-cb84-40a1-905b-f43999ae1bc7",
+                "graph_us": 82.94100007333327,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149055480957031
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 82.67349994639517,
+            "run_medians_us": [
+              82.61799985120888,
+              82.72900004158146
+            ],
+            "peak_allocated_bytes": 446464,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 3.584000049158931,
+              "output": 18.432000651955605,
+              "dx": 19.45599913597107,
+              "parameters": 12.80000014230609
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "d509454e-283b-42d5-982f-5fa9f8bc2d91",
+                "graph_us": 82.61799985120888,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149055480957031
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "051ed080-cb84-40a1-905b-f43999ae1bc7",
+                "graph_us": 82.72900004158146,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149055480957031
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.4485466365206414,
+            "allocated_reduction_bytes": 26624
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 82.35799998601578,
+            "run_medians_us": [
+              82.33499988818949,
+              82.38100008384208
+            ],
+            "peak_allocated_bytes": 341504,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 2.047999994829297,
+              "output": 19.45599913597107,
+              "dx": 19.45599913597107,
+              "parameters": 12.80000014230609
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "d509454e-283b-42d5-982f-5fa9f8bc2d91",
+                "graph_us": 82.33499988818949,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149055480957031
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "051ed080-cb84-40a1-905b-f43999ae1bc7",
+                "graph_us": 82.38100008384208,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149055480957031
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.8284565183116932,
+            "allocated_reduction_bytes": 131584
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 45.52500001864246,
+            "run_medians_us": [
+              45.46800005300611,
+              45.58199998427881
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "d509454e-283b-42d5-982f-5fa9f8bc2d91",
+                "graph_us": 45.46800005300611,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "051ed080-cb84-40a1-905b-f43999ae1bc7",
+                "graph_us": 45.58199998427881,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-128-rho8",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            8
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 91.7500000241489,
+            "run_medians_us": [
+              91.60600006907771,
+              91.8939999792201
+            ],
+            "peak_allocated_bytes": 473088,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.632000043988228,
+              "layout": 12.28800043463707,
+              "h": 5.632000043988228,
+              "output": 16.383999958634377,
+              "dx": 27.648000046610832,
+              "parameters": 16.383999958634377
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "f455c0ed-7d5c-461d-a7ab-87a4a916b629",
+                "graph_us": 91.60600006907771,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19462251663208008
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.8053812980651855,
+                  7.8055853843688965
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "6e24ac9e-56b8-48bf-a9d2-7a87ba1fa6fb",
+                "graph_us": 91.8939999792201,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19462251663208008
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.8053812980651855,
+                  7.8055853843688965
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 91.43449995008268,
+            "run_medians_us": [
+              91.57099998446938,
+              91.29799991569598
+            ],
+            "peak_allocated_bytes": 446464,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.680000176653266,
+              "layout": 12.28800043463707,
+              "h": 5.119999870657921,
+              "output": 16.383999958634377,
+              "dx": 26.623999699950218,
+              "parameters": 16.383999958634377
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "f455c0ed-7d5c-461d-a7ab-87a4a916b629",
+                "graph_us": 91.57099998446938,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19462251663208008
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.8053812980651855,
+                  7.8055853843688965
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "6e24ac9e-56b8-48bf-a9d2-7a87ba1fa6fb",
+                "graph_us": 91.29799991569598,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19462251663208008
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.8053812980651855,
+                  7.8055853843688965
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.343869290444887,
+            "allocated_reduction_bytes": 26624
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 97.19799993490597,
+            "run_medians_us": [
+              96.93900005913747,
+              97.45699981067446
+            ],
+            "peak_allocated_bytes": 341504,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 2.047999994829297,
+              "output": 25.599999353289604,
+              "dx": 27.135999873280525,
+              "parameters": 16.383999958634377
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "f455c0ed-7d5c-461d-a7ab-87a4a916b629",
+                "graph_us": 96.93900005913747,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19462251663208008
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.8053812980651855,
+                  7.8055853843688965
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "6e24ac9e-56b8-48bf-a9d2-7a87ba1fa6fb",
+                "graph_us": 97.45699981067446,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19462251663208008
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.8053812980651855,
+                  7.8055853843688965
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": -5.937874560570178,
+            "allocated_reduction_bytes": 131584
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 45.73249998429674,
+            "run_medians_us": [
+              45.70100009004818,
+              45.76399987854529
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "f455c0ed-7d5c-461d-a7ab-87a4a916b629",
+                "graph_us": 45.70100009004818,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "6e24ac9e-56b8-48bf-a9d2-7a87ba1fa6fb",
+                "graph_us": 45.76399987854529,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-128-rhomixed",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            1.25,
+            3,
+            8
+          ],
+          "fractions": [
+            0.5,
+            0.3,
+            0.2
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 89.9289999551911,
+            "run_medians_us": [
+              89.64299991021107,
+              90.21500000017113
+            ],
+            "peak_allocated_bytes": 473088,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 5.632000043988228,
+              "output": 19.45599913597107,
+              "dx": 22.52800017595291,
+              "parameters": 16.383999958634377
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "bc415b15-571d-4fe4-8ba1-cbfc7c4b00c7",
+                "graph_us": 89.64299991021107,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "a734431fccddccdacea22eac2726c8d3558ab3aba99a32a2693c778c2ac6fe3f",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "44d33e2b-119c-48a0-aeb9-20bba1fb1678",
+                "graph_us": 90.21500000017113,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "a734431fccddccdacea22eac2726c8d3558ab3aba99a32a2693c778c2ac6fe3f",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 89.32799994454399,
+            "run_medians_us": [
+              89.07599999474769,
+              89.57999989434029
+            ],
+            "peak_allocated_bytes": 446464,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 12.28800043463707,
+              "h": 5.119999870657921,
+              "output": 18.432000651955605,
+              "dx": 22.52800017595291,
+              "parameters": 16.383999958634377
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "bc415b15-571d-4fe4-8ba1-cbfc7c4b00c7",
+                "graph_us": 89.07599999474769,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "a734431fccddccdacea22eac2726c8d3558ab3aba99a32a2693c778c2ac6fe3f",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "44d33e2b-119c-48a0-aeb9-20bba1fb1678",
+                "graph_us": 89.57999989434029,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "a734431fccddccdacea22eac2726c8d3558ab3aba99a32a2693c778c2ac6fe3f",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.6683050083361008,
+            "allocated_reduction_bytes": 26624
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 89.56399983617302,
+            "run_medians_us": [
+              89.5739999577927,
+              89.55399971455336
+            ],
+            "peak_allocated_bytes": 341504,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.664000054821372,
+              "layout": 12.28800043463707,
+              "h": 2.047999994829297,
+              "output": 22.52800017595291,
+              "dx": 22.52800017595291,
+              "parameters": 16.383999958634377
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "bc415b15-571d-4fe4-8ba1-cbfc7c4b00c7",
+                "graph_us": 89.5739999577927,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "a734431fccddccdacea22eac2726c8d3558ab3aba99a32a2693c778c2ac6fe3f",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "44d33e2b-119c-48a0-aeb9-20bba1fb1678",
+                "graph_us": 89.55399971455336,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "a734431fccddccdacea22eac2726c8d3558ab3aba99a32a2693c778c2ac6fe3f",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.4058758789711292,
+            "allocated_reduction_bytes": 131584
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 45.55300006359175,
+            "run_medians_us": [
+              45.525000132329296,
+              45.58099999485421
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "bc415b15-571d-4fe4-8ba1-cbfc7c4b00c7",
+                "graph_us": 45.525000132329296,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "44d33e2b-119c-48a0-aeb9-20bba1fb1678",
+                "graph_us": 45.58099999485421,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-64-rho1_25",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            1.25
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 59.43299993305118,
+            "run_medians_us": [
+              59.35499984843773,
+              59.51100001766463
+            ],
+            "peak_allocated_bytes": 161792,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 3.0720001086592674,
+              "output": 12.28800043463707,
+              "dx": 11.264000087976456,
+              "parameters": 13.311999849975109
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "44ed5359-1c12-46da-987c-ab23d05e96fc",
+                "graph_us": 59.35499984843773,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "11f183ccb21a907f1de8bd91a76e498b3d734d2c2e653eda342e5040121cc5d0",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.00844717025756836
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415528297424316,
+                  1.2415693998336792
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "99e88daa-97e9-4e77-9ba8-c76bbe7be122",
+                "graph_us": 59.51100001766463,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "11f183ccb21a907f1de8bd91a76e498b3d734d2c2e653eda342e5040121cc5d0",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.00844717025756836
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415528297424316,
+                  1.2415693998336792
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 59.38799984051002,
+            "run_medians_us": [
+              59.41099993833632,
+              59.36499974268372
+            ],
+            "peak_allocated_bytes": 156672,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 3.0720001086592674,
+              "output": 12.28800043463707,
+              "dx": 10.239999741315842,
+              "parameters": 13.311999849975109
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "44ed5359-1c12-46da-987c-ab23d05e96fc",
+                "graph_us": 59.41099993833632,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "11f183ccb21a907f1de8bd91a76e498b3d734d2c2e653eda342e5040121cc5d0",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.00844717025756836
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415528297424316,
+                  1.2415693998336792
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "99e88daa-97e9-4e77-9ba8-c76bbe7be122",
+                "graph_us": 59.36499974268372,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "11f183ccb21a907f1de8bd91a76e498b3d734d2c2e653eda342e5040121cc5d0",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.00844717025756836
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415528297424316,
+                  1.2415693998336792
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.07571566737645252,
+            "allocated_reduction_bytes": 5120
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 58.68549999377137,
+            "run_medians_us": [
+              58.83800008632534,
+              58.53299990121741
+            ],
+            "peak_allocated_bytes": 130560,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 12.28800043463707,
+              "dx": 11.264000087976456,
+              "parameters": 13.311999849975109
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "44ed5359-1c12-46da-987c-ab23d05e96fc",
+                "graph_us": 58.83800008632534,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "11f183ccb21a907f1de8bd91a76e498b3d734d2c2e653eda342e5040121cc5d0",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.00844717025756836
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415528297424316,
+                  1.2415693998336792
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "99e88daa-97e9-4e77-9ba8-c76bbe7be122",
+                "graph_us": 58.53299990121741,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "11f183ccb21a907f1de8bd91a76e498b3d734d2c2e653eda342e5040121cc5d0",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.00844717025756836
+                },
+                "initial_rho_range": [
+                  1.25,
+                  1.25
+                ],
+                "final_rho_range": [
+                  1.2415528297424316,
+                  1.2415693998336792
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 1.2577186750152847,
+            "allocated_reduction_bytes": 31232
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 38.79249993588019,
+            "run_medians_us": [
+              38.795999898866285,
+              38.78899997289409
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "44ed5359-1c12-46da-987c-ab23d05e96fc",
+                "graph_us": 38.795999898866285,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "99e88daa-97e9-4e77-9ba8-c76bbe7be122",
+                "graph_us": 38.78899997289409,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-64-rho3",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 67.08400007937598,
+            "run_medians_us": [
+              67.13800007673854,
+              67.03000008201343
+            ],
+            "peak_allocated_bytes": 161792,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 3.584000049158931,
+              "output": 13.311999849975109,
+              "dx": 13.824000023305416,
+              "parameters": 16.383999958634377
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "3bda3f6a-7209-463d-8dd6-c69586467471",
+                "graph_us": 67.13800007673854,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149007797241211
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "1311f89c-848e-4db8-8810-943c6d54c620",
+                "graph_us": 67.03000008201343,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149007797241211
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 67.07549982820638,
+            "run_medians_us": [
+              67.13399989166646,
+              67.01699976474629
+            ],
+            "peak_allocated_bytes": 156672,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 3.584000049158931,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 16.383999958634377
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "3bda3f6a-7209-463d-8dd6-c69586467471",
+                "graph_us": 67.13399989166646,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149007797241211
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "1311f89c-848e-4db8-8810-943c6d54c620",
+                "graph_us": 67.01699976474629,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149007797241211
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.012671055929203145,
+            "allocated_reduction_bytes": 5120
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 65.91749991002871,
+            "run_medians_us": [
+              65.89999998141138,
+              65.93499983864604
+            ],
+            "peak_allocated_bytes": 130560,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 16.383999958634377
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "3bda3f6a-7209-463d-8dd6-c69586467471",
+                "graph_us": 65.89999998141138,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149007797241211
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "1311f89c-848e-4db8-8810-943c6d54c620",
+                "graph_us": 65.93499983864604,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149007797241211
+                },
+                "initial_rho_range": [
+                  3.0000014305114746,
+                  3.0000014305114746
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 1.7388649573177428,
+            "allocated_reduction_bytes": 31232
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 38.84149998611974,
+            "run_medians_us": [
+              38.725999957023305,
+              38.95700001521618
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "3bda3f6a-7209-463d-8dd6-c69586467471",
+                "graph_us": 38.725999957023305,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "1311f89c-848e-4db8-8810-943c6d54c620",
+                "graph_us": 38.95700001521618,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-64-rho8",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            8
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 67.24049990225467,
+            "run_medians_us": [
+              68.62400005047675,
+              65.85699975403259
+            ],
+            "peak_allocated_bytes": 161792,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 4.6079999301582575,
+              "output": 11.776000261306763,
+              "dx": 15.359999611973763,
+              "parameters": 14.336000196635723
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "96d36e66-a67b-493d-9ad5-36bf9fe7eda8",
+                "graph_us": 68.62400005047675,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.805400371551514,
+                  7.8055853843688965
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "2873668f-74d4-4ef1-bb0d-988fa4ac231a",
+                "graph_us": 65.85699975403259,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.805400371551514,
+                  7.8055853843688965
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 65.75050008450489,
+            "run_medians_us": [
+              65.96900016120344,
+              65.53200000780635
+            ],
+            "peak_allocated_bytes": 156672,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 5.119999870657921,
+              "output": 11.776000261306763,
+              "dx": 15.359999611973763,
+              "parameters": 14.336000196635723
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "96d36e66-a67b-493d-9ad5-36bf9fe7eda8",
+                "graph_us": 65.96900016120344,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.805400371551514,
+                  7.8055853843688965
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "2873668f-74d4-4ef1-bb0d-988fa4ac231a",
+                "graph_us": 65.53200000780635,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.805400371551514,
+                  7.8055853843688965
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 2.215926145575564,
+            "allocated_reduction_bytes": 5120
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 66.6250001586377,
+            "run_medians_us": [
+              66.45899998147797,
+              66.79100033579743
+            ],
+            "peak_allocated_bytes": 130560,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 15.359999611973763,
+              "parameters": 13.824000023305416
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "96d36e66-a67b-493d-9ad5-36bf9fe7eda8",
+                "graph_us": 66.45899998147797,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.805400371551514,
+                  7.8055853843688965
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "2873668f-74d4-4ef1-bb0d-988fa4ac231a",
+                "graph_us": 66.79100033579743,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  8.000003814697266,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  7.805400371551514,
+                  7.8055853843688965
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.9153705646324672,
+            "allocated_reduction_bytes": 31232
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 38.955999912104744,
+            "run_medians_us": [
+              38.851999988764874,
+              39.059999835444614
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "96d36e66-a67b-493d-9ad5-36bf9fe7eda8",
+                "graph_us": 38.851999988764874,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "2873668f-74d4-4ef1-bb0d-988fa4ac231a",
+                "graph_us": 39.059999835444614,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-64-rhomixed",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            1.25,
+            3,
+            8
+          ],
+          "fractions": [
+            0.5,
+            0.3,
+            0.2
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 65.36449996019655,
+            "run_medians_us": [
+              65.35800002893666,
+              65.37099989145645
+            ],
+            "peak_allocated_bytes": 161792,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 4.6079999301582575,
+              "output": 12.28800043463707,
+              "dx": 14.336000196635723,
+              "parameters": 14.336000196635723
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "efc3d157-580d-4472-b9ec-f55c4325a211",
+                "graph_us": 65.35800002893666,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "f15678be3ad439453d9de1d616c05d9f187bc07a4fe1bfc2b954febd2cb7a80e",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "e9f1ed31-e58a-4bd8-bd28-bd4725984c74",
+                "graph_us": 65.37099989145645,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "f15678be3ad439453d9de1d616c05d9f187bc07a4fe1bfc2b954febd2cb7a80e",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 65.63449994700932,
+            "run_medians_us": [
+              65.81499997082574,
+              65.4539999231929
+            ],
+            "peak_allocated_bytes": 156672,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 4.6079999301582575,
+              "output": 12.28800043463707,
+              "dx": 14.336000196635723,
+              "parameters": 14.336000196635723
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "efc3d157-580d-4472-b9ec-f55c4325a211",
+                "graph_us": 65.81499997082574,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "f15678be3ad439453d9de1d616c05d9f187bc07a4fe1bfc2b954febd2cb7a80e",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "e9f1ed31-e58a-4bd8-bd28-bd4725984c74",
+                "graph_us": 65.4539999231929,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "f15678be3ad439453d9de1d616c05d9f187bc07a4fe1bfc2b954febd2cb7a80e",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": -0.4130682357811555,
+            "allocated_reduction_bytes": 5120
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 64.53049991250737,
+            "run_medians_us": [
+              64.4380002086109,
+              64.62299961640383
+            ],
+            "peak_allocated_bytes": 130560,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 14.336000196635723
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "efc3d157-580d-4472-b9ec-f55c4325a211",
+                "graph_us": 64.4380002086109,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "f15678be3ad439453d9de1d616c05d9f187bc07a4fe1bfc2b954febd2cb7a80e",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "e9f1ed31-e58a-4bd8-bd28-bd4725984c74",
+                "graph_us": 64.62299961640383,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "f15678be3ad439453d9de1d616c05d9f187bc07a4fe1bfc2b954febd2cb7a80e",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.25,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 1.2759220191343124,
+            "allocated_reduction_bytes": 31232
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 39.068999967639684,
+            "run_medians_us": [
+              38.91400001521106,
+              39.22399992006831
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "efc3d157-580d-4472-b9ec-f55c4325a211",
+                "graph_us": 38.91400001521106,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "e9f1ed31-e58a-4bd8-bd28-bd4725984c74",
+                "graph_us": 39.22399992006831,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA L4",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 58
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "g4": {
+    "protocol": "N64/N128 B32 A204/A819; initial rho 1.25,3,8 and mixed; FP32 IEEE; production evolving width and fused AdamW/Polar; 21 samples/execution; repeat2 reverses case/plan order",
+    "jobs": [
+      {
+        "job": "colabjob-4a9d95e80ff246bab942c245419d074c",
+        "repeat": 1,
+        "source_commit": "a7699b4765c8de0cfaa8cf9519975f0b150cb992",
+        "source_snapshot_sha256": "a84b8a5b6b94301b280c41c9aeeb7d7843aebf1c376322344a0ab5dba17675bc",
+        "result_archive_sha256": "111cc59e8de239c51e6b089fdfab5625aec125405a81a9b36e762d42c54b9e28",
+        "runtime_files_matched": 196
+      },
+      {
+        "job": "colabjob-8ecd650dc3114c9e96a540a004e2b1f6",
+        "repeat": 2,
+        "source_commit": "a7699b4765c8de0cfaa8cf9519975f0b150cb992",
+        "source_snapshot_sha256": "a84b8a5b6b94301b280c41c9aeeb7d7843aebf1c376322344a0ab5dba17675bc",
+        "result_archive_sha256": "86996bcd80475689d518224be55a00fd1be65f7db82c173cc4b1672214b7ca9f",
+        "runtime_files_matched": 196
+      }
+    ],
+    "runtime_files_matched": 196,
+    "full_shape_plan_comparisons": 24,
+    "maximum_absolute_errors": {
+      "y": 1.8295054173833591e-06,
+      "dx": 1.7361331489107457e-06,
+      "dp": 8.445408155033363e-06
+    },
+    "observations": [
+      {
+        "case": "local-index-refine-128-rho3",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 81.96499999257867,
+            "run_medians_us": [
+              81.98000000447792,
+              81.94999998067942
+            ],
+            "peak_allocated_bytes": 473088,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.039999959990382,
+              "layout": 11.472000274807215,
+              "h": 2.7680000057443976,
+              "output": 17.983999103307724,
+              "dx": 19.856000319123268,
+              "parameters": 11.855999939143658
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "a0d83cf8-c25e-4fa7-a896-638ceb5612be",
+                "graph_us": 81.98000000447792,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "7c1dffc4f7cfcfd2d6692901e370272e0e7dcac6cc962c6d701d72e171a2b6a4",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149198532104492
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "7727a321-45cd-4c00-bc84-9c8358f9e05e",
+                "graph_us": 81.94999998067942,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "7c1dffc4f7cfcfd2d6692901e370272e0e7dcac6cc962c6d701d72e171a2b6a4",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149198532104492
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 81.08000000106586,
+            "run_medians_us": [
+              80.58999998183936,
+              81.57000002029235
+            ],
+            "peak_allocated_bytes": 446464,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.735999973490834,
+              "layout": 11.023999657481909,
+              "h": 2.7039999840781093,
+              "output": 17.983999103307724,
+              "dx": 19.840000197291374,
+              "parameters": 11.855999939143658
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "a0d83cf8-c25e-4fa7-a896-638ceb5612be",
+                "graph_us": 80.58999998183936,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "7c1dffc4f7cfcfd2d6692901e370272e0e7dcac6cc962c6d701d72e171a2b6a4",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149198532104492
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "7727a321-45cd-4c00-bc84-9c8358f9e05e",
+                "graph_us": 81.57000002029235,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "7c1dffc4f7cfcfd2d6692901e370272e0e7dcac6cc962c6d701d72e171a2b6a4",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149198532104492
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 1.0797291424302413,
+            "allocated_reduction_bytes": 26624
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 80.93999994684964,
+            "run_medians_us": [
+              81.00999997395775,
+              80.86999991974153
+            ],
+            "peak_allocated_bytes": 341504,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.848000127822161,
+              "layout": 10.848000179976225,
+              "h": 0.44800000614486635,
+              "output": 18.304000608623028,
+              "dx": 19.807999953627586,
+              "parameters": 11.839999817311764
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "a0d83cf8-c25e-4fa7-a896-638ceb5612be",
+                "graph_us": 81.00999997395775,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "7c1dffc4f7cfcfd2d6692901e370272e0e7dcac6cc962c6d701d72e171a2b6a4",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149198532104492
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "7727a321-45cd-4c00-bc84-9c8358f9e05e",
+                "graph_us": 80.86999991974153,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "7c1dffc4f7cfcfd2d6692901e370272e0e7dcac6cc962c6d701d72e171a2b6a4",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.04149198532104492
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585108757019043,
+                  2.9585533142089844
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 1.2505338203157912,
+            "allocated_reduction_bytes": 131584
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 42.22999999115018,
+            "run_medians_us": [
+              41.32999998773812,
+              43.12999999456224
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "a0d83cf8-c25e-4fa7-a896-638ceb5612be",
+                "graph_us": 41.32999998773812,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "7727a321-45cd-4c00-bc84-9c8358f9e05e",
+                "graph_us": 43.12999999456224,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-128-rhomixed",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            1.25,
+            3,
+            8
+          ],
+          "fractions": [
+            0.5,
+            0.3,
+            0.2
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 87.57000000514381,
+            "run_medians_us": [
+              87.6300000527408,
+              87.50999995754682
+            ],
+            "peak_allocated_bytes": 473088,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.007999949157238,
+              "layout": 11.45600015297532,
+              "h": 4.528000019490719,
+              "output": 17.999999225139618,
+              "dx": 21.91999927163124,
+              "parameters": 13.903999701142311
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "d23d3659-51e1-4119-8fb1-18a50e7be70a",
+                "graph_us": 87.6300000527408,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "d65334a47c0d140a6826dc0ee520b96af8fb65b5b3af2be5be6adfc128a5d3a7",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "970aa9bb-4fe0-4b9a-90fa-9d657b2e871c",
+                "graph_us": 87.50999995754682,
+                "peak_allocated_bytes": 473088,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "d65334a47c0d140a6826dc0ee520b96af8fb65b5b3af2be5be6adfc128a5d3a7",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 87.05499999450694,
+            "run_medians_us": [
+              87.2100000606224,
+              86.89999992839148
+            ],
+            "peak_allocated_bytes": 446464,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.392000079154968,
+              "layout": 11.727999895811081,
+              "h": 4.624000051990151,
+              "output": 18.28799955546856,
+              "dx": 21.91999927163124,
+              "parameters": 13.887999579310417
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "d23d3659-51e1-4119-8fb1-18a50e7be70a",
+                "graph_us": 87.2100000606224,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "d65334a47c0d140a6826dc0ee520b96af8fb65b5b3af2be5be6adfc128a5d3a7",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "970aa9bb-4fe0-4b9a-90fa-9d657b2e871c",
+                "graph_us": 86.89999992839148,
+                "peak_allocated_bytes": 446464,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "d65334a47c0d140a6826dc0ee520b96af8fb65b5b3af2be5be6adfc128a5d3a7",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.5881009599253417,
+            "allocated_reduction_bytes": 26624
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 86.64999995744438,
+            "run_medians_us": [
+              86.94999996805564,
+              86.34999994683312
+            ],
+            "peak_allocated_bytes": 341504,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.784000106155872,
+              "layout": 11.008000001311302,
+              "h": 0.44800000614486635,
+              "output": 20.14400064945221,
+              "dx": 21.888000890612602,
+              "parameters": 13.903999701142311
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "d23d3659-51e1-4119-8fb1-18a50e7be70a",
+                "graph_us": 86.94999996805564,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "d65334a47c0d140a6826dc0ee520b96af8fb65b5b3af2be5be6adfc128a5d3a7",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "970aa9bb-4fe0-4b9a-90fa-9d657b2e871c",
+                "graph_us": 86.34999994683312,
+                "peak_allocated_bytes": 341504,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                },
+                "initial_p_sha256": "d65334a47c0d140a6826dc0ee520b96af8fb65b5b3af2be5be6adfc128a5d3a7",
+                "rho": {
+                  "changed_atoms": 819,
+                  "max_abs_change": 0.19461345672607422
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805563449859619
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 1.050588155356158,
+            "allocated_reduction_bytes": 131584
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 43.14500000646149,
+            "run_medians_us": [
+              43.21000005802489,
+              43.079999954898085
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "d23d3659-51e1-4119-8fb1-18a50e7be70a",
+                "graph_us": 43.21000005802489,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "970aa9bb-4fe0-4b9a-90fa-9d657b2e871c",
+                "graph_us": 43.079999954898085,
+                "peak_allocated_bytes": 34408960,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+                  "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-64-rho3",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 63.34999997648083,
+            "run_medians_us": [
+              63.209999950686324,
+              63.49000000227534
+            ],
+            "peak_allocated_bytes": 161792,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.94399992749095,
+              "layout": 6.84799998998642,
+              "h": 2.655999967828393,
+              "output": 11.855999939143658,
+              "dx": 11.632000096142292,
+              "parameters": 13.919999822974205
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "2fe9a0c1-d535-4f4d-aaff-1eb69daf143f",
+                "graph_us": 63.209999950686324,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "76f3522f82ea2b6adfd9055d76e397210402de23ccdef63d84a8ab706615a696",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149150848388672
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "898f7a03-d64a-454a-805b-4744f6df43a5",
+                "graph_us": 63.49000000227534,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "76f3522f82ea2b6adfd9055d76e397210402de23ccdef63d84a8ab706615a696",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149150848388672
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 63.32500004191388,
+            "run_medians_us": [
+              63.19999999959691,
+              63.45000008423085
+            ],
+            "peak_allocated_bytes": 156672,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 5.039999959990382,
+              "layout": 6.736000068485737,
+              "h": 2.5919999461621046,
+              "output": 11.839999817311764,
+              "dx": 11.648000217974186,
+              "parameters": 13.919999822974205
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "2fe9a0c1-d535-4f4d-aaff-1eb69daf143f",
+                "graph_us": 63.19999999959691,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "76f3522f82ea2b6adfd9055d76e397210402de23ccdef63d84a8ab706615a696",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149150848388672
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "898f7a03-d64a-454a-805b-4744f6df43a5",
+                "graph_us": 63.45000008423085,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "76f3522f82ea2b6adfd9055d76e397210402de23ccdef63d84a8ab706615a696",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149150848388672
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 0.03946319585829139,
+            "allocated_reduction_bytes": 5120
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 61.8599999882008,
+            "run_medians_us": [
+              61.24999998746716,
+              62.46999998893443
+            ],
+            "peak_allocated_bytes": 130560,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.992000060155988,
+              "layout": 6.9599999114871025,
+              "h": 0.44800000614486635,
+              "output": 11.919999960809946,
+              "dx": 11.648000217974186,
+              "parameters": 13.887999579310417
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "2fe9a0c1-d535-4f4d-aaff-1eb69daf143f",
+                "graph_us": 61.24999998746716,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "76f3522f82ea2b6adfd9055d76e397210402de23ccdef63d84a8ab706615a696",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149150848388672
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "898f7a03-d64a-454a-805b-4744f6df43a5",
+                "graph_us": 62.46999998893443,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "76f3522f82ea2b6adfd9055d76e397210402de23ccdef63d84a8ab706615a696",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.04149150848388672
+                },
+                "initial_rho_range": [
+                  3.000002861022949,
+                  3.000002861022949
+                ],
+                "final_rho_range": [
+                  2.9585113525390625,
+                  2.958557367324829
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 2.3520126106285844,
+            "allocated_reduction_bytes": 31232
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 33.4449999854769,
+            "run_medians_us": [
+              33.29000003304827,
+              33.59999993790552
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "2fe9a0c1-d535-4f4d-aaff-1eb69daf143f",
+                "graph_us": 33.29000003304827,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "898f7a03-d64a-454a-805b-4744f6df43a5",
+                "graph_us": 33.59999993790552,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "case": "local-index-refine-64-rhomixed",
+        "initial_widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            1.25,
+            3,
+            8
+          ],
+          "fractions": [
+            0.5,
+            0.3,
+            0.2
+          ],
+          "center_jitter": 0.1
+        },
+        "plans": {
+          "persistent-supportprep-band-recompute-vjp-index-atom32": {
+            "independent_executions": 2,
+            "median_us": 62.240000005431284,
+            "run_medians_us": [
+              62.239999977009575,
+              62.24000003385299
+            ],
+            "peak_allocated_bytes": 161792,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.608000162988901,
+              "layout": 6.800000090152025,
+              "h": 4.592000041157007,
+              "output": 10.143999941647053,
+              "dx": 11.648000217974186,
+              "parameters": 11.839999817311764
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "fc4b6ce7-a92b-4349-89a2-80f707f4ea62",
+                "graph_us": 62.239999977009575,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "2dbed3b0f9cb8bb6c9e39535e57c0a5c969a1ff221ebae1e9f7011ab1479f06c",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "b6c54452-34ad-48e3-b53d-5c99cadfddff",
+                "graph_us": 62.24000003385299,
+                "peak_allocated_bytes": 161792,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "2dbed3b0f9cb8bb6c9e39535e57c0a5c969a1ff221ebae1e9f7011ab1479f06c",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            }
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+            "independent_executions": 2,
+            "median_us": 62.249999984942406,
+            "run_medians_us": [
+              62.28999995983031,
+              62.2100000100545
+            ],
+            "peak_allocated_bytes": 156672,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.735999973490834,
+              "layout": 6.704000057652593,
+              "h": 4.6720001846551895,
+              "output": 9.824000298976898,
+              "dx": 11.648000217974186,
+              "parameters": 11.872000060975552
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "fc4b6ce7-a92b-4349-89a2-80f707f4ea62",
+                "graph_us": 62.28999995983031,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "2dbed3b0f9cb8bb6c9e39535e57c0a5c969a1ff221ebae1e9f7011ab1479f06c",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "b6c54452-34ad-48e3-b53d-5c99cadfddff",
+                "graph_us": 62.2100000100545,
+                "peak_allocated_bytes": 156672,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "2dbed3b0f9cb8bb6c9e39535e57c0a5c969a1ff221ebae1e9f7011ab1479f06c",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "hybrid_save_h": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": -0.016066805125714012,
+            "allocated_reduction_bytes": 5120
+          },
+          "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+            "independent_executions": 2,
+            "median_us": 61.030000011896846,
+            "run_medians_us": [
+              60.95999998478874,
+              61.100000039004954
+            ],
+            "peak_allocated_bytes": 130560,
+            "peak_reserved_bytes": 6291456,
+            "diagnostic_components_us": {
+              "prepare": 4.799999995157123,
+              "layout": 6.975999800488353,
+              "h": 0.44800000614486635,
+              "output": 11.983999982476234,
+              "dx": 11.632000096142292,
+              "parameters": 11.872000060975552
+            },
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "fc4b6ce7-a92b-4349-89a2-80f707f4ea62",
+                "graph_us": 60.95999998478874,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "2dbed3b0f9cb8bb6c9e39535e57c0a5c969a1ff221ebae1e9f7011ab1479f06c",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              },
+              {
+                "repeat": 2,
+                "execution_id": "b6c54452-34ad-48e3-b53d-5c99cadfddff",
+                "graph_us": 61.100000039004954,
+                "peak_allocated_bytes": 130560,
+                "peak_reserved_bytes": 6291456,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                },
+                "initial_p_sha256": "2dbed3b0f9cb8bb6c9e39535e57c0a5c969a1ff221ebae1e9f7011ab1479f06c",
+                "rho": {
+                  "changed_atoms": 204,
+                  "max_abs_change": 0.19460344314575195
+                },
+                "initial_rho_range": [
+                  1.2500008344650269,
+                  8.000003814697266
+                ],
+                "final_rho_range": [
+                  1.2415534257888794,
+                  7.805552005767822
+                ]
+              }
+            ],
+            "compiler_spill_slots": {
+              "prepare_bounded": 0,
+              "tile_layout": 0,
+              "persistent_layout": 0,
+              "owner_index": 0,
+              "packed_forward": 0,
+              "packed_dx": 0,
+              "singleton_param": 0
+            },
+            "time_reduction_percent": 1.9440873930412161,
+            "allocated_reduction_bytes": 31232
+          },
+          "dense": {
+            "independent_executions": 2,
+            "median_us": 32.6699999959601,
+            "run_medians_us": [
+              33.36999998282408,
+              31.97000000909611
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "diagnostic_components_us": {},
+            "runs": [
+              {
+                "repeat": 1,
+                "execution_id": "fc4b6ce7-a92b-4349-89a2-80f707f4ea62",
+                "graph_us": 33.36999998282408,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              },
+              {
+                "repeat": 2,
+                "execution_id": "b6c54452-34ad-48e3-b53d-5c99cadfddff",
+                "graph_us": 31.97000000909611,
+                "peak_allocated_bytes": 34179584,
+                "peak_reserved_bytes": 48234496,
+                "runtime": {
+                  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+                  "cuda": "13.0",
+                  "torch": "2.11.0+cu130",
+                  "triton": "3.6.0",
+                  "tf32": false,
+                  "sm_count": 188
+                },
+                "initial_inputs": {
+                  "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+                  "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "staged_smoke_alternatives": [
+    {
+      "job": "l4job-297d3b9a431541d1b95784581f3336b7",
+      "source_commit": "8ce58636afb147e6d20f00939cb8e23214c10475",
+      "source_snapshot_sha256": "5c7cc4f56b6b427b9a8c12c6e12cc83e8e64ff6051fb94e15fcd5ad559fae9ee",
+      "result_archive_sha256": "2092615eabdf28d755118adaedc9fa6d40ceccf3075c7be7b80c7e6dc0187367",
+      "case": "local-index-refine-128-rho3",
+      "execution_id": "5645c87c-b3d0-4f87-9a87-0c1bf153d4b1",
+      "independent_executions": 1,
+      "plans": {
+        "persistent-supportprep-band-recompute-vjp-index-atom32": {
+          "graph_us": 82.44499986176379,
+          "peak_allocated_bytes": 473088,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-atom32": {
+          "graph_us": 82.27400007854158,
+          "peak_allocated_bytes": 446464,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+          "graph_us": 82.40699980888166,
+          "peak_allocated_bytes": 446464,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-fused-atom32": {
+          "graph_us": 99.64700007003557,
+          "peak_allocated_bytes": 446464,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+          "graph_us": 82.03199990930443,
+          "peak_allocated_bytes": 341504,
+          "peak_reserved_bytes": 6291456
+        },
+        "dense": {
+          "graph_us": 45.67199994198745,
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496
+        }
+      }
+    },
+    {
+      "job": "l4job-297d3b9a431541d1b95784581f3336b7",
+      "source_commit": "8ce58636afb147e6d20f00939cb8e23214c10475",
+      "source_snapshot_sha256": "5c7cc4f56b6b427b9a8c12c6e12cc83e8e64ff6051fb94e15fcd5ad559fae9ee",
+      "result_archive_sha256": "2092615eabdf28d755118adaedc9fa6d40ceccf3075c7be7b80c7e6dc0187367",
+      "case": "local-index-refine-64-rho3",
+      "execution_id": "c0fcbdd4-d577-4c02-8428-409e0762a9a0",
+      "independent_executions": 1,
+      "plans": {
+        "persistent-supportprep-band-recompute-vjp-index-atom32": {
+          "graph_us": 67.63500005035894,
+          "peak_allocated_bytes": 161792,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-atom32": {
+          "graph_us": 66.67599996035278,
+          "peak_allocated_bytes": 158208,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+          "graph_us": 66.58400002379494,
+          "peak_allocated_bytes": 156672,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-fused-atom32": {
+          "graph_us": 69.22500006112386,
+          "peak_allocated_bytes": 156672,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+          "graph_us": 65.49099998665042,
+          "peak_allocated_bytes": 130560,
+          "peak_reserved_bytes": 6291456
+        },
+        "dense": {
+          "graph_us": 38.86500007865834,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496
+        }
+      }
+    },
+    {
+      "job": "l4job-4788190877124197944ab0f2db84d286",
+      "source_commit": "a7699b4765c8de0cfaa8cf9519975f0b150cb992",
+      "source_snapshot_sha256": "d00c10c8f0069a4c3cc243db752a3f22c0b57b694b917e03b3a3d5b4dec3ad68",
+      "result_archive_sha256": "2961e8ef47f3f252bbea8062ccc7147729569f341bbc1d0b92a3afac03d600ba",
+      "case": "local-index-refine-128-rho3",
+      "execution_id": "24e93576-de59-459f-8a7d-8003de107d0f",
+      "independent_executions": 1,
+      "plans": {
+        "persistent-supportprep-band-recompute-vjp-index-atom32": {
+          "graph_us": 82.35000018430583,
+          "peak_allocated_bytes": 473088,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-atom32": {
+          "graph_us": 82.05300014196837,
+          "peak_allocated_bytes": 446464,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+          "graph_us": 82.39500016316015,
+          "peak_allocated_bytes": 446464,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-fused-atom32": {
+          "graph_us": 99.84700000131852,
+          "peak_allocated_bytes": 446464,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+          "graph_us": 81.64000018950901,
+          "peak_allocated_bytes": 341504,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-release-h-atom32": {
+          "graph_us": 82.34799997808295,
+          "peak_allocated_bytes": 446464,
+          "peak_reserved_bytes": 6291456
+        },
+        "dense": {
+          "graph_us": 45.58399996312801,
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496
+        }
+      }
+    },
+    {
+      "job": "l4job-4788190877124197944ab0f2db84d286",
+      "source_commit": "a7699b4765c8de0cfaa8cf9519975f0b150cb992",
+      "source_snapshot_sha256": "d00c10c8f0069a4c3cc243db752a3f22c0b57b694b917e03b3a3d5b4dec3ad68",
+      "result_archive_sha256": "2961e8ef47f3f252bbea8062ccc7147729569f341bbc1d0b92a3afac03d600ba",
+      "case": "local-index-refine-64-rho3",
+      "execution_id": "b6b04530-e5c8-4f70-8b34-a4f187137c60",
+      "independent_executions": 1,
+      "plans": {
+        "persistent-supportprep-band-recompute-vjp-index-atom32": {
+          "graph_us": 66.7700001031335,
+          "peak_allocated_bytes": 161792,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-atom32": {
+          "graph_us": 66.67399998150358,
+          "peak_allocated_bytes": 158208,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+          "graph_us": 66.02400003430375,
+          "peak_allocated_bytes": 156672,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-fused-atom32": {
+          "graph_us": 71.93999999799416,
+          "peak_allocated_bytes": 156672,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+          "graph_us": 65.89800000256218,
+          "peak_allocated_bytes": 130560,
+          "peak_reserved_bytes": 6291456
+        },
+        "persistent-supportprep-band-recompute-vjp-index16-release-h-atom32": {
+          "graph_us": 66.4469998810091,
+          "peak_allocated_bytes": 156672,
+          "peak_reserved_bytes": 6291456
+        },
+        "dense": {
+          "graph_us": 38.7349998618447,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496
+        }
+      }
+    }
+  ],
+  "diagnostic_capture_allocator_observer": {
+    "job": "l4job-036c2579e9a7460b89dfc748ed16e605",
+    "source_snapshot_sha256": "09c2b58baf249431ef343e4c0a2b18a291310ccc1edf775bbf9a08284ae784e6",
+    "result_archive_sha256": "d401abd1c41e8914a498c5ec939cc597c3c8b2960a961f1da6e818939c011c01",
+    "case": "N128 B32 rho3",
+    "scope": "CPU allocator counters during capture only; not primary timing or physical traffic",
+    "results": [
+      {
+        "plan": "persistent-supportprep-band-recompute-vjp-index-atom32",
+        "complete_peak_allocated": 473088,
+        "first_peak_stamp": {
+          "phase": "output",
+          "edge": 1,
+          "allocated": 473088,
+          "peak": 473088
+        }
+      },
+      {
+        "plan": "persistent-supportprep-band-recompute-vjp-index16-release-h-atom32",
+        "complete_peak_allocated": 446464,
+        "first_peak_stamp": {
+          "phase": "output",
+          "edge": 1,
+          "allocated": 446464,
+          "peak": 446464
+        }
+      },
+      {
+        "plan": "persistent-supportprep-band-recompute-vjp-index16-local-atom32",
+        "complete_peak_allocated": 341504,
+        "first_peak_stamp": {
+          "phase": "output",
+          "edge": 1,
+          "allocated": 341504,
+          "peak": 341504
+        }
+      }
+    ]
+  },
+  "failed_or_unexecuted_submissions": [
+    {
+      "job": "l4job-c8f42d895397495f9f5b40ac017478ca",
+      "status": "failed",
+      "cause": "Saved-storage test inspected public ViewBackward0 instead of hooks; no performance measurement."
+    },
+    {
+      "job": "l4job-79b7e286872f4630820bcca62810e146",
+      "status": "failed",
+      "cause": "Same saved-storage test introspection issue in local-H route; no performance measurement."
+    },
+    {
+      "job": "l4job-d93c3f97e0974bf38f3be4a3c1b6348d",
+      "status": "cancelled before execution",
+      "cause": "Driver source argument placeholder; replaced by correctly pinned submission."
+    }
+  ],
+  "owned_runtimes": "stopped",
+  "database": [
+    {
+      "job": "l4job-297d3b9a431541d1b95784581f3336b7",
+      "artifact": "owner-index-refine-128-rho3.json",
+      "run_id": "122afd3a3eaa3f283d8916419cb76447406f7a9302bbffba381b364cf99860a5",
+      "projection_id": "4cb5c79d6251169f489ce75e147367f991017ec56ea8c859106d8b7978baa580",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "e3f26775907b0fb08e871d47495c8d3f9d2bffa5a0e808df5b73775ccd2726b8",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-297d3b9a431541d1b95784581f3336b7",
+      "artifact": "owner-index-refine-64-rho3.json",
+      "run_id": "550ad1699d4c0d8caaf93e86c3680d61a99934efc1350252512c00c38820b35f",
+      "projection_id": "864a52a54c65efd34117eec8fba26d3a8fb539306f52e4a96fcfa18747e526b5",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "d07eab9ab4c28df2c536bafd2dbe7cf1ddd7b90f63df7634969d854728d5b11c",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-4788190877124197944ab0f2db84d286",
+      "artifact": "owner-index-refine-128-rho3.json",
+      "run_id": "0d4351eece7f37a372ae7d3d978aa7691d75f58f336a607e456f636d3089a1bd",
+      "projection_id": "b4cd2e926798611b06347c98fb8521c1fc218d8ff4c46720354836e6d11ec71c",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "6ae94e48dac5b45777dbbe77fff5b7476f8b6d30637407f5496ede3927d1afc4",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-4788190877124197944ab0f2db84d286",
+      "artifact": "owner-index-refine-64-rho3.json",
+      "run_id": "453c6fd2373a478990845fde3ca362bd77f64bf8b4b2cbf6a502a8c32873bce1",
+      "projection_id": "eff4a7332337ca7ace0ca3f3582636607c73513e41f9b1825c640088cf91daf6",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "be9ad3b684e2119e78be6ca0bb0ad1b7ed677a358b467a639f906959cd330ad6",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-7d454da9e5e2490eb2acb21600d0053c",
+      "artifact": "owner-index-refine-128-rho1_25.json",
+      "run_id": "be20e466e9d8dcf81aea5e800f6f2e425ecc10dedea9647f3d8998551e9cd0c8",
+      "projection_id": "bfad351d78db91aed22b9b3360837c65c374e5ecbdaa78d6757eacec4cc8f32a",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "dad2ccbb4dca271dd6a88397497bc4a14594fa73f988e8143194f8e707fe2ddb",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-7d454da9e5e2490eb2acb21600d0053c",
+      "artifact": "owner-index-refine-128-rho3.json",
+      "run_id": "06903f494a3fd3fecb5812c7945e31164e9bcaecfa92d197d19b14a55e8cd7d5",
+      "projection_id": "755a543595a713d818df3784df7a47abb84799c1af908f17e020a32b54e25860",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "99d300bdec00f897a3fa9b9de63509c21b353b5c54e3cce61b51ee44cca09fc8",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-7d454da9e5e2490eb2acb21600d0053c",
+      "artifact": "owner-index-refine-128-rho8.json",
+      "run_id": "af902de08397ec552a7d794415988e258e3a0b9b67274730bd56f46a5e90add4",
+      "projection_id": "11fd6531257d155f4c302e51ee44f62e3eb1d5b39f57fa9983211788079a890f",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "13ee88f39aafa0a896271850081a9275aea2c36027277fa57249181cb0fec2d4",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-7d454da9e5e2490eb2acb21600d0053c",
+      "artifact": "owner-index-refine-128-rhomixed.json",
+      "run_id": "295ce54f09905aa019b03d92054269c94ae9281142536ecdf09b19f075d05675",
+      "projection_id": "14fbc690c51d3d8e940ce79c3b032b29e0bdc2b9f29887672901187073d6ab53",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "161e6451a8f561436268009ae8ce37ab276f9c0d6c933a2417cc3c78a57ef57b",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-7d454da9e5e2490eb2acb21600d0053c",
+      "artifact": "owner-index-refine-64-rho1_25.json",
+      "run_id": "c381ddcf98379027f911f2b9391291dcc746a7cd7b1db7a9a99490c6ba8233f2",
+      "projection_id": "1e32da4a62986aa10909005d932f993161dc345f28ec6877d9b19db8330119d8",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "00a2ae7dd017c1f49975db6ef7425683aa10edfa78ad8b9027d75b865e2e1db4",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-7d454da9e5e2490eb2acb21600d0053c",
+      "artifact": "owner-index-refine-64-rho3.json",
+      "run_id": "9fa33ccf8231c5a5270539f90173d84ba39c062b0e601375310746c19ea92af7",
+      "projection_id": "68ef41ed6ce6433e97435ed7940a5f0a04e217eb3a15dcd3301c3b09b43e90f0",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "74c201791ac11a79f441f2fcfbd21ac086ffed42c0ea43ffab5b78b4e005c4ba",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-7d454da9e5e2490eb2acb21600d0053c",
+      "artifact": "owner-index-refine-64-rho8.json",
+      "run_id": "1638dac17d5dbb1bcb6a01b7a11178b6b0187771fc200a3aca79a850f4a8404b",
+      "projection_id": "f42ecddb578e1c9bb508841bb3bc9d93ac8e09ec41579cff3b517a3b0a283ffc",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "8f79ef3079fb94509d244ee3712bc57d0fc36b58da945373ee6e2d0c08b55040",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-7d454da9e5e2490eb2acb21600d0053c",
+      "artifact": "owner-index-refine-64-rhomixed.json",
+      "run_id": "9c5b291d4fd2c89a91db2223cd129ddc7d071cbe39a2b1b6f001408954f10e54",
+      "projection_id": "e9ba6a468c37817c3ccf8abb3e205c9be6b7598bf5b23fdc2c8c33b277543752",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "431f8db81a28dfec4efd203c5e5d95514acee3e819806f8d9691aa23c28a695c",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-21bc32b54df9479f8dab33ec7c543e8c",
+      "artifact": "owner-index-refine-128-rho1_25.json",
+      "run_id": "7ce868d5b0f6f2aff0707370fb9ed1e19db836529f7325995cf42c66ea0c1230",
+      "projection_id": "2023c3397d151c264b7f433315cf49274faa52f17b030d517ecfaf3d6d4dd1cb",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "74ac75c48d0df1f6091557bf979c5b435231b9c34fde08c91bb7c33e85c89a4c",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-21bc32b54df9479f8dab33ec7c543e8c",
+      "artifact": "owner-index-refine-128-rho3.json",
+      "run_id": "ed5be7efc4ee609c959e7e1823c3bc971b847fdd2a6494580c321de7a625fa1b",
+      "projection_id": "2b981c29c2f80608a767c16b7691d62baa9c59441c281c95fee171769c17435b",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "da03b7a4e6d1df11dc67146d15b885151d09a0ae228668db6597b57576388e4e",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-21bc32b54df9479f8dab33ec7c543e8c",
+      "artifact": "owner-index-refine-128-rho8.json",
+      "run_id": "3b9987db97e8ee72f9f9ce1180da60b60c4a73020af99e206ff4622cf3a11961",
+      "projection_id": "15617d3f8828190b4eb64540dd1f3611de5ba3b2da0ed8d0b9c6f98432690b85",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "e93c6034d97d0f4b0ce3b363f6a918c374185643d18ded826819376fa97b20f5",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-21bc32b54df9479f8dab33ec7c543e8c",
+      "artifact": "owner-index-refine-128-rhomixed.json",
+      "run_id": "9930c8655b0d4657b73c712e73177f93b99f95830c48c5f335e6beac1ca9dab6",
+      "projection_id": "c4d04980609d5e87c2e735ba55704004100cbeed91746e45da3f06423eb69201",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "d5be907f53ba5790dff153b39688ae500ea275a1c99f631e4fc95fd803c20bde",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-21bc32b54df9479f8dab33ec7c543e8c",
+      "artifact": "owner-index-refine-64-rho1_25.json",
+      "run_id": "7e31fdc0df99f9ed6f671531b4bda1588e67a318669b43649acfb441bdc1da08",
+      "projection_id": "2cc22696257526fb3dab46caca2b44a60f7ce60e0fea8843421344da496c9e20",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "97226ca847ce7905af23e7a104b1795122e642d8dc1dc310acdeeb925b86f44e",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-21bc32b54df9479f8dab33ec7c543e8c",
+      "artifact": "owner-index-refine-64-rho3.json",
+      "run_id": "b9756681d3c115109598f4d2aecd5550839793678db72c0fce42f78b408ba1ce",
+      "projection_id": "c55b0234ad94b686d41ef446277f1d2b565686a05a24ca487b206fa4b4b2605b",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "e0e66ca0d499f9b5506cd84d16c1529b57ff1bffd416359b9e0afd6699771244",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-21bc32b54df9479f8dab33ec7c543e8c",
+      "artifact": "owner-index-refine-64-rho8.json",
+      "run_id": "0c5a2aa514ff2c4e10adc1ff54cb26af574581b4e1b076268d005f43f4c9bc18",
+      "projection_id": "a4359ae0942423aa9c860f362961ca8418e6cfe2c7b71fd1a970343470425ed1",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "c4d5ecfa9065ca5b894b925262782f86f614062209e57cacb1dc8aab0b4370ab",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-21bc32b54df9479f8dab33ec7c543e8c",
+      "artifact": "owner-index-refine-64-rhomixed.json",
+      "run_id": "629c492982f3e966453c894bcffe3207ad23d0c5c8cfc3d677c1c51622b4e02c",
+      "projection_id": "3db1f83e6d61a317967c045fe4c700a0139f087944aa115cdd1657315c1cdddf",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "7007f36e0b383d475e45014ad6136c71e09fed7ffa928bc769c5a66fce39b59f",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-4a9d95e80ff246bab942c245419d074c",
+      "artifact": "owner-index-refine-128-rho3.json",
+      "run_id": "73214dbff260d9a42bb9b3a0e6cc6596879f2591746aae53a8665e9edb0f2c45",
+      "projection_id": "a95b3932316c2a6ce25418457f993750353ce59cd523df23ae0fcf7f083b3921",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "61014c49858582140d37fd2ceaa536dab02abb384ada0ddbdb828b41784a4e14",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-4a9d95e80ff246bab942c245419d074c",
+      "artifact": "owner-index-refine-128-rhomixed.json",
+      "run_id": "9f99fe584dd4a0d4ef03c1277f4e424cd7e029a47eb7b2ba475191a0eed3daae",
+      "projection_id": "e1c03c83542d383655a9aab51a866eac0e3ea2c47f76a1752d7a1ae2d3e38e10",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "2764e7f4b1ab79b7e412c174b56d109a2161eea4678070f136888875b523d382",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-4a9d95e80ff246bab942c245419d074c",
+      "artifact": "owner-index-refine-64-rho3.json",
+      "run_id": "adc683ae9fa3c8edbb01fb0c9ec9e27021bd82c8b77409f67e9e25eb5542a577",
+      "projection_id": "bf1278bb10ed182c8f0d3f70c9f19b48d4f9753c61a56501a6e1c1d45c072d6e",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "edcb1cd6920bd665f3f118a55949d711d9d318818e4f11f716b419d33b2ae177",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-4a9d95e80ff246bab942c245419d074c",
+      "artifact": "owner-index-refine-64-rhomixed.json",
+      "run_id": "594f37b93542b27ceef8bb14cc00943473fed9a1b2bc109d3116094e03b43950",
+      "projection_id": "d2eb2677f3ef3bc15445389d241e8897aae183b773240bf6f1fa2a6e5c69da27",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "d239d4a01c8713fc40fb131d34a6b395f1b590f25391280465d6be28b632e38e",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-8ecd650dc3114c9e96a540a004e2b1f6",
+      "artifact": "owner-index-refine-128-rho3.json",
+      "run_id": "a5c93cf7d49c672d8a7664bc8b93fcfd470fecc8ea0ce446506265a9b5cbb9d6",
+      "projection_id": "e9a2b4ddecf15eca373c99e1ddc068be315e5e80e9ec95e39349686eedce16f2",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "0b9f7a8182db9e5ed711b39a72c677db9f058096f2e15f8658ec0f82478928e7",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-8ecd650dc3114c9e96a540a004e2b1f6",
+      "artifact": "owner-index-refine-128-rhomixed.json",
+      "run_id": "2ab6e1ebf66964b1b5323d7aabefd965c1e2e56b28064b3babf9289174a320f9",
+      "projection_id": "386017c5e2da345721c86bd0bc6bc8a21c3683e2905924829b93442645e3a31a",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "8bf92ecfd0f530d43b9f477de767bf909030e0b0becac8d2e5b3feb381f8f1ff",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-8ecd650dc3114c9e96a540a004e2b1f6",
+      "artifact": "owner-index-refine-64-rho3.json",
+      "run_id": "5d98ea520ebfce0f2dff815cee8ffdaa9db3d86f36227f89a86595101c95f626",
+      "projection_id": "6609814c3cad2e6a5b243b5edc60b0d85f34effe058a33924506042afb2c876a",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "81868ed71ba095a770c2aaae5022766e2d2e1a39c05c449352bc939da56ce489",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-8ecd650dc3114c9e96a540a004e2b1f6",
+      "artifact": "owner-index-refine-64-rhomixed.json",
+      "run_id": "8faaa3943c7dc77bedb605fa2d505d8d0aa1f131395a30c82d5cf0d702b41a21",
+      "projection_id": "e74be94e3d471d0f9fa37c3e0b18c6e08a03e04f3791ecdaa2359751367f6dd3",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "c9f3b1aa7dfe65567120954d371660f27d7f2e765494e49a533066e5011ac4d7",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    }
+  ],
+  "preservation": "Raw logs, samples, snapshots and exact drivers remain ignored in evidence/owner-index-refine-20261006 and central pool job directories. No worktree cleanup.",
+  "limitations": [
+    "21 samples are within an execution; only two independent full runs per device/case.",
+    "L4 full8 cases; G4 only rho3 and mixed at both sizes.",
+    "Small timing differences do not establish statistically robust speedup.",
+    "Allocated and reserved peaks are allocator metrics, not total process memory.",
+    "No measured physical DRAM traffic or L2/shared residency claim.",
+    "No public dispatch adoption or arbitrary-geometry/outer-GEMM validation."
+  ]
+}

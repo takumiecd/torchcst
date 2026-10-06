@@ -1,0 +1,4884 @@
+{
+  "schema_version": 1,
+  "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+  "jobs": [
+    {
+      "job": "l4job-ef19681399a242aaa682c993af56f706",
+      "repeat": 1,
+      "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+      "source_snapshot_sha256": "a68c38806e2f063d792d9b90e0123939c3f3f5ffa7446eeb532e693c6fd316c6",
+      "result_archive_sha256": "3cbe8d6af275e8aa321709b0718bc1722931d618e4c109040204bfb1d67fe0fe",
+      "runtime_files_matched": 197
+    },
+    {
+      "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+      "repeat": 1,
+      "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+      "source_snapshot_sha256": "5a93cceb88fcc9c123e4c4bd598424457cc04cdb62dd3e1aeb33de72a91b849c",
+      "result_archive_sha256": "92404f9a55783018bf764c8f80b693a0096daf38d3c9968cb241fd3c59cf37f5",
+      "runtime_files_matched": 197
+    }
+  ],
+  "runtime_files_matched": 197,
+  "protocol": "N64/N128 B32 A204/A819; actual initial rho > 1; FP32 IEEE; production evolving width and fused AdamW/Polar; 21 samples/execution; smoke covers rho3/8; full covers rho1.25/3/8/mixed; repeat2 reverses case/plan order",
+  "full_shape_oracles": [
+    {
+      "case": "local-histinline-128-rho3",
+      "actual_initial_rho_min": 3.0000014305114746,
+      "plans": [
+        {
+          "id": "local-ordered-prep-copy8-atom32",
+          "errors": [
+            {
+              "max": 1.3086026102726578e-06,
+              "rel_l2": 1.7561949590463643e-07
+            },
+            {
+              "max": 1.457482662559073e-06,
+              "rel_l2": 1.744597892749093e-07
+            },
+            {
+              "max": 2.1199747537448133e-06,
+              "rel_l2": 1.902680093823149e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-param2-atom32",
+          "errors": [
+            {
+              "max": 1.3086026102726578e-06,
+              "rel_l2": 1.7561949590463643e-07
+            },
+            {
+              "max": 1.457482662559073e-06,
+              "rel_l2": 1.744597892749093e-07
+            },
+            {
+              "max": 2.1199747537448133e-06,
+              "rel_l2": 1.908526844274055e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 1.3086026102726578e-06,
+              "rel_l2": 1.7561949590463643e-07
+            },
+            {
+              "max": 1.457482662559073e-06,
+              "rel_l2": 1.744597892749093e-07
+            },
+            {
+              "max": 2.2391840432955945e-06,
+              "rel_l2": 1.9076312836505652e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-hist-param2-atom32",
+          "errors": [
+            {
+              "max": 1.3086026102726578e-06,
+              "rel_l2": 1.7561949590463643e-07
+            },
+            {
+              "max": 1.457482662559073e-06,
+              "rel_l2": 1.744597892749093e-07
+            },
+            {
+              "max": 2.1199747537448133e-06,
+              "rel_l2": 1.908526844274055e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-hist-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 1.3086026102726578e-06,
+              "rel_l2": 1.7561949590463643e-07
+            },
+            {
+              "max": 1.457482662559073e-06,
+              "rel_l2": 1.744597892749093e-07
+            },
+            {
+              "max": 2.2391840432955945e-06,
+              "rel_l2": 1.9076312836505652e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-histinline-param2-atom32",
+          "errors": [
+            {
+              "max": 1.3086026102726578e-06,
+              "rel_l2": 1.7561949590463643e-07
+            },
+            {
+              "max": 1.457482662559073e-06,
+              "rel_l2": 1.744597892749093e-07
+            },
+            {
+              "max": 2.1199747537448133e-06,
+              "rel_l2": 1.908526844274055e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 1.3086026102726578e-06,
+              "rel_l2": 1.7561949590463643e-07
+            },
+            {
+              "max": 1.457482662559073e-06,
+              "rel_l2": 1.744597892749093e-07
+            },
+            {
+              "max": 2.2391840432955945e-06,
+              "rel_l2": 1.9076312836505652e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        }
+      ]
+    },
+    {
+      "case": "local-histinline-128-rho8",
+      "actual_initial_rho_min": 8.000003814697266,
+      "plans": [
+        {
+          "id": "local-ordered-prep-copy8-atom32",
+          "errors": [
+            {
+              "max": 2.1023348066862013e-06,
+              "rel_l2": 2.404136208289756e-07
+            },
+            {
+              "max": 1.605466070753181e-06,
+              "rel_l2": 2.3415031569879246e-07
+            },
+            {
+              "max": 2.078502605584731e-06,
+              "rel_l2": 2.399893422063272e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-param2-atom32",
+          "errors": [
+            {
+              "max": 2.1023348066862013e-06,
+              "rel_l2": 2.404136208289756e-07
+            },
+            {
+              "max": 1.605466070753181e-06,
+              "rel_l2": 2.3415031569879246e-07
+            },
+            {
+              "max": 2.0722222764391063e-06,
+              "rel_l2": 2.3465574919377353e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 2.1023348066862013e-06,
+              "rel_l2": 2.404136208289756e-07
+            },
+            {
+              "max": 1.605466070753181e-06,
+              "rel_l2": 2.3415031569879246e-07
+            },
+            {
+              "max": 1.9898070089396924e-06,
+              "rel_l2": 2.3429952761451976e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-hist-param2-atom32",
+          "errors": [
+            {
+              "max": 2.1023348066862013e-06,
+              "rel_l2": 2.404136208289756e-07
+            },
+            {
+              "max": 1.605466070753181e-06,
+              "rel_l2": 2.3415031569879246e-07
+            },
+            {
+              "max": 2.0722222764391063e-06,
+              "rel_l2": 2.3465574919377353e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-hist-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 2.1023348066862013e-06,
+              "rel_l2": 2.404136208289756e-07
+            },
+            {
+              "max": 1.605466070753181e-06,
+              "rel_l2": 2.3415031569879246e-07
+            },
+            {
+              "max": 1.9898070089396924e-06,
+              "rel_l2": 2.3429952761451976e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-histinline-param2-atom32",
+          "errors": [
+            {
+              "max": 2.1023348066862013e-06,
+              "rel_l2": 2.404136208289756e-07
+            },
+            {
+              "max": 1.605466070753181e-06,
+              "rel_l2": 2.3415031569879246e-07
+            },
+            {
+              "max": 2.0722222764391063e-06,
+              "rel_l2": 2.3465574919377353e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        },
+        {
+          "id": "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 2.1023348066862013e-06,
+              "rel_l2": 2.404136208289756e-07
+            },
+            {
+              "max": 1.605466070753181e-06,
+              "rel_l2": 2.3415031569879246e-07
+            },
+            {
+              "max": 1.9898070089396924e-06,
+              "rel_l2": 2.3429952761451976e-07
+            }
+          ],
+          "oracle_center_nonzero": 1638
+        }
+      ]
+    },
+    {
+      "case": "local-histinline-64-rho3",
+      "actual_initial_rho_min": 3.0000014305114746,
+      "plans": [
+        {
+          "id": "local-ordered-prep-copy8-atom32",
+          "errors": [
+            {
+              "max": 5.844936596943739e-07,
+              "rel_l2": 1.553730809637407e-07
+            },
+            {
+              "max": 7.031044049199409e-07,
+              "rel_l2": 1.5136888282202777e-07
+            },
+            {
+              "max": 1.5400313504443375e-06,
+              "rel_l2": 1.8740664171822084e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-param2-atom32",
+          "errors": [
+            {
+              "max": 5.844936596943739e-07,
+              "rel_l2": 1.553730809637407e-07
+            },
+            {
+              "max": 7.031044049199409e-07,
+              "rel_l2": 1.5136888282202777e-07
+            },
+            {
+              "max": 1.4976323807758263e-06,
+              "rel_l2": 1.8628114067218637e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 5.844936596943739e-07,
+              "rel_l2": 1.553730809637407e-07
+            },
+            {
+              "max": 7.031044049199409e-07,
+              "rel_l2": 1.5136888282202777e-07
+            },
+            {
+              "max": 1.4917811306247586e-06,
+              "rel_l2": 1.8560357578201975e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-hist-param2-atom32",
+          "errors": [
+            {
+              "max": 5.844936596943739e-07,
+              "rel_l2": 1.553730809637407e-07
+            },
+            {
+              "max": 7.031044049199409e-07,
+              "rel_l2": 1.5136888282202777e-07
+            },
+            {
+              "max": 1.4976323807758263e-06,
+              "rel_l2": 1.8628114067218637e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-hist-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 5.844936596943739e-07,
+              "rel_l2": 1.553730809637407e-07
+            },
+            {
+              "max": 7.031044049199409e-07,
+              "rel_l2": 1.5136888282202777e-07
+            },
+            {
+              "max": 1.4917811306247586e-06,
+              "rel_l2": 1.8560357578201975e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-histinline-param2-atom32",
+          "errors": [
+            {
+              "max": 5.844936596943739e-07,
+              "rel_l2": 1.553730809637407e-07
+            },
+            {
+              "max": 7.031044049199409e-07,
+              "rel_l2": 1.5136888282202777e-07
+            },
+            {
+              "max": 1.4976323807758263e-06,
+              "rel_l2": 1.8628114067218637e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 5.844936596943739e-07,
+              "rel_l2": 1.553730809637407e-07
+            },
+            {
+              "max": 7.031044049199409e-07,
+              "rel_l2": 1.5136888282202777e-07
+            },
+            {
+              "max": 1.4917811306247586e-06,
+              "rel_l2": 1.8560357578201975e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        }
+      ]
+    },
+    {
+      "case": "local-histinline-64-rho8",
+      "actual_initial_rho_min": 8.000003814697266,
+      "plans": [
+        {
+          "id": "local-ordered-prep-copy8-atom32",
+          "errors": [
+            {
+              "max": 1.0230349833939556e-06,
+              "rel_l2": 2.218393302963049e-07
+            },
+            {
+              "max": 1.1431897855018747e-06,
+              "rel_l2": 2.1597328996588712e-07
+            },
+            {
+              "max": 1.458369096596357e-06,
+              "rel_l2": 2.3044808574457348e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-param2-atom32",
+          "errors": [
+            {
+              "max": 1.0230349833939556e-06,
+              "rel_l2": 2.218393302963049e-07
+            },
+            {
+              "max": 1.1431897855018747e-06,
+              "rel_l2": 2.1597328996588712e-07
+            },
+            {
+              "max": 1.7868976405210901e-06,
+              "rel_l2": 2.400233804622565e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 1.0230349833939556e-06,
+              "rel_l2": 2.218393302963049e-07
+            },
+            {
+              "max": 1.1431897855018747e-06,
+              "rel_l2": 2.1597328996588712e-07
+            },
+            {
+              "max": 1.7868976405210901e-06,
+              "rel_l2": 2.404391466141477e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-hist-param2-atom32",
+          "errors": [
+            {
+              "max": 1.0230349833939556e-06,
+              "rel_l2": 2.218393302963049e-07
+            },
+            {
+              "max": 1.1431897855018747e-06,
+              "rel_l2": 2.1597328996588712e-07
+            },
+            {
+              "max": 1.7868976405210901e-06,
+              "rel_l2": 2.400233804622565e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-hist-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 1.0230349833939556e-06,
+              "rel_l2": 2.218393302963049e-07
+            },
+            {
+              "max": 1.1431897855018747e-06,
+              "rel_l2": 2.1597328996588712e-07
+            },
+            {
+              "max": 1.7868976405210901e-06,
+              "rel_l2": 2.404391466141477e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-histinline-param2-atom32",
+          "errors": [
+            {
+              "max": 1.0230349833939556e-06,
+              "rel_l2": 2.218393302963049e-07
+            },
+            {
+              "max": 1.1431897855018747e-06,
+              "rel_l2": 2.1597328996588712e-07
+            },
+            {
+              "max": 1.7868976405210901e-06,
+              "rel_l2": 2.400233804622565e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        },
+        {
+          "id": "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32",
+          "errors": [
+            {
+              "max": 1.0230349833939556e-06,
+              "rel_l2": 2.218393302963049e-07
+            },
+            {
+              "max": 1.1431897855018747e-06,
+              "rel_l2": 2.1597328996588712e-07
+            },
+            {
+              "max": 1.7868976405210901e-06,
+              "rel_l2": 2.404391466141477e-07
+            }
+          ],
+          "oracle_center_nonzero": 408
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "case": {
+        "id": "local-histinline-128-rho3",
+        "fixture": "local_polar_product",
+        "size": 128,
+        "rows": 32,
+        "atoms": 819,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "plans": {
+        "local-ordered-prep-copy8-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "12377fc4-b40c-4fe0-a963-06ee2e21114b",
+            "graph_us": 70.49800024105934,
+            "graph_samples_us": [
+              109.14999984379392,
+              72.82200022018515,
+              70.73300002957694,
+              97.21800051920582,
+              71.30100038921228,
+              70.43400000839029,
+              70.7099998180638,
+              70.22400041023502,
+              71.62299971241737,
+              70.99400045262882,
+              70.23099988145987,
+              70.49800024105934,
+              70.23499983915826,
+              69.92500038904836,
+              70.16700055828551,
+              70.81700005073799,
+              70.92000032571377,
+              70.31099994492251,
+              70.06000032561133,
+              70.16000017756596,
+              70.4060003045015
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.04149055480957031
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 46,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 56,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 40960
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "12377fc4-b40c-4fe0-a963-06ee2e21114b",
+            "graph_us": 67.7050002195756,
+            "graph_samples_us": [
+              106.06300020299386,
+              69.98200024099788,
+              83.57999922736781,
+              67.95399986003758,
+              68.02000007155584,
+              67.57099981768988,
+              67.72199958504643,
+              67.58099971193587,
+              67.7050002195756,
+              68.48899920441909,
+              67.38400043104775,
+              67.58800009265542,
+              67.40900062141009,
+              67.05000032525277,
+              67.35800070600817,
+              67.82299988117302,
+              67.90600036765682,
+              67.7660000292235,
+              67.29500000801636,
+              67.32499969075434,
+              67.5490000503487
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.04149055480957031
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 14.336000196635723,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 46,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 56,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 2,
+                "shared_bytes": 40960
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "12377fc4-b40c-4fe0-a963-06ee2e21114b",
+            "graph_us": 67.78999977541389,
+            "graph_samples_us": [
+              108.62700037250761,
+              70.42100060061784,
+              71.82399986049859,
+              73.77600013569463,
+              69.4760001351824,
+              67.43100038875127,
+              67.73099994461518,
+              67.64499994460493,
+              67.85200002923375,
+              68.3979997120332,
+              67.78999977541389,
+              67.9300001138472,
+              67.65499983885093,
+              67.14300070598256,
+              67.73299992346438,
+              68.58600045234198,
+              68.52699971204856,
+              67.56999937351793,
+              67.1440002406598,
+              67.29699998686556,
+              67.27799973305082
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.04149055480957031
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 14.336000196635723,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 46,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 56,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 24576
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-hist-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "12377fc4-b40c-4fe0-a963-06ee2e21114b",
+            "graph_us": 69.8000003467314,
+            "graph_samples_us": [
+              108.84599942073692,
+              73.31500000873348,
+              71.28200013539754,
+              69.8000003467314,
+              70.19399981800234,
+              70.0190003044554,
+              69.83200000831857,
+              70.41899971227394,
+              70.98300011421088,
+              69.49299950065324,
+              69.38400019862456,
+              69.3319998390507,
+              69.57300047361059,
+              69.51900013518753,
+              69.92099952185526,
+              69.40399998711655,
+              69.52900002943352,
+              69.66399996599648,
+              68.95700062159449,
+              69.39000013517216,
+              70.6450000507175
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.04149055480957031
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 16.383999958634377,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 14.336000196635723,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 40,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 2,
+                "shared_bytes": 40960
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "12377fc4-b40c-4fe0-a963-06ee2e21114b",
+            "graph_us": 70.482999944943,
+            "graph_samples_us": [
+              110.33099963242421,
+              72.655000622035,
+              71.7209995855228,
+              70.83000036800513,
+              70.482999944943,
+              70.20300017757108,
+              70.50600015645614,
+              70.61199994495837,
+              70.9529995219782,
+              71.32099926820956,
+              71.0419999450096,
+              70.45199981803307,
+              70.13499998720363,
+              70.30300002952572,
+              70.25499962765025,
+              71.05500026227674,
+              70.19500026217429,
+              70.263999987219,
+              70.27599986031419,
+              70.34499958535889,
+              70.26799994491739
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.04149055480957031
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 16.383999958634377,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 14.336000196635723,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 40,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 24576
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-histinline-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "12377fc4-b40c-4fe0-a963-06ee2e21114b",
+            "graph_us": 70.02800066402415,
+            "graph_samples_us": [
+              109.66499939968344,
+              72.09700015664566,
+              70.39799947961001,
+              77.8479998189141,
+              70.54899924696656,
+              70.02800066402415,
+              69.88000041019404,
+              70.29999960650457,
+              69.70599952182965,
+              69.625999458367,
+              69.69900005060481,
+              70.76600013533607,
+              69.50599981792038,
+              69.80199941608589,
+              69.6280003467109,
+              69.57999994483544,
+              69.9539996276144,
+              70.20999964879593,
+              70.13699996605283,
+              70.1729995853384,
+              69.37299986020662
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.04149055480957031
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 16.383999958634377,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 2,
+                "shared_bytes": 40960
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "12377fc4-b40c-4fe0-a963-06ee2e21114b",
+            "graph_us": 70.11399975453969,
+            "graph_samples_us": [
+              122.60200037417235,
+              72.64000032591866,
+              70.76000019878848,
+              70.02000074862735,
+              70.30699998722412,
+              69.61800045246491,
+              70.36199986032443,
+              70.12199966993649,
+              70.03000064287335,
+              69.53100000828272,
+              69.9580004948075,
+              69.79899990255944,
+              70.2560000718222,
+              70.3429996065097,
+              69.64999920455739,
+              69.81899969105143,
+              69.7109999237,
+              75.58899960713461,
+              70.11399975453969,
+              70.17799998720875,
+              69.86800053709885
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.04149055480957031
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585108757019043,
+              2.9585533142089844
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 16.383999958634377,
+              "h": 2.047999994829297,
+              "output": 14.336000196635723,
+              "dx": 14.336000196635723,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 24576
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "dense": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "12377fc4-b40c-4fe0-a963-06ee2e21114b",
+            "graph_us": 45.865999709349126,
+            "graph_samples_us": [
+              76.08699979755329,
+              47.43800036521861,
+              46.18699949787697,
+              45.64599930745317,
+              45.789999603584874,
+              46.01999989972683,
+              49.3950001327903,
+              46.77699962485349,
+              45.95500013238052,
+              45.56099975161487,
+              45.865999709349126,
+              45.61299920169404,
+              45.50300036498811,
+              45.67199994198745,
+              45.57899956125766,
+              51.331000577192754,
+              46.35400000552181,
+              45.42799979390111,
+              45.933000365039334,
+              45.397999201668426,
+              45.58199998427881
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 70.49800024105934,
+          "run_medians_us": [
+            70.49800024105934
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 14.336000196635723,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 67.7050002195756,
+          "run_medians_us": [
+            67.7050002195756
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 14.336000196635723,
+            "dx": 14.336000196635723,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 67.78999977541389,
+          "run_medians_us": [
+            67.78999977541389
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 14.336000196635723,
+            "dx": 14.336000196635723,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-hist-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 69.8000003467314,
+          "run_medians_us": [
+            69.8000003467314
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 16.383999958634377,
+            "h": 2.047999994829297,
+            "output": 14.336000196635723,
+            "dx": 14.336000196635723,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 70.482999944943,
+          "run_medians_us": [
+            70.482999944943
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 16.383999958634377,
+            "h": 2.047999994829297,
+            "output": 14.336000196635723,
+            "dx": 14.336000196635723,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-histinline-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 70.02800066402415,
+          "run_medians_us": [
+            70.02800066402415
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 16.383999958634377,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 70.11399975453969,
+          "run_medians_us": [
+            70.11399975453969
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 16.383999958634377,
+            "h": 2.047999994829297,
+            "output": 14.336000196635723,
+            "dx": 14.336000196635723,
+            "parameters": 10.239999741315842
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 45.865999709349126,
+          "run_medians_us": [
+            45.865999709349126
+          ],
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "candidate_summary": {
+        "local-ordered-reuse-param2-atom32": {
+          "time_reduction_percent": 3.961814536488162,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 70.49800024105934,
+              "candidate_us": 67.7050002195756,
+              "time_reduction_percent": 3.961814536488162,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 3.841244370600272,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 70.49800024105934,
+              "candidate_us": 67.78999977541389,
+              "time_reduction_percent": 3.841244370600272,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-hist-param2-atom32": {
+          "time_reduction_percent": 0.9900988566217794,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 70.49800024105934,
+              "candidate_us": 69.8000003467314,
+              "time_reduction_percent": 0.9900988566217794,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 0.021277619315507312,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 70.49800024105934,
+              "candidate_us": 70.482999944943,
+              "time_reduction_percent": 0.021277619315507312,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-histinline-param2-atom32": {
+          "time_reduction_percent": 0.6666849774860095,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 70.49800024105934,
+              "candidate_us": 70.02800066402415,
+              "time_reduction_percent": 0.6666849774860095,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 0.5446969916970801,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 70.49800024105934,
+              "candidate_us": 70.11399975453969,
+              "time_reduction_percent": 0.5446969916970801,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "local-histinline-128-rho8",
+        "fixture": "local_polar_product",
+        "size": 128,
+        "rows": 32,
+        "atoms": 819,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            8
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "plans": {
+        "local-ordered-prep-copy8-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "1031fe9b-5ba6-46b2-8896-3ab2dad46dba",
+            "graph_us": 73.77400015684543,
+            "graph_samples_us": [
+              122.68499995116144,
+              76.54599994566524,
+              74.18699988193111,
+              73.38700015679933,
+              73.77400015684543,
+              72.98500077013159,
+              74.13399998768,
+              73.91900089714909,
+              73.26699960685801,
+              73.15099992410978,
+              72.67399996635504,
+              79.36099973449018,
+              73.64599969150731,
+              72.96600051631685,
+              73.95800002996111,
+              73.43000015680445,
+              73.68299975496484,
+              73.95200009341352,
+              80.94300028460566,
+              74.53299986082129,
+              73.7509999453323
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.19462251663208008
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 16.383999958634377
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 46,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 56,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 40960
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "1031fe9b-5ba6-46b2-8896-3ab2dad46dba",
+            "graph_us": 69.72600021981634,
+            "graph_samples_us": [
+              108.57600045710569,
+              73.06800034712069,
+              70.15500068519032,
+              69.46700068510836,
+              69.47300062165596,
+              69.0220003889408,
+              69.44599954294972,
+              86.99699992575916,
+              72.21499981824309,
+              70.37199975457042,
+              69.6380002409569,
+              69.82300055824453,
+              69.59999973332742,
+              69.72600021981634,
+              69.97099990257993,
+              69.65900047362084,
+              68.99299933138536,
+              69.5690005159122,
+              69.30299969098996,
+              70.00499954301631,
+              70.61800079100067
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.19462251663208008
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 15.359999611973763,
+              "parameters": 12.28800043463707
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 46,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 56,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 2,
+                "shared_bytes": 40960
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "1031fe9b-5ba6-46b2-8896-3ab2dad46dba",
+            "graph_us": 69.99299966992112,
+            "graph_samples_us": [
+              108.30199971678667,
+              72.47099983942462,
+              70.77899954310851,
+              69.96199954301119,
+              70.75399935274618,
+              70.41099979687715,
+              70.58600021991879,
+              70.04700000834418,
+              69.36399950063787,
+              69.66900036786683,
+              69.53000047360547,
+              70.13199956418248,
+              70.63599969114875,
+              69.2390003678156,
+              69.7089999448508,
+              69.42399977560854,
+              69.66399996599648,
+              69.99299966992112,
+              69.96699994488154,
+              70.13100002950523,
+              69.66300043131923
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.19462251663208008
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 13.311999849975109,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 46,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 56,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 24576
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-hist-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "1031fe9b-5ba6-46b2-8896-3ab2dad46dba",
+            "graph_us": 71.97299964900594,
+            "graph_samples_us": [
+              113.55199967510998,
+              80.20499990379903,
+              72.77199983946048,
+              73.08899967028992,
+              71.97299964900594,
+              71.52800026233308,
+              71.47799988160841,
+              71.48700024117716,
+              71.80699958553305,
+              72.30199935293058,
+              72.57099969137926,
+              71.83900015661493,
+              71.55399998737266,
+              71.84600053733448,
+              71.90399992396124,
+              72.1890000932035,
+              72.20000043162145,
+              71.62499969126657,
+              71.85200047388207,
+              72.05300062196329,
+              72.17600068543106
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.19462251663208008
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 16.383999958634377,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 40,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 2,
+                "shared_bytes": 40960
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "1031fe9b-5ba6-46b2-8896-3ab2dad46dba",
+            "graph_us": 72.78600060089957,
+            "graph_samples_us": [
+              113.06899978080764,
+              75.26700028392952,
+              73.19500036828686,
+              73.13000060094055,
+              73.33900066441856,
+              72.40600007207831,
+              72.50799990288215,
+              72.40299964905716,
+              71.99499941634713,
+              72.7399992683786,
+              74.01900074910372,
+              74.16000062221428,
+              72.43500022013905,
+              72.4320007066126,
+              73.01400000869762,
+              72.78600060089957,
+              72.68000081239734,
+              72.88699998753145,
+              72.98200034711044,
+              72.49100053741131,
+              72.76099950104253
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.19462251663208008
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.183999892324209,
+              "layout": 16.383999958634377,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "ordered_owner_ranges": {
+                "registers": 40,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 24576
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-histinline-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "1031fe9b-5ba6-46b2-8896-3ab2dad46dba",
+            "graph_us": 72.10400053736521,
+            "graph_samples_us": [
+              111.85899984411662,
+              74.47799998772098,
+              85.18499998899642,
+              73.17600011447212,
+              72.00799973361427,
+              72.5070003682049,
+              72.10400053736521,
+              71.87200026237406,
+              79.12499950180063,
+              71.79899967013625,
+              72.01100015663542,
+              72.15799996629357,
+              72.21400028356584,
+              72.01100015663542,
+              72.09800060081761,
+              74.95500085497042,
+              72.26100024126936,
+              71.17400036804611,
+              72.08399983937852,
+              71.75599967013113,
+              71.85699996625772
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.19462251663208008
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 6.144000217318535,
+              "layout": 16.383999958634377,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 2,
+                "shared_bytes": 40960
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "1031fe9b-5ba6-46b2-8896-3ab2dad46dba",
+            "graph_us": 72.21599935292033,
+            "graph_samples_us": [
+              119.01600009878166,
+              75.16799996665213,
+              73.00000015675323,
+              72.00900017778622,
+              71.92099928943207,
+              72.78900011442602,
+              73.047999649134,
+              71.92199973360403,
+              72.01500011433382,
+              71.97299964900594,
+              71.8769997547497,
+              72.4300007277634,
+              72.05600013548974,
+              72.0449997970718,
+              72.22200019896263,
+              72.14200013549998,
+              72.45300002978183,
+              72.21599935292033,
+              81.04700009425869,
+              72.28499998745974,
+              71.67599960666848
+            ],
+            "peak_allocated_bytes": 303104,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            },
+            "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+            "rho": {
+              "changed_atoms": 819,
+              "max_abs_change": 0.19462251663208008
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.8053812980651855,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 16.383999958634377,
+              "h": 2.047999994829297,
+              "output": 13.311999849975109,
+              "dx": 14.336000196635723,
+              "parameters": 12.28800043463707
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 42,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 4096
+              },
+              "packed_forward": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 96,
+                "spill_slots": 0,
+                "shared_bytes": 26624
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 24576
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "dense": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-ef19681399a242aaa682c993af56f706",
+            "execution_id": "1031fe9b-5ba6-46b2-8896-3ab2dad46dba",
+            "graph_us": 45.81499979394721,
+            "graph_samples_us": [
+              75.98299998790026,
+              47.87200032296823,
+              46.15600028046174,
+              45.77300023811404,
+              45.77000072458759,
+              45.81499979394721,
+              45.91099968820345,
+              46.03400066116592,
+              45.86500017467188,
+              45.47699973045383,
+              45.98600025929045,
+              45.589000364998356,
+              45.3669999842532,
+              45.58800083032111,
+              45.569999201688915,
+              45.6749994555139,
+              46.62500032281969,
+              46.26500049198512,
+              45.9120001323754,
+              45.66999996313825,
+              45.57699958240846
+            ],
+            "peak_allocated_bytes": 34408960,
+            "peak_reserved_bytes": 48234496,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+              "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 73.77400015684543,
+          "run_medians_us": [
+            73.77400015684543
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 16.383999958634377
+          }
+        },
+        "local-ordered-reuse-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 69.72600021981634,
+          "run_medians_us": [
+            69.72600021981634
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 15.359999611973763,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 69.99299966992112,
+          "run_medians_us": [
+            69.99299966992112
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-hist-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 71.97299964900594,
+          "run_medians_us": [
+            71.97299964900594
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 16.383999958634377,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 72.78600060089957,
+          "run_medians_us": [
+            72.78600060089957
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.183999892324209,
+            "layout": 16.383999958634377,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-histinline-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 72.10400053736521,
+          "run_medians_us": [
+            72.10400053736521
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 16.383999958634377,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 72.21599935292033,
+          "run_medians_us": [
+            72.21599935292033
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 16.383999958634377,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 45.81499979394721,
+          "run_medians_us": [
+            45.81499979394721
+          ],
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "candidate_summary": {
+        "local-ordered-reuse-param2-atom32": {
+          "time_reduction_percent": 5.487027853204296,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 73.77400015684543,
+              "candidate_us": 69.72600021981634,
+              "time_reduction_percent": 5.487027853204296,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 5.125112477140736,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 73.77400015684543,
+              "candidate_us": 69.99299966992112,
+              "time_reduction_percent": 5.125112477140736,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-hist-param2-atom32": {
+          "time_reduction_percent": 2.44124014423851,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 73.77400015684543,
+              "candidate_us": 71.97299964900594,
+              "time_reduction_percent": 2.44124014423851,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 1.339224596531774,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 73.77400015684543,
+              "candidate_us": 72.78600060089957,
+              "time_reduction_percent": 1.339224596531774,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-histinline-param2-atom32": {
+          "time_reduction_percent": 2.263669607083474,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 73.77400015684543,
+              "candidate_us": 72.10400053736521,
+              "time_reduction_percent": 2.263669607083474,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 2.1118562103352723,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-ef19681399a242aaa682c993af56f706",
+              "baseline_us": 73.77400015684543,
+              "candidate_us": 72.21599935292033,
+              "time_reduction_percent": 2.1118562103352723,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "local-histinline-64-rho3",
+        "fixture": "local_polar_product",
+        "size": 64,
+        "rows": 32,
+        "atoms": 204,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "plans": {
+        "local-ordered-prep-copy8-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "9e95bba4-9e7d-4d70-a8e3-d8d557cd10e1",
+            "graph_us": 59.501000578165986,
+            "graph_samples_us": [
+              99.54300003300887,
+              61.76699935167562,
+              59.91200123389717,
+              59.53800064162351,
+              59.481999414856546,
+              60.53200013411697,
+              60.620001022471115,
+              59.326999689801596,
+              59.501000578165986,
+              60.17300074745435,
+              59.174999478273094,
+              59.540998336160555,
+              59.71099926682655,
+              59.328000133973546,
+              59.39699985901825,
+              59.08000093768351,
+              59.27599886490498,
+              59.160000091651455,
+              59.14699977438431,
+              59.19499926676508,
+              59.609999880194664
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.04149007797241211
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 16.383999958634377
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 27,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 218,
+                "spill_slots": 0,
+                "shared_bytes": 24576
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "9e95bba4-9e7d-4d70-a8e3-d8d557cd10e1",
+            "graph_us": 53.065999964019284,
+            "graph_samples_us": [
+              92.47600064554717,
+              55.86200131801888,
+              53.726998885395005,
+              53.5059989488218,
+              52.89599903335329,
+              53.06999992171768,
+              53.918000048724934,
+              53.54300083126873,
+              53.065999964019284,
+              52.736999350599945,
+              52.55799987935461,
+              53.32999899110291,
+              52.66500011202879,
+              52.76299998513423,
+              53.37699985830113,
+              53.03699981595855,
+              52.79399920254946,
+              53.29300074663479,
+              52.92500100040343,
+              52.973000492784195,
+              52.90799890644848
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.04149007797241211
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 10.239999741315842,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 27,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 128,
+                "spill_slots": 0,
+                "shared_bytes": 20480
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "9e95bba4-9e7d-4d70-a8e3-d8d557cd10e1",
+            "graph_us": 51.4940002176445,
+            "graph_samples_us": [
+              109.07899923040532,
+              61.24799983808771,
+              52.602001233026385,
+              51.61399894859642,
+              51.622000682982616,
+              51.4940002176445,
+              51.342000006115995,
+              51.31099896971136,
+              51.34599996381439,
+              52.76000047160778,
+              51.19100023875944,
+              51.53699930815492,
+              51.022001571254805,
+              51.24500057718251,
+              51.27700023876969,
+              51.106999308103696,
+              51.41200017533265,
+              51.51000004843809,
+              52.089000746491365,
+              51.5669999003876,
+              51.08699951961171
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.04149007797241211
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 9.216000325977802
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 27,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 91,
+                "spill_slots": 0,
+                "shared_bytes": 12288
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-hist-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "9e95bba4-9e7d-4d70-a8e3-d8d557cd10e1",
+            "graph_us": 54.23800030257553,
+            "graph_samples_us": [
+              115.99299978115596,
+              57.80200081062503,
+              54.56299913930707,
+              54.45899842015933,
+              54.256999646895565,
+              54.074000217951834,
+              54.61000000650529,
+              54.92300078913104,
+              54.23800030257553,
+              53.928999477648176,
+              54.369000281440094,
+              54.230000387178734,
+              53.56899964681361,
+              53.94199979491532,
+              53.83700045058504,
+              54.48100091598462,
+              55.344000429613516,
+              54.060001275502145,
+              53.963000027579255,
+              54.117999752634205,
+              53.83000097936019
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.04149007797241211
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 10.239999741315842,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 48,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 24,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 128,
+                "spill_slots": 0,
+                "shared_bytes": 20480
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "9e95bba4-9e7d-4d70-a8e3-d8d557cd10e1",
+            "graph_us": 52.555000365828164,
+            "graph_samples_us": [
+              92.26099973602686,
+              55.73700036620721,
+              52.987999879405834,
+              52.79099968902301,
+              52.63099956209771,
+              52.555000365828164,
+              52.67999949865043,
+              52.34399941400625,
+              52.39000165602192,
+              52.1970014233375,
+              52.277000577305444,
+              52.47799890639726,
+              52.161998610245064,
+              52.440998842939734,
+              52.634000894613564,
+              52.477000281214714,
+              53.607000154443085,
+              53.25799975253176,
+              52.53700146568008,
+              52.56899930827785,
+              52.29599992162548
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.04149007797241211
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 10.239999741315842,
+              "h": 2.047999994829297,
+              "output": 10.239999741315842,
+              "dx": 10.239999741315842,
+              "parameters": 9.216000325977802
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 48,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 24,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 91,
+                "spill_slots": 0,
+                "shared_bytes": 12288
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-histinline-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "9e95bba4-9e7d-4d70-a8e3-d8d557cd10e1",
+            "graph_us": 52.28100053500384,
+            "graph_samples_us": [
+              90.21500045491848,
+              54.64000059873797,
+              52.673998652608134,
+              52.54099960438907,
+              52.25400127528701,
+              52.1120000485098,
+              52.067998694838025,
+              52.20200000621844,
+              52.78800017549656,
+              52.60199941403698,
+              52.852001317660324,
+              52.28100053500384,
+              51.973998779430985,
+              52.29999987932388,
+              52.15199962549377,
+              52.49199966783635,
+              52.22199979471043,
+              52.183000661898404,
+              52.25499990046956,
+              52.412000513868406,
+              51.9519999215845
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.04149007797241211
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 48,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 128,
+                "spill_slots": 0,
+                "shared_bytes": 20480
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "9e95bba4-9e7d-4d70-a8e3-d8d557cd10e1",
+            "graph_us": 50.9469991811784,
+            "graph_samples_us": [
+              89.41400119510945,
+              53.09799962560646,
+              51.38799861015286,
+              52.114999562036246,
+              51.94000004848931,
+              50.92200080980547,
+              51.2549995619338,
+              50.9469991811784,
+              50.72999920230359,
+              50.799999371520244,
+              50.57499947724864,
+              62.17600093805231,
+              51.45100112713408,
+              50.661999921430834,
+              50.67200072517153,
+              50.643999202293344,
+              50.741000450216234,
+              50.842998462030664,
+              50.81300150777679,
+              51.06599928694777,
+              51.19299930811394
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.04149007797241211
+            },
+            "initial_rho_range": [
+              3.0000014305114746,
+              3.0000014305114746
+            ],
+            "final_rho_range": [
+              2.9585113525390625,
+              2.958557367324829
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 9.216000325977802
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 48,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 91,
+                "spill_slots": 0,
+                "shared_bytes": 12288
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "dense": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "9e95bba4-9e7d-4d70-a8e3-d8d557cd10e1",
+            "graph_us": 39.15199886250775,
+            "graph_samples_us": [
+              70.96400076989084,
+              41.42299985687714,
+              39.6269988414133,
+              39.14300032192841,
+              50.368000302114524,
+              40.54199962411076,
+              38.97799979313277,
+              39.151000237325206,
+              38.84800025844015,
+              39.42900002584793,
+              39.15199886250775,
+              39.18000038538594,
+              39.106000258470885,
+              39.51800135837402,
+              39.288999687414616,
+              39.11500061803963,
+              39.14300032192841,
+              39.17199865099974,
+              38.39999953925144,
+              38.33799928543158,
+              38.57200135826133
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 59.501000578165986,
+          "run_medians_us": [
+            59.501000578165986
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 16.383999958634377
+          }
+        },
+        "local-ordered-reuse-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 53.065999964019284,
+          "run_medians_us": [
+            53.065999964019284
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 10.239999741315842,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 51.4940002176445,
+          "run_medians_us": [
+            51.4940002176445
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 9.216000325977802
+          }
+        },
+        "local-ordered-reuse-hist-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 54.23800030257553,
+          "run_medians_us": [
+            54.23800030257553
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 10.239999741315842,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 52.555000365828164,
+          "run_medians_us": [
+            52.555000365828164
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 10.239999741315842,
+            "h": 2.047999994829297,
+            "output": 10.239999741315842,
+            "dx": 10.239999741315842,
+            "parameters": 9.216000325977802
+          }
+        },
+        "local-ordered-reuse-histinline-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 52.28100053500384,
+          "run_medians_us": [
+            52.28100053500384
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 50.9469991811784,
+          "run_medians_us": [
+            50.9469991811784
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 9.216000325977802
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 39.15199886250775,
+          "run_medians_us": [
+            39.15199886250775
+          ],
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "candidate_summary": {
+        "local-ordered-reuse-param2-atom32": {
+          "time_reduction_percent": 10.814945213724759,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 59.501000578165986,
+              "candidate_us": 53.065999964019284,
+              "time_reduction_percent": 10.814945213724759,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 13.456917165624393,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 59.501000578165986,
+              "candidate_us": 51.4940002176445,
+              "time_reduction_percent": 13.456917165624393,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-hist-param2-atom32": {
+          "time_reduction_percent": 8.845229869162441,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 59.501000578165986,
+              "candidate_us": 54.23800030257553,
+              "time_reduction_percent": 8.845229869162441,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 11.673753625727546,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 59.501000578165986,
+              "candidate_us": 52.555000365828164,
+              "time_reduction_percent": 11.673753625727546,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-histinline-param2-atom32": {
+          "time_reduction_percent": 12.13424979917319,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 59.501000578165986,
+              "candidate_us": 52.28100053500384,
+              "time_reduction_percent": 12.13424979917319,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 14.376231179087927,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 59.501000578165986,
+              "candidate_us": 50.9469991811784,
+              "time_reduction_percent": 14.376231179087927,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "local-histinline-64-rho8",
+        "fixture": "local_polar_product",
+        "size": 64,
+        "rows": 32,
+        "atoms": 204,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            8
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "plans": {
+        "local-ordered-prep-copy8-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "5ec1f957-5bef-44cf-882c-62c5119a0416",
+            "graph_us": 56.9869989703875,
+            "graph_samples_us": [
+              95.8420005190419,
+              59.34599903412163,
+              57.216999266529456,
+              56.9869989703875,
+              57.78800004918594,
+              57.532000937499106,
+              57.02499947801698,
+              56.66700053552631,
+              56.96900007023942,
+              57.355999160790816,
+              56.82899973180611,
+              56.83000017597806,
+              64.42999983846676,
+              56.65000026056077,
+              56.954999308800325,
+              56.743001550785266,
+              56.80699905497022,
+              56.776001656544395,
+              56.26299935101997,
+              59.35099943599198,
+              57.61600004916545
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.19460344314575195
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 14.336000196635723
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 27,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 218,
+                "spill_slots": 0,
+                "shared_bytes": 24576
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "5ec1f957-5bef-44cf-882c-62c5119a0416",
+            "graph_us": 52.999999752501026,
+            "graph_samples_us": [
+              92.85800115321763,
+              55.127000450738706,
+              53.631998525816016,
+              53.137999202590436,
+              53.04099977365695,
+              52.999999752501026,
+              54.19400076789316,
+              52.77599848341197,
+              52.851000873488374,
+              52.66799962555524,
+              53.15799899108242,
+              53.0480010638712,
+              52.68399945634883,
+              53.64400021790061,
+              53.61799958336633,
+              52.938999942853115,
+              52.89100045047235,
+              52.54700045043137,
+              52.53200106380973,
+              52.94199945637956,
+              52.70000110613182
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.19460344314575195
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 27,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 128,
+                "spill_slots": 0,
+                "shared_bytes": 20480
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "5ec1f957-5bef-44cf-882c-62c5119a0416",
+            "graph_us": 51.31099896971136,
+            "graph_samples_us": [
+              92.48999958799686,
+              54.68500057759229,
+              51.790999350487255,
+              51.55500002729241,
+              51.22800030221697,
+              51.31099896971136,
+              51.078999604214914,
+              51.495999286998995,
+              51.8830001965398,
+              52.09600021771621,
+              51.15400017530192,
+              51.30099998496007,
+              51.34800085215829,
+              50.82600000605453,
+              51.10600068292115,
+              50.82200004835613,
+              51.851999160135165,
+              51.98500002734363,
+              51.24199924466666,
+              51.07099968881812,
+              50.76399975223467
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.19460344314575195
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 8.191999979317188
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 27,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 16
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 91,
+                "spill_slots": 0,
+                "shared_bytes": 12288
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-hist-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "5ec1f957-5bef-44cf-882c-62c5119a0416",
+            "graph_us": 54.03800059866626,
+            "graph_samples_us": [
+              92.31399963027798,
+              55.30599992198404,
+              54.33100159280002,
+              54.10700032371096,
+              53.74200009100605,
+              53.37499896995723,
+              62.170000092010014,
+              54.86100053531118,
+              53.61500006983988,
+              53.85199983720668,
+              54.441999964183196,
+              54.490999900735915,
+              53.79699905461166,
+              54.02599890658166,
+              53.8889999006642,
+              53.7409996468341,
+              54.35599996417295,
+              54.18799992185086,
+              53.780000598635525,
+              54.03800059866626,
+              53.84700125432573
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.19460344314575195
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 9.216000325977802,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 48,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 24,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 128,
+                "spill_slots": 0,
+                "shared_bytes": 20480
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "5ec1f957-5bef-44cf-882c-62c5119a0416",
+            "graph_us": 52.83000064082444,
+            "graph_samples_us": [
+              90.09600034914911,
+              58.05600085295737,
+              53.60100112739019,
+              52.958001106162556,
+              52.60600119072478,
+              52.600000344682485,
+              52.70000110613182,
+              52.83000064082444,
+              52.61400110612158,
+              63.597000917070545,
+              53.56700057745911,
+              52.88899956212845,
+              52.463001338765025,
+              52.47999979474116,
+              52.619001507991925,
+              52.76900083117653,
+              52.659999710158445,
+              56.1480010219384,
+              53.25500023900531,
+              53.077999837114476,
+              52.27399924478959
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.19460344314575195
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 10.239999741315842,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 8.191999979317188
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 48,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "ordered_owner_ranges": {
+                "registers": 24,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 91,
+                "spill_slots": 0,
+                "shared_bytes": 12288
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-histinline-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "5ec1f957-5bef-44cf-882c-62c5119a0416",
+            "graph_us": 52.46099863143172,
+            "graph_samples_us": [
+              89.15599937608931,
+              54.550999266211875,
+              52.4930001120083,
+              52.379999033291824,
+              52.48500019661151,
+              52.180999773554504,
+              52.09400114836171,
+              52.46099863143172,
+              52.9629996890435,
+              52.740000683115795,
+              52.42899896984454,
+              52.525001592584886,
+              52.06199966778513,
+              52.08299990044907,
+              52.13899930822663,
+              52.49599962553475,
+              52.70500150800217,
+              52.54499956208747,
+              52.17400030232966,
+              52.30100032349583,
+              52.09099981584586
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.19460344314575195
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 10.239999741315842,
+              "dx": 10.239999741315842,
+              "parameters": 10.239999741315842
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 48,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 128,
+                "spill_slots": 0,
+                "shared_bytes": 20480
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "5ec1f957-5bef-44cf-882c-62c5119a0416",
+            "graph_us": 50.71399937151,
+            "graph_samples_us": [
+              88.84100134309847,
+              52.83899918140378,
+              51.142000302206725,
+              50.46200021752156,
+              51.11499922350049,
+              50.71399937151,
+              52.051998864044435,
+              50.42399970989209,
+              50.517999625299126,
+              50.54100074630696,
+              50.62700074631721,
+              50.508000640547834,
+              51.176000852137804,
+              50.45999932917766,
+              51.027998779318295,
+              50.827999075409025,
+              50.35499998484738,
+              50.889999329228885,
+              50.64799915999174,
+              50.427999667590484,
+              50.73300053481944
+            ],
+            "peak_allocated_bytes": 115712,
+            "peak_reserved_bytes": 6291456,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            },
+            "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+            "rho": {
+              "changed_atoms": 204,
+              "max_abs_change": 0.19460344314575195
+            },
+            "initial_rho_range": [
+              8.000003814697266,
+              8.000003814697266
+            ],
+            "final_rho_range": [
+              7.805400371551514,
+              7.8055853843688965
+            ],
+            "diagnostic_components_us": {
+              "prepare": 5.119999870657921,
+              "layout": 8.191999979317188,
+              "h": 2.047999994829297,
+              "output": 9.216000325977802,
+              "dx": 10.239999741315842,
+              "parameters": 8.191999979317188
+            },
+            "compiler": {
+              "prepare_bounded": {
+                "registers": 32,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "ordered_layout": {
+                "registers": 48,
+                "spill_slots": 0,
+                "shared_bytes": 1024
+              },
+              "packed_forward": {
+                "registers": 72,
+                "spill_slots": 2,
+                "shared_bytes": 14336
+              },
+              "output_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "packed_dx": {
+                "registers": 80,
+                "spill_slots": 0,
+                "shared_bytes": 14336
+              },
+              "dx_partial_reduce": {
+                "registers": 18,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              },
+              "singleton_param": {
+                "registers": 91,
+                "spill_slots": 0,
+                "shared_bytes": 12288
+              },
+              "parameter_partial_reduce": {
+                "registers": 14,
+                "spill_slots": 0,
+                "shared_bytes": 0
+              }
+            },
+            "layout_counters": null
+          }
+        ],
+        "dense": [
+          {
+            "source_commit": "de62e6b4dd043e8805a8d4a3cd9e246013b4e7e6",
+            "repeat": 1,
+            "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+            "execution_id": "5ec1f957-5bef-44cf-882c-62c5119a0416",
+            "graph_us": 39.13899854524061,
+            "graph_samples_us": [
+              85.46399840270169,
+              45.84199996315874,
+              40.34899939142633,
+              39.305999962380156,
+              39.071999708539806,
+              38.97199894709047,
+              38.63900019496214,
+              39.25100099877454,
+              40.91099981451407,
+              43.866999476449564,
+              39.47199911635835,
+              39.05900121026207,
+              39.102998925955035,
+              38.95800000464078,
+              38.879001294844784,
+              38.95599911629688,
+              38.91100095643196,
+              39.13899854524061,
+              39.677999666309915,
+              39.6310006181011,
+              39.11100066034123
+            ],
+            "peak_allocated_bytes": 34179584,
+            "peak_reserved_bytes": 48234496,
+            "runtime": {
+              "gpu": "NVIDIA L4",
+              "cuda": "13.0",
+              "torch": "2.11.0+cu130",
+              "triton": "3.6.0",
+              "tf32": false,
+              "sm_count": 58
+            },
+            "initial_inputs": {
+              "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+              "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+            }
+          }
+        ]
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 56.9869989703875,
+          "run_medians_us": [
+            56.9869989703875
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 14.336000196635723
+          }
+        },
+        "local-ordered-reuse-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 52.999999752501026,
+          "run_medians_us": [
+            52.999999752501026
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 51.31099896971136,
+          "run_medians_us": [
+            51.31099896971136
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 8.191999979317188
+          }
+        },
+        "local-ordered-reuse-hist-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 54.03800059866626,
+          "run_medians_us": [
+            54.03800059866626
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 9.216000325977802,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 52.83000064082444,
+          "run_medians_us": [
+            52.83000064082444
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 10.239999741315842,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 8.191999979317188
+          }
+        },
+        "local-ordered-reuse-histinline-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 52.46099863143172,
+          "run_medians_us": [
+            52.46099863143172
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 10.239999741315842,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 50.71399937151,
+          "run_medians_us": [
+            50.71399937151
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 8.191999979317188
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 39.13899854524061,
+          "run_medians_us": [
+            39.13899854524061
+          ],
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "candidate_summary": {
+        "local-ordered-reuse-param2-atom32": {
+          "time_reduction_percent": 6.996331250849453,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 56.9869989703875,
+              "candidate_us": 52.999999752501026,
+              "time_reduction_percent": 6.996331250849453,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 9.960166534871561,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 56.9869989703875,
+              "candidate_us": 51.31099896971136,
+              "time_reduction_percent": 9.960166534871561,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-hist-param2-atom32": {
+          "time_reduction_percent": 5.1748616789834,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 56.9869989703875,
+              "candidate_us": 54.03800059866626,
+              "time_reduction_percent": 5.1748616789834,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-hist-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 7.294643347903252,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 56.9869989703875,
+              "candidate_us": 52.83000064082444,
+              "time_reduction_percent": 7.294643347903252,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-histinline-param2-atom32": {
+          "time_reduction_percent": 7.942162985820078,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 56.9869989703875,
+              "candidate_us": 52.46099863143172,
+              "time_reduction_percent": 7.942162985820078,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32": {
+          "time_reduction_percent": 11.00777319777302,
+          "allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-c46a1f8e90d049cfa135c7f7ea9d2850",
+              "baseline_us": 56.9869989703875,
+              "candidate_us": 50.71399937151,
+              "time_reduction_percent": 11.00777319777302,
+              "allocated_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

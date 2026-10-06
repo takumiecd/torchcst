@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "local-histinline-64-rhomixed",
+    "fixture": "local_polar_product",
+    "size": 64,
+    "rows": 32,
+    "atoms": 204,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 0.25,
+      "birth": 0.25,
+      "maximum": 16,
+      "rho": [
+        1.25,
+        3,
+        8
+      ],
+      "fractions": [
+        0.5,
+        0.3,
+        0.2
+      ],
+      "center_jitter": 0.1
+    }
+  },
+  "plans": [
+    "local-ordered-prep-copy8-atom32",
+    "local-ordered-reuse-param2-atom32",
+    "local-ordered-reuse-paramatom16-param4-param2-atom32",
+    "local-ordered-reuse-hist-param2-atom32",
+    "local-ordered-reuse-hist-paramatom16-param4-param2-atom32",
+    "local-ordered-reuse-histinline-param2-atom32",
+    "local-ordered-reuse-histinline-paramatom16-param4-param2-atom32"
+  ],
+  "baseline": "local-ordered-prep-copy8-atom32",
+  "dense": true
+}

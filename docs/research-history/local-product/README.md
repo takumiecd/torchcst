@@ -1,5 +1,33 @@
 # Small linear product / hybrid H
 
+2026-10-07: [Validated integration](20261007-integration.md) combines the measured
+support ordering, parameter partitions, exact repair, counter-free caches and
+tight histogram recipes. See the [morning report](20261007-overnight-morning.md)
+for L4/G4 timing and memory, and the
+[comparison scope](20261007-comparison-methodology.md) for the mathematical contract.
+The merged recipes remain explicit selections; timing is from the recorded
+constituent sources, while integration CPU/declaration checks are separate.
+
+2026-10-06: [Physical support order and split owners on L4/G4](20261006-ordered-owner.md).
+Seven recipes compare compact physical views, exact IDs/ranges, cached H,
+two/four-way atom groups and bounded int32 sort keys. Four-way local H with
+compact keys reduces paired L4 time by2.5–15.9% in seven of eight cases, with
+about11% lower allocated peak; N128/rho1.25 remains1.4% slower. G4 rho3 improves
+12.0% at N64 and9.9% at N128. Ranges save30–35% memory but usually cost time.
+120 full-shape scalar comparisons and28 DB artifacts are preserved. Cold probes
+show better load coalescing, without a large DRAM-read reduction. Initial
+Parameters match within each device; cross-device hashes differ. Public selection
+remains unchanged.
+
+2026-10-06: [Compact owner IDs and H lifetime on L4/G4](20261006-owner-index-refine.md).
+Five refinements retain normalized position gradients. Removing the B*A H
+buffer reduces complete-step allocated peak19.3% at N64 and27.8% at N128;
+paired rho3 timings stay close to indexed32 on L4 and Blackwell/G4. Wide
+N128 rho8 becomes5.9% slower on L4, so cached-H remains the latency candidate.
+Fused list construction is slower and dropping saved H alone does not reduce
+the peak. Two independent runs/device,72 full-shape scalar oracle comparisons
+and raw/DB evidence are preserved. Public selection and cache policy are unchanged.
+
 2026-10-06: [Exact owner indexing before payload/cache tuning](20261006-owner-index.md).
 GPU-built per-owner general-atom lists keep existing physical metadata/H order
 and normalized position gradients. Two independent matched complete-step runs

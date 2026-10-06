@@ -1,0 +1,2701 @@
+{
+  "schema_version": 1,
+  "scope": "explicit research recipes; no public dispatcher adoption",
+  "protocol": "FP32 IEEE, TF32 disabled; B32; ~5% atoms; initial rho>1; evolving widths, production fused Polar/AdamW; uninstrumented CUDA Graph complete step including capture/replay memory; 21 samples per execution; repeated orders reversed",
+  "cross_device_initialization": {
+    "inputs_and_targets_byte_identical": true,
+    "parameters_matched_within_each_device": true,
+    "parameter_hashes_by_case_device": {
+      "local-ordered-128-rho3": {
+        "NVIDIA L4": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+        "NVIDIA RTX PRO 6000 Blackwell Server Edition": "7c1dffc4f7cfcfd2d6692901e370272e0e7dcac6cc962c6d701d72e171a2b6a4"
+      },
+      "local-ordered-128-rho8": {
+        "NVIDIA L4": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2"
+      },
+      "local-ordered-64-rho3": {
+        "NVIDIA L4": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+        "NVIDIA RTX PRO 6000 Blackwell Server Edition": "76f3522f82ea2b6adfd9055d76e397210402de23ccdef63d84a8ab706615a696"
+      },
+      "local-ordered-64-rho8": {
+        "NVIDIA L4": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab"
+      },
+      "local-ordered-128-rho1_25": {
+        "NVIDIA L4": "fa6b1d8714a117a562cb89dc4f0b0e70c04fccb5141fc1b53a3aa9cc58adcb41"
+      },
+      "local-ordered-128-rhomixed": {
+        "NVIDIA L4": "a734431fccddccdacea22eac2726c8d3558ab3aba99a32a2693c778c2ac6fe3f",
+        "NVIDIA RTX PRO 6000 Blackwell Server Edition": "d65334a47c0d140a6826dc0ee520b96af8fb65b5b3af2be5be6adfc128a5d3a7"
+      },
+      "local-ordered-64-rho1_25": {
+        "NVIDIA L4": "11f183ccb21a907f1de8bd91a76e498b3d734d2c2e653eda342e5040121cc5d0"
+      },
+      "local-ordered-64-rhomixed": {
+        "NVIDIA L4": "f15678be3ad439453d9de1d616c05d9f187bc07a4fe1bfc2b954febd2cb7a80e",
+        "NVIDIA RTX PRO 6000 Blackwell Server Edition": "2dbed3b0f9cb8bb6c9e39535e57c0a5c969a1ff221ebae1e9f7011ab1479f06c"
+      }
+    },
+    "note": "Parameter hashes differ across L4/G4; no byte-identical cross-device Parameter claim or direct generation timing ratio"
+  },
+  "stages": [
+    {
+      "name": "screen",
+      "source_commit": "f3f5f6809729ecac96faaea0b5a9933b526d2b6d",
+      "jobs": [
+        {
+          "job": "l4job-3585fb4adb02439ba2f8e62c135a0895",
+          "repeat": 1,
+          "source_commit": "f3f5f6809729ecac96faaea0b5a9933b526d2b6d",
+          "source_snapshot_sha256": "db7d6c7339ccc355711ea30474a04a83f8aee708bae3432d30bf88ffed3a9a9c",
+          "result_archive_sha256": "a952e99d25a1999d61ea484307eac8f1986f39169672b85b3fd664811ee467f3",
+          "runtime_files_matched": 196
+        }
+      ],
+      "oracle_comparisons": 32,
+      "max_oracle_absolute_errors": [
+        2.2611439685071844e-06,
+        3.3344288077330475e-06,
+        2.1199747537448133e-06
+      ],
+      "oracle_tolerance": 0.0004,
+      "all_oracles_have_nonzero_center_gradients": true,
+      "observations": [
+        {
+          "case": "local-ordered-128-rho3",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+              "independent_executions": 1,
+              "median_us": 83.2010000522132,
+              "run_medians_us": [
+                83.2010000522132
+              ],
+              "peak_allocated_bytes": 446464,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 12.28800043463707,
+                "h": 3.0720001086592674,
+                "output": 18.432000651955605,
+                "dx": 19.45599913597107,
+                "parameters": 13.311999849975109
+              }
+            },
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 1,
+              "median_us": 82.23700001508405,
+              "run_medians_us": [
+                82.23700001508405
+              ],
+              "peak_allocated_bytes": 341504,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 12.28800043463707,
+                "h": 2.047999994829297,
+                "output": 19.45599913597107,
+                "dx": 19.45599913597107,
+                "parameters": 13.311999849975109
+              }
+            },
+            "local-ordered-band-atom32": {
+              "independent_executions": 1,
+              "median_us": 93.79000005083071,
+              "run_medians_us": [
+                93.79000005083071
+              ],
+              "peak_allocated_bytes": 264192,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 23.552000522613525,
+                "h": 2.047999994829297,
+                "output": 19.45599913597107,
+                "dx": 19.45599913597107,
+                "parameters": 13.311999849975109
+              }
+            },
+            "local-ordered-index-atom32": {
+              "independent_executions": 1,
+              "median_us": 91.52899997388886,
+              "run_medians_us": [
+                91.52899997388886
+              ],
+              "peak_allocated_bytes": 264192,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 24.57600086927414,
+                "h": 2.047999994829297,
+                "output": 18.432000651955605,
+                "dx": 18.432000651955605,
+                "parameters": 12.28800043463707
+              }
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 1,
+              "median_us": 94.72500005358597,
+              "run_medians_us": [
+                94.72500005358597
+              ],
+              "peak_allocated_bytes": 237568,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 27.648000046610832,
+                "h": 2.047999994829297,
+                "output": 17.40800030529499,
+                "dx": 20.479999482631683,
+                "parameters": 12.28800043463707
+              }
+            },
+            "local-ordered-cached-atom32": {
+              "independent_executions": 1,
+              "median_us": 95.72199996910058,
+              "run_medians_us": [
+                95.72199996910058
+              ],
+              "peak_allocated_bytes": 342528,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 27.648000046610832,
+                "h": 4.095999989658594,
+                "output": 17.40800030529499,
+                "dx": 20.479999482631683,
+                "parameters": 13.311999849975109
+              }
+            },
+            "local-ordered-split2-atom32": {
+              "independent_executions": 1,
+              "median_us": 85.33199991234142,
+              "run_medians_us": [
+                85.33199991234142
+              ],
+              "peak_allocated_bytes": 270336,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 27.648000046610832,
+                "h": 2.047999994829297,
+                "output": 14.336000196635723,
+                "dx": 14.336000196635723,
+                "parameters": 12.28800043463707
+              }
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 1,
+              "median_us": 84.29499996509549,
+              "run_medians_us": [
+                84.29499996509549
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 27.648000046610832,
+                "h": 2.047999994829297,
+                "output": 14.336000196635723,
+                "dx": 14.336000196635723,
+                "parameters": 12.28800043463707
+              }
+            },
+            "dense": {
+              "independent_executions": 1,
+              "median_us": 45.44299997633061,
+              "run_medians_us": [
+                45.44299997633061
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496,
+              "diagnostic_components_us": {}
+            }
+          },
+          "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+          "initial_inputs": {
+            "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+            "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            3.0000014305114746,
+            3.0000014305114746
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-band-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-index-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-cached-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-split2-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-128-rho8",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+              "independent_executions": 1,
+              "median_us": 91.68500002942892,
+              "run_medians_us": [
+                91.68500002942892
+              ],
+              "peak_allocated_bytes": 446464,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 12.28800043463707,
+                "h": 5.119999870657921,
+                "output": 16.383999958634377,
+                "dx": 26.623999699950218,
+                "parameters": 16.383999958634377
+              }
+            },
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 1,
+              "median_us": 97.78599996934645,
+              "run_medians_us": [
+                97.78599996934645
+              ],
+              "peak_allocated_bytes": 341504,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 12.28800043463707,
+                "h": 2.047999994829297,
+                "output": 25.599999353289604,
+                "dx": 26.623999699950218,
+                "parameters": 16.383999958634377
+              }
+            },
+            "local-ordered-band-atom32": {
+              "independent_executions": 1,
+              "median_us": 108.4890000129235,
+              "run_medians_us": [
+                108.4890000129235
+              ],
+              "peak_allocated_bytes": 264192,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 23.552000522613525,
+                "h": 2.047999994829297,
+                "output": 25.599999353289604,
+                "dx": 26.623999699950218,
+                "parameters": 16.383999958634377
+              }
+            },
+            "local-ordered-index-atom32": {
+              "independent_executions": 1,
+              "median_us": 108.4560000208512,
+              "run_medians_us": [
+                108.4560000208512
+              ],
+              "peak_allocated_bytes": 264192,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 24.57600086927414,
+                "h": 2.047999994829297,
+                "output": 25.599999353289604,
+                "dx": 26.623999699950218,
+                "parameters": 16.383999958634377
+              }
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 1,
+              "median_us": 110.6720000052519,
+              "run_medians_us": [
+                110.6720000052519
+              ],
+              "peak_allocated_bytes": 237568,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 27.648000046610832,
+                "h": 2.047999994829297,
+                "output": 24.57600086927414,
+                "dx": 25.599999353289604,
+                "parameters": 16.383999958634377
+              }
+            },
+            "local-ordered-cached-atom32": {
+              "independent_executions": 1,
+              "median_us": 102.03400006503216,
+              "run_medians_us": [
+                102.03400006503216
+              ],
+              "peak_allocated_bytes": 342528,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 27.648000046610832,
+                "h": 6.144000217318535,
+                "output": 12.319999746978283,
+                "dx": 26.623999699950218,
+                "parameters": 16.383999958634377
+              }
+            },
+            "local-ordered-split2-atom32": {
+              "independent_executions": 1,
+              "median_us": 97.0709999137398,
+              "run_medians_us": [
+                97.0709999137398
+              ],
+              "peak_allocated_bytes": 270336,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 27.648000046610832,
+                "h": 2.047999994829297,
+                "output": 18.432000651955605,
+                "dx": 19.45599913597107,
+                "parameters": 16.383999958634377
+              }
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 1,
+              "median_us": 87.45800005272031,
+              "run_medians_us": [
+                87.45800005272031
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 5.119999870657921,
+                "layout": 27.648000046610832,
+                "h": 2.047999994829297,
+                "output": 13.311999849975109,
+                "dx": 14.336000196635723,
+                "parameters": 16.383999958634377
+              }
+            },
+            "dense": {
+              "independent_executions": 1,
+              "median_us": 45.53400003715069,
+              "run_medians_us": [
+                45.53400003715069
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496,
+              "diagnostic_components_us": {}
+            }
+          },
+          "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+          "initial_inputs": {
+            "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+            "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            8.000003814697266,
+            8.000003814697266
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-band-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-index-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-cached-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-split2-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-64-rho3",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+              "independent_executions": 1,
+              "median_us": 66.76700002117286,
+              "run_medians_us": [
+                66.76700002117286
+              ],
+              "peak_allocated_bytes": 156672,
+              "peak_reserved_bytes": 6291456
+            },
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 1,
+              "median_us": 65.85100004485867,
+              "run_medians_us": [
+                65.85100004485867
+              ],
+              "peak_allocated_bytes": 130560,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-band-atom32": {
+              "independent_executions": 1,
+              "median_us": 67.04899999476766,
+              "run_medians_us": [
+                67.04899999476766
+              ],
+              "peak_allocated_bytes": 87040,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-index-atom32": {
+              "independent_executions": 1,
+              "median_us": 66.33300006342324,
+              "run_medians_us": [
+                66.33300006342324
+              ],
+              "peak_allocated_bytes": 87040,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 1,
+              "median_us": 67.00500000533793,
+              "run_medians_us": [
+                67.00500000533793
+              ],
+              "peak_allocated_bytes": 84992,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-cached-atom32": {
+              "independent_executions": 1,
+              "median_us": 67.74099995254801,
+              "run_medians_us": [
+                67.74099995254801
+              ],
+              "peak_allocated_bytes": 109056,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split2-atom32": {
+              "independent_executions": 1,
+              "median_us": 64.23700006052968,
+              "run_medians_us": [
+                64.23700006052968
+              ],
+              "peak_allocated_bytes": 99328,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 1,
+              "median_us": 59.82799996218091,
+              "run_medians_us": [
+                59.82799996218091
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 1,
+              "median_us": 38.883000001987966,
+              "run_medians_us": [
+                38.883000001987966
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+          "initial_inputs": {
+            "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+            "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            3.0000014305114746,
+            3.0000014305114746
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-band-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-index-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-cached-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-split2-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-64-rho8",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+              "independent_executions": 1,
+              "median_us": 64.77199997334537,
+              "run_medians_us": [
+                64.77199997334537
+              ],
+              "peak_allocated_bytes": 156672,
+              "peak_reserved_bytes": 6291456
+            },
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 1,
+              "median_us": 65.74700000783196,
+              "run_medians_us": [
+                65.74700000783196
+              ],
+              "peak_allocated_bytes": 130560,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-band-atom32": {
+              "independent_executions": 1,
+              "median_us": 66.82799994450761,
+              "run_medians_us": [
+                66.82799994450761
+              ],
+              "peak_allocated_bytes": 87040,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-index-atom32": {
+              "independent_executions": 1,
+              "median_us": 67.17799999478302,
+              "run_medians_us": [
+                67.17799999478302
+              ],
+              "peak_allocated_bytes": 87040,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 1,
+              "median_us": 66.98600009258371,
+              "run_medians_us": [
+                66.98600009258371
+              ],
+              "peak_allocated_bytes": 84992,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-cached-atom32": {
+              "independent_executions": 1,
+              "median_us": 64.84199991518835,
+              "run_medians_us": [
+                64.84199991518835
+              ],
+              "peak_allocated_bytes": 109056,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split2-atom32": {
+              "independent_executions": 1,
+              "median_us": 61.030999972899735,
+              "run_medians_us": [
+                61.030999972899735
+              ],
+              "peak_allocated_bytes": 99328,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 1,
+              "median_us": 57.419999961894064,
+              "run_medians_us": [
+                57.419999961894064
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 1,
+              "median_us": 38.96199996233918,
+              "run_medians_us": [
+                38.96199996233918
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+          "initial_inputs": {
+            "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+            "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            8.000003814697266,
+            8.000003814697266
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-release-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-band-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-index-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-cached-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-split2-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "l4_repeated",
+      "source_commit": "a482556a02ffa03ceb4e15fbbe5e2cba30b38a69",
+      "jobs": [
+        {
+          "job": "l4job-6d1de7b4e1f24b37848b3361e4b61d6a",
+          "repeat": 1,
+          "source_commit": "a482556a02ffa03ceb4e15fbbe5e2cba30b38a69",
+          "source_snapshot_sha256": "560e950d28e7efc60f1796fc567e8474d4fdfd4f72ff09e5dc615b0e7ad8debf",
+          "result_archive_sha256": "4f2deb27b8064c34414fb5892904987f6a725d933ee14cdef844fd54001a4357",
+          "runtime_files_matched": 196
+        },
+        {
+          "job": "l4job-357b3351335346ce8b9614ef2a65a2b9",
+          "repeat": 2,
+          "source_commit": "a482556a02ffa03ceb4e15fbbe5e2cba30b38a69",
+          "source_snapshot_sha256": "a49cb0c8f8cad38a1fa3812cfd8f556229e758c42e765b282a8086b4862d15a9",
+          "result_archive_sha256": "f3531a1d1b0279532473c8d30904ac6af7fca3121bd720ab6fd9fc73761f3273",
+          "runtime_files_matched": 196
+        }
+      ],
+      "oracle_comparisons": 64,
+      "max_oracle_absolute_errors": [
+        2.2611439685071844e-06,
+        3.3344288077330475e-06,
+        4.461254812682114e-06
+      ],
+      "oracle_tolerance": 0.0004,
+      "all_oracles_have_nonzero_center_gradients": true,
+      "observations": [
+        {
+          "case": "local-ordered-128-rho1_25",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 74.70750000493354,
+              "run_medians_us": [
+                74.53499995335733,
+                74.88000005650974
+              ],
+              "peak_allocated_bytes": 341504,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 87.42449995224888,
+              "run_medians_us": [
+                86.77699997861055,
+                88.07199992588721
+              ],
+              "peak_allocated_bytes": 237568,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 2,
+              "median_us": 80.03250002275308,
+              "run_medians_us": [
+                79.6100000570732,
+                80.45499998843297
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 75.77549996540256,
+              "run_medians_us": [
+                75.53700004336861,
+                76.01399988743651
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 45.85199997109157,
+              "run_medians_us": [
+                45.565999926111544,
+                46.1380000160716
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "fa6b1d8714a117a562cb89dc4f0b0e70c04fccb5141fc1b53a3aa9cc58adcb41",
+          "initial_inputs": {
+            "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+            "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            1.25,
+            1.25
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.008446574211120605,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                1.2415707111358643
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.008446574211120605,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                1.2415707111358643
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.008446574211120605,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                1.2415707111358643
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.008446574211120605,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                1.2415707111358643
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-128-rho3",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 82.60349989086535,
+              "run_medians_us": [
+                82.60599997811369,
+                82.60099980361701
+              ],
+              "peak_allocated_bytes": 341504,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 12.28800043463707,
+                "h": 2.047999994829297,
+                "output": 19.45599913597107,
+                "dx": 19.45599913597107,
+                "parameters": 13.311999849975109
+              }
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 95.34599996641191,
+              "run_medians_us": [
+                95.1039999108616,
+                95.58800002196222
+              ],
+              "peak_allocated_bytes": 237568,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 28.16000021994114,
+                "h": 2.047999994829297,
+                "output": 17.40800030529499,
+                "dx": 20.479999482631683,
+                "parameters": 12.336000334471464
+              }
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 2,
+              "median_us": 84.3724999413098,
+              "run_medians_us": [
+                84.17100002588995,
+                84.57399985672964
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 27.648000046610832,
+                "h": 2.047999994829297,
+                "output": 13.824000023305416,
+                "dx": 14.336000196635723,
+                "parameters": 12.28800043463707
+              }
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 79.61700003988881,
+              "run_medians_us": [
+                80.01300000159972,
+                79.2210000781779
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 22.544000297784805,
+                "h": 2.047999994829297,
+                "output": 14.336000196635723,
+                "dx": 14.336000196635723,
+                "parameters": 12.28800043463707
+              }
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 45.82899998695211,
+              "run_medians_us": [
+                46.008000026631635,
+                45.64999994727259
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496,
+              "diagnostic_components_us": {}
+            }
+          },
+          "initial_p_sha256": "ff0085b3c522cf26a429e0bf862de3a806da35344793aee3e08aab99b5de3652",
+          "initial_inputs": {
+            "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+            "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            3.0000014305114746,
+            3.0000014305114746
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149055480957031,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-128-rho8",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 99.16000004750458,
+              "run_medians_us": [
+                97.5649999190864,
+                100.75500017592276
+              ],
+              "peak_allocated_bytes": 341504,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 12.28800043463707,
+                "h": 2.047999994829297,
+                "output": 25.599999353289604,
+                "dx": 26.623999699950218,
+                "parameters": 16.383999958634377
+              }
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 111.22150004894138,
+              "run_medians_us": [
+                110.88700000527751,
+                111.55600009260525
+              ],
+              "peak_allocated_bytes": 237568,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 5.119999870657921,
+                "layout": 27.648000046610832,
+                "h": 2.047999994829297,
+                "output": 24.57600086927414,
+                "dx": 25.599999353289604,
+                "parameters": 16.383999958634377
+              }
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 2,
+              "median_us": 88.74150000792724,
+              "run_medians_us": [
+                88.45100001053652,
+                89.03200000531797
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 5.119999870657921,
+                "layout": 28.16000021994114,
+                "h": 2.047999994829297,
+                "output": 13.311999849975109,
+                "dx": 14.336000196635723,
+                "parameters": 16.383999958634377
+              }
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 83.4274999306217,
+              "run_medians_us": [
+                83.66699989892368,
+                83.18799996231974
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 6.144000217318535,
+                "layout": 23.04000034928322,
+                "h": 2.047999994829297,
+                "output": 13.311999849975109,
+                "dx": 14.336000196635723,
+                "parameters": 16.383999958634377
+              }
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 46.08599988387141,
+              "run_medians_us": [
+                46.023999857425224,
+                46.147999910317594
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496,
+              "diagnostic_components_us": {}
+            }
+          },
+          "initial_p_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+          "initial_inputs": {
+            "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+            "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            8.000003814697266,
+            8.000003814697266
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19462251663208008,
+              "final_rho_bounds": [
+                7.8053812980651855,
+                7.8055853843688965
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-128-rhomixed",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 90.04399998957524,
+              "run_medians_us": [
+                89.94299992082233,
+                90.14500005832815
+              ],
+              "peak_allocated_bytes": 341504,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 105.12599999401573,
+              "run_medians_us": [
+                104.58099995958037,
+                105.67100002845109
+              ],
+              "peak_allocated_bytes": 237568,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 2,
+              "median_us": 90.44199998697877,
+              "run_medians_us": [
+                90.53199983100058,
+                90.35200014295697
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 85.83999999700609,
+              "run_medians_us": [
+                85.9219999256311,
+                85.75800006838108
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 46.109999971122306,
+              "run_medians_us": [
+                46.101999942038674,
+                46.11800000020594
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "a734431fccddccdacea22eac2726c8d3558ab3aba99a32a2693c778c2ac6fe3f",
+          "initial_inputs": {
+            "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+            "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            1.25,
+            8.000003814697266
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19461345672607422,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805563449859619
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19461345672607422,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805563449859619
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19461345672607422,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805563449859619
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19461345672607422,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805563449859619
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-64-rho1_25",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 58.739999985846225,
+              "run_medians_us": [
+                58.78899992239894,
+                58.69100004929351
+              ],
+              "peak_allocated_bytes": 130560,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 59.70199998728276,
+              "run_medians_us": [
+                59.402999909252685,
+                60.00100006531284
+              ],
+              "peak_allocated_bytes": 84992,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 2,
+              "median_us": 56.18249997496605,
+              "run_medians_us": [
+                55.8760000330949,
+                56.4889999168372
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 55.67050004628982,
+              "run_medians_us": [
+                55.47499995373073,
+                55.866000138848904
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 39.08699989096931,
+              "run_medians_us": [
+                38.98499994647864,
+                39.18899983545998
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "11f183ccb21a907f1de8bd91a76e498b3d734d2c2e653eda342e5040121cc5d0",
+          "initial_inputs": {
+            "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+            "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            1.25,
+            1.25
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.00844717025756836,
+              "final_rho_bounds": [
+                1.2415528297424316,
+                1.2415693998336792
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.00844717025756836,
+              "final_rho_bounds": [
+                1.2415528297424316,
+                1.2415693998336792
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.00844717025756836,
+              "final_rho_bounds": [
+                1.2415528297424316,
+                1.2415693998336792
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.00844717025756836,
+              "final_rho_bounds": [
+                1.2415528297424316,
+                1.2415693998336792
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-64-rho3",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 65.98550010039617,
+              "run_medians_us": [
+                65.70200002897764,
+                66.2690001718147
+              ],
+              "peak_allocated_bytes": 130560,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 67.34299995514448,
+              "run_medians_us": [
+                66.85299990749627,
+                67.83300000279269
+              ],
+              "peak_allocated_bytes": 84992,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 2,
+              "median_us": 60.347000044203014,
+              "run_medians_us": [
+                60.32500004948815,
+                60.369000038917875
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 59.51099996082121,
+              "run_medians_us": [
+                59.162999946238415,
+                59.858999975404004
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 39.02250006149188,
+              "run_medians_us": [
+                38.81000009187119,
+                39.23500003111258
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "461e9a9cf70e6524e85a0f28b1273dc09ba1972b829ab4ac5f6ecc0b61e2cd6b",
+          "initial_inputs": {
+            "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+            "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            3.0000014305114746,
+            3.0000014305114746
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149007797241211,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-64-rho8",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 65.89299994175235,
+              "run_medians_us": [
+                65.7299999602401,
+                66.05599992326461
+              ],
+              "peak_allocated_bytes": 130560,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 67.24899998289402,
+              "run_medians_us": [
+                67.11699995776144,
+                67.3810000080266
+              ],
+              "peak_allocated_bytes": 84992,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 2,
+              "median_us": 57.63650000289999,
+              "run_medians_us": [
+                57.37699996188894,
+                57.896000043911044
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 57.03999994466358,
+              "run_medians_us": [
+                56.902999972408,
+                57.17699991691916
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 38.98449995176634,
+              "run_medians_us": [
+                38.74100002576597,
+                39.227999877766706
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+          "initial_inputs": {
+            "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+            "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            8.000003814697266,
+            8.000003814697266
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                7.805400371551514,
+                7.8055853843688965
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-64-rhomixed",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 64.82900010951198,
+              "run_medians_us": [
+                64.68200001563673,
+                64.97600020338723
+              ],
+              "peak_allocated_bytes": 130560,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 65.69000009903903,
+              "run_medians_us": [
+                65.52000002102432,
+                65.86000017705373
+              ],
+              "peak_allocated_bytes": 84992,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-atom32": {
+              "independent_executions": 2,
+              "median_us": 63.891500019508385,
+              "run_medians_us": [
+                63.994000015554775,
+                63.789000023461995
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 63.23550002207412,
+              "run_medians_us": [
+                62.855999999555934,
+                63.61500004459231
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 39.22150000335023,
+              "run_medians_us": [
+                38.98200009189168,
+                39.46099991480878
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "f15678be3ad439453d9de1d616c05d9f187bc07a4fe1bfc2b954febd2cb7a80e",
+          "initial_inputs": {
+            "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+            "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+          },
+          "runtime": {
+            "gpu": "NVIDIA L4",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 58
+          },
+          "initial_rho_range": [
+            1.25,
+            8.000003814697266
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805552005767822
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805552005767822
+              ]
+            },
+            "local-ordered-split4-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805552005767822
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805552005767822
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "blackwell_repeated",
+      "source_commit": "a482556a02ffa03ceb4e15fbbe5e2cba30b38a69",
+      "jobs": [
+        {
+          "job": "colabjob-359603f8128749ecbcd9c33d1d2602ba",
+          "repeat": 1,
+          "source_commit": "a482556a02ffa03ceb4e15fbbe5e2cba30b38a69",
+          "source_snapshot_sha256": "31eb68e40a58038d422eae354413a8556211b8d1e991b3e4621ae7a420210151",
+          "result_archive_sha256": "c8acee71e45fb326a76216d83b2ae5cf70c811e66f89853cc6f3b6c28d50eac0",
+          "runtime_files_matched": 196
+        },
+        {
+          "job": "colabjob-ffe9c3afc58a49399177aa77090f299c",
+          "repeat": 2,
+          "source_commit": "a482556a02ffa03ceb4e15fbbe5e2cba30b38a69",
+          "source_snapshot_sha256": "03b2045c193741f229a38f18660134beacfc4bef44a13c259ef80e5a92576bfa",
+          "result_archive_sha256": "554b8afb2ca22682bf1e5280430436a4d436fdfa00b349302b6bf5b5056c97f7",
+          "runtime_files_matched": 196
+        }
+      ],
+      "oracle_comparisons": 24,
+      "max_oracle_absolute_errors": [
+        1.8692061822811468e-06,
+        1.974551728012308e-06,
+        8.445408155033363e-06
+      ],
+      "oracle_tolerance": 0.0004,
+      "all_oracles_have_nonzero_center_gradients": true,
+      "observations": [
+        {
+          "case": "local-ordered-128-rho3",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 78.2800000251882,
+              "run_medians_us": [
+                77.68000023133936,
+                78.87999981903704
+              ],
+              "peak_allocated_bytes": 341504,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 4.848000127822161,
+                "layout": 10.975999757647514,
+                "h": 0.43200000072829425,
+                "output": 18.127999268472195,
+                "dx": 17.775999382138252,
+                "parameters": 11.839999817311764
+              }
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 87.26000010028656,
+              "run_medians_us": [
+                87.26000032766024,
+                87.25999987291289
+              ],
+              "peak_allocated_bytes": 237568,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 4.799999995157123,
+                "layout": 23.231999948620796,
+                "h": 0.43200000072829425,
+                "output": 14.287999831140041,
+                "dx": 20.479999482631683,
+                "parameters": 11.855999939143658
+              }
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 70.51999978102685,
+              "run_medians_us": [
+                70.93999965945841,
+                70.0999999025953
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456,
+              "diagnostic_components_us": {
+                "prepare": 4.864000016823411,
+                "layout": 19.29599978029728,
+                "h": 0.44800000614486635,
+                "output": 9.967999998480082,
+                "dx": 12.000000104308128,
+                "parameters": 9.808000177145004
+              }
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 42.499999835854396,
+              "run_medians_us": [
+                42.36999984641443,
+                42.62999982529436
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496,
+              "diagnostic_components_us": {}
+            }
+          },
+          "initial_p_sha256": "7c1dffc4f7cfcfd2d6692901e370272e0e7dcac6cc962c6d701d72e171a2b6a4",
+          "initial_inputs": {
+            "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+            "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+          },
+          "runtime": {
+            "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 188
+          },
+          "initial_rho_range": [
+            3.000002861022949,
+            3.000002861022949
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149198532104492,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149198532104492,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.04149198532104492,
+              "final_rho_bounds": [
+                2.9585108757019043,
+                2.9585533142089844
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-128-rhomixed",
+          "size": 128,
+          "rows": 32,
+          "atoms": 819,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 84.49000006294227,
+              "run_medians_us": [
+                84.55000033791293,
+                84.42999978797161
+              ],
+              "peak_allocated_bytes": 341504,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 95.65499976815772,
+              "run_medians_us": [
+                95.50999993734877,
+                95.79999959896668
+              ],
+              "peak_allocated_bytes": 237568,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 75.74999995085818,
+              "run_medians_us": [
+                75.6899999032612,
+                75.80999999845517
+              ],
+              "peak_allocated_bytes": 303104,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 42.479999819988734,
+              "run_medians_us": [
+                42.440000015631085,
+                42.51999962434638
+              ],
+              "peak_allocated_bytes": 34408960,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "d65334a47c0d140a6826dc0ee520b96af8fb65b5b3af2be5be6adfc128a5d3a7",
+          "initial_inputs": {
+            "x_sha256": "f8c5047562d3ab758a103a04ab12ae2553d51b8a8027794ed30b888cb83c552c",
+            "target_sha256": "21981ff9264b9e572b518ec54fa2ef86a66d52af37e1dde335ae09dc06cc7ad9"
+          },
+          "runtime": {
+            "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 188
+          },
+          "initial_rho_range": [
+            1.2500008344650269,
+            8.000003814697266
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19461345672607422,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805563449859619
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19461345672607422,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805563449859619
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 819,
+              "maximum_abs_change": 0.19461345672607422,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805563449859619
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-64-rho3",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 61.60000020827283,
+              "run_medians_us": [
+                61.52000014481018,
+                61.68000027173548
+              ],
+              "peak_allocated_bytes": 130560,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 61.27999995442224,
+              "run_medians_us": [
+                61.26000016593025,
+                61.299999742914224
+              ],
+              "peak_allocated_bytes": 84992,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 54.21500009106239,
+              "run_medians_us": [
+                55.110000175773166,
+                53.32000000635162
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 32.22499981347937,
+              "run_medians_us": [
+                33.009999697242165,
+                31.439999929716578
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "76f3522f82ea2b6adfd9055d76e397210402de23ccdef63d84a8ab706615a696",
+          "initial_inputs": {
+            "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+            "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+          },
+          "runtime": {
+            "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 188
+          },
+          "initial_rho_range": [
+            3.000002861022949,
+            3.000002861022949
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149150848388672,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149150848388672,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.04149150848388672,
+              "final_rho_bounds": [
+                2.9585113525390625,
+                2.958557367324829
+              ]
+            }
+          }
+        },
+        {
+          "case": "local-ordered-64-rhomixed",
+          "size": 64,
+          "rows": 32,
+          "atoms": 204,
+          "summary": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "independent_executions": 2,
+              "median_us": 60.175000044182525,
+              "run_medians_us": [
+                60.1800002186792,
+                60.16999986968585
+              ],
+              "peak_allocated_bytes": 130560,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-atom32": {
+              "independent_executions": 2,
+              "median_us": 59.64499996480299,
+              "run_medians_us": [
+                59.61999977444066,
+                59.670000155165326
+              ],
+              "peak_allocated_bytes": 84992,
+              "peak_reserved_bytes": 6291456
+            },
+            "local-ordered-split4-i32-atom32": {
+              "independent_executions": 2,
+              "median_us": 57.39499988521857,
+              "run_medians_us": [
+                57.36999992222991,
+                57.419999848207226
+              ],
+              "peak_allocated_bytes": 115712,
+              "peak_reserved_bytes": 6291456
+            },
+            "dense": {
+              "independent_executions": 2,
+              "median_us": 32.05999996680475,
+              "run_medians_us": [
+                31.240000225807307,
+                32.8799997078022
+              ],
+              "peak_allocated_bytes": 34179584,
+              "peak_reserved_bytes": 48234496
+            }
+          },
+          "initial_p_sha256": "2dbed3b0f9cb8bb6c9e39535e57c0a5c969a1ff221ebae1e9f7011ab1479f06c",
+          "initial_inputs": {
+            "x_sha256": "1d54c82415acd8576f759244dcc7ead8f4674b12af8655e94f68d819a89aaa02",
+            "target_sha256": "a2cb33fc73d4851a503758d158e63a7bc429b9f0c7c186e66eb28e6b7d4c501a"
+          },
+          "runtime": {
+            "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "cuda": "13.0",
+            "torch": "2.11.0+cu130",
+            "triton": "3.6.0",
+            "tf32": false,
+            "sm_count": 188
+          },
+          "initial_rho_range": [
+            1.2500008344650269,
+            8.000003814697266
+          ],
+          "width_updates": {
+            "persistent-supportprep-band-recompute-vjp-index16-local-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805552005767822
+              ]
+            },
+            "local-ordered-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805552005767822
+              ]
+            },
+            "local-ordered-split4-i32-atom32": {
+              "minimum_changed_atoms": 204,
+              "maximum_abs_change": 0.19460344314575195,
+              "final_rho_bounds": [
+                1.2415534257888794,
+                7.805552005767822
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "compact_key_tests": {
+    "job": "l4job-b63878db44754a84a90d57db643fa217",
+    "driver_returncode": 1,
+    "gpu_test_subprocess": "9 passed, 57 deselected",
+    "source_commit": "972ec011903014b00d66b3c46a04bd5d098a97e4",
+    "source_snapshot_sha256": "dac55cf4e8ed4a618aaecefa3e59ed47444b2ea73b1cadeb1dbd68de89b32de1",
+    "result_archive_sha256": "3817dee2c33a1dd1a05c4d21799474d27417be35388bc6a26306e16e1766f1de",
+    "runtime_files_matched": 196,
+    "measured_runtime_equivalent_to": "a482556a02ffa03ceb4e15fbbe5e2cba30b38a69",
+    "failure_after_tests": "excluded baseline in filtered benchmark declarations; no measurements"
+  },
+  "cold_diagnostic": {
+    "job": "l4job-53874fb874e34d7083e9a7d0531275ac",
+    "source_snapshot_sha256": "e3d6e8de796a08e9f34b1b71178c602bc2692921678b77d8da31af84a2903f58",
+    "result_archive_sha256": "dffeb709aed626033b125263cf1f03cd422580a2e90c4beaf7a04edb018bb788",
+    "reports": [
+      {
+        "plan": "local-ordered-atom32",
+        "direction": "forward",
+        "metrics": {
+          "dram__bytes_read.sum": 142976.0,
+          "dram__bytes_write.sum": 0.0,
+          "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum": 18574.0,
+          "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum": 215836.0,
+          "lts__t_sector_hit_rate.pct": 86.92,
+          "load_sectors_per_request": 11.620329492839453
+        }
+      },
+      {
+        "plan": "local-ordered-atom32",
+        "direction": "dx",
+        "metrics": {
+          "dram__bytes_read.sum": 149376.0,
+          "dram__bytes_write.sum": 0.0,
+          "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum": 19136.0,
+          "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum": 220676.0,
+          "lts__t_sector_hit_rate.pct": 87.6,
+          "load_sectors_per_request": 11.53198160535117
+        }
+      },
+      {
+        "plan": "local-ordered-band-atom32",
+        "direction": "forward",
+        "metrics": {
+          "dram__bytes_read.sum": 145152.0,
+          "dram__bytes_write.sum": 0.0,
+          "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum": 20186.0,
+          "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum": 258294.0,
+          "lts__t_sector_hit_rate.pct": 92.18,
+          "load_sectors_per_request": 12.795699990092142
+        }
+      },
+      {
+        "plan": "local-ordered-band-atom32",
+        "direction": "dx",
+        "metrics": {
+          "dram__bytes_read.sum": 148864.0,
+          "dram__bytes_write.sum": 0.0,
+          "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum": 21362.0,
+          "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum": 269694.0,
+          "lts__t_sector_hit_rate.pct": 91.41,
+          "load_sectors_per_request": 12.624941484879693
+        }
+      },
+      {
+        "plan": "local-ordered-index-atom32",
+        "direction": "forward",
+        "metrics": {
+          "dram__bytes_read.sum": 150656.0,
+          "dram__bytes_write.sum": 0.0,
+          "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum": 20178.0,
+          "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum": 217722.0,
+          "lts__t_sector_hit_rate.pct": 86.91,
+          "load_sectors_per_request": 10.790068391317277
+        }
+      },
+      {
+        "plan": "local-ordered-index-atom32",
+        "direction": "dx",
+        "metrics": {
+          "dram__bytes_read.sum": 151168.0,
+          "dram__bytes_write.sum": 0.0,
+          "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum": 21358.0,
+          "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum": 222590.0,
+          "lts__t_sector_hit_rate.pct": 85.25,
+          "load_sectors_per_request": 10.421855979024253
+        }
+      },
+      {
+        "plan": "persistent-supportprep-band-recompute-vjp-index16-local-atom32",
+        "direction": "forward",
+        "metrics": {
+          "dram__bytes_read.sum": 147712.0,
+          "dram__bytes_write.sum": 0.0,
+          "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum": 20186.0,
+          "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum": 258340.0,
+          "lts__t_sector_hit_rate.pct": 91.54,
+          "load_sectors_per_request": 12.797978797186168
+        }
+      },
+      {
+        "plan": "persistent-supportprep-band-recompute-vjp-index16-local-atom32",
+        "direction": "dx",
+        "metrics": {
+          "dram__bytes_read.sum": 151424.0,
+          "dram__bytes_write.sum": 0.0,
+          "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum": 21362.0,
+          "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum": 269168.0,
+          "lts__t_sector_hit_rate.pct": 92.23,
+          "load_sectors_per_request": 12.60031832225447
+        }
+      }
+    ]
+  },
+  "database_receipts": [
+    {
+      "job": "l4job-3585fb4adb02439ba2f8e62c135a0895",
+      "artifact": "ordered-owner-128-rho3.json",
+      "run_id": "e6843530e7fd3344870c415872fe7675865195724dd8051cdceea1d53b29a213",
+      "projection_id": "24e1686c128e91caa3199369d6573322dbe6a602a8bcff20c71dc2b5b24f593f",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "d868a1e02e07e342c664d3363363555e8d3c6a5f20bb5802d860c4aa4f73c7c0",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-3585fb4adb02439ba2f8e62c135a0895",
+      "artifact": "ordered-owner-128-rho8.json",
+      "run_id": "71860f3ecb828d0efada05331a957b621156932e759bbe14315fdc9eedd651c4",
+      "projection_id": "3ce92937c43884bbfb5c97ee3e4407c771d79c6764476d228b8a8482f5cc3cd9",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "12df5ca7de6f3c074933b9dfd075a5e109b61be803eef093c16bc8f0805880b8",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-3585fb4adb02439ba2f8e62c135a0895",
+      "artifact": "ordered-owner-64-rho3.json",
+      "run_id": "649601cd848d79a5b41306408b786e9a27059a23c2a1eff79ed33d38cf0c39e2",
+      "projection_id": "4b38bca43ad19c1cbb8024b09a3bd0c85b7a0a22351cba77ca9a9e32e35cf114",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "bd66e99cd2bf73027efca5d08cf426fd3ed10e278b38ab9d65a5a8872a5ade28",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-3585fb4adb02439ba2f8e62c135a0895",
+      "artifact": "ordered-owner-64-rho8.json",
+      "run_id": "d20af2bdd27959bcde2e76924dbe04f947219516c2e59b43b1375f199d1a8ee3",
+      "projection_id": "0939ef5b080c15037b3c1541945e4e9257b217bd8cf1fb7f7c0e7d6374daf07e",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "699fc80d5d2d77ce18e776302d793443a9877500b3503a8113c708a533451bc2",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-6d1de7b4e1f24b37848b3361e4b61d6a",
+      "artifact": "ordered-owner-128-rho1_25.json",
+      "run_id": "bddeb81047c07e78277d8a915de5ba289bada9b92ccd31556649f2dc3ae1f9f8",
+      "projection_id": "3af75a7e05fa3f256d73528c53eca98a46ce922e459d8a929d46166f836c4184",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "8be6d049934bbc2a40859e0be2127a3890a5e8d8279524078ac2964437d99edf",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-6d1de7b4e1f24b37848b3361e4b61d6a",
+      "artifact": "ordered-owner-128-rho3.json",
+      "run_id": "1369072d0b84c36d9792c19141ece2e0b53a7ab9536edb28c27b450c14308554",
+      "projection_id": "fa941f03866807c6daf3cee490dace80615433b9a3d1768384606510d56d0822",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "cdac1fdf66ea7edeb57e7bceed55437c6764c7283e4775755aeb2c99378fb241",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-6d1de7b4e1f24b37848b3361e4b61d6a",
+      "artifact": "ordered-owner-128-rhomixed.json",
+      "run_id": "e0beeac5a260fa1d7ae1b800968ece02a5ad02db32b8eb0b4615d02bab42187a",
+      "projection_id": "141dae1cee934821a6b155eaf6e32bc177404ffe7a4d62e72147499c1b26483e",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "3b19ecf2904bdbe305816eff20ee84a811d516de166217c52beec6301d8dfc07",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-6d1de7b4e1f24b37848b3361e4b61d6a",
+      "artifact": "ordered-owner-128-rho8.json",
+      "run_id": "560dc325b58efbf91e39c605eacece36d1f63d7a03f28d44f6d67dd0efef54b6",
+      "projection_id": "0551b5a92d0fef23da5f01abebc7f336f28f1a921ba8f759b8dfcc428efd3e06",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "6f4dfb9260c3db11586bacda85023a456ce33c2bfc8ac068666beb882cd9a4c1",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-6d1de7b4e1f24b37848b3361e4b61d6a",
+      "artifact": "ordered-owner-64-rho1_25.json",
+      "run_id": "57c3aaf78d143dcf1d559897bf95f1ffe1fbaf6b7f66ee8e7d80f36d074f343f",
+      "projection_id": "28ebb70e5010857d209ae229afe627782a5019a6b752959b6f7b63a7ce6d5fd3",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "157e15c3b6e45a346b92543f69f8da10f7ca178da778fbbd3819a27baacc19cd",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-6d1de7b4e1f24b37848b3361e4b61d6a",
+      "artifact": "ordered-owner-64-rho3.json",
+      "run_id": "f20815c6353f05072e592eb0fb5b31f80d3a23b39b038969b0c7011709edad24",
+      "projection_id": "7f3522b01e283020afbf7285f3f703fad3243b5db24cce07272ed6a6c5b7c763",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "f428f94b99cdb8e14f9f9b6bf72120fefe9d7f62c7b0322a39692f60479dd578",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-6d1de7b4e1f24b37848b3361e4b61d6a",
+      "artifact": "ordered-owner-64-rho8.json",
+      "run_id": "a5868f4bb87dbe8806cdc8fbcc0b16b5e6160df2728dd209be45c88fab601caf",
+      "projection_id": "562b514e6a5eafa43323535f2476111bd5c2d5eec182461b870052144168bda2",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "1827d36f04d24cd863871380b297b80f85fac5886c4975825188af5eb6fa3839",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-6d1de7b4e1f24b37848b3361e4b61d6a",
+      "artifact": "ordered-owner-64-rhomixed.json",
+      "run_id": "fc01eff60b8e8422cf732e563a07b2242b9b1c1e0104cde9656f9a44b8b4239f",
+      "projection_id": "0a4f2388bfe732b07a3675b4ecac66343cd2e637ac330c9d5d2f00b75488488a",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "d97931c9afb0d4cf2a1c4a57efdaa9ab2e5f83e580284a60164e4b5f91560e14",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-357b3351335346ce8b9614ef2a65a2b9",
+      "artifact": "ordered-owner-128-rho1_25.json",
+      "run_id": "9ba8034b1d95eacaf67ae5c0419209b220bd471bf1e3157fb9e9f3f1b31f6ce6",
+      "projection_id": "5086a153f0b3b2a56269db441ea98221a96f28e00633ff8621e88222cf9adb92",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "552ad968bdd98e0189f1d8ea297b308ff58a2471b171a7d6a5c6b48a153c65dd",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-357b3351335346ce8b9614ef2a65a2b9",
+      "artifact": "ordered-owner-128-rho8.json",
+      "run_id": "b4822d80ac45548ab753063aff9e0f901a125b61ce42ed276335f7c21d93923a",
+      "projection_id": "9a4b17fe59dc49c37c7a92794ce796c878eebbda1ba2dcaae70910cb3b163de2",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "803c20b94b577f036bd64bccdd3a17a87734f1ee0ae9b2a95d222ca60cc107de",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-357b3351335346ce8b9614ef2a65a2b9",
+      "artifact": "ordered-owner-128-rho3.json",
+      "run_id": "90f7234b1aa93ee3a72e83cf50448bcd98f640bfa0f3a1664f1b4807875b7ee9",
+      "projection_id": "fbe40c46b137ef5aad6fb447119c9c19dd835224b1986012b146257d5e4cb735",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "0310ae376c937372a8a757360e4f07f091168c25e35f62d2b24c343730af09e7",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-357b3351335346ce8b9614ef2a65a2b9",
+      "artifact": "ordered-owner-128-rhomixed.json",
+      "run_id": "36ef35151485564204622f19c2b289a8985a33989df1e95e7b91698cf22fcaec",
+      "projection_id": "d9ea44b841965aa4b767e2d99f3d24d578f0d632cb8841ffc369101964d0625a",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "9e5cd4ea1a23913bbd108364b3ed4809f3905743328f6a1ffc2df707aa611b93",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-357b3351335346ce8b9614ef2a65a2b9",
+      "artifact": "ordered-owner-64-rho3.json",
+      "run_id": "ca5b41e82ccd39581df3eb98b8945bb2a830f8e86efc1e941e0ced4f4b35d26b",
+      "projection_id": "655bcdc930972bde6c5f485a01814e5313b7c0dc06148b5e4f055aa4861c313b",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "babd78ccb79a64b3ee76e0c83286f467dd2d617630f80b154ce0611ad7b9a681",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-357b3351335346ce8b9614ef2a65a2b9",
+      "artifact": "ordered-owner-64-rho8.json",
+      "run_id": "904c1d295f9d060d28cf2c9166549da730a037f1d82a725f1a6b3eeeee736208",
+      "projection_id": "2c15d9aa9115e308e96a6dc11de192611178448c703f23e30882523973c94db8",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "65f8bceab555b445d942803ea355e4ec02b8a0f2068b51f2c4fd579e9e84c023",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-357b3351335346ce8b9614ef2a65a2b9",
+      "artifact": "ordered-owner-64-rho1_25.json",
+      "run_id": "e32954c1d891893c6b5e619e8a46845e46c0676999a4f451a55f03e1bf433150",
+      "projection_id": "822dd5bd52395b7fdbd89cacf8fbf7640575d96271c95a31c133074e1da199c3",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "3173814b552b9e25ff2e5ea4e934c358417b9232708d504acc6ecbdb835a173d",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-357b3351335346ce8b9614ef2a65a2b9",
+      "artifact": "ordered-owner-64-rhomixed.json",
+      "run_id": "3fe1e977779d089c8f95bc04c073538f3f00e6e9a2f984def08657163c7a2074",
+      "projection_id": "688dda0824a82c89ce5a28ea4c6e3f88e486736d057c4d9ad815b8eab2f1f849",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "70abe99c000e39858fe4f7da368d388175511355dec63b1cf253e735018ad594",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-359603f8128749ecbcd9c33d1d2602ba",
+      "artifact": "ordered-owner-128-rho3.json",
+      "run_id": "3a2848e58860e0caaabe2ee3188746cfb01ba0841321b0d8fbbf828fe565d70a",
+      "projection_id": "6a2acfff4aeab869630958c0d31ed3ef5f96b56a24d063a59d3122ee833e4564",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "8227e3f24ae00478c5374beec703c55da7bae3848765fd315948a45e06269683",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-359603f8128749ecbcd9c33d1d2602ba",
+      "artifact": "ordered-owner-64-rhomixed.json",
+      "run_id": "9cd655672c65aab70a21fa95551e51d89d1537cb9cf9b70e113d732e1a9ffc72",
+      "projection_id": "7f9e8ad3027295537a92d52873ec38fc1aa96a80017d16407b58993adafa535a",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "11f18938e1f196a324ff632d0a0a8c065c604909e7eee5f9948f5c098e47c3a0",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-359603f8128749ecbcd9c33d1d2602ba",
+      "artifact": "ordered-owner-128-rhomixed.json",
+      "run_id": "2fd5b181a02931c93ed807ce6e22f498124fc8c0db7eaf63c64393e2de567a0b",
+      "projection_id": "888bf831615c8b9ffd9c916a1f370b571df64ac72efc4ef58ca619d95f815847",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "43c96c27b547137bf42252fd51191619206595a28770d6440b8d18794c3ead6d",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-359603f8128749ecbcd9c33d1d2602ba",
+      "artifact": "ordered-owner-64-rho3.json",
+      "run_id": "42513ccdbf800d141e2997e65889fe2f4d5497cd2caf7d34babdac5cbb8cc92b",
+      "projection_id": "7a96f7f99b18bd26bdc078e4708401cf2f255868d58defe21a04a60a2519da07",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "b424e06d050c62b10c0311e6670172ffc8d9c24e4b7dac9eea782695f7821690",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-ffe9c3afc58a49399177aa77090f299c",
+      "artifact": "ordered-owner-128-rho3.json",
+      "run_id": "eb046a3216a450c9d2d05fd275aa76b989fbee7e455fa617b22f4f0b9666b4ff",
+      "projection_id": "715a4c0c1776923ffe0f3360a9ab15b7e68b81f0d79734a043490be0afbdc654",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "2d2613ceb29f1f59c3d4f4561afa17a29198a373da7d7480e8e36cc670299bba",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-ffe9c3afc58a49399177aa77090f299c",
+      "artifact": "ordered-owner-64-rho3.json",
+      "run_id": "5de90fb02d7aed3f54d0b8b7e89d17755f56c0a43a710bb83b78878d529cd9d6",
+      "projection_id": "ac5308521d3d6f11fe8710cd8a45ff689858454ab5c9769f32645a45cfec232c",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "916211691499b412e66fa86ee57dba4ba495c7df02714f0afa47c81714a57352",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-ffe9c3afc58a49399177aa77090f299c",
+      "artifact": "ordered-owner-128-rhomixed.json",
+      "run_id": "bcf84bc498f3c91aa74db83eff55af3e9a822b69401becdf74cf0b007a711260",
+      "projection_id": "c88b1ad5428d5d0202de27338879c14f833bd6846ecff0cf628514e633f73f9f",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "8c11f12ad7e5cf26f08e6f7008f5931ab136ed934ca31f1246026967b2d49d2d",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-ffe9c3afc58a49399177aa77090f299c",
+      "artifact": "ordered-owner-64-rhomixed.json",
+      "run_id": "3035a8e49e7290837c462a4ede6f48a1746b2cea6b8a1732a6a2407ea6cfe127",
+      "projection_id": "0a885f5bed8e082ef86ccb7153d45002bea71a54fa45665815b22048c019ee30",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "cfff9f6e7beb1a79a18506e63af25a41437bcfd0bdbff7cd7a1cc2fb02ad9687",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    }
+  ],
+  "ignored_raw_evidence": "benchmarks/cuda/linear/evidence/ordered-owner-20261006",
+  "raw_pool_jobs": "/Users/ware10sai/.local/state/colab-l4-pool/jobs"
+}

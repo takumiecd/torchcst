@@ -7,6 +7,60 @@ from .kernels import _interval
 
 
 @tr.jit
+def ordered_owner_ranges(
+    P,
+    Ranges,
+    C: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    JS: tl.constexpr,
+    IS: tl.constexpr,
+    S: tl.constexpr,
+    MID: tl.constexpr,
+    AC: tl.constexpr,
+    GROUPS: tl.constexpr,
+    Views=None,
+    Orders=None,
+    COPY: tl.constexpr = False,
+    RANGES: tl.constexpr = True,
+):
+    """Build exact overlap envelopes independently for each physical owner."""
+    direction, owner = tl.program_id(0), tl.program_id(1)
+    a = tl.arange(0, AC)
+    if COPY:
+        source = tl.load(Orders + direction * C + a, a < C, 0)
+        # Each owner copies one disjoint physical segment while computing its
+        # envelope from canonical metadata; no cross-CTA read-after-write exists.
+        chunk: tl.constexpr = tl.cdiv(C, GROUPS)
+        copy_lane = (a >= owner * chunk) & (a < (owner + 1) * chunk) & (a < C)
+        for field in tl.static_range(13):
+            value = tl.load(P + field * C + source, copy_lane, 0.0)
+            tl.store(Views + direction * 13 * C + field * C + a, value, copy_lane)
+    else:
+        P = P + direction * 13 * C
+        source = a
+    if RANGES:
+        vlo, vhi, vw = _interval(P, source, C, False, JS, K)
+        ulo, uhi, uw = _interval(P, source, C, True, IS, N)
+        lo, hi = tl.where(direction == 0, ulo, vlo), tl.where(direction == 0, uhi, vhi)
+        flags = tl.load(P + 8 * C + source, a < C, -1).to(tl.int32)
+        inv = tl.load(P + C + source, a < C, 0.0)
+        band = tl.where(
+            inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
+        )
+        overlap = (a < C) & (flags != 3) & (vw > 0) & (uw > 0)
+        overlap &= (lo < (owner + 1) * 16) & (hi > owner * 16)
+        for phase in tl.static_range(3):
+            live = overlap & (band == phase)
+            begin = tl.min(tl.where(live, a, C), 0)
+            end = tl.max(tl.where(live, a + 1, 0), 0)
+            begin = tl.minimum(begin, end)
+            target = Ranges + (direction * GROUPS + owner) * 6 + phase * 2
+            tl.store(target, begin)
+            tl.store(target + 1, end)
+
+
+@tr.jit
 def index_owners(
     P,
     Reverse,
@@ -22,9 +76,14 @@ def index_owners(
     AC: tl.constexpr,
     CAP: tl.constexpr,
     GROUPS: tl.constexpr,
+    ForwardIds=None,
+    BackwardIds=None,
+    PHYSICAL_ORDER: tl.constexpr = False,
 ):
     """Per-call general-atom indices; payloads and H keep their existing order."""
     direction, owner = tl.program_id(0), tl.program_id(1)
+    if PHYSICAL_ORDER:
+        P = P + direction * 13 * C
     a = tl.arange(0, AC)
     vlo, vhi, vw = _interval(P, a, C, False, JS, K)
     ulo, uhi, uw = _interval(P, a, C, True, IS, N)
@@ -36,15 +95,20 @@ def index_owners(
     )
     enabled = (a < C) & (flags != 3) & (vw > 0) & (uw > 0)
     enabled &= (lo < (owner + 1) * 16) & (hi > owner * 16)
-    physical = tl.load(Reverse + direction * C + a, a < C, -1)
+    physical = a if PHYSICAL_ORDER else tl.load(Reverse + direction * C + a, a < C, -1)
     enabled &= physical >= 0
     row = direction * GROUPS + owner
+    if ForwardIds is not None:
+        destination = ForwardIds if direction == 0 else BackwardIds
+        row_ids = destination + owner * CAP
+    else:
+        row_ids = Ids + row * CAP
     begin = tl.full((), 0, tl.int32)
     for phase in tl.static_range(3):
         live = enabled & (band == phase)
         rank = tl.cumsum(live.to(tl.int32), 0) - 1
         count = tl.sum(live.to(tl.int32), 0)
-        tl.store(Ids + row * CAP + begin + rank, physical, live)
+        tl.store(row_ids + begin + rank, physical, live)
         tl.store(Offsets + row * 4 + phase, begin)
         begin += count
     tl.store(Offsets + row * 4 + 3, begin)
@@ -76,6 +140,11 @@ def refresh(
     LC: tl.constexpr,
     BINS: tl.constexpr,
     STRIDE: tl.constexpr,
+    ForwardIds=None,
+    BackwardIds=None,
+    OwnerOffsets=None,
+    INDEX_CAP: tl.constexpr = 0,
+    INDEX_GROUPS: tl.constexpr = 0,
 ):
     direction = tl.program_id(0)
     a = tl.arange(0, AC)
@@ -93,8 +162,8 @@ def refresh(
     ends = Ends + direction * STRIDE
     free = Free + direction * L
     stats = Stats + direction * 4
-    vlo, _vhi, vw = _interval(P, a, C, False, JS, K)
-    ulo, _uhi, uw = _interval(P, a, C, True, IS, N)
+    vlo, vhi, vw = _interval(P, a, C, False, JS, K)
+    ulo, uhi, uw = _interval(P, a, C, True, IS, N)
     site = ulo if direction == 0 else vlo
     flags = tl.load(P + 8 * C + a, a < C, 0.0).to(tl.int32)
     inv = tl.load(P + C + a, a < C, 0.0)
@@ -165,6 +234,25 @@ def refresh(
     tl.store(stats + 1, tl.load(stats + 1) + moved_count)
     # Per-invocation snapshots protect outstanding backwards from later repair.
     source = tl.load(ids + slot, slot < L, -1)
+    if ForwardIds is not None:
+        # Canonical traversal matches the standalone builder's ID order exactly.
+        destination = ForwardIds if direction == 0 else BackwardIds
+        lo, hi = tl.where(direction == 0, ulo, vlo), tl.where(direction == 0, uhi, vhi)
+        physical = tl.load(reverse + a, a < C, -1)
+        enabled = active & (flags != 3) & (physical >= 0)
+        for owner in range(INDEX_GROUPS):
+            incoming = enabled & (lo < (owner + 1) * 16) & (hi > owner * 16)
+            begin = tl.full((), 0, tl.int32)
+            for phase in tl.static_range(3):
+                live = incoming & (band == phase)
+                rank = tl.cumsum(live.to(tl.int32), 0) - 1
+                count = tl.sum(live.to(tl.int32), 0)
+                tl.store(destination + owner * INDEX_CAP + begin + rank, physical, live)
+                tl.store(
+                    OwnerOffsets + (direction * INDEX_GROUPS + owner) * 4 + phase, begin
+                )
+                begin += count
+            tl.store(OwnerOffsets + (direction * INDEX_GROUPS + owner) * 4 + 3, begin)
     live = (slot < L) & (source >= 0)
     safe_source = tl.maximum(source, 0)
     tl.store(Orders + direction * L + slot, source, slot < L)
@@ -180,3 +268,319 @@ def refresh(
     tl.store(
         OutEnds + direction * STRIDE + g, tl.load(ends + g, g < buckets, 0), g < STRIDE
     )
+
+
+@tr.jit
+def _prefix_max(a, b):
+    return tl.maximum(a, b)
+
+
+@tr.jit
+def ordered_views(
+    P,
+    Views,
+    Orders,
+    Offsets,
+    Ranges,
+    C: tl.constexpr,
+    K: tl.constexpr,
+    N: tl.constexpr,
+    JS: tl.constexpr,
+    IS: tl.constexpr,
+    S: tl.constexpr,
+    MID: tl.constexpr,
+    AC: tl.constexpr,
+    BINS: tl.constexpr,
+    STRIDE: tl.constexpr,
+    POSITION: tl.constexpr,
+    RANGES: tl.constexpr,
+    COMPACT_KEY: tl.constexpr = False,
+    COPY: tl.constexpr = True,
+    VECTOR_RANGES: tl.constexpr = False,
+    OWNER_BLOCK: tl.constexpr = 1,
+    PREFIX_RANGES: tl.constexpr = False,
+    HIST_RANGES: tl.constexpr = False,
+    FUSED_HIST: tl.constexpr = False,
+    TIGHT_HIST: tl.constexpr = False,
+    JOINT_STRIDE: tl.constexpr = 1,
+    JOINT_BINS: tl.constexpr = 1,
+    POSITION_BINS: tl.constexpr = 1,
+    SEARCH_STEPS: tl.constexpr = 1,
+    CachedKeys=None,
+    CachedOrder=None,
+    CachedOffsets=None,
+    Stats=None,
+    CACHE: tl.constexpr = False,
+    CACHE_STATS: tl.constexpr = True,
+    CACHE_LOGICAL: tl.constexpr = False,
+    CACHE_VALIDATE: tl.constexpr = False,
+    CACHE_GATHER: tl.constexpr = False,
+    REPAIR_ROUNDS: tl.constexpr = 0,
+):
+    """Per-call compact snapshots; band then support start, canonical tie-break."""
+    direction = tl.program_id(0)
+    a = tl.arange(0, AC)
+    g = tl.arange(0, BINS)
+    # direction is a runtime scalar; shared maximum stride bounds both directions.
+    groups = tl.where(direction == 0, (N + 15) // 16, (K + 15) // 16)
+    atom = a
+    if CACHE and CACHE_VALIDATE and not CACHE_GATHER:
+        atom = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
+    vlo, vhi, vw = _interval(P, atom, C, False, JS, K)
+    ulo, uhi, uw = _interval(P, atom, C, True, IS, N)
+    lo = tl.where(direction == 0, ulo, vlo)
+    flags = tl.load(P + 8 * C + atom, a < C, -1).to(tl.int32)
+    inv = tl.load(P + C + atom, a < C, 0.0)
+    band = tl.where(
+        inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
+    )
+    active = (a < C) & (vw > 0) & (uw > 0)
+    bucket = tl.where(active, tl.where(flags == 3, lo // 16, groups + band), groups + 3)
+    span: tl.constexpr = max(K, N) + 1
+    position = lo if POSITION else tl.full((AC,), 0, tl.int32)
+    # The maximum bucket and position must leave room for a padded sentinel.
+    # Wider domains/counts keep the identical composite order using int64.
+    if COMPACT_KEY and STRIDE * span * C < 2147483647:
+        logical = bucket.to(tl.int32) * span + position
+        key = logical * C + atom
+        key = tl.where(a < C, key, 2147483647)
+    else:
+        logical = bucket.to(tl.int64) * span + position
+        key = logical * C + atom
+        key = tl.where(a < C, key, 9223372036854775807)
+    if CACHE:
+        tl.static_assert(not RANGES, "cached orders require freshly parallel ranges")
+        repaired = tl.full((), False, tl.int1)
+        full_sorted = tl.full((), False, tl.int1)
+        if CACHE_VALIDATE:
+            # Cached IDs are a permutation. Unique full keys are sorted iff
+            # every adjacent pair is increasing, even when topology changes.
+            ordered_key = key
+            cached_atom = atom
+            if CACHE_GATHER:
+                cached_atom = tl.load(CachedOrder + direction * C + a, a < C, 0).to(
+                    tl.int32
+                )
+                ordered_key = tl.gather(key, cached_atom, 0)
+            previous = tl.gather(ordered_key, tl.maximum(a - 1, 0), 0)
+            changed = (
+                tl.sum(((a > 0) & (a < C) & (ordered_key < previous)).to(tl.int32), 0)
+                > 0
+            )
+            if changed:
+                if REPAIR_ROUNDS:
+                    # Padding in gathered order must stay a sentinel, not ID0.
+                    ordered_key = tl.where(a < C, ordered_key, key)
+                    for _round in tl.static_range(REPAIR_ROUNDS):
+                        other = tl.gather(ordered_key, a ^ 1, 0)
+                        ordered_key = tl.where(
+                            a % 2 == 0,
+                            tl.minimum(ordered_key, other),
+                            tl.maximum(ordered_key, other),
+                        )
+                        lower = a % 2 == 1
+                        partner = tl.minimum(
+                            tl.maximum(a + tl.where(lower, 1, -1), 0), AC - 1
+                        )
+                        other = tl.gather(ordered_key, partner, 0)
+                        ordered_key = tl.where(
+                            lower,
+                            tl.minimum(ordered_key, other),
+                            tl.maximum(ordered_key, other),
+                        )
+                    previous = tl.gather(ordered_key, tl.maximum(a - 1, 0), 0)
+                    remaining = (
+                        tl.sum(
+                            ((a > 0) & (a < C) & (ordered_key < previous)).to(tl.int32),
+                            0,
+                        )
+                        > 0
+                    )
+                    if remaining:
+                        sorted_key = tl.sort(ordered_key, descending=False)
+                    else:
+                        sorted_key = ordered_key
+                    repaired = ~remaining
+                    full_sorted = remaining
+                else:
+                    sorted_key = tl.sort(key, descending=False)
+                source = (sorted_key % C).to(tl.int32)
+                tl.store(CachedOrder + direction * C + a, source, a < C)
+            else:
+                source = cached_atom
+            # Membership may change without an inversion: offsets always refresh.
+            counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
+            starts = tl.cumsum(counts, 0) - counts
+        else:
+            # Canonical ID is fixed at this index: no invalidation data.
+            cache_key = logical if CACHE_LOGICAL else key
+            previous = tl.load(CachedKeys + direction * C + a, a < C, -1)
+            changed = tl.sum(((previous != cache_key) & (a < C)).to(tl.int32), 0) > 0
+            if changed:
+                tl.store(CachedKeys + direction * C + a, cache_key, a < C)
+                sorted_key = tl.sort(key, descending=False)
+                source = (sorted_key % C).to(tl.int32)
+                counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
+                starts = tl.cumsum(counts, 0) - counts
+                tl.store(CachedOrder + direction * C + a, source, a < C)
+                tl.store(CachedOffsets + direction * STRIDE + g, starts, g < STRIDE)
+            else:
+                source = tl.load(CachedOrder + direction * C + a, a < C, 0).to(tl.int32)
+                starts = tl.load(CachedOffsets + direction * STRIDE + g, g < STRIDE, 0)
+        sorted_bucket = tl.full((AC,), 0, tl.int32)  # RANGES is statically false.
+        if CACHE_STATS:
+            stats_stride: tl.constexpr = 5 if REPAIR_ROUNDS else 3
+            calls = tl.load(Stats + direction * stats_stride)
+            rebuilds = tl.load(Stats + direction * stats_stride + 1)
+            reuses = tl.load(Stats + direction * stats_stride + 2)
+            tl.store(Stats + direction * stats_stride, calls + 1)
+            tl.store(
+                Stats + direction * stats_stride + 1, rebuilds + changed.to(tl.int64)
+            )
+            tl.store(
+                Stats + direction * stats_stride + 2, reuses + (~changed).to(tl.int64)
+            )
+            if REPAIR_ROUNDS:
+                fixes = tl.load(Stats + direction * stats_stride + 3)
+                sorts = tl.load(Stats + direction * stats_stride + 4)
+                tl.store(
+                    Stats + direction * stats_stride + 3, fixes + repaired.to(tl.int64)
+                )
+                tl.store(
+                    Stats + direction * stats_stride + 4,
+                    sorts + full_sorted.to(tl.int64),
+                )
+    else:
+        key = tl.sort(key, descending=False)
+        source = (key % C).to(tl.int32)
+        sorted_bucket = (key // (span * C)).to(tl.int32)
+        counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
+        starts = tl.cumsum(counts, 0) - counts
+    if HIST_RANGES:
+        tl.static_assert(
+            POSITION and not CACHE, "histogram index uses canonical current keys"
+        )
+        # lo is an integer relative to the current sliced domain. A contributor
+        # with hi > j0 must have lo >= j0 - max(hi-lo) + 1. Prefix counts locate
+        # that safe bound and lo < j1 directly, without dependent bisections.
+        hi = tl.where(direction == 0, uhi, vhi)
+        count = tl.where(direction == 0, N, K)
+        owner = tl.arange(0, OWNER_BLOCK)
+        if FUSED_HIST:
+            # One histogram counts all three non-singleton bands. Its prefix
+            # already includes preceding bands, so only the first band start
+            # is added. Padding/singletons use a sentinel beyond all lookups.
+            general = (a < C) & (bucket >= groups) & (bucket < groups + 3)
+            if TIGHT_HIST:
+                tl.static_assert(JOINT_STRIDE > N and JOINT_STRIDE > K)
+                tl.static_assert(JOINT_BINS >= 3 * JOINT_STRIDE + 1)
+            joint_stride: tl.constexpr = JOINT_STRIDE if TIGHT_HIST else POSITION_BINS
+            joint_bins: tl.constexpr = JOINT_BINS if TIGHT_HIST else 4 * POSITION_BINS
+            joint_key = (bucket - groups) * joint_stride + lo
+            joint_counts = tl.histogram(
+                tl.where(general, joint_key, joint_bins - 1),
+                joint_bins,
+            )
+            joint_before = tl.cumsum(joint_counts, 0) - joint_counts
+            first_band_start = tl.sum(tl.where(g == groups, starts, 0), 0)
+        for phase in tl.static_range(3):
+            eligible = (a < C) & (bucket == groups + phase)
+            max_span = tl.max(tl.where(eligible, hi - lo, 0), 0)
+            first_lo = tl.minimum(tl.maximum(owner * 16 - max_span + 1, 0), count)
+            last_lo = tl.minimum((owner + 1) * 16, count)
+            if FUSED_HIST:
+                begin = first_band_start + tl.gather(
+                    joint_before, phase * joint_stride + first_lo, 0
+                )
+                end = first_band_start + tl.gather(
+                    joint_before, phase * joint_stride + last_lo, 0
+                )
+            else:
+                counts_by_lo = tl.histogram(
+                    tl.where(eligible, lo, POSITION_BINS - 1), POSITION_BINS
+                )
+                before = tl.cumsum(counts_by_lo, 0) - counts_by_lo
+                band_start = tl.sum(tl.where(g == groups + phase, starts, 0), 0)
+                begin = band_start + tl.gather(before, first_lo, 0)
+                end = band_start + tl.gather(before, last_lo, 0)
+            begin = tl.minimum(begin, end)
+            target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
+            tl.store(target, begin, owner < STRIDE - 5)
+            tl.store(target + 1, end, owner < STRIDE - 5)
+    if PREFIX_RANGES:
+        tl.static_assert(
+            POSITION and not CACHE, "prefix search uses canonical current keys"
+        )
+        # lo is monotone within each band; hi need not be. Its prefix maximum
+        # crosses j0 at the first possible overlapping atom. All values stay
+        # within this CTA; no global prefix/H scratch or additional launch.
+        slo = tl.gather(lo, source, 0)
+        shi = tl.gather(tl.where(direction == 0, uhi, vhi), source, 0)
+        sbucket = tl.gather(bucket, source, 0)
+        owner = tl.arange(0, OWNER_BLOCK)
+        for phase in tl.static_range(3):
+            eligible = (a < C) & (sbucket == groups + phase)
+            prefix_hi = tl.associative_scan(tl.where(eligible, shi, 0), 0, _prefix_max)
+            band_start = tl.sum(tl.where(g == groups + phase, starts, 0), 0)
+            band_end = tl.sum(tl.where(g == groups + phase + 1, starts, 0), 0)
+            lower = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_start
+            upper = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_end
+            # Fixed iterations cover empty and non-power-of-two band lengths.
+            for _ in tl.static_range(SEARCH_STEPS):
+                mid = (lower + upper) // 2
+                value = tl.gather(prefix_hi, tl.minimum(mid, AC - 1), 0)
+                advance = value <= owner * 16
+                live = lower < upper
+                lower = tl.where(live & advance, mid + 1, lower)
+                upper = tl.where(live & ~advance, mid, upper)
+            begin = lower
+            lower = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_start
+            upper = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_end
+            for _ in tl.static_range(SEARCH_STEPS):
+                mid = (lower + upper) // 2
+                value = tl.gather(slo, tl.minimum(mid, AC - 1), 0)
+                advance = value < (owner + 1) * 16
+                live = lower < upper
+                lower = tl.where(live & advance, mid + 1, lower)
+                upper = tl.where(live & ~advance, mid, upper)
+            end = lower
+            begin = tl.minimum(begin, end)
+            target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
+            tl.store(target, begin, owner < STRIDE - 5)
+            tl.store(target + 1, end, owner < STRIDE - 5)
+    if COPY:
+        for field in tl.static_range(13):
+            value = tl.load(P + field * C + source, a < C, 0.0)
+            tl.store(Views + direction * 13 * C + field * C + a, value, a < C)
+    tl.store(Orders + direction * C + a, source, a < C)
+    tl.store(Offsets + direction * STRIDE + g, starts, g < STRIDE)
+    if RANGES:
+        svlo, svhi, _svw = _interval(P, source, C, False, JS, K)
+        sulo, suhi, _suw = _interval(P, source, C, True, IS, N)
+        slo, shi = (
+            tl.where(direction == 0, sulo, svlo),
+            tl.where(direction == 0, suhi, svhi),
+        )
+        if VECTOR_RANGES:
+            owner = tl.arange(0, OWNER_BLOCK)
+            overlap = (a[None, :] < C) & (slo[None, :] < (owner[:, None] + 1) * 16)
+            overlap &= shi[None, :] > owner[:, None] * 16
+            for phase in tl.static_range(3):
+                live = overlap & (sorted_bucket[None, :] == groups + phase)
+                begin = tl.min(tl.where(live, a[None, :], C), 1)
+                end = tl.max(tl.where(live, a[None, :] + 1, 0), 1)
+                begin = tl.minimum(begin, end)
+                target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
+                tl.store(target, begin, owner < STRIDE - 5)
+                tl.store(target + 1, end, owner < STRIDE - 5)
+        else:
+            for owner in range(STRIDE - 5):
+                overlap = (a < C) & (slo < (owner + 1) * 16) & (shi > owner * 16)
+                for phase in tl.static_range(3):
+                    live = overlap & (sorted_bucket == groups + phase)
+                    begin = tl.min(tl.where(live, a, C), 0)
+                    end = tl.max(tl.where(live, a + 1, 0), 0)
+                    begin = tl.minimum(begin, end)
+                    target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
+                    tl.store(target, begin)
+                    tl.store(target + 1, end)

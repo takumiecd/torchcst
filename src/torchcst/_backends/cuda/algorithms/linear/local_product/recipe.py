@@ -41,6 +41,10 @@ class Recipe:
         return 0
 
     @property
+    def parameter_atom_block(self):
+        return self.atom_block
+
+    @property
     def support_prepare(self):
         return False
 
@@ -55,6 +59,98 @@ class Recipe:
     @property
     def owner_index(self):
         return False
+
+    @property
+    def index_bits(self):
+        return 32
+
+    @property
+    def release_forward_index(self):
+        return False
+
+    @property
+    def fuse_owner_index(self):
+        return False
+
+    @property
+    def release_forward_h(self):
+        return False
+
+    @property
+    def ordered_layout(self):
+        return False
+
+    @property
+    def order_by_position(self):
+        return False
+
+    @property
+    def compact_order_key(self):
+        return False
+
+    @property
+    def histogram_owner_ranges(self):
+        return False
+
+    @property
+    def fused_histogram_owner_ranges(self):
+        return False
+
+    @property
+    def tight_histogram_owner_ranges(self):
+        return False
+
+    @property
+    def prefix_owner_ranges(self):
+        return False
+
+    @property
+    def parallel_owner_ranges(self):
+        return False
+
+    @property
+    def parallel_order_copy(self):
+        return False
+
+    @property
+    def vector_owner_ranges(self):
+        return False
+
+    @property
+    def cached_order(self):
+        return False
+
+    @property
+    def record_order_stats(self):
+        return True
+
+    @property
+    def cache_repair_rounds(self):
+        return 0
+
+    @property
+    def gather_validation_key(self):
+        return False
+
+    @property
+    def validate_cached_order(self):
+        return False
+
+    @property
+    def compact_cached_order(self):
+        return False
+
+    @property
+    def preparation_warps(self):
+        return 4
+
+    @property
+    def owner_splits(self):
+        return 1
+
+    @property
+    def parameter_splits(self):
+        return 1
 
     def __post_init__(self):
         if not self.rho_upper or any(

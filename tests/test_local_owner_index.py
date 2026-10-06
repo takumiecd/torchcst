@@ -32,7 +32,7 @@ def test_owner_index_declaration():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.parametrize("sliced", [False, True])
-def test_owner_index_exact_coverage_after_movement(sliced):
+def test_owner_index_exact_coverage_after_movement(sliced, plan=None):
     from test_local_product_research import fixture
 
     from benchmarks.cuda.linear.fixtures import local_product_state
@@ -54,7 +54,7 @@ def test_owner_index_exact_coverage_after_movement(sliced):
     )
     state = local_product_state(minimum=0.125, birth=0.125, maximum=16, w_c=0.2).cuda()
     p = fixture(state, d, device="cuda", dtype=torch.float32, atoms=67)
-    recipe = candidate().recipe
+    recipe = (candidate() if plan is None else plan).recipe
     layout = PersistentLayout(p, state, d, recipe)
     previous = None
     for move in (0, 17, -30):
@@ -63,11 +63,15 @@ def test_owner_index_exact_coverage_after_movement(sliced):
         packed = prepare_metadata(
             q, d, sparse=True, scalars=polar_scalars(state), support_bounded=True
         )
-        views, orders, _, _ = layout.refresh(packed)
-        ids, offsets = build_owner_index(packed, layout.reverse, d, recipe)
+        if recipe.fuse_owner_index:
+            views, orders, _, _, ids, offsets = layout.refresh(packed, owner_index=True)
+        else:
+            views, orders, _, _ = layout.refresh(packed)
+            ids, offsets = build_owner_index(packed, layout.reverse, d, recipe)
         if previous is not None:
-            torch.testing.assert_close(previous[0], previous[1], atol=0, rtol=0)
-        previous = ids.clone(), ids
+            for clone, saved in zip(*previous):
+                torch.testing.assert_close(clone, saved, atol=0, rtol=0)
+        previous = tuple(t.clone() for t in ids), ids
         band = torch.where(packed[1] > 1, 0, torch.where(packed[1] > 1 / 16, 1, 2))
         vl = (packed[9] - d.input_start).clamp(0, d.input_count)
         vh = (packed[10] - d.input_start).clamp(0, d.input_count)
@@ -88,7 +92,7 @@ def test_owner_index_exact_coverage_after_movement(sliced):
                     )
                     expected = torch.where(enabled)[0]
                     begin, end = offsets[direction, owner, b : b + 2].tolist()
-                    physical = ids[direction, owner, begin:end].long()
+                    physical = ids[direction][owner, begin:end].long()
                     actual = orders[direction, physical].long()
                     torch.testing.assert_close(
                         actual.sort().values, expected, atol=0, rtol=0
@@ -124,7 +128,7 @@ def test_owner_index_captured_updates(size):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
-def test_owner_index_old_backward_after_layout_change():
+def test_owner_index_old_backward_after_layout_change(plan=None):
     from test_local_product_research import fixture, scalar_oracle
 
     from benchmarks.cuda.linear.fixtures import local_product_state
@@ -136,8 +140,15 @@ def test_owner_index_old_backward_after_layout_change():
     d = Domain(64, 64)
     state = local_product_state(minimum=0.125, birth=0.125, maximum=16, w_c=0.2).cuda()
     p = fixture(state, d, device="cuda", dtype=torch.float32, atoms=41)
-    recipe = candidate().recipe
-    layout = PersistentLayout(p, state, d, recipe)
+    recipe = (candidate() if plan is None else plan).recipe
+    if recipe.cached_order:
+        from torchcst._backends.cuda.algorithms.linear.local_product.order_cache import (
+            OrderKeyCache,
+        )
+
+        layout = OrderKeyCache(p, state, d, recipe)
+    else:
+        layout = PersistentLayout(p, state, d, recipe)
     x = torch.randn(17, 64, device="cuda", requires_grad=True)
     dy = torch.randn_like(x)
 

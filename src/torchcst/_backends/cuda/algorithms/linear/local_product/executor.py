@@ -186,20 +186,35 @@ def tile_layout(packed, domain, recipe):
     return views, orders, offsets
 
 
-def build_owner_index(packed, reverse, domain, recipe):
+def allocate_owner_index(prototype, atoms, groups, recipe):
+    """Shape-only int16 safety check includes every possible persistent slot."""
+    slots = ((atoms + 31 * (groups + 4) + 15) // 16) * 16
+    dtype = torch.int16 if recipe.index_bits == 16 and slots <= 32768 else torch.int32
+    capacity = max(32, ((atoms + 31) // 32) * 32)
+    if recipe.release_forward_index:
+        ids = tuple(
+            prototype.new_empty((groups, capacity), dtype=dtype) for _ in range(2)
+        )
+    else:
+        ids = prototype.new_empty((2, groups, capacity), dtype=dtype)
+    offsets = prototype.new_empty((2, groups, 4), dtype=torch.int32)
+    return ids, offsets, capacity
+
+
+def build_owner_index(packed, reverse, domain, recipe, *, physical_views=False):
     import triton as tr
 
     from . import layout_kernels
 
-    atoms = packed.shape[1]
+    atoms = packed.shape[-1]
     groups = max(tr.cdiv(domain.input_count, 16), tr.cdiv(domain.output_count, 16))
-    capacity = max(32, tr.cdiv(atoms, 32) * 32)
-    ids = reverse.new_empty((2, groups, capacity))
-    offsets = reverse.new_empty((2, groups, 4))
+    ids, offsets, capacity = allocate_owner_index(
+        packed if physical_views else reverse, atoms, groups, recipe
+    )
     compiled = layout_kernels.index_owners[(2, groups)](
         packed,
         reverse,
-        ids,
+        ids[0] if recipe.release_forward_index else ids,
         offsets,
         atoms,
         domain.input_count,
@@ -211,11 +226,110 @@ def build_owner_index(packed, reverse, domain, recipe):
         max(32, tr.next_power_of_2(atoms)),
         capacity,
         groups,
+        ForwardIds=ids[0] if recipe.release_forward_index else None,
+        BackwardIds=ids[1] if recipe.release_forward_index else None,
+        PHYSICAL_ORDER=physical_views,
         num_warps=4,
         enable_fp_fusion=False,
     )
     _report("owner_index", compiled)
     return ids, offsets
+
+
+def ordered_layout(packed, domain, recipe, *, cache=None):
+    """Compact current values; per-direction position order and exact owner ranges."""
+    import triton as tr
+
+    from . import layout_kernels
+
+    atoms = packed.shape[1]
+    groups = max(tr.cdiv(domain.input_count, 16), tr.cdiv(domain.output_count, 16))
+    stride = groups + 5
+    views = packed.new_empty((2, 13, atoms))
+    orders = packed.new_empty((2, atoms), dtype=torch.int32)
+    offsets = packed.new_empty((2, stride), dtype=torch.int32)
+    ranges = packed.new_empty((2, groups, 6), dtype=torch.int32)
+    if atoms:
+        compiled = layout_kernels.ordered_views[(2,)](
+            packed,
+            views,
+            orders,
+            offsets,
+            ranges,
+            atoms,
+            domain.input_count,
+            domain.output_count,
+            domain.input_start,
+            domain.output_start,
+            domain.spacing,
+            recipe.rho_upper[1],
+            max(32, tr.next_power_of_2(atoms)),
+            tr.next_power_of_2(stride),
+            stride,
+            recipe.order_by_position,
+            not recipe.owner_index and not recipe.parallel_owner_ranges,
+            recipe.compact_order_key,
+            COPY=not recipe.parallel_order_copy,
+            VECTOR_RANGES=recipe.vector_owner_ranges,
+            OWNER_BLOCK=tr.next_power_of_2(groups),
+            PREFIX_RANGES=recipe.prefix_owner_ranges,
+            HIST_RANGES=recipe.histogram_owner_ranges,
+            FUSED_HIST=recipe.fused_histogram_owner_ranges,
+            TIGHT_HIST=recipe.tight_histogram_owner_ranges,
+            JOINT_STRIDE=max(domain.input_count, domain.output_count) + 1,
+            JOINT_BINS=tr.next_power_of_2(
+                3 * (max(domain.input_count, domain.output_count) + 1) + 1
+            ),
+            POSITION_BINS=tr.next_power_of_2(
+                max(domain.input_count, domain.output_count) + 1
+            ),
+            SEARCH_STEPS=max(32, tr.next_power_of_2(atoms)).bit_length(),
+            CachedKeys=cache.keys if cache is not None else None,
+            CachedOrder=cache.order if cache is not None else None,
+            CachedOffsets=cache.offsets if cache is not None else None,
+            Stats=cache.stats
+            if cache is not None and recipe.record_order_stats
+            else None,
+            CACHE=cache is not None,
+            CACHE_STATS=recipe.record_order_stats,
+            CACHE_LOGICAL=recipe.compact_cached_order,
+            CACHE_VALIDATE=recipe.validate_cached_order,
+            CACHE_GATHER=recipe.gather_validation_key,
+            REPAIR_ROUNDS=recipe.cache_repair_rounds,
+            num_warps=recipe.preparation_warps,
+            enable_fp_fusion=False,
+        )
+        _report("ordered_layout", compiled)
+        if recipe.parallel_owner_ranges and (
+            recipe.parallel_order_copy
+            or not (recipe.prefix_owner_ranges or recipe.histogram_owner_ranges)
+        ):
+            compiled = layout_kernels.ordered_owner_ranges[(2, groups)](
+                packed if recipe.parallel_order_copy else views,
+                ranges,
+                atoms,
+                domain.input_count,
+                domain.output_count,
+                domain.input_start,
+                domain.output_start,
+                domain.spacing,
+                recipe.rho_upper[1],
+                max(32, tr.next_power_of_2(atoms)),
+                groups,
+                Views=views,
+                Orders=orders,
+                COPY=recipe.parallel_order_copy,
+                RANGES=not (
+                    recipe.prefix_owner_ranges or recipe.histogram_owner_ranges
+                ),
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            _report("ordered_owner_ranges", compiled)
+    else:
+        offsets.zero_()
+        ranges.zero_()
+    return views, orders, offsets, ranges
 
 
 def _packed_fused(
@@ -242,9 +356,10 @@ def _packed_fused(
         _stamp("dx", 0)
 
     k, n, oi, oo, js, i = _sizes(domain, swap)
-    y = x.new_empty((len(x), n))
+    splits = recipe.owner_splits
+    y = x.new_empty((splits, len(x), n)) if splits > 1 else x.new_empty((len(x), n))
     compiled = kernels.fused_packed[
-        (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(n, recipe.output_block))
+        (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(n, recipe.output_block), splits)
     ](
         x,
         packed,
@@ -268,7 +383,7 @@ def _packed_fused(
         recipe.support_limit,
         recipe.rho_upper[1],
         Ends=ends,
-        H_A=canonical_atoms,
+        H_A=packed.shape[1] if recipe.ordered_layout else canonical_atoms,
         SAVED_G=saved_g is not None,
         BAND_DISPATCH=recipe.band_dispatch,
         VECTOR_SUPPORT=recipe.vector_support,
@@ -278,6 +393,11 @@ def _packed_fused(
         OwnerIds=owner_ids,
         OwnerOffsets=owner_offsets,
         INDEX_A=owner_ids.shape[-1] if owner_ids is not None else 0,
+        OwnerRanges=owner_offsets
+        if recipe.ordered_layout and not recipe.owner_index
+        else None,
+        PHYSICAL_H=recipe.ordered_layout,
+        SPLITS=splits,
         num_warps=recipe.contraction_warps or (8 if max(k, n) > 64 else 4),
         enable_fp_fusion=False,
     )
@@ -289,6 +409,19 @@ def _packed_fused(
         else "packed_forward",
         compiled,
     )
+    if splits > 1:
+        result = x.new_empty((len(x), n))
+        reduced = kernels.reduce_owner_partials[(tr.cdiv(len(x) * n, 256),)](
+            y,
+            result,
+            len(x) * n,
+            splits,
+            256,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+        _report("dx_partial_reduce" if swap else "output_partial_reduce", reduced)
+        y = result
     if swap:
         _stamp("dx", 1)
     return y
@@ -327,14 +460,45 @@ class _LocalH(torch.autograd.Function):
         )
         ends = q.new_empty((0,))
         _stamp("layout", 0)
-        if persistent_layout is not None:
+        owner_ids, owner_offsets = (q.new_empty((0,)),) * 2
+        if recipe.ordered_layout:
+            if recipe.cached_order:
+                from .order_cache import OrderKeyCache
+
+                if not isinstance(persistent_layout, OrderKeyCache):
+                    raise ValueError("cached ordering requires model-owned key cache")
+                if (
+                    persistent_layout.domain != domain
+                    or persistent_layout.recipe != recipe
+                ):
+                    raise ValueError("key cache domain/recipe changed")
+                views, orders, offsets, owner_offsets = persistent_layout.refresh(
+                    packed
+                )
+            else:
+                views, orders, offsets, owner_offsets = ordered_layout(
+                    packed, domain, recipe
+                )
+            persistent_layout = None
+            if recipe.owner_index:
+                owner_ids, owner_offsets = build_owner_index(
+                    views, None, domain, recipe, physical_views=True
+                )
+        elif persistent_layout is not None and recipe.fuse_owner_index:
+            views, orders, offsets, ends, owner_ids, owner_offsets = (
+                persistent_layout.refresh(packed, owner_index=True)
+            )
+        elif persistent_layout is not None:
             views, orders, offsets, ends = persistent_layout.refresh(packed)
         elif tile_packed:
             views, orders, offsets = tile_layout(packed, domain, recipe)
         else:
             views, orders, offsets = (q.new_empty((0,)),) * 3
-        owner_ids, owner_offsets = (q.new_empty((0,)),) * 2
-        if recipe.owner_index:
+        if (
+            recipe.owner_index
+            and not recipe.fuse_owner_index
+            and not recipe.ordered_layout
+        ):
             if persistent_layout is None:
                 raise ValueError("owner index requires persistent layout")
             owner_ids, owner_offsets = build_owner_index(
@@ -351,7 +515,7 @@ class _LocalH(torch.autograd.Function):
                 (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(a, recipe.atom_block))
             ](
                 x,
-                packed,
+                views[0] if recipe.ordered_layout else packed,
                 h,
                 len(x),
                 domain.input_count,
@@ -385,7 +549,9 @@ class _LocalH(torch.autograd.Function):
                 ends=ends[0] if persistent_layout is not None else None,
                 canonical_atoms=a if persistent_layout is not None else 0,
                 owner_ids=owner_ids[0] if recipe.owner_index else None,
-                owner_offsets=owner_offsets[0] if recipe.owner_index else None,
+                owner_offsets=owner_offsets[0]
+                if recipe.owner_index or recipe.ordered_layout
+                else None,
             )
         elif saved:
             y = x.new_empty((len(x), domain.output_count))
@@ -420,16 +586,20 @@ class _LocalH(torch.autograd.Function):
                 singletons=singletons,
             )
         _stamp("output", 1)
+        if recipe.release_forward_h and (
+            not recipe.recompute_param_h or recipe.save_g or saved
+        ):
+            raise ValueError("forward-only H requires recomputed parameter VJP and dX")
         ctx.save_for_backward(
             x,
             views[0] if tile_packed else packed,
-            h,
+            q.new_empty((0,)) if recipe.release_forward_h else h,
             views,
             orders,
             offsets,
             ends,
-            owner_ids,
-            owner_offsets,
+            owner_ids[1] if recipe.release_forward_index else owner_ids,
+            owner_offsets[1] if recipe.release_forward_index else owner_offsets,
             q if fused_polar else q.new_empty((0,)),
             *scalars,
         )
@@ -481,6 +651,22 @@ class _LocalH(torch.autograd.Function):
             tile_packed,
             persistent,
         ) = ctx.settings
+        dx_ids = (
+            owner_ids
+            if recipe.release_forward_index
+            else owner_ids[1]
+            if recipe.owner_index
+            else None
+        )
+        dx_offsets = (
+            owner_offsets[1]
+            if recipe.ordered_layout and not recipe.owner_index
+            else owner_offsets
+            if recipe.release_forward_index
+            else owner_offsets[1]
+            if recipe.owner_index
+            else None
+        )
         dy = dy.contiguous()
         dx = None
         use_g = (
@@ -502,8 +688,8 @@ class _LocalH(torch.autograd.Function):
                 swap=True,
                 ends=ends[1] if persistent else None,
                 canonical_atoms=len(source) if persistent else 0,
-                owner_ids=owner_ids[1] if recipe.owner_index else None,
-                owner_offsets=owner_offsets[1] if recipe.owner_index else None,
+                owner_ids=dx_ids,
+                owner_offsets=dx_offsets,
             )
         elif ctx.needs_input_grad[0] and not use_g:
             dx = _fused(
@@ -521,9 +707,17 @@ class _LocalH(torch.autograd.Function):
             _stamp("parameters", 0)
             a = packed.shape[1]
             canonical_atoms = len(source) if persistent else a
-            dq = packed.new_empty((canonical_atoms, 4))
+            parameter_splits = recipe.parameter_splits
+            parameter_atom_block = recipe.parameter_atom_block
+            dq = packed.new_empty(
+                (parameter_splits, canonical_atoms, 4)
+                if parameter_splits > 1
+                else (canonical_atoms, 4)
+            )
             if a:
-                compiled = kernels.param_vjp[(tr.cdiv(a, recipe.atom_block),)](
+                compiled = kernels.param_vjp[
+                    (tr.cdiv(a, parameter_atom_block), parameter_splits)
+                ](
                     x,
                     dy,
                     packed,
@@ -541,9 +735,11 @@ class _LocalH(torch.autograd.Function):
                     max(16, tr.next_power_of_2(domain.input_count)),
                     max(16, tr.next_power_of_2(domain.output_count)),
                     16
-                    if max(domain.input_count, domain.output_count) > 64 or use_g
+                    if max(domain.input_count, domain.output_count) > 64
+                    or use_g
+                    or parameter_splits > 1
                     else max(16, tr.next_power_of_2(len(x))),
-                    recipe.atom_block,
+                    parameter_atom_block,
                     saved,
                     sparse,
                     recipe.support_limit,
@@ -559,6 +755,7 @@ class _LocalH(torch.autograd.Function):
                     H_A=canonical_atoms if persistent else 0,
                     G=g,
                     SAVE_G=use_g,
+                    BATCH_SPLITS=parameter_splits,
                     num_warps=recipe.parameter_warps
                     or (8 if max(domain.input_count, domain.output_count) > 64 else 4),
                     enable_fp_fusion=False,
@@ -577,6 +774,22 @@ class _LocalH(torch.autograd.Function):
                     else ("param_saved" if saved else "param_recomputed"),
                     compiled,
                 )
+            if parameter_splits > 1:
+                merged = packed.new_empty((canonical_atoms, 4))
+                if canonical_atoms:
+                    reduced = kernels.reduce_owner_partials[
+                        (tr.cdiv(canonical_atoms * 4, 256),)
+                    ](
+                        dq,
+                        merged,
+                        canonical_atoms * 4,
+                        parameter_splits,
+                        256,
+                        num_warps=4,
+                        enable_fp_fusion=False,
+                    )
+                    _report("parameter_partial_reduce", reduced)
+                dq = merged
             _stamp("parameters", 1)
         if use_g:
             dx = _packed_fused(
@@ -591,8 +804,8 @@ class _LocalH(torch.autograd.Function):
                 ends=ends[1] if persistent else None,
                 canonical_atoms=len(source),
                 saved_g=g,
-                owner_ids=owner_ids[1] if recipe.owner_index else None,
-                owner_offsets=owner_offsets[1] if recipe.owner_index else None,
+                owner_ids=dx_ids,
+                owner_offsets=dx_offsets,
             )
         return dx, dq, None, None, None, None, None, None, None, None, None, None, None
 

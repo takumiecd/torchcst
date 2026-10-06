@@ -57,11 +57,11 @@ class PersistentLayout(nn.Module):
         self.refresh(packed)
         self.stats.zero_()  # Diagnostics distinguish configuration from timed work.
 
-    def refresh(self, packed):
+    def refresh(self, packed, *, owner_index=False):
         import triton as tr
 
         from . import layout_kernels
-        from .executor import _report
+        from .executor import _report, allocate_owner_index
 
         if packed.shape != (13, self.atoms) or packed.device != self.ids.device:
             raise ValueError("persistent layout atom shape/device changed")
@@ -71,6 +71,20 @@ class PersistentLayout(nn.Module):
             self.starts.new_empty(self.starts.shape),
             self.ends.new_empty(self.ends.shape),
         )
+        index_ids = index_offsets = None
+        capacity = groups = 0
+        if owner_index:
+            if (
+                not self.recipe.fuse_owner_index
+                or not self.recipe.release_forward_index
+            ):
+                raise ValueError(
+                    "fused owner indexing requires separate ID allocations"
+                )
+            groups = self.stride - 5
+            index_ids, index_offsets, capacity = allocate_owner_index(
+                self.ids, self.atoms, groups, self.recipe
+            )
         compiled = layout_kernels.refresh[(2,)](
             packed,
             self.ids,
@@ -96,10 +110,17 @@ class PersistentLayout(nn.Module):
             tr.next_power_of_2(self.slots),
             tr.next_power_of_2(self.stride),
             self.stride,
+            ForwardIds=index_ids[0] if owner_index else None,
+            BackwardIds=index_ids[1] if owner_index else None,
+            OwnerOffsets=index_offsets,
+            INDEX_CAP=capacity,
+            INDEX_GROUPS=groups,
             num_warps=4,
             enable_fp_fusion=False,
         )
         _report("persistent_layout", compiled)
+        if owner_index:
+            return views, orders, starts, ends, index_ids, index_offsets
         return views, orders, starts, ends
 
     def report(self):
