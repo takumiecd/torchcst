@@ -113,3 +113,21 @@ source `facab462` (runtimeは元screenと同じ)でfull rho1.25/3/8/mixedの独�
 - `l4job-c06d9b8c534d47028f74dbd868cb3aa5`:N64 repeat2
 
 4 screen artifactsをDB保存、byte-identical export/idempotent再取込を確認。full/G4結果はまだない。
+
+## 04:25 JST: param2独立2回の完全step測定
+
+4 jobs全て成功。48 full-shape FP64 Y/dX/全atom勾配比較、source/result archivesと196 runtime hashes、各caseの初期Parameter/input bytesのplan間・独立run間一致を確認した。repeat2はcase/plan順を逆転。単位us、2 execution mediansのmedian。
+
+|size/rho|copy8|parallel4|param2|dense|param2 paired短縮率|
+|---|---:|---:|---:|---:|---:|
+|64-rho1_25|55.56|54.73|50.91|38.98|7.47–9.24%|
+|64-rho3|59.32|58.80|52.59|39.05|11.25–11.43%|
+|64-rho8|56.63|55.95|52.61|38.91|7.06–7.14%|
+|64-rhomixed|62.95|61.83|58.41|38.90|7.13–7.31%|
+|128-rho1_25|65.78|70.88|64.26|45.40|2.23–2.38%|
+|128-rho3|70.07|75.12|67.49|45.35|3.50–3.88%|
+|128-rho8|73.37|78.71|69.23|45.26|5.54–5.74%|
+|128-rhomixed|75.75|81.06|71.66|45.31|5.39–5.40%|
+
+allocated peakはN64 115712 / N128 303104 bytes、reserved 6291456 bytesでcopy8と同じ。全atomの幅はproduction optimizerで更新した。denseとの差は残るが、全8条件・両executionでparam2がcopy8を改善。2回の測定から統計的有意性までは主張しない。
+screen4＋full16 artifactsをDBへ保存し、byte-identical exportとidempotent再取込を確認。GPU正しさ55 testsは既存proofに記録。G4はこの検証済み候補の短い比較を次に行う。
