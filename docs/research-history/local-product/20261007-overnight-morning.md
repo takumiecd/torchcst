@@ -80,3 +80,12 @@ hostの統括は1つ、所有GPUは同時に1つ、実験jobは逐次。subagent
 次は、128のmiddle/mixedに残る更新費用とparameter VJPを優先する。64は小さいfixed recipeを維持し、narrow/middle/wide別に測る。一般geometryへ拡張する前に支持集合の検証を増やす。metadataのphysical viewで消費しないfieldを省く案はまだ未実装で、将来候補に留める。
 
 実験はkernel/ブランチとdraft PRに保存。新しいdraft PRは自動mergeしていない。08:00 JST以降は新規実験を開始せず、回収・所有runtime停止・証拠保存を完了する。
+
+## 最終反復の回収範囲
+
+128のcounter-free全rho逆順2回目は、POOL_RESULT_READYの後にremote result archiveが見つからずdownload失敗。receipt/resultの証明がないため除外した。保存できたscreenと全rho1回目から、rho3/8は同順の独立2実行、narrow/mixedは1実行に留まる。主表の128全rho独立2実行は以前のcounted combined構成であり、この失敗結果を混ぜていない。64のcounter-free全rho2実行とDB8 artifactsは確認済み。
+
+64 tight histogramの逆順追加測定は実行前にcancelしたため、rho3/8各1screenのみ。約50.21/50.35usは候補として残すが、再現性を確認した改善とは扱わない。N128のhistogram類は負の結果を保存。
+
+L4 supervisor40251はdownload失敗でexit1となり、owned sessionのSession terminated/server No active sessions foundと全slot停止を確認後にrecoverした。その後に短いG4 cached-atom16 follow-upを開始。transport失敗をkernel失敗と同一視しない。
+
