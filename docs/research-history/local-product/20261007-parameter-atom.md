@@ -117,3 +117,20 @@ atom16はcopy8を全8条件・両executionで改善。N64/rho8とmixedではpara
 allocated peakは115712/303104 bytes、reserved6291456 bytesでcopy8と同じ。atom16はbatch partial DQを追加せず、param2はpartial/reduction込みで同ピーク。物理DRAM trafficやcache常駐は未計測。独立2回で統計的有意性は主張しない。DB16 full artifactsのbyte-identical exportとidempotent再取込が成功。screen4と合わせ20 artifactsを保存。G4短比較はL4 batch drain後に実行する。
 
 parameter compiler診断: N64 atom16/warps4は127 registers/shared16384/spill0、param2は128/shared20480/spill0、copy8は218/shared24576/spill0。N128 atom16は96/shared24576/spill0、param2は80/shared40960/spill2。N128はspillのないatom16よりparam2が完全stepで速いので、spill個数だけで採否を決めない。別graphのevent診断は原因の参考に留め、完全stepの数値で評価する。
+
+## 04:56 JST: G4独立2回の短比較完了
+
+actual NVIDIA RTX PRO 6000 Blackwell Server Edition /CC12.0 /188 SM、torch2.11.0+cu130 /CUDA13.0 /Triton3.6、TF32off。source `8247f9e3`。atomtile27 GPU+declaration tests28 passed (47.66s)、source/resultと196 runtime hashes一致。2 measurement jobs成功、24 full-shape FP64候補比較・hashes、G4内plan/独立run間の初期Parameter/input bytes一致。GPU間の初期Parameter bytesが同じとは主張しない。2 execution mediansのmedian、us。
+
+|size/rho|copy8|param2|atom16/warps4|dense|
+|---|---:|---:|---:|---:|
+|64-rho3|55.29|50.55|50.82|33.28|
+|64-rhomixed|58.02|54.94|54.40|33.34|
+|128-rho3|63.20|61.19|62.30|42.80|
+|128-rhomixed|69.54|65.65|66.22|42.72|
+
+両候補とも全4条件・両executionでcopy8を改善。param2はN128両条件とN64/rho3で速く、N64/mixedはatom16が速い。allocated peak115712/303104、reserved6291456 bytesでcopy8と同じ。denseとの差は残る。
+G4の28 testsはatomtile3候補のreference optimizer更新を含む。param2はG4 full FP64とbenchmarkのlive width更新を通過したが、reference20 updates/moments/stepsはこのsuiteに含まれない。測定と同じruntime sourceからparam2だけの9 GPU testsを短い後続G4 probeへsubmitした。L4でのparam2全reference checksは既に成功。
+G4 supervisor45682 terminal exit0、slots stopped、Session terminated /server No active sessionsを確認後、新L4 supervisor97800でgather/repair検証へ戻った。G4 measurement8 artifactsのbyte-identical export/idempotent再取込成功、family合計28 artifacts保存。
+
+後続G4 reference probe `colabjob-5527c4b067834aca947755c81bbb1418`、source `74d1baf7` (runtimeは測定source8247と同じ)、selectorでparam2のみ9 testsをhost collection確認。L4 batchが終わって停止を確認後、G4でこの短い検証を行う。
