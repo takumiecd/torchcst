@@ -95,3 +95,19 @@ GitHub CPU checks成功(9081f0e0時点)。最初の4 artifactsはDB保存・byte
 維持する必要がある。これは未実装・未測定。新たな実験で位置勾配を失わせない。
 他のGPUは停止済み。直接CLIでpool sessionへ介入しない。
 再開時はpool statusとjob resultを確認し、同じjobを重複submitしない。
+
+## 02:02 JST checkpoint
+
+copy screen成功:17 tests (16 GPU + declaration)、12 full-size oracle比較成功。
+N128 rho3:79.72→70.25us、rho8:82.85→73.72us(copy8)、メモリ同じ303104 bytes。
+N64はほぼ同時間。4 raw artifactsをDBに保存、byte export / 再取込を確認した。
+vector screen `l4job-94a272bd10584829a87e59948b9836d8` は進行中。
+full8ケースの2独立runを、current source `1ea99c9369a73d1d63b766c8b2324b47a5c00dcb`
+で凍結しqueued。firstは全ordered-owner121 testsも実行する。
+baseline / parallel4 / copy8 / vector8を比較し、secondはcase・plan順を逆転する。
+- `l4job-3989854491c041178dfd79a847f148e3`: full repeat1
+- `l4job-d9b8fc2194934af0ac1251c4030bb5e6`: full repeat2
+
+次の実装は別branch `kernel/owner-tile-reuse` に分離する。GPU sourceは凍結済みなので
+現在の作業treeの変更はこれらのjobへ混入しない。PR #35の完成時にはbranchへ戻って
+新しい証拠と説明を追記する。
