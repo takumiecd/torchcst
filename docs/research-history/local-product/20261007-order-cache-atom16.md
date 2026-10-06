@@ -12,7 +12,7 @@ Frozen source4aa6823f; PR47. Check `l4job-6b7bad148a734e33a093493f964a64f0`,64sc
 
 ## Verified GPU screening
 
-28 tests passed (27 GPU +1 declaration),8.11s. Source4aa6823f; committed/submitted/worker197 runtime hashes and both archive SHA256 proofs agree. All32 full-shape FP64 comparisons passed, nonzero position gradients, actual initialrho>1 and evolving production widths. Same Parameter and input bytes across plans including dense. One execution per condition,21 samples; medians us, independent full reruns remain pending.
+28 tests passed (27 GPU +1 declaration),8.11s. Source4aa6823f; committed/submitted/worker197 runtime hashes and both archive SHA256 proofs agree. All32 full-shape FP64 comparisons passed, nonzero position gradients, actual initialrho>1 and evolving production widths. Same initial canonical Parameter bytes across CST plans and input/target bytes across all plans including dense. One execution per condition,21 samples; medians us, independent full reruns remain pending.
 
 |N/rho|copy8|uncached atom16split2|gather atom32|repair4 atom32|repair8 atom32|gather atom16|repair4 atom16|repair8 atom16|dense|
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -21,8 +21,23 @@ Frozen source4aa6823f; PR47. Check `l4job-6b7bad148a734e33a093493f964a64f0`,64sc
 |128/3|70.50|67.88|68.58|69.69|66.09|68.94|70.03|66.29|45.73|
 |128/8|74.28|69.85|66.31|66.40|66.37|66.52|66.48|66.58|45.81|
 
-N64 wide cached atom16 improves the matching cached atom32 and uncached atom16 candidates in this screen. Middle atom16 repair4 is essentially tied with uncached atom16. N128 atom32 remains faster than each matching cached atom16 route in both screened conditions; no N128 full promotion. Peaks unchanged relative to matching routes: uncached115,712/303,104 bytes,cache117,248/307,200; reserved6,291,456. No physical DRAM/cache-residency inference.
+N64 wide cached atom16 improves the matching cached atom32 and uncached atom16 candidates in this screen. Middle atom16 repair4 is essentially tied with uncached atom16. N128 atom32 remains faster than each matching cached atom16 route in both screened conditions; no N128 full promotion. Peaks unchanged relative to matching routes: uncached115,712/303,104 bytes,cache117,248/307,200; CST reserved6,291,456. No physical DRAM/cache-residency inference.
 
 N64 full rho1.25/3/8/mixed independent repeats queued: `l4job-cebf9a04d820407d9cdb8af8819ca8e1` and `l4job-9510bc7d2b6a4ca092935cc85cd5d69e`,source4aa6823f. Five CST routes (copy8,uncached atom16split2,three cached atom16) +dense; repeat2 reverses case/plan order. No new GPU or parallel consumer allocated.
 
 All4 screening artifacts have verified byte-identical DB export and idempotent reimport. CPU CI at a9a3cb9c passed. Full repeat jobs remain queued.
+
+## Completed N64 full independent repeat1 + repeat2
+
+Both full jobs succeeded,source4aa6823f.40 full-shape FP64 comparisons,197 runtime/hash/archive proofs,initialrho>1 and changing widths,CST Parameter/all-plan input bytes match per condition and both runs.21samples per execution,second reverses case/plan order. Each cell median of2 execution medians(us). All8 full measurement artifacts plus4 screening artifacts have verified byte-identical DB export/idempotent reimport.
+
+|N64 rho|copy8|uncached atom16split2|gather atom16|repair4 atom16|repair8 atom16|dense reference|
+|---|---:|---:|---:|---:|---:|---:|
+|1.25|55.46|50.12|49.36|49.57|49.61|39.39|
+|3|59.49|51.56|51.94|51.16|51.81|39.32|
+|8|57.31|51.36|50.76|50.33|50.66|39.26|
+|mixed|63.24|56.92|56.99|56.58|56.95|39.33|
+
+Narrow gather improves matched uncached atom16 in both runs (about0.76us aggregate);wide repair4 improves in both runs (about1.03us). Middle/mixed repair4 aggregate medians are slightly lower, but first-run direction is slower and second-run faster; no stable advantage claimed. Caches keep peak117,248 versus115,712 bytes uncached (1536bytes extra). All CST reserved6,291,456;dense allocated34,179,584/reserved48,234,496 bytes includes workspace. Dense is a separately initialized nn.Linear performance reference with identical dimensions/input/target/loss/capture settings,not the same initial CST matrix or source optimizer trajectory.
+
+Only the stable narrow/wide N64 cases are selected for short G4 follow-up from unchanged validated runtime/benchmark source4aa6823f. The selected GPU test filter collects18 tests for gather/repair4;timing comparescopy8,uncached atom16split2,gather atom16,repair4 atom16+dense,21samples/two independent runs. G4 allocation waits for L4 owned-stop/server confirmation.
