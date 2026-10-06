@@ -81,6 +81,10 @@ class Recipe:
         return False
 
     @property
+    def compact_order_key(self):
+        return False
+
+    @property
     def owner_splits(self):
         return 1
 

@@ -22,6 +22,7 @@ class LocalRecipe(Recipe):
     @property
     def base_route(self):
         for suffix in (
+            "_ordered_split4_i32",
             "_ordered_band",
             "_ordered_index",
             "_ordered_cached",
@@ -120,6 +121,7 @@ class LocalRecipe(Recipe):
                 "_ordered_cached",
                 "_ordered_split2",
                 "_ordered_split4",
+                "_ordered_split4_i32",
             )
         )
 
@@ -128,12 +130,16 @@ class LocalRecipe(Recipe):
         return self.ordered_layout and not self.route.endswith("_ordered_band")
 
     @property
+    def compact_order_key(self):
+        return self.route.endswith("_ordered_split4_i32")
+
+    @property
     def owner_splits(self):
         return (
             2
             if self.route.endswith("_ordered_split2")
             else 4
-            if self.route.endswith("_ordered_split4")
+            if self.route.endswith(("_ordered_split4", "_ordered_split4_i32"))
             else 1
         )
 
@@ -234,6 +240,7 @@ class LocalRecipe(Recipe):
                 self.base_route + "_ordered_cached",
                 self.base_route + "_ordered_split2",
                 self.base_route + "_ordered_split4",
+                self.base_route + "_ordered_split4_i32",
             )
         ):
             raise ValueError("unsupported recomputed parameter VJP variant")

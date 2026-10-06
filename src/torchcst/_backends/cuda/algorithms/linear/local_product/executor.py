@@ -268,6 +268,7 @@ def ordered_layout(packed, domain, recipe):
             stride,
             recipe.order_by_position,
             not recipe.owner_index,
+            recipe.compact_order_key,
             num_warps=4,
             enable_fp_fusion=False,
         )

@@ -235,6 +235,7 @@ def ordered_views(
     STRIDE: tl.constexpr,
     POSITION: tl.constexpr,
     RANGES: tl.constexpr,
+    COMPACT_KEY: tl.constexpr = False,
 ):
     """Per-call compact snapshots; band then support start, canonical tie-break."""
     direction = tl.program_id(0)
@@ -254,8 +255,14 @@ def ordered_views(
     bucket = tl.where(active, tl.where(flags == 3, lo // 16, groups + band), groups + 3)
     span: tl.constexpr = max(K, N) + 1
     position = lo if POSITION else tl.full((AC,), 0, tl.int32)
-    key = (bucket.to(tl.int64) * span + position) * C + a
-    key = tl.where(a < C, key, 9223372036854775807)
+    # The maximum bucket and position must leave room for a padded sentinel.
+    # Wider domains/counts keep the identical composite order using int64.
+    if COMPACT_KEY and STRIDE * span * C < 2147483647:
+        key = (bucket.to(tl.int32) * span + position) * C + a
+        key = tl.where(a < C, key, 2147483647)
+    else:
+        key = (bucket.to(tl.int64) * span + position) * C + a
+        key = tl.where(a < C, key, 9223372036854775807)
     key = tl.sort(key, descending=False)
     source = (key % C).to(tl.int32)
     sorted_bucket = (key // (span * C)).to(tl.int32)
