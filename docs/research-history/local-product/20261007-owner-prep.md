@@ -111,3 +111,42 @@ baseline / parallel4 / copy8 / vector8を比較し、secondはcase・plan順を�
 次の実装は別branch `kernel/owner-tile-reuse` に分離する。GPU sourceは凍結済みなので
 現在の作業treeの変更はこれらのjobへ混入しない。PR #35の完成時にはbranchへ戻って
 新しい証拠と説明を追記する。
+
+## 03:00 JST: screen完了と短いjobへの分割
+
+copy/vectorのscreenも成功。各17 tests (16 GPU + declaration)、各12 full-size oracle比較。
+最初のscreenと合わせて新候補64 GPU tests、48 full-size比較。12 artifactsすべて
+DB保存、byte-identical export、idempotent再取込を確認した。
+
+|size/rho|copy screen baseline|copy4|copy8|vector4|vector8|
+|---|---:|---:|---:|---:|---:|
+|64/3|59.22|59.15|59.14|70.29|59.06|
+|64/8|56.67|56.46|56.66|57.52|56.04|
+|128/3|79.72|73.09|70.25|91.17|73.22|
+|128/8|82.85|76.57|73.72|83.93|76.39|
+
+単位us、各候補1 execution。vector列は別jobの測定で、copy baselineとの差を
+paired改善率と解釈しない。raw screen-all.jsonは同jobのcontrolとの対を保存する。
+`ordered_prep_vector`は末尾`_vector`によって既存のconsumer support vectorizationも
+有効になる。vector4の結果は準備処理だけの変更ではない。vector8はこの性質を持たない。
+N128/rho3 copy8のlayout診断13.31us、sort48 registers/0 spill/4096 shared bytes、
+copy/range56 registers/0 spill/16 shared bytes。split4のallocated peakは変わらない。
+
+長いfull repeat1 `l4job-3989854491c041178dfd79a847f148e3` はCLI接続timeoutで
+回収不能となった。数値やtest成功を主張しない。poolのowned runtime停止を確認し、
+live supervisorがなくなってからrecoverした。full repeat2とreuse/cacheの長いjobは
+実行前にcancelしてsourceを保存。kernel失敗とtransport失敗を区別する。
+
+新source `08c87c19` (runtime/tests/toolsは`1ea99c9369a73d1d63b766c8b2324b47a5c00dcb`と同一)
+で以下へ分割。one L4 supervisor tool session90589。
+
+- `l4job-7ab7ad83568543f185256a65b683d820`: baseline + parallel/range/warp8検証、41 passed。
+- `l4job-4aa79967228b423eb637a08d9a9fb09b`: copy/vector検証、33 passed。
+- `l4job-98265f64fd6648cda671d867835ee2ab`: N64 repeat1、測定中。
+- `l4job-1de714956be348b3b301d6d7b341bc82`: N128 repeat1、queued。
+- `l4job-1a81c7cfeaa744cb8214db5d0e36c1e7`: N128 repeat2、queued。
+- `l4job-fadd788094b94c339edb85da33a9c503`: N64 repeat2、queued。
+
+検証2jobのsource/result archive hash、submitted/committed/worker全runtime hash一致を確認。
+合計72 GPU tests + declaration 2回。測定jobはfull-shape FP64 oracleを各候補で
+通してから同じbaseline/parallel4/copy8/vector8を測る。repeat2はcase/plan順を逆転する。
