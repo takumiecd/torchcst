@@ -8931,5 +8931,11 @@
       }
     ]
   },
-  "measurement_status": "L4 two independent executions complete; G4 queued"
+  "measurement_status": "L4 two independent executions complete; G4 queued",
+  "database": {
+    "verified_artifacts": 20,
+    "full_artifacts": 16,
+    "export_byte_identical": true,
+    "reimport_idempotent": true
+  }
 }

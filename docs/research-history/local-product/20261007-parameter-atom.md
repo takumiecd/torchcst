@@ -114,6 +114,6 @@ source `ce117f28`、4 full jobs成功。48 full-shape FP64候補比較、source/
 |128-rhomixed|76.23|71.65|72.26|45.41|
 
 atom16はcopy8を全8条件・両executionで改善。N64/rho8とmixedではparam2をさらに短縮、rho3ではparam2が速い。N128は全4条件でparam2がatom16より速い。単一構成を全条件の勝者とせず、サイズ・rhoで候補を選ぶ。
-allocated peakは115712/303104 bytes、reserved6291456 bytesでcopy8と同じ。atom16はbatch partial DQを追加せず、param2はpartial/reduction込みで同ピーク。物理DRAM trafficやcache常駐は未計測。独立2回で統計的有意性は主張しない。DB16 full artifactsの取込検証進行中。G4短比較はL4 batch drain後に実行する。
+allocated peakは115712/303104 bytes、reserved6291456 bytesでcopy8と同じ。atom16はbatch partial DQを追加せず、param2はpartial/reduction込みで同ピーク。物理DRAM trafficやcache常駐は未計測。独立2回で統計的有意性は主張しない。DB16 full artifactsのbyte-identical exportとidempotent再取込が成功。screen4と合わせ20 artifactsを保存。G4短比較はL4 batch drain後に実行する。
 
 parameter compiler診断: N64 atom16/warps4は127 registers/shared16384/spill0、param2は128/shared20480/spill0、copy8は218/shared24576/spill0。N128 atom16は96/shared24576/spill0、param2は80/shared40960/spill2。N128はspillのないatom16よりparam2が完全stepで速いので、spill個数だけで採否を決めない。別graphのevent診断は原因の参考に留め、完全stepの数値で評価する。
