@@ -9,3 +9,9 @@ Controls copy8,param2,atom16split2/4warps,and matching two parallel-copy histogr
 Host888 passed/886 skipped(22.48s),changed-file ruff/diff,8 prepare/check,isolated wheel/sdist build passed. GPU suite18 checks+declaration and rho3/8 screen pending. Raw evidence owner-histogram-inline-20261007 ignored and preserved. Original histogram4/8-warp and negative bisection recipes remain intact.
 
 Frozen sourcede62e6b4; PR49(base PR48). GPU check `l4job-9d94af39d688452fb94aae3088988666`,64screen `l4job-ee834a73bbc348188a3c597185c6b357`,128screen `l4job-ef19681399a242aaa682c993af56f706` queued on supervisor65855 after original histogram jobs.
+
+## Verified GPU correctness; transport cleanup recovery
+
+19 tests passed (18 GPU +1 declaration),25.85s,source de62e6b4. Committed/submitted/worker197 runtime hashes and source/result archive SHA256 agree. Tests retain independent FP64 Y/dX/all source gradients/nonzero positions,snapshot coverage,slices/B1/32/64,20 captured reference updates/moments/steps N64/N128,outstanding backward and empty-band neighbors. CPU CI f27f94db passed.
+
+After successful test retrieval, pool supervisor65855 exited1 because its per-job cleanup.py Colab exec timed out after180s. This is transport cleanup failure, not failed kernel validation. Owned sessioncst-pool-8efd3105f08a-1 was stopped: lifecycle Session terminated and server No active sessions found,all slots stopped/sessions empty; pool recover after terminal completed0. No result is lost or rerun automatically. The two inline screens and cached-atom16/fused-histogram L4 jobs remain queued. A short already-queued G4 comparison is dispatched first on one owned GPU,then remaining L4 jobs resume only after G4 owned-stop verification. Timing remains unverified.
