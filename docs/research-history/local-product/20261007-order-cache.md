@@ -66,3 +66,16 @@ interrupted。結果未回収なので性能・test成功へ使わない。sourc
 pool supervisor22376は異常終了し、owned L4 session停止とserver no-activeを確認した。
 後続未実行jobsをcancelし、検証とサイズ別の短いmeasure jobsへ置き換える。
 回収済みの3 screen jobs / 12 artifactsは独立にhash検証・DB保存済み。
+
+## 03:08 JST: 再提出
+
+長い旧jobは実行前にcancel済み。source `652b5fb9f47771a942d4683c5d66ac9945cdbb5d`
+(runtimeは`df02c89f57330640f4b4090be8eedf469cb790ac`と同一)を凍結して、
+one L4 queueへ短い3 jobsをsubmitした。
+
+- `l4job-96b73b763ed84eb98bacad150b7c8c9f`: 新cache41 tests。
+- `l4job-3e124d65f6694434a974c113e65b53fd`: N64 rho1.25/3/8/mixed、4候補と3controls。
+- `l4job-6a64ce010f344510b8799ad4d079a2fc`: N128、同じ比較。
+
+検証とscreenは未完了。測定の各候補はfull-shape FP64 oracle比較を先に行う。
+独立反復やG4比較はL4結果から有望な候補を選んで実施する。
