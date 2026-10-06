@@ -78,3 +78,11 @@ All four full jobs succeeded. Source1e1c8581, 112 full-shape FP64 comparisons, m
 N64 atom16/split2 improves copy8 in all four conditions in both executions. N64 mixed owner2 has lower allocated peak99,328 vs115,712 bytes and a small median-time advantage56.15 vs56.63 us; both independent runs have this direction, but this is not a statistical-significance claim. N128 rho1.25/3/8/mixed has useful cache routes; repair8 is strongest at rho3, repair4 at mixed. These exact fixed routes were measured; no dynamic dispatcher or measured universal default is claimed. N128 wide owner2 is a negative result79.35 us.
 
 N128 rho3 full sort counts over52 primary refreshes: gather49/50, repair4 forward/dX26/34, repair8 1/1 in both runs. At rho8 repair8 reduces full sorts to4/3 versus gather28/28, yet the complete time remains similar to gather and repair4. Fewer full sorts alone is insufficient; repair, current-value refresh and parameter gradients remain material. Controls peak115,712/303,104 bytes, caches117,248/307,200, owner2 99,328/270,336; all reserved6,291,456. No new global H; DRAM traffic or L2 residency is not established by these measurements.
+
+## Owned runtime recovery and G4 start
+
+After successful inline-histogram test retrieval, L4 supervisor65855 exited1 on job cleanup transport timeout(180s). All preceding successful measurements/checks and source/archive proofs remain valid; no kernel failure is inferred. Pool-owned L4 sessioncst-pool-8efd3105f08a-1 stopped with lifecycle Session terminated and server No active sessions found; all slots stopped and pool recover after terminal returned0. Remaining L4 inline screens,cached-atom16 repeats and joint-histogram experiments remain queued.
+
+At21:35UTC short already-queued G4 comparison started first on supervisor21298,one owned sessioncst-pool-156f0fde07df-1,endpointgpu-g4-s-ft-kkb-euw4a1-2ubn8by91reyk. No concurrent L4 or other ownedGPU allocation. After G4 drains and owned-stop/server verification, resume remaining L4 queue before08:00JST endpoint.
+
+The earlier independent G4 param2 reference-update proof from PR38 has been copied as docs-only commit869d6bb1 to preserve up-to-date inherited records. Combined runtime/benchmark measurement source remains unchanged.
