@@ -39,4 +39,4 @@ N128/rho3 repair8 changes full sorts forward49/dX50 to1/1 over52 primary refresh
 
 Full all8conditions/two independent executions queued from docs-only source1e1c8581 (same197 runtime files): `l4job-d1df360260b1426dad78bd6855942240` N64repeat1, `l4job-54a1ebc8a3164a2598a4aa2d83fb3eb3` N128repeat1, `l4job-cacdb986f5fb4bc083b424bf811f3455` N128repeat2, `l4job-b395c46d181c48fbaa566f98e221df99` N64repeat2. Seven CST routes+dense,21samples/execution, repeat2 reverses case/plan order. Supervisor65855 remains live with queued source-isolated prefix and batch-loop checks/screens before this full batch. CPU CI at head1e1c8581 SUCCESS.
 
-N64 screen2 measurement artifacts DB byte-identical export/idempotent reimport passed. N128 screen ingest pending. The first direct-path ingest invocation lacked PYTHONPATH and failed before any DB action; reran with PYTHONPATH=. No evidence discarded.
+N64 screen2 measurement artifacts DB byte-identical export/idempotent reimport passed. N128 screen2 artifactsもDB照合成功、screen合計4 artifacts保存。 The first direct-path ingest invocation lacked PYTHONPATH and failed before any DB action; reran with PYTHONPATH=. No evidence discarded.

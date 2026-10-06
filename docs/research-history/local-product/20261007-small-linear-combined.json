@@ -5348,6 +5348,28 @@
       "artifact_sha256": "1267cf619301fd08fb8a5fbbad19f5ba0e714c1ac42ee51b80dfed06f7ea976a",
       "byte_identical_export": true,
       "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-2b7811b4a8754c2a9b8d4916f0678465",
+      "artifact": "small-linear-combined-128-rho3.json",
+      "run_id": "d4f10fc5e579a85bdcf4592bdad2e8b078edc174be177476ab79504ff36c5a55",
+      "projection_id": "1c19cfa183175fb8e018ca48130d7716ef9c49b730e22c3f871d6381c7ad3708",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "36264c947282b2fbee2d4327d818ddc7f92466dae5ac30717683dc0ff25ffcc4",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-2b7811b4a8754c2a9b8d4916f0678465",
+      "artifact": "small-linear-combined-128-rho8.json",
+      "run_id": "01f88f64581e0b40e923b6c36dd80676019f12f9b2a17020aa48c07b8aa032eb",
+      "projection_id": "c75ab73a1eee33e9e02637cb0f0bce7900404f480604c9162e361bafdbcb0357",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "1beeb281de99790447ce980b182e4e2b3b31dd890a239ecf483c7a8ef675ee7d",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
     }
   ]
 }
