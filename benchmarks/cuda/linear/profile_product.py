@@ -156,7 +156,7 @@ def correctness(args, run, model_type):
         model.update_binding,
         candidate_opt,
         step_size=case.optimizer.lr,
-        polar_update="torch",
+        polar_update=args.polar_update,
     )
     opt.step()
     return {

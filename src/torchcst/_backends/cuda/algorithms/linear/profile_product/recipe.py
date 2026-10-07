@@ -18,13 +18,41 @@ class ProductRecipe(Recipe):
     def parameter_warps(self):
         return 4
 
+    @property
+    def ordered_layout(self):
+        return self.execution_route == "ordered"
+
+    @property
+    def recompute_h(self):
+        return self.ordered_layout
+
+    @property
+    def band_dispatch(self):
+        return self.ordered_layout
+
+    @property
+    def vector_support(self):
+        return self.ordered_layout
+
+    @property
+    def contraction_warps(self):
+        return 4 if self.ordered_layout else 0
+
+    @property
+    def owner_splits(self):
+        return 4 if self.ordered_layout else 1
+
+    @property
+    def parameter_splits(self):
+        return 2 if self.ordered_layout else 1
+
     def __post_init__(self):
         if not isinstance(self.rho_upper, (tuple, list)):
             raise TypeError("requires explicit rho boundaries")
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
         if (
-            self.execution_route not in ("torch", "local", "saved")
+            self.execution_route not in ("torch", "local", "saved", "ordered")
             or type(self.pack) is not bool
             or self.pack
             or self.rho_upper != (1.0, 2.0, 4.0, 16.0)

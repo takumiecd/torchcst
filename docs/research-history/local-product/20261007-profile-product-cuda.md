@@ -80,3 +80,38 @@ Captured更新の再検証job `l4job-f46c9ed2f91c4b628f8e28979cc902a2` でも31 
 Graph内で毎回新しいLinearBindingを作るテストhelperが宣言cache検査で拒否された。
 既存CSTLinearのbinding/state/cacheを直接Dispatcherへ渡し、構築をcapture外へ戻す。
 数値比較条件は変更しない。
+
+## 初回小型コアの検証・screen
+
+source f2ff9122c8f8d1132715a327938c1f27899ab21b。L4 check
+`l4job-5158c98f97cb40a881c3228520ef75b7` で新suite33件、既存回帰38件PASS。
+L4 / Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0。
+新suiteは13 metadata/CPU +20 actual GPU。Graph20 updates、Parameter/moments/step、
+empty/singleton/tiny/global-floor、旧source/scalar変更後のVJPを含む。
+
+同source/同初期Parameter/input/target、共通Torch Polar update、1独立executionでrho3を測定。
+時刻計測21 samplesは21独立runではない。Graph complete-step median usとallocated peak bytes:
+
+|N|Torch factored|local H recompute|saved H|dense|
+|---|---:|---:|---:|---:|
+|64|344.30 /34926080|143.48 /86528|140.63 /102400|39.10 /34179584|
+|128|400.45 /40523776|374.03 /233984|323.21 /293888|45.38 /34408960|
+
+verified source-SHA jobs:
+`l4job-74e90b50229a4919ae965ba1a01c3291` (N64),
+`l4job-3bfa6321b52f42a086c32bdfd707a49a` (N128)。
+先行job `l4job-555bcdb527724ce08f730b347bb61122` はsource commit入力ラベルが誤っており、
+生データを残し、採用値・独立run数から除外した。以後SHAはgitから自動取得する。
+全workerのFP64 full-site oracle、幅更新、adapter4の整合性はverified jobsでPASS。
+現段階ではCUDA候補もdenseより遅い。H保存が再計算より有利だった。
+
+## 支持範囲による絞り込みと融合更新
+
+次の候補 `ordered` は既存の物理的な支持順metadata、owner ranges、singleton/middle/wide
+収縮を新定義の13-field metadataへ接続する。Hは保存せず、支持に沿って局所計算する。
+Param VJPは2 batch partitions。配置準備、partial reductions、source snapshotを時間/peakに含める。
+
+同じPolar CUDA更新kernelは二つのEuclidean座標に依存するので、single 2D geometryの
+profile_productにも対応判定を拡張する。更新則・数値実装は変えない。
+Torch/fused更新の両方を20 captured stepsでpublic eager optimizerと比較してから、
+全Linear Planに同じfused更新を指定して比較する。公開既定選択器は変更しない。

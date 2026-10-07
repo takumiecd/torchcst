@@ -107,10 +107,12 @@ def test_rejects_mixed_legacy_oracle_and_normalization(part):
             "independent FP64 scalar Y/dX/all atom gradients; production polar update"
         )
     elif part == "floor":
-        value["records"][3]["result"]["operator"]["kernel"]["normalization"][
-            "floor"
-        ] = 0.5
+        next(r for r in value["records"] if r["metadata"]["worker"] == "measure")[
+            "result"
+        ]["operator"]["kernel"]["normalization"]["floor"] = 0.5
     else:
-        value["records"][3]["result"]["optimizer_policy"] = "ordinary AdamW"
+        next(r for r in value["records"] if r["metadata"]["worker"] == "measure")[
+            "result"
+        ]["optimizer_policy"] = "ordinary AdamW"
     with pytest.raises(ValueError):
         project(value)

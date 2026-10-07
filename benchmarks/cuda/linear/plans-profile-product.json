@@ -63,6 +63,27 @@
           "execution_route": "saved"
         }
       }
+    },
+    {
+      "id": "ordered",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "rho_upper": [
+            1.0,
+            2.0,
+            4.0,
+            16.0
+          ],
+          "atom_block": 16,
+          "batch_block": 16,
+          "pack": false,
+          "support_limit": 8,
+          "execution_route": "ordered"
+        }
+      }
     }
   ]
 }

@@ -72,7 +72,7 @@ def run(layer, x, route, *, atom_block=16):
     return Dispatcher(registry=REGISTRY).run(layer, LinearInputs(x), plan=plan)
 
 
-@pytest.mark.parametrize("route", ["torch", "local", "saved"])
+@pytest.mark.parametrize("route", ["torch", "local", "saved", "ordered"])
 @pytest.mark.parametrize("block", [16, 32])
 def test_metadata_and_json(route, block):
     plan = ExecutionPlan(
@@ -134,7 +134,7 @@ def domain_operator(case):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["local", "saved"])
+@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
 @pytest.mark.parametrize(
     "n,rows,block", [(16, 1, 16), (32, 7, 32), (64, 32, 16), (128, 64, 32)]
 )
@@ -160,7 +160,7 @@ def test_full_site_oracle_y_dx_all_source(route, n, rows, block):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["local", "saved"])
+@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
 @pytest.mark.parametrize("case", ["empty", "singleton", "tiny", "global_floor"])
 def test_global_floor_and_support_gradients(route, case):
     floor = 0.5 if case == "global_floor" else 1e-6
@@ -197,7 +197,7 @@ def test_global_floor_and_support_gradients(route, case):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["local", "saved"])
+@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
 def test_saved_snapshot_after_source_and_scalar_changes(route):
     layer = model(torch.tensor([[0.3, 1.5, 2.4, 4.2]]), device="cuda")
     ref = copy.deepcopy(layer)
@@ -217,8 +217,9 @@ def test_saved_snapshot_after_source_and_scalar_changes(route):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["local", "saved"])
-def test_captured_updates_parameters_moments_and_evolving_width(route):
+@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
+@pytest.mark.parametrize("update", ["torch", "fused"])
+def test_captured_updates_parameters_moments_and_evolving_width(route, update):
     torch.manual_seed(13)
     layer = model(
         torch.tensor([[0.3, 1.5, 2.4, 4.2], [-0.4, 1.4, 6.3, 8.7]]), device="cuda"
@@ -238,7 +239,7 @@ def test_captured_updates_parameters_moments_and_evolving_width(route):
         opt.zero_grad(set_to_none=True)
         y = run(layer, x, route)
         (y * target).sum().backward()
-        optimizer_step(binding, opt, step_size=1e-3, polar_update="torch")
+        optimizer_step(binding, opt, step_size=1e-3, polar_update=update)
         return y
 
     stream = torch.cuda.Stream()

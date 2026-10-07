@@ -665,7 +665,10 @@ def main():
             return
     if args.core_diagnostics and run.case.fixture != "local_polar_product":
         ap.error("--core-diagnostics requires the local product fixture")
-    if args.polar_update == "fused" and run.case.fixture != "local_polar_product":
+    if args.polar_update == "fused" and run.case.fixture not in (
+        "local_polar_product",
+        "polar_profile_product",
+    ):
         ap.error("--polar-update fused requires the local product fixture")
     if args.kernel_diagnostics and (
         run.case.fixture != "local_polar_product"

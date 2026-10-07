@@ -489,9 +489,11 @@ class _LocalH(torch.autograd.Function):
         else:
             from ..profile_product.kernels import prepare
 
-            if sparse or tile_packed or not fused_polar:
+            if (
+                (sparse or tile_packed) and not recipe.ordered_layout
+            ) or not fused_polar:
                 raise ValueError("product metadata requires canonical fused Polar")
-            packed = q.new_empty((9, a))
+            packed = q.new_empty((13 if sparse else 9, a))
             if a:
                 prepare[(a,)](
                     q,
@@ -506,6 +508,7 @@ class _LocalH(torch.autograd.Function):
                     tr.next_power_of_2(domain.output_size),
                     scalars,
                     product_floor,
+                    BOUNDS=sparse,
                     num_warps=4,
                     enable_fp_fusion=False,
                 )

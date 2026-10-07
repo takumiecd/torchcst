@@ -98,5 +98,10 @@ class ProductAlgorithm(Algorithm[ProductRecipe]):
             recipe=state.recipe,
             fused_polar=True,
             saved=state.recipe.execution_route == "saved",
+            sparse=state.recipe.ordered_layout,
+            hybrid=state.recipe.ordered_layout,
+            three_band=state.recipe.ordered_layout,
+            singletons=state.recipe.ordered_layout,
+            tile_packed=state.recipe.ordered_layout,
             product_floor=operator.kernel.spec.normalization.floor,
         )

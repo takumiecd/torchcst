@@ -31,18 +31,29 @@ class FusedPolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
         if not isinstance(context, AtomUpdateContext):
             return SupportResult(("requires AtomUpdateContext",))
         reasons = []
-        if (
-            type(context.kernel.parameterization) is not PolarAmpWidthSpec
-            or context.kernel.composition != "separable"
-            or context.kernel.update.id != "polar_activity_width"
-            or len(context.geometries) != 2
-            or any(
-                type(g) is not EuclideanGeometrySpec or g.intrinsic_dim != 1
+        pair = (
+            context.kernel.composition == "separable"
+            and len(context.geometries) == 2
+            and all(
+                type(g) is EuclideanGeometrySpec and g.intrinsic_dim == 1
                 for g in context.geometries
             )
+        )
+        product = (
+            context.kernel.composition == "profile_product"
+            and len(context.geometries) == 1
+            and type(context.geometries[0]) is EuclideanGeometrySpec
+            and context.geometries[0].intrinsic_dim == 2
+        )
+        if (
+            type(context.kernel.parameterization) is not PolarAmpWidthSpec
+            or not (pair or product)
+            or context.kernel.update.id != "polar_activity_width"
             or context.parameter_shape[1] != 4
         ):
-            reasons.append("fused Polar update requires two Euclidean 1D centers")
+            reasons.append(
+                "fused Polar update requires two Euclidean center coordinates"
+            )
         if (
             context.device.type != "cuda"
             or context.dtype != torch.float32

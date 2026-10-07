@@ -20,6 +20,7 @@ def prepare(
     PN: tl.constexpr,
     Scalars,
     FLOOR: tl.constexpr,
+    BOUNDS: tl.constexpr = False,
 ):
     a = tl.program_id(0)
     amp, inv = _polar_atom(Source, a, Scalars)
@@ -58,3 +59,8 @@ def prepare(
     flags = (active & (tl.sum((v > 0).to(tl.int32), 0) == 1)).to(tl.int32)
     flags |= (active & (tl.sum((u > 0).to(tl.int32), 0) == 1)).to(tl.int32) << 1
     tl.store(P + 8 * A + a, flags.to(tl.float32))
+    if BOUNDS:
+        tl.store(P + 9 * A + a, tl.min(tl.where(v > 0, j, KI), 0).to(tl.float32))
+        tl.store(P + 10 * A + a, tl.max(tl.where(v > 0, j + 1, 0), 0).to(tl.float32))
+        tl.store(P + 11 * A + a, tl.min(tl.where(u > 0, i, NO), 0).to(tl.float32))
+        tl.store(P + 12 * A + a, tl.max(tl.where(u > 0, i + 1, 0), 0).to(tl.float32))

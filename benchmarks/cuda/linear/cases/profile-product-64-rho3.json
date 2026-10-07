@@ -34,7 +34,8 @@
   "plans": [
     "torch",
     "local",
-    "saved"
+    "saved",
+    "ordered"
   ],
   "baseline": "torch",
   "dense": true
