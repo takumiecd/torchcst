@@ -1,0 +1,242 @@
+{
+  "hardware": {
+    "gpu": "NVIDIA L4",
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "triton": "3.6.0"
+  },
+  "protocol": {
+    "fixture": "polar_profile_product",
+    "rows": 32,
+    "atoms_by_size": {
+      "64": 204,
+      "128": 819
+    },
+    "polar_update": "fused",
+    "baseline": "saved",
+    "samples_per_execution": 21,
+    "independent_executions_by_rho": {
+      "3": 2,
+      "8": 1
+    },
+    "format_validation": "6 complete artifacts consistency_checked and adapter4",
+    "memory_scope": "warmed model, gradients and optimizer; capture/replay peak; excludes total process usage",
+    "raw_evidence_root": "host-wide pool jobs/<job>/results/artifacts",
+    "public_dispatch_adopted": false
+  },
+  "check_jobs": [
+    {
+      "job": "l4job-a5fcb9f368814eeba9daf3dc61762fbe",
+      "source_commit": "634cb32b2a37122f16b8a6ca6d06d6bc9e665482",
+      "source_archive_sha256": "8ed9b47a5a9dbad7c0450eb52cddff9204165562a090f581f14af55d2c0898b7",
+      "result_archive_sha256": "dc37f11014cc310217f972d3063abe73fc63814436f9ace42d371b9b2dca9bdb",
+      "driver_sha256": "17e59288b32f2512a321dfed0b98f74c9beeac2b1f5f1ff72bc438e298fe0332",
+      "source_files_verified": 1262,
+      "runs": []
+    }
+  ],
+  "measurement_jobs": [
+    {
+      "job": "l4job-74a4db46c34642ef9df57049d5bda89e",
+      "source_commit": "634cb32b2a37122f16b8a6ca6d06d6bc9e665482",
+      "source_archive_sha256": "147bfe1fb2fb6c71c79fc24751ff846d2b7d76d6e013354674cc7739f9b6a419",
+      "result_archive_sha256": "c360ede5cc8b60ee486db0302d9b8a8e420330767d9717d4769d66f1f5168f1e",
+      "driver_sha256": "b3434afda33ad5dd3a7362dca202d57ac05d16152fd3dbed44d35306f5c02cce",
+      "source_files_verified": 1262,
+      "runs": [
+        {
+          "case": "profile-product-128-rho3",
+          "result_sha256": "4fb16bcfa3bb588a32dc432a759692190a4975cdf5edf16d28e38d7065485265",
+          "snapshot_sha256": "9e62574e70af9867aa5b88d9c013c5309352e779119d91a50286035a30cf2a03",
+          "metrics": {
+            "saved": {
+              "median_us": 244.276,
+              "allocated_bytes": 293888,
+              "reserved_bytes": 6291456
+            },
+            "ordered": {
+              "median_us": 152.987,
+              "allocated_bytes": 316416,
+              "reserved_bytes": 6291456
+            },
+            "reuse": {
+              "median_us": 77.896,
+              "allocated_bytes": 316416,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 45.194,
+              "allocated_bytes": 34408960,
+              "reserved_bytes": 48234496
+            }
+          }
+        },
+        {
+          "case": "profile-product-128-rho8",
+          "result_sha256": "93e7049645d906a9797bafe9f009b1951a510a59ca35441729c5eb79e9fcf43c",
+          "snapshot_sha256": "09675c24a63997345384c749e1ac37b4b9f51e26a03a3285a1ccb09c04ed1d86",
+          "metrics": {
+            "saved": {
+              "median_us": 243.922,
+              "allocated_bytes": 293888,
+              "reserved_bytes": 6291456
+            },
+            "ordered": {
+              "median_us": 140.494,
+              "allocated_bytes": 316416,
+              "reserved_bytes": 6291456
+            },
+            "reuse": {
+              "median_us": 79.883,
+              "allocated_bytes": 316416,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 45.582,
+              "allocated_bytes": 34408960,
+              "reserved_bytes": 48234496
+            }
+          }
+        }
+      ]
+    },
+    {
+      "job": "l4job-92f861eb03824416a500b46e3eb9d41a",
+      "source_commit": "634cb32b2a37122f16b8a6ca6d06d6bc9e665482",
+      "source_archive_sha256": "618ebeceb16c175650566e6ad27657f1d34c4ae64f1b0169831f726841fb815e",
+      "result_archive_sha256": "c9d8ff13b1e4647197c17b00f59eab669b4394403963e751445f88ad60f619fa",
+      "driver_sha256": "b3434afda33ad5dd3a7362dca202d57ac05d16152fd3dbed44d35306f5c02cce",
+      "source_files_verified": 1262,
+      "runs": [
+        {
+          "case": "profile-product-64-rho3",
+          "result_sha256": "4200fcb567a61747bcc639dfab35d2fb7f0ce9eef15ab40fd8398bb79ef95a2c",
+          "snapshot_sha256": "0f358d92ab4f23dbcf2da4c2f2902d5d49d37940980b13b67f248f287ca2fe5c",
+          "metrics": {
+            "saved": {
+              "median_us": 64.32,
+              "allocated_bytes": 102400,
+              "reserved_bytes": 6291456
+            },
+            "ordered": {
+              "median_us": 71.922,
+              "allocated_bytes": 122368,
+              "reserved_bytes": 6291456
+            },
+            "reuse": {
+              "median_us": 53.266,
+              "allocated_bytes": 122368,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 38.903,
+              "allocated_bytes": 34179584,
+              "reserved_bytes": 48234496
+            }
+          }
+        },
+        {
+          "case": "profile-product-64-rho8",
+          "result_sha256": "9a7fe65bdf5dfa24d3120eb91ba7de50ae78637bb31828ba06e4c5fd95c9b5af",
+          "snapshot_sha256": "15b44803a19365e5c800d31bd9117c5d89eb8761100201e028cc875ca5b27600",
+          "metrics": {
+            "saved": {
+              "median_us": 64.234,
+              "allocated_bytes": 102400,
+              "reserved_bytes": 6291456
+            },
+            "ordered": {
+              "median_us": 61.642,
+              "allocated_bytes": 122368,
+              "reserved_bytes": 6291456
+            },
+            "reuse": {
+              "median_us": 52.912,
+              "allocated_bytes": 122368,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 38.722,
+              "allocated_bytes": 34179584,
+              "reserved_bytes": 48234496
+            }
+          }
+        }
+      ]
+    },
+    {
+      "job": "l4job-98ba9b2dc699474fb39fa53f2ccff68b",
+      "source_commit": "634cb32b2a37122f16b8a6ca6d06d6bc9e665482",
+      "source_archive_sha256": "4d3600b7215f6d57498bfe52fe786b4111b7670fbe979f3b10be43676d21b01e",
+      "result_archive_sha256": "26e10608f62edae888ca996233840d61dc6197e7efbf25c187a9761c8bc2f4bb",
+      "driver_sha256": "b3434afda33ad5dd3a7362dca202d57ac05d16152fd3dbed44d35306f5c02cce",
+      "source_files_verified": 1262,
+      "runs": [
+        {
+          "case": "profile-product-64-rho3",
+          "result_sha256": "025aaffedbd90ec09990e7efc174ad6484de091f3e3bda20c18c5a516403f201",
+          "snapshot_sha256": "f7fd438a9353f6a54612fdb001260a20f32c40fdaba8ec44b9fb7139905f46cd",
+          "metrics": {
+            "reuse": {
+              "median_us": 53.608,
+              "allocated_bytes": 122368,
+              "reserved_bytes": 6291456
+            },
+            "ordered": {
+              "median_us": 71.752,
+              "allocated_bytes": 122368,
+              "reserved_bytes": 6291456
+            },
+            "saved": {
+              "median_us": 64.382,
+              "allocated_bytes": 102400,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 39.117,
+              "allocated_bytes": 34179584,
+              "reserved_bytes": 48234496
+            }
+          }
+        }
+      ]
+    },
+    {
+      "job": "l4job-1d9d7510abc5447a9a259b1978f6773d",
+      "source_commit": "634cb32b2a37122f16b8a6ca6d06d6bc9e665482",
+      "source_archive_sha256": "a8fa5f6368b08c94a36e4d7992dd8a1ffc6da8cc21d91b7cebe0fe69517805d2",
+      "result_archive_sha256": "ca320f1b3e940d7464e21a8ee5b79614ddead29d9b337f2c2af20427a92acde2",
+      "driver_sha256": "b3434afda33ad5dd3a7362dca202d57ac05d16152fd3dbed44d35306f5c02cce",
+      "source_files_verified": 1262,
+      "runs": [
+        {
+          "case": "profile-product-128-rho3",
+          "result_sha256": "3d4d577951c020e6e47fd51bb0aeed67bff037927860c609ba38ccd16370a18e",
+          "snapshot_sha256": "ecf67b2bb1246f321fe6f8c8c3c87fa796ae12b0a5d9835420b93cc5f508db77",
+          "metrics": {
+            "reuse": {
+              "median_us": 77.506,
+              "allocated_bytes": 316416,
+              "reserved_bytes": 6291456
+            },
+            "ordered": {
+              "median_us": 152.512,
+              "allocated_bytes": 316416,
+              "reserved_bytes": 6291456
+            },
+            "saved": {
+              "median_us": 243.514,
+              "allocated_bytes": 293888,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 45.467,
+              "allocated_bytes": 34408960,
+              "reserved_bytes": 48234496
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

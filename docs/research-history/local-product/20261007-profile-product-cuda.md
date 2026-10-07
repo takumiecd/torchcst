@@ -1,5 +1,8 @@
 # 単一Chart profile productの小型CUDAコア
 
+更新: 最新の小型layout/launchを移植した[追加検証](20261007-profile-product-reuse.md)で、
+N64 rho3は約53us、N128 rho3は約78usになった。以下は候補追加前の初回記録。
+
 PR58の数学的契約を用い、Euclidean Product Chartの二つのLine軸、
 Triweight、共有Polar幅、FP32/IEEE、入力/出力2..128、batch1..64を対象にする。
 Strip、多次元Pattern、異なる軸spacing、別profileは最初のCUDA版では非対応。
