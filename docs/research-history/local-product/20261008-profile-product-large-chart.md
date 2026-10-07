@@ -30,20 +30,72 @@ unambiguous short commit fb9c79db; the companion JSON resolves the full commit
 and verifies exact implementation file sets/bytes against the frozen archive.
 Torch2.11.0+cu130, CUDA13.0, Triton3.6.0, NVIDIA L4; no tolerance changes.
 
-Complete-step performance is pending. Two2048 primary jobs are selected with
-rho3 and rho8, four isolated routes (prepared, nativeG4P8/G8P8, TorchG8P8),
-same seed41/5% atoms/B32 and the preceding production optimizer protocol:
-l4job-f8f23b04647d44e5aa44aedcf87a30bd (Product) and
-l4job-bb56666e248047169c46bbc03923223f (Strip). Each rho has a predeclared600s
-driver child timeout; the family job has1300s for both rhos/setup. A separate
-job l4job-3e9ac4544164476887606ddc5491360e checks the exact full8192 Product
-oracle's cost and native Y/dX/all3,355,443 atom gradients, with default FP64
-chunk512 and no sampling. Its first-call cost/validation peaks are diagnostics,
-not uninstrumented complete-step time or capture/replay memory. Timeout900s.
-The single-worker shared pool serializes this selected batch. Its active VM
-will be stopped by the supervisor after the batch; this is not a shutdown claim.
+## Measured 2048 complete steps
 
-No large performance or default dispatch adoption is claimed yet. Source stays
-on kernel/profile-product-large-chart until measured validation passes.
-Raw CPU/build logs and selected GPU drivers remain in ignored
+All four primary artifacts and two independent reverse-order rho3 artifacts
+passed the full runner, submission and adapter checks. Same seed41,5% atoms,
+B32,FP32 IEEE, live widths, fused capturable AdamW and production Polar update;
+21 synchronized Graph samples per isolated route. Times below are median ms.
+
+| Family / width | Prepared | Native G4P8 | Native G8P8 | Torch G8P8 | Dense |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Product2048 rho3 primary |2.269217|1.229411|1.104699|0.922988|0.592839|
+| Product2048 rho3 reverse |2.323882|1.274074|1.121938|0.945002|0.592709|
+| Product2048 rho8 primary |2.912834|1.911339|1.787189|1.527401|0.587895|
+| Strip64x2048 rho3 primary |0.186983|0.151120|0.148370|0.080766|0.057226|
+| Strip64x2048 rho3 reverse |0.185208|0.151014|0.148319|0.081214|0.057191|
+| Strip64x2048 rho8 primary |0.210176|0.171288|0.169688|0.100334|0.056834|
+
+Capture/replay peaks in bytes (all runs of each family agree):
+
+| Family / route | Allocated | Reserved |
+| --- | ---: | ---: |
+| Product / prepared |101938176|295698432|
+| Product / native G4/G8 |66493952|163577856|
+| Product / Torch |99735040|205520896|
+| Product / dense |102238720|148897792|
+| Strip / prepared |4676096|12582912|
+| Strip / native G4/G8 |2575360|6291456|
+| Strip / Torch |36654080|48234496|
+| Strip / dense |36719104|50331648|
+
+Native reduces both time and allocated memory against the prepared control,
+including on the single Product chart. Torch contraction remains faster than
+native; dense remains faster than both. This does not justify default dispatcher
+adoption. Rho3 has two independent family jobs; rho8 has one. Maximum runner
+absolute Y/dX/all-atom gradient errors are5.381e-5/4.231e-5/3.848e-6;
+Polar update error is zero. Tolerances are unchanged.
+
+Primary Product/Strip jobs:
+l4job-f8f23b04647d44e5aa44aedcf87a30bd /
+l4job-bb56666e248047169c46bbc03923223f.
+Independent reverse Product/Strip jobs:
+l4job-8d7bb2fa57d24e6f9dd7943f4139215e /
+l4job-d8d221c3453845b699dcee85070a09b8.
+
+## Full 8192 oracle and pending timing
+
+Diagnostic job l4job-3e9ac4544164476887606ddc5491360e passed the independent
+FP64 default-chunk512 oracle for every8192x8192 site and all3,355,443 atoms
+atB32/rho3, without sampling. Oracle wall97.979956s; native maximum absolute
+Y/dX/dp errors0.000180482/0.000179605/0.00000481145 and relative L2 errors
+1.477e-6/1.485e-6/2.232e-7. First native call3.431354s includes compilation.
+Its validation memory includes retained oracle tensors and is not complete-step
+capture/replay memory. No timing improvement at8192 is claimed from this check.
+
+Two first8192 rho3 complete-step jobs preserve the same four plans plus dense:
+l4job-1db8c943dbc04f89b01e052025af36fc (Product) and
+l4job-6d5d7464679b4221845a57001ebf93b1 (Strip). Their predeclared family/child
+budgets are2000/1800s, based on the measured98s full oracle plus four independent
+oracle workers and full support scans. These are new-case budgets; no failed
+measurement was retried or re-budgeted. Actual Graph time and peaks are pending.
+
+The supervisor stopped the preceding selected batch; all slots were confirmed
+stopped before restarting one worker for these queued jobs. Current pending
+jobs are not a runtime shutdown claim. Runtime source is frozen at
+fb9c79dbb9824c37b82259708231815eb48f8efa for every measurement.
+
+The companion summary retains source/result/driver hashes, independent job IDs,
+all samples, correctness and width/support records. Raw CPU/build logs, frozen
+archives, GPU artifacts and drivers remain in ignored
 benchmarks/cuda/linear/evidence/profile-product-large-chart-20261008/.
