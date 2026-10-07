@@ -676,7 +676,9 @@ def fused_packed(
     SOURCE_A: tl.constexpr = 0,
     POLAR: tl.constexpr = False,
 ):
-    tl.static_assert(not (FUSED_BACKWARD and COMPACT_VIEW), "source VJP needs full metadata")
+    tl.static_assert(
+        not (FUSED_BACKWARD and COMPACT_VIEW), "source VJP needs full metadata"
+    )
     if FUSED_BACKWARD:
         DQ += tl.program_id(0) * SOURCE_A * 4
     b = tl.program_id(0) * BM + tl.arange(0, BM)
