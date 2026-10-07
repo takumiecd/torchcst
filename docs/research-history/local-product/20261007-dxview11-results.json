@@ -1,0 +1,338 @@
+{
+  "schema_version": 1,
+  "source_commit": "0f79fa60ad7fa79617b2547f5f520a8787c58a19",
+  "jobs": [
+    {
+      "job": "l4job-0b03e028784f494dbe4a6fc36372522f",
+      "repeat": 1,
+      "source_commit": "0f79fa60ad7fa79617b2547f5f520a8787c58a19",
+      "source_snapshot_sha256": "60bdf16f6ba4e29bcaf88a1c916ddfca6fa17242bde810277923ff2e7e8ed820",
+      "result_archive_sha256": "d8688e1002744bae4413de253b3f6b7452f1b8e8fd7a571fa108ff2fc0e11574",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA L4, GPU-8bfc06cf-e0fc-f11d-01b7-18018e0e713c, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    },
+    {
+      "job": "l4job-77135b5984e4454fa7ed340c21a1481d",
+      "repeat": 2,
+      "source_commit": "0f79fa60ad7fa79617b2547f5f520a8787c58a19",
+      "source_snapshot_sha256": "c51fd2ed36afb8f1e43a3158d915d9336582d8923fd72faf1a68e3fa20478bed",
+      "result_archive_sha256": "41ba8b37692000c81519a68a584dba3b581c5c2bc0fa2d0d7a6ed240445db2d0",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA L4, GPU-8bfc06cf-e0fc-f11d-01b7-18018e0e713c, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    },
+    {
+      "job": "l4job-3e5f6b36a209478b871a33af02803781",
+      "repeat": 1,
+      "source_commit": "0f79fa60ad7fa79617b2547f5f520a8787c58a19",
+      "source_snapshot_sha256": "5fc5fb61302f940a2b9105d3736de5e2cf816ed691f630f0f353c4cb9798d1f8",
+      "result_archive_sha256": "3a94e3b43c504806ac27e587bd5498684b98246e3b0f369c90ef230cfe8510d0",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA L4, GPU-8bfc06cf-e0fc-f11d-01b7-18018e0e713c, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    },
+    {
+      "job": "l4job-a7af3d870cb841d7ab6332bfe1a35c61",
+      "repeat": 2,
+      "source_commit": "0f79fa60ad7fa79617b2547f5f520a8787c58a19",
+      "source_snapshot_sha256": "a4fe972707a8fc24f5785a63b6809a8e5f523ae8e8f7b8e1e30620c88a4b6907",
+      "result_archive_sha256": "93465490d4a020019002ea45ed274b7fe5ddd2f27fc9fe68669afb8b5fc4dfef",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA L4, GPU-8bfc06cf-e0fc-f11d-01b7-18018e0e713c, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    }
+  ],
+  "protocol": "B32 N64/A204 N128/A819; rho3/mixed; FP32 IEEE TF32 off; complete forward/backward/fused AdamW/Polar; evolving width; 21 samples per execution; 2 independent executions, reverse second order",
+  "validation": {
+    "gpu_tests": 69,
+    "runtime_files_matched": 197,
+    "full_shape_fp64_plan_comparisons": 32,
+    "max_abs_error_y_dx_p": [
+      1.3337486977071933e-06,
+      1.457482662559073e-06,
+      4.461254812682114e-06
+    ],
+    "initial_cst_parameter_input_target_bytes_match": true,
+    "actual_initial_rho_min": 1.25,
+    "declaration_tests": 2,
+    "total_tests": 71
+  },
+  "comparisons": [
+    {
+      "case": "local-dxview11-128-rho3",
+      "control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+      "candidate": "local-ordered-cache-repair4-param2-nostats-copy8-atom32-dxview11",
+      "copy8_us": 70.06150030974823,
+      "control_us": 68.97799994476372,
+      "candidate_us": 68.7135000134731,
+      "dense_us": 45.439999894369976,
+      "control_peak_allocated_bytes": 306688,
+      "candidate_peak_allocated_bytes": 300032,
+      "dense_peak_allocated_bytes": 34408960,
+      "candidate_peak_reserved_bytes": 6291456,
+      "dense_peak_reserved_bytes": 48234496,
+      "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+      "median_time_reduction_percent": 0.38380887421314847,
+      "same_improvement_direction": true,
+      "minimum_allocated_reduction_bytes": 6656,
+      "paired_executions": [
+        {
+          "job": "l4job-0b03e028784f494dbe4a6fc36372522f",
+          "control_us": 68.86199980726815,
+          "candidate_us": 68.45300003988086,
+          "time_reduction_percent": 0.5939411700676689,
+          "allocated_reduction_bytes": 6656,
+          "reserved_reduction_bytes": 0
+        },
+        {
+          "job": "l4job-77135b5984e4454fa7ed340c21a1481d",
+          "control_us": 69.0940000822593,
+          "candidate_us": 68.97399998706533,
+          "time_reduction_percent": 0.17367657835862804,
+          "allocated_reduction_bytes": 6656,
+          "reserved_reduction_bytes": 0
+        }
+      ]
+    },
+    {
+      "case": "local-dxview11-128-rho3",
+      "control": "local-ordered-cache-repair8-param2-nostats-copy8-atom32",
+      "candidate": "local-ordered-cache-repair8-param2-nostats-copy8-atom32-dxview11",
+      "copy8_us": 70.06150030974823,
+      "control_us": 65.52949980687117,
+      "candidate_us": 67.25550019837101,
+      "dense_us": 45.439999894369976,
+      "control_peak_allocated_bytes": 306688,
+      "candidate_peak_allocated_bytes": 300032,
+      "dense_peak_allocated_bytes": 34408960,
+      "candidate_peak_reserved_bytes": 6291456,
+      "dense_peak_reserved_bytes": 48234496,
+      "matched_control": "local-ordered-cache-repair8-param2-nostats-copy8-atom32",
+      "median_time_reduction_percent": -2.6294044877780087,
+      "same_improvement_direction": false,
+      "minimum_allocated_reduction_bytes": 6656,
+      "paired_executions": [
+        {
+          "job": "l4job-0b03e028784f494dbe4a6fc36372522f",
+          "control_us": 65.38299976455164,
+          "candidate_us": 65.77900012416649,
+          "time_reduction_percent": -0.6056625744319977,
+          "allocated_reduction_bytes": 6656,
+          "reserved_reduction_bytes": 0
+        },
+        {
+          "job": "l4job-77135b5984e4454fa7ed340c21a1481d",
+          "control_us": 65.6759998491907,
+          "candidate_us": 68.73200027257553,
+          "time_reduction_percent": -4.65314640112402,
+          "allocated_reduction_bytes": 6656,
+          "reserved_reduction_bytes": 0
+        }
+      ]
+    },
+    {
+      "case": "local-dxview11-128-rhomixed",
+      "control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+      "candidate": "local-ordered-cache-repair4-param2-nostats-copy8-atom32-dxview11",
+      "copy8_us": 75.33000007242663,
+      "control_us": 68.78149997646688,
+      "candidate_us": 68.85499988129595,
+      "dense_us": 45.066499751555966,
+      "control_peak_allocated_bytes": 306688,
+      "candidate_peak_allocated_bytes": 300032,
+      "dense_peak_allocated_bytes": 34408960,
+      "candidate_peak_reserved_bytes": 6291456,
+      "dense_peak_reserved_bytes": 48234496,
+      "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+      "median_time_reduction_percent": -0.10757958715730265,
+      "same_improvement_direction": false,
+      "minimum_allocated_reduction_bytes": 6656,
+      "paired_executions": [
+        {
+          "job": "l4job-0b03e028784f494dbe4a6fc36372522f",
+          "control_us": 68.97200000821613,
+          "candidate_us": 68.86699975439114,
+          "time_reduction_percent": 0.15223605783865057,
+          "allocated_reduction_bytes": 6656,
+          "reserved_reduction_bytes": 0
+        },
+        {
+          "job": "l4job-77135b5984e4454fa7ed340c21a1481d",
+          "control_us": 68.59099994471762,
+          "candidate_us": 68.84300000820076,
+          "time_reduction_percent": -0.36739523215325587,
+          "allocated_reduction_bytes": 6656,
+          "reserved_reduction_bytes": 0
+        }
+      ]
+    },
+    {
+      "case": "local-dxview11-128-rhomixed",
+      "control": "local-ordered-cache-repair8-param2-nostats-copy8-atom32",
+      "candidate": "local-ordered-cache-repair8-param2-nostats-copy8-atom32-dxview11",
+      "copy8_us": 75.33000007242663,
+      "control_us": 69.06550015628454,
+      "candidate_us": 69.21250019331637,
+      "dense_us": 45.066499751555966,
+      "control_peak_allocated_bytes": 306688,
+      "candidate_peak_allocated_bytes": 300032,
+      "dense_peak_allocated_bytes": 34408960,
+      "candidate_peak_reserved_bytes": 6291456,
+      "dense_peak_reserved_bytes": 48234496,
+      "matched_control": "local-ordered-cache-repair8-param2-nostats-copy8-atom32",
+      "median_time_reduction_percent": -0.2131648080524129,
+      "same_improvement_direction": false,
+      "minimum_allocated_reduction_bytes": 6656,
+      "paired_executions": [
+        {
+          "job": "l4job-0b03e028784f494dbe4a6fc36372522f",
+          "control_us": 68.97100001879153,
+          "candidate_us": 69.28100037839613,
+          "time_reduction_percent": -0.44946478885348196,
+          "allocated_reduction_bytes": 6656,
+          "reserved_reduction_bytes": 0
+        },
+        {
+          "job": "l4job-77135b5984e4454fa7ed340c21a1481d",
+          "control_us": 69.16000029377756,
+          "candidate_us": 69.14400000823662,
+          "time_reduction_percent": 0.023135172748656174,
+          "allocated_reduction_bytes": 6656,
+          "reserved_reduction_bytes": 0
+        }
+      ]
+    },
+    {
+      "case": "local-dxview11-64-rho3",
+      "control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+      "candidate": "local-ordered-reuse-paramatom16-param4-param2-atom32-dxview11",
+      "copy8_us": 59.06100000174774,
+      "control_us": 51.09500011712953,
+      "candidate_us": 50.722500191113795,
+      "dense_us": 38.92249992532015,
+      "control_peak_allocated_bytes": 115712,
+      "candidate_peak_allocated_bytes": 114176,
+      "dense_peak_allocated_bytes": 34179584,
+      "candidate_peak_reserved_bytes": 6291456,
+      "dense_peak_reserved_bytes": 48234496,
+      "matched_control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+      "median_time_reduction_percent": 0.7290067373412423,
+      "same_improvement_direction": true,
+      "minimum_allocated_reduction_bytes": 1536,
+      "paired_executions": [
+        {
+          "job": "l4job-3e5f6b36a209478b871a33af02803781",
+          "control_us": 51.05099990032613,
+          "candidate_us": 50.69500002718996,
+          "time_reduction_percent": 0.6973416266698784,
+          "allocated_reduction_bytes": 1536,
+          "reserved_reduction_bytes": 0
+        },
+        {
+          "job": "l4job-a7af3d870cb841d7ab6332bfe1a35c61",
+          "control_us": 51.13900033393293,
+          "candidate_us": 50.75000035503763,
+          "time_reduction_percent": 0.7606718480126062,
+          "allocated_reduction_bytes": 1536,
+          "reserved_reduction_bytes": 0
+        }
+      ]
+    },
+    {
+      "case": "local-dxview11-64-rhomixed",
+      "control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+      "candidate": "local-ordered-reuse-paramatom16-param4-param2-atom32-dxview11",
+      "copy8_us": 62.82999993345584,
+      "control_us": 56.73999999089574,
+      "candidate_us": 56.196500054284115,
+      "dense_us": 39.05399989889702,
+      "control_peak_allocated_bytes": 115712,
+      "candidate_peak_allocated_bytes": 114176,
+      "dense_peak_allocated_bytes": 34179584,
+      "candidate_peak_reserved_bytes": 6291456,
+      "dense_peak_reserved_bytes": 48234496,
+      "matched_control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+      "median_time_reduction_percent": 0.9578072863595688,
+      "same_improvement_direction": true,
+      "minimum_allocated_reduction_bytes": 1536,
+      "paired_executions": [
+        {
+          "job": "l4job-3e5f6b36a209478b871a33af02803781",
+          "control_us": 56.760999996186,
+          "candidate_us": 56.10900007013697,
+          "time_reduction_percent": 1.148675897346485,
+          "allocated_reduction_bytes": 1536,
+          "reserved_reduction_bytes": 0
+        },
+        {
+          "job": "l4job-a7af3d870cb841d7ab6332bfe1a35c61",
+          "control_us": 56.71899998560548,
+          "candidate_us": 56.28400003843126,
+          "time_reduction_percent": 0.7669386753726526,
+          "allocated_reduction_bytes": 1536,
+          "reserved_reduction_bytes": 0
+        }
+      ]
+    }
+  ],
+  "excluded": [
+    {
+      "job": "l4job-cb0bf232b99a4bb4906bb44bf36016c9",
+      "source_commit": "f6a53b664a3e43fcb4f66db363357fd99c39ab86",
+      "source_snapshot_sha256": "f85ed04562432b94b8dd63cf17bca6046f328f91c8e56793bdfff0c7f94e1b0b",
+      "result_archive_sha256": "8e47a8a29742925940d53dfee1319bc1221289df2e5708517cb583569dd4d0c9",
+      "tests_summary": "67 failed, 4 passed; constexpr reassignment compilation errors",
+      "measurement_started": false,
+      "repair_commit": "05509955feb79bbbeb9d5d98bb09779299d1429b"
+    },
+    {
+      "job": "l4job-ab77a2e89f4f4a9d893918c008c88e03",
+      "source_commit": "05509955feb79bbbeb9d5d98bb09779299d1429b",
+      "source_snapshot_sha256": "0057cc1741bce4e5d8c908882ad337e1a9faf157da7c392a2da418997209b94d",
+      "archive_sha256": "4dc766cdbf8475c93532e936a4d734003aac4f836ce0afbb03b3e66903a44953",
+      "excluded": "28 gradient/update checks failed; no measurement"
+    }
+  ],
+  "decision": "N64 has small consistent gains; N128 speed-priority keeps full13 dX. Compact dX remains explicit low-memory research option. Public dispatch unchanged.",
+  "database": {
+    "verified_artifacts": 8,
+    "byte_identical_export": true,
+    "idempotent_reimport": true,
+    "run_ids": [
+      "4ccd7bcd544599d0e0685ba93fea301e45a16eab5d641516ea3a9934a7cf7dde",
+      "92f4b68f3c16db839b295332d3ba60be782fede3b371fef66c972e345071d9cd",
+      "f40a1b80aa3d1b24c062c48d9c2ac59c28bb72320b592aaf3484950dbc4d2f99",
+      "3ef6834e63aa8c1c575d6b84c12253488b799ae8d10a3c81c71bd70d601f91b2",
+      "d7a5bdadf6f8fbab1b246d72315147690bf7be8676076f2751504341816233a6",
+      "6d5dde872ce389af4c4502ea51ad6d1bd490b6c1a76b8e8681c05fa4fdc92a55",
+      "9d32d0a46ae4e6fb95ae654132815335dc38009cd423959f1d1eefc1286bbccb",
+      "ee6ad48ca0ba72ab02c17212450af34ac1ec2d2defbe3f5d71f7043c851212de"
+    ]
+  },
+  "cleanup": {
+    "supervisor_exit_code": 0,
+    "all_slots_stopped": true,
+    "server_no_active_sessions": true
+  }
+}

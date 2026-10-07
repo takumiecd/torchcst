@@ -1,0 +1,38 @@
+{
+  "dataset": {
+    "adapter": "cuda.linear.complete-step",
+    "adapter_revision": 3,
+    "case_id": "525c2d72aaee548e3cad86346e536729a365def5f57b468f33c7ff051aa31f07",
+    "environment_id": "60f0c917cc5eabcac3103e636e1a1c2b80fc844fda4bdcf4715552090605655b",
+    "gpu": "NVIDIA L4",
+    "protocol_id": "8425c95a4c72b7a1a9a41c3976b593e889a673246e5b3c4685c196c898c8a33f",
+    "source_id": "47d08ad418c82b2d1fdd8a6ef443588eb6fc33795b971c3bf5bb88a0a9c51de2"
+  },
+  "excluded_run_ids": [],
+  "execution_mode": "cuda_graph",
+  "fallback_plan": {
+    "algorithm_id": "research_local_product",
+    "algorithm_revision": "v2",
+    "recipe": {
+      "atom_block": 32,
+      "batch_block": 16,
+      "pack": false,
+      "rho_upper": [
+        1,
+        4,
+        16
+      ],
+      "route": "persistent_supportprep_band_recompute_vjp_ordered_reuse_paramatom16_param4_param2",
+      "support_limit": 8
+    },
+    "schema_version": 1
+  },
+  "min_runs": 1,
+  "revision": "local-pr-integration-l4-20261007-64-rho8-speed",
+  "schema_version": 1,
+  "score_policy": {
+    "id": "speed",
+    "parameters": {},
+    "revision": "v1"
+  }
+}

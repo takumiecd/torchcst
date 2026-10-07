@@ -236,6 +236,13 @@ def build_owner_index(packed, reverse, domain, recipe, *, physical_views=False):
     return ids, offsets
 
 
+def ordered_direction_view(views, recipe, direction):
+    """Forward/parameter metadata stays full; dX has a value-only snapshot."""
+    if recipe.compact_ordered_view:
+        return views[:13] if direction == 0 else views[13:]
+    return views[direction]
+
+
 def ordered_layout(packed, domain, recipe, *, cache=None):
     """Compact current values; per-direction position order and exact owner ranges."""
     import triton as tr
@@ -245,7 +252,9 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
     atoms = packed.shape[1]
     groups = max(tr.cdiv(domain.input_count, 16), tr.cdiv(domain.output_count, 16))
     stride = groups + 5
-    views = packed.new_empty((2, 13, atoms))
+    views = packed.new_empty(
+        (24, atoms) if recipe.compact_ordered_view else (2, 13, atoms)
+    )
     orders = packed.new_empty((2, atoms), dtype=torch.int32)
     offsets = packed.new_empty((2, stride), dtype=torch.int32)
     ranges = packed.new_empty((2, groups, 6), dtype=torch.int32)
@@ -270,6 +279,7 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             not recipe.owner_index and not recipe.parallel_owner_ranges,
             recipe.compact_order_key,
             COPY=not recipe.parallel_order_copy,
+            COMPACT_VIEW=recipe.compact_ordered_view,
             VECTOR_RANGES=recipe.vector_owner_ranges,
             OWNER_BLOCK=tr.next_power_of_2(groups),
             PREFIX_RANGES=recipe.prefix_owner_ranges,
@@ -319,6 +329,7 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
                 Views=views,
                 Orders=orders,
                 COPY=recipe.parallel_order_copy,
+                COMPACT_VIEW=recipe.compact_ordered_view,
                 RANGES=not (
                     recipe.prefix_owner_ranges or recipe.histogram_owner_ranges
                 ),
@@ -394,6 +405,7 @@ def _packed_fused(
         UNROLL_SUPPORT=recipe.unroll_support,
         BN=recipe.output_block,
         RECOMPUTE_H=recipe.recompute_h,
+        COMPACT_VIEW=recipe.compact_ordered_view and swap,
         OwnerIds=owner_ids,
         OwnerOffsets=owner_offsets,
         INDEX_A=owner_ids.shape[-1] if owner_ids is not None else 0,
@@ -529,7 +541,9 @@ class _LocalH(torch.autograd.Function):
                 (tr.cdiv(len(x), recipe.batch_block), tr.cdiv(a, recipe.atom_block))
             ](
                 x,
-                views[0] if recipe.ordered_layout else packed,
+                ordered_direction_view(views, recipe, 0)
+                if recipe.ordered_layout
+                else packed,
                 h,
                 len(x),
                 domain.input_count,
@@ -554,7 +568,7 @@ class _LocalH(torch.autograd.Function):
         if tile_packed:
             y = _packed_fused(
                 x,
-                views[0],
+                ordered_direction_view(views, recipe, 0),
                 h,
                 orders[0],
                 offsets[0],
@@ -606,7 +620,7 @@ class _LocalH(torch.autograd.Function):
             raise ValueError("forward-only H requires recomputed parameter VJP and dX")
         ctx.save_for_backward(
             x,
-            views[0] if tile_packed else packed,
+            ordered_direction_view(views, recipe, 0) if tile_packed else packed,
             q.new_empty((0,)) if recipe.release_forward_h else h,
             views,
             orders,
@@ -706,7 +720,7 @@ class _LocalH(torch.autograd.Function):
         if ctx.needs_input_grad[0] and tile_packed and not use_g:
             dx = _packed_fused(
                 dy,
-                views[1],
+                ordered_direction_view(views, recipe, 1),
                 h,
                 orders[1],
                 offsets[1],
@@ -783,11 +797,14 @@ class _LocalH(torch.autograd.Function):
                     domain.output_start,
                     max(16, tr.next_power_of_2(domain.input_count)),
                     max(16, tr.next_power_of_2(domain.output_count)),
-                    16
-                    if max(domain.input_count, domain.output_count) > 64
-                    or use_g
-                    or parameter_splits > 1
-                    else max(16, tr.next_power_of_2(len(x))),
+                    recipe.parameter_batch_block
+                    or (
+                        16
+                        if max(domain.input_count, domain.output_count) > 64
+                        or use_g
+                        or parameter_splits > 1
+                        else max(16, tr.next_power_of_2(len(x)))
+                    ),
                     parameter_atom_block,
                     saved,
                     sparse,
@@ -843,7 +860,7 @@ class _LocalH(torch.autograd.Function):
         if use_g:
             dx = _packed_fused(
                 dy,
-                views[1],
+                ordered_direction_view(views, recipe, 1),
                 h,
                 orders[1],
                 offsets[1],

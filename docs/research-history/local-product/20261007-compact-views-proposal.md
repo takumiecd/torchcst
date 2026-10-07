@@ -1,4 +1,11 @@
-# Follow-up proposal: compact ordered physical views (not implemented)
+# Initial compact-view proposal (superseded)
+
+**Correction (2026-10-07):** the ownership premise below was wrong. Parameter VJP
+reuses the full13 ordered forward snapshot; canonical preparation is transient.
+GPU gradient checks rejected both-directions11. The corrected experiment keeps
+forward/VJP13 and reduces only dX to11, saving8*A bytes. See
+[the implementation and failure record](20261007-compact-views.md). The original
+proposal is preserved below as an unvalidated historical hypothesis.
 
 Source inspection confirms parameter VJP consumes the canonical `packed` tensor with 13 fields, while forward and dX consume separate ordered `views[0/1]` snapshots. Full metadata contains amplitude, inverse width squared, two centers, two norms, two L2 normalizer center-derivative coefficients, flags and four support bounds.
 

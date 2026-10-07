@@ -30,6 +30,8 @@ REUSE_SUFFIXES = (
     "_ordered_reuse_hist4_paramatom16_param4_param2",
     "_ordered_reuse_prefix_param2",
     "_ordered_reuse_prefix_paramatom16_param4_param2",
+    "_ordered_reuse_paramatom16_param4_batch16",
+    "_ordered_reuse_paramatom16_param4_batch16_split2",
     "_ordered_reuse_tile32_param2",
     "_ordered_reuse_paramatom16",
     "_ordered_reuse_paramatom16_param4",
@@ -74,8 +76,16 @@ class LocalRecipe(Recipe):
     route: str = "fused"
 
     @property
+    def compact_ordered_view(self):
+        return self.route.endswith("_dxview11")
+
+    @property
     def layout_route(self):
-        return self.route.removesuffix("_fusedback16").removesuffix("_fusedback")
+        return (
+            self.route.removesuffix("_dxview11")
+            .removesuffix("_fusedback16")
+            .removesuffix("_fusedback")
+        )
 
     @property
     def fused_backward(self):
@@ -445,10 +455,20 @@ class LocalRecipe(Recipe):
         return (
             4
             if self.layout_route.endswith(
-                ("_param4", "_param4_param2", "_param4_param2_split2")
+                (
+                    "_param4",
+                    "_param4_param2",
+                    "_param4_param2_split2",
+                    "_param4_batch16",
+                    "_param4_batch16_split2",
+                )
             )
             else 0
         )
+
+    @property
+    def parameter_batch_block(self):
+        return 16 if self.reuse_layout and "_batch16" in self.layout_route else 0
 
     @property
     def parameter_atom_block(self):
@@ -503,6 +523,17 @@ class LocalRecipe(Recipe):
     def __post_init__(self):
         if type(self.route) is not str:
             raise ValueError("local execution route must be a string")
+        if "_dxview11" in self.route and "_fusedback" in self.route:
+            raise ValueError("compact dX and fused VJP require separate recipes")
+        if self.compact_ordered_view and "_batch16" in self.layout_route:
+            raise ValueError("compact dX and batch-loop VJP require separate recipes")
+        if self.compact_ordered_view and not (
+            self.ordered_layout
+            and self.recompute_h
+            and not self.owner_index
+            and self.parallel_order_copy
+        ):
+            raise ValueError("compact view requires ordered local H without owner IDs")
         if type(self.rho_upper) not in (tuple, list) or any(
             type(x) not in (int, float) for x in self.rho_upper
         ):
