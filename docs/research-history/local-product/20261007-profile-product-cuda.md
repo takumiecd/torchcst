@@ -42,7 +42,7 @@ profile preparationの結果は9フィールド/atom。full Wや全factor配列�
 配置/支持の移動、immutable snapshots、20 captured optimizer更新のParameter/moments/stepも確認する。
 初期rho1.25/3/8、N64/N128、B32、A204/A819で完全stepとcapture/replay peakを測る。
 全CST候補の初期Parameter/input/target bytesを一致させる。denseは別初期化の性能参照。
-Polar更新は全候補で共通のTorch update Planを使う。
+初回screenは全候補で共通のTorch update Plan、支持順比較は共通のfused Planを使う。
 
 再現入口:
 
@@ -121,3 +121,62 @@ Torch/fused更新の両方を20 captured stepsでpublic eager optimizerと比較
 既存回帰38件PASS。新suiteにはorderedとTorch/fused双方の20 captured updatesを含む。
 CPU全suite965 passed/1157 skipped、変更PythonのRuff、diff check、
 wheel/sdist buildとwheel metadata-only importもPASS。
+
+## 共通fused Polar更新での6条件screen
+
+source `7c52eba226aa0517ee9c1607700ebbd649e8876f`。
+N64 job `l4job-827a326d2fc24fa8801f977cc1715c6e`、
+N128 job `l4job-6979ec676616429fb03143c5d9859dc4`。各条件1独立execution、21 samples。
+全workerのfull-site oracle、同一初期p/input/target、adapter4 projectionはPASS。
+初期rhoは全atomで1.25/3/8をdecodeして確認し、stepで幅が変わることも検査する。
+source snapshotの全1260 tracked filesを当該commitと照合し、不一致0を確認した。
+
+Graph完全step median us:
+
+|N|初期rho|Torch factored|local|saved H|ordered|dense|
+|---|---:|---:|---:|---:|---:|---:|
+|64|1.25|269.89|67.15|64.27|68.59|38.90|
+|64|3|268.94|67.33|63.75|71.64|39.15|
+|64|8|268.97|67.80|63.96|61.63|38.92|
+|128|1.25|322.27|294.41|243.68|150.06|45.06|
+|128|3|322.34|295.23|243.80|152.12|45.38|
+|128|8|322.62|294.88|243.46|139.99|45.40|
+
+capture/replay peak bytesは各幅で同じ。allocated / reservedを分けて記録する:
+
+|N|Torch|local|saved H|ordered|dense|
+|---|---:|---:|---:|---:|---:|
+|64|34926080 / 48234496|76288 / 6291456|102400 / 6291456|122368 / 6291456|34179584 / 48234496|
+|128|40523776 / 58720256|188928 / 6291456|293888 / 6291456|316416 / 6291456|34408960 / 48234496|
+
+これはrunnerが管理するwarmed model/grad/optimizerとGraph capture/replayのpeakであり、
+GPU process全体のメモリではない。denseは別のモデル/初期化の性能参照。
+N64の狭い支持ではsavedがorderedより速く、N128ではorderedが3幅とも速い。
+全条件でCUDAコアはTorch factoredより速いが、denseには到達していない。
+N64 rho8のorderedの小さな優位性は単独screenの観測として扱う。
+性能の一般化や公開既定dispatcherへの採用はしない。
+
+長方形17x31、両軸spacing0.5、異なる原点(-3/7)、固定幅3の独立FP64全行列
+Y/dX/全atom微分も3経路でPASS。job `l4job-cdfa26030e33474c9988220a8ef24e9b`、
+source `ea9decd5df601252307b3d5e3a0b2222d26048dc`。全体でactual GPU83件、CPU metadata16件を検証した。
+
+## 実行順を反転したrho3の確認
+
+N128 job `l4job-8eb39f7140f942b4ba5eae2dc8166735`、
+N64 job `l4job-0e9730393e9f4083aefd3144a9b980ed`、source `ea9decd5df601252307b3d5e3a0b2222d26048dc`。
+このsourceの差分は長方形テスト・recipe拒否メッセージ・検証記録のみで、
+有効なPlanのkernel/launch/math/updateは前のsourceと同じ。結果はrunごとに保持し、平均へ集約しない。
+各run内で同一初期p/input/targetを確認し、候補の実行順をordered→saved→local→torchへ反転した。
+初回と反転runのGraph median usは、N64 saved63.75→64.42、ordered71.64→71.91、
+N128 saved243.80→243.76、ordered152.12→152.56。rho3ではサイズごとの勝敗が一致した。
+allocated/reserved peakも初回と一致した。rho1.25/8は1独立executionのscreenとして残す。
+
+小型の次段階は、N64ではsaved、N128ではorderedを有力候補としてStripのtileから使う。
+直接大型化は今回の対象範囲を超えるので、支持準備・H・VJPの共有単位を再設計して測定する。
+現時点の公開選択器は変更せず、既存radial/separable/strip_torus経路も維持した。
+
+[機械可読の結果要約](20261007-profile-product-cuda-summary.json)にsource/result archive、
+各結果JSON/snapshot/driverのSHA256、完全step時間・allocated/reserved peakを保存する。
+8件の完成artifactはsubmission形式検査/adapter4 projection PASS。
+再現時は上記runnerコマンドへ `--polar-update fused --source-commit <verified source SHA>` を付ける。
+GPUは共有プールで1台を直列利用し、終了時に所有runtimeを停止する。
