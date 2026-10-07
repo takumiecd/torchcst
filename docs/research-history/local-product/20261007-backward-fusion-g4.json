@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "source_commit": "b0bbc45d4cefc68bb87cc25053422fcb908e3dbf",
+  "status": "N64 rho1.25 improvement on G4; mixed does not beat fastest existing control; one execution/condition only",
+  "jobs": [
+    {
+      "job": "colabjob-d5c79375cfd840f8aa270ebb032ddb6a",
+      "repeat": 1,
+      "source_commit": "b0bbc45d4cefc68bb87cc25053422fcb908e3dbf",
+      "source_snapshot_sha256": "2b7f6f27efd2f3166409afa0569885f75ccdbd97fa7743cee99a18f78c6d2c00",
+      "result_archive_sha256": "d525720e26bc2b7f754ade8d133965c2bd9d7b671c79ccf10f8b1f7ba8622ea1",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA RTX PRO 6000 Blackwell Server Edition, GPU-d04a9bd6-e762-ea46-9e90-d540fb94679e, 580.82.07, 97887 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    }
+  ],
+  "samples_per_execution": 21,
+  "cases": [
+    {
+      "case_id": "local-backward-fusion-64-rho1_25",
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 51.20999998098341,
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 47.88000001099135,
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 48.17000001366978,
+          "peak_allocated_bytes": 116736,
+          "peak_reserved_bytes": 6291456
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback16": {
+          "independent_executions": 1,
+          "median_us": 45.38999996839266,
+          "peak_allocated_bytes": 120832,
+          "peak_reserved_bytes": 6291456
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback16": {
+          "independent_executions": 1,
+          "median_us": 44.31999997223102,
+          "peak_allocated_bytes": 121856,
+          "peak_reserved_bytes": 6291456
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 32.94999999070569,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496
+        }
+      },
+      "matched_comparisons": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback16": {
+          "matched_control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "median_time_reduction_percent": 5.200501340908703,
+          "same_improvement_direction": true,
+          "minimum_allocated_reduction_bytes": -5120,
+          "paired_executions": [
+            {
+              "job": "colabjob-d5c79375cfd840f8aa270ebb032ddb6a",
+              "control_us": 47.88000001099135,
+              "candidate_us": 45.38999996839266,
+              "time_reduction_percent": 5.200501340908703,
+              "allocated_reduction_bytes": -5120,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback16": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": 7.992526552514434,
+          "same_improvement_direction": true,
+          "minimum_allocated_reduction_bytes": -5120,
+          "paired_executions": [
+            {
+              "job": "colabjob-d5c79375cfd840f8aa270ebb032ddb6a",
+              "control_us": 48.17000001366978,
+              "candidate_us": 44.31999997223102,
+              "time_reduction_percent": 7.992526552514434,
+              "allocated_reduction_bytes": -5120,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        }
+      },
+      "compiler": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback16": {
+          "registers": 96,
+          "spill_slots": 4,
+          "shared_bytes": 13312
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback16": {
+          "registers": 96,
+          "spill_slots": 4,
+          "shared_bytes": 13312
+        }
+      }
+    },
+    {
+      "case_id": "local-backward-fusion-64-rhomixed",
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 57.22000003061112,
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 51.94900001015412,
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 53.599000011672615,
+          "peak_allocated_bytes": 116736,
+          "peak_reserved_bytes": 6291456
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback16": {
+          "independent_executions": 1,
+          "median_us": 52.35000003267487,
+          "peak_allocated_bytes": 120832,
+          "peak_reserved_bytes": 6291456
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback16": {
+          "independent_executions": 1,
+          "median_us": 52.07999998901869,
+          "peak_allocated_bytes": 121856,
+          "peak_reserved_bytes": 6291456
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 32.83000000919856,
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496
+        }
+      },
+      "matched_comparisons": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback16": {
+          "matched_control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "median_time_reduction_percent": -0.7719109558266046,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": -5120,
+          "paired_executions": [
+            {
+              "job": "colabjob-d5c79375cfd840f8aa270ebb032ddb6a",
+              "control_us": 51.94900001015412,
+              "candidate_us": 52.35000003267487,
+              "time_reduction_percent": -0.7719109558266046,
+              "allocated_reduction_bytes": -5120,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback16": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": 2.8340081388143923,
+          "same_improvement_direction": true,
+          "minimum_allocated_reduction_bytes": -5120,
+          "paired_executions": [
+            {
+              "job": "colabjob-d5c79375cfd840f8aa270ebb032ddb6a",
+              "control_us": 53.599000011672615,
+              "candidate_us": 52.07999998901869,
+              "time_reduction_percent": 2.8340081388143923,
+              "allocated_reduction_bytes": -5120,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        }
+      },
+      "compiler": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback16": {
+          "registers": 96,
+          "spill_slots": 4,
+          "shared_bytes": 13312
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback16": {
+          "registers": 96,
+          "spill_slots": 4,
+          "shared_bytes": 13312
+        }
+      }
+    }
+  ],
+  "owned_gpu_cleanup": {
+    "slots": {
+      "1": "stopped",
+      "2": "stopped",
+      "3": "stopped"
+    },
+    "live_jobs": 0,
+    "verification": "supervisor completed, server assignment checked after stop; foreign T4 assignment left untouched",
+    "raw_stop_record": "benchmarks/cuda/linear/evidence/backward-fusion-20261007/final-stop.json"
+  }
+}

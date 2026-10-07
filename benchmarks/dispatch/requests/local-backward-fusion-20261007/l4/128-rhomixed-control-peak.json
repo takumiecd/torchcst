@@ -1,0 +1,40 @@
+{
+  "dataset": {
+    "adapter": "cuda.linear.complete-step",
+    "adapter_revision": 3,
+    "case_id": "ac1f100ee4db05b7c4708dc5e1505ab3b0f04f99f0a8833fb7860dc9cd2132ba",
+    "environment_id": "60f0c917cc5eabcac3103e636e1a1c2b80fc844fda4bdcf4715552090605655b",
+    "gpu": "NVIDIA L4",
+    "protocol_id": "8425c95a4c72b7a1a9a41c3976b593e889a673246e5b3c4685c196c898c8a33f",
+    "source_id": "58922753c4f5bd3c7621bfdc5f3c2a5152744488ff863f19c0b6f75d561e47b9"
+  },
+  "excluded_run_ids": [],
+  "execution_mode": "cuda_graph",
+  "fallback_plan": {
+    "algorithm_id": "research_local_product",
+    "algorithm_revision": "v2",
+    "recipe": {
+      "atom_block": 32,
+      "batch_block": 16,
+      "pack": false,
+      "rho_upper": [
+        1,
+        4,
+        16
+      ],
+      "route": "persistent_supportprep_band_recompute_vjp_ordered_cache_repair4_param2_nostats_copy8",
+      "support_limit": 8
+    },
+    "schema_version": 1
+  },
+  "min_runs": 1,
+  "revision": "local-backward-fusion-20261007-l4-128-rhomixed-control-peak",
+  "schema_version": 1,
+  "score_policy": {
+    "id": "speed",
+    "parameters": {
+      "max_peak_allocated_bytes": 306688
+    },
+    "revision": "v1"
+  }
+}

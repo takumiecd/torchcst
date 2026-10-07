@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "verified_artifacts": 16,
+  "verification": "source/result archive SHA256; byte-identical raw export; same provenance idempotent reimport",
+  "imports": [
+    {
+      "job": "l4job-9cdacad3ef5143018cecf5136fd9c7df",
+      "artifact": "backward-fusion-64-rho3.json",
+      "run_id": "5ae25fdcb46dd8ecc3d95f5ed91052c103234b9208444a5763eb48c56d2150e2",
+      "projection_id": "7d0305161fe9846f9a2a659002eeeba20f78d1b49725ad84b8b28536c6ebed3a",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "19c4bf690ce6816fdf4897354a6df1a736881274559514612980a3c611897eea",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-9cdacad3ef5143018cecf5136fd9c7df",
+      "artifact": "backward-fusion-64-rho8.json",
+      "run_id": "d34fe0253928a72d491d53aac3ef069f0f4a201fa378ca84751fea52d33e0f8e",
+      "projection_id": "20974988c29c3dfc5215246c28f6c8828b0342a900ea6da45f2abf4c333edcca",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "623bfed65fb474058c44fdc78362b052f5d79dc3bcccc15af3864b0a5b2b7fbb",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-498f9b776c8841aab3d81d618d777e66",
+      "artifact": "backward-fusion-128-rho3.json",
+      "run_id": "ba5f6618bdb28cccdca3ea24a8c6eee3ceccafbd727edbec2bc75ee435359f32",
+      "projection_id": "39bd850b2d4bf02d7d65bb41b8b3ebf77567d3ea8702093cfb383676feec952e",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "db6903c46742c094cf8ada20e68343432a42d7b993278129c8f1b7f3e78134e0",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-498f9b776c8841aab3d81d618d777e66",
+      "artifact": "backward-fusion-128-rho8.json",
+      "run_id": "67b8e9231ea1b1de63c514a7e955ff0e2cf35b2627e54c825cf2604f04ffa4fd",
+      "projection_id": "d484b6e3a4fbe05dd4492dc284b304f5c70e0645162eae898f404404853b2a21",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "96d85c91b16a49a833dcac344bf7bea5877d63a89765f9be2d9a7978f4dd7ae5",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-b1d6c9360d6142d1a622c0159d3605d3",
+      "artifact": "backward-fusion-64-rho1_25.json",
+      "run_id": "fb306bde4fddc6828b23ab8d6653147bb4fd1ce11bbfc41ee62c04394b661bca",
+      "projection_id": "8b051fb22bd466e3bf3afe91d35249effcd393a3acda5bb0d6fede15e82c969d",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "0b91baf70e6377966256a795accf77516076d6a4c54882c940a8ba69313f152b",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-b1d6c9360d6142d1a622c0159d3605d3",
+      "artifact": "backward-fusion-64-rhomixed.json",
+      "run_id": "98f81e3aec0c6fe80dda80c99d26783cc4ce1891ebe6d2fe610394b10ffc66f0",
+      "projection_id": "d2b662b05c9946c108e34d52aa30032aa754758939905859b2a8fa9551559a37",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "bbae8cb970dc1bee0636d16f4bbc2c3a3a0f0fe14ce74f789f3192451855f6e3",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-b1d6c9360d6142d1a622c0159d3605d3",
+      "artifact": "backward-fusion-64-rho3.json",
+      "run_id": "78de91228f7cf80ee90be0bbe4e3ae9e5108a2e994ef3b14b3d313e9f2667d86",
+      "projection_id": "d73049ca407ad23ecd4bdc56504ae936e87045b961942a4f4c4d9ade16b0ef1f",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "d20ae44e97ae7ddc67def24579015a6a5665c17aa4f2742baa2e5217dbabfa96",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-b1d6c9360d6142d1a622c0159d3605d3",
+      "artifact": "backward-fusion-64-rho8.json",
+      "run_id": "554a4e3f0210f8f5a25f5dc5592ad15489c98294c064e98ae4e797dedf224759",
+      "projection_id": "7f56a857180ec9d4f17439ac760a066ef054820648ee8b7122a0fef1c015f295",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "a99037f299250beaf31607d830b842254f4064fedb29c67896f34c07c98a3f78",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-98a44095052f48d08a9ce05b11912dbc",
+      "artifact": "backward-fusion-128-rho1_25.json",
+      "run_id": "10505538568ad5fa288311655cbda3b87df2c686a3c63cb3e795613686ac9ad5",
+      "projection_id": "3484d86665a337520a58fc87a16ba81ed8742bf4931aed8140cf28adc3dc0c54",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "5097a8290a55d70ee358594a20f9f3b60cb4810ae4e7ea73cc411fc7caa1ddb0",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-98a44095052f48d08a9ce05b11912dbc",
+      "artifact": "backward-fusion-128-rhomixed.json",
+      "run_id": "4a7aa9d538fe355985bcfdad835ea582250a5d67f936b669b7b9da17a453b086",
+      "projection_id": "217a633c6aad97609236bd814ea178e1de61fff0dcd3a3320d6a41fd36f6cf4d",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "c3ba9a91cba5f43ac99cacd5682ecdf75d6f1d8eb755e5c4537c307a84fb6dfc",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-98a44095052f48d08a9ce05b11912dbc",
+      "artifact": "backward-fusion-128-rho8.json",
+      "run_id": "12090ddbeee33085104b5ceca64b87a16e5e7cd3c6aa160288efe057f016e49b",
+      "projection_id": "8835fc404013be8437f5296429c52c75b12ace47d5f1eb2fdb4071f74c20d192",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "bd2e4301d2debd41963e947c464ce07e2fa1d4ca6521d5349e4c526e9b11ac79",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-98a44095052f48d08a9ce05b11912dbc",
+      "artifact": "backward-fusion-128-rho3.json",
+      "run_id": "c4e1910d099902bdd4f781032dc1b1f0f2c18661d6d5f9ee4c9c995fb4eac3e7",
+      "projection_id": "53d52e1f3e8fe9d32dd0b20cb9ab0740e02f0b48942c3350b020bfb7b7bf0c16",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "e57b97434dfafba947e1025a636fe9df7f568d30ea82d8816fe47df614e68c45",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-77fdb17e50724f53915c1eae2ec6f030",
+      "artifact": "backward-fusion-64-rho1_25.json",
+      "run_id": "c947e59d7fe56769786000ac9bbefde851af7e63a6e76e371822afc88d7afee0",
+      "projection_id": "ee9393aac3faee2f23c75f714341225578427053f6700874fe87299b7e875d9e",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "109126dd0db8c7dbeff025ca4cd912e6831a0db59fab28ea66d9112561130470",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "l4job-77fdb17e50724f53915c1eae2ec6f030",
+      "artifact": "backward-fusion-64-rhomixed.json",
+      "run_id": "3b1e0b1a9cd1d0169641f53b34a4bb18fae8fbf1bc49324f0d959c7b32a89789",
+      "projection_id": "8e998283a01de2f5563b0c16ae067d011be12738928e9b6330ec45222e2031ee",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "c12aadae5658bf604041f5b6adc8b59c2a34b8279a028614c72a6eb82f515dd2",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-d5c79375cfd840f8aa270ebb032ddb6a",
+      "artifact": "backward-fusion-64-rho1_25.json",
+      "run_id": "09ab5ab7adbd9811b98bb721ba5ea88b203c6abc7cae1bd7bc884c6d77c857ee",
+      "projection_id": "648bcaa0b47c11931e2adb6f896826c3dbf653f00c38bbb63b437f8b344f1548",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "aa90b40648222d4315097876f4cd99536ea5a977e137896d5b8c3a49100c826b",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    },
+    {
+      "job": "colabjob-d5c79375cfd840f8aa270ebb032ddb6a",
+      "artifact": "backward-fusion-64-rhomixed.json",
+      "run_id": "b6dda12ec3f2d0b03175b33a7d092825b540ef5e4a725f5a51207467fe6db702",
+      "projection_id": "5e22438baf105da6e13b313549e490ebd72f23c7764c92289278862adc9406f8",
+      "run_inserted": true,
+      "projection_inserted": true,
+      "artifact_sha256": "4739ab74c9af878b698c6df60906075fe6601148879ef064828a1af7b5d607eb",
+      "byte_identical_export": true,
+      "idempotent_reimport": true
+    }
+  ]
+}

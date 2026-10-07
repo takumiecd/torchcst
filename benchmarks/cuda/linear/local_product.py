@@ -74,28 +74,40 @@ class LocalRecipe(Recipe):
     route: str = "fused"
 
     @property
+    def layout_route(self):
+        return self.route.removesuffix("_fusedback16").removesuffix("_fusedback")
+
+    @property
+    def fused_backward(self):
+        return self.route.endswith(("_fusedback", "_fusedback16"))
+
+    @property
+    def backward_atom_block(self):
+        return 16 if self.route.endswith("_fusedback16") else self.atom_block
+
+    @property
     def reuse_layout(self):
-        return self.route.endswith(REUSE_SUFFIXES)
+        return self.layout_route.endswith(REUSE_SUFFIXES)
 
     @property
     def cached_order(self):
-        return self.route.endswith(CACHE_SUFFIXES)
+        return self.layout_route.endswith(CACHE_SUFFIXES)
 
     @property
     def record_order_stats(self):
-        return "_nostats_" not in self.route
+        return "_nostats_" not in self.layout_route
 
     @property
     def cache_repair_rounds(self):
-        if "_ordered_cache_repair4" in self.route:
+        if "_ordered_cache_repair4" in self.layout_route:
             return 4
-        if "_ordered_cache_repair8" in self.route:
+        if "_ordered_cache_repair8" in self.layout_route:
             return 8
         return 0
 
     @property
     def gather_validation_key(self):
-        return self.cache_repair_rounds > 0 or self.route.endswith(
+        return self.cache_repair_rounds > 0 or self.layout_route.endswith(
             (
                 "_ordered_cache_gather_copy8",
                 "_ordered_cache_gather_range8",
@@ -108,13 +120,13 @@ class LocalRecipe(Recipe):
 
     @property
     def validate_cached_order(self):
-        return self.gather_validation_key or self.route.endswith(
+        return self.gather_validation_key or self.layout_route.endswith(
             ("_ordered_cache_validated_copy8", "_ordered_cache_validated_range8")
         )
 
     @property
     def compact_cached_order(self):
-        return self.gather_validation_key or self.route.endswith(
+        return self.gather_validation_key or self.layout_route.endswith(
             (
                 "_ordered_cache_compact_copy8",
                 "_ordered_cache_compact_range8",
@@ -160,27 +172,31 @@ class LocalRecipe(Recipe):
                 "_index",
             )
         ):
-            if self.route.endswith(suffix):
-                return self.route[: -len(suffix)]
-        return self.route
+            if self.layout_route.endswith(suffix):
+                return self.layout_route[: -len(suffix)]
+        return self.layout_route
 
     @property
     def output_block(self):
         if self.reuse_layout:
             return (
-                64 if "_tile64" in self.route else 32 if "_tile32" in self.route else 16
+                64
+                if "_tile64" in self.layout_route
+                else 32
+                if "_tile32" in self.layout_route
+                else 16
             )
-        if self.route.endswith(("_tile32", "_h32")):
+        if self.layout_route.endswith(("_tile32", "_h32")):
             return 32
-        if self.route.endswith(("_tile64", "_h64")):
+        if self.layout_route.endswith(("_tile64", "_h64")):
             return 64
         return 16
 
     @property
     def recompute_h(self):
         return (
-            (self.ordered_layout and not self.route.endswith("_ordered_cached"))
-            or self.route.endswith("_index16_local")
+            (self.ordered_layout and not self.layout_route.endswith("_ordered_cached"))
+            or self.layout_route.endswith("_index16_local")
             or self.base_route
             in (
                 "persistent_onchip_h32",
@@ -197,7 +213,7 @@ class LocalRecipe(Recipe):
 
     @property
     def owner_index(self):
-        return self.route.endswith(
+        return self.layout_route.endswith(
             (
                 "_index",
                 "_index16",
@@ -212,11 +228,11 @@ class LocalRecipe(Recipe):
 
     @property
     def index_bits(self):
-        return 16 if "_index16" in self.route or self.ordered_layout else 32
+        return 16 if "_index16" in self.layout_route or self.ordered_layout else 32
 
     @property
     def release_forward_index(self):
-        return self.route.endswith(
+        return self.layout_route.endswith(
             (
                 "_index16_release",
                 "_index16_release_h",
@@ -229,14 +245,14 @@ class LocalRecipe(Recipe):
 
     @property
     def release_forward_h(self):
-        return self.route.endswith(("_index16_release_h", "_ordered_cached"))
+        return self.layout_route.endswith(("_index16_release_h", "_ordered_cached"))
 
     @property
     def ordered_layout(self):
         return (
             self.reuse_layout
             or self.cached_order
-            or self.route.endswith(
+            or self.layout_route.endswith(
                 (
                     "_ordered",
                     "_ordered_band",
@@ -259,14 +275,14 @@ class LocalRecipe(Recipe):
 
     @property
     def order_by_position(self):
-        return self.ordered_layout and not self.route.endswith("_ordered_band")
+        return self.ordered_layout and not self.layout_route.endswith("_ordered_band")
 
     @property
     def compact_order_key(self):
         return (
             self.reuse_layout
             or self.cached_order
-            or self.route.endswith(
+            or self.layout_route.endswith(
                 (
                     "_ordered_split4_i32",
                     "_ordered_prep_vector8",
@@ -284,33 +300,34 @@ class LocalRecipe(Recipe):
     @property
     def histogram_owner_ranges(self):
         return self.reuse_layout and (
-            "_hist_" in self.route
-            or "_hist4_" in self.route
-            or "_histinline_" in self.route
-            or "_histfusedinline_" in self.route
-            or "_histtightinline_" in self.route
+            "_hist_" in self.layout_route
+            or "_hist4_" in self.layout_route
+            or "_histinline_" in self.layout_route
+            or "_histfusedinline_" in self.layout_route
+            or "_histtightinline_" in self.layout_route
         )
 
     @property
     def fused_histogram_owner_ranges(self):
         return self.reuse_layout and (
-            "_histfusedinline_" in self.route or "_histtightinline_" in self.route
+            "_histfusedinline_" in self.layout_route
+            or "_histtightinline_" in self.layout_route
         )
 
     @property
     def tight_histogram_owner_ranges(self):
-        return self.reuse_layout and "_histtightinline_" in self.route
+        return self.reuse_layout and "_histtightinline_" in self.layout_route
 
     @property
     def prefix_owner_ranges(self):
-        return self.reuse_layout and "_prefix_" in self.route
+        return self.reuse_layout and "_prefix_" in self.layout_route
 
     @property
     def parallel_owner_ranges(self):
         return (
             self.reuse_layout
             or self.cached_order
-            or self.route.endswith(
+            or self.layout_route.endswith(
                 (
                     "_ordered_prep_parallel",
                     "_ordered_prep_parallel8",
@@ -324,32 +341,34 @@ class LocalRecipe(Recipe):
     @property
     def parallel_order_copy(self):
         if self.reuse_layout and (
-            "_histinline_" in self.route
-            or "_histfusedinline_" in self.route
-            or "_histtightinline_" in self.route
+            "_histinline_" in self.layout_route
+            or "_histfusedinline_" in self.layout_route
+            or "_histtightinline_" in self.layout_route
         ):
             return False
         if self.reuse_layout:
             return True
         if self.cached_order:
-            return self.route.endswith(("_copy4", "_copy8"))
-        return self.route.endswith(("_ordered_prep_copy", "_ordered_prep_copy8"))
+            return self.layout_route.endswith(("_copy4", "_copy8"))
+        return self.layout_route.endswith(("_ordered_prep_copy", "_ordered_prep_copy8"))
 
     @property
     def vector_owner_ranges(self):
-        return self.route.endswith(("_ordered_prep_vector", "_ordered_prep_vector8"))
+        return self.layout_route.endswith(
+            ("_ordered_prep_vector", "_ordered_prep_vector8")
+        )
 
     @property
     def preparation_warps(self):
-        if self.reuse_layout and "_hist4_" in self.route:
+        if self.reuse_layout and "_hist4_" in self.layout_route:
             return 4
         if self.reuse_layout:
             return 8
         if self.cached_order:
-            return 8 if self.route.endswith(("_copy8", "_range8")) else 4
+            return 8 if self.layout_route.endswith(("_copy8", "_range8")) else 4
         return (
             8
-            if self.route.endswith(
+            if self.layout_route.endswith(
                 (
                     "_ordered_prep_warp8",
                     "_ordered_prep_parallel8",
@@ -363,14 +382,14 @@ class LocalRecipe(Recipe):
     @property
     def owner_splits(self):
         if self.reuse_layout:
-            return 2 if self.route.endswith("_split2") else 4
+            return 2 if self.layout_route.endswith("_split2") else 4
         if self.cached_order:
             return 4
         return (
             2
-            if self.route.endswith("_ordered_split2")
+            if self.layout_route.endswith("_ordered_split2")
             else 4
-            if self.route.endswith(
+            if self.layout_route.endswith(
                 (
                     "_ordered_split4",
                     "_ordered_split4_i32",
@@ -390,21 +409,22 @@ class LocalRecipe(Recipe):
     def parameter_splits(self):
         return (
             2
-            if (self.reuse_layout or self.cached_order) and "_param2" in self.route
+            if (self.reuse_layout or self.cached_order)
+            and "_param2" in self.layout_route
             else 1
         )
 
     @property
     def fuse_owner_index(self):
-        return self.route.endswith("_index16_fused")
+        return self.layout_route.endswith("_index16_fused")
 
     @property
     def unroll_support(self):
-        return self.route.endswith("_unroll")
+        return self.layout_route.endswith("_unroll")
 
     @property
     def vector_support(self):
-        return self.route.endswith(("_vector", "_vector4"))
+        return self.layout_route.endswith(("_vector", "_vector4"))
 
     @property
     def contraction_warps(self):
@@ -412,19 +432,19 @@ class LocalRecipe(Recipe):
             return 4
         if self.output_block != 16:
             return 4
-        if self.route.endswith(("_contract4", "_vector4")):
+        if self.layout_route.endswith(("_contract4", "_vector4")):
             return 4
-        if self.route.endswith("_contract8"):
+        if self.layout_route.endswith("_contract8"):
             return 8
         return 0
 
     @property
     def parameter_warps(self):
-        if self.cached_order and "_param4_" in self.route:
+        if self.cached_order and "_param4_" in self.layout_route:
             return 4
         return (
             4
-            if self.route.endswith(
+            if self.layout_route.endswith(
                 ("_param4", "_param4_param2", "_param4_param2_split2")
             )
             else 0
@@ -432,7 +452,9 @@ class LocalRecipe(Recipe):
 
     @property
     def parameter_atom_block(self):
-        if (self.reuse_layout or self.cached_order) and "_paramatom16" in self.route:
+        if (
+            self.reuse_layout or self.cached_order
+        ) and "_paramatom16" in self.layout_route:
             return 16
         return self.atom_block
 
@@ -487,9 +509,16 @@ class LocalRecipe(Recipe):
             raise ValueError("requires a numeric boundary array")
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
+        if self.fused_backward and self.layout_route not in (
+            "persistent_supportprep_band_recompute_vjp_ordered_reuse_paramatom16_param4_param2",
+            "persistent_supportprep_band_recompute_vjp_ordered_cache_repair4_param2_nostats_copy8",
+        ):
+            raise ValueError(
+                "backward fusion requires a supported full ordered snapshot"
+            )
         if (
             self.base_route == "persistent_supportprep_band_recompute_vjp"
-            and self.route
+            and self.layout_route
             not in (
                 self.base_route,
                 self.base_route + "_unroll",
@@ -524,7 +553,7 @@ class LocalRecipe(Recipe):
             and self.base_route != "persistent_supportprep_band_recompute_vjp"
         ):
             raise ValueError("owner indexing requires recomputed parameter VJP")
-        if self.route != self.base_route and self.base_route not in (
+        if self.layout_route != self.base_route and self.base_route not in (
             "persistent_supportprep_band",
             "persistent_supportprep_g",
             "persistent_supportprep_band_recompute_vjp",
