@@ -174,8 +174,8 @@ def test_grouped_global_floor_and_full_support_fallback(family, case):
 
 
 @GPU
-@pytest.mark.parametrize("pitch", [8, 16, 20, 40])
-def test_strip_overlap_gaps_and_partial_tile_have_exact_full_norm(pitch):
+@pytest.mark.parametrize("pitch", [15.5, 16, 20, 40])
+def test_strip_pitch_boundaries_gaps_and_partial_tile_have_exact_full_norm(pitch):
     layer = model(
         torch.tensor([[0.3, 1.5, 2.4, 20.37], [-0.4, 1.4, 22.3, 41.7]]),
         "strip",
@@ -239,7 +239,7 @@ def test_old_forward_snapshots_keep_pitch_amplitude_and_parameters(family):
         layer.atoms.p.add_(0.17)
         layer.kernel.amplitude_max.fill_(0.7)
         if family == "strip":
-            layer.chart.tile_pitch.fill_(8)
+            layer.chart.tile_pitch.fill_(15.5)
     run(layer, x.detach(), family)
     for value, expected in zip(
         torch.autograd.grad(actual, (x, layer.atoms.p), dy),
@@ -328,7 +328,7 @@ def test_twenty_captured_updates_match_reference_moments_and_live_widths(family)
 
 
 @GPU
-def test_captured_strip_reads_changed_pitch_and_overlap_fallback():
+def test_captured_strip_reads_changed_pitch_and_spacing_fallback():
     layer = model(
         torch.tensor([[0.3, 1.5, 2.4, 24], [-0.4, 1.4, 6.3, 32.7]]),
         "strip",
@@ -351,7 +351,7 @@ def test_captured_strip_reads_changed_pitch_and_overlap_fallback():
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):
         actual = probe()
-    for pitch in (8, 16, 40, 20):
+    for pitch in (15.5, 16, 40, 20):
         with torch.no_grad():
             layer.chart.tile_pitch.fill_(pitch)
         truth = layer.operator.apply(x, algorithm="factored")
@@ -360,3 +360,8 @@ def test_captured_strip_reads_changed_pitch_and_overlap_fallback():
         torch.cuda.synchronize()
         for value, expected in zip(actual, (truth, *grads)):
             torch.testing.assert_close(value, expected, rtol=4e-4, atol=2e-5)
+
+
+def test_strip_rejects_overlapping_tile_declarations():
+    with pytest.raises(ValueError, match="disjoint physical intervals"):
+        model(torch.tensor([[0.3, 1.5, 2.4, 24]]), "strip", pitch=8)
