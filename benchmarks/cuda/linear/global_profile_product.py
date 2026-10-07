@@ -1,8 +1,39 @@
 """Large Product fixture with a chunked independent FP64 full-site VJP."""
 
+import hashlib
+import json
+
 import torch
 
 from .profile_product import fixture_operator, fixture_state, initialize
+
+
+def compact_width_record(record):
+    """Keep full series in the worker JSON; bound the consolidated artifact."""
+    result = record["result"]
+    sigma = result.get("sigma_updates")
+    if sigma is None or "initial" not in sigma:
+        return record
+    initial, final = sigma["initial"], sigma["final"]
+    atoms = result["atoms"]
+    if len(initial) != atoms or len(final) != atoms or not atoms:
+        raise ValueError("width series must cover every atom")
+    compact = {k: v for k, v in sigma.items() if k not in ("initial", "final")}
+    compact.update(
+        atoms=atoms,
+        series_storage="full initial/final arrays in the unmodified measure worker JSON",
+        hash_encoding="SHA256 of each exact JSON array with separators comma/colon",
+        worker_record=f"measure-{record['metadata']['plan_id']}.json",
+        initial_range=[min(initial), max(initial)],
+        final_range=[min(final), max(final)],
+        initial_sha256=hashlib.sha256(
+            json.dumps(initial, separators=(",", ":")).encode()
+        ).hexdigest(),
+        final_sha256=hashlib.sha256(
+            json.dumps(final, separators=(",", ":")).encode()
+        ).hexdigest(),
+    )
+    return record | {"result": result | {"sigma_updates": compact}}
 
 
 def oracle_factors(value, p, chart):

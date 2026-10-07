@@ -808,6 +808,10 @@ def main():
                 "metadata": {"worker": kind, "plan_id": plan_id},
                 "result": {"status": "FAIL", "error": repr(error)},
             }
+        if run.case.fixture == "polar_profile_product_global" and kind == "measure":
+            from .global_profile_product import compact_width_record
+
+            record = compact_width_record(record)
         combined["records"].append(record)
         if returncode != 0 or record["result"]["status"] != "PASS":
             combined["status"] = "FAIL"

@@ -1,6 +1,7 @@
 """Synthetic product artifacts exercise the adapter and selector contract."""
 
 import copy
+import hashlib
 import json
 from dataclasses import asdict, replace
 
@@ -19,9 +20,9 @@ from tests.benchmark_database_fixtures import artifact
 from tests.test_dispatch_generation import dataset_for
 
 
-def global_artifact():
+def global_artifact(size=256):
     run = load_run(
-        "benchmarks/cuda/linear/cases/profile-product-global-256-rho3.json",
+        f"benchmarks/cuda/linear/cases/profile-product-global-{size}-rho3.json",
         "benchmarks/cuda/linear/plans-profile-product-global.json",
     )
     run = replace(run, case=replace(run.case, rounds=3))
@@ -116,3 +117,51 @@ def test_rejects_mixed_legacy_oracle_and_normalization(part):
         ]["optimizer_policy"] = "ordinary AdamW"
     with pytest.raises(ValueError):
         project(value)
+
+
+def test_large_width_export_preserves_worker_series_and_fits_submission_limit():
+    from benchmarks.cuda.linear.global_profile_product import compact_width_record
+    from benchmarks.submissions.__main__ import validate_result
+    from benchmarks.submissions.policy import DEFAULT_POLICY, load_policy
+
+    value = global_artifact(1024)
+    value.update(
+        execution_id="019c7714-3b77-74d1-9866-e1f484aae2ab",
+        started_at="2026-10-07T16:00:00+00:00",
+    )
+    atoms = value["run"]["case"]["atoms"]
+    series = [3 + i / 999983 for i in range(atoms)]
+    final = [s + 0.001 for s in series]
+    for record in value["records"]:
+        if record["metadata"]["worker"] == "measure":
+            record["result"]["sigma_updates"] = {
+                "fixed": False,
+                "source": "current polar activity every forward/replay",
+                "initial": series.copy(),
+                "final": final.copy(),
+                "changed_atoms": atoms,
+                "max_abs_change": max(b - a for a, b in zip(series, final)),
+            }
+    raw = copy.deepcopy(value)
+    policy = load_policy(DEFAULT_POLICY)
+    assert len(json.dumps(raw, indent=2).encode()) > policy.max_file_bytes
+    value["records"] = [
+        compact_width_record(record)
+        if record["metadata"]["worker"] == "measure"
+        else record
+        for record in value["records"]
+    ]
+    validate_result(json.dumps(value, indent=2).encode(), policy)
+    for original, compact in zip(raw["records"], value["records"]):
+        if original["metadata"]["worker"] == "measure":
+            assert original["result"]["sigma_updates"]["initial"] == series
+            update = compact["result"]["sigma_updates"]
+            assert update["atoms"] == atoms and update["changed_atoms"] == atoms
+            assert update["initial_sha256"] == hashlib.sha256(
+                json.dumps(series, separators=(",", ":")).encode()
+            ).hexdigest()
+            assert update["final_sha256"] == hashlib.sha256(
+                json.dumps(final, separators=(",", ":")).encode()
+            ).hexdigest()
+            assert compact["result"]["graph"] == original["result"]["graph"]
+            assert compact["metadata"] == original["metadata"]
