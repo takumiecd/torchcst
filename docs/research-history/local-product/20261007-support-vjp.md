@@ -38,3 +38,17 @@ Chunks remove spilling but still206 registers versus80/2 spill slots in current 
 ## Scalar support-limit candidate
 
 Six `_ps16` / `_ps32` recipes change only the parameter VJP's exact span threshold for its existing dynamic scalar-site loop. Forward/dX retain support_limit8; wider parameter support keeps the original matrix contraction. This avoids rank3 gathers, extra global arrays and fixed-cap chunk iterations. The existing normalized factor and singleton derivative remain intact. CPU/prepare/build and independent GPU gates must pass before timing; scalar candidate is not yet GPU-validated.
+
+
+## N64 transport interruption
+
+N64 rho3/mixed job `l4job-efc01286713147c3ae3048bbac90e255` at source352a04a4 did not return a result archive: Colab/Jupyter reported `RuntimeError: Connection was lost`. It is unverified and excluded from N64 performance/algorithm conclusions; no completed artifact or worker runtime hashes were retrieved. No automatic retry or kernel-failure interpretation is made. Source and transport SHA are retained in `20261007-support-vjp-n64-interrupted.json`, along with raw pool archives/logs.
+
+Supervisor57894 terminated after the transport failure. Owned L4 `cst-pool-f4ba2f1b4351-1` stopped with lifecycle `Session terminated` and server assignment absent; foreign T4 and CPU assignments remain untouched. Pool recover returned0. Queued scalar job `l4job-dbb39d314b464c4a9e6af40e058bfe0d`, source6351711d, resumes on a fresh single-L4 supervisor64821 with idle0, not on the uncertain runtime. Host897 pass/1189 skip, eight fresh scalar prepare/check pairs and wheel/sdist build pass; exact-head CPU Actions pass. GPU scalar results remain pending.
+
+
+## Scalar support limits: N128 validated screen
+
+Source6351711de540fd7a764598105ff13ed74743dc31, fresh L4 job `l4job-dbb39d314b464c4a9e6af40e058bfe0d`:77 checks pass (75 CUDA +2 declarations),186.43s;197 runtime files and both archives hash-verified. Full-shape FP64 Y/dX/all source gradients/nonzero centers pass; initialrho>1, widths update, complete-step capture/replay protocol unchanged. AtN128/rho8 repair4 current66.18us vs ps16 66.28us /ps32 66.25us, repair8 66.07 vs65.87/66.22us. Mixed repair4 68.98 vs70.01/70.20us; repair8 69.77 vs70.39/70.52us. Dense45.70/45.77us. Allocated306688/reserved6291456 B remain equal among matched controls/candidates. Only0.31 percent one-case decrease with repair8/ps16; no repeatability or useful improvement claim, no adoption/G4. Concise complete timing/hash/compiler record `20261007-support-vjp-scalar.json`, raw `scalar-screen.json` retained.
+
+The owned fresh L4 stopped after the selected batch (supervisor64821 idle0 exits0). N64 scalar full-shape plan checks will use a separate120s subprocess per candidate before standard paired current/candidate/dense measurements, with per-plan progress logs. This new scalar N64 screen is distinct from the interrupted chunk/span job; no lost result is silently reclassified or replaced.

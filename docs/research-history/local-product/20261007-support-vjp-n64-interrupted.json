@@ -1,0 +1,11 @@
+{
+  "job": "l4job-efc01286713147c3ae3048bbac90e255",
+  "source_commit": "352a04a49d57e32fa595fa78a7153f75719d7455",
+  "source_snapshot_sha256": "6fc4b295647fe9513940eb6209b0b03c2e86e04d4098b6ff86b17ff37702372f",
+  "transport_sha256": "98697dca57b63692346073006ce1839f4410e05eb37f23f8932c390d859dd4b0",
+  "error": "RuntimeError: Connection was lost",
+  "retrieved_results": false,
+  "interpretation": "unverified, excluded from performance conclusions; not classified kernel failure",
+  "owned_l4_stopped": true,
+  "foreign_T4_CPU_untouched": true
+}

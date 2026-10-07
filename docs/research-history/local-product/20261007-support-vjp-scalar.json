@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "source_commit": "6351711de540fd7a764598105ff13ed74743dc31",
+  "jobs": [
+    {
+      "job": "l4job-dbb39d314b464c4a9e6af40e058bfe0d",
+      "repeat": 1,
+      "source_commit": "6351711de540fd7a764598105ff13ed74743dc31",
+      "source_snapshot_sha256": "99747518d465ee93398423c926ee2c3f79c4b159c8f4a5c8e27acafd3eae8d53",
+      "result_archive_sha256": "8e6e38b77e349f7864295738077183fb6d9da328084226609a2130436063357b",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA L4, GPU-3cb0e4d5-d13f-917b-dd25-de26371f7d52, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    }
+  ],
+  "gpu_checks_total": 77,
+  "gpu_checks_cuda": 75,
+  "declarations": 2,
+  "cases": [
+    {
+      "case": "local-supportvjp-128-rho8",
+      "shape": [
+        128,
+        32,
+        819
+      ],
+      "step_us": {
+        "local-ordered-prep-copy8-atom32": 73.76899998234876,
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": 66.17799999730778,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32": 66.07099999200727,
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps16": 66.28000005548529,
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps32": 66.2480000528376,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps16": 65.86699998933909,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps32": 66.2200000078883,
+        "dense": 45.69700001866295
+      },
+      "matched_reduction_percent": {
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps16": -0.15412985913998423,
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps32": -0.10577541710639071,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps16": 0.3087587635919875,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps32": -0.22551500037695238
+      },
+      "peak_allocated_reserved": {
+        "local-ordered-prep-copy8-atom32": [
+          303104,
+          6291456
+        ],
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps16": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps32": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps16": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps32": [
+          306688,
+          6291456
+        ],
+        "dense": [
+          34408960,
+          48234496
+        ]
+      },
+      "initial_parameter_sha256": "373551c104183f26d805031dea1eb1b16a3ebf2cb15d0a0efa13686fd06e63c2",
+      "parameter_compiler": {
+        "local-ordered-prep-copy8-atom32": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps16": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps32": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps16": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps32": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        }
+      }
+    },
+    {
+      "case": "local-supportvjp-128-rhomixed",
+      "shape": [
+        128,
+        32,
+        819
+      ],
+      "step_us": {
+        "local-ordered-prep-copy8-atom32": 76.11600005930086,
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": 68.97800005845056,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32": 69.76600002417399,
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps16": 70.0140000162719,
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps32": 70.20299995019741,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps16": 70.38900002953596,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps32": 70.52299997667433,
+        "dense": 45.77000004246656
+      },
+      "matched_reduction_percent": {
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps16": -1.5019280885839592,
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps32": -1.7759283984876362,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps16": -0.8929851290687463,
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps32": -1.0850556893587715
+      },
+      "peak_allocated_reserved": {
+        "local-ordered-prep-copy8-atom32": [
+          303104,
+          6291456
+        ],
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps16": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps32": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps16": [
+          306688,
+          6291456
+        ],
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps32": [
+          306688,
+          6291456
+        ],
+        "dense": [
+          34408960,
+          48234496
+        ]
+      },
+      "initial_parameter_sha256": "a734431fccddccdacea22eac2726c8d3558ab3aba99a32a2693c778c2ac6fe3f",
+      "parameter_compiler": {
+        "local-ordered-prep-copy8-atom32": {
+          "registers": 80,
+          "spill_slots": 0,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps16": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-ps32": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps16": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-ps32": {
+          "registers": 80,
+          "spill_slots": 2,
+          "shared_bytes": 40960
+        }
+      }
+    }
+  ],
+  "decision": "N128 rho8 within0.31 percent, mixed regresses0.89-1.78 percent; one screen, no speedup/adoption/repeat claim; no G4 justified"
+}
