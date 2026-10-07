@@ -447,7 +447,8 @@ matrix oracle. Adapter revision6 records this distinct scope explicitly; these
 results are not attributed to the earlier raw matrix oracle. See the
 [implementation and measurements](../../../docs/research-history/local-product/20261008-profile-product-global.md).
 
-For this large fixture only, consolidated `sigma_updates` contains initial/final
+For Product and input-Strip profile-product fixtures, consolidated
+`sigma_updates` contains initial/final
 ranges, change counts and exact-array hashes; every per-atom width remains in
 the unmodified `measure-PLAN.json` under `artifacts_directory`. This bounds the
 combined submission JSON without changing its timing or correctness records.
