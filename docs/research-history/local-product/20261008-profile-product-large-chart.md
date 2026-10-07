@@ -118,3 +118,10 @@ checkpoint will run the same four plans/dense/case and2000/1800s budgets after
 this export fix. The already running Product job is unaffected. Runtime source
 and mathematical contracts remain fb9c79dbb9824c37b82259708231815eb48f8efa;
 new benchmark exporter source is recorded separately in the next job snapshot.
+
+Export-fix source a5e0df7168fd7b8d3c9d65739e62b96ec12ef940 passed the complete
+CPU gate1115/1898 skipped,18 warnings. The replacement first Strip8192 job is
+l4job-9d0685beb773489d90b6087ae518164c, with exactly the same case/plans,
+seed and2000/1800s family/child budgets. GPU correctness/performance remain
+pending for this job. Exact runtime file bytes are unchanged from fb9c79db;
+this source snapshot includes the writer and additional CPU envelope test.

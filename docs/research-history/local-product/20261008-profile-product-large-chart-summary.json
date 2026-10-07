@@ -8,6 +8,13 @@
       "source_commit": "fb9c79dbb9824c37b82259708231815eb48f8efa",
       "log_sha256": "b59e231602cf5bc2900e91818cf76cc472ff43eda01ee6344e8ec51b50c25fca"
     },
+    "cpu_width_export": {
+      "passed": 1115,
+      "skipped": 1898,
+      "source_commit": "a5e0df7168fd7b8d3c9d65739e62b96ec12ef940",
+      "log_sha256": "fe45056cb241b3dcb6ecbd318e9f2512e00332f5349bf169e51976fb209c11d2",
+      "scope": "benchmark Strip width envelope correction; CUDA implementation unchanged"
+    },
     "l4_gates": [
       {
         "job": "l4job-d347d87e317e4f47ac47b3c63cfe34ed",
@@ -249,6 +256,21 @@
         "downloaded": 1791407400.7985349,
         "archive_sha256": "590b39d1570449beb23dd09720d69cfe368b78eca215e8cdc95ce3a86422d5fb"
       }
+    },
+    {
+      "id": "l4job-6d5d7464679b4221845a57001ebf93b1",
+      "label": "profile-product-large-strip-8192-primary-rho3",
+      "source_commit": "fb9c79dbb9824c37b82259708231815eb48f8efa",
+      "canonical_source_commit": "fb9c79dbb9824c37b82259708231815eb48f8efa",
+      "source_sha256": "08b5c8165d31def845c72e9e3a38cb7cfdef92a66ffb26325f3de200bdfbff8f",
+      "implementation_source_verified": {
+        "commit": "fb9c79dbb9824c37b82259708231815eb48f8efa",
+        "files": 1126,
+        "scope": "exact src/benchmarks/tests/kernel_dev file sets and bytes; Markdown excluded"
+      },
+      "status": "cancelled",
+      "error": null,
+      "scope": "no downloaded result/receipt; no kernel outcome or performance claim"
     }
   ],
   "results": [
@@ -5337,7 +5359,7 @@
   "failed_artifacts": [],
   "pending_jobs": [
     "l4job-1db8c943dbc04f89b01e052025af36fc",
-    "l4job-6d5d7464679b4221845a57001ebf93b1"
+    "l4job-9d0685beb773489d90b6087ae518164c"
   ],
   "max_abs_errors": {
     "y": 5.3809558789197354e-05,
@@ -5366,9 +5388,10 @@
   "collection_complete": false,
   "pool_status": {
     "1": {
-      "status": "stopped",
-      "session": "cst-pool-945e2b948399-1",
-      "endpoint": "gpu-l4-s-kkb-ass1b1-2q0p232gtn1b4"
+      "status": "ready",
+      "session": "cst-pool-e4483b83e58a-1",
+      "endpoint": "gpu-l4-s-kkb-ass1a0-2xt62qrffm6vn",
+      "job": "l4job-1db8c943dbc04f89b01e052025af36fc"
     },
     "2": {
       "status": "stopped",
