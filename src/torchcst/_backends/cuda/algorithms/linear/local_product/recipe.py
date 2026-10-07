@@ -49,6 +49,10 @@ class Recipe:
         return False
 
     @property
+    def fused_backward(self):
+        return False
+
+    @property
     def save_g(self):
         return False
 

@@ -621,7 +621,17 @@ def fused_packed(
     OwnerRanges=None,
     PHYSICAL_H: tl.constexpr = False,
     SPLITS: tl.constexpr = 1,
+    FUSED_BACKWARD: tl.constexpr = False,
+    PARAM_BK: tl.constexpr = 16,
+    ForwardX=None,
+    DQ=None,
+    Source=None,
+    AmplitudeMax=None,
+    SOURCE_A: tl.constexpr = 0,
+    POLAR: tl.constexpr = False,
 ):
+    if FUSED_BACKWARD:
+        DQ += tl.program_id(0) * SOURCE_A * 4
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     tile = tl.program_id(1)
     split = tl.program_id(2) if SPLITS > 1 else 0
@@ -690,6 +700,24 @@ def fused_packed(
                 y = tl.dot(
                     direct * amp[None, :], tl.trans(targets), y, input_precision="ieee"
                 )
+                if FUSED_BACKWARD:
+                    sx = tl.load(
+                        ForwardX + b[:, None] * N + ulo[None, :],
+                        (b[:, None] < B) & live[None, :],
+                        0.0,
+                    )
+                    original = tl.load(Order + a, live, 0).to(tl.int32)
+                    _store_param_cotangent(
+                        DQ,
+                        Source,
+                        AmplitudeMax,
+                        original,
+                        live,
+                        tl.sum(sx * direct, 0),
+                        tl.full((BA,), 0.0, tl.float32),
+                        tl.full((BA,), 0.0, tl.float32),
+                        POLAR,
+                    )
             else:
                 enabled = valid & (ulo < (tile + 1) * BN) & (uhi > tile * BN)
                 if tl.sum(enabled.to(tl.int32), 0) > 0:
@@ -754,6 +782,15 @@ def fused_packed(
                             H_A=H_A,
                             VECTOR_SUPPORT=VECTOR_SUPPORT,
                             UNROLL_SUPPORT=UNROLL_SUPPORT and phase == owners + 1,
+                            FUSED_BACKWARD=FUSED_BACKWARD,
+                            PARAM_BK=PARAM_BK,
+                            ForwardX=ForwardX,
+                            DQ=DQ,
+                            Source=Source,
+                            AmplitudeMax=AmplitudeMax,
+                            ParamOrder=Order,
+                            POLAR=POLAR,
+                            ParamOwner=enabled & (ulo // BN == tile),
                         )
     tl.store(
         Y + (split * B + b[:, None]) * N + i[None, :],
@@ -808,6 +845,15 @@ def _fused_general_block(
     H_A: tl.constexpr = 0,
     VECTOR_SUPPORT: tl.constexpr = False,
     UNROLL_SUPPORT: tl.constexpr = False,
+    FUSED_BACKWARD: tl.constexpr = False,
+    PARAM_BK: tl.constexpr = 16,
+    ForwardX=None,
+    DQ=None,
+    Source=None,
+    AmplitudeMax=None,
+    ParamOrder=None,
+    ParamOwner=None,
+    POLAR: tl.constexpr = False,
 ):
     if not SPARSE:
         x = DenseX
@@ -871,7 +917,7 @@ def _fused_general_block(
                 BA,
             )
         elif VECTOR_SUPPORT and tl.max(width, 0) <= 8:
-            h, _dh_support = _vector_support_contract(
+            h, dh = _vector_support_contract(
                 X,
                 P,
                 a,
@@ -888,18 +934,69 @@ def _fused_general_block(
                 BA,
             )
         elif SUPPORT_ONLY or tl.max(width, 0) <= LIMIT:
-            h, _dh_support = _support_contract(
+            h, dh = _support_contract(
                 X, P, a, b, A, B, K, JS, SWAP, S, OI, BM, BA, Enabled=enabled
             )
         else:
-            h, _dh_matrix = _matrix_contract(
+            h, dh = _matrix_contract(
                 X, P, a, b, A, B, K, JS, SWAP, S, OI, BK, Enabled=enabled
             )
     else:
         v, _dv_full = _factor(P, a, JS + j, A, SWAP, S, OI)
         v = tl.where((j[:, None] < K) & enabled[None, :], v, 0.0)
         h = tl.dot(x, v, input_precision="ieee")
-    return tl.dot(h * amp[None, :], tl.trans(u), y, input_precision="ieee")
+    result = tl.dot(h * amp[None, :], tl.trans(u), y, input_precision="ieee")
+    if FUSED_BACKWARD:  # noqa: SIM102
+        # In the swapped contraction h/dh are G/dG. Only the first input
+        # owner emits this atom's source VJP; other owners only consume G.
+        if tl.sum(ParamOwner.to(tl.int32), 0) > 0:
+            _lo, _hi, width = _interval(P, a, A, False, IS, N)
+            if tl.max(tl.where(ParamOwner, width, 0), 0) <= LIMIT:
+                hx, dhx = _support_contract(
+                    ForwardX,
+                    P,
+                    a,
+                    b,
+                    A,
+                    B,
+                    N,
+                    IS,
+                    False,
+                    S,
+                    OO,
+                    BM,
+                    BA,
+                    Enabled=ParamOwner,
+                )
+            else:
+                hx, dhx = _matrix_contract(
+                    ForwardX,
+                    P,
+                    a,
+                    b,
+                    A,
+                    B,
+                    N,
+                    IS,
+                    False,
+                    S,
+                    OO,
+                    PARAM_BK,
+                    Enabled=ParamOwner,
+                )
+            original = tl.load(ParamOrder + a, ParamOwner, 0).to(tl.int32)
+            _store_param_cotangent(
+                DQ,
+                Source,
+                AmplitudeMax,
+                original,
+                ParamOwner,
+                tl.sum(hx * h, 0),
+                amp * tl.sum(dhx * h, 0),
+                amp * tl.sum(hx * dh, 0),
+                POLAR,
+            )
+    return result
 
 
 @tr.jit
@@ -1281,20 +1378,29 @@ def param_vjp(
             da += partial_a
             dci += partial_i
             dco += partial_o
-        if POLAR:
-            z0 = tl.load(Source + 4 * original, valid, 0.0)
-            z1 = tl.load(Source + 4 * original + 1, valid, 0.0)
-            r2 = z0 * z0 + z1 * z1
-            safe = tl.maximum(r2, 1.1754943508222875e-38)
-            inverse = tl.div_rn(1.0, libdevice.sqrt(safe))
-            active = r2 >= 1.1754943508222875e-38
-            scale = tl.load(AmplitudeMax).to(tl.float32) * inverse
-            d0 = da * scale * (1.0 - tl.where(active, tl.div_rn(z0 * z0, safe), 0.0))
-            d1 = -da * scale * tl.where(active, tl.div_rn(z0 * z1, safe), 0.0)
-            tl.store(DQ + 4 * original, d0, valid)
-            tl.store(DQ + 4 * original + 1, d1, valid)
-        else:
-            tl.store(DQ + 4 * original, da, valid)
-            tl.store(DQ + 4 * original + 1, 0.0, valid)
-        tl.store(DQ + 4 * original + 2, dci, valid)
-        tl.store(DQ + 4 * original + 3, dco, valid)
+        _store_param_cotangent(
+            DQ, Source, AmplitudeMax, original, valid, da, dci, dco, POLAR
+        )
+
+
+@tr.jit
+def _store_param_cotangent(
+    DQ, Source, AmplitudeMax, original, valid, da, dci, dco, POLAR: tl.constexpr
+):
+    if POLAR:
+        z0 = tl.load(Source + 4 * original, valid, 0.0)
+        z1 = tl.load(Source + 4 * original + 1, valid, 0.0)
+        r2 = z0 * z0 + z1 * z1
+        safe = tl.maximum(r2, 1.1754943508222875e-38)
+        inverse = tl.div_rn(1.0, libdevice.sqrt(safe))
+        active = r2 >= 1.1754943508222875e-38
+        scale = tl.load(AmplitudeMax).to(tl.float32) * inverse
+        d0 = da * scale * (1.0 - tl.where(active, tl.div_rn(z0 * z0, safe), 0.0))
+        d1 = -da * scale * tl.where(active, tl.div_rn(z0 * z1, safe), 0.0)
+        tl.store(DQ + 4 * original, d0, valid)
+        tl.store(DQ + 4 * original + 1, d1, valid)
+    else:
+        tl.store(DQ + 4 * original, da, valid)
+        tl.store(DQ + 4 * original + 1, 0.0, valid)
+    tl.store(DQ + 4 * original + 2, dci, valid)
+    tl.store(DQ + 4 * original + 3, dco, valid)
