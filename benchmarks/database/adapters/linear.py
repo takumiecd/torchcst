@@ -15,6 +15,7 @@ from benchmarks.cuda.linear.manifest import REGISTRY, decode_snapshot
 from benchmarks.cuda.linear.protocol import (
     LOCAL_OPTIMIZER_POLICY,
     LOCAL_ORACLE_SCOPE,
+    PRODUCT_ORACLE_SCOPE,
     measurement_operator,
 )
 from benchmarks.database.model import (
@@ -172,8 +173,10 @@ def project(value):
     execution_identity(value)
     run = decode_snapshot(value["run"])
     case = json.loads(json.dumps(asdict(run.case), allow_nan=False))
-    local = run.case.fixture == "local_polar_product"
-    revision = LOCAL_REVISION if local else REVISION
+    product = run.case.fixture == "polar_profile_product"
+    local = run.case.fixture in ("local_polar_product", "polar_profile_product")
+    revision = 4 if product else LOCAL_REVISION if local else REVISION
+    oracle_scope = PRODUCT_ORACLE_SCOPE if product else LOCAL_ORACLE_SCOPE
     plans = {p.id: REGISTRY.dump_plan(p.plan) for p in run.plans}
     protocol = {
         "id": ADAPTER,
@@ -187,7 +190,7 @@ def project(value):
         "memory": "warmed model, gradients and optimizer; capture/replay peak",
     }
     if local:
-        protocol["correctness"] = LOCAL_ORACLE_SCOPE
+        protocol["correctness"] = oracle_scope
         protocol["optimizer_policy"] = LOCAL_OPTIMIZER_POLICY
     _hash(value["snapshot_sha256"])
     historical = (json.dumps(run.snapshot(), indent=2, allow_nan=False) + "\n").encode()
@@ -268,7 +271,7 @@ def project(value):
                 raise ValueError("workers use different polar update implementations")
             polar_update = actual_update
             protocol["polar_update"] = polar_update
-            protocol["revision"] = 3
+            protocol["revision"] = 4 if product else 3
         if (
             record.status != "PASS"
             or type(meta.get("schema_version")) is not int
@@ -301,7 +304,7 @@ def project(value):
                 or result.get("scope") != protocol["correctness"]
             ):
                 raise ValueError("unknown independent oracle fixture/scope")
-            if local and result.get("scope") != LOCAL_ORACLE_SCOPE:
+            if local and result.get("scope") != oracle_scope:
                 raise ValueError("unknown local independent oracle scope")
             metrics = tuple(
                 Metric(

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "profile-product-64-rho1_25",
+    "fixture": "polar_profile_product",
+    "size": 64,
+    "rows": 32,
+    "atoms": 204,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 1.0,
+      "birth": 1.0,
+      "maximum": 16,
+      "rho": [
+        1.25
+      ],
+      "fractions": [
+        1.0
+      ],
+      "center_jitter": null
+    }
+  },
+  "plans": [
+    "torch",
+    "local",
+    "saved"
+  ],
+  "baseline": "torch",
+  "dense": true
+}

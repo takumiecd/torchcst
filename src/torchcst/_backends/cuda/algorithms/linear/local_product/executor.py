@@ -470,6 +470,7 @@ class _LocalH(torch.autograd.Function):
         singletons,
         tile_packed,
         persistent_layout,
+        product_floor,
     ):
         fused_polar = bool(scalars)
         import triton as tr
@@ -477,13 +478,38 @@ class _LocalH(torch.autograd.Function):
         from . import kernels
 
         a = len(q)
-        packed = prepare_metadata(
-            q,
-            domain,
-            sparse=sparse,
-            scalars=scalars,
-            support_bounded=recipe.support_prepare,
-        )
+        if product_floor is None:
+            packed = prepare_metadata(
+                q,
+                domain,
+                sparse=sparse,
+                scalars=scalars,
+                support_bounded=recipe.support_prepare,
+            )
+        else:
+            from ..profile_product.kernels import prepare
+
+            if sparse or tile_packed or not fused_polar:
+                raise ValueError("product metadata requires canonical fused Polar")
+            packed = q.new_empty((9, a))
+            if a:
+                prepare[(a,)](
+                    q,
+                    packed,
+                    a,
+                    domain.input_size,
+                    domain.output_size,
+                    domain.spacing,
+                    domain.input_origin,
+                    domain.output_origin,
+                    tr.next_power_of_2(domain.input_size),
+                    tr.next_power_of_2(domain.output_size),
+                    scalars,
+                    product_floor,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
+        ctx.product_order = product_floor is not None
         ends = q.new_empty((0,))
         _stamp("layout", 0)
         owner_ids, owner_offsets = (q.new_empty((0,)),) * 2
@@ -628,8 +654,10 @@ class _LocalH(torch.autograd.Function):
             ends,
             owner_ids[1] if recipe.release_forward_index else owner_ids,
             owner_offsets[1] if recipe.release_forward_index else owner_offsets,
-            q if fused_polar else q.new_empty((0,)),
-            *scalars,
+            (q.clone() if product_floor is not None else q)
+            if fused_polar
+            else q.new_empty((0,)),
+            *((scalars[0].clone(),) if product_floor is not None else scalars),
         )
         ctx.settings = (
             domain,
@@ -822,6 +850,7 @@ class _LocalH(torch.autograd.Function):
                     G=g,
                     SAVE_G=use_g,
                     BATCH_SPLITS=parameter_splits,
+                    CENTER_OUTPUT_FIRST=ctx.product_order,
                     num_warps=recipe.parameter_warps
                     or (8 if max(domain.input_count, domain.output_count) > 64 else 4),
                     enable_fp_fusion=False,
@@ -873,7 +902,22 @@ class _LocalH(torch.autograd.Function):
                 owner_ids=dx_ids,
                 owner_offsets=dx_offsets,
             )
-        return dx, dq, None, None, None, None, None, None, None, None, None, None, None
+        return (
+            dx,
+            dq,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 def local_h(
@@ -892,6 +936,7 @@ def local_h(
     tile_packed=False,
     persistent_layout=None,
     recipe=DEFAULT_RECIPE,
+    product_floor=None,
 ):
     """Y_local from X_local, normalized full-domain profiles, and polar atoms.
 
@@ -962,4 +1007,5 @@ def local_h(
             singletons,
             tile_packed,
             persistent_layout,
+            product_floor,
         )

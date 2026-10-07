@@ -66,8 +66,9 @@ def _context(row, mode):
     """Protocol-specific reconstruction, never an arbitrary JSON type loader."""
     case, env = row["case_declaration"], row["environment"]
     n = case["size"]
-    local = case["fixture"] == "local_polar_product"
-    if row["adapter_revision"] != (3 if local else 2):
+    product = case["fixture"] == "polar_profile_product"
+    local = case["fixture"] in ("local_polar_product", "polar_profile_product")
+    if row["adapter_revision"] != (4 if product else 3 if local else 2):
         raise ValueError("generation fixture/adapter revision differs")
     operator = measurement_operator(case)
     result = row["payload"]["result"]
