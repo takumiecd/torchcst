@@ -11,6 +11,8 @@ PRODUCT_ORACLE_SCOPE = (
     "independent FP64 full-site Y/dX/all atom gradients; production polar update"
 )
 
+STRIP_PRODUCT_ORACLE_SCOPE = "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update"
+
 LOCAL_OPTIMIZER_POLICY = (
     "euclidean polar finite_chord; AdamW proposal + activity/radial update"
 )
@@ -19,6 +21,10 @@ LOCAL_OPTIMIZER_POLICY = (
 def measurement_operator(case):
     """Rebuild from a validated Case, never from arbitrary serialized types."""
     case = _case({"id": "stored-case", **case})
+    if case.fixture == "polar_profile_product_strip":
+        from .strip_profile_product import fixture_operator as strip_operator
+
+        return strip_operator(case)
     if case.fixture == "polar_profile_product":
         from benchmarks.cuda.linear.profile_product import (
             fixture_operator as product_operator,

@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "profile-product-strip-256-rho8",
+    "fixture": "polar_profile_product_strip",
+    "size": 256,
+    "rows": 32,
+    "atoms": 819,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 1.0,
+      "birth": 1.0,
+      "maximum": 16,
+      "rho": [
+        8
+      ],
+      "fractions": [
+        1.0
+      ],
+      "center_jitter": null
+    }
+  },
+  "plans": [
+    "torch",
+    "tiled",
+    "reuse"
+  ],
+  "baseline": "torch",
+  "dense": true
+}

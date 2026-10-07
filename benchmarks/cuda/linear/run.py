@@ -54,7 +54,10 @@ class PlanLinear(nn.Module):
         self.local_state = None
         self.persistent_layout = None
         self.update_binding = None
-        if plan.algorithm_id == "research_profile_product":
+        if plan.algorithm_id in (
+            "research_profile_product",
+            "research_strip_profile_product",
+        ):
             from torchcst import AtomUpdateBinding, CSTLinear
 
             self.product_site = CSTLinear(
@@ -140,6 +143,7 @@ def _metadata(args, run):
         Path(__file__).with_name("manifest.py"),
         Path(__file__).with_name("local_product.py"),
         Path(__file__).with_name("profile_product.py"),
+        Path(__file__).with_name("strip_profile_product.py"),
         Path(__file__).parent.parent / "polar_update.py",
     ]
     return {
@@ -179,6 +183,12 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "polar_profile_product_strip":
+        from benchmarks.cuda.linear.strip_profile_product import (
+            correctness as strip_check,
+        )
+
+        return strip_check(args, run, PlanLinear)
     if run.case.fixture == "polar_profile_product":
         from benchmarks.cuda.linear.profile_product import correctness as product_check
 
@@ -226,8 +236,10 @@ def correctness(args, run):
 def measure(args, run):
     case = run.case
     n, m = case.size, case.rows
-    product = case.fixture == "polar_profile_product"
-    local = case.fixture in ("local_polar_product", "polar_profile_product")
+    strip = case.fixture == "polar_profile_product_strip"
+    product = case.fixture in ("polar_profile_product", "polar_profile_product_strip")
+    local = product or case.fixture == "local_polar_product"
+    out = 64 if strip else n
     support_report = None
     if local:
         from benchmarks.cuda.linear.local_product import (
@@ -253,8 +265,16 @@ def measure(args, run):
                 initialize,
                 summarize,
             )
+        if strip:
+            from benchmarks.cuda.linear.strip_profile_product import (
+                fixture_operator,
+                fixture_state,
+                initialize,
+                summarize,
+            )
         op, p = fixture_operator(case), initialize(case)
-        support_report = summarize(decode(fixture_state(case), p), Domain(n, n))
+        support_domain = op.charts[0] if strip else Domain(n, n)
+        support_report = summarize(decode(fixture_state(case), p), support_domain)
     else:
         h, j = (32, 32) if n == 1024 else (64, 128)
         sizes = (n, h, j)
@@ -275,7 +295,7 @@ def measure(args, run):
                 p[:, axis + 2] = o + near * spacing + (u - near) * 0.04
     initial_p_hash = hashlib.sha256(p.numpy().tobytes()).hexdigest()
     torch.manual_seed(run.case.seed)
-    cpu_x, cpu_target = generate_inputs(run.case.seed, m, n)
+    cpu_x, cpu_target = generate_inputs(run.case.seed, m, n, output_features=out)
     x = cpu_x.cuda().requires_grad_()
     target = cpu_target.cuda()
     del cpu_x, cpu_target
@@ -284,9 +304,9 @@ def measure(args, run):
         "target_sha256": hashlib.sha256(target.cpu().numpy().tobytes()).hexdigest(),
     }
     if args.worker == "dense":
-        model = nn.Linear(n, n, bias=False, device="cuda")
+        model = nn.Linear(n, out, bias=False, device="cuda")
         weight_gen = torch.Generator(device="cpu").manual_seed(run.case.seed)
-        weight = torch.empty(n, n).uniform_(-0.01, 0.01, generator=weight_gen)
+        weight = torch.empty(out, n).uniform_(-0.01, 0.01, generator=weight_gen)
         model.weight.data.copy_(weight.cuda())
         del weight
     else:
@@ -316,7 +336,7 @@ def measure(args, run):
             events[0].record()
         optimizer.zero_grad(set_to_none=True)
         x.grad = None
-        loss = (model(x) * target).sum() / (m * n)
+        loss = (model(x) * target).sum() / (m * out)
         if events is not None:
             events[1].record()
         loss.backward()
@@ -440,7 +460,7 @@ def measure(args, run):
                     "rho >= mid; CPU diagnostics may differ at FP32 boundaries"
                 )
         final_support = summarize(
-            decode(model.local_state, model.p).detach().cpu(), Domain(n, n)
+            decode(model.local_state, model.p).detach().cpu(), support_domain
         )
         if recipe.execution_route in (
             "hybrid_singletons",
@@ -586,14 +606,15 @@ def measure(args, run):
     }
 
 
-def generate_inputs(seed, rows, features):
+def generate_inputs(seed, rows, features, *, output_features=None):
     """Independent CPU generator; CUDA device scheduling cannot change the batch."""
     generator = torch.Generator(device="cpu").manual_seed(seed)
     return tuple(
-        torch.randn(
-            rows, features, device="cpu", dtype=torch.float32, generator=generator
+        torch.randn(rows, width, device="cpu", dtype=torch.float32, generator=generator)
+        for width in (
+            features,
+            features if output_features is None else output_features,
         )
-        for _ in range(2)
     )
 
 
@@ -668,6 +689,7 @@ def main():
     if args.polar_update == "fused" and run.case.fixture not in (
         "local_polar_product",
         "polar_profile_product",
+        "polar_profile_product_strip",
     ):
         ap.error("--polar-update fused requires the local product fixture")
     if args.kernel_diagnostics and (

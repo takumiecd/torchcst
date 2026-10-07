@@ -471,6 +471,7 @@ class _LocalH(torch.autograd.Function):
         tile_packed,
         persistent_layout,
         product_floor,
+        prepared,
     ):
         fused_polar = bool(scalars)
         import triton as tr
@@ -478,7 +479,9 @@ class _LocalH(torch.autograd.Function):
         from . import kernels
 
         a = len(q)
-        if product_floor is None:
+        if prepared is not None:
+            packed = prepared
+        elif product_floor is None:
             packed = prepare_metadata(
                 q,
                 domain,
@@ -920,6 +923,7 @@ class _LocalH(torch.autograd.Function):
             None,
             None,
             None,
+            None,
         )
 
 
@@ -940,6 +944,7 @@ def local_h(
     persistent_layout=None,
     recipe=DEFAULT_RECIPE,
     product_floor=None,
+    prepared=None,
 ):
     """Y_local from X_local, normalized full-domain profiles, and polar atoms.
 
@@ -987,6 +992,14 @@ def local_h(
         or x.shape[1] != domain.input_count
     ):
         raise ValueError("requires CUDA FP32 local X[B<=64,K] and polar P[A,4]")
+    if prepared is not None and (
+        product_floor is None
+        or not fused_polar
+        or prepared.shape != (13 if sparse else 9, len(p))
+        or prepared.dtype != p.dtype
+        or prepared.device != p.device
+    ):
+        raise ValueError("prepared product metadata must match canonical CUDA atoms")
     if fused_polar:
         if recipe.pack:
             raise ValueError("initial fused polar route uses canonical atom order")
@@ -1011,4 +1024,5 @@ def local_h(
             tile_packed,
             persistent_layout,
             product_floor,
+            prepared,
         )
