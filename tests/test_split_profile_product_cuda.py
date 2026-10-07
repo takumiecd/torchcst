@@ -77,16 +77,15 @@ def test_reduction_caps_at_available_blocks(k, requested, expected):
 
 
 @pytest.mark.parametrize("family", ["global", "strip"])
-@pytest.mark.parametrize("large", [False, True])
+@pytest.mark.parametrize("large,size", [(False, 1024), (True, 2048), (True, 8192)])
 @pytest.mark.parametrize("rho", [3, 8])
-def test_split_case_snapshots_and_live_optimizer_binding(family, large, rho):
+def test_split_case_snapshots_and_live_optimizer_binding(family, large, size, rho):
     from dataclasses import asdict
 
     from benchmarks.cuda.linear.protocol import measurement_operator
     from benchmarks.cuda.linear.run import PlanLinear
 
     tag = "large-" if large else ""
-    size = 2048 if large else 1024
     value = load_run(
         f"benchmarks/cuda/linear/cases/profile-product-{tag}{family}-{size}-rho{rho}-split-k.json",
         f"benchmarks/cuda/linear/plans-profile-product-{tag}{family}-split-k.json",

@@ -25,3 +25,34 @@ in ignored benchmarks/cuda/linear/evidence/profile-product-split-k-20261008/.
 CPU gate:1162 passed/2069 skipped/18 warnings. Four catalogs/eight snapshots,
 two prepare/check workflows, Ruff and wheel/sdist build passed. GPU tests and
 complete-step timing remain pending; no speedup claim.
+
+## Correct first-gate setup before measurement
+
+Job l4job-484582e01b334140acf029658404172d at18e0b3421e2825ddcfbf7287c854bf87b7127a9a
+returned1, with209 passed/10 failed in the219-test split suite. Every failure
+was in the large fixture's pitch or gradient-branch scenario: the layer used
+8191-input Strip or2049-input Product while reused tests still constructed65
+input features (and33 output cotangents). The failures occurred in input binding
+or independent-oracle shape multiplication before candidate contraction. No
+performance measurement was submitted from this failed gate. Raw logs and source
+are preserved under jobs/ and kernel/profile-product-split-k-first-gate.
+
+Correct shared test inputs/cotangents to use layer.in_features/out_features. The
+old small scenarios retain their original65x33 values, while the large fixture
+now exercises its declared complete chart. No scenario, numerical check or
+optimizer gate is removed or relaxed. All candidate CUDA runtime file bytes
+remain identical to18e0b342; a new full GPU gate is required for corrected source.
+
+Carry forward the large branch's bounded exact CPU support reports/Strip width
+export. Add the prepared factor control to all split catalogs alongside split1,
+4,8,16,Torch and dense. All twelve cases (1024/2048/8192,Product/Strip,rho3/8)
+round-trip. First selected split measurements remain1024/2048 for both families;
+add one first Strip8192 rho3 comparison to test its slow thin native contraction.
+No8192 Product split speedup is inferred from the Strip case. All complete-step
+budgets remain predeclared600s per selected child (1300s for two-rho families;
+700s for the single8192 Strip case), with unchanged full-site oracles and21
+samples. Actual timing/memory and independent order checks are still pending.
+
+Corrected full CPU gate:1198 passed/2069 skipped/18 warnings. Twelve case
+snapshots and all catalogs pass. Installed-wheel metadata/build evidence remains
+from the byte-identical CUDA runtime in the first source checkpoint.

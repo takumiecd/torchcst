@@ -2,6 +2,23 @@
   "schema_version": 1,
   "plans": [
     {
+      "id": "prepared",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_prepared",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 16,
+          "atom_group": 4,
+          "sorting": "torch",
+          "prep_sites": 16
+        }
+      }
+    },
+    {
       "id": "split1",
       "plan": {
         "schema_version": 1,

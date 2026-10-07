@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "case": {
-    "id": "profile-product-large-global-2048-rho3-split-k",
-    "fixture": "polar_profile_product_global",
-    "size": 2048,
+    "id": "profile-product-large-strip-8192-rho3-split-k",
+    "fixture": "polar_profile_product_strip",
+    "size": 8192,
     "rows": 32,
-    "atoms": 209715,
+    "atoms": 26214,
     "profile": "mixed",
     "dtype": "float32",
     "seed": 41,
