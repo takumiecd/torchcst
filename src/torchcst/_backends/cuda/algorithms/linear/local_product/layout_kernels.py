@@ -37,9 +37,7 @@ def ordered_owner_ranges(
         chunk: tl.constexpr = tl.cdiv(C, GROUPS)
         copy_lane = (a >= owner * chunk) & (a < (owner + 1) * chunk) & (a < C)
         for field in tl.static_range(fields):
-            canonical: tl.constexpr = (
-                field + 2 if COMPACT_VIEW and field >= 6 else field
-            )
+            canonical = field + 2 if COMPACT_VIEW and field >= 6 else field
             value = tl.load(P + canonical * C + source, copy_lane, 0.0)
             tl.store(Views + direction * fields * C + field * C + a, value, copy_lane)
     else:
@@ -562,9 +560,7 @@ def ordered_views(
     if COPY:
         fields: tl.constexpr = 11 if COMPACT_VIEW else 13
         for field in tl.static_range(fields):
-            canonical: tl.constexpr = (
-                field + 2 if COMPACT_VIEW and field >= 6 else field
-            )
+            canonical = field + 2 if COMPACT_VIEW and field >= 6 else field
             value = tl.load(P + canonical * C + source, a < C, 0.0)
             tl.store(Views + direction * fields * C + field * C + a, value, a < C)
     tl.store(Orders + direction * C + a, source, a < C)
