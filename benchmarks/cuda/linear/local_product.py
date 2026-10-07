@@ -79,7 +79,19 @@ class LocalRecipe(Recipe):
 
     @property
     def layout_route(self):
-        return self.route.removesuffix("_dxview11")
+        return (
+            self.route.removesuffix("_dxview11")
+            .removesuffix("_fusedback16")
+            .removesuffix("_fusedback")
+        )
+
+    @property
+    def fused_backward(self):
+        return self.route.endswith(("_fusedback", "_fusedback16"))
+
+    @property
+    def backward_atom_block(self):
+        return 16 if self.route.endswith("_fusedback16") else self.atom_block
 
     @property
     def reuse_layout(self):
@@ -499,6 +511,8 @@ class LocalRecipe(Recipe):
     def __post_init__(self):
         if type(self.route) is not str:
             raise ValueError("local execution route must be a string")
+        if "_dxview11" in self.route and "_fusedback" in self.route:
+            raise ValueError("compact dX and fused VJP require separate recipes")
         if self.compact_ordered_view and not (
             self.ordered_layout
             and self.recompute_h
@@ -512,6 +526,13 @@ class LocalRecipe(Recipe):
             raise ValueError("requires a numeric boundary array")
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
+        if self.fused_backward and self.layout_route not in (
+            "persistent_supportprep_band_recompute_vjp_ordered_reuse_paramatom16_param4_param2",
+            "persistent_supportprep_band_recompute_vjp_ordered_cache_repair4_param2_nostats_copy8",
+        ):
+            raise ValueError(
+                "backward fusion requires a supported full ordered snapshot"
+            )
         if (
             self.base_route == "persistent_supportprep_band_recompute_vjp"
             and self.layout_route

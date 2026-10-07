@@ -358,12 +358,16 @@ def _packed_fused(
     saved_g=None,
     owner_ids=None,
     owner_offsets=None,
+    forward_x=None,
+    dq=None,
+    source=None,
+    amplitude_max=None,
 ):
     import triton as tr
 
     from . import kernels
 
-    if swap:
+    if swap and dq is None:
         _stamp("dx", 0)
 
     k, n, oi, oo, js, i = _sizes(domain, swap)
@@ -389,7 +393,7 @@ def _packed_fused(
         i,
         max(16, tr.next_power_of_2(k)),
         recipe.batch_block,
-        recipe.atom_block,
+        recipe.backward_atom_block if dq is not None else recipe.atom_block,
         swap,
         recipe.support_limit,
         recipe.rho_upper[1],
@@ -410,11 +414,21 @@ def _packed_fused(
         else None,
         PHYSICAL_H=recipe.ordered_layout,
         SPLITS=splits,
+        FUSED_BACKWARD=dq is not None,
+        PARAM_BK=max(16, tr.next_power_of_2(n)),
+        ForwardX=forward_x,
+        DQ=dq,
+        Source=source,
+        AmplitudeMax=amplitude_max,
+        SOURCE_A=len(source) if source is not None else 0,
+        POLAR=source is not None,
         num_warps=recipe.contraction_warps or (8 if max(k, n) > 64 else 4),
         enable_fp_fusion=False,
     )
     _report(
-        "packed_dx_saved_g"
+        "fused_dx_source_vjp"
+        if dq is not None
+        else "packed_dx_saved_g"
         if swap and saved_g is not None
         else "packed_dx"
         if swap
@@ -434,7 +448,7 @@ def _packed_fused(
         )
         _report("dx_partial_reduce" if swap else "output_partial_reduce", reduced)
         y = result
-    if swap:
+    if swap and dq is None:
         _stamp("dx", 1)
     return y
 
@@ -690,6 +704,19 @@ class _LocalH(torch.autograd.Function):
             and ctx.needs_input_grad[1]
         )
         g = x.new_empty((len(x), len(source))) if use_g else None
+        fuse_vjp = (
+            recipe.fused_backward
+            and tile_packed
+            and ctx.needs_input_grad[0]
+            and ctx.needs_input_grad[1]
+        )
+        if fuse_vjp:
+            _stamp("dx_source_vjp", 0)
+        fused_partials = (
+            packed.new_zeros((tr.cdiv(len(x), recipe.batch_block), len(source), 4))
+            if fuse_vjp
+            else None
+        )
         if ctx.needs_input_grad[0] and tile_packed and not use_g:
             dx = _packed_fused(
                 dy,
@@ -704,6 +731,10 @@ class _LocalH(torch.autograd.Function):
                 canonical_atoms=len(source) if persistent else 0,
                 owner_ids=dx_ids,
                 owner_offsets=dx_offsets,
+                forward_x=x if fuse_vjp else None,
+                dq=fused_partials,
+                source=source if fuse_vjp else None,
+                amplitude_max=scalars[0] if fuse_vjp else None,
             )
         elif ctx.needs_input_grad[0] and not use_g:
             dx = _fused(
@@ -717,7 +748,25 @@ class _LocalH(torch.autograd.Function):
                 singletons=singletons,
             )
         dq = None
-        if ctx.needs_input_grad[1]:
+        if fuse_vjp:
+            _stamp("dx_source_vjp", 1)
+            _stamp("source_partial_reduce", 0)
+            dq = packed.new_empty((len(source), 4))
+            if len(source):
+                reduced = kernels.reduce_owner_partials[
+                    (tr.cdiv(len(source) * 4, 256),)
+                ](
+                    fused_partials,
+                    dq,
+                    len(source) * 4,
+                    tr.cdiv(len(x), recipe.batch_block),
+                    256,
+                    num_warps=4,
+                    enable_fp_fusion=False,
+                )
+                _report("fused_parameter_partial_reduce", reduced)
+            _stamp("source_partial_reduce", 1)
+        elif ctx.needs_input_grad[1]:
             _stamp("parameters", 0)
             a = packed.shape[1]
             canonical_atoms = len(source) if persistent else a

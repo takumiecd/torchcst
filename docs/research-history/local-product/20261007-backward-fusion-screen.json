@@ -1,0 +1,1044 @@
+{
+  "schema_version": 1,
+  "status": "32-atom fusion retained as research only; narrow N64 gain requires repeat; wide N128 regresses",
+  "source_commit": "e29b503f5b7e9152cc5d1855fd9085cd9aca73c4",
+  "source_commit_in_raw": "e29b503f",
+  "jobs": [
+    {
+      "job": "l4job-9cdacad3ef5143018cecf5136fd9c7df",
+      "repeat": 1,
+      "source_commit": "e29b503f",
+      "source_snapshot_sha256": "97cdb2ccfd0ac90e72b702590b3277b4f99ef73475d99ed093fbad3961c291d9",
+      "result_archive_sha256": "2a1389cb8f37d74da73e0c7955e18bca1d0e20bb02b75c10f534ac663aad725a",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA L4, GPU-90e74811-1aa2-d509-f3de-83b40bb30ada, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    },
+    {
+      "job": "l4job-498f9b776c8841aab3d81d618d777e66",
+      "repeat": 1,
+      "source_commit": "e29b503f",
+      "source_snapshot_sha256": "e78dfc35300a5bc93b3be36adaae1fccede681b1ac6cf82bb33772bdc4a5649b",
+      "result_archive_sha256": "45e7754114d7478e4e99a15b61a8411a89aaf716865769c69afb7dab2c40c7fa",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA L4, GPU-90e74811-1aa2-d509-f3de-83b40bb30ada, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    }
+  ],
+  "samples_per_execution": 21,
+  "independent_executions_per_condition": 1,
+  "scope": "unmodified existing runner primary complete production AdamW/Polar step and CUDA Graph capture/replay PyTorch allocated/reserved peaks; process usage and physical traffic unmeasured",
+  "paired_hash_checks": "canonical Parameter, input and target hashes identical within each condition",
+  "cases": [
+    {
+      "case": {
+        "id": "local-backward-fusion-64-rho3",
+        "fixture": "local_polar_product",
+        "size": 64,
+        "rows": 32,
+        "atoms": 204,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3.0
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 59.230999909232196,
+          "run_medians_us": [
+            59.230999909232196
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 10.239999741315842,
+            "dx": 10.239999741315842,
+            "parameters": 16.383999958634377
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 51.492000011421624,
+          "run_medians_us": [
+            51.492000011421624
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 10.239999741315842,
+            "dx": 10.239999741315842,
+            "parameters": 9.216000325977802
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 52.38200003532256,
+          "run_medians_us": [
+            52.38200003532256
+          ],
+          "peak_allocated_bytes": 116736,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 10.239999741315842,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "independent_executions": 1,
+          "median_us": 50.62100001396175,
+          "run_medians_us": [
+            50.62100001396175
+          ],
+          "peak_allocated_bytes": 120832,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx_source_vjp": 13.311999849975109,
+            "source_partial_reduce": 3.0720001086592674
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "independent_executions": 1,
+          "median_us": 50.47100000865612,
+          "run_medians_us": [
+            50.47100000865612
+          ],
+          "peak_allocated_bytes": 121856,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx_source_vjp": 13.311999849975109,
+            "source_partial_reduce": 3.0720001086592674
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 38.78500001519569,
+          "run_medians_us": [
+            38.78500001519569
+          ],
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "matched_comparisons": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "matched_control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "median_time_reduction_percent": 1.691524891763141,
+          "same_improvement_direction": true,
+          "minimum_allocated_reduction_bytes": -5120,
+          "paired_executions": [
+            {
+              "job": "l4job-9cdacad3ef5143018cecf5136fd9c7df",
+              "control_us": 51.492000011421624,
+              "candidate_us": 50.62100001396175,
+              "time_reduction_percent": 1.691524891763141,
+              "allocated_reduction_bytes": -5120,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": 3.648199811725028,
+          "same_improvement_direction": true,
+          "minimum_allocated_reduction_bytes": -5120,
+          "paired_executions": [
+            {
+              "job": "l4job-9cdacad3ef5143018cecf5136fd9c7df",
+              "control_us": 52.38200003532256,
+              "candidate_us": 50.47100000865612,
+              "time_reduction_percent": 3.648199811725028,
+              "allocated_reduction_bytes": -5120,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        }
+      },
+      "compiler": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "prepare_bounded": {
+            "registers": 32,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "ordered_layout": {
+            "registers": 27,
+            "spill_slots": 0,
+            "shared_bytes": 1024
+          },
+          "ordered_owner_ranges": {
+            "registers": 32,
+            "spill_slots": 0,
+            "shared_bytes": 16
+          },
+          "packed_forward": {
+            "registers": 72,
+            "spill_slots": 2,
+            "shared_bytes": 14336
+          },
+          "output_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_dx_source_vjp": {
+            "registers": 201,
+            "spill_slots": 0,
+            "shared_bytes": 22528
+          },
+          "dx_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_parameter_partial_reduce": {
+            "registers": 14,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "prepare_bounded": {
+            "registers": 32,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "ordered_layout": {
+            "registers": 29,
+            "spill_slots": 0,
+            "shared_bytes": 1024
+          },
+          "ordered_owner_ranges": {
+            "registers": 32,
+            "spill_slots": 0,
+            "shared_bytes": 16
+          },
+          "packed_forward": {
+            "registers": 72,
+            "spill_slots": 2,
+            "shared_bytes": 14336
+          },
+          "output_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_dx_source_vjp": {
+            "registers": 201,
+            "spill_slots": 0,
+            "shared_bytes": 22528
+          },
+          "dx_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_parameter_partial_reduce": {
+            "registers": 14,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "local-backward-fusion-64-rho8",
+        "fixture": "local_polar_product",
+        "size": 64,
+        "rows": 32,
+        "atoms": 204,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            8.0
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 56.598000014673744,
+          "run_medians_us": [
+            56.598000014673744
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 10.239999741315842,
+            "dx": 10.239999741315842,
+            "parameters": 14.336000196635723
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 51.147000021956046,
+          "run_medians_us": [
+            51.147000021956046
+          ],
+          "peak_allocated_bytes": 115712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 8.191999979317188
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 52.06099990573421,
+          "run_medians_us": [
+            52.06099990573421
+          ],
+          "peak_allocated_bytes": 116736,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx": 10.239999741315842,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "independent_executions": 1,
+          "median_us": 53.19799993230845,
+          "run_medians_us": [
+            53.19799993230845
+          ],
+          "peak_allocated_bytes": 120832,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 8.191999979317188,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx_source_vjp": 16.383999958634377,
+            "source_partial_reduce": 3.0720001086592674
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "independent_executions": 1,
+          "median_us": 51.93200001940568,
+          "run_medians_us": [
+            51.93200001940568
+          ],
+          "peak_allocated_bytes": 121856,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 7.168000098317862,
+            "h": 2.047999994829297,
+            "output": 9.216000325977802,
+            "dx_source_vjp": 15.359999611973763,
+            "source_partial_reduce": 4.095999989658594
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 39.25600003640284,
+          "run_medians_us": [
+            39.25600003640284
+          ],
+          "peak_allocated_bytes": 34179584,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "matched_comparisons": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "matched_control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "median_time_reduction_percent": -4.0100101852933,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": -5120,
+          "paired_executions": [
+            {
+              "job": "l4job-9cdacad3ef5143018cecf5136fd9c7df",
+              "control_us": 51.147000021956046,
+              "candidate_us": 53.19799993230845,
+              "time_reduction_percent": -4.0100101852933,
+              "allocated_reduction_bytes": -5120,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": 0.247786032850128,
+          "same_improvement_direction": true,
+          "minimum_allocated_reduction_bytes": -5120,
+          "paired_executions": [
+            {
+              "job": "l4job-9cdacad3ef5143018cecf5136fd9c7df",
+              "control_us": 52.06099990573421,
+              "candidate_us": 51.93200001940568,
+              "time_reduction_percent": 0.247786032850128,
+              "allocated_reduction_bytes": -5120,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        }
+      },
+      "compiler": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "prepare_bounded": {
+            "registers": 32,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "ordered_layout": {
+            "registers": 27,
+            "spill_slots": 0,
+            "shared_bytes": 1024
+          },
+          "ordered_owner_ranges": {
+            "registers": 32,
+            "spill_slots": 0,
+            "shared_bytes": 16
+          },
+          "packed_forward": {
+            "registers": 72,
+            "spill_slots": 2,
+            "shared_bytes": 14336
+          },
+          "output_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_dx_source_vjp": {
+            "registers": 201,
+            "spill_slots": 0,
+            "shared_bytes": 22528
+          },
+          "dx_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_parameter_partial_reduce": {
+            "registers": 14,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "prepare_bounded": {
+            "registers": 32,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "ordered_layout": {
+            "registers": 29,
+            "spill_slots": 0,
+            "shared_bytes": 1024
+          },
+          "ordered_owner_ranges": {
+            "registers": 32,
+            "spill_slots": 0,
+            "shared_bytes": 16
+          },
+          "packed_forward": {
+            "registers": 72,
+            "spill_slots": 2,
+            "shared_bytes": 14336
+          },
+          "output_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_dx_source_vjp": {
+            "registers": 201,
+            "spill_slots": 0,
+            "shared_bytes": 22528
+          },
+          "dx_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_parameter_partial_reduce": {
+            "registers": 14,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "local-backward-fusion-128-rho3",
+        "fixture": "local_polar_product",
+        "size": 128,
+        "rows": 32,
+        "atoms": 819,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            3.0
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 70.28100003481086,
+          "run_medians_us": [
+            70.28100003481086
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 68.31099994997203,
+          "run_medians_us": [
+            68.31099994997203
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 68.59699999495206,
+          "run_medians_us": [
+            68.59699999495206
+          ],
+          "peak_allocated_bytes": 306688,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 15.359999611973763,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 13.311999849975109,
+            "parameters": 10.239999741315842
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "independent_executions": 1,
+          "median_us": 70.38299997930153,
+          "run_medians_us": [
+            70.38299997930153
+          ],
+          "peak_allocated_bytes": 304128,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx_source_vjp": 22.52800017595291,
+            "source_partial_reduce": 3.0720001086592674
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "independent_executions": 1,
+          "median_us": 71.89699999798904,
+          "run_medians_us": [
+            71.89699999798904
+          ],
+          "peak_allocated_bytes": 307712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 14.336000196635723,
+            "h": 2.047999994829297,
+            "output": 14.336000196635723,
+            "dx_source_vjp": 22.52800017595291,
+            "source_partial_reduce": 3.0720001086592674
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 45.803999910276616,
+          "run_medians_us": [
+            45.803999910276616
+          ],
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "matched_comparisons": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "matched_control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "median_time_reduction_percent": -3.033186501217866,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": -1024,
+          "paired_executions": [
+            {
+              "job": "l4job-498f9b776c8841aab3d81d618d777e66",
+              "control_us": 68.31099994997203,
+              "candidate_us": 70.38299997930153,
+              "time_reduction_percent": -3.033186501217866,
+              "allocated_reduction_bytes": -1024,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -4.810706012332644,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": -1024,
+          "paired_executions": [
+            {
+              "job": "l4job-498f9b776c8841aab3d81d618d777e66",
+              "control_us": 68.59699999495206,
+              "candidate_us": 71.89699999798904,
+              "time_reduction_percent": -4.810706012332644,
+              "allocated_reduction_bytes": -1024,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        }
+      },
+      "compiler": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "prepare_bounded": {
+            "registers": 42,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "ordered_layout": {
+            "registers": 46,
+            "spill_slots": 0,
+            "shared_bytes": 4096
+          },
+          "ordered_owner_ranges": {
+            "registers": 56,
+            "spill_slots": 0,
+            "shared_bytes": 16
+          },
+          "packed_forward": {
+            "registers": 80,
+            "spill_slots": 0,
+            "shared_bytes": 26624
+          },
+          "output_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_dx_source_vjp": {
+            "registers": 255,
+            "spill_slots": 62,
+            "shared_bytes": 43008
+          },
+          "dx_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_parameter_partial_reduce": {
+            "registers": 14,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "prepare_bounded": {
+            "registers": 42,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "ordered_layout": {
+            "registers": 47,
+            "spill_slots": 0,
+            "shared_bytes": 4096
+          },
+          "ordered_owner_ranges": {
+            "registers": 56,
+            "spill_slots": 0,
+            "shared_bytes": 16
+          },
+          "packed_forward": {
+            "registers": 80,
+            "spill_slots": 0,
+            "shared_bytes": 26624
+          },
+          "output_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_dx_source_vjp": {
+            "registers": 255,
+            "spill_slots": 62,
+            "shared_bytes": 43008
+          },
+          "dx_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_parameter_partial_reduce": {
+            "registers": 14,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          }
+        }
+      }
+    },
+    {
+      "case": {
+        "id": "local-backward-fusion-128-rho8",
+        "fixture": "local_polar_product",
+        "size": 128,
+        "rows": 32,
+        "atoms": 819,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 0.25,
+          "birth": 0.25,
+          "maximum": 16,
+          "rho": [
+            8.0
+          ],
+          "fractions": [
+            1
+          ],
+          "center_jitter": 0.1
+        }
+      },
+      "summary": {
+        "local-ordered-prep-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 74.10000000618311,
+          "run_medians_us": [
+            74.10000000618311
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 5.119999870657921,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 16.383999958634377
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "independent_executions": 1,
+          "median_us": 70.24800004273857,
+          "run_medians_us": [
+            70.24800004273857
+          ],
+          "peak_allocated_bytes": 303104,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32": {
+          "independent_executions": 1,
+          "median_us": 65.53599996550474,
+          "run_medians_us": [
+            65.53599996550474
+          ],
+          "peak_allocated_bytes": 306688,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 10.239999741315842,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx": 14.336000196635723,
+            "parameters": 12.28800043463707
+          }
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "independent_executions": 1,
+          "median_us": 80.81600003606582,
+          "run_medians_us": [
+            80.81600003606582
+          ],
+          "peak_allocated_bytes": 304128,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 13.311999849975109,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx_source_vjp": 33.79200026392937,
+            "source_partial_reduce": 3.0720001086592674
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "independent_executions": 1,
+          "median_us": 77.46599999336468,
+          "run_medians_us": [
+            77.46599999336468
+          ],
+          "peak_allocated_bytes": 307712,
+          "peak_reserved_bytes": 6291456,
+          "diagnostic_components_us": {
+            "prepare": 6.144000217318535,
+            "layout": 10.239999741315842,
+            "h": 2.047999994829297,
+            "output": 13.311999849975109,
+            "dx_source_vjp": 33.79200026392937,
+            "source_partial_reduce": 3.0720001086592674
+          }
+        },
+        "dense": {
+          "independent_executions": 1,
+          "median_us": 45.690999968428514,
+          "run_medians_us": [
+            45.690999968428514
+          ],
+          "peak_allocated_bytes": 34408960,
+          "peak_reserved_bytes": 48234496,
+          "diagnostic_components_us": {}
+        }
+      },
+      "matched_comparisons": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "matched_control": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+          "median_time_reduction_percent": -15.043844645965333,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": -1024,
+          "paired_executions": [
+            {
+              "job": "l4job-498f9b776c8841aab3d81d618d777e66",
+              "control_us": 70.24800004273857,
+              "candidate_us": 80.81600003606582,
+              "time_reduction_percent": -15.043844645965333,
+              "allocated_reduction_bytes": -1024,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -18.20373540365503,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": -1024,
+          "paired_executions": [
+            {
+              "job": "l4job-498f9b776c8841aab3d81d618d777e66",
+              "control_us": 65.53599996550474,
+              "candidate_us": 77.46599999336468,
+              "time_reduction_percent": -18.20373540365503,
+              "allocated_reduction_bytes": -1024,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        }
+      },
+      "compiler": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-fusedback": {
+          "prepare_bounded": {
+            "registers": 42,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "ordered_layout": {
+            "registers": 46,
+            "spill_slots": 0,
+            "shared_bytes": 4096
+          },
+          "ordered_owner_ranges": {
+            "registers": 56,
+            "spill_slots": 0,
+            "shared_bytes": 16
+          },
+          "packed_forward": {
+            "registers": 80,
+            "spill_slots": 0,
+            "shared_bytes": 26624
+          },
+          "output_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_dx_source_vjp": {
+            "registers": 255,
+            "spill_slots": 62,
+            "shared_bytes": 43008
+          },
+          "dx_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_parameter_partial_reduce": {
+            "registers": 14,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          }
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-fusedback": {
+          "prepare_bounded": {
+            "registers": 42,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "ordered_layout": {
+            "registers": 47,
+            "spill_slots": 0,
+            "shared_bytes": 4096
+          },
+          "ordered_owner_ranges": {
+            "registers": 56,
+            "spill_slots": 0,
+            "shared_bytes": 16
+          },
+          "packed_forward": {
+            "registers": 80,
+            "spill_slots": 0,
+            "shared_bytes": 26624
+          },
+          "output_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_dx_source_vjp": {
+            "registers": 255,
+            "spill_slots": 62,
+            "shared_bytes": 43008
+          },
+          "dx_partial_reduce": {
+            "registers": 18,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          },
+          "fused_parameter_partial_reduce": {
+            "registers": 14,
+            "spill_slots": 0,
+            "shared_bytes": 0
+          }
+        }
+      }
+    }
+  ]
+}
