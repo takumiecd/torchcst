@@ -11,7 +11,7 @@
 | `profiles/` | Gaussian、Triweight など関数の形の不変な宣言。幅・正規化・演算を持たない。 |
 | `parameterizations/` | atom 座標の解釈。固定幅、振幅依存幅、Direct / Polar activity、log width。 |
 | `normalization.py` | 正規化の規則、対象領域、ノルム床。 |
-| `spec.py` | ProfileBinding、radial / separable / amplitude の合成、初期化・更新方針。 |
+| `spec.py` | ProfileBinding、radial / separable / amplitude / profile_product の合成、初期化・更新方針。 |
 | `presets.py` | 宣言を組み合わせる利用者向けの関数。 |
 | `options.py` | site / atom chunk と checkpoint の実行設定。数学的な Spec と分離。 |
 | `state.py` | 共通 KernelState / ProfileState。固定 Tensor、device / dtype、checkpoint を管理。 |
@@ -47,7 +47,7 @@ activity = presets.polar_activity(
     radial_regularization=0.2,
 )
 
-# 単一 Chart：原則 radial。Direct activity は非正規化 profile を使う。
+# 単一 Chartのradial：Direct activity は非正規化 profile を使う。
 radial = presets.direct_activity(
     amplitude_max=1.0,
     input_bounds=BandwidthBounds(minimum=0.2, birth=0.5, maximum=0.8, upper_floor=0.2),
@@ -76,6 +76,10 @@ layer = CSTLinear(
 )
 spec = layer.declaration()  # 現在の固定 Tensor 設定を明示的に snapshot
 ```
+
+単一Chart上のPolar共有幅と各軸profileの積は `presets.polar_profile_product` で宣言する。
+`KernelSpec.normalization` は積全体のoperator-sites L2正規化で、各軸のProfileBindingはraw。
+座標軸との対応、floor、微分、利用例は [profile productの契約](../../../docs/profile-product.ja.md)を参照。
 
 ## 実行と checkpoint
 
