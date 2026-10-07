@@ -1,0 +1,334 @@
+[
+  {
+    "job": "l4job-ddf9c00a94a341619442a564ba72e198",
+    "source_commit": "fa456eb00e5a4b6105e980e5ce5b76dbddddfb69",
+    "source_archive_sha256": "78438af19f38fd866aa9b90669920119ecbba3414fd580337b963952e0733212",
+    "result_archive_sha256": "dda81fcfb05d1dc9ee674a074da728a4d7c100c34f2679474746179a5fc2cb6c",
+    "driver_sha256": "8b5f39b63a76ff6d5d6a85287267e30bf386f34c223f20ff61da405f4b7d8bf4",
+    "source_files_verified": 1279,
+    "runs": []
+  },
+  {
+    "job": "l4job-0c70e50a5cae4795b1f09b0eb0191375",
+    "source_commit": "e203b088bd45ced730415a1a427d31bbcf19515e",
+    "source_archive_sha256": "dfbc33551bfc2c58b68f7a14b9ead047ad20ec971c5ed86109df1fb8a7424291",
+    "result_archive_sha256": "45a8c20042f3bdfc794bf980dde6d3a8d111e710d2764de9683ba960b8c0fdd4",
+    "driver_sha256": "8b5f39b63a76ff6d5d6a85287267e30bf386f34c223f20ff61da405f4b7d8bf4",
+    "source_files_verified": 1279,
+    "runs": []
+  },
+  {
+    "job": "l4job-e5da037221194c238ca7bb97396dd5d4",
+    "source_commit": "ec87b1bdfcc10324ec738440ec81ddb8c923230f",
+    "source_archive_sha256": "4cbf6d36b0150d48a6d24c332f3688db871586f62a28281499608d36feaaa963",
+    "result_archive_sha256": "9835db71762f7cddbd74c4b2d33b1f992974c2b4522d8df9505a0b3e8201950c",
+    "driver_sha256": "0c757f3b351ff3ecaab9d28bdfbf60ae56f8aeff52f8d1b1cabae61ebef52997",
+    "source_files_verified": 1279,
+    "runs": [
+      {
+        "case": "profile-product-strip-256-rho3",
+        "result_sha256": "4009ccd3a062b03ff3c02f84f1bf800510d57a8eda58a033a2090cf7c94a2d3d",
+        "snapshot_sha256": "ef24ca9e7a97e93f9b26116736c44f0db6fa67e8f6fd8489addee09a729bcaed",
+        "correctness_max": {
+          "y": 2.615783111892256e-06,
+          "dx": 1.3443446822414273e-06,
+          "dp": 3.1521966015191083e-06,
+          "polar_update": 0.0
+        },
+        "metrics": {
+          "torch": {
+            "median_us": 313.93500012200093,
+            "allocated_bytes": 43066368,
+            "reserved_bytes": 62914560
+          },
+          "tiled": {
+            "median_us": 569.7990000044229,
+            "allocated_bytes": 483840,
+            "reserved_bytes": 6291456
+          },
+          "reuse": {
+            "median_us": 201.90800000818854,
+            "allocated_bytes": 727552,
+            "reserved_bytes": 6291456
+          },
+          "dense": {
+            "median_us": 45.31300010057748,
+            "allocated_bytes": 34425344,
+            "reserved_bytes": 48234496
+          }
+        }
+      },
+      {
+        "case": "profile-product-strip-256-rho8",
+        "result_sha256": "564fd23c9d3e68f195dfe45086b70b2c36a612b4b26db4e98d0a1e4ec227f5be",
+        "snapshot_sha256": "82212d08c3d370c8332811a080a6ff6fc56aa364f01cf5af5f7bbd16a3316ccd",
+        "correctness_max": {
+          "y": 2.756348785659668e-06,
+          "dx": 2.0405429177472456e-06,
+          "dp": 1.5956857710719419e-06,
+          "polar_update": 0.0
+        },
+        "metrics": {
+          "torch": {
+            "median_us": 313.92699997923046,
+            "allocated_bytes": 43066368,
+            "reserved_bytes": 62914560
+          },
+          "tiled": {
+            "median_us": 570.0669998986996,
+            "allocated_bytes": 483840,
+            "reserved_bytes": 6291456
+          },
+          "reuse": {
+            "median_us": 201.50299997112597,
+            "allocated_bytes": 727552,
+            "reserved_bytes": 6291456
+          },
+          "dense": {
+            "median_us": 45.31700005827588,
+            "allocated_bytes": 34425344,
+            "reserved_bytes": 48234496
+          }
+        }
+      }
+    ]
+  },
+  {
+    "job": "l4job-025e5457e6a1491b867ebce976add19a",
+    "source_commit": "ec87b1bdfcc10324ec738440ec81ddb8c923230f",
+    "source_archive_sha256": "c00a4efdcbf7deff3dd09bbfd252f890adc7e2142e6383e8d53eb9702729520f",
+    "result_archive_sha256": "61097e209ac060802900dd095d18705933169a9ff32b1be4c6e20af3e13a296b",
+    "driver_sha256": "0c757f3b351ff3ecaab9d28bdfbf60ae56f8aeff52f8d1b1cabae61ebef52997",
+    "source_files_verified": 1279,
+    "runs": [
+      {
+        "case": "profile-product-strip-512-rho3",
+        "result_sha256": "5da42fd9a91e8fd08b4c5490c4c0279d9c8e414333c77368b493c55ebf30522d",
+        "snapshot_sha256": "b02b9e0e3e23eb0a3353f0aef504b811436b2d8261960b40fd9c8c1f04f0177d",
+        "correctness_max": {
+          "y": 2.66236163337652e-06,
+          "dx": 1.9746614192683865e-06,
+          "dp": 2.7238367383830564e-06,
+          "polar_update": 0.0
+        },
+        "metrics": {
+          "torch": {
+            "median_us": 414.3360000057328,
+            "allocated_bytes": 67962880,
+            "reserved_bytes": 136314880
+          },
+          "tiled": {
+            "median_us": 2075.6359999722918,
+            "allocated_bytes": 1384448,
+            "reserved_bytes": 6291456
+          },
+          "reuse": {
+            "median_us": 498.9130000012665,
+            "allocated_bytes": 2264576,
+            "reserved_bytes": 8388608
+          },
+          "dense": {
+            "median_us": 49.66000000194981,
+            "allocated_bytes": 34753024,
+            "reserved_bytes": 48234496
+          }
+        }
+      },
+      {
+        "case": "profile-product-strip-512-rho8",
+        "result_sha256": "10c97b8940862206bd55c62b9c2a6a328b10424ff88fdd28a62c45c25ca3610e",
+        "snapshot_sha256": "9c5c24a06eb5021ca0a330a487948100ff6227f5e6fd35f63d10c307cd447238",
+        "correctness_max": {
+          "y": 2.6936912629338394e-06,
+          "dx": 1.8033446789189611e-06,
+          "dp": 2.0212060309887647e-06,
+          "polar_update": 0.0
+        },
+        "metrics": {
+          "torch": {
+            "median_us": 415.3660000270065,
+            "allocated_bytes": 67962880,
+            "reserved_bytes": 136314880
+          },
+          "tiled": {
+            "median_us": 2076.8460000226696,
+            "allocated_bytes": 1384448,
+            "reserved_bytes": 6291456
+          },
+          "reuse": {
+            "median_us": 493.51500001648674,
+            "allocated_bytes": 2264576,
+            "reserved_bytes": 8388608
+          },
+          "dense": {
+            "median_us": 49.998000008599774,
+            "allocated_bytes": 34753024,
+            "reserved_bytes": 48234496
+          }
+        }
+      }
+    ]
+  },
+  {
+    "job": "l4job-8c73aac2c5f54e7f8121d77b5a372689",
+    "source_commit": "ec87b1bdfcc10324ec738440ec81ddb8c923230f",
+    "source_archive_sha256": "db9dacd0ded1cce4595e8cfe730e5a2c0c354b35958ef9aea5637c7da12db2df",
+    "result_archive_sha256": "3038fc91b29c11fd697e88fe07941e002266a3ba27e28653abc2040ee23dde0d",
+    "driver_sha256": "0c757f3b351ff3ecaab9d28bdfbf60ae56f8aeff52f8d1b1cabae61ebef52997",
+    "source_files_verified": 1279,
+    "runs": [
+      {
+        "case": "profile-product-strip-1024-rho3",
+        "result_sha256": "61fbf213e60cd3ce22dc0c9ae505041d34f5fb4bcab6c2e02263e108076fb019",
+        "snapshot_sha256": "9813438a4c25902b6485d532e5959c0de73836cdb39f379d205ce2e2ada1350b",
+        "correctness_max": {
+          "y": 6.078272845044808e-06,
+          "dx": 1.2862171128169564e-06,
+          "dp": 3.7759693380934323e-06,
+          "polar_update": 0.0
+        },
+        "metrics": {
+          "torch": {
+            "median_us": 1975.9719999683512,
+            "allocated_bytes": 161384960,
+            "reserved_bytes": 394264576
+          },
+          "tiled": {
+            "median_us": 7848.763999959374,
+            "allocated_bytes": 4515328,
+            "reserved_bytes": 12582912
+          },
+          "reuse": {
+            "median_us": 1739.1610000458968,
+            "allocated_bytes": 7856128,
+            "reserved_bytes": 18874368
+          },
+          "dense": {
+            "median_us": 54.364999982681184,
+            "allocated_bytes": 35408384,
+            "reserved_bytes": 48234496
+          }
+        }
+      },
+      {
+        "case": "profile-product-strip-1024-rho8",
+        "result_sha256": "504cbb5305acbd303a5944e7e4459883de14a5a0200248291af9740a9e25e30d",
+        "snapshot_sha256": "bf4bf57144391706d7ffff5d528fbe7166562c82fe241ff2de355d188830a3e0",
+        "correctness_max": {
+          "y": 4.334942443229295e-06,
+          "dx": 2.0846190555978694e-06,
+          "dp": 2.145185598934063e-06,
+          "polar_update": 0.0
+        },
+        "metrics": {
+          "torch": {
+            "median_us": 1980.8060000059413,
+            "allocated_bytes": 161384960,
+            "reserved_bytes": 394264576
+          },
+          "tiled": {
+            "median_us": 7849.441999951523,
+            "allocated_bytes": 4515328,
+            "reserved_bytes": 12582912
+          },
+          "reuse": {
+            "median_us": 1734.097999928963,
+            "allocated_bytes": 7856128,
+            "reserved_bytes": 18874368
+          },
+          "dense": {
+            "median_us": 54.42999997740117,
+            "allocated_bytes": 35408384,
+            "reserved_bytes": 48234496
+          }
+        }
+      }
+    ]
+  },
+  {
+    "job": "l4job-1cf7a49ec0af418aad99187cd98a1ba9",
+    "source_commit": "ec87b1bdfcc10324ec738440ec81ddb8c923230f",
+    "source_archive_sha256": "8a69cf4800d0217b60871e95101c4cb25e5d6a47944cc9ab9cba7c2f1cbdd763",
+    "result_archive_sha256": "981d450838dca339a12dd4f72cb70ec593b6dc53d0d631c1cc1ed48226a825b2",
+    "driver_sha256": "0c757f3b351ff3ecaab9d28bdfbf60ae56f8aeff52f8d1b1cabae61ebef52997",
+    "source_files_verified": 1279,
+    "runs": [
+      {
+        "case": "profile-product-strip-256-rho3",
+        "result_sha256": "b3d0ba3fbfcb628699d9936a8ee4c6c590c5622013fb2db5c639f5ee4fce0a8c",
+        "snapshot_sha256": "87d4c8a9524918a32274bad9797dd27b9507735a10da6844a519cc6900b09f47",
+        "correctness_max": {
+          "y": 2.615783111892256e-06,
+          "dx": 1.3443446822414273e-06,
+          "dp": 3.1521966015191083e-06,
+          "polar_update": 0.0
+        },
+        "metrics": {
+          "reuse": {
+            "median_us": 200.600999960443,
+            "allocated_bytes": 727552,
+            "reserved_bytes": 6291456
+          },
+          "tiled": {
+            "median_us": 568.2830000068861,
+            "allocated_bytes": 483840,
+            "reserved_bytes": 6291456
+          },
+          "torch": {
+            "median_us": 309.8500000078275,
+            "allocated_bytes": 43066368,
+            "reserved_bytes": 62914560
+          },
+          "dense": {
+            "median_us": 45.00199997892196,
+            "allocated_bytes": 34425344,
+            "reserved_bytes": 48234496
+          }
+        }
+      }
+    ]
+  },
+  {
+    "job": "l4job-47e23af5d27b4982bd0c84596034ed85",
+    "source_commit": "ec87b1bdfcc10324ec738440ec81ddb8c923230f",
+    "source_archive_sha256": "8a69cf4800d0217b60871e95101c4cb25e5d6a47944cc9ab9cba7c2f1cbdd763",
+    "result_archive_sha256": "6451a11bec8b1333c88c71e197976f53528a566ca7cc38a645d5eaf64c010524",
+    "driver_sha256": "0c757f3b351ff3ecaab9d28bdfbf60ae56f8aeff52f8d1b1cabae61ebef52997",
+    "source_files_verified": 1279,
+    "runs": [
+      {
+        "case": "profile-product-strip-1024-rho3",
+        "result_sha256": "51685381201390f3070733d4ea1e62ae64a1b98c8fe6cf0a2a3465aeeb4fa216",
+        "snapshot_sha256": "2d8b4edf48681f227af0da879f92391f5e42dcbfd4ef8829c31e6baf8ddf51e0",
+        "correctness_max": {
+          "y": 6.078272845044808e-06,
+          "dx": 1.2862171128169564e-06,
+          "dp": 3.7759693380934323e-06,
+          "polar_update": 0.0
+        },
+        "metrics": {
+          "reuse": {
+            "median_us": 1739.8530000036772,
+            "allocated_bytes": 7856128,
+            "reserved_bytes": 18874368
+          },
+          "tiled": {
+            "median_us": 7850.367000060032,
+            "allocated_bytes": 4515328,
+            "reserved_bytes": 12582912
+          },
+          "torch": {
+            "median_us": 1976.3299999340234,
+            "allocated_bytes": 161384960,
+            "reserved_bytes": 394264576
+          },
+          "dense": {
+            "median_us": 54.48599995361292,
+            "allocated_bytes": 35408384,
+            "reserved_bytes": 48234496
+          }
+        }
+      }
+    ]
+  }
+]
