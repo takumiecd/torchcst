@@ -52,3 +52,17 @@ Supervisor57894 terminated after the transport failure. Owned L4 `cst-pool-f4ba2
 Source6351711de540fd7a764598105ff13ed74743dc31, fresh L4 job `l4job-dbb39d314b464c4a9e6af40e058bfe0d`:77 checks pass (75 CUDA +2 declarations),186.43s;197 runtime files and both archives hash-verified. Full-shape FP64 Y/dX/all source gradients/nonzero centers pass; initialrho>1, widths update, complete-step capture/replay protocol unchanged. AtN128/rho8 repair4 current66.18us vs ps16 66.28us /ps32 66.25us, repair8 66.07 vs65.87/66.22us. Mixed repair4 68.98 vs70.01/70.20us; repair8 69.77 vs70.39/70.52us. Dense45.70/45.77us. Allocated306688/reserved6291456 B remain equal among matched controls/candidates. Only0.31 percent one-case decrease with repair8/ps16; no repeatability or useful improvement claim, no adoption/G4. Concise complete timing/hash/compiler record `20261007-support-vjp-scalar.json`, raw `scalar-screen.json` retained.
 
 The owned fresh L4 stopped after the selected batch (supervisor64821 idle0 exits0). N64 scalar full-shape plan checks will use a separate120s subprocess per candidate before standard paired current/candidate/dense measurements, with per-plan progress logs. This new scalar N64 screen is distinct from the interrupted chunk/span job; no lost result is silently reclassified or replaced.
+
+
+## N64 scalar screen and retained current routes
+
+Source76a6983821c7c1d6a721abb6a78d9fd325f79915 changes documentation only relative to scalar-validation6351711d (diff src/benchmarks/tests empty). Job `l4job-77a0e5d1d7734120b75052e32f63bbd1` succeeds; source/result archives and197 runtime files verified. Eight separate full-shape FP64 plan checks pass before timing,120s cap per plan, with nonzero centers. Initialp/input/target bytes match each paired condition including dense inputs; initialrho>1 and production widths evolve.
+
+|N64 condition|current atom16|ps16|ps32|dense|
+|---|---:|---:|---:|---:|
+|rho8|51.34|52.62|52.64|39.25|
+|mixed|56.81|58.09|58.03|39.12|
+
+Uninstrumented complete-step medians inus, one execution with21 samples per condition. Matched candidate regression2.15–2.52 percent; no adoption/independent-repeat/G4 justified. All matched CST capture/replay peaks allocated115712 B /reserved6291456 B; dense34179584 B /48234496 B. Compiler figures retained in `20261007-support-vjp-scalar64.json`; compiler-local budget changes are not measured peak/physical residency improvements. N64 chunk/span timings remain unverified due the separate transport interruption and are not replaced by this scalar screen.
+
+All four new research families stay explicit alternatives; current N64 atom16 and N128 counter-free repair4/8 routes remain retained. Public dispatch unchanged. New physical traffic/on-chip claims are unsupported. The next distinct, unimplemented hypothesis is reuse of the dY→atom aggregation between dX and source VJP in one backward CTA, with canonical unique writers and exact zero/empty support handling; register/spill pressure and full optimizer/Graph contracts need fresh gates. Design saved in ignored `next-backward-fusion.md`; this PR does not claim that fusion or a new speedup.

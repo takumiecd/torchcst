@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "source_commit": "76a6983821c7c1d6a721abb6a78d9fd325f79915",
+  "jobs": [
+    {
+      "job": "l4job-77a0e5d1d7734120b75052e32f63bbd1",
+      "repeat": 1,
+      "source_commit": "76a6983821c7c1d6a721abb6a78d9fd325f79915",
+      "source_snapshot_sha256": "4ac0362edc38e6f9c7fcfb3c263182d6b87ba9deb30bf7f3d36191002302dce1",
+      "result_archive_sha256": "ab44587731bc504a4d54b9d27754dd80bffdcbf03404d56096e75d42a7443efc",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA L4, GPU-4f9c6078-5d6b-dd0f-5899-4fd1dce29d04, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    }
+  ],
+  "full_shape_plan_oracles_pass": 8,
+  "validation_source": "6351711d scalar77 checks; diff6351711d..76a69838 src/benchmarks/tests empty",
+  "cases": [
+    {
+      "case": "local-supportvjp-64-rho8",
+      "step_us": {
+        "local-ordered-prep-copy8-atom32": 56.57199994857365,
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": 51.342000006115995,
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps16": 52.616999937527,
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps32": 52.63699995339266,
+        "dense": 39.248000121006044
+      },
+      "peaks_allocated_reserved": {
+        "local-ordered-prep-copy8-atom32": [
+          115712,
+          6291456
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": [
+          115712,
+          6291456
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps16": [
+          115712,
+          6291456
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps32": [
+          115712,
+          6291456
+        ],
+        "dense": [
+          34179584,
+          48234496
+        ]
+      },
+      "matched_reduction_percent": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps16": -2.4833468335069275,
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps32": -2.5223013266378436
+      },
+      "initial_parameter_sha256": "5cfcc39db97be8c77c28fbafed9b043372a91c4bd3cb3ac15f8eec0e6e2a07ab",
+      "parameter_compiler": {
+        "local-ordered-prep-copy8-atom32": {
+          "registers": 218,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "registers": 91,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps16": {
+          "registers": 91,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps32": {
+          "registers": 91,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        }
+      }
+    },
+    {
+      "case": "local-supportvjp-64-rhomixed",
+      "step_us": {
+        "local-ordered-prep-copy8-atom32": 62.83199991230504,
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": 56.80899994331412,
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps16": 58.09300000692019,
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps32": 58.032999959323206,
+        "dense": 39.1199998830416
+      },
+      "peaks_allocated_reserved": {
+        "local-ordered-prep-copy8-atom32": [
+          115712,
+          6291456
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": [
+          115712,
+          6291456
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps16": [
+          115712,
+          6291456
+        ],
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps32": [
+          115712,
+          6291456
+        ],
+        "dense": [
+          34179584,
+          48234496
+        ]
+      },
+      "matched_reduction_percent": {
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps16": -2.2602053633883568,
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps32": -2.1545882117805837
+      },
+      "initial_parameter_sha256": "f15678be3ad439453d9de1d616c05d9f187bc07a4fe1bfc2b954febd2cb7a80e",
+      "parameter_compiler": {
+        "local-ordered-prep-copy8-atom32": {
+          "registers": 218,
+          "spill_slots": 0,
+          "shared_bytes": 24576
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32": {
+          "registers": 91,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps16": {
+          "registers": 91,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        },
+        "local-ordered-reuse-paramatom16-param4-param2-atom32-ps32": {
+          "registers": 91,
+          "spill_slots": 0,
+          "shared_bytes": 12288
+        }
+      }
+    }
+  ],
+  "decision": "N64 scalar limits regress2.15-2.52 percent at same measured peaks; one screen, no adoption, repeat or G4"
+}
