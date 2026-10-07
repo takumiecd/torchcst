@@ -30,6 +30,8 @@ REUSE_SUFFIXES = (
     "_ordered_reuse_hist4_paramatom16_param4_param2",
     "_ordered_reuse_prefix_param2",
     "_ordered_reuse_prefix_paramatom16_param4_param2",
+    "_ordered_reuse_paramatom16_param4_batch16",
+    "_ordered_reuse_paramatom16_param4_batch16_split2",
     "_ordered_reuse_tile32_param2",
     "_ordered_reuse_paramatom16",
     "_ordered_reuse_paramatom16_param4",
@@ -453,10 +455,20 @@ class LocalRecipe(Recipe):
         return (
             4
             if self.layout_route.endswith(
-                ("_param4", "_param4_param2", "_param4_param2_split2")
+                (
+                    "_param4",
+                    "_param4_param2",
+                    "_param4_param2_split2",
+                    "_param4_batch16",
+                    "_param4_batch16_split2",
+                )
             )
             else 0
         )
+
+    @property
+    def parameter_batch_block(self):
+        return 16 if self.reuse_layout and "_batch16" in self.layout_route else 0
 
     @property
     def parameter_atom_block(self):
@@ -513,6 +525,8 @@ class LocalRecipe(Recipe):
             raise ValueError("local execution route must be a string")
         if "_dxview11" in self.route and "_fusedback" in self.route:
             raise ValueError("compact dX and fused VJP require separate recipes")
+        if self.compact_ordered_view and "_batch16" in self.layout_route:
+            raise ValueError("compact dX and batch-loop VJP require separate recipes")
         if self.compact_ordered_view and not (
             self.ordered_layout
             and self.recompute_h

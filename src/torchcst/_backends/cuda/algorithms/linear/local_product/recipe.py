@@ -41,6 +41,10 @@ class Recipe:
         return 0
 
     @property
+    def parameter_batch_block(self):
+        return 0
+
+    @property
     def parameter_atom_block(self):
         return self.atom_block
 

@@ -56,6 +56,9 @@ def test_compact_view_declarations_and_matched_controls():
 
     for route in (
         "fused_dxview11",
+        "persistent_supportprep_band_recompute_vjp_ordered_reuse_paramatom16_param4_param2_fusedback16_dxview11",
+        "persistent_supportprep_band_recompute_vjp_ordered_reuse_paramatom16_param4_param2_dxview11_fusedback16",
+        "persistent_supportprep_band_recompute_vjp_ordered_reuse_paramatom16_param4_batch16_dxview11",
         "persistent_supportprep_band_recompute_vjp_index16_dxview11",
         "persistent_supportprep_band_recompute_vjp_ordered_cached_dxview11",
     ):

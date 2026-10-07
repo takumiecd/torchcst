@@ -797,11 +797,14 @@ class _LocalH(torch.autograd.Function):
                     domain.output_start,
                     max(16, tr.next_power_of_2(domain.input_count)),
                     max(16, tr.next_power_of_2(domain.output_count)),
-                    16
-                    if max(domain.input_count, domain.output_count) > 64
-                    or use_g
-                    or parameter_splits > 1
-                    else max(16, tr.next_power_of_2(len(x))),
+                    recipe.parameter_batch_block
+                    or (
+                        16
+                        if max(domain.input_count, domain.output_count) > 64
+                        or use_g
+                        or parameter_splits > 1
+                        else max(16, tr.next_power_of_2(len(x)))
+                    ),
                     parameter_atom_block,
                     saved,
                     sparse,
