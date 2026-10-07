@@ -8,8 +8,17 @@ import torch
 
 from benchmarks.cuda.linear.manifest import REGISTRY, decode_snapshot, load_run
 from benchmarks.cuda.linear.strip_profile_product import oracle_vjp, positions
-from tests.test_profile_product_cuda import spec
-from torchcst import CSTLinear, Dispatcher, LinearInputs, chart_presets, pattern_presets
+from torchcst import (
+    BandwidthBounds,
+    NormalizationSpec,
+    TriweightSpec,
+    presets,
+    CSTLinear,
+    Dispatcher,
+    LinearInputs,
+    chart_presets,
+    pattern_presets,
+)
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product.algorithm import (
     StripProductAlgorithm,
     chart_spec,
@@ -20,6 +29,25 @@ from torchcst._backends.cuda.algorithms.linear.strip_profile_product.recipe impo
 from torchcst._backends.schema import ExecutionPlan
 
 GPU = pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
+
+
+def spec(*, width=None, floor=1e-6):
+    bounds = BandwidthBounds(
+        minimum=0.25 if width is None else width,
+        birth=1.0 if width is None else width,
+        maximum=16.0 if width is None else width,
+        upper_floor=1.0 if width is None else width,
+    )
+    return presets.polar_profile_product(
+        profiles=(TriweightSpec(), TriweightSpec()),
+        amplitude_max=1.0,
+        bounds=bounds,
+        w_c=1e6,
+        normalization=NormalizationSpec(
+            kind="discrete_l2", domain="operator_sites", floor=floor
+        ),
+        dormant_expansion_rate=0.02,
+    )
 
 
 def model(

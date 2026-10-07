@@ -86,11 +86,12 @@ class StripProductAlgorithm(Algorithm[StripProductRecipe]):
             return operator.apply(x, p, algorithm="factored")
         from .executor import strip_product
 
-        return strip_product(
-            x,
-            p,
-            operator.kernel,
-            operator.charts[0],
-            chart_spec(declaration),
-            state.recipe,
-        )
+        with torch.cuda.device(x.device):
+            return strip_product(
+                x,
+                p,
+                operator.kernel,
+                operator.charts[0],
+                chart_spec(declaration),
+                state.recipe,
+            )
