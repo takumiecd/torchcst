@@ -86,3 +86,24 @@ c2a53adb528d30b72b5f5def6e6a90bec856df9d; only tests/notes change. The new
 full CPU run gives1234 passed/2235 skipped/18 warnings. The original GPU gate
 remains tied to its immutable198-case suite; a separate4-case motion gate must
 pass on this new source before measurements. No gate or tolerance is removed.
+
+## Interrupted full gate: no numerical outcome
+
+Job l4job-967a02798112455fb964a51f542ecf93 atc2a53adb528d30b72b5f5def6e6a90bec856df9d
+was interrupted when the Colab CLI exec command was not acknowledged within
+its1440s transport budget (1200s driver request,1380s CLI execution request).
+There is no downloaded result or receipt, so neither a CUDA pass/fail nor a
+driver timeout can be inferred. All1,168 source/benchmark/test/kernel-dev file
+sets and bytes match its Git archive, and the source/transport/spec records
+are preserved in ignored jobs/ and interrupted-gate-proof.json. The supervisor
+exited1 and the pool confirmed the owned endpoint stopped; all slots are stopped.
+Documented recover completed successfully and marked the interrupted job
+failed after verifying owned-session shutdown. A new single-L4 supervisor
+now dispatches the separately queued motion gate. The original full gate is not retried or re-budgeted on this evidence.
+
+The separate4-case centre-motion job l4job-f4ab40baa4384cdaa2346bd1f732bb55 at
+215051da14dd9d2448b6f94b2c99f8b920ff2c6b has a300s driver budget. It can
+diagnose small moving-order execution, but cannot replace the interrupted full
+gate. No performance jobs are submitted until the complete validation scope
+is established. PR#70 remains draft. Its head215051da passed exact-head CPU
+Actions37703941653, including prepare/check, declarations, CPU and wheel/sdist.
