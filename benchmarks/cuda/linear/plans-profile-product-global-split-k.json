@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "split1",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_matrix",
+        "algorithm_revision": "v4",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8,
+          "split_k": 1
+        }
+      }
+    },
+    {
+      "id": "split4",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_matrix",
+        "algorithm_revision": "v4",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8,
+          "split_k": 4
+        }
+      }
+    },
+    {
+      "id": "split8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_matrix",
+        "algorithm_revision": "v4",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8,
+          "split_k": 8
+        }
+      }
+    },
+    {
+      "id": "split16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_matrix",
+        "algorithm_revision": "v4",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8,
+          "split_k": 16
+        }
+      }
+    },
+    {
+      "id": "torch-g8-p8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_matrix",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "torch",
+          "atom_group": 8
+        }
+      }
+    }
+  ]
+}

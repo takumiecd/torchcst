@@ -40,6 +40,12 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.algorithm_
     GroupedMatrixProductAlgorithm,
     GroupedMatrixStripAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.algorithm_v4 import (
+    LargeSplitMatrixProductAlgorithm,
+    LargeSplitMatrixStripAlgorithm,
+    SplitMatrixProductAlgorithm,
+    SplitMatrixStripAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.large_algorithm import (
     LargeMatrixProductAlgorithm,
     LargeMatrixStripAlgorithm,
@@ -103,6 +109,10 @@ REGISTRY.register(LargeMatrixProductAlgorithm())
 REGISTRY.register(LargeMatrixStripAlgorithm())
 REGISTRY.register(LargePreparationProductAlgorithm())
 REGISTRY.register(LargePreparationStripAlgorithm())
+REGISTRY.register(SplitMatrixProductAlgorithm())
+REGISTRY.register(SplitMatrixStripAlgorithm())
+REGISTRY.register(LargeSplitMatrixProductAlgorithm())
+REGISTRY.register(LargeSplitMatrixStripAlgorithm())
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
