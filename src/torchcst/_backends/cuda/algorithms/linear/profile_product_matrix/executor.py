@@ -41,6 +41,13 @@ class _ProfileMatrix(torch.autograd.Function):
         from ..profile_product_global.grouped_kernels import prepare
         from .kernels import assemble
 
+        group = getattr(recipe, "atom_group", 1)
+        patch_kwargs = {}
+        if hasattr(recipe, "atom_group"):
+            from .grouped_kernels import assemble
+
+            patch_kwargs["GROUP"] = group
+
         b, ni, no, tile, spacing, oi, oo = sizes
         source = p.contiguous().clone()
         saved_pitch = pitch.clone() if pitch is not None else None
@@ -72,7 +79,7 @@ class _ProfileMatrix(torch.autograd.Function):
                 num_warps=4,
                 enable_fp_fusion=False,
             )
-            assemble[(a,)](
+            assemble[(tr.cdiv(a, group),)](
                 packed,
                 w,
                 saved_pitch,
@@ -86,6 +93,7 @@ class _ProfileMatrix(torch.autograd.Function):
                 recipe.patch_sites,
                 num_warps=4,
                 enable_fp_fusion=False,
+                **patch_kwargs,
             )
             y = _matmul(x, w.T, recipe)
         else:
@@ -97,7 +105,16 @@ class _ProfileMatrix(torch.autograd.Function):
     @staticmethod
     @once_differentiable
     def backward(ctx, dy):
+        import triton as tr
+
         from .kernels import parameter_vjp
+
+        group = getattr(ctx.recipe, "atom_group", 1)
+        patch_kwargs = {}
+        if hasattr(ctx.recipe, "atom_group"):
+            from .grouped_kernels import parameter_vjp
+
+            patch_kwargs["GROUP"] = group
 
         x, source, pitch, amplitude_max, packed, w = ctx.saved_tensors
         _b, ni, no, tile, spacing, oi, oo = ctx.sizes
@@ -113,7 +130,7 @@ class _ProfileMatrix(torch.autograd.Function):
             if need_p:
                 dw = _matmul(dy.T, x, ctx.recipe)
                 dp = torch.empty_like(source)
-                parameter_vjp[(a,)](
+                parameter_vjp[(tr.cdiv(a, group),)](
                     packed,
                     dw,
                     dp,
@@ -131,6 +148,7 @@ class _ProfileMatrix(torch.autograd.Function):
                     ctx.recipe.patch_sites,
                     num_warps=4,
                     enable_fp_fusion=False,
+                    **patch_kwargs,
                 )
         return dx, dp, None, None, None, None
 

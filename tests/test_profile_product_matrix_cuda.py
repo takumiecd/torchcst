@@ -14,6 +14,10 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.recipe_v2 
     ContractionProductRecipe,
     ContractionStripRecipe,
 )
+from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.recipe_v3 import (
+    GroupedMatrixProductRecipe,
+    GroupedMatrixStripRecipe,
+)
 from torchcst._backends.schema import ExecutionPlan
 
 
@@ -26,6 +30,14 @@ def run(layer, x, family, engine="v1-torch", **kwargs):
     if engine == "v1-torch":
         cls = MatrixProductRecipe if family == "global" else MatrixStripRecipe
         revision = "v1"
+    elif engine.startswith("v3-"):
+        cls = (
+            GroupedMatrixProductRecipe
+            if family == "global"
+            else GroupedMatrixStripRecipe
+        )
+        revision = "v3"
+        kwargs["gemm"] = engine.removeprefix("v3-")
     else:
         cls = ContractionProductRecipe if family == "global" else ContractionStripRecipe
         revision = "v2"
@@ -36,11 +48,21 @@ def run(layer, x, family, engine="v1-torch", **kwargs):
 
 
 @pytest.fixture(
-    params=[(p, e) for p in [16, 32] for e in ["v1-torch", "v2-torch", "v2-triton"]]
+    params=[
+        (p, e, None) for p in [16, 32] for e in ["v1-torch", "v2-torch", "v2-triton"]
+    ]
+    + [
+        (8, "v3-torch", 4),
+        (8, "v3-triton", 8),
+        (16, "v3-triton", 4),
+        (16, "v3-torch", 8),
+    ]
 )
 def matrix_route(request, monkeypatch):
     def execute(layer, x, family, **kwargs):
-        patch, engine = request.param
+        patch, engine, group = request.param
+        if group is not None:
+            kwargs["atom_group"] = group
         return run(layer, x, family, engine=engine, patch_sites=patch, **kwargs)
 
     monkeypatch.setattr(scenarios, "run", execute)
@@ -210,3 +232,77 @@ def test_native_contractions_with_strides_and_all_tails(m, n, k, transposed):
     torch.testing.assert_close(
         result.double(), left.double() @ right.double(), rtol=4e-4, atol=2e-5
     )
+
+
+@pytest.mark.parametrize("family", ["global", "strip"])
+@pytest.mark.parametrize("group", [1, 4, 8])
+@pytest.mark.parametrize("patch", [8, 16, 32])
+@pytest.mark.parametrize("gemm", ["torch", "triton"])
+def test_grouped_matrix_recipe_roundtrip_and_previous_schema_rejection(
+    family, group, patch, gemm
+):
+    id = (
+        "research_profile_product_matrix"
+        if family == "global"
+        else "research_strip_profile_product_matrix"
+    )
+    cls = GroupedMatrixProductRecipe if family == "global" else GroupedMatrixStripRecipe
+    plan = ExecutionPlan(id, "v3", cls(atom_group=group, patch_sites=patch, gemm=gemm))
+    assert REGISTRY.loads_plan(REGISTRY.dumps_plan(plan)) == plan
+    for revision in ["v1", "v2"]:
+        data = REGISTRY.dump_plan(plan)
+        data["algorithm_revision"] = revision
+        with pytest.raises(ValueError):
+            REGISTRY.load_plan(data)
+
+
+@pytest.mark.parametrize("family", ["global", "strip"])
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"atom_group": True},
+        {"atom_group": 2},
+        {"patch_sites": True},
+        {"patch_sites": 4},
+        {"gemm": "tf32"},
+        {"prep_group": True},
+    ],
+)
+def test_grouped_matrix_recipe_rejects_invalid_fields(family, invalid):
+    cls = GroupedMatrixProductRecipe if family == "global" else GroupedMatrixStripRecipe
+    with pytest.raises(ValueError):
+        cls(**invalid)
+
+
+@scenarios.GPU
+@pytest.mark.parametrize("family", ["global", "strip"])
+@pytest.mark.parametrize("group,patch", [(1, 8), (4, 32), (8, 32)])
+@pytest.mark.parametrize("gemm", ["torch", "triton"])
+def test_grouped_matrix_full_support_and_group_tails(family, group, patch, gemm):
+    p = torch.tensor(
+        [
+            [0.3, 1.5, 2.4, 24],
+            [-0.4, 1.4, 6.3, 32.7],
+            [0.2, -1.7, 8.2, 62],
+            [0.5, 0.6, 23, 64],
+            [0.1, 1.1, 10.8, -2],
+        ]
+    )
+    layer = scenarios.model(p, family, device="cuda")
+    x = torch.randn(7, 65, device="cuda", requires_grad=True)
+    dy = torch.randn(7, 33, device="cuda")
+    y, dx, dp = scenarios.oracle(layer, x, dy, family)
+    actual = run(
+        layer,
+        x,
+        family,
+        engine="v3-" + gemm,
+        atom_group=group,
+        patch_sites=patch,
+        preparation="full",
+        prep_group=1,
+        prep_sites=32,
+    )
+    grads = torch.autograd.grad(actual, (x, layer.atoms.p), dy)
+    for value, truth in [(actual, y), (grads[0], dx), (grads[1], dp)]:
+        torch.testing.assert_close(value.double(), truth, rtol=4e-4, atol=2e-5)
