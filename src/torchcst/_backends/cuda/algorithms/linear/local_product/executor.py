@@ -382,7 +382,7 @@ def _packed_fused(
         i,
         max(16, tr.next_power_of_2(k)),
         recipe.batch_block,
-        recipe.atom_block,
+        recipe.backward_atom_block if dq is not None else recipe.atom_block,
         swap,
         recipe.support_limit,
         recipe.rho_upper[1],

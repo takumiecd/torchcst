@@ -75,11 +75,15 @@ class LocalRecipe(Recipe):
 
     @property
     def layout_route(self):
-        return self.route.removesuffix("_fusedback")
+        return self.route.removesuffix("_fusedback16").removesuffix("_fusedback")
 
     @property
     def fused_backward(self):
-        return self.route.endswith("_fusedback")
+        return self.route.endswith(("_fusedback", "_fusedback16"))
+
+    @property
+    def backward_atom_block(self):
+        return 16 if self.route.endswith("_fusedback16") else self.atom_block
 
     @property
     def reuse_layout(self):

@@ -34,7 +34,7 @@ PLANS = pytest.mark.parametrize("plan", CANDIDATES, ids=lambda p: p.recipe.route
 
 
 def test_backward_fusion_recipe_roundtrip():
-    assert len(CANDIDATES) == 2
+    assert len(CANDIDATES) == 4
     for plan in CANDIDATES:
         assert REGISTRY.load_plan(REGISTRY.dump_plan(plan)) == plan
         assert plan.recipe.execution_route == "hybrid_packed"
@@ -44,6 +44,9 @@ def test_backward_fusion_recipe_roundtrip():
         assert plan.recipe.owner_splits == 4
         assert plan.recipe.fused_backward
         assert plan.recipe.atom_block == 32
+        assert plan.recipe.backward_atom_block == (
+            16 if plan.recipe.route.endswith("_fusedback16") else 32
+        )
         assert plan.recipe.layout_route != plan.recipe.route
 
 

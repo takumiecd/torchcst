@@ -49,6 +49,10 @@ class Recipe:
         return False
 
     @property
+    def backward_atom_block(self):
+        return self.atom_block
+
+    @property
     def fused_backward(self):
         return False
 
