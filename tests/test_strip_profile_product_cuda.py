@@ -10,14 +10,14 @@ from benchmarks.cuda.linear.manifest import REGISTRY, decode_snapshot, load_run
 from benchmarks.cuda.linear.strip_profile_product import oracle_vjp, positions
 from torchcst import (
     BandwidthBounds,
-    NormalizationSpec,
-    TriweightSpec,
-    presets,
     CSTLinear,
     Dispatcher,
     LinearInputs,
+    NormalizationSpec,
+    TriweightSpec,
     chart_presets,
     pattern_presets,
+    presets,
 )
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product.algorithm import (
     StripProductAlgorithm,
