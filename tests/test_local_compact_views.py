@@ -25,10 +25,10 @@ from benchmarks.cuda.linear.manifest import (
 )
 from torchcst._backends.cuda.algorithms.linear.local_product.contract import Domain
 
-CATALOG = "benchmarks/cuda/linear/plans-local-view11.json"
+CATALOG = "benchmarks/cuda/linear/plans-local-dxview11.json"
 CANDIDATES = tuple(e.plan for e in decode_catalog(read_json(CATALOG)[0])[5:])
 FIXTURE_CASE = load_run(
-    "benchmarks/cuda/linear/cases/local-view11-128-rho3.json", CATALOG
+    "benchmarks/cuda/linear/cases/local-dxview11-128-rho3.json", CATALOG
 ).case
 CUDA = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 PLANS = pytest.mark.parametrize("plan", CANDIDATES, ids=lambda p: p.recipe.route)
@@ -55,9 +55,9 @@ def test_compact_view_declarations_and_matched_controls():
     from benchmarks.cuda.linear.local_product import LocalRecipe
 
     for route in (
-        "fused_view11",
-        "persistent_supportprep_band_recompute_vjp_index16_view11",
-        "persistent_supportprep_band_recompute_vjp_ordered_cached_view11",
+        "fused_dxview11",
+        "persistent_supportprep_band_recompute_vjp_index16_dxview11",
+        "persistent_supportprep_band_recompute_vjp_ordered_cached_dxview11",
     ):
         with pytest.raises(ValueError):
             LocalRecipe(route=route, pack=False, rho_upper=(1, 4, 16))

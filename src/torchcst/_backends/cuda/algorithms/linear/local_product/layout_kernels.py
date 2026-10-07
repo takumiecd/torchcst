@@ -7,6 +7,24 @@ from .kernels import _interval
 
 
 @tr.jit
+def _copy_ordered_snapshot(
+    P, Views, source, a, direction, live, C: tl.constexpr, COMPACT_VIEW: tl.constexpr
+):
+    # CTA-uniform direction: forward keeps normalization derivatives for VJP.
+    # dX only consumes factor values, so its snapshot can omit those two fields.
+    target = Views + direction * 13 * C
+    if COMPACT_VIEW and direction == 1:
+        for field in tl.static_range(11):
+            canonical = field + 2 if field >= 6 else field
+            value = tl.load(P + canonical * C + source, live, 0.0)
+            tl.store(target + field * C + a, value, live)
+    else:
+        for field in tl.static_range(13):
+            value = tl.load(P + field * C + source, live, 0.0)
+            tl.store(target + field * C + a, value, live)
+
+
+@tr.jit
 def ordered_owner_ranges(
     P,
     Ranges,
@@ -27,8 +45,11 @@ def ordered_owner_ranges(
 ):
     """Build exact overlap envelopes independently for each physical owner."""
     direction, owner = tl.program_id(0), tl.program_id(1)
-    fields: tl.constexpr = 11 if COMPACT_VIEW else 13
-    source_compact: tl.constexpr = COMPACT_VIEW and not COPY
+    fields: tl.constexpr = 13
+    tl.static_assert(
+        not COMPACT_VIEW or COPY, "compact dX copy reads canonical metadata"
+    )
+    source_compact: tl.constexpr = False
     a = tl.arange(0, AC)
     if COPY:
         source = tl.load(Orders + direction * C + a, a < C, 0)
@@ -36,10 +57,9 @@ def ordered_owner_ranges(
         # envelope from canonical metadata; no cross-CTA read-after-write exists.
         chunk: tl.constexpr = tl.cdiv(C, GROUPS)
         copy_lane = (a >= owner * chunk) & (a < (owner + 1) * chunk) & (a < C)
-        for field in tl.static_range(fields):
-            canonical = field + 2 if COMPACT_VIEW and field >= 6 else field
-            value = tl.load(P + canonical * C + source, copy_lane, 0.0)
-            tl.store(Views + direction * fields * C + field * C + a, value, copy_lane)
+        _copy_ordered_snapshot(
+            P, Views, source, a, direction, copy_lane, C, COMPACT_VIEW
+        )
     else:
         P = P + direction * fields * C
         source = a
@@ -558,11 +578,7 @@ def ordered_views(
             tl.store(target, begin, owner < STRIDE - 5)
             tl.store(target + 1, end, owner < STRIDE - 5)
     if COPY:
-        fields: tl.constexpr = 11 if COMPACT_VIEW else 13
-        for field in tl.static_range(fields):
-            canonical = field + 2 if COMPACT_VIEW and field >= 6 else field
-            value = tl.load(P + canonical * C + source, a < C, 0.0)
-            tl.store(Views + direction * fields * C + field * C + a, value, a < C)
+        _copy_ordered_snapshot(P, Views, source, a, direction, a < C, C, COMPACT_VIEW)
     tl.store(Orders + direction * C + a, source, a < C)
     tl.store(Offsets + direction * STRIDE + g, starts, g < STRIDE)
     if RANGES:

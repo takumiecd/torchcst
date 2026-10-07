@@ -34,6 +34,7 @@ def test_ordered_values_ranges_and_snapshot_coverage(plan, sliced):
     from benchmarks.cuda.linear.fixtures import local_product_state
     from torchcst._backends.cuda.algorithms.linear.local_product.executor import (
         build_owner_index,
+        ordered_direction_view,
         ordered_layout,
         prepare_metadata,
     )
@@ -82,9 +83,9 @@ def test_ordered_values_ranges_and_snapshot_coverage(plan, sliced):
                 order.sort().values, torch.arange(len(p), device=p.device)
             )
             torch.testing.assert_close(
-                views[direction],
+                ordered_direction_view(views, plan.recipe, direction),
                 packed[[0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12]][:, order]
-                if plan.recipe.compact_ordered_view
+                if plan.recipe.compact_ordered_view and direction == 1
                 else packed[:, order],
                 atol=0,
                 rtol=0,

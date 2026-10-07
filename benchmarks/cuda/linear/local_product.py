@@ -75,11 +75,11 @@ class LocalRecipe(Recipe):
 
     @property
     def compact_ordered_view(self):
-        return self.route.endswith("_view11")
+        return self.route.endswith("_dxview11")
 
     @property
     def layout_route(self):
-        return self.route.removesuffix("_view11")
+        return self.route.removesuffix("_dxview11")
 
     @property
     def reuse_layout(self):
@@ -500,7 +500,10 @@ class LocalRecipe(Recipe):
         if type(self.route) is not str:
             raise ValueError("local execution route must be a string")
         if self.compact_ordered_view and not (
-            self.ordered_layout and self.recompute_h and not self.owner_index
+            self.ordered_layout
+            and self.recompute_h
+            and not self.owner_index
+            and self.parallel_order_copy
         ):
             raise ValueError("compact view requires ordered local H without owner IDs")
         if type(self.rho_upper) not in (tuple, list) or any(
