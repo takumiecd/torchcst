@@ -391,3 +391,25 @@ The correctness worker checks every site and atom with an independent FP64 raw
 matrix oracle, chunking atom count to bound its memory. Projection revision5
 keeps this scope and rectangular operator distinct from small Product results.
 See the [implementation and measurements](../../../docs/research-history/local-product/20261007-profile-product-strip.md).
+
+### Whole-chart Strip grid comparison
+
+`plans-profile-product-strip-grid.json` adds the explicit `grid` route alongside
+Torch and the earlier small-core `reuse` route. The `*-rho{3,8}-grid.json` cases
+keep output64/B32, input256/512/1024, approximately5% atoms, and evolving Polar
+widths. Grid prepares two global support views once, shares H across outputs
+and backward G across input owners, and keeps the whole-chart product norm.
+
+```bash
+python -m tools.kernel_dev prepare \
+  --plans benchmarks/cuda/linear/plans-profile-product-strip-grid.json \
+  --case benchmarks/cuda/linear/cases/profile-product-strip-256-rho3-grid.json \
+  --candidate reuse --candidate grid --output output/strip-grid-comparison
+python -m tools.kernel_dev check \
+  --plans output/strip-grid-comparison/plans.json \
+  --case output/strip-grid-comparison/case.json
+```
+
+The input count here is not a square matrix dimension. L4 complete-step timing,
+peak memory, full-site oracle results and hashes are recorded in
+[`20261007-profile-product-strip-grid.md`](../../../docs/research-history/local-product/20261007-profile-product-strip-grid.md).

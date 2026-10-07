@@ -1,0 +1,368 @@
+{
+  "status": "PASS",
+  "runtime": {
+    "gpu": "NVIDIA L4",
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "triton": "3.6.0"
+  },
+  "scope": {
+    "output": 64,
+    "batch": 32,
+    "input": [
+      256,
+      512,
+      1024
+    ],
+    "tile": 64,
+    "pitch": 68,
+    "dtype": "float32",
+    "initial_rho": [
+      3,
+      8
+    ],
+    "atoms_fraction_approx": 0.05,
+    "optimizer": "fused capturable AdamW + production Polar update",
+    "samples_per_run": 21
+  },
+  "cpu": {
+    "passed": 984,
+    "skipped": 1217
+  },
+  "cuda": {
+    "passed": 56,
+    "requires_cuda": 45,
+    "job": "l4job-18bd2d7d85d94fddbf8b736cb34d9882",
+    "proof": {
+      "job": "l4job-18bd2d7d85d94fddbf8b736cb34d9882",
+      "source_commit": "8eca40c3b9abb7b4c35b4a2ae5827eff2aecc843",
+      "source_archive_sha256": "421f55ce8032d4bf11a240bc9a0ce005715173786342c0579f73fabc1d8e5949",
+      "result_archive_sha256": "e322ab1e32e8eb0a07f282a1e88479abc86c90bd6f23a5814b3e50d21919c6c9",
+      "driver_sha256": "be854903cc8d17f80c98a676a99caf6d7ead15ee9e0fa448d799c54e204a8e3c",
+      "source_files_verified": 1289,
+      "runs": []
+    }
+  },
+  "measurements": [
+    {
+      "job": "l4job-5dbc086af8d34da7a12a8fb7cb3f93b3",
+      "source_commit": "d4b970e02af8d2a80beb03fab3db54ad0eb4d145",
+      "source_archive_sha256": "9996b0cf80410ca146a3b053ed3ac42778afb1d322c64b683673327a7b6cb0cc",
+      "result_archive_sha256": "f6630ae6f0f0064f042d4b89ae7ecb071e5b29366e21730ce053324ec8725af4",
+      "driver_sha256": "4738a70ebfcc61bb10c82ca3e69c089c768d9ce300736762961f2edb99e33290",
+      "source_files_verified": 1290,
+      "runs": [
+        {
+          "case": "profile-product-strip-256-rho3",
+          "result_sha256": "4545da1f46a53ebca9e2d0b20f9dcd7c7d536deccf11510a4c6d66a4851c1a09",
+          "snapshot_sha256": "f48449ee3f9e0c2b1db164f504e52a17c168342bd2a98bae04b8aad97f5314d8",
+          "correctness_max": {
+            "y": 2.615783111892256e-06,
+            "dx": 1.3443446822414273e-06,
+            "dp": 3.1521966015191083e-06,
+            "polar_update": 0.0
+          },
+          "metrics": {
+            "torch": {
+              "median_us": 310.25900000258844,
+              "allocated_bytes": 43066368,
+              "reserved_bytes": 62914560
+            },
+            "reuse": {
+              "median_us": 200.52099989698036,
+              "allocated_bytes": 727552,
+              "reserved_bytes": 6291456
+            },
+            "grid": {
+              "median_us": 79.27100000415521,
+              "allocated_bytes": 613888,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 44.89599996304605,
+              "allocated_bytes": 34425344,
+              "reserved_bytes": 48234496
+            }
+          }
+        },
+        {
+          "case": "profile-product-strip-256-rho8",
+          "result_sha256": "0f36bce5bf6e35be19ee6066570c2b9f78d547e8bd50c301db4c91d7ac61d632",
+          "snapshot_sha256": "de5bbdf50a6d32abd85c7b3a5734f74474fb14427f41e7726dceed8203dfee4b",
+          "correctness_max": {
+            "y": 2.601179279082544e-06,
+            "dx": 1.4161132670942322e-06,
+            "dp": 1.5724054183152703e-06,
+            "polar_update": 0.0
+          },
+          "metrics": {
+            "torch": {
+              "median_us": 310.29000001581153,
+              "allocated_bytes": 43066368,
+              "reserved_bytes": 62914560
+            },
+            "reuse": {
+              "median_us": 199.55599998411344,
+              "allocated_bytes": 727552,
+              "reserved_bytes": 6291456
+            },
+            "grid": {
+              "median_us": 80.17599998311198,
+              "allocated_bytes": 613888,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 44.99500005294976,
+              "allocated_bytes": 34425344,
+              "reserved_bytes": 48234496
+            }
+          }
+        }
+      ]
+    },
+    {
+      "job": "l4job-b9643ef8732240f48b773407d544ce64",
+      "source_commit": "d4b970e02af8d2a80beb03fab3db54ad0eb4d145",
+      "source_archive_sha256": "bdf1ded852a30326d782886f67a2f124509c1c0a3b857e433d326d758be755b3",
+      "result_archive_sha256": "9d2b092dc8a6f55b3fe285f02ba54ce8ab14c655dc57f0e141fff3efd27c942e",
+      "driver_sha256": "4738a70ebfcc61bb10c82ca3e69c089c768d9ce300736762961f2edb99e33290",
+      "source_files_verified": 1290,
+      "runs": [
+        {
+          "case": "profile-product-strip-512-rho3",
+          "result_sha256": "6f3ee3c03f6306320959d8b6fae2aafa1b2d7608a1b7e9409e109d17908b2d9f",
+          "snapshot_sha256": "f540645d68445804ebb4d24b1ee6f7d8628fd28a924990b8fc96e324e8fe0989",
+          "correctness_max": {
+            "y": 6.32305842707126e-06,
+            "dx": 1.9746614192683865e-06,
+            "dp": 2.7238367383830564e-06,
+            "polar_update": 0.0
+          },
+          "metrics": {
+            "torch": {
+              "median_us": 416.9810000576035,
+              "allocated_bytes": 67962880,
+              "reserved_bytes": 136314880
+            },
+            "reuse": {
+              "median_us": 499.23800008855324,
+              "allocated_bytes": 2264576,
+              "reserved_bytes": 8388608
+            },
+            "grid": {
+              "median_us": 121.5670000647151,
+              "allocated_bytes": 1195008,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 50.07299989756575,
+              "allocated_bytes": 34753024,
+              "reserved_bytes": 48234496
+            }
+          }
+        },
+        {
+          "case": "profile-product-strip-512-rho8",
+          "result_sha256": "c5d0a108240fb978227c79cbe3519dd95cbcf9c52e62d3f52fd3b4da7ba7271a",
+          "snapshot_sha256": "39b0cc24682352e465c8d09d9ded607d0f15fa999bc9c9005b40bfe48ee89292",
+          "correctness_max": {
+            "y": 5.047226859566933e-06,
+            "dx": 1.5863059612541974e-06,
+            "dp": 2.0212060309887647e-06,
+            "polar_update": 0.0
+          },
+          "metrics": {
+            "torch": {
+              "median_us": 417.55100005502754,
+              "allocated_bytes": 67962880,
+              "reserved_bytes": 136314880
+            },
+            "reuse": {
+              "median_us": 493.91999993986246,
+              "allocated_bytes": 2264576,
+              "reserved_bytes": 8388608
+            },
+            "grid": {
+              "median_us": 124.32699998043972,
+              "allocated_bytes": 1195008,
+              "reserved_bytes": 6291456
+            },
+            "dense": {
+              "median_us": 49.8980000429583,
+              "allocated_bytes": 34753024,
+              "reserved_bytes": 48234496
+            }
+          }
+        }
+      ]
+    },
+    {
+      "job": "l4job-f4e93fdb35c14bc29a66329e0ee62262",
+      "source_commit": "d4b970e02af8d2a80beb03fab3db54ad0eb4d145",
+      "source_archive_sha256": "df029b1e60c78beb3061f56fdf81ad41f5293856fa65368f37cff3d68a60ffbc",
+      "result_archive_sha256": "12a1cccaedb2313334cd832b95cd7d85ff9270c7438d0dd584be9553ae1c15fc",
+      "driver_sha256": "4738a70ebfcc61bb10c82ca3e69c089c768d9ce300736762961f2edb99e33290",
+      "source_files_verified": 1290,
+      "runs": [
+        {
+          "case": "profile-product-strip-1024-rho3",
+          "result_sha256": "bc4307ef12c3bd359ada0b95bc3b1dae8d8d2e4d90e877b1304bd9cbc7565572",
+          "snapshot_sha256": "2aaddc6222f46a4a8d72b11483e7d074b81d7c83335c920c4573f099c70fcad9",
+          "correctness_max": {
+            "y": 8.999166931644709e-06,
+            "dx": 1.2835723222082152e-06,
+            "dp": 3.7759693380934323e-06,
+            "polar_update": 0.0
+          },
+          "metrics": {
+            "torch": {
+              "median_us": 2040.507000060643,
+              "allocated_bytes": 161384960,
+              "reserved_bytes": 394264576
+            },
+            "reuse": {
+              "median_us": 1740.1559998688754,
+              "allocated_bytes": 7856128,
+              "reserved_bytes": 18874368
+            },
+            "grid": {
+              "median_us": 225.46300010617415,
+              "allocated_bytes": 2355200,
+              "reserved_bytes": 8388608
+            },
+            "dense": {
+              "median_us": 54.61799992190208,
+              "allocated_bytes": 35408384,
+              "reserved_bytes": 48234496
+            }
+          }
+        },
+        {
+          "case": "profile-product-strip-1024-rho8",
+          "result_sha256": "dd27654080cabb8b34f78682dcf0356311628be1aa0389e69519c7e33b3d131d",
+          "snapshot_sha256": "a50cb18e1ece9f9c131647632d1ea259eb4aa9a251f5ee720e8ef67c4794bfea",
+          "correctness_max": {
+            "y": 1.3270271351117913e-05,
+            "dx": 1.943910132418125e-06,
+            "dp": 2.145185598934063e-06,
+            "polar_update": 0.0
+          },
+          "metrics": {
+            "torch": {
+              "median_us": 1980.6359998710832,
+              "allocated_bytes": 161384960,
+              "reserved_bytes": 394264576
+            },
+            "reuse": {
+              "median_us": 1738.7779998898623,
+              "allocated_bytes": 7856128,
+              "reserved_bytes": 18874368
+            },
+            "grid": {
+              "median_us": 231.50000015448313,
+              "allocated_bytes": 2355200,
+              "reserved_bytes": 8388608
+            },
+            "dense": {
+              "median_us": 54.81599987433583,
+              "allocated_bytes": 35408384,
+              "reserved_bytes": 48234496
+            }
+          }
+        }
+      ]
+    },
+    {
+      "job": "l4job-ba73123e6662492ca136070dce4de629",
+      "source_commit": "d4b970e02af8d2a80beb03fab3db54ad0eb4d145",
+      "source_archive_sha256": "b77644c481d6ca158e253c29b1b47c6920ec2b637f5250684c752050f9159d61",
+      "result_archive_sha256": "977bc0f7eff75fefcd65b4975ad30439573da55dd899f8d36dc16e47f3b23247",
+      "driver_sha256": "4738a70ebfcc61bb10c82ca3e69c089c768d9ce300736762961f2edb99e33290",
+      "source_files_verified": 1290,
+      "runs": [
+        {
+          "case": "profile-product-strip-256-rho3",
+          "result_sha256": "f0829048ecc929b30a7d2a16a11a55407c0be41c326696d71f1144411b39674a",
+          "snapshot_sha256": "f54f859d454d1c0007df762242fe3061232bf7e9749460b3724946426479063b",
+          "correctness_max": {
+            "y": 2.615783111892256e-06,
+            "dx": 1.3443446822414273e-06,
+            "dp": 3.1521966015191083e-06,
+            "polar_update": 0.0
+          },
+          "metrics": {
+            "grid": {
+              "median_us": 79.17700008874817,
+              "allocated_bytes": 613888,
+              "reserved_bytes": 6291456
+            },
+            "reuse": {
+              "median_us": 200.34999988638447,
+              "allocated_bytes": 727552,
+              "reserved_bytes": 6291456
+            },
+            "torch": {
+              "median_us": 310.22500002109155,
+              "allocated_bytes": 43066368,
+              "reserved_bytes": 62914560
+            },
+            "dense": {
+              "median_us": 45.372999920800794,
+              "allocated_bytes": 34425344,
+              "reserved_bytes": 48234496
+            }
+          }
+        }
+      ]
+    },
+    {
+      "job": "l4job-3904f9a470be4be89d6fff8369962e71",
+      "source_commit": "d4b970e02af8d2a80beb03fab3db54ad0eb4d145",
+      "source_archive_sha256": "ad19b4b8db6580c33b7aeb2947a23e8889ee07b4ddc68dad576729e913296ec6",
+      "result_archive_sha256": "e0dd2f7c876c09fa83ae1aaff02355b6870bcd85299cab459ba66bd0fcf8700d",
+      "driver_sha256": "4738a70ebfcc61bb10c82ca3e69c089c768d9ce300736762961f2edb99e33290",
+      "source_files_verified": 1290,
+      "runs": [
+        {
+          "case": "profile-product-strip-1024-rho3",
+          "result_sha256": "2d44c56a1ecc791e8f0c175ff777ab4aaabd53e646c816e6e0a801f8e8c32e8c",
+          "snapshot_sha256": "5135e11790f8552fabc8b197de9c50f68cc9d03b02070b0a132c3cc303e14554",
+          "correctness_max": {
+            "y": 8.999166931644709e-06,
+            "dx": 1.2835723222082152e-06,
+            "dp": 3.7759693380934323e-06,
+            "polar_update": 0.0
+          },
+          "metrics": {
+            "grid": {
+              "median_us": 225.42300007444283,
+              "allocated_bytes": 2355200,
+              "reserved_bytes": 8388608
+            },
+            "reuse": {
+              "median_us": 1741.2009999588918,
+              "allocated_bytes": 7856128,
+              "reserved_bytes": 18874368
+            },
+            "torch": {
+              "median_us": 1974.0640000236453,
+              "allocated_bytes": 161384960,
+              "reserved_bytes": 394264576
+            },
+            "dense": {
+              "median_us": 54.364999868994346,
+              "allocated_bytes": 35408384,
+              "reserved_bytes": 48234496
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "all_routes_max_absolute_error": {
+    "y": 1.3270271351117913e-05,
+    "dx": 1.9746614192683865e-06,
+    "dp": 3.7759693380934323e-06,
+    "polar_update": 0.0
+  }
+}
