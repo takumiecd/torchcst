@@ -134,10 +134,39 @@ Diagnostic timings are not primary complete-step comparisons, and phase
 medians must not be summed into a replacement step time. Spatial atom sorting
 is a hypothesis until these measurements identify an actual bottleneck.
 
-The first reverse job (Product1024) completed: prepared .565126, split1
-.311725, split4 .283991, split8 .280713, split16 .282311, Torch .245924 and
-dense .083404ms. Split8 improves on split1 by9.95%, consistent with the primary
-10.3% observation, with unchanged allocated peaks. Four other confirmations
-and the diagnostics remain pending at this checkpoint. Public
-dispatch and literal Torus mathematics remain unchanged. Merge disposition for
-the split implementation awaits independent confirmation and final-head CI.
+All five reverse jobs completed successfully, retaining all seven routes and
+their full-site/all-atom correctness gates. Their Graph medians (milliseconds):
+
+| Chart and size | Prepared | Split1 | Split4 | Split8 | Split16 | Torch | Dense |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Product1024 | .565126 | .311725 | .283991 | .280713 | .282311 | .245924 | .083404 |
+| Product2048 | 2.427544 | 1.142683 | 1.085915 | 1.083115 | 1.100422 | .963934 | .591985 |
+| Strip64x1024 | .113618 | .093679 | .067010 | .062471 | .062580 | .063334 | .054978 |
+| Strip64x2048 | .187700 | .148262 | .093415 | .084097 | .084473 | .080785 | .056958 |
+| Strip64x8192 | .436559 | .455160 | .231797 | .196154 | .194970 | .160389 | .066072 |
+
+Split8 relative to split1 improves Product1024/2048 by9.95%/5.21%, and
+Strip1024/2048/8192 by33.31%/43.28%/56.90%. The primary and reversed orders
+agree on improvement, while the tiny split8/16 ordering at Strip1024/2048
+changes between runs. Retain both explicit alternatives rather than declare a
+universal split-count winner. All split allocated peaks reproduce exactly;
+reserved peaks reproduce too, including the2MiB Product1024 split8 increase.
+Product/Strip rho3 has two independent jobs per size, rho8 one, and Product8192
+has no primary split timing. The14 artifacts' maximum absolute Y/dX/dp/update
+errors are7.82474e-5/4.23136e-5/3.77818e-6/0.
+
+Disposition: integrate strict research matrix revisions v4/v2, their split1
+controls, explicit split4/8/16 alternatives, complete cases and verified
+negative/positive evidence. Keep recipe default split4 and public dispatch
+unchanged. The results support a scheduling improvement with these size/width
+conditions, not dense parity or a Torus speed claim. Single-chart work remains
+necessary: the confirmed2048 improvement is only about5%, and both native and
+Torch trail dense. The large-phase job remains in flight at this checkpoint.
+
+PR#69 head `0f68fae90773090c8f423a6c0ff9ac6d0d9e43c4` passed exact-head
+CPU validation run37699282958: prepare/check, declarations, CPU tests and
+wheel/sdist build all succeed. Final evidence-only changes require their own
+final-head Actions before GitHub merge. Implementation/benchmark/test file sets
+and bytes remain exactly those of measured0864a752; no CUDA change follows the
+gate or measurements. Literal Torus mathematics remains an unanswered user
+choice; the separate CPU proposal is not an integrated declaration or kernel.
