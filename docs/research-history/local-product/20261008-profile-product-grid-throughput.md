@@ -62,13 +62,16 @@ The comparison catalogs contain controls as well as the combined candidate:
 |v1 baseline|support preparation, one atom per CTA|full preparation, one atom per CTA|
 |norm-grouped|support preparation with8 atoms|support preparation with8 atoms|
 |atoms-grouped|v1 support preparation,4-atom H/G|v1 full preparation,4-atom H/G|
-|sort-torch|already used by this large Product baseline|v1 full preparation and H/G, Torch sorting|
+|sort-torch|no separate control; v1 already native at A>4096|v1 full preparation and H/G, Torch sorting|
 |grouped|support preparation8, H/G4, Torch sorting|support preparation8, H/G4, Torch sorting|
 
 The Strip norm control changes both support preparation and preparation grouping;
 it does not isolate those two effects. The Product controls isolate preparation
 grouping and grouped atom processing. The latter also changes the site chunk
 and H/G layout; it is not an isolated memory-coalescing experiment.
+At Product256² (A3277), the combined recipe also replaces the v1 Triton sort.
+At Product512²/1024² (A13107/52429), v1 already uses Torch sorting. The256²
+combined improvement must not be attributed to atom grouping alone.
 
 ## Validation checkpoint
 

@@ -76,6 +76,22 @@
           "sorting": "torch"
         }
       }
+    },
+    {
+      "id": "small-grouped",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 8,
+          "atom_group": 4,
+          "sorting": "legacy"
+        }
+      }
     }
   ]
 }

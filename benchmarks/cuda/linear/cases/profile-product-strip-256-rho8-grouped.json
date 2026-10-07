@@ -36,7 +36,8 @@
     "norm-grouped",
     "atoms-grouped",
     "sort-torch",
-    "grouped"
+    "grouped",
+    "small-grouped"
   ],
   "baseline": "grid",
   "dense": true
