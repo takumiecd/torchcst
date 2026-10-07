@@ -341,6 +341,41 @@
         "downloaded": 1791410635.174179,
         "archive_sha256": "64e8f70582461c8880a02b7560dab3fce790a78401312735d4b5f59feef41d01"
       }
+    },
+    {
+      "id": "l4job-47ae54c49f5141db829be2e76ed4c923",
+      "label": "profile-product-large-global-8192-rho3-bounded-report",
+      "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+      "canonical_source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+      "source_sha256": "40360e9830e0ea449eebfe9226bff6eeb398b747668c06a701450560852c4340",
+      "implementation_source_verified": {
+        "commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+        "files": 1128,
+        "scope": "exact src/benchmarks/tests/kernel_dev file sets and bytes; Markdown excluded"
+      },
+      "pool_result": {
+        "id": "l4job-47ae54c49f5141db829be2e76ed4c923",
+        "source_sha256": "40360e9830e0ea449eebfe9226bff6eeb398b747668c06a701450560852c4340",
+        "gpu": "NVIDIA L4, GPU-eec1a409-b39c-45c7-d07f-1d7eea2dd945, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791410653.896895,
+        "finished": 1791411247.5023606,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-e4483b83e58a-1",
+        "downloaded": 1791411273.131505,
+        "archive_sha256": "bd34189903f3cb8bd351e8a336ddbbb7759f64ed79e6e9cdafc720fa6bcbc1c5"
+      }
     }
   ],
   "results": [
@@ -6108,6 +6143,825 @@
           }
         }
       ]
+    },
+    {
+      "job": "l4job-47ae54c49f5141db829be2e76ed4c923",
+      "family": "global",
+      "name": "profile-product-large-global-8192-rho3.json",
+      "execution_id": "0d631926-8431-4b2d-b36d-deaeda64245d",
+      "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+      "result_sha256": "21980e56947252c68dcfe13fbc26987b535ec0cc60f68b11176c599c9c04d08b",
+      "result_bytes": 361502,
+      "submission_check": "PASS",
+      "case": {
+        "id": "profile-product-large-global-8192-rho3",
+        "fixture": "polar_profile_product_global",
+        "size": 8192,
+        "rows": 32,
+        "atoms": 3355443,
+        "profile": "mixed",
+        "dtype": "float32",
+        "seed": 41,
+        "warmup": 5,
+        "rounds": 21,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": true
+        },
+        "widths": {
+          "minimum": 1.0,
+          "birth": 1.0,
+          "maximum": 16,
+          "rho": [
+            3
+          ],
+          "fractions": [
+            1.0
+          ],
+          "center_jitter": null
+        }
+      },
+      "plans": [
+        {
+          "id": "prepared",
+          "plan": {
+            "algorithm_id": "research_profile_product_large_prepared",
+            "algorithm_revision": "v1",
+            "recipe": {
+              "atom_block": 32,
+              "atom_group": 4,
+              "execution_route": "grid",
+              "prep_group": 16,
+              "prep_sites": 16,
+              "preparation": "support",
+              "sorting": "torch"
+            },
+            "schema_version": 1
+          }
+        },
+        {
+          "id": "native-g4-p8",
+          "plan": {
+            "algorithm_id": "research_profile_product_large_matrix",
+            "algorithm_revision": "v1",
+            "recipe": {
+              "atom_group": 4,
+              "gemm": "triton",
+              "patch_sites": 8,
+              "prep_group": 16,
+              "prep_sites": 16,
+              "preparation": "support"
+            },
+            "schema_version": 1
+          }
+        },
+        {
+          "id": "native-g8-p8",
+          "plan": {
+            "algorithm_id": "research_profile_product_large_matrix",
+            "algorithm_revision": "v1",
+            "recipe": {
+              "atom_group": 8,
+              "gemm": "triton",
+              "patch_sites": 8,
+              "prep_group": 16,
+              "prep_sites": 16,
+              "preparation": "support"
+            },
+            "schema_version": 1
+          }
+        },
+        {
+          "id": "torch-g8-p8",
+          "plan": {
+            "algorithm_id": "research_profile_product_large_matrix",
+            "algorithm_revision": "v1",
+            "recipe": {
+              "atom_group": 8,
+              "gemm": "torch",
+              "patch_sites": 8,
+              "prep_group": 16,
+              "prep_sites": 16,
+              "preparation": "support"
+            },
+            "schema_version": 1
+          }
+        }
+      ],
+      "records": [
+        {
+          "metadata": {
+            "worker": "correctness",
+            "plan_id": "prepared",
+            "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+            "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_prepared",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            },
+            "full_metadata_sha256": "586fb37d45b1189bafbd7924f74315f39f39974c5a5f6b6cdad467476a1cf62d"
+          },
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 0.00011382491832989672,
+              "rel_l2": 7.510547546994549e-07
+            },
+            "dx": {
+              "max": 0.0001015204578109774,
+              "rel_l2": 7.534284194336912e-07
+            },
+            "dp": {
+              "max": 4.470665926348261e-06,
+              "rel_l2": 2.0844821856908558e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          }
+        },
+        {
+          "metadata": {
+            "worker": "correctness",
+            "plan_id": "native-g4-p8",
+            "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+            "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 4,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            },
+            "full_metadata_sha256": "3b86c7374d11f49ddbd64f97083e45e0aa1a45627f5e4aaddf3f2cd209cf914d"
+          },
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 0.00018048161616235348,
+              "rel_l2": 1.476537301973922e-06
+            },
+            "dx": {
+              "max": 0.00017960524721161164,
+              "rel_l2": 1.4845291914468408e-06
+            },
+            "dp": {
+              "max": 4.1872490683658725e-06,
+              "rel_l2": 2.224202955058271e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          }
+        },
+        {
+          "metadata": {
+            "worker": "correctness",
+            "plan_id": "native-g8-p8",
+            "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+            "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            },
+            "full_metadata_sha256": "6d094c4ad6407d73eb6289f6bae230e0ad91361bd18ab1b2fbc74f11a6df263a"
+          },
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 0.00018048161616235348,
+              "rel_l2": 1.4765457192811797e-06
+            },
+            "dx": {
+              "max": 0.00017960524721161164,
+              "rel_l2": 1.4844876219446412e-06
+            },
+            "dp": {
+              "max": 4.811451450592585e-06,
+              "rel_l2": 2.2318285720545613e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          }
+        },
+        {
+          "metadata": {
+            "worker": "correctness",
+            "plan_id": "torch-g8-p8",
+            "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+            "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            },
+            "full_metadata_sha256": "158ab4e69ad4656b054dcf20bb37cc37bed4cda75bbf3869a900e1b5fa96605f"
+          },
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.560146706467094e-05,
+              "rel_l2": 5.818462122300358e-07
+            },
+            "dx": {
+              "max": 4.803734159963824e-05,
+              "rel_l2": 5.772978299540199e-07
+            },
+            "dp": {
+              "max": 4.811451450592585e-06,
+              "rel_l2": 2.2318285720545613e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          }
+        },
+        {
+          "metadata": {
+            "worker": "measure",
+            "plan_id": "prepared",
+            "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+            "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_prepared",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            },
+            "full_metadata_sha256": "f55b00e723b639da9b6ebe793460d91e3ea92e8585e1ceaf1b10ddd2e0b8b111"
+          },
+          "result": {
+            "graph": {
+              "median_ms": 77.63067999985651,
+              "samples_ms": [
+                73.91619800000626,
+                78.98088799993275,
+                77.72644299984677,
+                77.17976899994028,
+                75.80046599969137,
+                76.1071200004153,
+                77.30385500008197,
+                77.63739899974098,
+                78.5046030000558,
+                78.25070700027936,
+                77.63067999985651,
+                81.28177800017511,
+                77.73712099969998,
+                77.1638090000124,
+                76.71958599985373,
+                76.58801899970058,
+                76.64494699974966,
+                78.29643800005215,
+                78.6527689997456,
+                78.40476500041405,
+                77.18298000008872
+              ]
+            },
+            "eager": {
+              "median_ms": 78.17155499969886,
+              "samples_ms": [
+                75.63448299970332,
+                77.4876140003471,
+                78.78538800014212,
+                78.96205999986705,
+                78.17155499969886,
+                78.29228299988245,
+                80.29101400006766,
+                80.98286599988569,
+                77.49463299978743,
+                76.83568599986756,
+                76.40813900025023,
+                75.91599100032909,
+                77.28422099989984,
+                78.88888400020733,
+                78.86129899998195,
+                78.8354689998414,
+                77.96479999979056,
+                77.23675799979901,
+                77.42612199990617,
+                78.99687000008271,
+                79.18402499990407
+              ]
+            },
+            "allocated_before_capture_bytes": 275786752,
+            "peak_allocated_capture_replay_bytes": 1585050112,
+            "peak_reserved_capture_replay_bytes": 4034920448,
+            "initial_inputs": {
+              "x_sha256": "5a6bf327249f25200ebbff59e86913a690eaf56329ae9b35efab1012045761ef",
+              "target_sha256": "438fadca127d386ce47308b582ce30e6ee56bf1e62f1876edf49bf894ede6eae"
+            },
+            "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+            "sigma_updates": {
+              "fixed": false,
+              "source": "current polar activity every forward/replay",
+              "changed_atoms": 3355443,
+              "max_abs_change": 0.014072179794311523,
+              "atoms": 3355443,
+              "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+              "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+              "worker_record": "measure-prepared.json",
+              "initial_range": [
+                3.0000007152557373,
+                3.0000007152557373
+              ],
+              "final_range": [
+                2.985928535461426,
+                2.9859814643859863
+              ],
+              "initial_sha256": "6f650d7765f2a6eb713b3925df844a5f2ac6916d2e9750b0d8079cb5fac1126d",
+              "final_sha256": "046e5aa4cc629f0503b3587a0e00c104b30afec0c0a0202071c5029a11ed0af6"
+            },
+            "initial_support": {
+              "normalization": "whole Product L2; one floor1e-6",
+              "empty_atoms": 0,
+              "floor_active_atoms": 0,
+              "onehot_both_live_atoms": 0
+            },
+            "final_support": {
+              "normalization": "whole Product L2; one floor1e-6",
+              "empty_atoms": 0,
+              "floor_active_atoms": 0,
+              "onehot_both_live_atoms": 0
+            }
+          }
+        },
+        {
+          "metadata": {
+            "worker": "measure",
+            "plan_id": "native-g4-p8",
+            "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+            "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 4,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            },
+            "full_metadata_sha256": "88946e4107febdaec4d647932e756818474d8e1c7ddc4afa5f4b092bfb1ef460"
+          },
+          "result": {
+            "graph": {
+              "median_ms": 42.42794199990385,
+              "samples_ms": [
+                40.108889999828534,
+                40.140273999895726,
+                41.808145999766566,
+                42.42794199990385,
+                43.23637199968289,
+                44.82554499963953,
+                43.29687000017657,
+                42.295025999919744,
+                42.066058999807865,
+                42.07867400009491,
+                42.29248699994059,
+                42.93031499992139,
+                46.7194129996642,
+                44.06070799996087,
+                42.40186500010168,
+                42.100441999991745,
+                42.338515000210464,
+                43.469947000176035,
+                45.30623499977082,
+                43.07732099960049,
+                43.44755499960229
+              ]
+            },
+            "eager": {
+              "median_ms": 43.208204000166006,
+              "samples_ms": [
+                43.00856500003647,
+                43.891054000141594,
+                44.60525499962387,
+                43.208204000166006,
+                42.66131899976244,
+                42.47261000000435,
+                42.530892999820935,
+                43.710379999993165,
+                44.642894999924465,
+                43.180768999718566,
+                42.49124499983736,
+                42.35437900024408,
+                42.68800799991368,
+                43.50957399992694,
+                48.33577899989905,
+                45.13666499997271,
+                44.287297999744624,
+                45.730169999842474,
+                43.94971300007455,
+                42.952439000146114,
+                42.548345000341214
+              ]
+            },
+            "allocated_before_capture_bytes": 274109440,
+            "peak_allocated_capture_replay_bytes": 1041040896,
+            "peak_reserved_capture_replay_bytes": 2501902336,
+            "initial_inputs": {
+              "x_sha256": "5a6bf327249f25200ebbff59e86913a690eaf56329ae9b35efab1012045761ef",
+              "target_sha256": "438fadca127d386ce47308b582ce30e6ee56bf1e62f1876edf49bf894ede6eae"
+            },
+            "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+            "sigma_updates": {
+              "fixed": false,
+              "source": "current polar activity every forward/replay",
+              "changed_atoms": 3355443,
+              "max_abs_change": 0.014072179794311523,
+              "atoms": 3355443,
+              "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+              "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+              "worker_record": "measure-native-g4-p8.json",
+              "initial_range": [
+                3.0000007152557373,
+                3.0000007152557373
+              ],
+              "final_range": [
+                2.985928535461426,
+                2.9859814643859863
+              ],
+              "initial_sha256": "6f650d7765f2a6eb713b3925df844a5f2ac6916d2e9750b0d8079cb5fac1126d",
+              "final_sha256": "1d2cb1a56041d87c4e477d1faf12df58e382c0b1d259361a7641a49ca23b170f"
+            },
+            "initial_support": {
+              "normalization": "whole Product L2; one floor1e-6",
+              "empty_atoms": 0,
+              "floor_active_atoms": 0,
+              "onehot_both_live_atoms": 0
+            },
+            "final_support": {
+              "normalization": "whole Product L2; one floor1e-6",
+              "empty_atoms": 0,
+              "floor_active_atoms": 0,
+              "onehot_both_live_atoms": 0
+            }
+          }
+        },
+        {
+          "metadata": {
+            "worker": "measure",
+            "plan_id": "native-g8-p8",
+            "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+            "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            },
+            "full_metadata_sha256": "7f597ea7941c1072c71b62506b29b459e28709073eac42de4341111a76a6271b"
+          },
+          "result": {
+            "graph": {
+              "median_ms": 42.148627000187844,
+              "samples_ms": [
+                39.8376409998491,
+                40.61214400007884,
+                41.88408600020921,
+                42.148627000187844,
+                41.8443040002785,
+                41.89949300007356,
+                41.7558869999084,
+                41.595227000016166,
+                41.51640800000678,
+                41.91749399979017,
+                42.53578399993785,
+                42.68455000010363,
+                42.24465299967051,
+                42.3636959999385,
+                42.58987699995487,
+                42.67838999976448,
+                42.304150000290974,
+                42.06783599966002,
+                42.598047999945265,
+                42.92573800012178,
+                43.857870000010735
+              ]
+            },
+            "eager": {
+              "median_ms": 42.69656400038002,
+              "samples_ms": [
+                42.55722599964429,
+                41.90364300029614,
+                41.59298200011108,
+                41.69716199976392,
+                42.69656400038002,
+                43.37169099972016,
+                43.00691999969786,
+                42.40419500001735,
+                42.14165099983802,
+                42.212573000142584,
+                41.925020000235236,
+                41.91489599998022,
+                42.66765600004874,
+                43.38590600036696,
+                43.64240599988989,
+                43.66505500001949,
+                43.54889500018544,
+                43.260833000204,
+                44.4868489998953,
+                44.261667000228044,
+                42.947067999648425
+              ]
+            },
+            "allocated_before_capture_bytes": 274109440,
+            "peak_allocated_capture_replay_bytes": 1041040896,
+            "peak_reserved_capture_replay_bytes": 2501902336,
+            "initial_inputs": {
+              "x_sha256": "5a6bf327249f25200ebbff59e86913a690eaf56329ae9b35efab1012045761ef",
+              "target_sha256": "438fadca127d386ce47308b582ce30e6ee56bf1e62f1876edf49bf894ede6eae"
+            },
+            "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+            "sigma_updates": {
+              "fixed": false,
+              "source": "current polar activity every forward/replay",
+              "changed_atoms": 3355443,
+              "max_abs_change": 0.014072179794311523,
+              "atoms": 3355443,
+              "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+              "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+              "worker_record": "measure-native-g8-p8.json",
+              "initial_range": [
+                3.0000007152557373,
+                3.0000007152557373
+              ],
+              "final_range": [
+                2.985928535461426,
+                2.9859814643859863
+              ],
+              "initial_sha256": "6f650d7765f2a6eb713b3925df844a5f2ac6916d2e9750b0d8079cb5fac1126d",
+              "final_sha256": "47ad403d57618838513cd246d6614736a71b09914600ce0e65aa018953e2b9e3"
+            },
+            "initial_support": {
+              "normalization": "whole Product L2; one floor1e-6",
+              "empty_atoms": 0,
+              "floor_active_atoms": 0,
+              "onehot_both_live_atoms": 0
+            },
+            "final_support": {
+              "normalization": "whole Product L2; one floor1e-6",
+              "empty_atoms": 0,
+              "floor_active_atoms": 0,
+              "onehot_both_live_atoms": 0
+            }
+          }
+        },
+        {
+          "metadata": {
+            "worker": "measure",
+            "plan_id": "torch-g8-p8",
+            "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+            "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            },
+            "full_metadata_sha256": "172ca1e1f186e3b26aa277bc2c22d40994fc61bd3de84e63061875925c5527de"
+          },
+          "result": {
+            "graph": {
+              "median_ms": 39.67131699982929,
+              "samples_ms": [
+                38.28461800003424,
+                37.83528499980093,
+                39.2244650001885,
+                39.48267300029329,
+                39.51889000018127,
+                39.53282000020408,
+                39.67440099995656,
+                39.64831300027072,
+                39.580344000114565,
+                39.5663690001129,
+                39.67131699982929,
+                39.624995999929524,
+                39.90396699964549,
+                39.84806499965998,
+                39.909582000291266,
+                39.861227000073995,
+                40.475410999988526,
+                40.700288000152796,
+                40.421893000257114,
+                40.24275599977045,
+                40.26316300041799
+              ]
+            },
+            "eager": {
+              "median_ms": 39.931302000240976,
+              "samples_ms": [
+                39.59683600032804,
+                39.33162100020127,
+                39.532288999907905,
+                39.612004999980854,
+                39.70396400018217,
+                39.720919000046706,
+                39.931302000240976,
+                39.994127999761986,
+                39.898702000300545,
+                39.755059000071924,
+                39.93802900004084,
+                39.93743999990329,
+                39.865417999862984,
+                39.950050999777886,
+                39.806142000088585,
+                39.95038399989426,
+                40.14643199980128,
+                40.80738699985886,
+                40.692055999898,
+                40.62201299984736,
+                40.52179900008923
+              ]
+            },
+            "allocated_before_capture_bytes": 308188160,
+            "peak_allocated_capture_replay_bytes": 1075119616,
+            "peak_reserved_capture_replay_bytes": 2522873856,
+            "initial_inputs": {
+              "x_sha256": "5a6bf327249f25200ebbff59e86913a690eaf56329ae9b35efab1012045761ef",
+              "target_sha256": "438fadca127d386ce47308b582ce30e6ee56bf1e62f1876edf49bf894ede6eae"
+            },
+            "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+            "sigma_updates": {
+              "fixed": false,
+              "source": "current polar activity every forward/replay",
+              "changed_atoms": 3355443,
+              "max_abs_change": 0.014072179794311523,
+              "atoms": 3355443,
+              "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+              "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+              "worker_record": "measure-torch-g8-p8.json",
+              "initial_range": [
+                3.0000007152557373,
+                3.0000007152557373
+              ],
+              "final_range": [
+                2.985928535461426,
+                2.9859814643859863
+              ],
+              "initial_sha256": "6f650d7765f2a6eb713b3925df844a5f2ac6916d2e9750b0d8079cb5fac1126d",
+              "final_sha256": "47ad403d57618838513cd246d6614736a71b09914600ce0e65aa018953e2b9e3"
+            },
+            "initial_support": {
+              "normalization": "whole Product L2; one floor1e-6",
+              "empty_atoms": 0,
+              "floor_active_atoms": 0,
+              "onehot_both_live_atoms": 0
+            },
+            "final_support": {
+              "normalization": "whole Product L2; one floor1e-6",
+              "empty_atoms": 0,
+              "floor_active_atoms": 0,
+              "onehot_both_live_atoms": 0
+            }
+          }
+        },
+        {
+          "metadata": {
+            "worker": "dense",
+            "plan_id": null,
+            "source_commit": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+            "snapshot_sha256": "be2c02b541b94588970f84bed31c7401b743159c0572bf45cf09262d1ef21d1b",
+            "plan": null,
+            "full_metadata_sha256": "9842ab0703932671a3f449b5066da10c7ea0570d5c3c7bc72afad3546b154090"
+          },
+          "result": {
+            "graph": {
+              "median_ms": 11.671490000026097,
+              "samples_ms": [
+                11.847253999803797,
+                11.621516000104748,
+                11.663626999961707,
+                11.766868999984581,
+                11.705026999607071,
+                11.653432000002795,
+                11.811512999884144,
+                11.64337299996987,
+                11.671490000026097,
+                11.609602000135055,
+                11.626357999830361,
+                11.772151000059239,
+                11.634466000032262,
+                11.689423000007082,
+                11.897989999852143,
+                11.83132400001341,
+                11.78518200003964,
+                11.637053999947966,
+                11.586224999973638,
+                11.621935999755806,
+                11.673780999899463
+              ]
+            },
+            "eager": {
+              "median_ms": 11.86675600001763,
+              "samples_ms": [
+                11.942909000026702,
+                11.951102999773866,
+                11.815359000138415,
+                11.85451399987869,
+                11.882951000188768,
+                11.833461000151146,
+                11.767773999963538,
+                11.891825000020617,
+                11.865217999911692,
+                11.831387999791332,
+                11.824259999684728,
+                11.872586999743362,
+                11.879368999871076,
+                11.803050999787956,
+                11.976227999639377,
+                11.764656999730505,
+                11.86675600001763,
+                12.040306000017154,
+                11.931254999581142,
+                11.970017999828997,
+                11.8349100002888
+              ]
+            },
+            "allocated_before_capture_bytes": 1110966784,
+            "peak_allocated_capture_replay_bytes": 1112017408,
+            "peak_reserved_capture_replay_bytes": 1642070016,
+            "initial_inputs": {
+              "x_sha256": "5a6bf327249f25200ebbff59e86913a690eaf56329ae9b35efab1012045761ef",
+              "target_sha256": "438fadca127d386ce47308b582ce30e6ee56bf1e62f1876edf49bf894ede6eae"
+            },
+            "initial_p_sha256": null,
+            "sigma_updates": null,
+            "initial_support": null,
+            "final_support": null
+          }
+        }
+      ]
     }
   ],
   "warm_diagnostics": [],
@@ -6253,7 +7107,31 @@
       }
     }
   ],
-  "cpu_report_gates": [],
+  "cpu_report_gates": [
+    {
+      "job": "l4job-47ae54c49f5141db829be2e76ed4c923",
+      "proof": {
+        "status": "PASS",
+        "source": "1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f",
+        "cpu_tests": 31,
+        "scope": "benchmark support-report CPU gate and exact full-scale initial counts; no oracle scope/timing-budget changes",
+        "full_initial_report": {
+          "normalization": "whole Product L2; one floor1e-6",
+          "empty_atoms": 0,
+          "floor_active_atoms": 0,
+          "onehot_both_live_atoms": 0
+        },
+        "full_initial_report_seconds": 7.563988817999871,
+        "atoms": 3355443,
+        "width_min": 3.0000007152557373,
+        "width_max": 3.0000007152557373,
+        "centre_min": 0.0,
+        "centre_max": 8190.99951171875
+      },
+      "sha256": "70e72e5fa0cbfcfff2da37e1d66c7560dabe1a1f714ad4dea6f1b3a3653fdfb6",
+      "scope": "independent CPU support-report tests and full initial atom counts; no CUDA timing inference"
+    }
+  ],
   "partial_correctness_gates": [
     {
       "job": "l4job-1db8c943dbc04f89b01e052025af36fc",
@@ -7660,13 +8538,11 @@
       "scope": "preserved; excluded from completed paired claims"
     }
   ],
-  "pending_jobs": [
-    "l4job-47ae54c49f5141db829be2e76ed4c923"
-  ],
+  "pending_jobs": [],
   "max_abs_errors": {
-    "y": 7.824735687478324e-05,
-    "dx": 4.2313577129249325e-05,
-    "dp": 3.848112502424783e-06,
+    "y": 0.00018048161616235348,
+    "dx": 0.00017960524721161164,
+    "dp": 4.811451450592585e-06,
     "polar_update": 0
   },
   "drivers": [
@@ -7687,13 +8563,12 @@
       "sha256": "8cfba642e75aef003402e25a7e8f754d80a6651cc052359cb08d1f9d448cb811"
     }
   ],
-  "collection_complete": false,
+  "collection_complete": true,
   "pool_status": {
     "1": {
-      "status": "ready",
-      "session": "cst-pool-e4483b83e58a-1",
-      "endpoint": "gpu-l4-s-kkb-ass1a0-2xt62qrffm6vn",
-      "job": "l4job-47ae54c49f5141db829be2e76ed4c923"
+      "status": "stopped",
+      "session": "cst-pool-c96c59131049-1",
+      "endpoint": "gpu-l4-s-kkb-ass1b0-3dg89evkjjklr"
     },
     "2": {
       "status": "stopped",

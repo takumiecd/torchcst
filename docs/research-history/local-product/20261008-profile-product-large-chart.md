@@ -165,3 +165,43 @@ dense44,583,424. One independent rho3 job; all21 samples and actual reserved
 peaks are retained in the companion summary. This negative timing result is
 preserved alongside the memory benefit. Further contraction optimization remains
 necessary rather than extending the2048 speed claim to8192.
+
+## Completed8192 Product result and disposition
+
+Job l4job-47ae54c49f5141db829be2e76ed4c923 completed the predeclared protocol:
+four full-shape FP64 correctness workers, four complete-step measurements,
+dense, submission check and adapter revision6 PASS. B32,8192 squared,
+3,355,443 atoms,rho3,source1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f.
+All runtime src bytes are unchanged fromfb9c79db; benchmark reports were fixed.
+
+| Route | Graph median ms | Allocated peak bytes | Reserved peak bytes |
+| --- | ---: | ---: | ---: |
+| Prepared |77.630680|1585050112|4034920448|
+| NativeG4P8 |42.427942|1041040896|2501902336|
+| NativeG8P8 |42.148627|1041040896|2501902336|
+| TorchG8P8 |39.671317|1075119616|2522873856|
+| Dense |11.671490|1112017408|1642070016|
+
+NativeG8 reduces complete-step time45.7% and allocated memory34.3% versus
+prepared; Torch remains faster and dense remains much faster. One independent
+8192 rho3 job per family; two2048 rho3 jobs per family and one2048 rho8 job
+per family. No8192 rho8 measurement or public dispatch adoption is claimed.
+All eight completed artifacts and their21 samples/errors/capture-replay peaks,
+source/result/receipt hashes are in the companion summary. Global maximum
+Y/dX/dp errors1.80482e-4/1.79605e-4/4.81145e-6,Polar0, unchanged tolerances.
+Retain the slower native Strip8192 result and the original incomplete Product
+attempt alongside the successful complete experiment.
+
+On Colab CPU/Torch2.11,31 support-report tests passed and the full3,355,443-atom
+initial report took7.563989s. Independent initial certificate: width minimum
+3.000000715,centres in[0,8190.999512] imply multiple nonzero sites and norm far
+above floor; exact counts empty/floor/onehot are all zero. Single-thread CPU
+report diagnostic at4096 atoms/8192 axes: full-axis2.043274s versus bounded
+complete-support0.009419615s,three samples each. These are unmeasured CPU report
+costs, not CUDA training-step speedups. The original timeout is preserved.
+
+The preceding supervisor exited0 and every pool slot was verified stopped after
+this selected large/gate batch. A separate later split-K measurement batch uses
+new snapshots/supervision; its state does not change this completed evidence.
+Explicit large research plans are eligible for integration after exact-head CI;
+public selection stays unchanged. Larger performance still needs work.
