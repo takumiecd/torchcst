@@ -97,3 +97,10 @@ ownership and is not a measured low-memory result.
 ## Persistence and cleanup
 
 All eight complete-step artifacts were imported to the benchmark DB, exported with identical bytes and reimported idempotently. Source/result archives for successful and failed runs, raw logs, original rejected commits and branch checkpoints remain available; no worktree cleanup occurred. Supervisor42474 exited0; all pool slots are stopped, and the lifecycle log confirms Session terminated / No active sessions found on server. No pending experiment remains in this campaign.
+
+## Integration disposition
+
+PR55 incorporates current main and PR46's parameter-batch-loop history. The
+combined-source gate and case-scoped speed/memory policies are recorded in
+[the integration report](20261007-pr-integration.md). The paired measurements
+above retain their original source identity.

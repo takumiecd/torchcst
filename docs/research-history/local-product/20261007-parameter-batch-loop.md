@@ -6,9 +6,9 @@ N64 atom16 single control defaults BB32; this variant reduces register live tile
 
 N64/N128 B32 A204/A819 seed41 FP32 IEEE/TF32off, initial decodedrho>1,production fused AdamW/Polar evolving sigma,21 samples/execution. Controls copy8,param2 atom32,atom16 single/4warps,atom16 split2/4warps; same dense operator. Independent FP64 Y/dX/all atom gradients/nonzero centers, singleton/norm-floor/slices/B1/32/64,20 captured reference updates/moments/steps N64/N128, old backward.
 
-Host886 passed/832 skipped (22.37s), changed-file ruff,diff checks,8 prepare/check,isolated wheel/sdist build passed. GPU correctness/speed pending. Raw evidence parameter-batch-loop-20261007 ignored and preserved.
+Host886 passed/832 skipped (22.37s), changed-file ruff,diff checks,8 prepare/check,isolated wheel/sdist build passed. Raw evidence parameter-batch-loop-20261007 ignored and preserved.
 
-Frozen source889d9ef1; PR46 (base PR44). Check `l4job-824b070a35da4bfc9e60d8a0058c4fae`,64 screen `l4job-a1e8ab45c1d8464ba358ac562fcd5724`,128 screen `l4job-ccd359242e894bd39702625053fee898` queued on supervisor65855, following prefix jobs.
+Frozen source889d9ef1; PR46 (base PR44). Check `l4job-824b070a35da4bfc9e60d8a0058c4fae`,64 screen `l4job-a1e8ab45c1d8464ba358ac562fcd5724`,128 screen `l4job-ccd359242e894bd39702625053fee898` completed; the source-specific results are below.
 
 ## Verified L4 screening,1 execution per condition
 
@@ -22,3 +22,10 @@ Frozen source889d9ef1; PR46 (base PR44). Check `l4job-824b070a35da4bfc9e60d8a005
 |128/8|73.68|69.45|70.19|69.35|70.28|80.42|45.92|
 
 Complete-step median us. Owner4 peaks115712/303104 bytes;owner2 99328/270336;reserved6291456. Batch16 loop does not beat same-job parameter split2 in any screened case. N128 owner4 loop and atom16 single are identical configs; tiny alias timing differences are noise. Owner2 memory/time tradeoff retained; no route promoted. Raw negatives/proof saved,4 measurement artifacts DB byte-identical export/idempotent reimport checks passed in matching branch.
+
+## Integration disposition
+
+PR46 history is included in PR55 alongside compact dX snapshots and current
+main. The combined-source gate and case-scoped speed/memory policies are
+recorded in [the integration report](20261007-pr-integration.md). Original
+screening measurements keep their original source identity.
