@@ -1,0 +1,120 @@
+{
+  "runtime_source_commit": "fb9c79dbb9824c37b82259708231815eb48f8efa",
+  "implementation_commit": "fb9c79dbb9824c37b82259708231815eb48f8efa",
+  "validation": {
+    "cpu": {
+      "passed": 1114,
+      "skipped": 1898,
+      "source_commit": "fb9c79dbb9824c37b82259708231815eb48f8efa",
+      "log_sha256": "b59e231602cf5bc2900e91818cf76cc472ff43eda01ee6344e8ec51b50c25fca"
+    },
+    "l4_gates": [
+      {
+        "job": "l4job-d347d87e317e4f47ac47b3c63cfe34ed",
+        "source_commit": "fb9c79db",
+        "counts": {
+          "large": 48,
+          "preparation": 75,
+          "strip": 56,
+          "grouped": 56,
+          "matrix": 596,
+          "global": 30
+        },
+        "total": 861
+      }
+    ],
+    "build": "wheel/sdist and installed-wheel metadata imports without Triton/benchmarks PASS"
+  },
+  "performance_scope": "FP32 IEEE whole-chart normalized Euclidean Product/input Strip; complete uninstrumented CUDA Graph steps including live widths, fused capturable AdamW and production Polar update;21 synchronized samples; isolated process per route",
+  "memory_scope": "actual warmed allocated/reserved peaks including optimizer state and Graph capture/replay; GPU process usage unmeasured",
+  "jobs": [
+    {
+      "id": "l4job-d347d87e317e4f47ac47b3c63cfe34ed",
+      "label": "profile-product-large-chart-gate",
+      "source_commit": "fb9c79db",
+      "canonical_source_commit": "fb9c79dbb9824c37b82259708231815eb48f8efa",
+      "source_sha256": "2b15ddce183eec9acfa87f59516945b08e32c2d0ed4b7b4e8125604fe627381e",
+      "implementation_source_verified": {
+        "commit": "fb9c79db",
+        "files": 1126,
+        "scope": "exact src/benchmarks/tests/kernel_dev file sets and bytes; Markdown excluded"
+      },
+      "pool_result": {
+        "id": "l4job-d347d87e317e4f47ac47b3c63cfe34ed",
+        "source_sha256": "2b15ddce183eec9acfa87f59516945b08e32c2d0ed4b7b4e8125604fe627381e",
+        "gpu": "NVIDIA L4, GPU-69bbb38e-db2f-35bb-6f8b-db882ba17be4, 580.82.07, 23034 MiB",
+        "requested_accelerator": "L4",
+        "versions": {
+          "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+          "torch": "2.11.0+cu130",
+          "cuda": "13.0",
+          "triton": "3.6.0"
+        },
+        "returncode": 0,
+        "timed_out": false,
+        "started": 1791406012.8051941,
+        "finished": 1791406424.058869,
+        "timeout_scope": "driver process, including any setup inside driver"
+      },
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-b043cc84e68e-1",
+        "downloaded": 1791406424.905687,
+        "archive_sha256": "2a496e2081a4fea4d2a8981fb3879a371cc505a7156e0cb7a08930013648b4f9"
+      },
+      "test_proof": {
+        "status": "PASS",
+        "source": "fb9c79db"
+      },
+      "test_counts": {
+        "large": 48,
+        "preparation": 75,
+        "strip": 56,
+        "grouped": 56,
+        "matrix": 596,
+        "global": 30
+      }
+    }
+  ],
+  "results": [],
+  "warm_diagnostics": [],
+  "oracle_cost_diagnostics": [],
+  "failed_artifacts": [],
+  "pending_jobs": [
+    "l4job-f8f23b04647d44e5aa44aedcf87a30bd",
+    "l4job-bb56666e248047169c46bbc03923223f",
+    "l4job-3e9ac4544164476887606ddc5491360e"
+  ],
+  "max_abs_errors": null,
+  "drivers": [
+    {
+      "path": "benchmarks/cuda/linear/evidence/profile-product-large-chart-20261008/full_scale_oracle_driver.py",
+      "sha256": "795239d0b1568d2996cd86fe2e40fc18e35da1a0a058547aea8492cffe674b7f"
+    },
+    {
+      "path": "benchmarks/cuda/linear/evidence/profile-product-large-chart-20261008/check_driver.py",
+      "sha256": "dd20e4ca437bf2dd0112ea169281975fbd3f367075923a50f53f1e3886cb692b"
+    },
+    {
+      "path": "benchmarks/cuda/linear/evidence/profile-product-large-chart-20261008/measure_driver.py",
+      "sha256": "8cfba642e75aef003402e25a7e8f754d80a6651cc052359cb08d1f9d448cb811"
+    }
+  ],
+  "collection_complete": false,
+  "pool_status": {
+    "1": {
+      "status": "ready",
+      "session": "cst-pool-945e2b948399-1",
+      "endpoint": "gpu-l4-s-kkb-ass1b1-2q0p232gtn1b4",
+      "job": "l4job-f8f23b04647d44e5aa44aedcf87a30bd"
+    },
+    "2": {
+      "status": "stopped",
+      "session": "cst-pool-dfd2efab1d25-2",
+      "endpoint": "gpu-l4-s-kkb-usw4c0-1aqxwfs2b6qie"
+    },
+    "3": {
+      "status": "stopped"
+    }
+  }
+}
