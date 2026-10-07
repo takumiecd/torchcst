@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "prepared",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_global",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 16,
+          "atom_group": 4,
+          "sorting": "torch",
+          "prep_sites": 16
+        }
+      }
+    },
+    {
+      "id": "matrix16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 16
+        }
+      }
+    },
+    {
+      "id": "matrix32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 32
+        }
+      }
+    }
+  ]
+}
