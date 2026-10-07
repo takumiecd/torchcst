@@ -27,7 +27,35 @@ The new GPU suite checks both directional mappings/support coverage, slices,
 batches1/32/64, independent scalar Y/dX/all source gradients and positions,
 outstanding backwards, 20 captured optimizer updates, empty neighbors and exact
 cached refresh after inversion/end-only changes. GPU validation for this corrected
-ownership and selected N128 rho3/mixed timing are pending.
+ownership passed 71 checks (69 CUDA plus 2 declarations) in 177.28s on NVIDIA L4. Frozen source
+`0f79fa60ad7fa79617b2547f5f520a8787c58a19`, validation/measurement job
+`l4job-0b03e028784f494dbe4a6fc36372522f`; source/result archives and all
+197 committed/submitted/worker runtime files match. First N128 rho3/mixed
+measurements pass the full-shape FP64 oracle including nonzero center gradients.
+Independent reverse-order N128 repeats and selected N64 uncached parameter-atom16 comparisons are complete. Their current/candidate initial parameter bytes and all input/target bytes agree; decoded initial rho is >1 and widths change under production updates. All 32 full-shape plan comparisons pass Y/dX/all atom-gradient FP64 checks, including nonzero center derivatives. Maximum absolute errors are 1.34e-6 / 1.46e-6 / 4.47e-6 for Y/dX/P.
+
+## Paired complete-step results
+
+B32, N64/A204 and N128/A819, rho3/mixed, FP32 IEEE/TF32 off. Forward, backward and fused production AdamW/Polar are included. Two independent executions per case, 21 samples each; the second reverses case and plan order. Values below are medians of execution medians. Positive time reduction means faster. N64 uses the matched uncached parameter-atom16 control; this is not a new comparison against every cached64 alternative.
+
+|N / rho / matched route|Current µs|dX11 µs|dense µs|Capture/replay allocated B|Paired time reduction|
+|---|---:|---:|---:|---:|---:|
+|128 / 3 / repair4|68.98|68.71|45.44|306,688 → 300,032|0.38%|
+|128 / 3 / repair8|65.53|67.26|45.44|306,688 → 300,032|-2.63%|
+|128 / mixed / repair4|68.78|68.85|45.07|306,688 → 300,032|-0.11%|
+|128 / mixed / repair8|69.07|69.21|45.07|306,688 → 300,032|-0.21%|
+|64 / 3 / param16|51.10|50.72|38.92|115,712 → 114,176|0.73%|
+|64 / mixed / param16|56.74|56.20|39.05|115,712 → 114,176|0.96%|
+
+Allocated savings repeat exactly: 1,536 B at N64 and 6,656 B at N128 (allocator rounding differs from the logical payload). CST reserved peak remains 6,291,456 B; dense reserved peak 48,234,496 B. Dense allocated is 34,179,584 B (N64) / 34,408,960 B (N128), including workspace rather than just model weights. Dense uses independent nn.Linear initialization; shape/input/target/dtype and timing boundaries agree, but initial matrix and update trajectory differ.
+
+N64 gains are small but have matching direction in both executions: rho3 0.70%/0.76%, mixed 1.15%/0.77%. N128 repair4/rho3 improves 0.59%/0.17%, but repair4/mixed changes 0.15%/-0.37%. Repair8/rho3 regresses 0.61%/4.65%; repair8/mixed is -0.45%/+0.02%. Therefore retain current full13 dX for N128 speed priority; keep dX11 as an explicit low-memory research option. Public dispatch is unchanged. No G4 sweep was warranted by these L4 results.
+
+All four executions use NVIDIA L4 UUID GPU-8bfc06cf-e0fc-f11d-01b7-18018e0e713c, driver580.82.07, Torch2.11.0+cu130, CUDA13.0 and Triton3.6.0. Source/result hashes, per-execution timings and paired deltas are in [the concise results](20261007-dxview11-results.json). Detailed samples/compilers/raw snapshots remain ignored. No physical DRAM/L2 claim; instrumented phase timestamps are diagnostic only and are not summed into complete-step timing.
+
+## Next implementation direction
+
+The measured field reduction changes full-step time by less than 1% on 64 and does not consistently improve 128. Next prioritize eliminating preparation/layout passes or reducing parameter-VJP work while retaining exact geometry and forward/parameter snapshot ownership. This is a design direction, not yet a measured or implemented speedup.
 
 The existing complete-step runner measures current/candidate/dense including
 Graph capture/replay allocated/reserved peaks. Reproduce with
@@ -64,3 +92,8 @@ preserved/excluded. The design was changed to full forward/parameter13 plus dX11
 so the existing VJP can reuse its complete physical view without a new retained
 canonical allocation. The original16*A payload estimate was invalid for that
 ownership and is not a measured low-memory result.
+
+
+## Persistence and cleanup
+
+All eight complete-step artifacts were imported to the benchmark DB, exported with identical bytes and reimported idempotently. Source/result archives for successful and failed runs, raw logs, original rejected commits and branch checkpoints remain available; no worktree cleanup occurred. Supervisor42474 exited0; all pool slots are stopped, and the lifecycle log confirms Session terminated / No active sessions found on server. No pending experiment remains in this campaign.
