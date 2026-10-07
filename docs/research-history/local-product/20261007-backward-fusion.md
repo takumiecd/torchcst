@@ -113,7 +113,37 @@ compilerのspill除去だけでは完全stepの改善を証明できない。
 原票とpaired statisticsは`20261007-backward-fusion-tuned.json`。
 
 L4 drain後に全owned slots停止を確認。再現したN64のrho1.25/mixedだけをG4の1 short jobで比較する。
-`colabjob-d5c79375cfd840f8aa270ebb032ddb6a`。結果回収中。公開dispatchやmain統合は未変更。
+`colabjob-d5c79375cfd840f8aa270ebb032ddb6a`。1 job、各条件1 execution / 21 samples、全サイズoracle 10 Planと4 exact-zero tests、標準runner PASS。
+197 runtime files一致、source/result archive SHA256を検証。実機は
+**NVIDIA RTX PRO 6000 Blackwell Server Edition**、Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0。
+
+| G4 N64 / 初期rho | uncached現行 → 融合16 | repair4現行 → 融合16 | dense |
+| --- | --- | --- | --- |
+| 1.25 | 47.88 → 45.39 | 48.17 → 44.32 | 32.95 |
+| mixed | 51.95 → 52.35 | 53.60 → 52.08 | 32.83 |
+
+rho1.25は最速の現行47.88usから44.32usへ約7.4%短縮。repair4同士は約8%。
+mixedはrepair4同士では改善するが、最速の現行uncachedを超えないためG4では現行を維持。
+融合16は96 registers / 4 spill slots。L4の0 spillをG4へ一般化しない。
+matched allocated +5120 B、最速現行uncachedからrepair4融合へは+6144 B。
+reservedは6291456 Bで同じ。追加global H/Gなしを、物理DRAM trafficなしと解釈しない。
+詳細は`20261007-backward-fusion-g4.json`。
+
+全owned slots停止、supervisor正常終了、server assignmentからowned G4の消失を確認。
+他のT4 assignmentは触っていない。公開dispatch/mainは変更せず、PR #57は研究候補としてdraft。
+
+## 採否と次の一手
+
+N64/rho1.25はL4独立2 executions、G4短比較1 executionで改善。L4 mixedも改善する。
+N128、N64の広い支持、G4 mixedは現行を維持。allocated増を含むため一般採用を保留する。
+現行最速からN64 narrow候補へのallocatedは+6KiBで、今回低メモリ化を達成したとは主張しない。
+
+次は空支持だけをownerからゼロ化して初期化launchを減らす案、およびsource VJPを担当しない
+input ownerでdG計算を明示的に省く案を検証する。現在のコードはG/dGを同時に計算し、
+source VJP storeだけを一意ownerに制限している。実際にコンパイラが省く範囲は未確認。
+これらは未実装の設計であり、速度や物理cache trafficの改善を保証しない。
+全13-field snapshotと既存のwidth/source VJP契約、勾配・更新gateを保つ。
+
 
 ## 保全先
 
