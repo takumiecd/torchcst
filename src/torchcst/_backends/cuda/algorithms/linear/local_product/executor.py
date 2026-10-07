@@ -356,7 +356,7 @@ def _packed_fused(
 
     from . import kernels
 
-    if swap:
+    if swap and dq is None:
         _stamp("dx", 0)
 
     k, n, oi, oo, js, i = _sizes(domain, swap)
@@ -414,7 +414,9 @@ def _packed_fused(
         enable_fp_fusion=False,
     )
     _report(
-        "packed_dx_saved_g"
+        "fused_dx_source_vjp"
+        if dq is not None
+        else "packed_dx_saved_g"
         if swap and saved_g is not None
         else "packed_dx"
         if swap
@@ -434,7 +436,7 @@ def _packed_fused(
         )
         _report("dx_partial_reduce" if swap else "output_partial_reduce", reduced)
         y = result
-    if swap:
+    if swap and dq is None:
         _stamp("dx", 1)
     return y
 
@@ -694,6 +696,8 @@ class _LocalH(torch.autograd.Function):
             and ctx.needs_input_grad[0]
             and ctx.needs_input_grad[1]
         )
+        if fuse_vjp:
+            _stamp("dx_source_vjp", 0)
         fused_partials = (
             packed.new_zeros((tr.cdiv(len(x), recipe.batch_block), len(source), 4))
             if fuse_vjp
@@ -731,6 +735,8 @@ class _LocalH(torch.autograd.Function):
             )
         dq = None
         if fuse_vjp:
+            _stamp("dx_source_vjp", 1)
+            _stamp("source_partial_reduce", 0)
             dq = packed.new_empty((len(source), 4))
             if len(source):
                 reduced = kernels.reduce_owner_partials[
@@ -745,6 +751,7 @@ class _LocalH(torch.autograd.Function):
                     enable_fp_fusion=False,
                 )
                 _report("fused_parameter_partial_reduce", reduced)
+            _stamp("source_partial_reduce", 1)
         elif ctx.needs_input_grad[1]:
             _stamp("parameters", 0)
             a = packed.shape[1]

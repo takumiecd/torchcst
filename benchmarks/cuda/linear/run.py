@@ -456,12 +456,17 @@ def measure(args, run):
         if args.kernel_diagnostics and local and args.worker != "dense":
             from torchcst._backends.cuda.algorithms.linear.local_product import executor
 
+            backward_components = (
+                ("dx_source_vjp", "source_partial_reduce")
+                if run.entry(args.plan_id).plan.recipe.fused_backward
+                else ("dx", "parameters")
+            )
             backend_events = {
                 name: [
                     torch.cuda.Event(enable_timing=True, external=True)
                     for _ in range(2)
                 ]
-                for name in ("prepare", "layout", "h", "output", "dx", "parameters")
+                for name in ("prepare", "layout", "h", "output", *backward_components)
             }
             executor.DIAGNOSTIC_EVENTS = backend_events
         try:
