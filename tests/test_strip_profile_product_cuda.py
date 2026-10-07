@@ -82,7 +82,7 @@ def run(layer, x, route):
     )
 
 
-@pytest.mark.parametrize("route", ["torch", "tiled", "reuse"])
+@pytest.mark.parametrize("route", ["torch", "tiled", "reuse", "grid"])
 def test_metadata_roundtrip_and_support(route):
     plan = ExecutionPlan(
         "research_strip_profile_product",
@@ -142,7 +142,7 @@ def test_boundary_requires_whole_chart_norm():
 
 
 @GPU
-@pytest.mark.parametrize("route", ["tiled", "reuse"])
+@pytest.mark.parametrize("route", ["tiled", "reuse", "grid"])
 @pytest.mark.parametrize(
     "n,out,tile,rows",
     [(33, 16, 16, 1), (65, 31, 32, 7), (256, 64, 64, 32), (1024, 64, 64, 64)],
@@ -176,7 +176,7 @@ def p0():
 
 
 @GPU
-@pytest.mark.parametrize("route", ["tiled", "reuse"])
+@pytest.mark.parametrize("route", ["tiled", "reuse", "grid"])
 @pytest.mark.parametrize("case", ["boundary", "empty", "singleton", "tiny", "floor"])
 def test_boundary_tail_and_global_floor(route, case):
     width = 4 if case == "boundary" else 1
@@ -210,7 +210,7 @@ def test_boundary_tail_and_global_floor(route, case):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["tiled", "reuse"])
+@pytest.mark.parametrize("route", ["tiled", "reuse", "grid"])
 def test_old_vjp_survives_source_scalar_and_pitch_change(route):
     layer = model(torch.tensor([[0.3, 1.5, 2.4, 24.0]]), device="cuda")
     ref = copy.deepcopy(layer)
@@ -232,13 +232,14 @@ def test_old_vjp_survives_source_scalar_and_pitch_change(route):
 
 
 @GPU
-def test_capture_reads_live_pitch():
+@pytest.mark.parametrize("route", ["reuse", "grid"])
+def test_capture_reads_live_pitch(route):
     layer = model(torch.tensor([[0.3, 1.5, 2.4, 24.0]]), width=4, device="cuda")
     x = torch.randn(7, 33, device="cuda")
-    run(layer, x, "reuse")
+    run(layer, x, route)
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):
-        y = run(layer, x, "reuse")
+        y = run(layer, x, route)
     with torch.no_grad():
         layer.operator.charts[0].tile_pitch.add_(0.5)
     graph.replay()
@@ -248,7 +249,7 @@ def test_capture_reads_live_pitch():
 
 
 @GPU
-@pytest.mark.parametrize("route", ["tiled", "reuse"])
+@pytest.mark.parametrize("route", ["tiled", "reuse", "grid"])
 @pytest.mark.parametrize("update", ["torch", "fused"])
 def test_captured_updates_parameters_moments_and_evolving_width(route, update):
     torch.manual_seed(13)
@@ -310,3 +311,57 @@ def test_captured_updates_parameters_moments_and_evolving_width(route, update):
                 atol=2e-5,
             )
     assert torch.any(decode(layer.kernel, layer.atoms.p)[:, 1] != initial)
+
+
+@GPU
+@pytest.mark.parametrize("need_x,need_p", [(True, False), (False, True), (True, True)])
+@pytest.mark.parametrize("atoms", [0, 3])
+def test_grid_gradient_branches_and_zero_atoms(need_x, need_p, atoms):
+    p = torch.tensor(
+        [[0.3, 1.5, 2.4, 24.0], [-0.4, 1.4, 6.3, 32.7], [0.0, 0.0, 1.2, 9.3]]
+    )[:atoms]
+    layer = model(p, device="cuda")
+    ref = copy.deepcopy(layer)
+    layer.atoms.p.requires_grad_(need_p)
+    ref.atoms.p.requires_grad_(need_p)
+    x = torch.randn(7, 33, device="cuda").requires_grad_(need_x)
+    xx = x.detach().clone().requires_grad_(need_x)
+    dy = torch.randn(7, 16, device="cuda").t().contiguous().t()
+    actual, truth = run(layer, x, "grid"), ref.operator.apply(xx, algorithm="factored")
+    inputs = ([x] if need_x else []) + ([layer.atoms.p] if need_p else [])
+    refs = ([xx] if need_x else []) + ([ref.atoms.p] if need_p else [])
+    torch.testing.assert_close(actual, truth, rtol=4e-4, atol=2e-5)
+    # The public empty-atom operator returns a constant; its mathematical VJP is zero.
+    expected = (
+        torch.autograd.grad(truth, refs, dy)
+        if atoms
+        else [torch.zeros_like(t) for t in refs]
+    )
+    for a, b in zip(torch.autograd.grad(actual, inputs, dy), expected):
+        torch.testing.assert_close(a, b, rtol=4e-4, atol=2e-5)
+
+
+@GPU
+def test_grid_wide_support_and_strip_gaps_have_no_capacity_limit():
+    layer = model(
+        torch.tensor([[0.3, 1.5, 22.4, 390.0], [-0.4, 1.4, 45.3, 870.7]]),
+        n=1024,
+        out=64,
+        tile=64,
+        pitch=68,
+        width=400,
+        device="cuda",
+    )
+    x = torch.randn(7, 1024, device="cuda", requires_grad=True)
+    dy = torch.randn(7, 64, device="cuda")
+    y, dx, dp = oracle_vjp(
+        copy.deepcopy(layer.kernel).double(),
+        layer.atoms.p,
+        x,
+        dy,
+        layer.declaration().charts[0],
+    )
+    actual = run(layer, x, "grid")
+    ga = torch.autograd.grad(actual, (x, layer.atoms.p), dy)
+    for a, b in ((actual, y), (ga[0], dx), (ga[1], dp)):
+        torch.testing.assert_close(a.double(), b, rtol=8e-4, atol=2e-5)
