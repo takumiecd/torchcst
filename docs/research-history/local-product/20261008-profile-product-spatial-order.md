@@ -70,3 +70,19 @@ pending; no ordering speedup or memory claim is made.
 
 Raw drivers/logs/source snapshots/receipts live in ignored
 benchmarks/cuda/linear/evidence/profile-product-spatial-order-20261008/.
+
+## Strengthen moving-order verification
+
+Add four targeted CUDA cases (Product/Strip, tile16/32) that capture a complete
+Y/dX/all-atom VJP probe, reverse the four atoms' physical centres across support
+owners, replay and compare with a new full-site FP64 oracle. Assert the live
+order actually changes and remains a bijection. Also retain an earlier ordinary
+forward across that replay and compare its Y/dX/dp with the original oracle.
+Canonical Parameter/amplitude/width rows are never reordered. This covers a
+changed permutation, beyond small centre motions in the20 optimizer updates.
+
+Runtime, catalogs and cases remain byte-identical to initial checkpoint
+c2a53adb528d30b72b5f5def6e6a90bec856df9d; only tests/notes change. The new
+full CPU run gives1234 passed/2235 skipped/18 warnings. The original GPU gate
+remains tied to its immutable198-case suite; a separate4-case motion gate must
+pass on this new source before measurements. No gate or tolerance is removed.

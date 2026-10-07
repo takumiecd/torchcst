@@ -191,3 +191,58 @@ def test_empty_order_has_no_launch_or_atom_remapping():
     p = torch.empty((13, 0), device="cuda")
     ordered, order = order_support(p, 65, 33, 16)
     assert ordered is p and order.shape == (0,) and order.dtype == torch.int32
+
+
+@scenarios.GPU
+@pytest.mark.parametrize("family", ["global", "strip"])
+@pytest.mark.parametrize("tile", [16, 32])
+def test_captured_center_permutation_keeps_old_forward_and_canonical_vjps(family, tile):
+    """Move owners across tiles without changing Parameter/moment row identities."""
+    torch.manual_seed(41)
+    p = torch.tensor(
+        [
+            [0.3, 1.5, 4.4, 100.4],
+            [-0.4, 1.4, 36.4, 4.4],
+            [0.2, 1.3, 20.4, 68.4],
+            [0.5, 1.6, 52.4, 36.4],
+        ],
+        device="cuda",
+    )
+    layer = scenarios.model(p, family, n=129, out=65, device="cuda")
+    x = torch.randn(7, 129, device="cuda", requires_grad=True)
+    dy = torch.randn(7, 65, device="cuda")
+    kwargs = {"spatial_tile": tile, "split_k": 8 if family == "strip" else 1}
+    initial = scenarios.oracle(layer, x, dy, family)
+    retained = run(layer, x, family, **kwargs)
+
+    def probe():
+        y = run(layer, x, family, **kwargs)
+        # Keep the algorithm's saved physical-to-canonical map as a live
+        # diagnostic buffer. Its values must rebuild during Graph replay.
+        order = y.grad_fn.saved_tensors[-1]
+        dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+        return y, dx, dp, order
+
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(2):
+            probe()
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        actual = probe()
+    torch.cuda.synchronize()
+    first_order = actual[3].cpu().tolist()
+    with torch.no_grad():
+        layer.atoms.p[:, 2:].copy_(layer.atoms.p[:, 2:].flip(0))
+    moved = scenarios.oracle(layer, x, dy, family)
+    graph.replay()
+    torch.cuda.synchronize()
+    assert actual[3].cpu().tolist() != first_order
+    assert sorted(actual[3].cpu().tolist()) == list(range(len(p)))
+    for value, truth in zip(actual[:3], moved, strict=True):
+        torch.testing.assert_close(value.double(), truth, rtol=4e-4, atol=2e-5)
+    old_grads = torch.autograd.grad(retained, (x, layer.atoms.p), dy)
+    for value, truth in zip((retained, *old_grads), initial, strict=True):
+        torch.testing.assert_close(value.double(), truth, rtol=4e-4, atol=2e-5)
