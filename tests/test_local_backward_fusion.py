@@ -146,3 +146,20 @@ def test_backward_fusion_single_requested_gradient(plan, grad_input):
     truth = scalar_oracle(xx, pp, value.double(), Domain(case.size, case.size))
     reference = torch.autograd.grad(truth, xx if grad_input else pp, dy.double())[0]
     torch.testing.assert_close(actual.double(), reference, atol=4e-4, rtol=4e-4)
+
+
+@CUDA
+@PLANS
+def test_backward_fusion_all_inactive_partials_are_exact_zero(plan):
+    from benchmarks.cuda.linear.local_product import fixture_operator, initialize
+    from benchmarks.cuda.linear.run import PlanLinear
+
+    case = replace(FIXTURE_CASE, atoms=41)
+    p = initialize(case).cuda()
+    p[:, 2:] = -1000
+    model = PlanLinear(p, fixture_operator(case), plan)
+    x = torch.randn(19, case.size, device="cuda", requires_grad=True)
+    y = model(x)
+    dx, dp = torch.autograd.grad(y, (x, model.p), torch.randn_like(y))
+    for actual in (y, dx, dp):
+        torch.testing.assert_close(actual, torch.zeros_like(actual), atol=0, rtol=0)
