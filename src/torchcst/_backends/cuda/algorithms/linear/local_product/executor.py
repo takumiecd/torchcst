@@ -756,6 +756,7 @@ class _LocalH(torch.autograd.Function):
                     G=g,
                     SAVE_G=use_g,
                     BATCH_SPLITS=parameter_splits,
+                    SUPPORT_TILE=recipe.parameter_support_tile,
                     num_warps=recipe.parameter_warps
                     or (8 if max(domain.input_count, domain.output_count) > 64 else 4),
                     enable_fp_fusion=False,

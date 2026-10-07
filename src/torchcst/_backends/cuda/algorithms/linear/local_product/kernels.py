@@ -976,6 +976,38 @@ def from_h(
 
 
 @tr.jit
+def _param_support_tile(
+    X,
+    P,
+    a,
+    b,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    K: tl.constexpr,
+    START: tl.constexpr,
+    OUT: tl.constexpr,
+    S: tl.constexpr,
+    O: tl.constexpr,
+    SUPPORT_TILE: tl.constexpr,
+    Enabled,
+):
+    """Gather an atom's exact local sites; retain normalized center derivatives."""
+    lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    offset = tl.arange(0, SUPPORT_TILE)
+    site = lo[None, :] + offset[:, None]
+    live = Enabled[None, :] & (offset[:, None] < width[None, :]) & (site < K)
+    factor, derivative = _site_factor(P, a, START + site, A, OUT, S, O)
+    values = tl.load(
+        X + b[:, None, None] * K + site[None, :, :],
+        (b[:, None, None] < B) & live[None, :, :],
+        0.0,
+    )
+    h = tl.sum(values * factor[None, :, :], 1)
+    dh = tl.sum(values * derivative[None, :, :], 1)
+    return h, dh
+
+
+@tr.jit
 def _param_sums(
     X,
     DY,
@@ -1008,6 +1040,7 @@ def _param_sums(
     H_A: tl.constexpr = 0,
     G=None,
     SAVE_G: tl.constexpr = False,
+    SUPPORT_TILE: tl.constexpr = 0,
 ):
     j, i = tl.arange(0, BK), tl.arange(0, BN)
     ha = tl.load(HOrder + a, a < A, 0) if HOrder is not None else a
@@ -1108,7 +1141,15 @@ def _param_sums(
     elif SPARSE:
         _vlo, _vhi, vw = _interval(P, a, A, False, JS, K)
         _ulo, _uhi, uw = _interval(P, a, A, True, IS, N)
-        if SUPPORT_ONLY or tl.maximum(tl.max(vw, 0), tl.max(uw, 0)) <= LIMIT:
+        span = tl.maximum(tl.max(vw, 0), tl.max(uw, 0))
+        if SUPPORT_TILE and span <= SUPPORT_TILE:
+            h, dh = _param_support_tile(
+                X, P, a, b, A, B, K, JS, False, S, OI, SUPPORT_TILE, enabled
+            )
+            g, dg = _param_support_tile(
+                DY, P, a, b, A, B, N, IS, True, S, OO, SUPPORT_TILE, enabled
+            )
+        elif SUPPORT_ONLY or span <= LIMIT:
             h, dh = _support_contract(X, P, a, b, A, B, K, JS, False, S, OI, BB, BA)
             g, dg = _support_contract(DY, P, a, b, A, B, N, IS, True, S, OO, BB, BA)
         else:
@@ -1203,6 +1244,7 @@ def param_vjp(
     G=None,
     SAVE_G: tl.constexpr = False,
     BATCH_SPLITS: tl.constexpr = 1,
+    SUPPORT_TILE: tl.constexpr = 0,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     batch_split = tl.program_id(1) if BATCH_SPLITS > 1 else 0
@@ -1260,6 +1302,7 @@ def param_vjp(
                     H_A=H_A,
                     G=G,
                     SAVE_G=SAVE_G,
+                    SUPPORT_TILE=SUPPORT_TILE,
                 )
             if SINGLETON_FAST:
                 vlo, _vhi, vw = _interval(P, a, A, False, JS, K)

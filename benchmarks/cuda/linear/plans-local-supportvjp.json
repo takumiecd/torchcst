@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "local-ordered-prep-copy8-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_prep_copy8",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-reuse-paramatom16-param4-param2-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_reuse_paramatom16_param4_param2",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_cache_repair4_param2_nostats_copy8",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-cache-repair8-param2-nostats-copy8-atom32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_cache_repair8_param2_nostats_copy8",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-reuse-paramatom16-param4-param2-atom32-pv16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_reuse_paramatom16_param4_param2_pv16",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-reuse-paramatom16-param4-param2-atom32-pv32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_reuse_paramatom16_param4_param2_pv32",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_cache_repair4_param2_nostats_copy8_pv16",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_cache_repair4_param2_nostats_copy8_pv32",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pv16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_cache_repair8_param2_nostats_copy8_pv16",
+          "support_limit": 8
+        }
+      }
+    },
+    {
+      "id": "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pv32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_local_product",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "rho_upper": [
+            1,
+            4,
+            16
+          ],
+          "atom_block": 32,
+          "batch_block": 16,
+          "pack": false,
+          "route": "persistent_supportprep_band_recompute_vjp_ordered_cache_repair8_param2_nostats_copy8_pv32",
+          "support_limit": 8
+        }
+      }
+    }
+  ]
+}
