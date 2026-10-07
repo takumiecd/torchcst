@@ -38,7 +38,9 @@
     "local-ordered-reuse-paramatom16-param4-param2-atom32-pv32",
     "local-ordered-reuse-paramatom16-param4-param2-atom32-spanranges",
     "local-ordered-reuse-paramatom16-param4-param2-atom32-pvc16",
-    "local-ordered-reuse-paramatom16-param4-param2-atom32-pvc32"
+    "local-ordered-reuse-paramatom16-param4-param2-atom32-pvc32",
+    "local-ordered-reuse-paramatom16-param4-param2-atom32-ps16",
+    "local-ordered-reuse-paramatom16-param4-param2-atom32-ps32"
   ],
   "baseline": "local-ordered-prep-copy8-atom32",
   "dense": true

@@ -78,7 +78,9 @@ class LocalRecipe(Recipe):
         if self.route.endswith(("_pvc16", "_pvc32")):
             return self.route[:-6]
         return (
-            self.route[:-5] if self.route.endswith(("_pv16", "_pv32")) else self.route
+            self.route[:-5]
+            if self.route.endswith(("_pv16", "_pv32", "_ps16", "_ps32"))
+            else self.route
         )
 
     @property
@@ -100,6 +102,10 @@ class LocalRecipe(Recipe):
     @property
     def parameter_support_chunk(self):
         return 4 if self.route.endswith(("_pvc16", "_pvc32")) else 0
+
+    @property
+    def parameter_support_limit(self):
+        return int(self.route[-2:]) if self.route.endswith(("_ps16", "_ps32")) else 0
 
     @property
     def reuse_layout(self):
@@ -531,7 +537,7 @@ class LocalRecipe(Recipe):
             raise ValueError(
                 "bounded owner search requires canonical position-ordered keys"
             )
-        if self.parameter_support_tile and not (
+        if (self.parameter_support_tile or self.parameter_support_limit) and not (
             self.ordered_layout and self.recompute_param_h and not self.save_g
         ):
             raise ValueError("local parameter tiles require ordered recomputed VJP")

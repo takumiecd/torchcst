@@ -745,7 +745,7 @@ class _LocalH(torch.autograd.Function):
                     parameter_atom_block,
                     saved,
                     sparse,
-                    recipe.support_limit,
+                    recipe.parameter_support_limit or recipe.support_limit,
                     fused_polar,
                     source if fused_polar else None,
                     scalars[0] if fused_polar else None,

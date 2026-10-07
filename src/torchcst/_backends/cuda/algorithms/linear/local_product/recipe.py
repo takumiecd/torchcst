@@ -53,6 +53,10 @@ class Recipe:
         return 0
 
     @property
+    def parameter_support_limit(self):
+        return 0
+
+    @property
     def bounded_owner_search(self):
         return False
 
