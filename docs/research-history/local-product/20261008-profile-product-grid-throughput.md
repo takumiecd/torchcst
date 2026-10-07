@@ -99,31 +99,99 @@ and l4job-ccc03ecd357448789aa4b2ebc520899a. Two queued jobs were cancelled
 before execution after fixing diagnostic syntax/source arguments; they were
 not GPU measurements.
 
-## Complete-step measurement checkpoint
+## Complete-step results
 
 NVIDIA L4, Torch2.11.0+cu130/CUDA13.0/Triton3.6.0, B32, about5% atoms,
-seed41, FP32/IEEE. Whole-domain normalization, fused capturable AdamW lr1e-4
-weight_decay.01 and production Polar width update are inside every step.
-Each route runs in a separate process; medians use21 synchronized samples.
-Dense uses the same inputs/target and ordinary AdamW on dense weights, with
-a different parameterization.
+seed41, FP32/IEEE. Product A3277/13107/52429; Strip A819/1638/3276 with
+input tiles64, physical pitch68 and output64. Widths initialize at rho3 or8,
+with bounds1..16 and evolve on every step. Whole-domain normalization, fused
+capturable AdamW lr1e-4 weight_decay.01 and production Polar width update are
+inside every step. Each route runs in a separate process; medians use21
+synchronized samples. Dense uses the same inputs/target and ordinary AdamW
+on dense weights, with a different parameterization.
 
-Initial1024/rho3 pilots passed independent large-shape correctness, all
-measure workers, adapter revisions6/5 and the public submission consistency
-check. Both candidates kept the baseline allocated/reserved capture/replay
-peaks. These are warmed allocator measurements including framework workspaces;
-GPU process usage and a model-only memory budget were not measured.
+The first1024/rho3 pilots were followed by the fixed-size/rho comparison below.
+Every row passes all large-shape independent correctness workers, measurements,
+adapter revisions6/5 and the unchanged public submission consistency policy.
+Initial parameters and input/target hashes match within each run. All widths
+change in every route. Maximum errors over18 complete artifacts are
+Y1.8724343e-5, dX1.7297979e-5, dp3.1086469e-6; the same-cotangent production
+Polar update matches exactly. No sample, negative comparison or completed
+artifact was discarded. This is not an8192² performance result.
 
-| route / shape | v1 ms | norm-grouped ms | atoms-grouped ms | sort-torch ms | grouped ms | dense ms |
+| route / initial rho | v1 ms | norm-grouped ms | atoms-grouped ms | sort-torch ms | grouped ms | dense ms |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-|Product1024²|1.66883|1.34757|0.82510|already native|0.60415|0.08299|
-|Strip64x1024|0.22810|0.20733|0.17724|0.19011|0.11852|0.05515|
+|Product256² /3|0.23271|0.21829|0.18579|--|0.10890|0.06167|
+|Product256² /8|0.23917|0.22140|0.19043|--|0.11353|0.06145|
+|Product512² /3|0.46883|0.41689|0.29940|--|0.24317|0.06236|
+|Product512² /8|0.48338|0.43084|0.31630|--|0.26247|0.06268|
+|Product1024² /3|1.64017|1.33886|0.83305|--|0.60621|0.08294|
+|Product1024² /8|1.68721|1.39132|0.91972|--|0.69342|0.08406|
+|Strip64x256 /3|0.08034|0.07746|0.06784|0.09281|0.07695|0.04519|
+|Strip64x256 /8|0.08105|0.07828|0.07014|0.09403|0.07936|0.04640|
+|Strip64x512 /3|0.12357|0.11278|0.09723|0.12356|0.08897|0.05023|
+|Strip64x512 /8|0.12608|0.11526|0.10996|0.12719|0.09435|0.05016|
+|Strip64x1024 /3|0.22670|0.20673|0.17762|0.19008|0.11762|0.05500|
+|Strip64x1024 /8|0.23407|0.21355|0.18662|0.19705|0.12735|0.05533|
 
-Product peak allocated/reserved:25,604,096/102,760,448 bytes;
-Strip:2,355,200/8,388,608 bytes. Product improves2.76x, Strip1.92x in these
-first runs. Dense gaps remain7.28x/2.15x respectively. Further matched256/512/
-1024, rho3/rho8, reverse-order runs and grouped warm diagnostics are pending;
-this checkpoint does not claim their results or8192² performance.
+At rho3, Product grouped improves2.14x/1.93x/2.71x at256²/512²/1024²;
+dense gaps remain1.77x/3.90x/7.31x. At rho8 the improvements remain
+2.11x/1.84x/2.43x. Grouping therefore helps the single whole chart, but does not
+establish dense competitiveness. Product256² also changes sorting as explained
+above. At Strip512/1024, grouped improves1.39x/1.93x for rho3 and1.34x/1.84x
+for rho8. At Strip256, Torch sorting loses: the combined recipe only improves
+by4.2%/2.1%, while the atom-only control improves15.6%/13.5%.
+
+A follow-up declared `small-grouped` recipe retains the existing Triton sort
+with preparation8/atom4. It was measured in a new complete run after the small
+Strip loss, retaining all original routes. No runtime threshold or public
+selection policy is added. Catalog/case source:
+4ed10bac166ee85de284a57d6388b7af3424c79c; runtime/tests are byte-identical to
+f853. Job:l4job-840cbe6954fd4a1a8d83d8c06f3f0602.
+
+| Strip64x256 / rho | v1 ms | atoms-grouped ms | Torch-sort grouped ms | small-grouped ms | dense ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+|3|0.08021|0.06753|0.07691|0.06415|0.04525|
+|8|0.08131|0.07022|0.07986|0.06689|0.04532|
+
+All v1/candidate allocated and reserved peaks match at each shape, including
+this follow-up. These are isolated-process warmed allocator measurements
+including capture/replay, gradients, optimizer state and framework workspaces.
+GPU process usage and a model-only memory budget were not measured. Dense
+pre-capture framework allocation is substantial and remains uninstrumented.
+
+| route / shape | candidate allocated / reserved bytes | dense allocated / reserved bytes |
+| --- | ---: | ---: |
+|Product256²|1,814,016 /6,291,456|35,260,928 /48,234,496|
+|Product512²|6,674,944 /50,331,648|38,537,728 /52,428,800|
+|Product1024²|25,604,096 /102,760,448|51,382,784 /111,149,056|
+|Strip64x256|613,888 /6,291,456|34,425,344 /48,234,496|
+|Strip64x512|1,195,008 /6,291,456|34,753,024 /48,234,496|
+|Strip64x1024|2,355,200 /8,388,608|35,408,384 /48,234,496|
+
+The1024/rho3 pilot, primary and reverse-order Product grouped medians are
+0.604153/0.606212/0.606452ms; corresponding v1 medians are
+1.668828/1.640165/1.582594ms. Strip grouped medians are
+0.118517/0.117623/0.117605ms, with v1
+0.228102/0.226695/0.226630ms. All three independent runs per family remain
+recorded; primary rows are not replaced with the fastest observation.
+
+A separate grouped warm event probe passed, job:
+l4job-947d15613e6546da814b6ec24ec865f5. It reports Product1024² preparation
+115.71us, H58.37us, atom backward165.89us, sorting68.61us, view copies41.98us
+and Y/dX contractions56.32/58.37us. Its own uninstrumented complete step is
+0.607884ms. At Strip64x1024 these diagnostic components are
+13.31/7.17/16.38/26.62/7.17/15.36/11.26us, with complete step0.117464ms.
+Warm events follow a distinct capture/warmup/update sequence, and are not
+pooled with primary worker samples. They motivate another preparation-group
+experiment and examination of axis ordering; no further speedup is established.
+
+All frozen implementation source files in src/benchmarks/tests/kernel_dev
+(excluding Markdown) were compared byte-for-byte against each job's declared
+commit. The tracked summary records source/archive/result hashes, receipts,
+all measured comparisons, widths and both warm probes. Full original per-atom
+width arrays remain in untouched worker artifacts; summary diagnostics for
+large Product use the existing bounded export without changing numerical gates.
 
 ## Reproduction and evidence
 
