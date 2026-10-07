@@ -11,7 +11,7 @@ class StripProductRecipe:
     atom_block: int = 32
 
     def __post_init__(self):
-        if self.execution_route not in ("torch", "tiled", "reuse"):
+        if self.execution_route not in ("torch", "tiled", "reuse", "grid"):
             raise ValueError("requires declared Strip product route")
         if type(self.atom_block) is not int or self.atom_block not in (16, 32):
             raise ValueError("requires atom blocks 16 or 32")

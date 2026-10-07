@@ -86,6 +86,18 @@ class StripProductAlgorithm(Algorithm[StripProductRecipe]):
             raise ValueError("chart gradients unsupported")
         if state.recipe.execution_route == "torch":
             return operator.apply(x, p, algorithm="factored")
+        if state.recipe.execution_route == "grid":
+            from .grid_executor import strip_grid
+
+            with torch.cuda.device(x.device):
+                return strip_grid(
+                    x,
+                    p,
+                    operator.kernel,
+                    operator.charts[0],
+                    chart_spec(declaration),
+                    state.recipe,
+                )
         from .executor import strip_product
 
         with torch.cuda.device(x.device):
