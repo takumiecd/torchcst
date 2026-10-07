@@ -183,8 +183,8 @@ def test_strip_pitch_boundaries_gaps_and_partial_tile_have_exact_full_norm(pitch
         width=4,
         device="cuda",
     )
-    x = torch.randn(7, 65, device="cuda", requires_grad=True)
-    dy = torch.randn(7, 33, device="cuda")
+    x = torch.randn(7, layer.in_features, device="cuda", requires_grad=True)
+    dy = torch.randn(7, layer.out_features, device="cuda")
     y, dx, dp = oracle(layer, x, dy, "strip")
     actual = run(layer, x, "strip")
     grads = torch.autograd.grad(actual, (x, layer.atoms.p), dy)
@@ -255,7 +255,7 @@ def test_zero_atoms_and_gradient_branches(family, grad_x, grad_p):
     for p in [torch.empty(0, 4), torch.tensor([[0.3, 1.5, 2.4, 24]])]:
         layer = model(p, family, device="cuda")
         layer.atoms.p.requires_grad_(grad_p)
-        x = torch.randn(7, 65, device="cuda", requires_grad=grad_x)
+        x = torch.randn(7, layer.in_features, device="cuda", requires_grad=grad_x)
         actual = run(layer, x, family)
         targets = tuple(t for t in [x, layer.atoms.p] if t.requires_grad)
         grads = torch.autograd.grad(actual.sum(), targets)

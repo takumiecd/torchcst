@@ -4,7 +4,7 @@ import torch
 from torch.autograd.function import once_differentiable
 
 
-def _matmul(left, right, recipe):
+def _matmul(left, right, recipe, *, allow_split=True):
     if getattr(recipe, "gemm", "torch") == "torch":
         return left @ right
     import triton as tr
@@ -14,6 +14,40 @@ def _matmul(left, right, recipe):
     m, k = left.shape
     n = right.shape[1]
     result = left.new_empty((m, n))
+    requested = getattr(recipe, "split_k", 1) if allow_split else 1
+    if requested > 1:
+        from .recipe_v4 import split_count
+        from .split_kernels import ieee_split_matmul, reduce_partials
+
+        splits = split_count(k, requested)
+        if splits > 1:
+            partial = left.new_empty((splits, m, n))
+            ieee_split_matmul[(tr.cdiv(m, 16), tr.cdiv(n, 32), splits)](
+                left,
+                right,
+                partial,
+                m,
+                n,
+                k,
+                *left.stride(),
+                *right.stride(),
+                SPLITS=splits,
+                BM=16,
+                BN=32,
+                BK=32,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            reduce_partials[(tr.cdiv(m * n, 256),)](
+                partial,
+                result,
+                m * n,
+                splits,
+                256,
+                num_warps=4,
+                enable_fp_fusion=False,
+            )
+            return result
     ieee_matmul[(tr.cdiv(m, 16), tr.cdiv(n, 32))](
         left,
         right,
@@ -128,7 +162,8 @@ class _ProfileMatrix(torch.autograd.Function):
             if need_x:
                 dx = _matmul(dy, w, ctx.recipe)
             if need_p:
-                dw = _matmul(dy.T, x, ctx.recipe)
+                # Batch K<=64 already has many output tiles. Avoid S*NO*NI scratch.
+                dw = _matmul(dy.T, x, ctx.recipe, allow_split=False)
                 dp = torch.empty_like(source)
                 parameter_vjp[(tr.cdiv(a, group),)](
                     packed,
