@@ -25,7 +25,7 @@ def weight(operator, p):
 
 
 def factors(operator, p):
-    if len(operator.charts) != 2 or not _kernel.supports_factorization(operator.kernel):
+    if not _kernel.supports_factorization(operator.kernel):
         raise ValueError("this operator does not provide input/output factors")
     phi_input, phi_output = _kernel.factors(operator.kernel, *operator.charts, p)
     if phi_input.shape != (operator.in_features, p.shape[0]) or phi_output.shape != (

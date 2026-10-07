@@ -34,7 +34,11 @@ class FactoredAlgorithm(Algorithm[DefaultRecipe]):
     def supports(self, context, recipe):
         if not isinstance(context, LinearContext):
             return SupportResult(("requires a LinearContext",))
-        if len(context.operator.charts) != 2:
+        op = context.operator
+        kernel = op.kernel
+        while kernel.composition == "amplitude":
+            kernel = kernel.inner
+        if len(op.charts) != 2 and kernel.composition != "profile_product":
             return SupportResult(("requires factorized input/output charts",))
         return SupportResult()
 

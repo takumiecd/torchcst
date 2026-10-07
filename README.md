@@ -79,6 +79,18 @@ have been removed. No compatibility aliases or old-checkpoint loader remain.
 Historical experiments before this change are available at Git revision
 `33504c6`; their results describe that source rather than the new wrapper.
 
+## Single-chart Polar profile product
+
+`presets.polar_profile_product(profiles=(TriweightSpec(), TriweightSpec()),
+amplitude_max=1.0, bounds=bandwidth_bounds, w_c=0.1)` declares a product of
+coordinate-wise profiles with the existing Polar amplitude, shared width and
+update law. Pass it to `CSTLinear(chart=chart, atoms=..., kernel=...)` using one
+Euclidean Product/Strip chart with logical shape `[out, in]` and Line/Grid axes.
+Profiles follow coordinate order: all output coordinates, then all input coordinates.
+The complete product is L2-normalized over all operator sites with one norm floor.
+Torch materialized/factored execution is available; this adds no CUDA performance claim.
+See the [API and mathematical contract](docs/profile-product.ja.md).
+
 ## Checkpoint
 
 ```python

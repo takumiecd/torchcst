@@ -13,9 +13,13 @@
 | `Operator.charts / kernel / atoms` | 既存 Module が持つ実状態への参照 |
 | `Operator.p` | `atoms.p` の現在の Tensor。コピーや独自 Parameter は作らない |
 
-単一 Chart の Kernel は radial、Chart の組は separable とする。amplitude の
+単一 Chart の Kernel は radial または profile_product、Chart の組は separable とする。amplitude の
 wrapper は inner Kernel に同じ判定を適用する。片方の配置をもう片方として
 解釈したり、Chart を複製して枚数を合わせたりしない。
+
+profile_productは一枚のEuclidean Product/Strip gridで各座標profileを掛け合わせる。
+入力・出力の因子はbackend内部で分け、単一Chartの `operator.factors()` と
+Torch factored実行に接続する。[数学的な契約](../../../docs/profile-product.ja.md)を参照。
 
 ```python
 from torchcst import CSTLinear
