@@ -42,7 +42,12 @@
         "downloaded": 1791386557.302315,
         "archive_sha256": "d5f5c3950348423eee51e546abee2f2ccea1b374cf50155fe42851efef00c5e3"
       },
-      "artifacts": []
+      "artifacts": [],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-6b3f6225fdab427188125024dd47a348",
@@ -78,7 +83,12 @@
           "name": "profile-product-global-256-rho3.json",
           "sha256": "55361424576a23e2276ae69ac4c70fed4a3c251a6e539d3e4559e8d066f20ace"
         }
-      ]
+      ],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-50298d74c019445bb002e482e0591573",
@@ -114,7 +124,12 @@
           "name": "profile-product-global-512-rho8.json",
           "sha256": "17f265fef736a0ef0ce4cc5b17ce227a30791bb64d38a0b02cd037b50c71e5bf"
         }
-      ]
+      ],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-4a3856b12d0940dfa56d1066458f2619",
@@ -150,7 +165,12 @@
           "name": "profile-product-global-1024-rho3.json",
           "sha256": "e2f29b2152567effa850d073539484307343b796b99c9197efe28250eda9f64e"
         }
-      ]
+      ],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-f4fac95b66fc446e8a5a418dd4bc7cb8",
@@ -182,7 +202,12 @@
           "name": "profile-product-global-256-rho3.json",
           "sha256": "b79c44810b6d4a376b33c5696e5c36bf53e5f44d0f20c99b581a5047896310de"
         }
-      ]
+      ],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-d3fe74f688694cdabcb3aecc78991b48",
@@ -214,7 +239,12 @@
           "name": "profile-product-global-1024-rho3.json",
           "sha256": "ef33a6ff5b34a2554c313e40e5a3d72acf81972ed0d3b4d089b18cae275a925e"
         }
-      ]
+      ],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-77b6f933a38f4e918d8b906bd313a2f4",
@@ -246,7 +276,12 @@
           "name": "profile-product-global-1024-rho3.json",
           "sha256": "32b1f33be2379f1c6fdec16bb511c45eafc6888d54fd69a6239a8baecfa35daf"
         }
-      ]
+      ],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-7dffd8e7e1544a7e82d26324fee8e464",
@@ -273,7 +308,12 @@
         "downloaded": 1791387072.6921,
         "archive_sha256": "30d1845fbccab358f6f187509e9caddddeb38c4cbcc11b2ec82c4a98accf14fa"
       },
-      "artifacts": []
+      "artifacts": [],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-09719987c507405c8771bbda968b47c4",
@@ -300,7 +340,12 @@
         "downloaded": 1791387288.676857,
         "archive_sha256": "e69947fb02d0fc4dfa140ab971190f3b33d8cae9a5fa3f2eebd55e443736750c"
       },
-      "artifacts": []
+      "artifacts": [],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-9078a957a7e84c3fa36fdf0163ab7a1a",
@@ -327,7 +372,12 @@
         "downloaded": 1791387483.190263,
         "archive_sha256": "c91f7c44a554b6a6a2c764048cc5e3f48fd0b3455b2b2c19d78ffbc295249826"
       },
-      "artifacts": []
+      "artifacts": [],
+      "implementation_source_verified": {
+        "commit": "6803dad490fd094e51d420d00930237149a5c94c",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     },
     {
       "id": "l4job-f23cb70e2c6f461f8131934e961bca34",
@@ -363,7 +413,12 @@
           "name": "profile-product-global-1024-rho3.json",
           "sha256": "3ba85f6bb0c74e0b91276d3eacfeab8491127f2ec7e4c10d32870e3125f593b7"
         }
-      ]
+      ],
+      "implementation_source_verified": {
+        "commit": "fcf0e3ed8bc298770892341de53266c70741957a",
+        "tracked_files": 1040,
+        "scope": "src, benchmarks, tests and kernel_dev exact bytes versus measured commit; documentation including benchmark Markdown excluded"
+      }
     }
   ],
   "results": [
