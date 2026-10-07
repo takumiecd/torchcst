@@ -37,8 +37,16 @@ def prepare(
     # Only their product defines W. gamma is d(log D)/d(center), so the
     # existing contraction VJP includes the complete denominator derivative.
     sv, su = tl.where(active, nv, tl.sqrt(FLOOR)), tl.where(active, nu, tl.sqrt(FLOOR))
-    gv = tl.where(active, tl.div_rn(tl.sum(v * dv, 0), tl.maximum(nv2, 1e-38)), 0.0)
-    gu = tl.where(active, tl.div_rn(tl.sum(u * du, 0), tl.maximum(nu2, 1e-38)), 0.0)
+    gv = tl.where(
+        active,
+        tl.div_rn(tl.sum(v * dv, 0), tl.maximum(nv2, 1.1754943508222875e-38)),
+        0.0,
+    )
+    gu = tl.where(
+        active,
+        tl.div_rn(tl.sum(u * du, 0), tl.maximum(nu2, 1.1754943508222875e-38)),
+        0.0,
+    )
     tl.store(P + a, amp)
     tl.store(P + A + a, inv)
     tl.store(P + 2 * A + a, ci)

@@ -64,3 +64,8 @@ python -m benchmarks.cuda.linear.run \
 初回CPU検証: 959 passed/1144 skipped。GPU検証・時間・メモリは未測定。
 新fixture `polar_profile_product` はadapter revision4で既存形式と区別する。
 生ログ・source/result archiveはignored evidenceと共有プールのjobディレクトリに保全する。
+
+初回GPU job `l4job-84432af893d545aa9da3dbd4553f9674` はコンパイル段階で失敗。
+Tritonが `1e-38` 定数をFP64として解釈してFP32専用divisionと不一致になった。
+安全な分母定数をFP32最小normal値へ変更し、同じoracle/許容誤差のまま全suiteを再実行する。
+失敗ログと検証済みarchiveを共有プールjobディレクトリに保持する。
