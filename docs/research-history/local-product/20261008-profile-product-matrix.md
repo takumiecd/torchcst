@@ -7,6 +7,11 @@ The baseline remains the v3 prepared factor route. Public dispatch is unchanged.
 These are Euclidean Product and Euclidean input-Strip routes; this study does
 not implement literal Torus profile-product geometry.
 
+This record describes the PR #66 checkpoint. The subsequent
+[grouped matrix study](20261008-profile-product-grouped-matrix.md) validates and
+integrates explicit matrix research algorithms. Statements below about main
+integration and the grouped prototype's missing GPU gates refer to PR #66.
+
 ## Mathematical and state contract
 
 For atom a, define complete chart profiles u_a(i), v_a(j), amplitude alpha_a,
