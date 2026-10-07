@@ -19,10 +19,11 @@ from tests.benchmark_database_fixtures import artifact
 from tests.test_dispatch_generation import dataset_for
 
 
-def strip_artifact():
+def strip_artifact(size=256):
+    large = size > 1024
     run = load_run(
-        "benchmarks/cuda/linear/cases/profile-product-strip-256-rho3.json",
-        "benchmarks/cuda/linear/plans-profile-product-strip.json",
+        f"benchmarks/cuda/linear/cases/profile-product-{'large-' if large else ''}strip-{size}-rho3.json",
+        f"benchmarks/cuda/linear/plans-profile-product-{'large-' if large else ''}strip.json",
     )
     run = replace(run, case=replace(run.case, rounds=3))
     snapshot = json.loads(json.dumps(run.snapshot()))
@@ -99,6 +100,70 @@ def test_new_projection_and_generation_keep_product_contract():
     assert context.parameter_dim == 4
     assert context.input_shape == (32, 256)
     assert context.operator.out_features == 64
+
+
+def test_large_strip_width_export_keeps_series_hashes_times_and_peaks():
+    import hashlib
+
+    from benchmarks.cuda.linear.global_profile_product import compact_width_record
+    from benchmarks.submissions.__main__ import validate_result
+    from benchmarks.submissions.policy import DEFAULT_POLICY, load_policy
+
+    value = strip_artifact(8192)
+    value.update(
+        execution_id="019c7714-3b77-74d1-9866-e1f484aae2ab",
+        started_at="2026-10-07T16:00:00+00:00",
+    )
+    atoms = value["run"]["case"]["atoms"]
+    initial = [3 + i / 999983 for i in range(atoms)]
+    final = [s + 0.001 for s in initial]
+    for record in value["records"]:
+        if record["metadata"]["worker"] == "measure":
+            record["result"]["sigma_updates"] = {
+                "fixed": False,
+                "source": "current polar activity every forward/replay",
+                "initial": initial.copy(),
+                "final": final.copy(),
+                "changed_atoms": atoms,
+                "max_abs_change": max(b - a for a, b in zip(initial, final)),
+            }
+    original = copy.deepcopy(value)
+    policy = load_policy(DEFAULT_POLICY)
+    raw = json.dumps(original, indent=2).encode()
+    assert len(raw) > policy.max_file_bytes
+    with pytest.raises(ValueError, match="oversized"):
+        validate_result(raw, policy)
+    value["records"] = [
+        compact_width_record(r) if r["metadata"]["worker"] == "measure" else r
+        for r in value["records"]
+    ]
+    validate_result(json.dumps(value, indent=2).encode(), policy)
+    for before, after in zip(original["records"], value["records"], strict=True):
+        assert before["metadata"] == after["metadata"]
+        if before["metadata"]["worker"] != "measure":
+            assert before == after
+            continue
+        assert before["result"]["sigma_updates"]["initial"] == initial
+        assert before["result"]["sigma_updates"]["final"] == final
+        update = after["result"]["sigma_updates"]
+        assert update["atoms"] == atoms
+        assert update["initial_range"] == [min(initial), max(initial)]
+        assert update["final_range"] == [min(final), max(final)]
+        assert (
+            update["initial_sha256"]
+            == hashlib.sha256(
+                json.dumps(initial, separators=(",", ":")).encode()
+            ).hexdigest()
+        )
+        assert (
+            update["final_sha256"]
+            == hashlib.sha256(
+                json.dumps(final, separators=(",", ":")).encode()
+            ).hexdigest()
+        )
+        assert {k: v for k, v in before["result"].items() if k != "sigma_updates"} == {
+            k: v for k, v in after["result"].items() if k != "sigma_updates"
+        }
 
 
 @pytest.mark.parametrize("part", ["scope", "floor", "update"])

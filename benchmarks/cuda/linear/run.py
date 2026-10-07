@@ -816,7 +816,11 @@ def main():
                 "metadata": {"worker": kind, "plan_id": plan_id},
                 "result": {"status": "FAIL", "error": repr(error)},
             }
-        if run.case.fixture == "polar_profile_product_global" and kind == "measure":
+        if (
+            run.case.fixture
+            in ("polar_profile_product_global", "polar_profile_product_strip")
+            and kind == "measure"
+        ):
             from .global_profile_product import compact_width_record
 
             record = compact_width_record(record)

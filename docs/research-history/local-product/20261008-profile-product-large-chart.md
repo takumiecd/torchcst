@@ -99,3 +99,22 @@ The companion summary retains source/result/driver hashes, independent job IDs,
 all samples, correctness and width/support records. Raw CPU/build logs, frozen
 archives, GPU artifacts and drivers remain in ignored
 benchmarks/cuda/linear/evidence/profile-product-large-chart-20261008/.
+
+## Strip width envelope correction before execution
+
+A new synthetic8192 Strip artifact reproduces the5 MiB submission-limit failure
+from retaining both full width arrays for every route in the consolidated JSON.
+The global Product exporter already keeps the unchanged arrays in worker JSONs
+and puts count/ranges/exact-array SHA256 into the consolidated artifact. Extend
+that same exporter to profile-product Strip, with no metric or adapter semantics
+change. Ten Product/Strip database/export tests passed, including unchanged
+metadata, every other result field, both original series and exact hashes. The
+5 MiB policy and all numerical/performance gates stay fixed.
+
+Queued Strip job l4job-6d5d7464679b4221845a57001ebf93b1 was cancelled before
+execution to avoid the proven envelope failure. It has no kernel/timing outcome,
+is retained in the job ledger, and is not a dropped measured case. A new source
+checkpoint will run the same four plans/dense/case and2000/1800s budgets after
+this export fix. The already running Product job is unaffected. Runtime source
+and mathematical contracts remain fb9c79dbb9824c37b82259708231815eb48f8efa;
+new benchmark exporter source is recorded separately in the next job snapshot.
