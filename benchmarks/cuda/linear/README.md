@@ -413,3 +413,41 @@ python -m tools.kernel_dev check \
 The input count here is not a square matrix dimension. L4 complete-step timing,
 peak memory, full-site oracle results and hashes are recorded in
 [`20261007-profile-product-strip-grid.md`](../../../docs/research-history/local-product/20261007-profile-product-strip-grid.md).
+
+## Single regular Product chart, up to1024²
+
+The explicit research algorithm in `plans-profile-product-global.json` keeps
+one Euclidean Product chart with raw Triweight factors, Polar coordinates and
+one whole-operator L2 floor. Both axes grow to256/512/1024, batch32 and about5%
+atoms; no Strip declaration is used. `grid-full` scans every axis site during
+normalization preparation. `grid-support` sums the same norm over conservative
+compact-support bounds, with full-axis fallback for uncertain numerical bounds.
+Both routes share the same H/G contractions and production Polar update.
+
+```bash
+python -m tools.kernel_dev prepare \
+  --plans benchmarks/cuda/linear/plans-profile-product-global.json \
+  --case benchmarks/cuda/linear/cases/profile-product-global-256-rho3.json \
+  --candidate grid-full --candidate grid-support --output output/global-comparison
+python -m tools.kernel_dev check \
+  --plans output/global-comparison/plans.json \
+  --case output/global-comparison/case.json
+python -m tools.kernel_dev test --suite profile-product-global
+python -m benchmarks.cuda.linear.run \
+  --plans benchmarks/cuda/linear/plans-profile-product-global.json \
+  --case benchmarks/cuda/linear/cases/profile-product-global-1024-rho3.json \
+  --polar-update fused --source-commit COMMIT --output output/global-result.json
+python -m benchmarks.submissions check output/global-result.json
+```
+
+The correctness worker uses an independent FP64 complete-site factorization,
+chunked only across atoms, to check Y, dX and every canonical atom gradient.
+CPU tests compare that factorization against an independently normalized raw
+matrix oracle. Adapter revision6 records this distinct scope explicitly; these
+results are not attributed to the earlier raw matrix oracle. See the
+[implementation and measurements](../../../docs/research-history/local-product/20261008-profile-product-global.md).
+
+For this large fixture only, consolidated `sigma_updates` contains initial/final
+ranges, change counts and exact-array hashes; every per-atom width remains in
+the unmodified `measure-PLAN.json` under `artifacts_directory`. This bounds the
+combined submission JSON without changing its timing or correctness records.
