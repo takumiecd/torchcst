@@ -21,13 +21,18 @@ def prepare(
     Scalars,
     FLOOR: tl.constexpr,
     BOUNDS: tl.constexpr = False,
+    STRIP_TILE: tl.constexpr = 0,
+    Pitch=None,
 ):
     a = tl.program_id(0)
     amp, inv = _polar_atom(Source, a, Scalars)
     # Single Chart's canonical order is output center, input center.
     co, ci = tl.load(Source + 4 * a + 2), tl.load(Source + 4 * a + 3)
     j, i = tl.arange(0, PK), tl.arange(0, PN)
-    v, dv = _raw(OI + j * S - ci, inv)
+    position = OI + j * S
+    if STRIP_TILE:
+        position = OI + (j % STRIP_TILE) * S + (j // STRIP_TILE) * tl.load(Pitch)
+    v, dv = _raw(position - ci, inv)
     u, du = _raw(OO + i * S - co, inv)
     v, dv = tl.where(j < KI, v, 0.0), tl.where(j < KI, dv, 0.0)
     u, du = tl.where(i < NO, u, 0.0), tl.where(i < NO, du, 0.0)

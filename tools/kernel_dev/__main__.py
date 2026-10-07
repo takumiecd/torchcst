@@ -24,6 +24,7 @@ from benchmarks.cuda.linear.manifest import (
 
 ROOT = Path(__file__).resolve().parents[2]
 GPU_SUITES = {
+    "profile-product-strip": ("tests/test_strip_profile_product_cuda.py",),
     "profile-product": ("tests/test_profile_product_cuda.py",),
     "atom-update": (
         "tests/test_atom_update_dispatch.py",

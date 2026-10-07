@@ -17,6 +17,9 @@ from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import
 from torchcst._backends.cuda.algorithms.linear.profile_product.algorithm import (
     ProductAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
+    StripProductAlgorithm,
+)
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.serialization import decode_json
@@ -55,6 +58,7 @@ REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())
 REGISTRY.register(ProductAlgorithm())
+REGISTRY.register(StripProductAlgorithm())
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
@@ -179,16 +183,28 @@ class BenchmarkCase:
             "normalized_euclidean_strip",
             "local_polar_product",
             "polar_profile_product",
+            "polar_profile_product_strip",
         ):
             raise ValueError("unknown benchmark fixture")
         sizes = (
-            (16, 32, 64, 128)
-            if self.fixture in ("local_polar_product", "polar_profile_product")
+            (256, 512, 1024)
+            if self.fixture == "polar_profile_product_strip"
+            else (16, 32, 64, 128)
+            if self.fixture
+            in (
+                "local_polar_product",
+                "polar_profile_product",
+                "polar_profile_product_strip",
+            )
             else (1024, 8192)
         )
         if type(self.size) is not int or self.size not in sizes:
             raise ValueError(f"fixture size must be one of {sizes}")
-        if self.fixture in ("local_polar_product", "polar_profile_product") and (
+        if self.fixture in (
+            "local_polar_product",
+            "polar_profile_product",
+            "polar_profile_product_strip",
+        ) and (
             type(self.rows) is not int or not 1 <= self.rows <= 64 or self.atoms < 4
         ):
             raise ValueError(
@@ -214,7 +230,12 @@ class BenchmarkCase:
                 "rho8",
                 "rho16",
             )
-            if self.fixture in ("local_polar_product", "polar_profile_product")
+            if self.fixture
+            in (
+                "local_polar_product",
+                "polar_profile_product",
+                "polar_profile_product_strip",
+            )
             else ("broad", "sharp")
         )
         if self.profile not in profiles or self.dtype != "float32":
@@ -223,7 +244,12 @@ class BenchmarkCase:
             raise TypeError("case needs an OptimizerSpec")
         if self.widths is not None and (
             type(self.widths) is not WidthFixture
-            or self.fixture not in ("local_polar_product", "polar_profile_product")
+            or self.fixture
+            not in (
+                "local_polar_product",
+                "polar_profile_product",
+                "polar_profile_product_strip",
+            )
             or self.profile != "mixed"
         ):
             raise ValueError("custom widths require the local mixed fixture")
@@ -248,7 +274,8 @@ class BenchmarkRun:
             algorithm = REGISTRY.validate_plan(entry.plan)
             if algorithm.operation_id != OPERATION or algorithm.semantics_id != (
                 "kernel-atom-sum-v1"
-                if self.case.fixture == "polar_profile_product"
+                if self.case.fixture
+                in ("polar_profile_product", "polar_profile_product_strip")
                 else LOCAL_SEMANTICS
                 if self.case.fixture == "local_polar_product"
                 else SEMANTICS

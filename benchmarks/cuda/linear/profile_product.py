@@ -71,7 +71,7 @@ def summarize(q, domain):
     }
 
 
-def oracle_atoms(value, p, n):
+def oracle_atoms(value, p, n, *, input_sites=None, output_sites=None):
     """Hand-written Polar map; enumerate complete matrices and their L2 norm."""
     q = p[:, :2].square().sum(-1)
     amp = value.amplitude_max * p[:, 0] / q.clamp_min(torch.finfo(p.dtype).tiny).sqrt()
@@ -90,13 +90,15 @@ def oracle_atoms(value, p, n):
         .detach()
     )
     sites = torch.arange(n, device=p.device, dtype=p.dtype)
+    output_sites = sites if output_sites is None else output_sites
+    input_sites = sites if input_sites is None else input_sites
     u = (
-        (1 - (sites[None, :] - p[:, 2, None]).square() / sigma[:, None].square())
+        (1 - (output_sites[None, :] - p[:, 2, None]).square() / sigma[:, None].square())
         .clamp_min(0)
         .pow(3)
     )
     v = (
-        (1 - (sites[None, :] - p[:, 3, None]).square() / sigma[:, None].square())
+        (1 - (input_sites[None, :] - p[:, 3, None]).square() / sigma[:, None].square())
         .clamp_min(0)
         .pow(3)
     )
