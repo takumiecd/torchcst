@@ -1,0 +1,40 @@
+[
+  {
+    "job": "l4job-5afa74ee13e2416698bc88a6f0cf49c4",
+    "source_commit": "42202e8c",
+    "source_sha256": "57d6ff7b19d05b85a24196c4e1d1877958fccf28a76b99bc4c261e49b384ae6c",
+    "archive_sha256": "a425173aeca2faffc581bd01be9e66a9da3d05fe1f9a7496cf3f941592b87056",
+    "gpu": "NVIDIA L4, GPU-8d97ad9b-d7d5-2ef7-bbed-a0ac83ec065f, 580.82.07, 23034 MiB",
+    "versions": {
+      "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "triton": "3.6.0"
+    },
+    "status": "FAIL_diagnostic_event",
+    "fullshape_oracles_passed": 5,
+    "exact_zero_tests_passed": 2,
+    "timing_adopted": false,
+    "reason": "unrecorded legacy parameters event after source VJP fusion; fixed ceed4417; paired comparison rerun from new snapshot",
+    "preserved": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-5afa74ee13e2416698bc88a6f0cf49c4"
+  },
+  {
+    "job": "l4job-e6bff3f46879445f89a0a5e3d1448728",
+    "source_commit": "42202e8c",
+    "source_sha256": "db43d6b11c6379c84a3ed1365305be4e4372a0e8d7b67400c334980f987f3ace",
+    "archive_sha256": "eb113f548a34c25b53819b0dac2214c4e9e40f1d2f8d19e52e1124be389d15a4",
+    "gpu": "NVIDIA L4, GPU-8d97ad9b-d7d5-2ef7-bbed-a0ac83ec065f, 580.82.07, 23034 MiB",
+    "versions": {
+      "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "triton": "3.6.0"
+    },
+    "status": "FAIL_diagnostic_event",
+    "fullshape_oracles_passed": 5,
+    "exact_zero_tests_passed": 2,
+    "timing_adopted": false,
+    "reason": "unrecorded legacy parameters event after source VJP fusion; fixed ceed4417; paired comparison rerun from new snapshot",
+    "preserved": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-e6bff3f46879445f89a0a5e3d1448728"
+  }
+]

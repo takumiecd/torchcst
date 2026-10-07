@@ -52,11 +52,40 @@ Y/dX/全source VJP、batch1/19/32/64、retained/outstanding backward、片方だ
 現行・候補・denseのParameter/input/target hashを照合し、capture/replayを含む
 peak allocated/reservedを報告する。phase/compiler診断を完全stepの代用にしない。
 
-性能結果: 回収中。初回N64 attemptは5 Plan全サイズFP64と2件のexact-zero検査がPASSした後、
-独立parameters区間のevent未記録により診断でFAIL。失敗した比較から性能を採用しない。
+## 初回の結果: 32 atoms/iteration
+
+同一構成のmatched controlとの完全step時間（us）。各条件は1 execution / 21 samples。
+
+| size / 初期rho | uncached現行 → 融合 | repair4現行 → 融合 | dense |
+| --- | --- | --- | --- |
+| N64 / 3 | 51.49 → 50.62 | 52.38 → 50.47 | 38.79 |
+| N64 / 8 | 51.15 → 53.20 | 52.06 → 51.93 | 39.26 |
+| N128 / 3 | 68.31 → 70.38 | 68.60 → 71.90 | 45.80 |
+| N128 / 8 | 70.25 → 80.82 | 65.54 → 77.47 | 45.69 |
+
+matched allocatedはN64で+5120 B、N128で+1024 B。reservedは6291456 Bで同じ。
+N64の融合は201 registers / 0 spill slots、N128は255 / 62。幅広N128は15〜18%悪化。
+32-atoms版は採用しない。N64/rho3の小さい改善だけを一般化しない。
+数値・compiler・job/source/archive hashは`20261007-backward-fusion-screen.json`に保存。
+DBへ4 artifactをimportし、byte-identical exportと同じprovenanceでのidempotent再importを確認。
+
+初回のN64/N128 attemptは5 Plan全サイズFP64と各2件のexact-zero検査がPASSした後、
+廃止した独立parameters区間のevent未記録により診断でFAIL。失敗した比較から性能を採用しない。
 融合用dx_source_vjp/source_partial_reduce区間を明示する修正を`ceed4417`に記録。
-レジスタ/spill、zero-fill launch、dX scratchとsource partialの同時生存、
-owner間のsource仕事量の偏りを採否判断で確認する。GPU gateだけでは高速化を主張しない。
+失敗archiveとreasonは`20261007-backward-fusion-failed.json`に保存。
+
+## 次の候補: 融合だけ16 atoms/iteration
+
+forwardのatom_block32、batch16、owner16入力siteはそのまま。
+両勾配を融合する場合だけatom blockを16へ変え、ライブ値とspillを減らす。
+新しい明示的route `_fusedback16` を追加。32-atoms routeの意味は変えない。
+`b0bbc45d` のCPU 894 passed / 1064 skipped、8 paired prepare、宣言、Ruff PASS。
+L4 `l4job-0c05ac42b2e344c68543db8bb6fe8c55`: **26 CUDA tests PASS / 27 deselected**。
+197 runtime filesのcommitted/submitted/worker SHA256一致を確認。
+
+性能jobはN64/N128の初期rho1.25/3/8/mixedを全サイズFP64 oracleで再確認してから測る。
+`l4job-b1d6c9360d6142d1a622c0159d3605d3` / `l4job-98a44095052f48d08a9ce05b11912dbc`。
+回収中。明確な改善があれば独立の逆順jobで再測定し、検証済み候補のみG4短比較へ進める。
 
 ## 保全先
 
