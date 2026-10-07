@@ -20,6 +20,10 @@ from torchcst._backends.cuda.algorithms.linear.profile_product.algorithm import 
 from torchcst._backends.cuda.algorithms.linear.profile_product_global import (
     GlobalProductAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.profile_product_global.algorithm_v2 import (
+    GroupedProductAlgorithm,
+    GroupedStripAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
     StripProductAlgorithm,
 )
@@ -63,6 +67,8 @@ REGISTRY.register(LocalAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())
+REGISTRY.register(GroupedProductAlgorithm())
+REGISTRY.register(GroupedStripAlgorithm())
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 

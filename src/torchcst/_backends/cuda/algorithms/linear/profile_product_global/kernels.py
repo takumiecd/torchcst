@@ -128,6 +128,7 @@ def contract(
     SWAP: tl.constexpr,
     BA: tl.constexpr,
     SPLITS: tl.constexpr,
+    ATOM_MAJOR: tl.constexpr = False,
 ):
     rb, owner, split = tl.program_id(0), tl.program_id(1), tl.program_id(2)
     rows = rb * 16 + tl.arange(0, 16)
@@ -157,9 +158,10 @@ def contract(
             amp[:, None] * tl.div_rn(profile, norm[:, None]),
             0,
         )
-        h = tl.load(
-            T + rows[:, None] * A + a[None, :], (rows[:, None] < B) & valid[None, :], 0
-        )
+        offsets = rows[:, None] * A + a[None, :]
+        if ATOM_MAJOR:
+            offsets = a[None, :] * B + rows[:, None]
+        h = tl.load(T + offsets, (rows[:, None] < B) & valid[None, :], 0)
         result += tl.dot(h, profile, input_precision="ieee")
     tl.store(
         Result + split * B * N + rows[:, None] * N + sites[None, :],
