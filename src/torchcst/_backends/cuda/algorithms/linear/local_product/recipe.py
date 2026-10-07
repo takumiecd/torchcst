@@ -77,6 +77,10 @@ class Recipe:
         return False
 
     @property
+    def compact_ordered_view(self):
+        return False
+
+    @property
     def ordered_layout(self):
         return False
 

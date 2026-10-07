@@ -245,7 +245,7 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
     atoms = packed.shape[1]
     groups = max(tr.cdiv(domain.input_count, 16), tr.cdiv(domain.output_count, 16))
     stride = groups + 5
-    views = packed.new_empty((2, 13, atoms))
+    views = packed.new_empty((2, 11 if recipe.compact_ordered_view else 13, atoms))
     orders = packed.new_empty((2, atoms), dtype=torch.int32)
     offsets = packed.new_empty((2, stride), dtype=torch.int32)
     ranges = packed.new_empty((2, groups, 6), dtype=torch.int32)
@@ -270,6 +270,7 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             not recipe.owner_index and not recipe.parallel_owner_ranges,
             recipe.compact_order_key,
             COPY=not recipe.parallel_order_copy,
+            COMPACT_VIEW=recipe.compact_ordered_view,
             VECTOR_RANGES=recipe.vector_owner_ranges,
             OWNER_BLOCK=tr.next_power_of_2(groups),
             PREFIX_RANGES=recipe.prefix_owner_ranges,
@@ -319,6 +320,7 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
                 Views=views,
                 Orders=orders,
                 COPY=recipe.parallel_order_copy,
+                COMPACT_VIEW=recipe.compact_ordered_view,
                 RANGES=not (
                     recipe.prefix_owner_ranges or recipe.histogram_owner_ranges
                 ),
@@ -390,6 +392,7 @@ def _packed_fused(
         UNROLL_SUPPORT=recipe.unroll_support,
         BN=recipe.output_block,
         RECOMPUTE_H=recipe.recompute_h,
+        COMPACT_VIEW=recipe.compact_ordered_view,
         OwnerIds=owner_ids,
         OwnerOffsets=owner_offsets,
         INDEX_A=owner_ids.shape[-1] if owner_ids is not None else 0,

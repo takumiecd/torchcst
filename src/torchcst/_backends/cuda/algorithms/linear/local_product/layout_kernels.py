@@ -23,9 +23,12 @@ def ordered_owner_ranges(
     Orders=None,
     COPY: tl.constexpr = False,
     RANGES: tl.constexpr = True,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
     """Build exact overlap envelopes independently for each physical owner."""
     direction, owner = tl.program_id(0), tl.program_id(1)
+    fields: tl.constexpr = 11 if COMPACT_VIEW else 13
+    source_compact: tl.constexpr = COMPACT_VIEW and not COPY
     a = tl.arange(0, AC)
     if COPY:
         source = tl.load(Orders + direction * C + a, a < C, 0)
@@ -33,17 +36,24 @@ def ordered_owner_ranges(
         # envelope from canonical metadata; no cross-CTA read-after-write exists.
         chunk: tl.constexpr = tl.cdiv(C, GROUPS)
         copy_lane = (a >= owner * chunk) & (a < (owner + 1) * chunk) & (a < C)
-        for field in tl.static_range(13):
-            value = tl.load(P + field * C + source, copy_lane, 0.0)
-            tl.store(Views + direction * 13 * C + field * C + a, value, copy_lane)
+        for field in tl.static_range(fields):
+            canonical: tl.constexpr = (
+                field + 2 if COMPACT_VIEW and field >= 6 else field
+            )
+            value = tl.load(P + canonical * C + source, copy_lane, 0.0)
+            tl.store(Views + direction * fields * C + field * C + a, value, copy_lane)
     else:
-        P = P + direction * 13 * C
+        P = P + direction * fields * C
         source = a
     if RANGES:
-        vlo, vhi, vw = _interval(P, source, C, False, JS, K)
-        ulo, uhi, uw = _interval(P, source, C, True, IS, N)
+        vlo, vhi, vw = _interval(
+            P, source, C, False, JS, K, COMPACT_VIEW=source_compact
+        )
+        ulo, uhi, uw = _interval(P, source, C, True, IS, N, COMPACT_VIEW=source_compact)
         lo, hi = tl.where(direction == 0, ulo, vlo), tl.where(direction == 0, uhi, vhi)
-        flags = tl.load(P + 8 * C + source, a < C, -1).to(tl.int32)
+        flags = tl.load(P + (6 if source_compact else 8) * C + source, a < C, -1).to(
+            tl.int32
+        )
         inv = tl.load(P + C + source, a < C, 0.0)
         band = tl.where(
             inv > 1.0 / (S * S), 0, tl.where(inv > 1.0 / ((S * MID) * (S * MID)), 1, 2)
@@ -296,6 +306,7 @@ def ordered_views(
     RANGES: tl.constexpr,
     COMPACT_KEY: tl.constexpr = False,
     COPY: tl.constexpr = True,
+    COMPACT_VIEW: tl.constexpr = False,
     VECTOR_RANGES: tl.constexpr = False,
     OWNER_BLOCK: tl.constexpr = 1,
     PREFIX_RANGES: tl.constexpr = False,
@@ -549,9 +560,13 @@ def ordered_views(
             tl.store(target, begin, owner < STRIDE - 5)
             tl.store(target + 1, end, owner < STRIDE - 5)
     if COPY:
-        for field in tl.static_range(13):
-            value = tl.load(P + field * C + source, a < C, 0.0)
-            tl.store(Views + direction * 13 * C + field * C + a, value, a < C)
+        fields: tl.constexpr = 11 if COMPACT_VIEW else 13
+        for field in tl.static_range(fields):
+            canonical: tl.constexpr = (
+                field + 2 if COMPACT_VIEW and field >= 6 else field
+            )
+            value = tl.load(P + canonical * C + source, a < C, 0.0)
+            tl.store(Views + direction * fields * C + field * C + a, value, a < C)
     tl.store(Orders + direction * C + a, source, a < C)
     tl.store(Offsets + direction * STRIDE + g, starts, g < STRIDE)
     if RANGES:

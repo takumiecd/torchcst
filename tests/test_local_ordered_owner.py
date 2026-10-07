@@ -82,7 +82,12 @@ def test_ordered_values_ranges_and_snapshot_coverage(plan, sliced):
                 order.sort().values, torch.arange(len(p), device=p.device)
             )
             torch.testing.assert_close(
-                views[direction], packed[:, order], atol=0, rtol=0
+                views[direction],
+                packed[[0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12]][:, order]
+                if plan.recipe.compact_ordered_view
+                else packed[:, order],
+                atol=0,
+                rtol=0,
             )
             if plan.recipe.order_by_position:
                 for phase in range(3):

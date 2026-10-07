@@ -190,28 +190,53 @@ def prepare_support(
 
 @tr.jit
 def _factor(
-    P, a, points, A: tl.constexpr, OUT: tl.constexpr, S: tl.constexpr, O: tl.constexpr
+    P,
+    a,
+    points,
+    A: tl.constexpr,
+    OUT: tl.constexpr,
+    S: tl.constexpr,
+    O: tl.constexpr,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
     valid = a < A
     inv = tl.load(P + A + a, valid, 0.0)
     c = tl.load(P + (3 if OUT else 2) * A + a, valid, 0.0)
     norm = tl.load(P + (5 if OUT else 4) * A + a, valid, 1.0)
-    gamma = tl.load(P + (7 if OUT else 6) * A + a, valid, 0.0)
-    flag = tl.load(P + 8 * A + a, valid, 0.0).to(tl.int32)
-    singleton = ((flag >> (1 if OUT else 0)) & 1) != 0
     raw, dc = _raw(O + points[:, None] * S - c[None, :], inv[None, :])
     f = raw / norm[None, :]
-    d = dc / norm[None, :] - f * gamma[None, :]
-    d = tl.where(singleton[None, :], 0.0, d)
+    if COMPACT_VIEW:
+        # Value-only snapshot; atom/position VJPs use canonical 13 fields.
+        d = tl.full(f.shape, 0.0, tl.float32)
+    else:
+        gamma = tl.load(P + (7 if OUT else 6) * A + a, valid, 0.0)
+        flag = tl.load(P + 8 * A + a, valid, 0.0).to(tl.int32)
+        singleton = ((flag >> (1 if OUT else 0)) & 1) != 0
+        d = dc / norm[None, :] - f * gamma[None, :]
+        d = tl.where(singleton[None, :], 0.0, d)
     return tl.where(valid[None, :], f, 0.0), tl.where(valid[None, :], d, 0.0)
 
 
 @tr.jit
 def _interval(
-    P, a, A: tl.constexpr, OUT: tl.constexpr, START: tl.constexpr, COUNT: tl.constexpr
+    P,
+    a,
+    A: tl.constexpr,
+    OUT: tl.constexpr,
+    START: tl.constexpr,
+    COUNT: tl.constexpr,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
-    lo = tl.load(P + (11 if OUT else 9) * A + a, a < A, 0.0).to(tl.int32)
-    hi = tl.load(P + (12 if OUT else 10) * A + a, a < A, 0.0).to(tl.int32)
+    lo = tl.load(
+        P + ((9 if OUT else 7) if COMPACT_VIEW else (11 if OUT else 9)) * A + a,
+        a < A,
+        0.0,
+    ).to(tl.int32)
+    hi = tl.load(
+        P + ((10 if OUT else 8) if COMPACT_VIEW else (12 if OUT else 10)) * A + a,
+        a < A,
+        0.0,
+    ).to(tl.int32)
     lo = tl.minimum(tl.maximum(lo - START, 0), COUNT)
     hi = tl.minimum(tl.maximum(hi - START, 0), COUNT)
     return lo, hi, tl.maximum(hi - lo, 0)
@@ -219,17 +244,28 @@ def _interval(
 
 @tr.jit
 def _site_factor(
-    P, a, points, A: tl.constexpr, OUT: tl.constexpr, S: tl.constexpr, O: tl.constexpr
+    P,
+    a,
+    points,
+    A: tl.constexpr,
+    OUT: tl.constexpr,
+    S: tl.constexpr,
+    O: tl.constexpr,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
     inv = tl.load(P + A + a, a < A, 0.0)
     c = tl.load(P + (3 if OUT else 2) * A + a, a < A, 0.0)
     norm = tl.load(P + (5 if OUT else 4) * A + a, a < A, 1.0)
-    gamma = tl.load(P + (7 if OUT else 6) * A + a, a < A, 0.0)
-    flag = tl.load(P + 8 * A + a, a < A, 0.0).to(tl.int32)
     raw, dc = _raw(O + points * S - c, inv)
     f = raw / norm
-    d = dc / norm - f * gamma
-    d = tl.where(((flag >> (1 if OUT else 0)) & 1) != 0, 0.0, d)
+    if COMPACT_VIEW:
+        # This result is unused by value consumers; canonical VJP stays exact.
+        d = tl.full(f.shape, 0.0, tl.float32)
+    else:
+        gamma = tl.load(P + (7 if OUT else 6) * A + a, a < A, 0.0)
+        flag = tl.load(P + 8 * A + a, a < A, 0.0).to(tl.int32)
+        d = dc / norm - f * gamma
+        d = tl.where(((flag >> (1 if OUT else 0)) & 1) != 0, 0.0, d)
     return f, d
 
 
@@ -252,8 +288,9 @@ def _support_contract(
     RHO: tl.constexpr = 4.0,
     THREE_BAND: tl.constexpr = False,
     Enabled=None,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
-    lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    lo, _hi, width = _interval(P, a, A, OUT, START, K, COMPACT_VIEW=COMPACT_VIEW)
     if Enabled is not None:
         width = tl.where(Enabled, width, 0)
     if NARROW_ONLY:
@@ -272,7 +309,9 @@ def _support_contract(
                 (b[:, None] < B) & live[None, :],
                 0.0,
             )
-            f, dc = _site_factor(P, a, START + j, A, OUT, S, O)
+            f, dc = _site_factor(
+                P, a, START + j, A, OUT, S, O, COMPACT_VIEW=COMPACT_VIEW
+            )
             h += x * f[None, :]
             dh += x * dc[None, :]
         width = tl.where(fast, 0, width)
@@ -282,7 +321,7 @@ def _support_contract(
         x = tl.load(
             X + b[:, None] * K + j[None, :], (b[:, None] < B) & live[None, :], 0.0
         )
-        f, dc = _site_factor(P, a, START + j, A, OUT, S, O)
+        f, dc = _site_factor(P, a, START + j, A, OUT, S, O, COMPACT_VIEW=COMPACT_VIEW)
         h += x * f[None, :]
         dh += x * dc[None, :]
     return h, dh
@@ -304,8 +343,9 @@ def _unrolled_support_h(
     O: tl.constexpr,
     BB: tl.constexpr,
     BA: tl.constexpr,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
-    lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    lo, _hi, width = _interval(P, a, A, OUT, START, K, COMPACT_VIEW=COMPACT_VIEW)
     width = tl.where(enabled, width, 0)
     h = tl.full((BB, BA), 0.0, tl.float32)
     # The caller checks the actual span. Sigma remains a per-step value.
@@ -315,7 +355,7 @@ def _unrolled_support_h(
         x = tl.load(
             X + b[:, None] * K + j[None, :], (b[:, None] < B) & live[None, :], 0.0
         )
-        f, _dc = _site_factor(P, a, START + j, A, OUT, S, O)
+        f, _dc = _site_factor(P, a, START + j, A, OUT, S, O, COMPACT_VIEW=COMPACT_VIEW)
         h += x * f[None, :]
     return h
 
@@ -337,10 +377,11 @@ def _vector_support_contract(
     BB: tl.constexpr,
     BA: tl.constexpr,
     BS: tl.constexpr = 8,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
     # Runtime support counts certify the bounded reduction. Larger spans retain
     # the ordinary loop, including coordinate-rounding and sliced-domain cases.
-    lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    lo, _hi, width = _interval(P, a, A, OUT, START, K, COMPACT_VIEW=COMPACT_VIEW)
     width = tl.where(enabled, width, 0)
     if tl.max(width, 0) <= BS:
         offset = tl.arange(0, BS)
@@ -351,7 +392,9 @@ def _vector_support_contract(
             (b[:, None, None] < B) & live[None, :, :],
             0.0,
         )
-        f, dc = _site_factor(P, a[:, None], START + j, A, OUT, S, O)
+        f, dc = _site_factor(
+            P, a[:, None], START + j, A, OUT, S, O, COMPACT_VIEW=COMPACT_VIEW
+        )
         f, dc = tl.where(live, f, 0.0), tl.where(live, dc, 0.0)
         h = tl.sum(x * f[None, :, :], 2)
         dh = tl.sum(x * dc[None, :, :], 2)
@@ -371,6 +414,7 @@ def _vector_support_contract(
             BB,
             BA,
             Enabled=enabled,
+            COMPACT_VIEW=COMPACT_VIEW,
         )
     return h, dh
 
@@ -393,12 +437,13 @@ def _matrix_contract(
     RHO: tl.constexpr = 4.0,
     THREE_BAND: tl.constexpr = False,
     Enabled=None,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
     j = tl.arange(0, BK)
     x = tl.load(
         X + b[:, None] * K + j[None, :], (b[:, None] < B) & (j[None, :] < K), 0.0
     )
-    v, dv = _factor(P, a, START + j, A, OUT, S, O)
+    v, dv = _factor(P, a, START + j, A, OUT, S, O, COMPACT_VIEW=COMPACT_VIEW)
     v, dv = tl.where(j[:, None] < K, v, 0.0), tl.where(j[:, None] < K, dv, 0.0)
     if WIDE_ONLY:
         wide = _wide(P, a, A, S, RHO, THREE_BAND)
@@ -621,6 +666,7 @@ def fused_packed(
     OwnerRanges=None,
     PHYSICAL_H: tl.constexpr = False,
     SPLITS: tl.constexpr = 1,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
     b = tl.program_id(0) * BM + tl.arange(0, BM)
     tile = tl.program_id(1)
@@ -676,8 +722,10 @@ def fused_packed(
                     tl.int32
                 )
                 valid = (position < end) & (a >= 0) & (a < A)
-            vlo, _vhi, vw = _interval(P, a, A, SWAP, JS, K)
-            ulo, uhi, uw = _interval(P, a, A, not SWAP, IS, N)
+            vlo, _vhi, vw = _interval(P, a, A, SWAP, JS, K, COMPACT_VIEW=COMPACT_VIEW)
+            ulo, uhi, uw = _interval(
+                P, a, A, not SWAP, IS, N, COMPACT_VIEW=COMPACT_VIEW
+            )
             if phase < owners:
                 live = valid & (vw == 1) & (uw == 1)
                 direct = tl.load(
@@ -707,7 +755,9 @@ def fused_packed(
                             (b[:, None] < B) & enabled[None, :],
                             0.0,
                         )
-                        u, _du = _factor(P, a, IS + i, A, not SWAP, S, OO)
+                        u, _du = _factor(
+                            P, a, IS + i, A, not SWAP, S, OO, COMPACT_VIEW=COMPACT_VIEW
+                        )
                         u = tl.where((i[:, None] < N) & enabled[None, :], u, 0.0)
                         amp = tl.load(P + a, enabled, 0.0)
                         y = tl.dot(
@@ -754,6 +804,7 @@ def fused_packed(
                             H_A=H_A,
                             VECTOR_SUPPORT=VECTOR_SUPPORT,
                             UNROLL_SUPPORT=UNROLL_SUPPORT and phase == owners + 1,
+                            COMPACT_VIEW=COMPACT_VIEW,
                         )
     tl.store(
         Y + (split * B + b[:, None]) * N + i[None, :],
@@ -808,10 +859,11 @@ def _fused_general_block(
     H_A: tl.constexpr = 0,
     VECTOR_SUPPORT: tl.constexpr = False,
     UNROLL_SUPPORT: tl.constexpr = False,
+    COMPACT_VIEW: tl.constexpr = False,
 ):
     if not SPARSE:
         x = DenseX
-    u, _du_full = _factor(P, a, IS + i, A, not SWAP, S, OO)
+    u, _du_full = _factor(P, a, IS + i, A, not SWAP, S, OO, COMPACT_VIEW=COMPACT_VIEW)
     u = tl.where((i[:, None] < N) & enabled[None, :], u, 0.0)
     amp = tl.load(P + a, a < A, 0.0)
     if HYBRID:
@@ -838,9 +890,12 @@ def _fused_general_block(
                     RHO,
                     THREE_BAND,
                     Enabled=enabled,
+                    COMPACT_VIEW=COMPACT_VIEW,
                 )
             else:
-                v_local, _dv_local_matrix = _factor(P, a, JS + j, A, SWAP, S, OI)
+                v_local, _dv_local_matrix = _factor(
+                    P, a, JS + j, A, SWAP, S, OI, COMPACT_VIEW=COMPACT_VIEW
+                )
                 v_local = tl.where((j[:, None] < K) & narrow[None, :], v_local, 0.0)
                 h = tl.dot(x, v_local, input_precision="ieee")
         if tl.sum(wide.to(tl.int32), 0) > 0:
@@ -852,7 +907,7 @@ def _fused_general_block(
             )
             h = tl.where(wide[None, :], stored, h)
     elif SPARSE:
-        _lo, _hi, width = _interval(P, a, A, SWAP, JS, K)
+        _lo, _hi, width = _interval(P, a, A, SWAP, JS, K, COMPACT_VIEW=COMPACT_VIEW)
         if UNROLL_SUPPORT and tl.max(width, 0) <= 8:
             h = _unrolled_support_h(
                 X,
@@ -869,6 +924,7 @@ def _fused_general_block(
                 OI,
                 BM,
                 BA,
+                COMPACT_VIEW=COMPACT_VIEW,
             )
         elif VECTOR_SUPPORT and tl.max(width, 0) <= 8:
             h, _dh_support = _vector_support_contract(
@@ -886,17 +942,45 @@ def _fused_general_block(
                 OI,
                 BM,
                 BA,
+                COMPACT_VIEW=COMPACT_VIEW,
             )
         elif SUPPORT_ONLY or tl.max(width, 0) <= LIMIT:
             h, _dh_support = _support_contract(
-                X, P, a, b, A, B, K, JS, SWAP, S, OI, BM, BA, Enabled=enabled
+                X,
+                P,
+                a,
+                b,
+                A,
+                B,
+                K,
+                JS,
+                SWAP,
+                S,
+                OI,
+                BM,
+                BA,
+                Enabled=enabled,
+                COMPACT_VIEW=COMPACT_VIEW,
             )
         else:
             h, _dh_matrix = _matrix_contract(
-                X, P, a, b, A, B, K, JS, SWAP, S, OI, BK, Enabled=enabled
+                X,
+                P,
+                a,
+                b,
+                A,
+                B,
+                K,
+                JS,
+                SWAP,
+                S,
+                OI,
+                BK,
+                Enabled=enabled,
+                COMPACT_VIEW=COMPACT_VIEW,
             )
     else:
-        v, _dv_full = _factor(P, a, JS + j, A, SWAP, S, OI)
+        v, _dv_full = _factor(P, a, JS + j, A, SWAP, S, OI, COMPACT_VIEW=COMPACT_VIEW)
         v = tl.where((j[:, None] < K) & enabled[None, :], v, 0.0)
         h = tl.dot(x, v, input_precision="ieee")
     return tl.dot(h * amp[None, :], tl.trans(u), y, input_precision="ieee")
