@@ -41,7 +41,7 @@ explicit `_fusedback` routeはuncached atom16 parameter4/batch2とcounterfree re
 
 ## 検証と比較
 
-CPU最終検査: 894 passed / 1038 skipped。8件の宣言・paired prepare、Ruff、wheel build PASS。
+CPU最終検査: 894 passed / 1064 skipped。8件の宣言・paired prepare、Ruff、wheel build PASS。
 L4 gate: 53 passed (51 CUDA + 2宣言)。切り出し/矩形domain、支持境界・singleton・空支持、
 Y/dX/全source VJP、batch1/19/32/64、retained/outstanding backward、片方だけの勾配、
 20回のcaptured production更新とAdamW moments/stepsを検査。
@@ -130,12 +130,14 @@ reservedは6291456 Bで同じ。追加global H/Gなしを、物理DRAM traffic�
 詳細は`20261007-backward-fusion-g4.json`。
 
 全owned slots停止、supervisor正常終了、server assignmentからowned G4の消失を確認。
-他のT4 assignmentは触っていない。公開dispatch/mainは変更せず、PR #57は研究候補としてdraft。
+他のT4 assignmentは触っていない。測定終了時点では公開dispatch/mainは変更せず、PR #57はdraft。
 
 ## 採否と次の一手
 
 N64/rho1.25はL4独立2 executions、G4短比較1 executionで改善。L4 mixedも改善する。
-N128、N64の広い支持、G4 mixedは現行を維持。allocated増を含むため一般採用を保留する。
+N128、N64の広い支持、G4 mixedは現行を維持。allocated増を含むため無条件の置き換えはしない。
+その後、ユーザーの指示に従い既存のdispatcher生成で条件別の勝者を採用した。
+[条件別選択の記録](20261007-backward-fusion-dispatch.md)に生成依頼、証拠、制約を保存する。
 現行最速からN64 narrow候補へのallocatedは+6KiBで、今回低メモリ化を達成したとは主張しない。
 
 次は空支持だけをownerからゼロ化して初期化launchを減らす案、およびsource VJPを担当しない
@@ -163,6 +165,7 @@ source VJP storeだけを一意ownerに制限している。実際にコンパ�
 idempotent再importを確認。DB run IDs / artifact hashesは
 `20261007-backward-fusion-database.json`に保存した。
 raw driver・oracles・compiler reports・checkpointsはignored evidenceとpool archiveに残す。
-worktreeは`kernel/fused-backward-vjp`を保持し、PR #57はdraft。mainは`eff5c277`のまま。
+測定終了時点ではworktreeを`kernel/fused-backward-vjp`で保持し、PR #57はdraft、mainは`eff5c277`。
+条件別dispatcher登録を追加してPR #57から統合する。公開CSTLinearの既定選択器は変更しない。
 全owned GPU停止済み、queued/running/interruptedなし。未実装の次案は
 ignored `next-inline-inactive-zero.md`に保存。
