@@ -7,6 +7,7 @@ import torch
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import SupportResult
 from torchcst.charts import StripChartSpec
+from torchcst.geometry.spec import EuclideanGeometrySpec
 from torchcst.kernels import PolarAmpWidthSpec, TriweightSpec
 from torchcst.operators.context import LinearContext
 from torchcst.operators.execution import LinearInputs, linear_execution
@@ -22,6 +23,7 @@ def chart_spec(operator):
     if (
         type(chart) is not StripChartSpec
         or chart.axis != 1
+        or type(chart.geometry) is not EuclideanGeometrySpec
         or kernel.composition != "profile_product"
         or type(kernel.parameterization) is not PolarAmpWidthSpec
         or len(kernel.profiles) != 2

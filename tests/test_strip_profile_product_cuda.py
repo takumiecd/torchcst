@@ -1,7 +1,7 @@
 """Whole Strip normalization, boundary VJP and captured evolving state."""
 
 import copy
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import pytest
 import torch
@@ -94,6 +94,18 @@ def test_metadata_roundtrip_and_support(route):
     assert chart_spec(layer.declaration()).shape == (16, 33)
     ctx = layer.build_context(LinearInputs(torch.randn(7, 33)))
     assert not StripProductAlgorithm().supports(ctx, plan.recipe).supported
+    from torchcst._backends.schema import DeviceInfo
+
+    assert (
+        StripProductAlgorithm()
+        .supports(replace(ctx, device=DeviceInfo("cuda", 0)), plan.recipe)
+        .supported
+    )
+    assert (
+        not StripProductAlgorithm()
+        .supports(replace(ctx, dtype=torch.float64), plan.recipe)
+        .supported
+    )
     with pytest.raises(ValueError):
         chart_spec(model(layer.atoms.p, out=129).declaration())
     with pytest.raises(ValueError):

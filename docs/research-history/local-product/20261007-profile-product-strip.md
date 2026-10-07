@@ -19,7 +19,7 @@ its input tile. Forward contributions and canonical atom VJPs sum across tiles.
 Width task gradients remain detached; the existing Polar update evolves width.
 
 Initial support: Euclidean Line axes with equal spacing, input Strip axis 1,
-2..128 output sites, 2..1024 input sites, tile sizes 16/32/64/128, CUDA FP32,
+2..128 output sites, 16..1024 input sites, tile sizes 16/32/64/128, CUDA FP32,
 batch 1..64, Polar triweight product. Chart parameter gradients are unsupported;
 nontrainable live pitch is read on replay. This does not tile both axes.
 
