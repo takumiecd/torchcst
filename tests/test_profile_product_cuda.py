@@ -226,49 +226,56 @@ def test_captured_updates_parameters_moments_and_evolving_width(route):
     layer = model(
         torch.tensor([[0.3, 1.5, 2.4, 4.2], [-0.4, 1.4, 6.3, 8.7]]), device="cuda"
     )
-    reference = copy.deepcopy(layer)
-    opts = [
-        CSTOptimizer(
-            torch.optim.AdamW(m.parameters(), lr=1e-3, fused=True, capturable=True),
-            model=m,
-        )
-        for m in (layer, reference)
-    ]
+    opt = torch.optim.AdamW(layer.parameters(), lr=1e-3, fused=True, capturable=True)
+    from benchmarks.cuda.polar_update import optimizer_step
+    from torchcst import AtomUpdateBinding
+
+    binding = AtomUpdateBinding(layer.operator)
     x = torch.randn(7, 16, device="cuda")
     target = torch.randn_like(x)
     from benchmarks.cuda.linear.profile_product import decode
 
     initial = decode(layer.kernel, layer.atoms.p).detach().clone()[:, 1]
 
-    def step(m, opt, candidate):
-        opt.zero_grad()
-        y = run(m, x, route) if candidate else m.operator.apply(x, algorithm="factored")
+    def step():
+        opt.zero_grad(set_to_none=True)
+        y = run(layer, x, route)
         (y * target).sum().backward()
-        opt.step()
+        optimizer_step(binding, opt, step_size=1e-3, polar_update="torch")
+        return y
 
-    for _ in range(2):
-        step(layer, opts[0], True)
-        step(reference, opts[1], False)
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
-    graphs = []
     with torch.cuda.stream(stream):
-        for m, opt, candidate in zip((layer, reference), opts, (True, False)):
-            g = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(g, stream=stream):
-                step(m, opt, candidate)
-            graphs.append(g)
+        for _ in range(2):
+            step()
     torch.cuda.current_stream().wait_stream(stream)
-    for _ in range(20):
-        for g in graphs:
-            g.replay()
+    g = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(g):
+        actual_y = step()
     torch.cuda.synchronize()
-    torch.testing.assert_close(layer.atoms.p, reference.atoms.p, rtol=2e-4, atol=2e-5)
-    for key in ("exp_avg", "exp_avg_sq", "step"):
+    reference = copy.deepcopy(layer)
+    base = torch.optim.AdamW(reference.parameters(), lr=1e-3, fused=True)
+    base.load_state_dict(copy.deepcopy(opt.state_dict()))
+    for group in base.param_groups:
+        group["capturable"] = False
+    reference_opt = CSTOptimizer(base, model=reference)
+    for _ in range(20):
+        reference_opt.zero_grad()
+        expected_y = reference.operator.apply(x, algorithm="factored")
+        (expected_y * target).sum().backward()
+        reference_opt.step()
+        g.replay()
+        torch.cuda.synchronize()
+        torch.testing.assert_close(actual_y, expected_y, rtol=2e-4, atol=2e-5)
         torch.testing.assert_close(
-            opts[0].state[layer.atoms.p][key],
-            opts[1].state[reference.atoms.p][key],
-            rtol=4e-4,
-            atol=2e-5,
+            layer.atoms.p, reference.atoms.p, rtol=2e-4, atol=2e-5
         )
+        for key in ("exp_avg", "exp_avg_sq", "step"):
+            torch.testing.assert_close(
+                opt.state[layer.atoms.p][key],
+                base.state[reference.atoms.p][key],
+                rtol=4e-4,
+                atol=2e-5,
+            )
     assert torch.any(decode(layer.kernel, layer.atoms.p)[:, 1] != initial)

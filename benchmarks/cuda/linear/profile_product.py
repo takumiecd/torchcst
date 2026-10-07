@@ -137,7 +137,7 @@ def correctness(args, run, model_type):
             lr=case.optimizer.lr,
             weight_decay=case.optimizer.weight_decay,
             fused=True,
-            capturable=True,
+            capturable=False,
         ),
         model=reference,
     )

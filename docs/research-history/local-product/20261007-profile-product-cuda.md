@@ -69,3 +69,9 @@ python -m benchmarks.cuda.linear.run \
 Tritonが `1e-38` 定数をFP64として解釈してFP32専用divisionと不一致になった。
 安全な分母定数をFP32最小normal値へ変更し、同じoracle/許容誤差のまま全suiteを再実行する。
 失敗ログと検証済みarchiveを共有プールjobディレクトリに保持する。
+
+FP32 guard修正job `l4job-cb6664414c55445587682ae6121f12b5` は31 passed/2 failed。
+Y/dX/source、空/単一/微小/global-floor、旧sourceとscalar変更後のVJPは通過。
+残る2件はテストがpublic CSTOptimizerへcapturable=Trueを渡したため既存の安全検査で拒否された。
+benchmarkと同じAtomUpdate Plan付きcaptured AdamWを実行し、public CSTOptimizerは
+eager参照として毎stepのParameter/moments/stepを比較する形に修正する。
