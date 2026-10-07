@@ -8,6 +8,44 @@ from ..profile_product_global.grouped_kernels import _positions
 
 
 @tr.jit
+def ieee_matmul(
+    L,
+    R,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    L0: tl.constexpr,
+    L1: tl.constexpr,
+    R0: tl.constexpr,
+    R1: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    m = tl.program_id(0) * BM + tl.arange(0, BM)
+    n = tl.program_id(1) * BN + tl.arange(0, BN)
+    k = tl.arange(0, BK)
+    acc = tl.full((BM, BN), 0, tl.float32)
+    for start in range(tl.cdiv(K, BK)):
+        kk = start * BK + k
+        left = tl.load(
+            L + m[:, None] * L0 + kk[None, :] * L1,
+            (m[:, None] < M) & (kk[None, :] < K),
+            0,
+        )
+        right = tl.load(
+            R + kk[:, None] * R0 + n[None, :] * R1,
+            (kk[:, None] < K) & (n[None, :] < N),
+            0,
+        )
+        acc = tl.dot(left, right, acc, input_precision="ieee")
+    tl.store(
+        Out + m[:, None] * N + n[None, :], acc, (m[:, None] < M) & (n[None, :] < N)
+    )
+
+
+@tr.jit
 def assemble(
     P,
     W,

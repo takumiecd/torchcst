@@ -45,6 +45,36 @@
           "patch_sites": 32
         }
       }
+    },
+    {
+      "id": "native16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_matrix",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 16,
+          "gemm": "triton"
+        }
+      }
+    },
+    {
+      "id": "native32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_matrix",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 32,
+          "gemm": "triton"
+        }
+      }
     }
   ]
 }

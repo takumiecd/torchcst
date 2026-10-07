@@ -10,25 +10,38 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.recipe imp
     MatrixProductRecipe,
     MatrixStripRecipe,
 )
+from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.recipe_v2 import (
+    ContractionProductRecipe,
+    ContractionStripRecipe,
+)
 from torchcst._backends.schema import ExecutionPlan
 
 
-def run(layer, x, family, **kwargs):
+def run(layer, x, family, engine="v1-torch", **kwargs):
     id = (
         "research_profile_product_matrix"
         if family == "global"
         else "research_strip_profile_product_matrix"
     )
-    cls = MatrixProductRecipe if family == "global" else MatrixStripRecipe
+    if engine == "v1-torch":
+        cls = MatrixProductRecipe if family == "global" else MatrixStripRecipe
+        revision = "v1"
+    else:
+        cls = ContractionProductRecipe if family == "global" else ContractionStripRecipe
+        revision = "v2"
+        kwargs["gemm"] = engine.removeprefix("v2-")
     return Dispatcher(registry=REGISTRY).run(
-        layer, LinearInputs(x), plan=ExecutionPlan(id, "v1", cls(**kwargs))
+        layer, LinearInputs(x), plan=ExecutionPlan(id, revision, cls(**kwargs))
     )
 
 
-@pytest.fixture(params=[16, 32])
+@pytest.fixture(
+    params=[(p, e) for p in [16, 32] for e in ["v1-torch", "v2-torch", "v2-triton"]]
+)
 def matrix_route(request, monkeypatch):
     def execute(layer, x, family, **kwargs):
-        return run(layer, x, family, patch_sites=request.param, **kwargs)
+        patch, engine = request.param
+        return run(layer, x, family, engine=engine, patch_sites=patch, **kwargs)
 
     monkeypatch.setattr(scenarios, "run", execute)
 
@@ -103,8 +116,9 @@ def test_matrix_recipe_rejects_undeclared_layout(family, invalid):
 @scenarios.GPU
 @pytest.mark.parametrize("family", ["global", "strip"])
 @pytest.mark.parametrize("patch", [16, 32])
+@pytest.mark.parametrize("engine", ["v1-torch", "v2-torch", "v2-triton"])
 @pytest.mark.parametrize("group,sites", [(1, 16), (8, 32)])
-def test_matrix_with_other_preparation_choices(family, patch, group, sites):
+def test_matrix_with_other_preparation_choices(family, patch, engine, group, sites):
     layer = scenarios.model(
         torch.tensor([[0.3, 1.5, 2.4, 24], [-0.4, 1.4, 6.3, 32.7]]),
         family,
@@ -114,7 +128,13 @@ def test_matrix_with_other_preparation_choices(family, patch, group, sites):
     dy = torch.randn(7, 33, device="cuda")
     y, dx, dp = scenarios.oracle(layer, x, dy, family)
     actual = run(
-        layer, x, family, patch_sites=patch, prep_group=group, prep_sites=sites
+        layer,
+        x,
+        family,
+        engine=engine,
+        patch_sites=patch,
+        prep_group=group,
+        prep_sites=sites,
     )
     grads = torch.autograd.grad(actual, (x, layer.atoms.p), dy)
     for value, truth in [(actual, y), (grads[0], dx), (grads[1], dp)]:
@@ -144,3 +164,49 @@ def test_matrix_runner_preserves_live_polar_update_binding(family):
     assert layer.local_state is layer.product_site.kernel
     assert layer.update_binding is not None
     assert layer.live_operator is layer.product_site.operator
+
+
+@pytest.mark.parametrize("family", ["global", "strip"])
+@pytest.mark.parametrize("gemm", ["torch", "triton"])
+@pytest.mark.parametrize("patch", [16, 32])
+def test_contraction_recipe_roundtrip_and_v1_rejection(family, gemm, patch):
+    id = (
+        "research_profile_product_matrix"
+        if family == "global"
+        else "research_strip_profile_product_matrix"
+    )
+    cls = ContractionProductRecipe if family == "global" else ContractionStripRecipe
+    plan = ExecutionPlan(id, "v2", cls(gemm=gemm, patch_sites=patch))
+    assert REGISTRY.loads_plan(REGISTRY.dumps_plan(plan)) == plan
+    data = REGISTRY.dump_plan(plan)
+    data["algorithm_revision"] = "v1"
+    with pytest.raises(ValueError):
+        REGISTRY.load_plan(data)
+
+
+@pytest.mark.parametrize("family", ["global", "strip"])
+@pytest.mark.parametrize("invalid", [True, "tf32", "half", None])
+def test_contraction_recipe_rejects_other_precision_engines(family, invalid):
+    cls = ContractionProductRecipe if family == "global" else ContractionStripRecipe
+    with pytest.raises(ValueError):
+        cls(gemm=invalid)
+
+
+@scenarios.GPU
+@pytest.mark.parametrize("m,n,k", [(1, 1, 1), (7, 33, 65), (32, 65, 7), (64, 3, 129)])
+@pytest.mark.parametrize("transposed", [False, True])
+def test_native_contractions_with_strides_and_all_tails(m, n, k, transposed):
+    from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.executor import (
+        _matmul,
+    )
+
+    if transposed:
+        left = torch.randn(k * 2, m * 2, device="cuda")[::2, ::2].T
+        right = torch.randn(n * 2, k * 2, device="cuda")[::2, ::2].T
+    else:
+        left = torch.randn(m * 2, k * 2, device="cuda")[::2, ::2]
+        right = torch.randn(k * 2, n * 2, device="cuda")[::2, ::2]
+    result = _matmul(left, right, ContractionProductRecipe())
+    torch.testing.assert_close(
+        result.double(), left.double() @ right.double(), rtol=4e-4, atol=2e-5
+    )

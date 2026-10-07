@@ -4,6 +4,34 @@ import torch
 from torch.autograd.function import once_differentiable
 
 
+def _matmul(left, right, recipe):
+    if getattr(recipe, "gemm", "torch") == "torch":
+        return left @ right
+    import triton as tr
+
+    from .kernels import ieee_matmul
+
+    m, k = left.shape
+    n = right.shape[1]
+    result = left.new_empty((m, n))
+    ieee_matmul[(tr.cdiv(m, 16), tr.cdiv(n, 32))](
+        left,
+        right,
+        result,
+        m,
+        n,
+        k,
+        *left.stride(),
+        *right.stride(),
+        BM=16,
+        BN=32,
+        BK=32,
+        num_warps=4,
+        enable_fp_fusion=False,
+    )
+    return result
+
+
 class _ProfileMatrix(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, p, pitch, value, sizes, recipe):
@@ -59,7 +87,7 @@ class _ProfileMatrix(torch.autograd.Function):
                 num_warps=4,
                 enable_fp_fusion=False,
             )
-            y = x @ w.T
+            y = _matmul(x, w.T, recipe)
         else:
             y = x.new_zeros((b, no))
         ctx.sizes, ctx.recipe = sizes, recipe
@@ -81,9 +109,9 @@ class _ProfileMatrix(torch.autograd.Function):
             dp = torch.zeros_like(source) if need_p else None
         else:
             if need_x:
-                dx = dy @ w
+                dx = _matmul(dy, w, ctx.recipe)
             if need_p:
-                dw = dy.T @ x
+                dw = _matmul(dy.T, x, ctx.recipe)
                 dp = torch.empty_like(source)
                 parameter_vjp[(a,)](
                     packed,

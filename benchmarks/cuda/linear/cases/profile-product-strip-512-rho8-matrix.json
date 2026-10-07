@@ -34,7 +34,7 @@
   "plans": [
     "small-prepared",
     "small-matrix16",
-    "small-matrix32"
+    "small-native16"
   ],
   "baseline": "small-prepared",
   "dense": true

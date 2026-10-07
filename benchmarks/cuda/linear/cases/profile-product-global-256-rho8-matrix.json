@@ -34,7 +34,7 @@
   "plans": [
     "prepared",
     "matrix16",
-    "matrix32"
+    "native16"
   ],
   "baseline": "prepared",
   "dense": true
