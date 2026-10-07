@@ -72,13 +72,22 @@ def factors(state, chart, p):
     ]
     # The full-domain norm factors because the grid is Cartesian. Floor once,
     # after the product; independently flooring axes changes empty/tiny support.
-    norm = torch.ones_like(amplitude)
+    norm_dtype = (
+        torch.float32 if p.dtype in (torch.float16, torch.bfloat16) else p.dtype
+    )
+    norm = torch.ones_like(amplitude, dtype=norm_dtype)
     for value in axes:
-        norm = norm * torch.linalg.vector_norm(value, dim=0)
+        norm = norm * torch.linalg.vector_norm(value.to(norm_dtype), dim=0)
     denominator = norm.clamp_min(state.spec.normalization.floor)
     output_dims = chart.axes[0].spec.dim
-    phi_output = _product(axes[:output_dims]) * (amplitude / denominator)[None, :]
-    phi_input = _product(axes[output_dims:])
+    # Split the denominator so half precision does not form amp/floor > 65504
+    # and then multiply an empty profile by infinity. The complete product and
+    # one global floor are unchanged. Keep norms in FP32 for low-precision inputs.
+    scale = denominator.sqrt()[None, :]
+    phi_output = ((_product(axes[:output_dims]) / scale) * amplitude[None, :]).to(
+        p.dtype
+    )
+    phi_input = (_product(axes[output_dims:]) / scale).to(p.dtype)
     return phi_input, phi_output
 
 

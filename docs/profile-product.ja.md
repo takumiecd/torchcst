@@ -87,11 +87,14 @@ $$
 backendは出力側・入力側のrawな軸productを $U_a(j),V_a(i)$ にまとめ、
 
 $$
-H_{b,a}=\sum_i X_{b,i}V_a(i),\qquad
-Y_{b,j}=\sum_a H_{b,a}\frac{\mathrm{amp}_a U_a(j)}{D_a}
+H_{b,a}=\sum_i X_{b,i}\frac{V_a(i)}{\sqrt{D_a}},\qquad
+Y_{b,j}=\sum_a H_{b,a}\frac{\mathrm{amp}_a U_a(j)}{\sqrt{D_a}}
 $$
 
-を実行できる。ノルム計算のために全演算子のsite表や全raw productを展開しない。
+を実行できる。分母を両factorへ分けることで、FP16でも空支持の際に
+`amp / floor` がoverflowしてゼロとの積がNaNになることを避ける。
+FP16/BF16のノルムはFP32で計算し、factorは元のdtypeに戻す。
+ノルム計算のために全演算子のsite表や全raw productを展開しない。
 Torch `factored` は入力・出力factorとHを保持する参照方式、`materialized` はWを
 生成する参照方式。全係数は現在のatomとChart bufferから毎回評価する。
 `operator.factors()` も単一Chartに対して利用できる。

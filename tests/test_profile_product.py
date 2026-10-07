@@ -156,8 +156,17 @@ def test_full_site_values_dx_and_all_source_gradients(backend, kind, multi, axis
         backend=backend,
     )
     with torch.no_grad():
-        model.atoms.p[:, :2].copy_(torch.tensor([[0.3, 1.2], [-0.4, 1.1], [0.1, 1.3]]))
-        model.atoms.p[:, 2:].add_(0.07)
+        # Broad, asymmetric support keeps every center derivative nonzero;
+        # singleton support has an exactly zero normalized center derivative.
+        model.atoms.p[:, :2].copy_(
+            torch.tensor([[0.05, 1.2], [-0.07, 1.1], [0.1, 1.3]])
+        )
+        midpoint = torch.cat(
+            [sites.mean(0) for sites in oracle_coordinates(model.chart)]
+        )
+        model.atoms.p[:, 2:].copy_(
+            midpoint[None, :] + torch.tensor([0.03, -0.07, 0.11])[:, None]
+        )
     point = model.atoms.p.detach().clone().requires_grad_()
     expected_atoms = oracle_atoms(model, point)
     torch.testing.assert_close(
@@ -174,6 +183,34 @@ def test_full_site_values_dx_and_all_source_gradients(backend, kind, multi, axis
     torch.testing.assert_close(x.grad, reference_x.grad, rtol=1e-10, atol=1e-11)
     torch.testing.assert_close(model.atoms.p.grad, point.grad, rtol=1e-10, atol=1e-11)
     assert torch.count_nonzero(point.grad[:, 2:]) == point[:, 2:].numel()
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("backend", ["materialized", "factored"])
+@pytest.mark.parametrize("case", ["empty", "tiny", "normal"])
+def test_low_precision_support_has_finite_values_and_gradients(dtype, backend, case):
+    chart = charts.product(
+        (2, 2),
+        (patterns.line(2, low=0.0, high=3.0), patterns.line(2, low=0.0, high=3.0)),
+    )
+    center = {"empty": 10.0, "tiny": 1.3 * 0.99, "normal": 0.1}[case]
+    model = CSTLinear(
+        chart=chart,
+        atoms=torch.tensor([[0.4, 1.2, center, center]], dtype=dtype),
+        kernel=make_spec(fixed_width=True),
+        backend=backend,
+    )
+    x = torch.tensor([[0.4, -0.2]], dtype=dtype, requires_grad=True)
+    actual = model(x)
+    assert actual.dtype == dtype
+    assert torch.isfinite(actual).all()
+    actual.sum().backward()
+    assert torch.isfinite(x.grad).all()
+    assert torch.isfinite(model.atoms.p.grad).all()
+    if case == "empty":
+        assert torch.count_nonzero(actual) == 0
+        assert torch.count_nonzero(x.grad) == 0
+        assert torch.count_nonzero(model.atoms.p.grad) == 0
 
 
 @pytest.mark.parametrize("backend", ["materialized", "factored"])
