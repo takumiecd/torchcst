@@ -30,6 +30,7 @@ def _contract(t, views, pitch, ranges, *, sizes, recipe, swap):
         swap,
         recipe.atom_block,
         splits,
+        ATOM_MAJOR=getattr(recipe, "atom_group", 1) > 1,
         num_warps=4,
         enable_fp_fusion=False,
     )
@@ -52,6 +53,7 @@ class _ProfileGrid(torch.autograd.Function):
 
         from ..local_product.preparation import polar_scalars
         from ..profile_product.kernels import prepare
+        from . import grouped_kernels as grouped
         from . import kernels as k
 
         b, ni, no, tile, spacing, oi, oo = sizes
@@ -73,12 +75,18 @@ class _ProfileGrid(torch.autograd.Function):
         ranges = torch.empty((2, owners, 2), device=p.device, dtype=torch.int32)
         h = x.new_empty((b, a))
         if a:
+            prep_group = getattr(recipe, "prep_group", 1)
+            support = getattr(recipe, "preparation", "full") == "support"
+            grouped_prep = prep_group > 1 or (tile and support)
             preparation = (
-                k.prepare_support
-                if getattr(recipe, "preparation", "full") == "support"
-                else prepare
+                grouped.prepare
+                if grouped_prep
+                else (k.prepare_support if support else prepare)
             )
-            preparation[(a,)](
+            prep_options = (
+                {"GROUP": prep_group, "SUPPORT": support} if grouped_prep else {}
+            )
+            preparation[(tr.cdiv(a, prep_group),)](
                 source,
                 packed,
                 a,
@@ -94,10 +102,11 @@ class _ProfileGrid(torch.autograd.Function):
                 BOUNDS=True,
                 STRIP_TILE=tile,
                 Pitch=saved_pitch,
+                **prep_options,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
-            if a <= 4096:
+            if a <= 4096 and getattr(recipe, "sorting", "legacy") == "legacy":
                 k.sort_keys[(2,)](
                     packed, keys, a, tr.next_power_of_2(a), wide, num_warps=8
                 )
@@ -135,7 +144,10 @@ class _ProfileGrid(torch.autograd.Function):
                     1024,
                     num_warps=4,
                 )
-            k.input_h[(a,)](
+            atom_group = getattr(recipe, "atom_group", 1)
+            input_kernel = grouped.input_h if atom_group > 1 else k.input_h
+            group_options = {"GROUP": atom_group} if atom_group > 1 else {}
+            input_kernel[(tr.cdiv(a, atom_group),)](
                 x,
                 views,
                 saved_pitch,
@@ -148,7 +160,8 @@ class _ProfileGrid(torch.autograd.Function):
                 oi,
                 *x.stride(),
                 max(16, tr.next_power_of_2(b)),
-                32,
+                8 if atom_group > 1 else 32,
+                **group_options,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
@@ -168,6 +181,7 @@ class _ProfileGrid(torch.autograd.Function):
     def backward(ctx, dy):
         import triton as tr
 
+        from . import grouped_kernels as grouped
         from . import kernels as k
 
         x, source, pitch, amplitude_max, views, order, inverse, ranges, h = (
@@ -183,7 +197,10 @@ class _ProfileGrid(torch.autograd.Function):
         elif need_x or need_p:
             g = dy.new_empty((b, a))
             dp = torch.empty_like(source) if need_p else None
-            k.backward_atoms[(a,)](
+            atom_group = getattr(ctx.recipe, "atom_group", 1)
+            atom_kernel = grouped.backward_atoms if atom_group > 1 else k.backward_atoms
+            group_options = {"GROUP": atom_group} if atom_group > 1 else {}
+            atom_kernel[(tr.cdiv(a, atom_group),)](
                 x,
                 dy,
                 views,
@@ -206,8 +223,9 @@ class _ProfileGrid(torch.autograd.Function):
                 *x.stride(),
                 *dy.stride(),
                 max(16, tr.next_power_of_2(b)),
-                32,
+                8 if atom_group > 1 else 32,
                 need_p,
+                **group_options,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
