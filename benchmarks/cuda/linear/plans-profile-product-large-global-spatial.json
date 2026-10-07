@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "prepared",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_prepared",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 16,
+          "atom_group": 4,
+          "sorting": "torch",
+          "prep_sites": 16
+        }
+      }
+    },
+    {
+      "id": "split1",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_matrix",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8,
+          "split_k": 1
+        }
+      }
+    },
+    {
+      "id": "split8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_matrix",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8,
+          "split_k": 8
+        }
+      }
+    },
+    {
+      "id": "spatial16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_matrix",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8,
+          "split_k": 1,
+          "spatial_tile": 16
+        }
+      }
+    },
+    {
+      "id": "spatial32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_matrix",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "triton",
+          "atom_group": 8,
+          "split_k": 1,
+          "spatial_tile": 32
+        }
+      }
+    },
+    {
+      "id": "torch-g8-p8",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_large_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 8,
+          "gemm": "torch",
+          "atom_group": 8
+        }
+      }
+    }
+  ]
+}

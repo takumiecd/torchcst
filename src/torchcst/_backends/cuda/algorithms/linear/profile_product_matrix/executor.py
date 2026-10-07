@@ -89,6 +89,7 @@ class _ProfileMatrix(torch.autograd.Function):
         amplitude_max = scalars[0].clone()
         a = len(source)
         packed = p.new_empty((13, a))
+        order = None
         w = p.new_zeros((no, ni))
         if a:
             prepare[(tr.cdiv(a, recipe.prep_group),)](
@@ -113,6 +114,10 @@ class _ProfileMatrix(torch.autograd.Function):
                 num_warps=4,
                 enable_fp_fusion=False,
             )
+            if hasattr(recipe, "spatial_tile"):
+                from .spatial_kernels import order_support
+
+                packed, order = order_support(packed, ni, no, recipe.spatial_tile)
             assemble[(tr.cdiv(a, group),)](
                 packed,
                 w,
@@ -133,7 +138,7 @@ class _ProfileMatrix(torch.autograd.Function):
         else:
             y = x.new_zeros((b, no))
         ctx.sizes, ctx.recipe = sizes, recipe
-        ctx.save_for_backward(x, source, saved_pitch, amplitude_max, packed, w)
+        ctx.save_for_backward(x, source, saved_pitch, amplitude_max, packed, w, order)
         return y
 
     @staticmethod
@@ -150,7 +155,9 @@ class _ProfileMatrix(torch.autograd.Function):
 
             patch_kwargs["GROUP"] = group
 
-        x, source, pitch, amplitude_max, packed, w = ctx.saved_tensors
+        x, source, pitch, amplitude_max, packed, w, order = ctx.saved_tensors
+        if order is not None:
+            patch_kwargs.update(Order=order, ORDERED=True)
         _b, ni, no, tile, spacing, oi, oo = ctx.sizes
         a = len(source)
         need_x, need_p = ctx.needs_input_grad[:2]

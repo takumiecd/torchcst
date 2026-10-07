@@ -86,6 +86,8 @@ def parameter_vjp(
     D1: tl.constexpr,
     PATCH: tl.constexpr,
     GROUP: tl.constexpr,
+    Order=None,
+    ORDERED: tl.constexpr = False,
 ):
     a = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = a < A
@@ -139,12 +141,16 @@ def parameter_vjp(
             da += dw * u[:, :, None] * v[:, None, :]
             dco += dw * du[:, :, None] * v[:, None, :]
             dci += dw * u[:, :, None] * dv[:, None, :]
+    if ORDERED:
+        canonical = tl.load(Order + a, valid, 0)
+    else:
+        canonical = a
     _store_param_cotangent(
         DP,
         Source,
         AmplitudeMax,
-        a,
-        a < A,
+        canonical,
+        valid,
         tl.sum(tl.sum(da, 2), 1),
         amp * tl.sum(tl.sum(dci, 2), 1),
         amp * tl.sum(tl.sum(dco, 2), 1),
