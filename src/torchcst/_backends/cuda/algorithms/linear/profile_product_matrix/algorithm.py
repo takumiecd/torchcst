@@ -38,7 +38,7 @@ class MatrixProductAlgorithm(GlobalProductAlgorithm):
         from .executor import matrix_product
 
         x, p, declaration, operator = live_inputs(state, inputs)
-        chart = product_spec(declaration)
+        chart = product_spec(declaration, max_sites=self.max_sites)
         sizes = (
             len(x),
             chart.shape[1],
@@ -69,7 +69,7 @@ class MatrixStripAlgorithm(StripProductAlgorithm):
         from .executor import matrix_product
 
         x, p, declaration, operator = live_inputs(state, inputs)
-        chart = chart_spec(declaration)
+        chart = chart_spec(declaration, max_input=self.max_input)
         sizes = (
             len(x),
             chart.shape[1],

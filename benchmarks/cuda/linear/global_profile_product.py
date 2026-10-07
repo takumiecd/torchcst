@@ -99,6 +99,8 @@ def oracle_vjp(value, p, x, dy, chart, chunk=512):
 
 
 def summarize(q, chart):
+    from .support_report import summarize_axes
+
     result = {
         "normalization": "whole Product L2; one floor1e-6",
         "empty_atoms": 0,
@@ -113,19 +115,7 @@ def summarize(q, chart):
         torch.arange(chart.shape[1], dtype=q.dtype) * chart.axes[1].spacing[0]
         + chart.axes[1].start[0]
     )
-    for part in q.split(1024):
-        v = (1 - (inp[:, None] - part[:, 2]).square() * part[:, 1]).clamp_min(0).pow(3)
-        u = (1 - (out[:, None] - part[:, 3]).square() * part[:, 1]).clamp_min(0).pow(3)
-        norm, nv, nu = (
-            v.norm(dim=0) * u.norm(dim=0),
-            v.count_nonzero(dim=0),
-            u.count_nonzero(dim=0),
-        )
-        result["empty_atoms"] += int(((nv == 0) | (nu == 0)).sum())
-        result["floor_active_atoms"] += int((norm < 1e-6).sum())
-        result["onehot_both_live_atoms"] += int(
-            ((nv == 1) & (nu == 1) & (norm >= 1e-6)).sum()
-        )
+    result.update(summarize_axes(q, inp, out))
     return result
 
 

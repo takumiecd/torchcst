@@ -230,9 +230,9 @@ def test_old_forward_snapshots_keep_pitch_amplitude_and_parameters(family):
         device="cuda",
     )
     reference = copy.deepcopy(layer)
-    x = torch.randn(7, 65, device="cuda", requires_grad=True)
+    x = torch.randn(7, layer.in_features, device="cuda", requires_grad=True)
     xx = x.detach().clone().requires_grad_()
-    dy = torch.randn(7, 33, device="cuda")
+    dy = torch.randn(7, layer.out_features, device="cuda")
     truth = reference.operator.apply(xx, algorithm="factored")
     actual = run(layer, x, family)
     with torch.no_grad():
@@ -279,8 +279,8 @@ def test_twenty_captured_updates_match_reference_moments_and_live_widths(family)
     )
     opt = torch.optim.AdamW(layer.parameters(), lr=1e-3, fused=True, capturable=True)
     binding = AtomUpdateBinding(layer.operator)
-    x = torch.randn(7, 65, device="cuda")
-    dy = torch.randn(7, 33, device="cuda")
+    x = torch.randn(7, layer.in_features, device="cuda")
+    dy = torch.randn(7, layer.out_features, device="cuda")
     initial = decode(layer.kernel, layer.atoms.p)[:, 1].detach().clone()
 
     def step():
@@ -335,8 +335,8 @@ def test_captured_strip_reads_changed_pitch_and_spacing_fallback():
         width=4,
         device="cuda",
     )
-    x = torch.randn(7, 65, device="cuda", requires_grad=True)
-    dy = torch.randn(7, 33, device="cuda")
+    x = torch.randn(7, layer.in_features, device="cuda", requires_grad=True)
+    dy = torch.randn(7, layer.out_features, device="cuda")
 
     def probe():
         y = run(layer, x, "strip")

@@ -67,23 +67,12 @@ def positions(chart, *, device, dtype, pitch=None):
 
 
 def summarize(q, chart):
+    from .support_report import summarize_axes
+
     i, o = positions(chart, device=q.device, dtype=q.dtype)
-    v = (1 - (i[:, None] - q[:, 2]).square() * q[:, 1]).clamp_min(0).pow(3)
-    u = (1 - (o[:, None] - q[:, 3]).square() * q[:, 1]).clamp_min(0).pow(3)
-    norm = v.norm(dim=0) * u.norm(dim=0)
     return {
         "normalization": "whole Strip product L2; one global floor",
-        "empty_atoms": int(
-            ((v.count_nonzero(dim=0) == 0) | (u.count_nonzero(dim=0) == 0)).sum()
-        ),
-        "floor_active_atoms": int((norm < 1e-6).sum()),
-        "onehot_both_live_atoms": int(
-            (
-                (v.count_nonzero(dim=0) == 1)
-                & (u.count_nonzero(dim=0) == 1)
-                & (norm >= 1e-6)
-            ).sum()
-        ),
+        **summarize_axes(q, i, o),
         "input_tiles": (chart.shape[1] + chart.tile_shape[1] - 1)
         // chart.tile_shape[1],
     }
