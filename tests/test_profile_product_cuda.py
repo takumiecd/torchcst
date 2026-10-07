@@ -13,7 +13,6 @@ from torchcst import (
     CSTLinear,
     CSTOptimizer,
     Dispatcher,
-    LinearBinding,
     LinearInputs,
     NormalizationSpec,
     TriweightSpec,
@@ -70,9 +69,7 @@ def run(layer, x, route, *, atom_block=16):
         "v1",
         ProductRecipe(execution_route=route, atom_block=atom_block),
     )
-    return Dispatcher(registry=REGISTRY).run(
-        LinearBinding(layer.operator), LinearInputs(x), plan=plan
-    )
+    return Dispatcher(registry=REGISTRY).run(layer, LinearInputs(x), plan=plan)
 
 
 @pytest.mark.parametrize("route", ["torch", "local", "saved"])

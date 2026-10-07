@@ -75,3 +75,8 @@ Y/dX/source、空/単一/微小/global-floor、旧sourceとscalar変更後のVJP
 残る2件はテストがpublic CSTOptimizerへcapturable=Trueを渡したため既存の安全検査で拒否された。
 benchmarkと同じAtomUpdate Plan付きcaptured AdamWを実行し、public CSTOptimizerは
 eager参照として毎stepのParameter/moments/stepを比較する形に修正する。
+
+Captured更新の再検証job `l4job-f46c9ed2f91c4b628f8e28979cc902a2` でも31 passed。
+Graph内で毎回新しいLinearBindingを作るテストhelperが宣言cache検査で拒否された。
+既存CSTLinearのbinding/state/cacheを直接Dispatcherへ渡し、構築をcapture外へ戻す。
+数値比較条件は変更しない。
