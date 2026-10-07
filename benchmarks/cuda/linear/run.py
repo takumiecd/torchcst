@@ -57,6 +57,7 @@ class PlanLinear(nn.Module):
         if plan.algorithm_id in (
             "research_profile_product",
             "research_strip_profile_product",
+            "research_profile_product_global",
         ):
             from torchcst import AtomUpdateBinding, CSTLinear
 
@@ -144,6 +145,7 @@ def _metadata(args, run):
         Path(__file__).with_name("local_product.py"),
         Path(__file__).with_name("profile_product.py"),
         Path(__file__).with_name("strip_profile_product.py"),
+        Path(__file__).with_name("global_profile_product.py"),
         Path(__file__).parent.parent / "polar_update.py",
     ]
     return {
@@ -189,6 +191,12 @@ def correctness(args, run):
         )
 
         return strip_check(args, run, PlanLinear)
+    if run.case.fixture == "polar_profile_product_global":
+        from benchmarks.cuda.linear.global_profile_product import (
+            correctness as global_check,
+        )
+
+        return global_check(args, run, PlanLinear)
     if run.case.fixture == "polar_profile_product":
         from benchmarks.cuda.linear.profile_product import correctness as product_check
 
@@ -237,7 +245,12 @@ def measure(args, run):
     case = run.case
     n, m = case.size, case.rows
     strip = case.fixture == "polar_profile_product_strip"
-    product = case.fixture in ("polar_profile_product", "polar_profile_product_strip")
+    global_product = case.fixture == "polar_profile_product_global"
+    product = case.fixture in (
+        "polar_profile_product",
+        "polar_profile_product_strip",
+        "polar_profile_product_global",
+    )
     local = product or case.fixture == "local_polar_product"
     out = 64 if strip else n
     support_report = None
@@ -272,8 +285,15 @@ def measure(args, run):
                 initialize,
                 summarize,
             )
+        if global_product:
+            from benchmarks.cuda.linear.global_profile_product import (
+                fixture_operator,
+                fixture_state,
+                initialize,
+                summarize,
+            )
         op, p = fixture_operator(case), initialize(case)
-        support_domain = op.charts[0] if strip else Domain(n, n)
+        support_domain = op.charts[0] if strip or global_product else Domain(n, n)
         support_report = summarize(decode(fixture_state(case), p), support_domain)
     else:
         h, j = (32, 32) if n == 1024 else (64, 128)
@@ -690,6 +710,7 @@ def main():
         "local_polar_product",
         "polar_profile_product",
         "polar_profile_product_strip",
+        "polar_profile_product_global",
     ):
         ap.error("--polar-update fused requires the local product fixture")
     if args.kernel_diagnostics and (
@@ -787,6 +808,10 @@ def main():
                 "metadata": {"worker": kind, "plan_id": plan_id},
                 "result": {"status": "FAIL", "error": repr(error)},
             }
+        if run.case.fixture == "polar_profile_product_global" and kind == "measure":
+            from .global_profile_product import compact_width_record
+
+            record = compact_width_record(record)
         combined["records"].append(record)
         if returncode != 0 or record["result"]["status"] != "PASS":
             combined["status"] = "FAIL"

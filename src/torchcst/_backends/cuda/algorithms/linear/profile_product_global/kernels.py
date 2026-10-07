@@ -3,7 +3,12 @@
 import triton as tr
 import triton.language as tl
 
-from ..local_product.kernels import _raw, _store_param_cotangent
+from ..local_product.kernels import (
+    _candidate_span,
+    _polar_atom,
+    _raw,
+    _store_param_cotangent,
+)
 
 
 @tr.jit
@@ -88,11 +93,14 @@ def input_h(
     )
     other_lo, other_hi = tl.load(Views + 11 * A + a), tl.load(Views + 12 * A + a)
     hi = tl.where(other_hi > other_lo, hi, lo)
-    pitch = tl.load(Pitch)
+    pitch = tl.load(Pitch) if TILE else 0.0
     acc = tl.full((BM, BK), 0.0, tl.float32)
     for start in range(lo, hi, BK):
         j = start + k
-        v, _ = _raw(OI + (j % TILE) * S + (j // TILE) * pitch - ci, inv)
+        position = OI + j * S
+        if TILE:
+            position = OI + (j % TILE) * S + (j // TILE) * pitch
+        v, _ = _raw(position - ci, inv)
         v = tl.where((j < hi) & (j < N), tl.div_rn(v, sv), 0.0)
         x = tl.load(
             X + rows[:, None] * X0 + j[None, :] * X1,
@@ -133,7 +141,7 @@ def contract(
     chunk = tl.cdiv(blocks, SPLITS) * BA
     begin, end = lo + split * chunk, tl.minimum(lo + (split + 1) * chunk, hi)
     position = O + sites * S
-    if SWAP:
+    if SWAP and TILE:
         position = O + (sites % TILE) * S + (sites // TILE) * tl.load(Pitch)
     result = tl.full((16, 16), 0.0, tl.float32)
     for start in range(begin, end, BA):
@@ -237,10 +245,13 @@ def backward_atoms(
         da, dco = tl.sum(h * g, 0), amp * tl.sum(h * tl.sum(dc, 1), 0)
         hi = tl.where((ohi > olo) & ((flags & 1) == 0), ihi, ilo)
         hci = tl.full((BM, BK), 0.0, tl.float32)
-        pitch = tl.load(Pitch)
+        pitch = tl.load(Pitch) if TILE else 0.0
         for start in range(ilo, hi, BK):
             j = start + k
-            v, dv = _raw(OI + (j % TILE) * S + (j // TILE) * pitch - ci, inv)
+            position = OI + j * S
+            if TILE:
+                position = OI + (j % TILE) * S + (j // TILE) * pitch
+            v, dv = _raw(position - ci, inv)
             dv = tl.div_rn(dv, sv) - gv * tl.div_rn(v, sv)
             x = tl.load(
                 X + rows[:, None] * X0 + j[None, :] * X1,
@@ -261,3 +272,140 @@ def backward_atoms(
             True,
             CENTER_OUTPUT_FIRST=True,
         )
+
+
+@tr.jit
+def _regular_stats(c, inv, O: tl.constexpr, S: tl.constexpr, SIZE: tl.constexpr):
+    lo, count = _candidate_span(c, inv, O, S, SIZE)
+    k = tl.arange(0, 32)
+    vv, vd = tl.full((32,), 0.0, tl.float32), tl.full((32,), 0.0, tl.float32)
+    first, last, live = SIZE, 0, 0
+    for start in range(lo, lo + count, 32):
+        j = start + k
+        v, dv = _raw(O + j * S - c, inv)
+        v, dv = (
+            tl.where((j < lo + count) & (j < SIZE), v, 0),
+            tl.where((j < lo + count) & (j < SIZE), dv, 0),
+        )
+        vv += v * v
+        vd += v * dv
+        first = tl.minimum(first, tl.min(tl.where(v > 0, j, SIZE), 0))
+        last = tl.maximum(last, tl.max(tl.where(v > 0, j + 1, 0), 0))
+        live += tl.sum((v > 0).to(tl.int32), 0)
+    return tl.sum(vv, 0), tl.sum(vd, 0), first, last, live
+
+
+@tr.jit
+def prepare_support(
+    Source,
+    P,
+    A: tl.constexpr,
+    KI: tl.constexpr,
+    NO: tl.constexpr,
+    S: tl.constexpr,
+    OI: tl.constexpr,
+    OO: tl.constexpr,
+    PK: tl.constexpr,
+    PN: tl.constexpr,
+    Scalars,
+    FLOOR: tl.constexpr,
+    BOUNDS: tl.constexpr = True,
+    STRIP_TILE: tl.constexpr = 0,
+    Pitch=None,
+):
+    tl.static_assert(STRIP_TILE == 0)
+    a = tl.program_id(0)
+    amp, inv = _polar_atom(Source, a, Scalars)
+    co, ci = tl.load(Source + 4 * a + 2), tl.load(Source + 4 * a + 3)
+    nv2, vd, ilo, ihi, iv = _regular_stats(ci, inv, OI, S, KI)
+    nu2, ud, olo, ohi, ov = _regular_stats(co, inv, OO, S, NO)
+    nv, nu = tl.sqrt(nv2), tl.sqrt(nu2)
+    active = nv * nu >= FLOOR
+    sv, su = tl.where(active, nv, tl.sqrt(FLOOR)), tl.where(active, nu, tl.sqrt(FLOOR))
+    gv = tl.where(active, tl.div_rn(vd, tl.maximum(nv2, 1.1754943508222875e-38)), 0)
+    gu = tl.where(active, tl.div_rn(ud, tl.maximum(nu2, 1.1754943508222875e-38)), 0)
+    flags = (active & (iv == 1)).to(tl.int32) | ((active & (ov == 1)).to(tl.int32) << 1)
+    tl.store(P + a, amp)
+    tl.store(P + A + a, inv)
+    tl.store(P + 2 * A + a, ci)
+    tl.store(P + 3 * A + a, co)
+    tl.store(P + 4 * A + a, sv)
+    tl.store(P + 5 * A + a, su)
+    tl.store(P + 6 * A + a, gv)
+    tl.store(P + 7 * A + a, gu)
+    tl.store(P + 8 * A + a, flags.to(tl.float32))
+    tl.store(P + 9 * A + a, ilo.to(tl.float32))
+    tl.store(P + 10 * A + a, ihi.to(tl.float32))
+    tl.store(P + 11 * A + a, olo.to(tl.float32))
+    tl.store(P + 12 * A + a, ohi.to(tl.float32))
+
+
+@tr.jit
+def make_keys(P, Keys, A: tl.constexpr, BLOCK: tl.constexpr, WIDE: tl.constexpr):
+    direction = tl.program_id(1)
+    a = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    start = tl.load(P + (11 - 2 * direction) * A + a, a < A, 0).to(tl.int32)
+    if WIDE:
+        key = start.to(tl.int64) * (A + 1) + a
+    else:
+        key = start * (A + 1) + a
+    tl.store(Keys + direction * A + a, key, a < A)
+
+
+@tr.jit
+def block_highs(
+    Views, Highs, A: tl.constexpr, CHUNKS: tl.constexpr, BLOCK: tl.constexpr
+):
+    chunk, direction = tl.program_id(0), tl.program_id(1)
+    a = chunk * BLOCK + tl.arange(0, BLOCK)
+    p = Views + direction * 13 * A
+    lo = tl.load(p + (11 - 2 * direction) * A + a, a < A, 0)
+    hi = tl.load(p + (12 - 2 * direction) * A + a, a < A, 0)
+    other_lo = tl.load(p + (9 + 2 * direction) * A + a, a < A, 0)
+    other_hi = tl.load(p + (10 + 2 * direction) * A + a, a < A, 0)
+    val = tl.max(tl.where((a < A) & (hi > lo) & (other_hi > other_lo), hi, 0), 0)
+    tl.store(Highs + direction * CHUNKS + chunk, val.to(tl.int32))
+
+
+@tr.jit
+def chunk_ranges(
+    Views,
+    Highs,
+    Ranges,
+    A: tl.constexpr,
+    OWNERS: tl.constexpr,
+    CHUNKS: tl.constexpr,
+    PC: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    direction, owner = tl.program_id(0), tl.program_id(1)
+    p = Views + direction * 13 * A
+    chunks = tl.arange(0, PC)
+    high = tl.load(Highs + direction * CHUNKS + chunks, chunks < CHUNKS, 0)
+    first_chunk = tl.min(
+        tl.where((chunks < CHUNKS) & (high > owner * 16), chunks, CHUNKS), 0
+    )
+    a = first_chunk * BLOCK + tl.arange(0, BLOCK)
+    lo = tl.load(p + (11 - 2 * direction) * A + a, a < A, 0)
+    hi = tl.load(p + (12 - 2 * direction) * A + a, a < A, 0)
+    other_lo = tl.load(p + (9 + 2 * direction) * A + a, a < A, 0)
+    other_hi = tl.load(p + (10 + 2 * direction) * A + a, a < A, 0)
+    valid = (
+        (a < A)
+        & (hi > owner * 16)
+        & (lo < (owner + 1) * 16)
+        & (hi > lo)
+        & (other_hi > other_lo)
+    )
+    first = tl.min(tl.where(valid, a, A), 0)
+    left, right = 0, A
+    # Starts are sorted, ends need not be. The chunk maximum above safely finds
+    # even an early wide interval whose end crosses many later owner starts.
+    while left < right:
+        middle = (left + right) // 2
+        start = tl.load(p + (11 - 2 * direction) * A + middle)
+        smaller = start < (owner + 1) * 16
+        left = tl.where(smaller, middle + 1, left)
+        right = tl.where(smaller, right, middle)
+    tl.store(Ranges + (direction * OWNERS + owner) * 2, first)
+    tl.store(Ranges + (direction * OWNERS + owner) * 2 + 1, left)

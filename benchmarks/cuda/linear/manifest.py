@@ -17,6 +17,9 @@ from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip import
 from torchcst._backends.cuda.algorithms.linear.profile_product.algorithm import (
     ProductAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.profile_product_global import (
+    GlobalProductAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
     StripProductAlgorithm,
 )
@@ -59,6 +62,7 @@ REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())
 REGISTRY.register(ProductAlgorithm())
 REGISTRY.register(StripProductAlgorithm())
+REGISTRY.register(GlobalProductAlgorithm())
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
@@ -184,17 +188,20 @@ class BenchmarkCase:
             "local_polar_product",
             "polar_profile_product",
             "polar_profile_product_strip",
+            "polar_profile_product_global",
         ):
             raise ValueError("unknown benchmark fixture")
         sizes = (
             (256, 512, 1024)
-            if self.fixture == "polar_profile_product_strip"
+            if self.fixture
+            in ("polar_profile_product_strip", "polar_profile_product_global")
             else (16, 32, 64, 128)
             if self.fixture
             in (
                 "local_polar_product",
                 "polar_profile_product",
                 "polar_profile_product_strip",
+                "polar_profile_product_global",
             )
             else (1024, 8192)
         )
@@ -204,6 +211,7 @@ class BenchmarkCase:
             "local_polar_product",
             "polar_profile_product",
             "polar_profile_product_strip",
+            "polar_profile_product_global",
         ) and (
             type(self.rows) is not int or not 1 <= self.rows <= 64 or self.atoms < 4
         ):
@@ -235,6 +243,7 @@ class BenchmarkCase:
                 "local_polar_product",
                 "polar_profile_product",
                 "polar_profile_product_strip",
+                "polar_profile_product_global",
             )
             else ("broad", "sharp")
         )
@@ -249,6 +258,7 @@ class BenchmarkCase:
                 "local_polar_product",
                 "polar_profile_product",
                 "polar_profile_product_strip",
+                "polar_profile_product_global",
             )
             or self.profile != "mixed"
         ):
@@ -275,7 +285,11 @@ class BenchmarkRun:
             if algorithm.operation_id != OPERATION or algorithm.semantics_id != (
                 "kernel-atom-sum-v1"
                 if self.case.fixture
-                in ("polar_profile_product", "polar_profile_product_strip")
+                in (
+                    "polar_profile_product",
+                    "polar_profile_product_strip",
+                    "polar_profile_product_global",
+                )
                 else LOCAL_SEMANTICS
                 if self.case.fixture == "local_polar_product"
                 else SEMANTICS
