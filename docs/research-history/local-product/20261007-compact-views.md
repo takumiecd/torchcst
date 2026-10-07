@@ -17,10 +17,11 @@ The dX helpers' unused second internal result is zero; the actual parameter VJP
 always consumes the complete 13-field forward view and normalization derivatives.
 
 Logical copy storage now falls by `8*A` bytes: 1,632 B at A204 and 6,552 B at
-A819, half the initial proposal. 24 rather than26 total fields is a7.7% payload
+A819, half the initial proposal. 24 rather than 26 total fields is a 7.7% payload
 reduction. Allocator peaks and physical DRAM/L2 behavior require measurement.
 
-Host validation uses CPU tests, changed-file Ruff, build and eight fresh
+Host validation passed: CPU 894 passed / 1,054 skipped, changed-file Ruff,
+wheel/sdist build and eight fresh
 prepare/check comparisons across N64/N128 and initial rho1.25/3/8/mixed (>1).
 The new GPU suite checks both directional mappings/support coverage, slices,
 batches1/32/64, independent scalar Y/dX/all source gradients and positions,
