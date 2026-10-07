@@ -68,23 +68,24 @@ def _stats(
     TILE: tl.constexpr,
     GROUP: tl.constexpr,
     SUPPORT: tl.constexpr,
+    SITES: tl.constexpr,
 ):
     if SUPPORT:
         lo, count = _span(c, inv, Pitch, O, S, N, TILE)
     else:
         lo, count = tl.full((GROUP,), 0, tl.int32), tl.full((GROUP,), N, tl.int32)
     count = tl.where(valid, count, 0)
-    site = tl.arange(0, 32)
+    site = tl.arange(0, SITES)
     vv, vd = (
-        tl.full((GROUP, 32), 0.0, tl.float32),
-        tl.full((GROUP, 32), 0.0, tl.float32),
+        tl.full((GROUP, SITES), 0.0, tl.float32),
+        tl.full((GROUP, SITES), 0.0, tl.float32),
     )
     first, last, live = (
         tl.full((GROUP,), N, tl.int32),
         tl.full((GROUP,), 0, tl.int32),
         tl.full((GROUP,), 0, tl.int32),
     )
-    for start in range(0, tl.max(count, 0), 32):
+    for start in range(0, tl.max(count, 0), SITES):
         j = lo[:, None] + start + site[None, :]
         v, dv = _raw(_positions(j, Pitch, O, S, TILE) - c[:, None], inv[:, None])
         mask = valid[:, None] & (j < (lo + count)[:, None]) & (j < N)
@@ -116,6 +117,7 @@ def prepare(
     Pitch=None,
     GROUP: tl.constexpr = 8,
     SUPPORT: tl.constexpr = True,
+    PREP_SITES: tl.constexpr = 32,
 ):
     a = tl.program_id(0) * GROUP + tl.arange(0, GROUP)
     valid = a < A
@@ -125,9 +127,11 @@ def prepare(
         tl.load(Source + 4 * a + 3, valid, 0),
     )
     nv2, vd, ilo, ihi, iv = _stats(
-        ci, inv, valid, Pitch, OI, S, KI, STRIP_TILE, GROUP, SUPPORT
+        ci, inv, valid, Pitch, OI, S, KI, STRIP_TILE, GROUP, SUPPORT, PREP_SITES
     )
-    nu2, ud, olo, ohi, ov = _stats(co, inv, valid, Pitch, OO, S, NO, 0, GROUP, SUPPORT)
+    nu2, ud, olo, ohi, ov = _stats(
+        co, inv, valid, Pitch, OO, S, NO, 0, GROUP, SUPPORT, PREP_SITES
+    )
     nv, nu = tl.sqrt(nv2), tl.sqrt(nu2)
     active = nv * nu >= FLOOR
     sv, su = tl.where(active, nv, tl.sqrt(FLOOR)), tl.where(active, nu, tl.sqrt(FLOOR))
