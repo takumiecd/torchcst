@@ -60,6 +60,10 @@ class PlanLinear(nn.Module):
             "research_profile_product_global",
             "research_profile_product_matrix",
             "research_strip_profile_product_matrix",
+            "research_profile_product_large_matrix",
+            "research_strip_profile_product_large_matrix",
+            "research_profile_product_large_prepared",
+            "research_strip_profile_product_large_prepared",
         ):
             from torchcst import AtomUpdateBinding, CSTLinear
 

@@ -51,6 +51,6 @@ class GroupedStripAlgorithm(StripProductAlgorithm):
                 p,
                 operator.kernel,
                 operator.charts[0],
-                chart_spec(declaration),
+                chart_spec(declaration, max_input=self.max_input),
                 state.recipe,
             )

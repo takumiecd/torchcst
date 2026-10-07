@@ -1,6 +1,7 @@
 """Single regular Product chart, independent of Strip declarations."""
 
 from dataclasses import asdict, dataclass
+from typing import ClassVar
 
 import torch
 
@@ -16,7 +17,7 @@ from torchcst.patterns import LinePatternSpec
 from .recipe import GlobalProductRecipe
 
 
-def product_spec(operator):
+def product_spec(operator, *, max_sites=1024):
     if len(operator.charts) != 1:
         raise ValueError("requires single Product chart")
     chart, kernel = operator.charts[0], operator.kernel
@@ -29,7 +30,7 @@ def product_spec(operator):
         or any(type(p.profile) is not TriweightSpec for p in kernel.profiles)
         or any(type(p) is not LinePatternSpec for p in chart.axes)
         or chart.axes[0].spacing != chart.axes[1].spacing
-        or any(not 2 <= n <= 1024 for n in chart.shape)
+        or any(not 2 <= n <= max_sites for n in chart.shape)
     ):
         raise ValueError("requires regular Euclidean Product with Triweight factors")
     return chart
@@ -37,6 +38,8 @@ def product_spec(operator):
 
 @dataclass(frozen=True)
 class GlobalProductAlgorithm(Algorithm[GlobalProductRecipe]):
+    max_sites: ClassVar[int] = 1024
+    max_atoms: ClassVar[int] = 65536
     id: str = "research_profile_product_global"
     revision: str = "v1"
     operation_id: str = "linear"
@@ -54,15 +57,15 @@ class GlobalProductAlgorithm(Algorithm[GlobalProductRecipe]):
             return SupportResult(("requires LinearContext",))
         reasons = []
         try:
-            product_spec(context.operator)
+            product_spec(context.operator, max_sites=self.max_sites)
         except (ValueError, TypeError):
             reasons.append("requires supported single regular Product chart")
         if context.dtype != torch.float32 or context.device.type != "cuda":
             reasons.append("requires CUDA FP32")
         if not 1 <= context.m <= 64 or context.parameter_dim != 4:
             reasons.append("requires batch1..64 and Polar[A,4]")
-        if context.atom_count > 65536:
-            reasons.append("requires at most65536 atoms")
+        if context.atom_count > self.max_atoms:
+            reasons.append(f"requires at most{self.max_atoms} atoms")
         if context.precision.autocast or context.precision.allow_tf32:
             reasons.append("requires IEEE without autocast")
         return SupportResult(tuple(reasons))
@@ -85,7 +88,7 @@ class GlobalProductAlgorithm(Algorithm[GlobalProductRecipe]):
             return operator.apply(x, p, algorithm="factored")
         from .executor import grid_product
 
-        chart = product_spec(declaration)
+        chart = product_spec(declaration, max_sites=self.max_sites)
         sizes = (
             len(x),
             chart.shape[1],

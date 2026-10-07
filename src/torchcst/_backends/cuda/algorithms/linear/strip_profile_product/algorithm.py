@@ -1,6 +1,7 @@
 """Single input-strip declaration; no GPU imports during support checks."""
 
 from dataclasses import asdict, dataclass
+from typing import ClassVar
 
 import torch
 
@@ -16,7 +17,7 @@ from torchcst.patterns import LinePatternSpec
 from .recipe import StripProductRecipe
 
 
-def chart_spec(operator):
+def chart_spec(operator, *, max_input=1024):
     if len(operator.charts) != 1:
         raise ValueError("requires single Strip chart")
     chart, kernel = operator.charts[0], operator.kernel
@@ -31,7 +32,7 @@ def chart_spec(operator):
         or any(type(p) is not LinePatternSpec for p in chart.axes)
         or chart.axes[0].spacing != chart.axes[1].spacing
         or not 2 <= operator.out_features <= 128
-        or not 2 <= operator.in_features <= 1024
+        or not 2 <= operator.in_features <= max_input
         or chart.tile_shape[1] not in (16, 32, 64, 128)
     ):
         raise ValueError(
@@ -42,6 +43,7 @@ def chart_spec(operator):
 
 @dataclass(frozen=True)
 class StripProductAlgorithm(Algorithm[StripProductRecipe]):
+    max_input: ClassVar[int] = 1024
     id: str = "research_strip_profile_product"
     revision: str = "v1"
     operation_id: str = "linear"
@@ -59,7 +61,7 @@ class StripProductAlgorithm(Algorithm[StripProductRecipe]):
             return SupportResult(("requires LinearContext",))
         reasons = []
         try:
-            chart_spec(context.operator)
+            chart_spec(context.operator, max_input=self.max_input)
         except (ValueError, TypeError):
             reasons.append("requires supported single input Strip product")
         if context.dtype != torch.float32 or context.device.type != "cuda":
@@ -95,7 +97,7 @@ class StripProductAlgorithm(Algorithm[StripProductRecipe]):
                     p,
                     operator.kernel,
                     operator.charts[0],
-                    chart_spec(declaration),
+                    chart_spec(declaration, max_input=self.max_input),
                     state.recipe,
                 )
         from .executor import strip_product
@@ -106,6 +108,6 @@ class StripProductAlgorithm(Algorithm[StripProductRecipe]):
                 p,
                 operator.kernel,
                 operator.charts[0],
-                chart_spec(declaration),
+                chart_spec(declaration, max_input=self.max_input),
                 state.recipe,
             )
