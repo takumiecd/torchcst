@@ -1387,6 +1387,7 @@ def param_vjp(
     G=None,
     SAVE_G: tl.constexpr = False,
     BATCH_SPLITS: tl.constexpr = 1,
+    CENTER_OUTPUT_FIRST: tl.constexpr = False,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     batch_split = tl.program_id(1) if BATCH_SPLITS > 1 else 0
@@ -1466,13 +1467,31 @@ def param_vjp(
             dci += partial_i
             dco += partial_o
         _store_param_cotangent(
-            DQ, Source, AmplitudeMax, original, valid, da, dci, dco, POLAR
+            DQ,
+            Source,
+            AmplitudeMax,
+            original,
+            valid,
+            da,
+            dci,
+            dco,
+            POLAR,
+            CENTER_OUTPUT_FIRST,
         )
 
 
 @tr.jit
 def _store_param_cotangent(
-    DQ, Source, AmplitudeMax, original, valid, da, dci, dco, POLAR: tl.constexpr
+    DQ,
+    Source,
+    AmplitudeMax,
+    original,
+    valid,
+    da,
+    dci,
+    dco,
+    POLAR: tl.constexpr,
+    CENTER_OUTPUT_FIRST: tl.constexpr = False,
 ):
     if POLAR:
         z0 = tl.load(Source + 4 * original, valid, 0.0)
@@ -1489,5 +1508,5 @@ def _store_param_cotangent(
     else:
         tl.store(DQ + 4 * original, da, valid)
         tl.store(DQ + 4 * original + 1, 0.0, valid)
-    tl.store(DQ + 4 * original + 2, dci, valid)
-    tl.store(DQ + 4 * original + 3, dco, valid)
+    tl.store(DQ + 4 * original + 2, dco if CENTER_OUTPUT_FIRST else dci, valid)
+    tl.store(DQ + 4 * original + 3, dci if CENTER_OUTPUT_FIRST else dco, valid)

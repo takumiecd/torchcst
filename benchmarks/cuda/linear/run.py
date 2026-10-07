@@ -54,6 +54,20 @@ class PlanLinear(nn.Module):
         self.local_state = None
         self.persistent_layout = None
         self.update_binding = None
+        if plan.algorithm_id == "research_profile_product":
+            from torchcst import AtomUpdateBinding, CSTLinear
+
+            self.product_site = CSTLinear(
+                chart=operator.charts[0],
+                atoms=self.p,
+                kernel=operator.kernel,
+                backend="factored",
+                device=self.p.device,
+                dtype=self.p.dtype,
+            )
+            self.live_operator = self.product_site.operator
+            self.local_state = self.product_site.kernel
+            self.update_binding = AtomUpdateBinding(self.live_operator)
         if plan.algorithm_id == "research_local_product":
             from benchmarks.cuda.linear.local_product import runtime
 
@@ -125,6 +139,7 @@ def _metadata(args, run):
         Path(__file__).with_name("check_normalized.py"),
         Path(__file__).with_name("manifest.py"),
         Path(__file__).with_name("local_product.py"),
+        Path(__file__).with_name("profile_product.py"),
         Path(__file__).parent.parent / "polar_update.py",
     ]
     return {
@@ -164,6 +179,10 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "polar_profile_product":
+        from benchmarks.cuda.linear.profile_product import correctness as product_check
+
+        return product_check(args, run, PlanLinear)
     if run.case.fixture == "local_polar_product":
         from benchmarks.cuda.linear.local_product import correctness as local_check
 
@@ -207,7 +226,8 @@ def correctness(args, run):
 def measure(args, run):
     case = run.case
     n, m = case.size, case.rows
-    local = case.fixture == "local_polar_product"
+    product = case.fixture == "polar_profile_product"
+    local = case.fixture in ("local_polar_product", "polar_profile_product")
     support_report = None
     if local:
         from benchmarks.cuda.linear.local_product import (
@@ -225,6 +245,14 @@ def measure(args, run):
             summarize,
         )
 
+        if product:
+            from benchmarks.cuda.linear.profile_product import (
+                decode,
+                fixture_operator,
+                fixture_state,
+                initialize,
+                summarize,
+            )
         op, p = fixture_operator(case), initialize(case)
         support_report = summarize(decode(fixture_state(case), p), Domain(n, n))
     else:
@@ -271,6 +299,8 @@ def measure(args, run):
             decode,
         )
 
+        if product:
+            from benchmarks.cuda.linear.profile_product import decode
         initial_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
         initial_sigma = initial_precision.rsqrt()
     optimizer = torch.optim.AdamW(
@@ -635,7 +665,10 @@ def main():
             return
     if args.core_diagnostics and run.case.fixture != "local_polar_product":
         ap.error("--core-diagnostics requires the local product fixture")
-    if args.polar_update == "fused" and run.case.fixture != "local_polar_product":
+    if args.polar_update == "fused" and run.case.fixture not in (
+        "local_polar_product",
+        "polar_profile_product",
+    ):
         ap.error("--polar-update fused requires the local product fixture")
     if args.kernel_diagnostics and (
         run.case.fixture != "local_polar_product"
