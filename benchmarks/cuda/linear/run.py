@@ -58,6 +58,8 @@ class PlanLinear(nn.Module):
             "research_profile_product",
             "research_strip_profile_product",
             "research_profile_product_global",
+            "research_profile_product_matrix",
+            "research_strip_profile_product_matrix",
         ):
             from torchcst import AtomUpdateBinding, CSTLinear
 
@@ -424,7 +426,7 @@ def measure(args, run):
         if not sigma_updates["changed_atoms"]:
             raise AssertionError("dynamic-width fixture did not update sigma")
         recipe = run.entry(args.plan_id).plan.recipe
-        if recipe.execution_route in (
+        if getattr(recipe, "execution_route", None) in (
             "hybrid",
             "hybrid_support",
             "hybrid_three",
@@ -482,7 +484,7 @@ def measure(args, run):
         final_support = summarize(
             decode(model.local_state, model.p).detach().cpu(), support_domain
         )
-        if recipe.execution_route in (
+        if getattr(recipe, "execution_route", None) in (
             "hybrid_singletons",
             "hybrid_packed",
             "hybrid_persistent",
@@ -614,7 +616,9 @@ def measure(args, run):
         "sigma_updates": sigma_updates,
         "persistent_layout": layout_report,
         "hybrid_routing": hybrid_routing,
-        "h_policy": run.entry(args.plan_id).plan.recipe.execution_route
+        "h_policy": getattr(
+            run.entry(args.plan_id).plan.recipe, "execution_route", None
+        )
         if local and args.worker != "dense"
         else None,
         "compiler_reports": __import__(

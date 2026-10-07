@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "prepared",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 16,
+          "atom_group": 4,
+          "sorting": "torch",
+          "prep_sites": 16
+        }
+      }
+    },
+    {
+      "id": "matrix16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 16
+        }
+      }
+    },
+    {
+      "id": "matrix32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 32
+        }
+      }
+    },
+    {
+      "id": "small-prepared",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 8,
+          "atom_group": 4,
+          "sorting": "legacy",
+          "prep_sites": 16
+        }
+      }
+    },
+    {
+      "id": "small-matrix16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 8,
+          "prep_sites": 16,
+          "patch_sites": 16
+        }
+      }
+    },
+    {
+      "id": "small-matrix32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product_matrix",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 8,
+          "prep_sites": 16,
+          "patch_sites": 32
+        }
+      }
+    },
+    {
+      "id": "native16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product_matrix",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 16,
+          "gemm": "triton"
+        }
+      }
+    },
+    {
+      "id": "native32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product_matrix",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 16,
+          "prep_sites": 16,
+          "patch_sites": 32,
+          "gemm": "triton"
+        }
+      }
+    },
+    {
+      "id": "small-native16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product_matrix",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 8,
+          "prep_sites": 16,
+          "patch_sites": 16,
+          "gemm": "triton"
+        }
+      }
+    },
+    {
+      "id": "small-native32",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_strip_profile_product_matrix",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "preparation": "support",
+          "prep_group": 8,
+          "prep_sites": 16,
+          "patch_sites": 32,
+          "gemm": "triton"
+        }
+      }
+    }
+  ]
+}
