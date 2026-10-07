@@ -35,7 +35,8 @@
     "torch",
     "local",
     "saved",
-    "ordered"
+    "ordered",
+    "reuse"
   ],
   "baseline": "torch",
   "dense": true

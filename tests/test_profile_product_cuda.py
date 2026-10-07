@@ -72,7 +72,7 @@ def run(layer, x, route, *, atom_block=16):
     return Dispatcher(registry=REGISTRY).run(layer, LinearInputs(x), plan=plan)
 
 
-@pytest.mark.parametrize("route", ["torch", "local", "saved", "ordered"])
+@pytest.mark.parametrize("route", ["torch", "local", "saved", "ordered", "reuse"])
 @pytest.mark.parametrize("block", [16, 32])
 def test_metadata_and_json(route, block):
     plan = ExecutionPlan(
@@ -134,7 +134,7 @@ def domain_operator(case):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
+@pytest.mark.parametrize("route", ["local", "saved", "ordered", "reuse"])
 @pytest.mark.parametrize(
     "n,rows,block", [(16, 1, 16), (32, 7, 32), (64, 32, 16), (128, 64, 32)]
 )
@@ -160,7 +160,7 @@ def test_full_site_oracle_y_dx_all_source(route, n, rows, block):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
+@pytest.mark.parametrize("route", ["local", "saved", "ordered", "reuse"])
 @pytest.mark.parametrize("case", ["empty", "singleton", "tiny", "global_floor"])
 def test_global_floor_and_support_gradients(route, case):
     floor = 0.5 if case == "global_floor" else 1e-6
@@ -197,7 +197,7 @@ def test_global_floor_and_support_gradients(route, case):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
+@pytest.mark.parametrize("route", ["local", "saved", "ordered", "reuse"])
 def test_saved_snapshot_after_source_and_scalar_changes(route):
     layer = model(torch.tensor([[0.3, 1.5, 2.4, 4.2]]), device="cuda")
     ref = copy.deepcopy(layer)
@@ -217,7 +217,7 @@ def test_saved_snapshot_after_source_and_scalar_changes(route):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
+@pytest.mark.parametrize("route", ["local", "saved", "ordered", "reuse"])
 @pytest.mark.parametrize("update", ["torch", "fused"])
 def test_captured_updates_parameters_moments_and_evolving_width(route, update):
     torch.manual_seed(13)
@@ -280,7 +280,7 @@ def test_captured_updates_parameters_moments_and_evolving_width(route, update):
 
 
 @GPU
-@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
+@pytest.mark.parametrize("route", ["local", "saved", "ordered", "reuse"])
 def test_rectangular_shifted_sites_full_matrix_oracle(route):
     torch.manual_seed(57)
     p = torch.randn(19, 4)
@@ -318,3 +318,38 @@ def test_rectangular_shifted_sites_full_matrix_oracle(route):
     for a, b in zip(ga, gb):
         torch.testing.assert_close(a.double(), b, rtol=4e-4, atol=2e-5)
     assert torch.all(gb[1][:, 2:].abs() > 1e-8)
+
+
+def test_reuse_matches_tuned_small_core_launch_and_layout():
+    from benchmarks.cuda.linear.local_product import LocalRecipe
+
+    previous = LocalRecipe(
+        route="persistent_supportprep_band_recompute_vjp_ordered_reuse_histtightinline_paramatom16_param4_param2",
+        atom_block=32,
+        pack=False,
+    )
+    candidate = ProductRecipe(execution_route="reuse", atom_block=32)
+    for field in (
+        "atom_block",
+        "batch_block",
+        "output_block",
+        "parameter_atom_block",
+        "parameter_batch_block",
+        "parameter_warps",
+        "contraction_warps",
+        "owner_splits",
+        "parameter_splits",
+        "order_by_position",
+        "compact_order_key",
+        "parallel_owner_ranges",
+        "parallel_order_copy",
+        "histogram_owner_ranges",
+        "fused_histogram_owner_ranges",
+        "tight_histogram_owner_ranges",
+        "preparation_warps",
+        "band_dispatch",
+        "vector_support",
+        "recompute_h",
+        "recompute_param_h",
+    ):
+        assert getattr(candidate, field) == getattr(previous, field), field

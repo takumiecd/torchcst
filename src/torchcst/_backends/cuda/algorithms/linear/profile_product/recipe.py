@@ -12,7 +12,7 @@ class ProductRecipe(Recipe):
 
     @property
     def parameter_batch_block(self):
-        return 16
+        return 0 if self.reuse_layout else 16
 
     @property
     def parameter_warps(self):
@@ -20,7 +20,43 @@ class ProductRecipe(Recipe):
 
     @property
     def ordered_layout(self):
-        return self.execution_route == "ordered"
+        return self.execution_route in ("ordered", "reuse")
+
+    @property
+    def reuse_layout(self):
+        return self.execution_route == "reuse"
+
+    @property
+    def order_by_position(self):
+        return self.reuse_layout
+
+    @property
+    def compact_order_key(self):
+        return self.reuse_layout
+
+    @property
+    def parallel_owner_ranges(self):
+        return self.reuse_layout
+
+    @property
+    def histogram_owner_ranges(self):
+        return self.reuse_layout
+
+    @property
+    def fused_histogram_owner_ranges(self):
+        return self.reuse_layout
+
+    @property
+    def tight_histogram_owner_ranges(self):
+        return self.reuse_layout
+
+    @property
+    def preparation_warps(self):
+        return 8 if self.reuse_layout else 4
+
+    @property
+    def parameter_atom_block(self):
+        return 16 if self.reuse_layout else self.atom_block
 
     @property
     def recompute_h(self):
@@ -32,7 +68,7 @@ class ProductRecipe(Recipe):
 
     @property
     def vector_support(self):
-        return self.ordered_layout
+        return self.ordered_layout and not self.reuse_layout
 
     @property
     def contraction_warps(self):
@@ -52,7 +88,7 @@ class ProductRecipe(Recipe):
         object.__setattr__(self, "rho_upper", tuple(self.rho_upper))
         super().__post_init__()
         if (
-            self.execution_route not in ("torch", "local", "saved", "ordered")
+            self.execution_route not in ("torch", "local", "saved", "ordered", "reuse")
             or type(self.pack) is not bool
             or self.pack
             or self.rho_upper != (1.0, 2.0, 4.0, 16.0)
@@ -60,4 +96,6 @@ class ProductRecipe(Recipe):
             or type(self.batch_block) is not int
             or self.support_limit != 8
         ):
-            raise ValueError("requires torch/local/saved/ordered with canonical small blocks")
+            raise ValueError(
+                "requires declared profile product route with canonical small blocks"
+            )
