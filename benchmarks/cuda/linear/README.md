@@ -361,3 +361,33 @@ The rho label describes initialization, not a frozen width during timing.
 Record actual initial/final widths and route membership, particularly for rho4
 at the local/saved boundary. Complete-step timing and memory use the primary
 Graph; component events use a separate diagnostic Graph.
+
+## Whole-chart Polar profile product on input Strip
+
+`plans-profile-product-strip.json` compares a Torch factored baseline, `tiled`
+small contractions and the tuned `reuse` small core. The fixtures keep 64 output
+sites and expand inputs to 256/512/1024, with tile64, pitch68, batch32 and about
+5% atoms. The complete Strip Chart defines one atom's normalization domain;
+input tiles share its norm, floor state and center derivative. Pitch gaps are
+part of the physical coordinates. This initial scheduler tiles only the input
+axis and is an explicit research selection.
+
+```bash
+python -m tools.kernel_dev prepare \
+  --plans benchmarks/cuda/linear/plans-profile-product-strip.json \
+  --case benchmarks/cuda/linear/cases/profile-product-strip-256-rho3.json \
+  --candidate tiled --candidate reuse --output output/strip-comparison
+python -m tools.kernel_dev check \
+  --plans output/strip-comparison/plans.json \
+  --case output/strip-comparison/case.json
+python -m tools.kernel_dev test --suite profile-product-strip
+python -m benchmarks.cuda.linear.run \
+  --plans output/strip-comparison/plans.json \
+  --case output/strip-comparison/case.json \
+  --polar-update fused --output output/strip-comparison/result.json
+```
+
+The correctness worker checks every site and atom with an independent FP64 raw
+matrix oracle, chunking atom count to bound its memory. Projection revision5
+keeps this scope and rectangular operator distinct from small Product results.
+See the [implementation and measurements](../../../docs/research-history/local-product/20261007-profile-product-strip.md).
