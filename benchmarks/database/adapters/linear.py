@@ -13,6 +13,7 @@ from dataclasses import asdict
 
 from benchmarks.cuda.linear.manifest import REGISTRY, decode_snapshot
 from benchmarks.cuda.linear.protocol import (
+    GLOBAL_PRODUCT_ORACLE_SCOPE,
     LOCAL_OPTIMIZER_POLICY,
     LOCAL_ORACLE_SCOPE,
     PRODUCT_ORACLE_SCOPE,
@@ -178,11 +179,25 @@ def project(value):
     product = run.case.fixture in (
         "polar_profile_product",
         "polar_profile_product_strip",
+        "polar_profile_product_global",
     )
     local = product or run.case.fixture == "local_polar_product"
-    revision = 5 if strip else 4 if product else LOCAL_REVISION if local else REVISION
+    global_product = run.case.fixture == "polar_profile_product_global"
+    revision = (
+        6
+        if global_product
+        else 5
+        if strip
+        else 4
+        if product
+        else LOCAL_REVISION
+        if local
+        else REVISION
+    )
     oracle_scope = (
-        STRIP_PRODUCT_ORACLE_SCOPE
+        GLOBAL_PRODUCT_ORACLE_SCOPE
+        if global_product
+        else STRIP_PRODUCT_ORACLE_SCOPE
         if strip
         else PRODUCT_ORACLE_SCOPE
         if product
@@ -282,7 +297,9 @@ def project(value):
                 raise ValueError("workers use different polar update implementations")
             polar_update = actual_update
             protocol["polar_update"] = polar_update
-            protocol["revision"] = 5 if strip else 4 if product else 3
+            protocol["revision"] = (
+                6 if global_product else 5 if strip else 4 if product else 3
+            )
         if (
             record.status != "PASS"
             or type(meta.get("schema_version")) is not int
