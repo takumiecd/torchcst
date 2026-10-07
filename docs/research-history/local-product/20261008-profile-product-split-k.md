@@ -170,3 +170,45 @@ final-head Actions before GitHub merge. Implementation/benchmark/test file sets
 and bytes remain exactly those of measured0864a752; no CUDA change follows the
 gate or measurements. Literal Torus mathematics remains an unanswered user
 choice; the separate CPU proposal is not an integrated declaration or kernel.
+
+## Completed large-phase study and integration
+
+PR#69 merged through GitHub at30775a547ff10175791e59b2dbec0709a5403a5d after
+final head a12ab8fee0cc464810ee0c12720d2ffea268e10f passed Actions37700168659.
+Local main was fast-forwarded afterwards. The separate phase job completed
+five full-site/all-atom FP64 and production Polar gates, including the actual
+8192x8192/3,355,443-atom Product fixture for split1 and split8. Source file sets
+and bytes, downloaded receipt, all21-sample event arrays and compiler metadata
+are verified and retained in the summary/raw evidence. Runtime: NVIDIA L4,
+Torch2.11.0+cu130/CUDA13.0/Triton3.6.0. Supervisor31002 exited0 and every pool
+slot is stopped; no GPU process memory claim is made.
+
+Warm kernel-event medians in milliseconds (external events, sequential plans,
+continued parameter updates; diagnostic scope only):
+
+| Product size / split | Preparation | Assembly | Forward matrix | dX matrix | dW matrix | Atom VJP |
+| --- | --- | --- | --- | --- | --- | --- |
+|2048 /1|.275456|.129024|.256000|.063488|.065536|.281600|
+|2048 /8|.280576|.130048|.207872+.006144|.053248+.005120|.067584|.288768|
+|8192 /1|5.384192|17.207296|4.121600|1.297408|1.189888|9.718784|
+|8192 /8|5.571584|17.347584|4.128768+.032768|1.178624+.030720|1.199104|9.779200|
+
+Split8 matrix entries show partial contraction plus its separate reduction;
+the enclosing matrix wrappers and phase events are also preserved but must not
+be summed with these nested events. The independent learning-Graph medians in
+this diagnostic process are43.213354/43.416781ms for Product8192 split1/8:
+no improvement is observed there. This is not a primary isolated complete-step
+comparison or memory measurement. It limits extrapolation from the confirmed
+1024/2048 gains and identifies assembly and atom VJP as larger measured costs
+at8192. The corresponding FP64 gates pass; split1 max Y/dX errors are
+1.80482e-4/1.79605e-4, split8 4.26656e-5/3.80911e-5, dp4.81145e-6 and
+same-cotangent Polar update exactly equal for both.
+
+Assembly/VJP compiled registers remain52/72 with zero reported spills at both
+sizes. Increased working set and scattered W/dW accesses are plausible causes
+of their growth, but no cache-counter or causal ordering experiment has yet
+proved that explanation. The next isolated candidate is physical atom ordering
+by two-dimensional support tiles with canonical IDs retained. Its sort/copy
+cost, additional scratch, floating accumulation order and complete-step peaks
+must be measured before any adoption. Continue on kernel/profile-product-spatial-order;
+no ordering implementation or speedup is claimed by this completed study.
