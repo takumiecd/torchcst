@@ -62,6 +62,8 @@ def family(state):
             name, policies = contracts[type(spec.parameterization)]
         except KeyError:
             raise ValueError("unsupported kernel parameterization") from None
+        if name == "polar_amp_width" and spec.composition == "profile_product":
+            name = "profile_product"
         if name in ("amp_width", "polar_amp_width") and spec.composition != "separable":
             raise ValueError("parameterization requires separable composition")
         if name == "log_width" and spec.composition != "radial":
@@ -85,7 +87,7 @@ def family(state):
             type(settings[key]) not in (int, float) or settings[key] < 0
         ):
             raise ValueError(f"{key} must be nonnegative")
-    if name == "polar_amp_width" and (
+    if name in ("polar_amp_width", "profile_product") and (
         type(settings["activity_gain"]) not in (int, float)
         or settings["activity_gain"] <= 0
         or settings["activity_mode"] not in ("finite_chord", "time_energy")
@@ -106,12 +108,16 @@ def _operation(state, operation, area="kernels"):
 
 
 def validate_layout(state, charts):
-    expected = 1 if state.spec.composition == "radial" else 2
+    expected = 1 if state.spec.composition in ("radial", "profile_product") else 2
     if state.spec.composition == "amplitude":
         return validate_layout(state.inner, charts)
     if len(charts) != expected:
         raise ValueError("kernel composition differs from chart layout")
     name = family(state)
+    if state.spec.composition == "profile_product":
+        from torchcst.operators.spec import validate_profile_product_layout
+
+        validate_profile_product_layout(charts[0].spec, state.spec)
     if (
         name == "log_width"
         and type(charts[0].geometry.spec) is not EuclideanGeometrySpec
@@ -141,6 +147,7 @@ def parameter_dim(state, *charts):
         "amp_width": 1,
         "direct_amp_width": 2,
         "polar_amp_width": 2,
+        "profile_product": 2,
         "log_width": 2,
     }.get(family(state), 0)
     return prefix + sum(c.center_parameter_dim for c in charts)
@@ -154,6 +161,7 @@ def parameter_dof(state, *charts):
         "amp_width": 1,
         "direct_amp_width": 2,
         "polar_amp_width": 2,
+        "profile_product": 2,
         "log_width": 2,
     }.get(family(state), 0)
     return prefix + sum(c.intrinsic_dim for c in charts)
@@ -162,7 +170,7 @@ def parameter_dof(state, *charts):
 def supports_factorization(state):
     if state.spec.composition == "amplitude":
         return supports_factorization(state.inner)
-    return state.spec.composition == "separable"
+    return state.spec.composition in ("separable", "profile_product")
 
 
 def initialize(state, *charts_and_atoms, mode="balanced"):
@@ -175,10 +183,10 @@ def materialize_atoms(state, *charts_and_p):
     return _operation(state, "materialize_atoms")(state, *charts_and_p)
 
 
-def factors(state, input_chart, output_chart, p):
+def factors(state, *charts_and_p):
     if not supports_factorization(state):
         raise ValueError("kernel has no input/output factors")
-    return _operation(state, "factors")(state, input_chart, output_chart, p)
+    return _operation(state, "factors")(state, *charts_and_p)
 
 
 def weight(state, chart, p):

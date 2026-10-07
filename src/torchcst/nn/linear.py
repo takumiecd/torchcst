@@ -245,14 +245,15 @@ class CSTLinear(CSTModule):
             self._materialize_atoms,
             factor_atoms=(
                 self._factor_atoms
-                if len(self.cst_charts()) == 2
-                and _kernel.supports_factorization(self.kernel)
+                if _kernel.supports_factorization(self.kernel)
                 else None
             ),
         )
 
     def _factor_atoms(self, p: Tensor) -> tuple[Tensor, Tensor]:
-        if hasattr(self, "chart"):
+        from torchcst._backends.torch.kernels import execution as _kernel
+
+        if not _kernel.supports_factorization(self.kernel):
             raise NotImplementedError(
                 "single-chart kernels have no input/output factors"
             )

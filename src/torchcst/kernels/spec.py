@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from .normalization import NormalizationSpec
-from .parameterizations import FixedWidthSpec, ParameterizationSpec
+from .parameterizations import FixedWidthSpec, ParameterizationSpec, PolarAmpWidthSpec
 from .profiles import ProfileSpec
 
 AtomInit = Literal["balanced", "uniform"]
@@ -70,7 +70,7 @@ class KernelSpec:
     Parameter tensors, chunk sizes, checkpointing and CUDA tuning are absent.
     """
 
-    composition: Literal["radial", "separable", "amplitude"]
+    composition: Literal["radial", "separable", "amplitude", "profile_product"]
     profiles: tuple[ProfileBinding, ...] = ()
     parameterization: ParameterizationSpec | None = None
     inner: "KernelSpec | None" = None
@@ -81,6 +81,7 @@ class KernelSpec:
         default_factory=lambda: StatePolicySpec(id="geometry")
     )
     revision: int = 1
+    normalization: NormalizationSpec | None = None
 
     def __post_init__(self):
         if type(self.revision) is not int or self.revision < 1:
@@ -97,6 +98,10 @@ class KernelSpec:
             self.update, StatePolicySpec
         ):
             raise TypeError("invalid state policy")
+        if self.composition != "profile_product" and self.normalization is not None:
+            raise ValueError(
+                "product normalization requires profile_product composition"
+            )
         if self.composition == "amplitude":
             if (
                 not isinstance(self.inner, KernelSpec)
@@ -104,6 +109,32 @@ class KernelSpec:
                 or self.parameterization is not None
             ):
                 raise ValueError("amplitude composition needs only an inner kernel")
+        elif self.composition == "profile_product":
+            if self.inner is not None or not self.profiles:
+                raise ValueError("profile_product needs a nonempty tuple of profiles")
+            if type(self.parameterization) is not PolarAmpWidthSpec:
+                raise ValueError("profile_product requires Polar parameterization")
+            if (
+                self.parameterization.input_bounds
+                != self.parameterization.output_bounds
+            ):
+                raise ValueError("profile_product requires shared bandwidth bounds")
+            if any(
+                p.parameterization is not None or p.normalization.kind != "none"
+                for p in self.profiles
+            ):
+                raise ValueError(
+                    "profile_product factors must be raw and share bandwidth"
+                )
+            if (
+                not isinstance(self.normalization, NormalizationSpec)
+                or self.normalization.kind != "discrete_l2"
+                or self.normalization.domain != "operator_sites"
+                or self.normalization.floor is None
+            ):
+                raise ValueError(
+                    "profile_product needs operator L2 normalization with a floor"
+                )
         elif self.composition in ("radial", "separable"):
             count = 1 if self.composition == "radial" else 2
             if self.inner is not None or len(self.profiles) != count:

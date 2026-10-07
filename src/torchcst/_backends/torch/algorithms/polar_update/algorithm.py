@@ -29,9 +29,11 @@ class PolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
             return SupportResult(("requires AtomUpdateContext",))
         if (
             type(context.kernel.parameterization) is not PolarAmpWidthSpec
-            or context.kernel.composition != "separable"
+            or context.kernel.composition not in ("separable", "profile_product")
             or context.kernel.update.id != "polar_activity_width"
-            or len(context.geometries) != 2
+            or len(context.geometries) != (
+                1 if context.kernel.composition == "profile_product" else 2
+            )
             or context.parameter_shape[1]
             != 2 + sum(g.center_parameter_dim for g in context.geometries)
         ):

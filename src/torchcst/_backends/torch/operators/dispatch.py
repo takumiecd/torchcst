@@ -26,8 +26,9 @@ def validate_materialized(charts: tuple[ChartState, ...], kernel: KernelState) -
 
 
 def validate_factored(charts: tuple[ChartState, ...], kernel: KernelState) -> None:
-    if len(charts) != 2 or not _kernel.supports_factorization(kernel):
+    if not _kernel.supports_factorization(kernel):
         raise ValueError("the selected kernel does not support factorized execution")
+    _kernel.validate_layout(kernel, charts)
 
 
 def validate_tiled(charts: tuple[ChartState, ...], kernel: KernelState) -> None:

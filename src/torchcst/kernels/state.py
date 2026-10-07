@@ -195,7 +195,7 @@ class KernelState(nn.Module):
     def get_extra_state(self):
         # Tensor values are stored in buffers. The structural contract must match.
         parameterization = self.spec.parameterization
-        return {
+        result = {
             "version": 1,
             "composition": self.spec.composition,
             "revision": self.spec.revision,
@@ -221,6 +221,9 @@ class KernelState(nn.Module):
                 ),
             ),
         }
+        if self.spec.composition == "profile_product":
+            result["normalization"] = asdict(self.spec.normalization)
+        return result
 
     def set_extra_state(self, state):
         if state != self.get_extra_state():

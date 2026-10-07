@@ -231,6 +231,59 @@ def polar_activity(
     )
 
 
+def polar_profile_product(
+    *,
+    profiles,
+    amplitude_max,
+    bounds: BandwidthBounds,
+    w_c,
+    normalization: NormalizationSpec | None = None,
+    kappa=3.0,
+    lower_kappa=None,
+    upper_decay_power=1.0,
+    alpha_init=0.0,
+    radial_regularization=0.1,
+    activity_gain=1.0,
+    activity_mode="finite_chord",
+    dormant_expansion_rate=0.0,
+):
+    """Axis profiles on one Chart, with shared Polar bandwidth and update law.
+
+    Profiles follow Euclidean coordinate order (all output coordinates first,
+    then all input coordinates). L2 normalization and its floor apply once to
+    the complete product over the full operator, never to individual axes.
+    """
+    if (
+        not isinstance(profiles, tuple)
+        or not profiles
+        or not all(isinstance(p, ProfileSpec) for p in profiles)
+    ):
+        raise TypeError("profiles must be a nonempty tuple of ProfileSpec declarations")
+    base = polar_activity(
+        amplitude_max=amplitude_max,
+        input_bounds=bounds,
+        output_bounds=bounds,
+        w_c=w_c,
+        profile=profile(profiles[0], normalize=False),
+        kappa=kappa,
+        lower_kappa=lower_kappa,
+        upper_decay_power=upper_decay_power,
+        alpha_init=alpha_init,
+        radial_regularization=radial_regularization,
+        activity_gain=activity_gain,
+        activity_mode=activity_mode,
+        dormant_expansion_rate=dormant_expansion_rate,
+    )
+    return replace(
+        base,
+        composition="profile_product",
+        profiles=tuple(profile(p, normalize=False) for p in profiles),
+        normalization=normalization
+        if normalization is not None
+        else NormalizationSpec(kind="discrete_l2", domain="operator_sites", floor=1e-6),
+    )
+
+
 NORMALIZED_RADIAL_TRIWEIGHT = KernelSpec(
     composition="radial",
     profiles=(

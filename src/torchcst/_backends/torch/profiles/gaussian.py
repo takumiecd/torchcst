@@ -16,6 +16,13 @@ def initialize(state, chart: ChartState, atoms: int, *, mode: AtomInit) -> Tenso
     return _charts.initialize_centers(chart, atoms, mode=mode)
 
 
+def gaussian_unnormalized_from_squared(
+    state, squared: Tensor, precision: Tensor
+) -> Tensor:
+    """Raw scalar shape for coordinate-wise profile compositions."""
+    return torch.exp(-0.5 * squared * precision.reshape(1, -1))
+
+
 def evaluate(state, chart: ChartState, p: Tensor) -> Tensor:
     precision = state.sigma.reciprocal().square()
     return _profile.evaluate_with_precision(state, chart, p, precision)

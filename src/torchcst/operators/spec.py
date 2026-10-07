@@ -70,9 +70,13 @@ class OperatorSpec:
         kernel = self.kernel
         while kernel.composition == "amplitude":
             kernel = kernel.inner
-        required = "radial" if len(self.charts) == 1 else "separable"
-        if kernel.composition != required:
+        allowed = (
+            ("radial", "profile_product") if len(self.charts) == 1 else ("separable",)
+        )
+        if kernel.composition not in allowed:
             raise ValueError("kernel composition differs from the chart layout")
+        if kernel.composition == "profile_product":
+            validate_profile_product_layout(self.charts[0], kernel)
 
     @property
     def charts(self):
@@ -98,3 +102,27 @@ class OperatorSpec:
         if operator.declaration() != self:
             raise ValueError("live operator settings differ from the declaration")
         return operator
+
+
+def validate_profile_product_layout(chart, kernel):
+    """Validate independent coordinate axes using declarations only."""
+    from torchcst.charts import ProductChartSpec, StripChartSpec
+    from torchcst.geometry.spec import EuclideanGeometrySpec
+    from torchcst.patterns.spec import GridPatternSpec, LinePatternSpec
+
+    if (
+        type(chart) not in (ProductChartSpec, StripChartSpec)
+        or chart.revision != 1
+        or len(chart.shape) != 2
+        or type(chart.geometry) is not EuclideanGeometrySpec
+        or chart.geometry.revision != 1
+        or any(
+            type(a) not in (GridPatternSpec, LinePatternSpec) or a.revision != 1
+            for a in chart.axes
+        )
+    ):
+        raise ValueError(
+            "profile_product requires a Euclidean Product/Strip grid chart"
+        )
+    if len(kernel.profiles) != chart.geometry.intrinsic_dim:
+        raise ValueError("profile count must match the chart coordinate dimension")

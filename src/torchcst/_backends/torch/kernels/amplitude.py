@@ -32,11 +32,10 @@ def weight(state, chart, p):
     return materialize_atoms(state, chart, p).sum(0)
 
 
-def factors(state, input_chart, output_chart, p):
-    amplitude, inner = _split(state, input_chart, output_chart, p)
-    phi_input, phi_output = _kernel.factors(
-        state.inner, input_chart, output_chart, inner
-    )
+def factors(state, *charts_and_p):
+    *charts, p = charts_and_p
+    amplitude, inner = _split(state, *charts, p)
+    phi_input, phi_output = _kernel.factors(state.inner, *charts, inner)
     return phi_input, phi_output * amplitude.T
 
 
