@@ -125,3 +125,30 @@ l4job-9d0685beb773489d90b6087ae518164c, with exactly the same case/plans,
 seed and2000/1800s family/child budgets. GPU correctness/performance remain
 pending for this job. Exact runtime file bytes are unchanged from fb9c79db;
 this source snapshot includes the writer and additional CPU envelope test.
+
+## Original8192 Product experiment incomplete
+
+Original job l4job-1db8c943dbc04f89b01e052025af36fc returned1 after its runner
+child hit1800s. The outer2000s pool driver did not time out. Its consolidated
+artifact remains RUNNING with exactly five records: four complete full8192
+FP64 correctness workers (prepared/nativeG4/nativeG8/Torch) and only the prepared
+measurement. Every correctness worker checked Y,dX,all3,355,443 canonical atom
+gradients and the production Polar step; max errors across them are
+1.80482e-4/1.79605e-4/4.81145e-6 and Polar0. These completed gates are reported
+separately. No paired performance or peak-memory conclusion is taken from this
+incomplete experiment; all partial artifacts and raw worker arrays are preserved.
+
+The complete-axis CPU support reports before/after every measurement are an
+identified scaling cost in code; timeout causality remains an inference pending
+a new completed experiment. Bounded complete-support reports are independently
+validated against dense reports in31 CPU scenarios, with original dense fallback
+near the floor and for wide/numerically uncertain sites. This changes diagnostic
+work only, preserving every atom/site in support and the full FP64 oracle.
+See20261008-profile-product-support-report.md for the exact bounds/fallback law.
+
+New job l4job-47ae54c49f5141db829be2e76ed4c923 uses source
+1d0cbf16b5dd78113e69123f62e1b7e0c5c44c9f, the unchanged four plans/dense and
+2000/1800s budgets. It first gates the31 CPU scenarios on Colab's Torch version,
+checks every actual initial atom's support counts and records CPU diagnostic time,
+then invokes the unchanged complete-step runner. It does not retry unchanged
+source or increase the timeout. The earlier failed experiment remains visible.
