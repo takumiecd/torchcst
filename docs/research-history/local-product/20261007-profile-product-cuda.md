@@ -61,7 +61,7 @@ python -m benchmarks.cuda.linear.run \
   --output output/product-comparison/result.json
 ```
 
-初回CPU検証: 959 passed/1144 skipped。GPU検証・時間・メモリは未測定。
+最終CPU検証: 965 passed/1157 skipped。GPU検証・測定結果は以下に記録する。
 新fixture `polar_profile_product` はadapter revision4で既存形式と区別する。
 生ログ・source/result archiveはignored evidenceと共有プールのjobディレクトリに保全する。
 
@@ -115,3 +115,9 @@ Param VJPは2 batch partitions。配置準備、partial reductions、source snap
 profile_productにも対応判定を拡張する。更新則・数値実装は変えない。
 Torch/fused更新の両方を20 captured stepsでpublic eager optimizerと比較してから、
 全Linear Planに同じfused更新を指定して比較する。公開既定選択器は変更しない。
+
+支持順/fused source `7c52eba226aa0517ee9c1607700ebbd649e8876f` のcheck job
+`l4job-e44f23579c8b44cc8981d20b3abbc63a` は新suite48件、Polar更新10件、
+既存回帰38件PASS。新suiteにはorderedとTorch/fused双方の20 captured updatesを含む。
+CPU全suite965 passed/1157 skipped、変更PythonのRuff、diff check、
+wheel/sdist buildとwheel metadata-only importもPASS。

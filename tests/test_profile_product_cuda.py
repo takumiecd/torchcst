@@ -277,3 +277,44 @@ def test_captured_updates_parameters_moments_and_evolving_width(route, update):
                 atol=2e-5,
             )
     assert torch.any(decode(layer.kernel, layer.atoms.p)[:, 1] != initial)
+
+
+@GPU
+@pytest.mark.parametrize("route", ["local", "saved", "ordered"])
+def test_rectangular_shifted_sites_full_matrix_oracle(route):
+    torch.manual_seed(57)
+    p = torch.randn(19, 4)
+    p[:, :2] = p[:, :2] * 0.1 + p.new_tensor([0.3, 1.5])
+    p[:, 2] = -3 + torch.rand(19) * 8
+    p[:, 3] = 7 + torch.rand(19) * 15
+    layer = CSTLinear(
+        chart=chart_presets.product(
+            (17, 31),
+            (
+                pattern_presets.line(17, low=-3, high=5),
+                pattern_presets.line(31, low=7, high=22),
+            ),
+        ),
+        atoms=p,
+        kernel=spec(width=3),
+        device="cuda",
+    )
+    x = torch.randn(9, 31, device="cuda", requires_grad=True)
+    dy = torch.randn(9, 17, device="cuda")
+    tx = x.detach().double().requires_grad_()
+    tp = layer.atoms.p.detach().double().requires_grad_()
+    out_sites = torch.linspace(-3, 5, 17, device="cuda", dtype=torch.float64)
+    in_sites = torch.linspace(7, 22, 31, device="cuda", dtype=torch.float64)
+    u = (1 - (out_sites - tp[:, 2, None]).square() / 9).clamp_min(0).pow(3)
+    v = (1 - (in_sites - tp[:, 3, None]).square() / 9).clamp_min(0).pow(3)
+    raw = u[:, :, None] * v[:, None, :]
+    norm = raw.flatten(1).norm(dim=1).clamp_min(1e-6)
+    amp = tp[:, 0] / tp[:, :2].norm(dim=1)
+    truth = tx @ (raw * (amp / norm)[:, None, None]).sum(0).T
+    actual = run(layer, x, route)
+    ga = torch.autograd.grad(actual, (x, layer.atoms.p), dy)
+    gb = torch.autograd.grad(truth, (tx, tp), dy.double())
+    torch.testing.assert_close(actual.double(), truth, rtol=4e-4, atol=2e-5)
+    for a, b in zip(ga, gb):
+        torch.testing.assert_close(a.double(), b, rtol=4e-4, atol=2e-5)
+    assert torch.all(gb[1][:, 2:].abs() > 1e-8)

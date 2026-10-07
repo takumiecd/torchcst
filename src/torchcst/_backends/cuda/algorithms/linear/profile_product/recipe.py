@@ -60,4 +60,4 @@ class ProductRecipe(Recipe):
             or type(self.batch_block) is not int
             or self.support_limit != 8
         ):
-            raise ValueError("requires torch/local/saved with canonical small blocks")
+            raise ValueError("requires torch/local/saved/ordered with canonical small blocks")
