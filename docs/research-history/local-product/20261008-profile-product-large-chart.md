@@ -152,3 +152,16 @@ New job l4job-47ae54c49f5141db829be2e76ed4c923 uses source
 checks every actual initial atom's support counts and records CPU diagnostic time,
 then invokes the unchanged complete-step runner. It does not retry unchanged
 source or increase the timeout. The earlier failed experiment remains visible.
+
+## Strip8192 completed result
+
+First executed Strip8192 rho3 job l4job-9d0685beb773489d90b6087ae518164c passed
+all four isolated correctness/measure routes, dense, adapter revision5 and the
+unchanged5 MiB submission check. Graph median ms: prepared0.440345,
+nativeG4P8 0.472718,nativeG8P8 0.456383,TorchG8P8 0.162970,dense0.066125.
+Native is slower than prepared at this shape; no time improvement is claimed.
+Native allocated peak is10,205,184 bytes versus prepared18,602,496,Torch45,227,008,
+dense44,583,424. One independent rho3 job; all21 samples and actual reserved
+peaks are retained in the companion summary. This negative timing result is
+preserved alongside the memory benefit. Further contraction optimization remains
+necessary rather than extending the2048 speed claim to8192.
