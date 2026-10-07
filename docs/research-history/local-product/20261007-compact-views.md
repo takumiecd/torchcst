@@ -38,3 +38,16 @@ Actual measurement uses the existing Linear runner with `--polar-update fused`.
 Ignored driver/analysis and source/result proof live in
 `benchmarks/cuda/linear/evidence/compact-views-20261007/`; raw evidence is not
 committed. Public dispatch remains unchanged.
+
+## Initial GPU compile failure
+
+The first frozen source `f6a53b66` failed GPU compilation: a loop-local
+`canonical: tl.constexpr` was assigned more than once during static unrolling.
+The run (`l4job-cb0bf232b99a4bb4906bb44bf36016c9`) returned exit1/no timeout,
+67 compile-dependent failures and4 passes, before any measurement. Source/result
+archive hashes and the failure logs are preserved under ignored evidence. It is
+excluded from correctness and speed claims. Commit `05509955` removes the
+reassignment restriction without changing the physical mapping; the repaired
+validation is `l4job-ab77a2e89f4f4a9d893918c008c88e03` on the same owned L4.
+The earlier queued job33b4 was cancelled before execution to correct its source
+label; it consumed no GPU experiment and is also excluded.
