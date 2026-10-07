@@ -76,15 +76,18 @@ class _ProfileGrid(torch.autograd.Function):
         h = x.new_empty((b, a))
         if a:
             prep_group = getattr(recipe, "prep_group", 1)
+            prep_sites = getattr(recipe, "prep_sites", 32)
             support = getattr(recipe, "preparation", "full") == "support"
-            grouped_prep = prep_group > 1 or (tile and support)
+            grouped_prep = prep_group > 1 or (tile and support) or prep_sites != 32
             preparation = (
                 grouped.prepare
                 if grouped_prep
                 else (k.prepare_support if support else prepare)
             )
             prep_options = (
-                {"GROUP": prep_group, "SUPPORT": support} if grouped_prep else {}
+                {"GROUP": prep_group, "SUPPORT": support, "PREP_SITES": prep_sites}
+                if grouped_prep
+                else {}
             )
             preparation[(tr.cdiv(a, prep_group),)](
                 source,

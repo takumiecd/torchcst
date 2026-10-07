@@ -24,6 +24,10 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_global.algorithm_
     GroupedProductAlgorithm,
     GroupedStripAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.profile_product_global.algorithm_v3 import (
+    PreparationProductAlgorithm,
+    PreparationStripAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
     StripProductAlgorithm,
 )
@@ -69,6 +73,8 @@ REGISTRY.register(StripProductAlgorithm())
 REGISTRY.register(GlobalProductAlgorithm())
 REGISTRY.register(GroupedProductAlgorithm())
 REGISTRY.register(GroupedStripAlgorithm())
+REGISTRY.register(PreparationProductAlgorithm())
+REGISTRY.register(PreparationStripAlgorithm())
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 

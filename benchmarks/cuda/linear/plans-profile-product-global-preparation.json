@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "grouped",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_global",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 8,
+          "atom_group": 4,
+          "sorting": "torch"
+        }
+      }
+    },
+    {
+      "id": "sites16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_global",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 8,
+          "atom_group": 4,
+          "sorting": "torch",
+          "prep_sites": 16
+        }
+      }
+    },
+    {
+      "id": "group16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_global",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 16,
+          "atom_group": 4,
+          "sorting": "torch",
+          "prep_sites": 32
+        }
+      }
+    },
+    {
+      "id": "group16-sites16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_profile_product_global",
+        "algorithm_revision": "v3",
+        "recipe": {
+          "execution_route": "grid",
+          "atom_block": 32,
+          "preparation": "support",
+          "prep_group": 16,
+          "atom_group": 4,
+          "sorting": "torch",
+          "prep_sites": 16
+        }
+      }
+    }
+  ]
+}
