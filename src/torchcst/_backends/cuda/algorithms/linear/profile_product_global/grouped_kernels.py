@@ -25,30 +25,35 @@ def _span(
 ):
     if not TILE:
         return _candidate_span(c, inv, O, S, N)
-    pitch = tl.load(Pitch)
-    radius = tl.sqrt_rn(tl.div_rn(1.0, inv))
-    last = O + ((N - 1) % TILE) * S + ((N - 1) // TILE) * pitch
-    error = (
-        8.0 * 1.1920928955078125e-7 * (tl.abs(c) + tl.abs(O) + tl.abs(last) + radius)
-    )
-    precise = (inv > 0.0) & (radius < float("inf")) & (error < S) & (pitch >= TILE * S)
-    low, high = c - O - radius, c - O + radius
-    lt, ht = tl.floor(tl.div_rn(low, pitch)), tl.floor(tl.div_rn(high, pitch))
-    lo = (
-        lt * TILE
-        + tl.minimum(tl.maximum(tl.floor(tl.div_rn(low - lt * pitch, S)), 0), TILE)
-        - 2
-    )
-    hi = (
-        ht * TILE
-        + tl.minimum(tl.maximum(tl.ceil(tl.div_rn(high - ht * pitch, S)), 0), TILE)
-        + 3
-    )
-    lo, hi = (
-        tl.minimum(tl.maximum(lo, 0), N).to(tl.int32),
-        tl.minimum(tl.maximum(hi, 0), N).to(tl.int32),
-    )
-    return tl.where(precise, lo, 0), tl.where(precise, tl.maximum(hi - lo, 0), N)
+    else:
+        pitch = tl.load(Pitch)
+        radius = tl.sqrt_rn(tl.div_rn(1.0, inv))
+        last = O + ((N - 1) % TILE) * S + ((N - 1) // TILE) * pitch
+        error = (
+            8.0
+            * 1.1920928955078125e-7
+            * (tl.abs(c) + tl.abs(O) + tl.abs(last) + radius)
+        )
+        precise = (
+            (inv > 0.0) & (radius < float("inf")) & (error < S) & (pitch >= TILE * S)
+        )
+        low, high = c - O - radius, c - O + radius
+        lt, ht = tl.floor(tl.div_rn(low, pitch)), tl.floor(tl.div_rn(high, pitch))
+        lo = (
+            lt * TILE
+            + tl.minimum(tl.maximum(tl.floor(tl.div_rn(low - lt * pitch, S)), 0), TILE)
+            - 2
+        )
+        hi = (
+            ht * TILE
+            + tl.minimum(tl.maximum(tl.ceil(tl.div_rn(high - ht * pitch, S)), 0), TILE)
+            + 3
+        )
+        lo, hi = (
+            tl.minimum(tl.maximum(lo, 0), N).to(tl.int32),
+            tl.minimum(tl.maximum(hi, 0), N).to(tl.int32),
+        )
+        return tl.where(precise, lo, 0), tl.where(precise, tl.maximum(hi - lo, 0), N)
 
 
 @tr.jit
