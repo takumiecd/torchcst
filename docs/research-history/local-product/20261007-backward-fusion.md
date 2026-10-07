@@ -85,7 +85,35 @@ L4 `l4job-0c05ac42b2e344c68543db8bb6fe8c55`: **26 CUDA tests PASS / 27 deselecte
 
 性能jobはN64/N128の初期rho1.25/3/8/mixedを全サイズFP64 oracleで再確認してから測る。
 `l4job-b1d6c9360d6142d1a622c0159d3605d3` / `l4job-98a44095052f48d08a9ce05b11912dbc`。
-回収中。明確な改善があれば独立の逆順jobで再測定し、検証済み候補のみG4短比較へ進める。
+初回8条件すべてPASS。N64/rho1.25とmixedは独立jobでcase/Planを逆順に再測定した。
+`l4job-77fdb17e50724f53915c1eae2ec6f030`も197 runtime files一致、各Plan全サイズoracleと
+4 exact-zero tests、標準runner PASS。narrow/mixedは2 executions/condition、他は1 execution。
+
+| N64 / 初期rho | uncached現行 → 融合16 | repair4現行 → 融合16 | dense |
+| --- | --- | --- | --- |
+| 1.25 (2 runs median) | 50.16 → 47.61 | 50.17 → 46.71 | 38.81 |
+| 3 | 51.01 → 52.67 | 52.21 → 52.15 | 39.07 |
+| 8 | 51.14 → 55.11 | 51.81 → 59.34 | 38.79 |
+| mixed (2 runs median) | 55.95 → 54.93 | 56.84 → 54.33 | 38.90 |
+
+repair4のmatched時間短縮はrho1.25で7.15% / 6.65%、mixedで4.23% / 4.59%。
+最速の現行controlと比べても両runで改善する。N64は96 registers / 0 spill、allocated +5120 B。
+N64/rho3はほぼ同等〜悪化、rho8は8〜15%悪化するため一般採用しない。
+
+| N128 / 初期rho | uncached現行 → 融合16 | repair4現行 → 融合16 | dense |
+| --- | --- | --- | --- |
+| 1.25 | 64.14 → 64.56 | 60.34 → 61.04 | 45.49 |
+| 3 | 67.41 → 68.75 | 68.80 → 69.82 | 45.52 |
+| 8 | 70.01 → 76.77 | 65.64 → 73.15 | 45.50 |
+| mixed | 69.44 → 73.78 | 66.55 → 71.05 | 45.48 |
+
+N128は255→128 registers、62→0 spillにできたが、全条件で悪化。allocated +1024 B。
+両サイズのmatched reservedは6291456 Bで同じ。N128は現行を維持する。
+compilerのspill除去だけでは完全stepの改善を証明できない。
+原票とpaired statisticsは`20261007-backward-fusion-tuned.json`。
+
+L4 drain後に全owned slots停止を確認。再現したN64のrho1.25/mixedだけをG4の1 short jobで比較する。
+`colabjob-d5c79375cfd840f8aa270ebb032ddb6a`。結果回収中。公開dispatchやmain統合は未変更。
 
 ## 保全先
 
