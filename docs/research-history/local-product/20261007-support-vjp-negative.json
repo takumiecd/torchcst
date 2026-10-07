@@ -1,0 +1,181 @@
+{
+  "source_commit": "efe982f30fac00db5d9ff3747746495a5284ab90",
+  "jobs": [
+    {
+      "job": "l4job-e8470a312c0d4cb38a75a6a2b5fabbeb",
+      "repeat": 1,
+      "source_commit": "efe982f30fac00db5d9ff3747746495a5284ab90",
+      "source_snapshot_sha256": "79822b3ec41f92df9b788a5cf78fc300e6a4ef724f53d42cc00cc709b8cab9c7",
+      "result_archive_sha256": "06dfa2c8fdf27e5e83ce4294377208a07a2854ee94c32006218b2d9b105c4cb4",
+      "runtime_files_matched": 197,
+      "hardware": "NVIDIA L4, GPU-c72a165f-ca48-d7df-60fd-48d6a0ef3b15, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      }
+    }
+  ],
+  "gpu_checks_total": 77,
+  "gpu_checks_cuda": 75,
+  "declarations": 2,
+  "paired_screen": [
+    {
+      "case": "local-supportvjp-128-rho8",
+      "matched": {
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv16": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -17.66843554537816,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-e8470a312c0d4cb38a75a6a2b5fabbeb",
+              "control_us": 65.76700002369762,
+              "candidate_us": 77.38700003301346,
+              "time_reduction_percent": -17.66843554537816,
+              "allocated_reduction_bytes": 0,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv32": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -27.59134502400333,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-e8470a312c0d4cb38a75a6a2b5fabbeb",
+              "control_us": 65.76700002369762,
+              "candidate_us": 83.91299991217238,
+              "time_reduction_percent": -27.59134502400333,
+              "allocated_reduction_bytes": 0,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pv16": {
+          "matched_control": "local-ordered-cache-repair8-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -17.75448960363386,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-e8470a312c0d4cb38a75a6a2b5fabbeb",
+              "control_us": 65.65099999988888,
+              "candidate_us": 77.30699996955082,
+              "time_reduction_percent": -17.75448960363386,
+              "allocated_reduction_bytes": 0,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pv32": {
+          "matched_control": "local-ordered-cache-repair8-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -27.82288157636541,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-e8470a312c0d4cb38a75a6a2b5fabbeb",
+              "control_us": 65.65099999988888,
+              "candidate_us": 83.91699998355762,
+              "time_reduction_percent": -27.82288157636541,
+              "allocated_reduction_bytes": 0,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "case": "local-supportvjp-128-rhomixed",
+      "matched": {
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv16": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -17.353159519918627,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-e8470a312c0d4cb38a75a6a2b5fabbeb",
+              "control_us": 68.73099994209042,
+              "candidate_us": 80.65800000167656,
+              "time_reduction_percent": -17.353159519918627,
+              "allocated_reduction_bytes": 0,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv32": {
+          "matched_control": "local-ordered-cache-repair4-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -26.44221684890875,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-e8470a312c0d4cb38a75a6a2b5fabbeb",
+              "control_us": 68.73099994209042,
+              "candidate_us": 86.90499998920131,
+              "time_reduction_percent": -26.44221684890875,
+              "allocated_reduction_bytes": 0,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pv16": {
+          "matched_control": "local-ordered-cache-repair8-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -17.064406200377835,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-e8470a312c0d4cb38a75a6a2b5fabbeb",
+              "control_us": 69.01500000822125,
+              "candidate_us": 80.79199994881492,
+              "time_reduction_percent": -17.064406200377835,
+              "allocated_reduction_bytes": 0,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        },
+        "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pv32": {
+          "matched_control": "local-ordered-cache-repair8-param2-nostats-copy8-atom32",
+          "median_time_reduction_percent": -26.360935967105583,
+          "same_improvement_direction": false,
+          "minimum_allocated_reduction_bytes": 0,
+          "paired_executions": [
+            {
+              "job": "l4job-e8470a312c0d4cb38a75a6a2b5fabbeb",
+              "control_us": 69.01500000822125,
+              "candidate_us": 87.20799996808637,
+              "time_reduction_percent": -26.360935967105583,
+              "allocated_reduction_bytes": 0,
+              "reserved_reduction_bytes": 0
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "compiler_registers_spills": {
+    "local-ordered-cache-repair4-param2-nostats-copy8-atom32": {
+      "registers": 80,
+      "spill_slots": 2,
+      "shared_bytes": 40960
+    },
+    "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv16": {
+      "registers": 255,
+      "spill_slots": 368,
+      "shared_bytes": 40960
+    },
+    "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv32": {
+      "registers": 255,
+      "spill_slots": 216,
+      "shared_bytes": 40960
+    }
+  },
+  "decision": "Reject whole 16/32-site gather VJP for N128:17-28% slower, register255 and216/368 spill slots; allocated unchanged. Independent reverse repetition not warranted."
+}

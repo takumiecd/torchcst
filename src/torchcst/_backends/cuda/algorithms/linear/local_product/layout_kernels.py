@@ -299,6 +299,7 @@ def ordered_views(
     VECTOR_RANGES: tl.constexpr = False,
     OWNER_BLOCK: tl.constexpr = 1,
     PREFIX_RANGES: tl.constexpr = False,
+    SPAN_RANGES: tl.constexpr = False,
     HIST_RANGES: tl.constexpr = False,
     FUSED_HIST: tl.constexpr = False,
     TIGHT_HIST: tl.constexpr = False,
@@ -456,6 +457,48 @@ def ordered_views(
         sorted_bucket = (key // (span * C)).to(tl.int32)
         counts = tl.histogram(tl.where(a < C, bucket, BINS - 1), BINS)
         starts = tl.cumsum(counts, 0) - counts
+    if SPAN_RANGES:
+        tl.static_assert(POSITION, "bounded spans require support-start ordering")
+        tl.static_assert(
+            not CACHE_VALIDATE or CACHE_GATHER,
+            "span reductions consume canonical metadata",
+        )
+        # hi > j0 and hi-lo <= M imply lo >= j0-M+1 for integer sites.
+        # This conservative envelope needs only band maxima, not a full prefix.
+        slo = tl.gather(lo, source, 0)
+        hi = tl.where(direction == 0, uhi, vhi)
+        count = tl.where(direction == 0, N, K)
+        owner = tl.arange(0, OWNER_BLOCK)
+        for phase in tl.static_range(3):
+            eligible = (a < C) & (bucket == groups + phase)
+            max_span = tl.max(tl.where(eligible, hi - lo, 0), 0)
+            first_lo = tl.minimum(tl.maximum(owner * 16 - max_span + 1, 0), count)
+            last_lo = tl.minimum((owner + 1) * 16, count)
+            band_start = tl.sum(tl.where(g == groups + phase, starts, 0), 0)
+            band_end = tl.sum(tl.where(g == groups + phase + 1, starts, 0), 0)
+            lower = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_start
+            upper = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_end
+            for _ in tl.static_range(SEARCH_STEPS):
+                mid = (lower + upper) // 2
+                value = tl.gather(slo, tl.minimum(mid, AC - 1), 0)
+                advance = value < first_lo
+                live = lower < upper
+                lower = tl.where(live & advance, mid + 1, lower)
+                upper = tl.where(live & ~advance, mid, upper)
+            begin = lower
+            lower = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_start
+            upper = tl.full((OWNER_BLOCK,), 0, tl.int32) + band_end
+            for _ in tl.static_range(SEARCH_STEPS):
+                mid = (lower + upper) // 2
+                value = tl.gather(slo, tl.minimum(mid, AC - 1), 0)
+                advance = value < last_lo
+                live = lower < upper
+                lower = tl.where(live & advance, mid + 1, lower)
+                upper = tl.where(live & ~advance, mid, upper)
+            end = lower
+            target = Ranges + (direction * (STRIDE - 5) + owner) * 6 + phase * 2
+            tl.store(target, tl.minimum(begin, end), owner < STRIDE - 5)
+            tl.store(target + 1, end, owner < STRIDE - 5)
     if HIST_RANGES:
         tl.static_assert(
             POSITION and not CACHE, "histogram index uses canonical current keys"

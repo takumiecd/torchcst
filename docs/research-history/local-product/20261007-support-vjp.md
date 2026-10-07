@@ -11,3 +11,19 @@ Host CPU validation, changed-file Ruff, eight fresh prepare/check pairs and whee
 Reproduction: `tools.kernel_dev prepare/check` with `benchmarks/cuda/linear/plans-local-supportvjp.json` and `cases/local-supportvjp-{64,128}-rho*.json`, then the existing runner with `--polar-update fused --phase-diagnostics --kernel-diagnostics`. Uninstrumented complete-step time is primary; component phases are separate diagnostics. Frozen scripts/logs/source archives remain ignored under `benchmarks/cuda/linear/evidence/support-vjp-20261007/` and shared pool jobs. PR#55 compact-dX work remains on its original branch; this experiment does not depend on it.
 
 A local preparation error reused an existing parameter-atom catalog filename. CPU regression tests caught it before GPU submission; existing files were restored and this comparison renamed `supportvjp`. The failed CPU log is retained and excluded from completed validation.
+
+
+## Owner routing candidate added during GPU validation
+
+Three `_spanranges` variants retain the existing exact position order and cached repair. For each non-singleton band, current integer support max span M implies every contributor to owner[j0,j1) has j0-M+1 <=lo<j1. Two lower-bound searches on sorted lo produce a conservative candidate envelope. Final factor/interval masks retain exact contributions. No prefix-maximum array or histogram is added; only compiler-local reductions/searches. Fresh span maxima are required even when cached order is unchanged, because support ends can change independently.
+
+The same parallel physical-copy launch runs without its full atom scan per owner. This tests reduction of owner exploration, not changing geometry. Empty bands, uneven slices, repeated snapshots, severe cached inversions and end-only changes are gated by the independent support-coverage and gradient suites. This route is separate from `_pv16/32`; the first frozen source `efe982f3` is the parameter-only screen. Timing across those source revisions is not treated as a matched algorithmic effect.
+
+
+## Whole-support gather: validated negative screen
+
+First source `efe982f3`, L4 job `l4job-e8470a312c0d4cb38a75a6a2b5fabbeb`: all77 checks pass (75 CUDA +2 declarations), with197 runtime files and source/result archive hashes verified. Full-shape Y/dX/all source gradients and nonzero center gradients pass before timing. AtN128/rho8 matched repair4 changes65.77us to77.39us (pv16) /83.91us (pv32); mixed68.73us to80.66us /86.90us. Repair8 shows the same regression direction. Allocated remains306,688 B; reserved remains6,291,456 B. Dense45.40/45.48us. This is one validated screen, not an independent-repeat claim.
+
+Compiler report shows current parameter kernel80 registers /2 spill slots versus255 registers /368 spills(pv16) or216 spills(pv32), all40,960 shared bytes. These are compiler reports, not measured physical traffic. The large regression and compiler spilling reject the whole-tile variants for adoption; no GPU repeat or G4 comparison is justified. Raw artifacts plus byte-identical/idempotent DB2 records are preserved; concise hashes/deltas are in [the negative record](20261007-support-vjp-negative.json).
+
+A new `_pvc16` / `_pvc32` variant processes the support in4-site chunks to reduce compiler live tensors. Same exact span threshold and normalized derivatives, matrix fallback for wider support, unchanged global allocation and captured update contracts. The original variants remain reproducible. Chunked VJP and owner-span searches are not yet GPU-validated; their next source must pass independent gates before timing.

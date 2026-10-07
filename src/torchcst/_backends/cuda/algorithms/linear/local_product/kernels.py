@@ -1008,6 +1008,45 @@ def _param_support_tile(
 
 
 @tr.jit
+def _param_support_chunk(
+    X,
+    P,
+    a,
+    b,
+    A: tl.constexpr,
+    B: tl.constexpr,
+    K: tl.constexpr,
+    START: tl.constexpr,
+    OUT: tl.constexpr,
+    S: tl.constexpr,
+    O: tl.constexpr,
+    BB: tl.constexpr,
+    BA: tl.constexpr,
+    SUPPORT_TILE: tl.constexpr,
+    SUPPORT_CHUNK: tl.constexpr,
+    Enabled,
+):
+    """Bound gather live tensors while retaining each site's full derivative."""
+    lo, _hi, width = _interval(P, a, A, OUT, START, K)
+    offset = tl.arange(0, SUPPORT_CHUNK)
+    h, dh = tl.full((BB, BA), 0.0, tl.float32), tl.full((BB, BA), 0.0, tl.float32)
+    for start in range(0, SUPPORT_TILE, SUPPORT_CHUNK):
+        site = lo[None, :] + start + offset[:, None]
+        live = (
+            Enabled[None, :] & (start + offset[:, None] < width[None, :]) & (site < K)
+        )
+        factor, derivative = _site_factor(P, a, START + site, A, OUT, S, O)
+        values = tl.load(
+            X + b[:, None, None] * K + site[None, :, :],
+            (b[:, None, None] < B) & live[None, :, :],
+            0.0,
+        )
+        h += tl.sum(values * factor[None, :, :], 1)
+        dh += tl.sum(values * derivative[None, :, :], 1)
+    return h, dh
+
+
+@tr.jit
 def _param_sums(
     X,
     DY,
@@ -1041,6 +1080,7 @@ def _param_sums(
     G=None,
     SAVE_G: tl.constexpr = False,
     SUPPORT_TILE: tl.constexpr = 0,
+    SUPPORT_CHUNK: tl.constexpr = 0,
 ):
     j, i = tl.arange(0, BK), tl.arange(0, BN)
     ha = tl.load(HOrder + a, a < A, 0) if HOrder is not None else a
@@ -1143,12 +1183,50 @@ def _param_sums(
         _ulo, _uhi, uw = _interval(P, a, A, True, IS, N)
         span = tl.maximum(tl.max(vw, 0), tl.max(uw, 0))
         if SUPPORT_TILE and span <= SUPPORT_TILE:
-            h, dh = _param_support_tile(
-                X, P, a, b, A, B, K, JS, False, S, OI, SUPPORT_TILE, enabled
-            )
-            g, dg = _param_support_tile(
-                DY, P, a, b, A, B, N, IS, True, S, OO, SUPPORT_TILE, enabled
-            )
+            if SUPPORT_CHUNK:
+                h, dh = _param_support_chunk(
+                    X,
+                    P,
+                    a,
+                    b,
+                    A,
+                    B,
+                    K,
+                    JS,
+                    False,
+                    S,
+                    OI,
+                    BB,
+                    BA,
+                    SUPPORT_TILE,
+                    SUPPORT_CHUNK,
+                    enabled,
+                )
+                g, dg = _param_support_chunk(
+                    DY,
+                    P,
+                    a,
+                    b,
+                    A,
+                    B,
+                    N,
+                    IS,
+                    True,
+                    S,
+                    OO,
+                    BB,
+                    BA,
+                    SUPPORT_TILE,
+                    SUPPORT_CHUNK,
+                    enabled,
+                )
+            else:
+                h, dh = _param_support_tile(
+                    X, P, a, b, A, B, K, JS, False, S, OI, SUPPORT_TILE, enabled
+                )
+                g, dg = _param_support_tile(
+                    DY, P, a, b, A, B, N, IS, True, S, OO, SUPPORT_TILE, enabled
+                )
         elif SUPPORT_ONLY or span <= LIMIT:
             h, dh = _support_contract(X, P, a, b, A, B, K, JS, False, S, OI, BB, BA)
             g, dg = _support_contract(DY, P, a, b, A, B, N, IS, True, S, OO, BB, BA)
@@ -1245,6 +1323,7 @@ def param_vjp(
     SAVE_G: tl.constexpr = False,
     BATCH_SPLITS: tl.constexpr = 1,
     SUPPORT_TILE: tl.constexpr = 0,
+    SUPPORT_CHUNK: tl.constexpr = 0,
 ):
     a = tl.program_id(0) * BA + tl.arange(0, BA)
     batch_split = tl.program_id(1) if BATCH_SPLITS > 1 else 0
@@ -1303,6 +1382,7 @@ def param_vjp(
                     G=G,
                     SAVE_G=SAVE_G,
                     SUPPORT_TILE=SUPPORT_TILE,
+                    SUPPORT_CHUNK=SUPPORT_CHUNK,
                 )
             if SINGLETON_FAST:
                 vlo, _vhi, vw = _interval(P, a, A, False, JS, K)

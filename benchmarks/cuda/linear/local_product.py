@@ -74,14 +74,32 @@ class LocalRecipe(Recipe):
     route: str = "fused"
 
     @property
-    def layout_route(self):
+    def parameter_layout_route(self):
+        if self.route.endswith(("_pvc16", "_pvc32")):
+            return self.route[:-6]
         return (
             self.route[:-5] if self.route.endswith(("_pv16", "_pv32")) else self.route
         )
 
     @property
+    def layout_route(self):
+        return self.parameter_layout_route.removesuffix("_spanranges")
+
+    @property
+    def bounded_owner_search(self):
+        return self.parameter_layout_route.endswith("_spanranges")
+
+    @property
     def parameter_support_tile(self):
-        return int(self.route[-2:]) if self.route.endswith(("_pv16", "_pv32")) else 0
+        return (
+            int(self.route[-2:])
+            if self.route.endswith(("_pv16", "_pv32", "_pvc16", "_pvc32"))
+            else 0
+        )
+
+    @property
+    def parameter_support_chunk(self):
+        return 4 if self.route.endswith(("_pvc16", "_pvc32")) else 0
 
     @property
     def reuse_layout(self):
@@ -501,6 +519,18 @@ class LocalRecipe(Recipe):
     def __post_init__(self):
         if type(self.route) is not str:
             raise ValueError("local execution route must be a string")
+        if self.bounded_owner_search and not (
+            self.ordered_layout
+            and self.order_by_position
+            and self.parallel_order_copy
+            and not self.owner_index
+            and not self.histogram_owner_ranges
+            and not self.prefix_owner_ranges
+            and (not self.validate_cached_order or self.gather_validation_key)
+        ):
+            raise ValueError(
+                "bounded owner search requires canonical position-ordered keys"
+            )
         if self.parameter_support_tile and not (
             self.ordered_layout and self.recompute_param_h and not self.save_g
         ):

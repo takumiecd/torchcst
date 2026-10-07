@@ -49,6 +49,14 @@ class Recipe:
         return 0
 
     @property
+    def parameter_support_chunk(self):
+        return 0
+
+    @property
+    def bounded_owner_search(self):
+        return False
+
+    @property
     def support_prepare(self):
         return False
 

@@ -1,4 +1,4 @@
-"""Exact local parameter contractions retain full normalized source gradients."""
+"""Four-site gather chunks retain normalized source VJP and limit live tensors."""
 
 from dataclasses import replace
 
@@ -30,14 +30,13 @@ ENTRIES = decode_catalog(read_json(CATALOG)[0])
 CANDIDATES = tuple(
     e.plan
     for e in ENTRIES
-    if e.plan.recipe.parameter_support_tile
-    and not e.plan.recipe.parameter_support_chunk
+    if e.plan.recipe.parameter_support_tile and e.plan.recipe.parameter_support_chunk
 )
 CUDA = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 PLANS = pytest.mark.parametrize("plan", CANDIDATES, ids=lambda p: p.recipe.route)
 
 
-def test_parameter_tile_recipes_keep_matched_layout_and_work_division():
+def test_parameter_chunk_recipes_keep_matched_layout_and_work_division():
     assert len(CANDIDATES) == 6
     for candidate in CANDIDATES:
         recipe = candidate.recipe
@@ -48,6 +47,7 @@ def test_parameter_tile_recipes_keep_matched_layout_and_work_division():
         )
         assert REGISTRY.load_plan(REGISTRY.dump_plan(candidate)) == candidate
         assert recipe.parameter_support_tile in (16, 32)
+        assert recipe.parameter_support_chunk == 4
         assert recipe.recompute_param_h and not recipe.save_g
         for name in (
             "ordered_layout",
@@ -74,32 +74,32 @@ def test_parameter_tile_recipes_keep_matched_layout_and_work_division():
 @CUDA
 @PLANS
 @pytest.mark.parametrize("batch", (1, 32, 64))
-def test_parameter_tile_slices_repeated_backward(plan, batch):
+def test_parameter_chunk_slices_repeated_backward(plan, batch):
     check_slices(plan, batch)
 
 
 @CUDA
 @PLANS
 @pytest.mark.parametrize("size", (64, 128))
-def test_parameter_tile_captured_production_updates(plan, size):
+def test_parameter_chunk_captured_production_updates(plan, size):
     check_updates(plan, size)
 
 
 @CUDA
 @PLANS
-def test_parameter_tile_outstanding_backward(plan):
+def test_parameter_chunk_outstanding_backward(plan):
     check_outstanding(plan)
 
 
 @CUDA
 @PLANS
-def test_parameter_tile_empty_owner_neighbors(plan):
+def test_parameter_chunk_empty_owner_neighbors(plan):
     check_empty(plan)
 
 
 @CUDA
 @PLANS
-def test_parameter_tile_thresholds_single_axis_singletons_and_wide_fallback(plan):
+def test_parameter_chunk_thresholds_single_axis_singletons_and_wide_fallback(plan):
     from test_local_product_research import scalar_oracle
 
     from benchmarks.cuda.linear.local_product import (

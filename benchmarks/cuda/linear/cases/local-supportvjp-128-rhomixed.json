@@ -42,7 +42,13 @@
     "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv16",
     "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pv32",
     "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pv16",
-    "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pv32"
+    "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pv32",
+    "local-ordered-cache-repair4-param2-nostats-copy8-atom32-spanranges",
+    "local-ordered-cache-repair8-param2-nostats-copy8-atom32-spanranges",
+    "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pvc16",
+    "local-ordered-cache-repair4-param2-nostats-copy8-atom32-pvc32",
+    "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pvc16",
+    "local-ordered-cache-repair8-param2-nostats-copy8-atom32-pvc32"
   ],
   "baseline": "local-ordered-prep-copy8-atom32",
   "dense": true

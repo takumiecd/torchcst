@@ -273,6 +273,7 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
             VECTOR_RANGES=recipe.vector_owner_ranges,
             OWNER_BLOCK=tr.next_power_of_2(groups),
             PREFIX_RANGES=recipe.prefix_owner_ranges,
+            SPAN_RANGES=recipe.bounded_owner_search,
             HIST_RANGES=recipe.histogram_owner_ranges,
             FUSED_HIST=recipe.fused_histogram_owner_ranges,
             TIGHT_HIST=recipe.tight_histogram_owner_ranges,
@@ -320,7 +321,9 @@ def ordered_layout(packed, domain, recipe, *, cache=None):
                 Orders=orders,
                 COPY=recipe.parallel_order_copy,
                 RANGES=not (
-                    recipe.prefix_owner_ranges or recipe.histogram_owner_ranges
+                    recipe.prefix_owner_ranges
+                    or recipe.histogram_owner_ranges
+                    or recipe.bounded_owner_search
                 ),
                 num_warps=4,
                 enable_fp_fusion=False,
@@ -757,6 +760,7 @@ class _LocalH(torch.autograd.Function):
                     SAVE_G=use_g,
                     BATCH_SPLITS=parameter_splits,
                     SUPPORT_TILE=recipe.parameter_support_tile,
+                    SUPPORT_CHUNK=recipe.parameter_support_chunk,
                     num_warps=recipe.parameter_warps
                     or (8 if max(domain.input_count, domain.output_count) > 64 else 4),
                     enable_fp_fusion=False,
