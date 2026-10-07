@@ -113,7 +113,7 @@ compilerのspill除去だけでは完全stepの改善を証明できない。
 原票とpaired statisticsは`20261007-backward-fusion-tuned.json`。
 
 L4 drain後に全owned slots停止を確認。再現したN64のrho1.25/mixedだけをG4の1 short jobで比較する。
-`colabjob-d5c79375cfd840f8aa270ebb032ddb6a`。1 job、各条件1 execution / 21 samples、全サイズoracle 10 Planと4 exact-zero tests、標準runner PASS。
+`colabjob-d5c79375cfd840f8aa270ebb032ddb6a`。1 job、各条件1 execution / 21 samples、全サイズoracle 10 Plan×case照合と4 exact-zero tests、標準runner PASS。
 197 runtime files一致、source/result archive SHA256を検証。実機は
 **NVIDIA RTX PRO 6000 Blackwell Server Edition**、Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0。
 
@@ -155,3 +155,14 @@ source VJP storeだけを一意ownerに制限している。実際にコンパ�
 - measurement source: `42202e8c` (追加testのみ、GPU gateと197 runtime files一致)
 - initial screen N64: `l4job-5afa74ee13e2416698bc88a6f0cf49c4`
 - initial screen N128: `l4job-e6bff3f46879445f89a0a5e3d1448728`
+
+## 完了時の保存
+
+性能artifactはscreen4、atom16 full8、独立repeat2、G4短比較2の計16件をDBへ保存。
+全件でsource/result archive SHA256、byte-identical raw export、同一provenanceでの
+idempotent再importを確認。DB run IDs / artifact hashesは
+`20261007-backward-fusion-database.json`に保存した。
+raw driver・oracles・compiler reports・checkpointsはignored evidenceとpool archiveに残す。
+worktreeは`kernel/fused-backward-vjp`を保持し、PR #57はdraft。mainは`eff5c277`のまま。
+全owned GPU停止済み、queued/running/interruptedなし。未実装の次案は
+ignored `next-inline-inactive-zero.md`に保存。
