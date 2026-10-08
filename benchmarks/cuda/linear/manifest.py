@@ -57,6 +57,15 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
     SquareStripPreparationAlgorithm,
     SquareStripSplitAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
+    SphereAlgorithm,
+)
+from torchcst._backends.cuda.algorithms.linear.sphere_polar.support_algorithm import (
+    SphereSupportAlgorithm,
+)
+from torchcst._backends.cuda.algorithms.linear.sphere_polar.weight_algorithm import (
+    SphereWeightAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
     StripProductAlgorithm,
 )
@@ -66,6 +75,7 @@ from torchcst._backends.cuda.algorithms.linear.torus_profile_product.onchip.algo
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.serialization import decode_json
+from torchcst._backends.torch.algorithms.linear.factored import FactoredAlgorithm
 from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import (
     OPERATION,
     SEMANTICS,
@@ -100,6 +110,10 @@ class BenchmarkRegistry(Registry):
 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
 REGISTRY = BenchmarkRegistry()
+REGISTRY.register(SphereAlgorithm())
+REGISTRY.register(SphereSupportAlgorithm())
+REGISTRY.register(SphereWeightAlgorithm())
+REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(TorusChunkAlgorithm())
 REGISTRY.register(TorusOnchipAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
@@ -176,9 +190,9 @@ class OptimizerSpec:
         if (
             self.name != "AdamW"
             or self.fused is not True
-            or self.capturable is not True
+            or type(self.capturable) is not bool
         ):
-            raise ValueError("this fixture requires fused capturable AdamW")
+            raise ValueError("requires fused AdamW with a boolean capture policy")
         for name, minimum, inclusive in [("lr", 0, False), ("weight_decay", 0, True)]:
             value = getattr(self, name)
             if (
@@ -251,6 +265,7 @@ class BenchmarkCase:
         _id(self.id, "case id")
         if self.fixture not in (
             "normalized_euclidean_strip",
+            "polar_sphere_separable",
             "local_polar_product",
             "polar_profile_product",
             "polar_profile_product_strip",
@@ -259,8 +274,23 @@ class BenchmarkCase:
             "polar_torus_profile_product_strip",
         ):
             raise ValueError("unknown benchmark fixture")
+        if type(self.optimizer) is not OptimizerSpec:
+            raise TypeError("case needs an OptimizerSpec")
+        if self.fixture == "polar_sphere_separable":
+            if (
+                self.optimizer.capturable
+                or self.profile not in ("rho3", "rho8")
+                or self.widths is not None
+            ):
+                raise ValueError(
+                    "Sphere requires eager optimizer and rho3/rho8 without custom widths"
+                )
+        elif not self.optimizer.capturable:
+            raise ValueError("existing fixtures require capturable AdamW")
         sizes = (
-            (1024, 2048)
+            (64, 1024, 2048)
+            if self.fixture == "polar_sphere_separable"
+            else (1024, 2048)
             if self.fixture == "polar_torus_profile_product_strip"
             else (256, 512, 1024, 2048, 8192)
             if self.fixture
@@ -289,6 +319,7 @@ class BenchmarkCase:
             "polar_profile_product_square_strip",
             "polar_profile_product_global",
             "polar_torus_profile_product_strip",
+            "polar_sphere_separable",
         ) and (
             type(self.rows) is not int or not 1 <= self.rows <= 64 or self.atoms < 4
         ):
@@ -301,7 +332,9 @@ class BenchmarkCase:
         if self.seed >= 2**63:
             raise ValueError("seed must be less than 2**63")
         profiles = (
-            (
+            ("rho3", "rho8")
+            if self.fixture == "polar_sphere_separable"
+            else (
                 "broad",
                 "sharp",
                 "few",
@@ -372,6 +405,7 @@ class BenchmarkRun:
                     "polar_profile_product_square_strip",
                     "polar_profile_product_global",
                     "polar_torus_profile_product_strip",
+                    "polar_sphere_separable",
                 )
                 else LOCAL_SEMANTICS
                 if self.case.fixture == "local_polar_product"

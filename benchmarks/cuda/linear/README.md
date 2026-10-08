@@ -502,3 +502,46 @@ Torch の全 site を扱う有界 block 参照実装であり、公開高速経�
 計装済みの別 Graph は診断用で、採否には未計装完全 step と capture/replay peak を使う。
 数学・予算・失敗と採否の記録は
 [H reuse exploration](../../../docs/research-history/local-product/20261008-profile-product-h-reuse.md)を参照。
+
+## Existing Sphere + Polar research plans
+
+`plans-sphere-polar.json` compares the existing two explicit intrinsic S²
+charts, Triweight profiles and independent per-chart L2 floors. It does not
+introduce a single-chart Sphere profile product. Surface-site density is one
+in this fixture, with radius `sqrt(N / (4*pi))`; this is a benchmark choice.
+
+```bash
+python -m tools.kernel_dev prepare \
+  --plans benchmarks/cuda/linear/plans-sphere-polar.json \
+  --case benchmarks/cuda/linear/cases/sphere-polar-1024-sigma3.json \
+  --candidate sphere-weight-64 --output output/sphere-comparison
+python -m tools.kernel_dev check \
+  --plans output/sphere-comparison/plans.json \
+  --case output/sphere-comparison/case.json
+python -m tools.kernel_dev test --suite sphere-polar
+python -m benchmarks.cuda.linear.run \
+  --plans output/sphere-comparison/plans.json \
+  --case output/sphere-comparison/case.json --output output/sphere-result.json
+```
+
+Sphere cases explicitly declare `capturable: false`: the complete eager step
+uses public `CSTOptimizer`, including Sphere retraction and state transport.
+Linear forward/backward Graph replay has separate regression checks. Results
+contain `graph: null` and `peak_*_training_bytes`, with no claim of captured
+optimizer timing. These eager Sphere records are not supported by the current
+submission/DB adapter and must not be submitted as certified schema-v1 Graph
+observations.
+
+The bounded-factor plans retain H or recompute it. The support plans retain
+normalized profiles and indices plus H. The weight plans assemble W from
+support patches and use Torch/cuBLAS GEMMs with a shared dW for parameter VJP.
+Capacity overflow takes the exact full-site path; capacity never limits the
+mathematical support. Atomic support/weight plans reject deterministic mode.
+Widths remain live across updates and detached only in the task VJP.
+
+At 2048 sites the original full-factor reference already OOMs on L4. The
+2048 cases therefore use the bounded-factor plan as their executable baseline;
+the original failure remains recorded in the Sphere baseline research note.
+These plans are registered only in the benchmark registry, with no public
+selector promotion. See the research record for speed, memory, negative
+width-eight results and independent-run limits.

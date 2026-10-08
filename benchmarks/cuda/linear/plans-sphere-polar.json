@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "sphere-reference",
+      "plan": {
+        "algorithm_id": "torch_factored",
+        "algorithm_revision": "v1",
+        "recipe": {},
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "sphere-blocked-1024",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 1024,
+          "save_h": true
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "sphere-blocked-4096",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 4096,
+          "save_h": true
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "sphere-blocked-16384",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 16384,
+          "save_h": true
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "sphere-recompute",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 4096,
+          "save_h": false
+        },
+        "schema_version": 1
+      }
+    },
+    {
+      "id": "sphere-support-16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_support",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 16
+        }
+      }
+    },
+    {
+      "id": "sphere-support-64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_support",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64
+        }
+      }
+    },
+    {
+      "id": "sphere-support-256",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_support",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 256
+        }
+      }
+    },
+    {
+      "id": "sphere-weight-16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "support_capacity": 16,
+          "patch_tile": 32
+        }
+      }
+    },
+    {
+      "id": "sphere-weight-64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "support_capacity": 64,
+          "patch_tile": 32
+        }
+      }
+    },
+    {
+      "id": "sphere-weight-256",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "support_capacity": 256,
+          "patch_tile": 32
+        }
+      }
+    },
+    {
+      "id": "sphere-weight-64-tile64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "support_capacity": 64,
+          "patch_tile": 64
+        }
+      }
+    }
+  ]
+}

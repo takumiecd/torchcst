@@ -1,0 +1,4608 @@
+{
+  "scope": "existing two intrinsic explicit S2 charts; per-side floored L2 Triweight; eager public CSTOptimizer; FP32 IEEE; batch32; 5% atoms",
+  "status": "validated; independent weight-v2 replication passed; research plans only",
+  "jobs": [
+    {
+      "id": "l4job-48f14bd850d342a9903264ab1797f23e",
+      "label": "sphere-polar-blocked-smoke",
+      "source_sha256": "e3859438c16d48058e312e977c913dcc6ec4c11a43b72553d5f5bd31b02636ee",
+      "result_archive_sha256": "4d710641de55f1adc358280cd35cb8bbfcfe3b40034041317b19b3c535ffdc39",
+      "driver_returncode": 1,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-062c4676-1118-2b28-2081-29e7f5750bd7, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-09b6ea06f3af4a8db870f92b5f27d106",
+      "label": "sphere-polar-contiguous-smoke",
+      "source_sha256": "2777bb4603deb84fb8d9d74954cef51bcbe3c3ed0025bd87abe8fc4c96de7d3d",
+      "result_archive_sha256": "370b26bc1df5f77f71cc679c366dd15cbf39cc63affbfb077825da47c905fe01",
+      "driver_returncode": 1,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-083ea773-7366-dad2-22e2-bad040de5c57, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-ec1f9e2d3614406cbff28407daf268ff",
+      "label": "sphere-polar-stream-graph-smoke",
+      "source_sha256": "ed37cc0d453756a5dac031573a9bbcd973652b88dcd637ea54ed281db83b2244",
+      "result_archive_sha256": "90065e396b4204e10ec03393f3cefa1396177b782b52f1c053ad54b7035b350c",
+      "driver_returncode": 0,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-2f603842-71dd-792c-e495-f4f8ebdffbcc, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "label": "sphere-polar-blocked-primary",
+      "source_sha256": "c4ec30e2c5c7e7e15fea14c7f44a3b72896927d753488fa3474ec134a089aa4a",
+      "result_archive_sha256": "69d3ba6c3cd052d421e7346264d2c615a82c8fd73811ae375e5d88a6a10cb14a",
+      "driver_returncode": 0,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-2f603842-71dd-792c-e495-f4f8ebdffbcc, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-c04d1ee061bc4258833fe1771292978a",
+      "label": "sphere-support-contracts-and-primary",
+      "source_sha256": "302d97b74a970bf6f49624f1f1e9d27e0e6d4718faf772e8987dc5601d32e59b",
+      "result_archive_sha256": "d3926022ad226db5db3fe85dfb40774a118f2dfd3fbbf857c3ce194f9e0cd2fd",
+      "driver_returncode": 1,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-89c2ecb7-dabd-a036-46f3-6ed04f2f6a0e, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-21ace5d79e224e05bfd2eef19b57d0e5",
+      "label": "sphere-support-fixed-fixtures-and-primary",
+      "source_sha256": "53f32a8aff7e2a4132dcaeb3f6a5d9c6f5d37ad66b1937675fd19b5cb28e75bf",
+      "result_archive_sha256": "44c4e313861a0e9aef084d7a0d098461de5a3a7d29117030330719e010f3986f",
+      "driver_returncode": 0,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-b8232472-f5dd-2e80-41d5-115df3f99b8d, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-4170fda5411f4f73a515caa52eee6f55",
+      "label": "sphere-weight-contracts-and-primary",
+      "source_sha256": "fe6d91f687812a2a30171e9bd76e1eba12e7aba6d0a484f5827342c17ccd55e7",
+      "result_archive_sha256": "0a02114b4c0cf33a9ff2b05e7265adfcbdec56edf6cfb37750c1fe514eea47e5",
+      "driver_returncode": 0,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-d98f3241-0fdc-8366-55ed-a1f0f181f7bc, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-6c31a40b409f4f6095f2c1b348dcfc96",
+      "label": "sphere-linear-graph-and-spills",
+      "source_sha256": "1bfcbd28ac02b2126e11244fa33684d4ad7fdd47d39f995bbc369f2274f46d90",
+      "result_archive_sha256": "fa6e54a4eee927a35127ff0044f8a282ca15605d4195cf8e8a14c3dcbbca3253",
+      "driver_returncode": 1,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-d98f3241-0fdc-8366-55ed-a1f0f181f7bc, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-983d620f3dae44b7b022ef36421ff2f5",
+      "label": "sphere-cuda-independent-existing-runner",
+      "source_sha256": "497482f55672325004bec84a743e16d0338519a5c1aaa426c8bce3df5a8f5138",
+      "result_archive_sha256": "1f406e8c25d2a729a798fee722d4803d1891680656439a7468aa59da2635da1c",
+      "driver_returncode": 1,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-362c907d-f0d3-e09f-e332-e1068aaba26b, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-ea6502086e7945898c2fc9102132a761",
+      "label": "sphere-graph-spills-corrected-inspection",
+      "source_sha256": "ffcb7f01769081b9fcf8d14bab5165ede912a13949edb41480012cfabc621ae6",
+      "result_archive_sha256": "d7513d035c4c07220aa0823c22e1329733f4d1e65a322f2faaead86544dd92ae",
+      "driver_returncode": 0,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-362c907d-f0d3-e09f-e332-e1068aaba26b, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "label": "sphere-v2-independent-runner-contracts",
+      "source_sha256": "81584ee9c42a7fe975cf034058de9ac3b28bc14df3f401048cbbd760b0c42635",
+      "result_archive_sha256": "0c97d1cb16c78cda000db6bae23b1b53684447db28aff1dee227b401d7bb0f6b",
+      "driver_returncode": 0,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-d4a23d90-32b6-a047-3d74-33ee2f414b11, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-26055f7f93ad4279a841060406adaf10",
+      "label": "sphere-v2-graph-and-spills",
+      "source_sha256": "faf31f063037d86d7717ac3a5b5cacd71bc104a950750d05c6228de8c65f3a10",
+      "result_archive_sha256": "a2b10586e34a4e3543a50037641a69baedc6bb5d5b2843dd1ff477a478ad1657",
+      "driver_returncode": 0,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-d4a23d90-32b6-a047-3d74-33ee2f414b11, 580.82.07, 23034 MiB"
+    },
+    {
+      "id": "l4job-23d2bbd89c014bc3881e70d897ea9922",
+      "label": "sphere-v2-weight-patch-independent-repeat",
+      "source_sha256": "056abbd836cc964e9bc7149786253b961abe3118cc0fa6eb7e232ee96eb770ec",
+      "result_archive_sha256": "efc418660e067cdf22bf50ad1e0885c403663f435f7769efeb7bae999fe78f35",
+      "driver_returncode": 0,
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "gpu": "NVIDIA L4, GPU-f692499d-b110-eb8e-6c3c-b85716a72239, 580.82.07, 23034 MiB"
+    }
+  ],
+  "measurements": [
+    {
+      "status": "PASS",
+      "size": 64,
+      "sigma_initial": 3.0,
+      "route": "blocked-4096",
+      "atoms": 204,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 2.256758334191025,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "0d7ccc4e96db42ffde4c9f2e8795aaf9d042a7c87c9d21293beb57a3265a0cdd",
+        "x": "934fa601276bb68912c5cd7964019cf340cd25ac3535dc5817e202372861cff9",
+        "target": "9e313250d9cb99f076aaed897c8822aff5a993fa603665f6b2a85b720a0ccce4",
+        "sites": [
+          "037590b43c9d79653c7a2edd4fbca32bb9aca1e65b5365bb38f307f280b765ff",
+          "96c9c4e2c8c8c9321fa6435a65e94739c089ae4262ea199b2e556c0c6cadb2d7"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.79063939459634e-07,
+            "relative_l2": 3.0820036800675623e-07
+          },
+          "dX": {
+            "max_abs": 2.9788979272193927e-07,
+            "relative_l2": 3.3725792320677903e-07
+          },
+          "all_dP": {
+            "max_abs": 5.4816966503778985e-06,
+            "relative_l2": 2.994227870660834e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.161843373233886e-07,
+            "relative_l2": 3.214809844353762e-07
+          },
+          "dX": {
+            "max_abs": 3.275166550187336e-07,
+            "relative_l2": 3.600024156392378e-07
+          },
+          "all_dP": {
+            "max_abs": 3.6278763313468687e-06,
+            "relative_l2": 2.8825208491810663e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 17436160,
+        "reserved": 23068672
+      },
+      "inference_peak_bytes": {
+        "allocated": 17353728,
+        "reserved": 23068672
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993478298187256,
+          "max": 2.99350643157959,
+          "mean": 2.9934909343719482
+        },
+        {
+          "min": 2.993478298187256,
+          "max": 2.99350643157959,
+          "mean": 2.9934909343719482
+        }
+      ],
+      "final_p_hash": "2b902b8c931a536924aa4a6d84f182cbe87009c3943cfb715748ddf4b14883f3",
+      "materialized_atom_tensor_lower_bound_bytes": 3342336,
+      "training_median_ms": 9.41363000004003,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 3.1886190000136594,
+      "separate_phase_medians_ms": {
+        "forward_loss": 3.626594000024852,
+        "backward": 1.1663309999789817,
+        "optimizer": 4.9543309999648955
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "factored",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.3692847665189873e-06,
+            "relative_l2": 7.48010234106569e-07
+          },
+          "dX": {
+            "max_abs": 3.1247638556664015e-06,
+            "relative_l2": 7.404353400410823e-07
+          },
+          "all_dP": {
+            "max_abs": 2.9559395604117356e-05,
+            "relative_l2": 7.544484400068793e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.2911174553951206e-06,
+            "relative_l2": 8.130483843615709e-07
+          },
+          "dX": {
+            "max_abs": 3.82593003411813e-06,
+            "relative_l2": 7.64566701893965e-07
+          },
+          "all_dP": {
+            "max_abs": 3.4215564817419164e-05,
+            "relative_l2": 7.693346200708027e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 4320266240,
+        "reserved": 5066719232
+      },
+      "inference_peak_bytes": {
+        "allocated": 1534130176,
+        "reserved": 1994391552
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "9db596e2377c12239cc91f2ffa39c044a6c591d525071202653a3e91d4fd8524",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 168.86031899997533,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 49.02002599999378,
+      "separate_phase_medians_ms": {
+        "forward_loss": 49.17718000001514,
+        "backward": 114.67367299997022,
+        "optimizer": 5.9328259999915645
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "dense",
+      "protocol": "eager FP32 IEEE AdamW; different model",
+      "training_peak_bytes": {
+        "allocated": 34342400,
+        "reserved": 44040192
+      },
+      "training_median_ms": 0.716981999971722,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a"
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "blocked-1024",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.1921280662650098e-06,
+            "relative_l2": 7.466169094304654e-07
+          },
+          "dX": {
+            "max_abs": 3.1247638556664015e-06,
+            "relative_l2": 7.405827429363443e-07
+          },
+          "all_dP": {
+            "max_abs": 2.9320977025015793e-05,
+            "relative_l2": 7.487513292654778e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.425587250971418e-06,
+            "relative_l2": 8.121719675624786e-07
+          },
+          "dX": {
+            "max_abs": 3.838367742980964e-06,
+            "relative_l2": 7.609560654495643e-07
+          },
+          "all_dP": {
+            "max_abs": 3.302347192191135e-05,
+            "relative_l2": 7.650169251820261e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 62859264,
+        "reserved": 73400320
+      },
+      "inference_peak_bytes": {
+        "allocated": 55052288,
+        "reserved": 79691776
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "e407fa8ce0fadd273012e72fdd13c4cdafa21d4d9b3ae6465f799cd77fdac6be",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 49.87068399998407,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 16.189645999986624,
+      "separate_phase_medians_ms": {
+        "forward_loss": 16.86474199999566,
+        "backward": 27.43896100002985,
+        "optimizer": 5.507406999981868
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "blocked-4096",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.5199536125296582e-06,
+            "relative_l2": 7.452088311371892e-07
+          },
+          "dX": {
+            "max_abs": 3.1247638556664015e-06,
+            "relative_l2": 7.311369143254804e-07
+          },
+          "all_dP": {
+            "max_abs": 2.9320977025015793e-05,
+            "relative_l2": 7.482500368250223e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.319627874143194e-06,
+            "relative_l2": 8.101517244634946e-07
+          },
+          "dX": {
+            "max_abs": 4.02628277729189e-06,
+            "relative_l2": 7.532083090975064e-07
+          },
+          "all_dP": {
+            "max_abs": 3.2546634763708227e-05,
+            "relative_l2": 7.640371107841168e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 138341888,
+        "reserved": 153092096
+      },
+      "inference_peak_bytes": {
+        "allocated": 93218816,
+        "reserved": 109051904
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "21848066cf6e89b45f9ce3a547c6f1b2478bf4cf327e7bc2c7abff21f9ddabe2",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 19.26380899999458,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 6.277499000020725,
+      "separate_phase_medians_ms": {
+        "forward_loss": 6.551768000008451,
+        "backward": 7.104801000025418,
+        "optimizer": 4.921319000004587
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "blocked-16384",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.3709420005911817e-06,
+            "relative_l2": 7.481966596026227e-07
+          },
+          "dX": {
+            "max_abs": 3.1247638556664015e-06,
+            "relative_l2": 7.323774632306636e-07
+          },
+          "all_dP": {
+            "max_abs": 2.908255844591423e-05,
+            "relative_l2": 7.473765773299417e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.1797747287454214e-06,
+            "relative_l2": 8.148052277776615e-07
+          },
+          "dX": {
+            "max_abs": 3.8040525630611555e-06,
+            "relative_l2": 7.577875820619283e-07
+          },
+          "all_dP": {
+            "max_abs": 3.183137902640354e-05,
+            "relative_l2": 7.632218146983508e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 443624960,
+        "reserved": 455081984
+      },
+      "inference_peak_bytes": {
+        "allocated": 245884928,
+        "reserved": 260046848
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "ee859e10fed71f75705916f44664ffcf67ffac221c49746169431137ec1a15af",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 20.03830499995729,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 6.487894999963828,
+      "separate_phase_medians_ms": {
+        "forward_loss": 6.695507000017642,
+        "backward": 9.048774999996567,
+        "optimizer": 4.965825999988738
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "blocked-recompute",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.5199536125296582e-06,
+            "relative_l2": 7.452088311371892e-07
+          },
+          "dX": {
+            "max_abs": 3.1247638556664015e-06,
+            "relative_l2": 7.311369143254804e-07
+          },
+          "all_dP": {
+            "max_abs": 2.9320977025015793e-05,
+            "relative_l2": 7.482500368250223e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.319627874143194e-06,
+            "relative_l2": 8.101517244634946e-07
+          },
+          "dX": {
+            "max_abs": 4.02628277729189e-06,
+            "relative_l2": 7.532083090975064e-07
+          },
+          "all_dP": {
+            "max_abs": 3.2546634763708227e-05,
+            "relative_l2": 7.640371107841168e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 132155392,
+        "reserved": 153092096
+      },
+      "inference_peak_bytes": {
+        "allocated": 86508032,
+        "reserved": 109051904
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "21848066cf6e89b45f9ce3a547c6f1b2478bf4cf327e7bc2c7abff21f9ddabe2",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 18.790636000005634,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 6.015593999961766,
+      "separate_phase_medians_ms": {
+        "forward_loss": 6.366269000011471,
+        "backward": 7.43082800005368,
+        "optimizer": 5.039169999975002
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 8.0,
+      "route": "blocked-4096",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.8349333150702307e-06,
+            "relative_l2": 4.18467044815127e-07
+          },
+          "dX": {
+            "max_abs": 1.8171001163747036e-06,
+            "relative_l2": 4.044149520768687e-07
+          },
+          "all_dP": {
+            "max_abs": 1.0200885371070001e-05,
+            "relative_l2": 4.011442108501619e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.7132775759209906e-06,
+            "relative_l2": 5.531987058455494e-07
+          },
+          "dX": {
+            "max_abs": 1.6283408991180082e-06,
+            "relative_l2": 4.953475891482017e-07
+          },
+          "all_dP": {
+            "max_abs": 9.190423684746207e-06,
+            "relative_l2": 4.5356197806582327e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 138341888,
+        "reserved": 153092096
+      },
+      "inference_peak_bytes": {
+        "allocated": 93218816,
+        "reserved": 109051904
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        },
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        }
+      ],
+      "final_p_hash": "c163e448439760360a5369a41133b06f28a28b693162952672598148217b39e8",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 18.3310380000421,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 6.237205999980233,
+      "separate_phase_medians_ms": {
+        "forward_loss": 6.588394999994307,
+        "backward": 7.128412999975353,
+        "optimizer": 4.9065869999935785
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 8.0,
+      "route": "blocked-16384",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 2.078051571152706e-06,
+            "relative_l2": 4.6228034239772385e-07
+          },
+          "dX": {
+            "max_abs": 2.0207849993347793e-06,
+            "relative_l2": 4.5180922755597334e-07
+          },
+          "all_dP": {
+            "max_abs": 8.531955317359063e-06,
+            "relative_l2": 3.883781123816735e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.992587768007148e-06,
+            "relative_l2": 5.996539546649077e-07
+          },
+          "dX": {
+            "max_abs": 2.093409252168499e-06,
+            "relative_l2": 5.465351140939377e-07
+          },
+          "all_dP": {
+            "max_abs": 7.517733648487734e-06,
+            "relative_l2": 4.4309361788049024e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 443624960,
+        "reserved": 455081984
+      },
+      "inference_peak_bytes": {
+        "allocated": 245884928,
+        "reserved": 260046848
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        },
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        }
+      ],
+      "final_p_hash": "318ea137a5c7699e5388a4ede246a6427571639428d48f4ce0e989d093418ab8",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 20.042150999984187,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 6.447730999980195,
+      "separate_phase_medians_ms": {
+        "forward_loss": 6.642065999983515,
+        "backward": 9.017866999954549,
+        "optimizer": 4.873180999993565
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "blocked-16384",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.445647330544091e-06,
+            "relative_l2": 1.0465955525092574e-06
+          },
+          "dX": {
+            "max_abs": 8.429840774981656e-06,
+            "relative_l2": 1.0215650568896355e-06
+          },
+          "all_dP": {
+            "max_abs": 5.952523649488395e-05,
+            "relative_l2": 1.025600902422852e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 7.079537518994705e-06,
+            "relative_l2": 1.1418164234108396e-06
+          },
+          "dX": {
+            "max_abs": 8.025527150623546e-06,
+            "relative_l2": 1.0143013931199471e-06
+          },
+          "all_dP": {
+            "max_abs": 4.822394385861628e-05,
+            "relative_l2": 1.0277186238224665e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 905334784,
+        "reserved": 1046478848
+      },
+      "inference_peak_bytes": {
+        "allocated": 522919424,
+        "reserved": 564133888
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "21fbc60942392b38695f266577272629be09efdd278129ed9407c08617fd779a",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 108.31134599999359,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 32.419160000017655,
+      "separate_phase_medians_ms": {
+        "forward_loss": 32.514601000002585,
+        "backward": 70.57188200002429,
+        "optimizer": 5.824197999970693
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 8.0,
+      "route": "blocked-16384",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "b2716cadd907d9e04d50ffadbc6d4c195e631cb076fe8a611b5163136c5ee8d3",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.017471651434178e-06,
+            "relative_l2": 5.757930641525493e-07
+          },
+          "dX": {
+            "max_abs": 3.010052822272069e-06,
+            "relative_l2": 5.645834134409747e-07
+          },
+          "all_dP": {
+            "max_abs": 1.8170455695465382e-05,
+            "relative_l2": 4.787813219984895e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.293153296723972e-06,
+            "relative_l2": 7.34511586025181e-07
+          },
+          "dX": {
+            "max_abs": 3.220991616370572e-06,
+            "relative_l2": 6.34579920981436e-07
+          },
+          "all_dP": {
+            "max_abs": 1.410049748851172e-05,
+            "relative_l2": 5.17580375123696e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 905334784,
+        "reserved": 1046478848
+      },
+      "inference_peak_bytes": {
+        "allocated": 522919424,
+        "reserved": 564133888
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        },
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        }
+      ],
+      "final_p_hash": "c3a6e9a0069477291e092b5fc6246386b128793509171782af2a37b03830bf67",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 108.52024899998014,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a",
+      "inference_median_ms": 32.46324400004141,
+      "separate_phase_medians_ms": {
+        "forward_loss": 32.51979300000585,
+        "backward": 70.5983399999468,
+        "optimizer": 5.723587000034058
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "dense",
+      "protocol": "eager FP32 IEEE AdamW; different model",
+      "training_peak_bytes": {
+        "allocated": 85198336,
+        "reserved": 92274688
+      },
+      "training_median_ms": 1.1339620000399009,
+      "job_id": "l4job-49cd5e683c7e4493b4ad5faddd69ff4a"
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "support-64",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 8.150743914914216e-06,
+            "relative_l2": 1.0009357231044596e-06
+          },
+          "dX": {
+            "max_abs": 6.0816925890883056e-06,
+            "relative_l2": 9.900272152223667e-07
+          },
+          "all_dP": {
+            "max_abs": 2.8367302708609543e-05,
+            "relative_l2": 7.474183302203541e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 5.4298525085094695e-06,
+            "relative_l2": 1.0620084787537384e-06
+          },
+          "dX": {
+            "max_abs": 6.690803607156681e-06,
+            "relative_l2": 1.0070878525618135e-06
+          },
+          "all_dP": {
+            "max_abs": 3.39771462383176e-05,
+            "relative_l2": 7.638690526875241e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 91238912,
+        "reserved": 117440512
+      },
+      "inference_peak_bytes": {
+        "allocated": 98168832,
+        "reserved": 125829120
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "6aa183cf136bedcb715f394f0addf738222ba8c4beb44cd250326ffa96076ee0",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 14.601642000116044,
+      "job_id": "l4job-21ace5d79e224e05bfd2eef19b57d0e5",
+      "inference_median_ms": 5.444235999902958,
+      "separate_phase_medians_ms": {
+        "forward_loss": 5.590408999978536,
+        "backward": 4.786485000067842,
+        "optimizer": 4.8017320000326436
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "support-256",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 7.67390675671109e-06,
+            "relative_l2": 1.0052000557310972e-06
+          },
+          "dX": {
+            "max_abs": 6.0816925890883056e-06,
+            "relative_l2": 9.914535154351672e-07
+          },
+          "all_dP": {
+            "max_abs": 2.8367302708609543e-05,
+            "relative_l2": 7.474183302203541e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 4.677456342583319e-06,
+            "relative_l2": 1.06176876997755e-06
+          },
+          "dX": {
+            "max_abs": 6.338399003880113e-06,
+            "relative_l2": 1.0075971742013135e-06
+          },
+          "all_dP": {
+            "max_abs": 3.39771462383176e-05,
+            "relative_l2": 7.64115381875388e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 255656448,
+        "reserved": 270532608
+      },
+      "inference_peak_bytes": {
+        "allocated": 262586368,
+        "reserved": 278921216
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "658407e27690201625c19134b683eebc9f87f271f760fd9e7e6cc0b57a0b998e",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 15.016524999964531,
+      "job_id": "l4job-21ace5d79e224e05bfd2eef19b57d0e5",
+      "inference_median_ms": 5.4139999999733845,
+      "separate_phase_medians_ms": {
+        "forward_loss": 5.520038999975441,
+        "backward": 5.309188999945036,
+        "optimizer": 4.737851000072624
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 8.0,
+      "route": "support-256",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.4762478516949784e-05,
+            "relative_l2": 1.9071812513713282e-06
+          },
+          "dX": {
+            "max_abs": 1.4075692563952913e-05,
+            "relative_l2": 1.8385944973730262e-06
+          },
+          "all_dP": {
+            "max_abs": 9.008792475562188e-06,
+            "relative_l2": 3.7840447794130373e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.5418943684730735e-05,
+            "relative_l2": 2.0062386036981134e-06
+          },
+          "dX": {
+            "max_abs": 1.5272689385614768e-05,
+            "relative_l2": 1.8963599424971962e-06
+          },
+          "all_dP": {
+            "max_abs": 7.542969210572181e-06,
+            "relative_l2": 4.3268376634725427e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 255656448,
+        "reserved": 270532608
+      },
+      "inference_peak_bytes": {
+        "allocated": 262586368,
+        "reserved": 278921216
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        },
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        }
+      ],
+      "final_p_hash": "7cef42fe2c895b24e9588ad893c71854e81cacc760da9910600bec3beae96a7d",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 49.11749200005033,
+      "job_id": "l4job-21ace5d79e224e05bfd2eef19b57d0e5",
+      "inference_median_ms": 17.989397000064855,
+      "separate_phase_medians_ms": {
+        "forward_loss": 18.130699000039385,
+        "backward": 26.20019300002241,
+        "optimizer": 5.008725000152481
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 8.0,
+      "route": "support-64",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.4482846666385996e-05,
+            "relative_l2": 1.9079646685407187e-06
+          },
+          "dX": {
+            "max_abs": 1.4552529722156038e-05,
+            "relative_l2": 1.836614130585352e-06
+          },
+          "all_dP": {
+            "max_abs": 9.008792475562188e-06,
+            "relative_l2": 3.773684329411176e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.2747668756585284e-05,
+            "relative_l2": 1.9936414075400773e-06
+          },
+          "dX": {
+            "max_abs": 1.609883041941984e-05,
+            "relative_l2": 1.9010356526903224e-06
+          },
+          "all_dP": {
+            "max_abs": 7.52149363103527e-06,
+            "relative_l2": 4.317612384677016e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 91238912,
+        "reserved": 117440512
+      },
+      "inference_peak_bytes": {
+        "allocated": 98168832,
+        "reserved": 125829120
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        },
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        }
+      ],
+      "final_p_hash": "474f919be813f5863db611b434b178d3914288a610a8692a4679d5a1290a8560",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 42.715048999980354,
+      "job_id": "l4job-21ace5d79e224e05bfd2eef19b57d0e5",
+      "inference_median_ms": 16.871435999973983,
+      "separate_phase_medians_ms": {
+        "forward_loss": 17.286705000060465,
+        "backward": 20.68407899992053,
+        "optimizer": 4.959760000019742
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "support-64",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.1757750002061584e-05,
+            "relative_l2": 1.424989827160811e-06
+          },
+          "dX": {
+            "max_abs": 1.1727230639912989e-05,
+            "relative_l2": 1.3954300626947595e-06
+          },
+          "all_dP": {
+            "max_abs": 5.924956501279777e-05,
+            "relative_l2": 1.0241306673849604e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.1357103120612777e-05,
+            "relative_l2": 1.504494881473081e-06
+          },
+          "dX": {
+            "max_abs": 1.2524525103252415e-05,
+            "relative_l2": 1.3874832707158175e-06
+          },
+          "all_dP": {
+            "max_abs": 4.8700781016819406e-05,
+            "relative_l2": 1.0271945451691064e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 318304768,
+        "reserved": 348127232
+      },
+      "inference_peak_bytes": {
+        "allocated": 345999872,
+        "reserved": 381681664
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "77ce8cf6b803286f2a10900a23f09022c1ed90ee61395ccfc53d32eebbf9fb58",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 49.62671600014801,
+      "job_id": "l4job-21ace5d79e224e05bfd2eef19b57d0e5",
+      "inference_median_ms": 21.747970999967947,
+      "separate_phase_medians_ms": {
+        "forward_loss": 20.89462599997205,
+        "backward": 23.386034999930416,
+        "optimizer": 5.044253000050958
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 8.0,
+      "route": "support-256",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "b2716cadd907d9e04d50ffadbc6d4c195e631cb076fe8a611b5163136c5ee8d3",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.538648642509301e-05,
+            "relative_l2": 2.634566479556414e-06
+          },
+          "dX": {
+            "max_abs": 2.4558819966546963e-05,
+            "relative_l2": 2.615195073773952e-06
+          },
+          "all_dP": {
+            "max_abs": 1.7783025504425343e-05,
+            "relative_l2": 4.6805988341828803e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.0121685159034683e-05,
+            "relative_l2": 2.8355214896864085e-06
+          },
+          "dX": {
+            "max_abs": 3.193895997366525e-05,
+            "relative_l2": 2.679371668622739e-06
+          },
+          "all_dP": {
+            "max_abs": 1.4577334646714846e-05,
+            "relative_l2": 5.082999359115857e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 959193600,
+        "reserved": 994050048
+      },
+      "inference_peak_bytes": {
+        "allocated": 986888704,
+        "reserved": 1027604480
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        },
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        }
+      ],
+      "final_p_hash": "1b3fedb13715694bb9dfaeb53097aa27eadc4e3a3bf37e876af2518a7d4d4fc5",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 216.82998900018902,
+      "job_id": "l4job-21ace5d79e224e05bfd2eef19b57d0e5",
+      "inference_median_ms": 82.31245600018156,
+      "separate_phase_medians_ms": {
+        "forward_loss": 79.89070999997239,
+        "backward": 129.6265560001757,
+        "optimizer": 5.64804999999069
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "weight-64",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.3017500007392897e-06,
+            "relative_l2": 7.549152863382248e-07
+          },
+          "dX": {
+            "max_abs": 3.127430061478087e-06,
+            "relative_l2": 7.488242552278456e-07
+          },
+          "all_dP": {
+            "max_abs": 2.7652046971304856e-05,
+            "relative_l2": 7.512500615752838e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.2157488328854456e-06,
+            "relative_l2": 8.210172640649121e-07
+          },
+          "dX": {
+            "max_abs": 3.941888651159964e-06,
+            "relative_l2": 7.686819755650548e-07
+          },
+          "all_dP": {
+            "max_abs": 3.3500309080114477e-05,
+            "relative_l2": 7.696748983773832e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 92784640,
+        "reserved": 117440512
+      },
+      "inference_peak_bytes": {
+        "allocated": 94968320,
+        "reserved": 104857600
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "8a97febd945acaf30bfd52263e94ff5123ed7845ac285af878067ff93bddd9b6",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 13.27631500004145,
+      "job_id": "l4job-4170fda5411f4f73a515caa52eee6f55",
+      "inference_median_ms": 5.093287000022428,
+      "separate_phase_medians_ms": {
+        "forward_loss": 5.313149000016892,
+        "backward": 3.826381000010315,
+        "optimizer": 5.188656999962404
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 8.0,
+      "route": "weight-256",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.5487247858068116e-06,
+            "relative_l2": 8.76604921465798e-07
+          },
+          "dX": {
+            "max_abs": 3.6093813409465714e-06,
+            "relative_l2": 8.759784108585694e-07
+          },
+          "all_dP": {
+            "max_abs": 9.008792475562188e-06,
+            "relative_l2": 3.886715898336192e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.887480149844524e-06,
+            "relative_l2": 9.96952170206956e-07
+          },
+          "dX": {
+            "max_abs": 3.2917096817186575e-06,
+            "relative_l2": 9.320998041818669e-07
+          },
+          "all_dP": {
+            "max_abs": 7.574681995858867e-06,
+            "relative_l2": 4.4004209132953534e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 257202176,
+        "reserved": 270532608
+      },
+      "inference_peak_bytes": {
+        "allocated": 258547200,
+        "reserved": 278921216
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        },
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        }
+      ],
+      "final_p_hash": "c90aba0ed903f95677a80467540505f53167af6c0a8767b9461fd4ed2663d34f",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 146.51813399996172,
+      "job_id": "l4job-4170fda5411f4f73a515caa52eee6f55",
+      "inference_median_ms": 85.45050800000809,
+      "separate_phase_medians_ms": {
+        "forward_loss": 86.7777650000221,
+        "backward": 53.29265000000305,
+        "optimizer": 5.909433999988778
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "weight-64",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.684065909645653e-06,
+            "relative_l2": 1.0745780676689424e-06
+          },
+          "dX": {
+            "max_abs": 8.951695839476415e-06,
+            "relative_l2": 1.0638825805137028e-06
+          },
+          "all_dP": {
+            "max_abs": 5.956248939786857e-05,
+            "relative_l2": 1.028952959284518e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 7.384853565328697e-06,
+            "relative_l2": 1.1735393714899383e-06
+          },
+          "dX": {
+            "max_abs": 8.182751570329216e-06,
+            "relative_l2": 1.05994916031335e-06
+          },
+          "all_dP": {
+            "max_abs": 4.8700781016819406e-05,
+            "relative_l2": 1.0307438266841823e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 322970112,
+        "reserved": 354418688
+      },
+      "inference_peak_bytes": {
+        "allocated": 328591360,
+        "reserved": 354418688
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "1ecfb3377bfc223bf5b9347652e2c21fd5479e25ff17fc879451731e1304365f",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 38.0403009999668,
+      "job_id": "l4job-4170fda5411f4f73a515caa52eee6f55",
+      "inference_median_ms": 17.804668999986006,
+      "separate_phase_medians_ms": {
+        "forward_loss": 16.46100700003217,
+        "backward": 15.076950000036504,
+        "optimizer": 5.526001000021097
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 8.0,
+      "route": "weight-256",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "b2716cadd907d9e04d50ffadbc6d4c195e631cb076fe8a611b5163136c5ee8d3",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 5.363364571409068e-06,
+            "relative_l2": 9.990958252236644e-07
+          },
+          "dX": {
+            "max_abs": 5.157991913362636e-06,
+            "relative_l2": 1.00324035768782e-06
+          },
+          "all_dP": {
+            "max_abs": 1.7783025504425343e-05,
+            "relative_l2": 4.7634533426144436e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 5.084955713829942e-06,
+            "relative_l2": 1.1718895729318004e-06
+          },
+          "dX": {
+            "max_abs": 5.1954304808310425e-06,
+            "relative_l2": 1.0451164174252577e-06
+          },
+          "all_dP": {
+            "max_abs": 1.4933085319190909e-05,
+            "relative_l2": 5.161253513638004e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 963858944,
+        "reserved": 1000341504
+      },
+      "inference_peak_bytes": {
+        "allocated": 969480192,
+        "reserved": 1000341504
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        },
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        }
+      ],
+      "final_p_hash": "66b39a6b4dc8c3eb7a039210f82958851ffdb336d4bb91f6525ca914d0308716",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 595.4882849999876,
+      "job_id": "l4job-4170fda5411f4f73a515caa52eee6f55",
+      "inference_median_ms": 319.8454089999814,
+      "separate_phase_medians_ms": {
+        "forward_loss": 320.99871900004473,
+        "backward": 263.6101539999345,
+        "optimizer": 5.945051000026069
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.656690115125485e-06,
+            "relative_l2": 1.0734908451016928e-06
+          },
+          "dX": {
+            "max_abs": 8.832486549925633e-06,
+            "relative_l2": 1.0625562252881989e-06
+          },
+          "all_dP": {
+            "max_abs": 5.917505920682853e-05,
+            "relative_l2": 1.0279576336590457e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 7.299678024375034e-06,
+            "relative_l2": 1.1726738013749874e-06
+          },
+          "dX": {
+            "max_abs": 8.219159406852583e-06,
+            "relative_l2": 1.059117946076399e-06
+          },
+          "all_dP": {
+            "max_abs": 4.8700781016819406e-05,
+            "relative_l2": 1.0299127871221074e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 322970112,
+        "reserved": 354418688
+      },
+      "inference_peak_bytes": {
+        "allocated": 328591360,
+        "reserved": 354418688
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "d0c91d43898fcaa2a1ad7032fae76e15eb0e6e07c73ecce2a31d712ab01b3597",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 30.56236700001591,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-weight-64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "patch_tile": 32,
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 17.842932999997174,
+      "separate_phase_medians_ms": {
+        "forward_loss": 16.433805000019674,
+        "backward": 7.743188999938866,
+        "optimizer": 5.695855999988453
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.684065909645653e-06,
+            "relative_l2": 1.0742610264718417e-06
+          },
+          "dX": {
+            "max_abs": 9.070905129027196e-06,
+            "relative_l2": 1.0639077090201448e-06
+          },
+          "all_dP": {
+            "max_abs": 5.956248939786857e-05,
+            "relative_l2": 1.028952959284518e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 7.092138949893467e-06,
+            "relative_l2": 1.1747118553420148e-06
+          },
+          "dX": {
+            "max_abs": 8.356081779625768e-06,
+            "relative_l2": 1.0594915627317895e-06
+          },
+          "all_dP": {
+            "max_abs": 4.8700781016819406e-05,
+            "relative_l2": 1.030764453434658e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 322970112,
+        "reserved": 354418688
+      },
+      "inference_peak_bytes": {
+        "allocated": 328591360,
+        "reserved": 354418688
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "bbea4c80a33b4d7e8e12dabd07752f0c91f82bd5e7b2e1a7a7a685f9f4496230",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 38.518370000019786,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-weight-64-tile64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "patch_tile": 64,
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 18.199930999912795,
+      "separate_phase_medians_ms": {
+        "forward_loss": 16.83643299998039,
+        "backward": 16.108336000002055,
+        "optimizer": 5.974448999950255
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.1543306124295327e-05,
+            "relative_l2": 1.4214624423593378e-06
+          },
+          "dX": {
+            "max_abs": 1.1207798288559445e-05,
+            "relative_l2": 1.3952922043439768e-06
+          },
+          "all_dP": {
+            "max_abs": 5.924956501279777e-05,
+            "relative_l2": 1.0241306673849604e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.2564170119411244e-05,
+            "relative_l2": 1.5042143013949361e-06
+          },
+          "dX": {
+            "max_abs": 1.2460472617270568e-05,
+            "relative_l2": 1.3866728282074184e-06
+          },
+          "all_dP": {
+            "max_abs": 4.8700781016819406e-05,
+            "relative_l2": 1.0270562897710037e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 316678656,
+        "reserved": 348127232
+      },
+      "inference_peak_bytes": {
+        "allocated": 339077120,
+        "reserved": 381681664
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "3226ee4005ff0792c44a6be21bf9cf21b496c4eb2363c28bb57505cf1350db99",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 50.50530999994862,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-support-64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_support",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 22.026241999924423,
+      "separate_phase_medians_ms": {
+        "forward_loss": 21.199531999968713,
+        "backward": 23.29745899999125,
+        "optimizer": 5.987211000046955
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.445647330544091e-06,
+            "relative_l2": 1.0465955525092574e-06
+          },
+          "dX": {
+            "max_abs": 8.429840774981656e-06,
+            "relative_l2": 1.0215650568896355e-06
+          },
+          "all_dP": {
+            "max_abs": 5.952523649488395e-05,
+            "relative_l2": 1.025600902422852e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 7.079537518994705e-06,
+            "relative_l2": 1.1418164234108396e-06
+          },
+          "dX": {
+            "max_abs": 8.025527150623546e-06,
+            "relative_l2": 1.0143013931199471e-06
+          },
+          "all_dP": {
+            "max_abs": 4.822394385861628e-05,
+            "relative_l2": 1.0277186238224665e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 905334784,
+        "reserved": 1046478848
+      },
+      "inference_peak_bytes": {
+        "allocated": 522919424,
+        "reserved": 564133888
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "21fbc60942392b38695f266577272629be09efdd278129ed9407c08617fd779a",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 108.59873000003972,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-blocked-16384",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 16384,
+          "save_h": true
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 32.83810800007814,
+      "separate_phase_medians_ms": {
+        "forward_loss": 32.65499999997701,
+        "backward": 70.93434700004764,
+        "optimizer": 6.153143000119599
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.445647330544091e-06,
+            "relative_l2": 1.0428919695196073e-06
+          },
+          "dX": {
+            "max_abs": 8.549050064532437e-06,
+            "relative_l2": 1.0231422486789434e-06
+          },
+          "all_dP": {
+            "max_abs": 5.964444578443473e-05,
+            "relative_l2": 1.024702240671901e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.964719060142954e-06,
+            "relative_l2": 1.1403071157305903e-06
+          },
+          "dX": {
+            "max_abs": 8.197325349401652e-06,
+            "relative_l2": 1.0163885449384529e-06
+          },
+          "all_dP": {
+            "max_abs": 4.822394385861628e-05,
+            "relative_l2": 1.0276080180629263e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 297642496,
+        "reserved": 341835776
+      },
+      "inference_peak_bytes": {
+        "allocated": 218839040,
+        "reserved": 262144000
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "f07bae3ac731977575fabe31671f1ba8fb4838d076543c7720b6489da2f09755",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 102.20279700001811,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-blocked-4096",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 4096,
+          "save_h": true
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 29.856247999987318,
+      "separate_phase_medians_ms": {
+        "forward_loss": 29.581425000060335,
+        "backward": 66.96510300002956,
+        "optimizer": 6.109702000003381
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "dense",
+      "input_hashes": {
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+      },
+      "protocol": "eager FP32 IEEE AdamW; different model",
+      "training_peak_bytes": {
+        "allocated": 85198336,
+        "reserved": 92274688
+      },
+      "training_median_ms": 1.1429700000462617,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": null,
+      "plan": null
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 8.0,
+      "route": "planned",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.8349333150702307e-06,
+            "relative_l2": 4.18467044815127e-07
+          },
+          "dX": {
+            "max_abs": 1.8171001163747036e-06,
+            "relative_l2": 4.044149520768687e-07
+          },
+          "all_dP": {
+            "max_abs": 1.0200885371070001e-05,
+            "relative_l2": 4.011442108501619e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.7132775759209906e-06,
+            "relative_l2": 5.531987058455494e-07
+          },
+          "dX": {
+            "max_abs": 1.6283408991180082e-06,
+            "relative_l2": 4.953475891482017e-07
+          },
+          "all_dP": {
+            "max_abs": 9.190423684746207e-06,
+            "relative_l2": 4.5356197806582327e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 138341888,
+        "reserved": 153092096
+      },
+      "inference_peak_bytes": {
+        "allocated": 93218816,
+        "reserved": 109051904
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        },
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        }
+      ],
+      "final_p_hash": "c163e448439760360a5369a41133b06f28a28b693162952672598148217b39e8",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 19.459824000023218,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-blocked-4096",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 4096,
+          "save_h": true
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 6.377997000072355,
+      "separate_phase_medians_ms": {
+        "forward_loss": 6.897293999941212,
+        "backward": 7.263003000048229,
+        "optimizer": 5.4378910000423275
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 8.0,
+      "route": "planned",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 1.9653561906807226e-06,
+            "relative_l2": 5.61221037091949e-07
+          },
+          "dX": {
+            "max_abs": 2.4910437159131327e-06,
+            "relative_l2": 5.512563158654342e-07
+          },
+          "all_dP": {
+            "max_abs": 8.293536738257501e-06,
+            "relative_l2": 4.5160332089307275e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 2.092200229619756e-06,
+            "relative_l2": 6.841288901105399e-07
+          },
+          "dX": {
+            "max_abs": 2.11021921669996e-06,
+            "relative_l2": 6.300800215937864e-07
+          },
+          "all_dP": {
+            "max_abs": 8.352073722406317e-06,
+            "relative_l2": 5.006464214341302e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 4320266240,
+        "reserved": 5066719232
+      },
+      "inference_peak_bytes": {
+        "allocated": 1534130176,
+        "reserved": 1994391552
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        },
+        {
+          "min": 7.949434757232666,
+          "max": 7.949553966522217,
+          "mean": 7.949497222900391
+        }
+      ],
+      "final_p_hash": "3886f661fc981beb756f94a133e0ddafa9a325a44141f061eb7a5fa952b6ffb6",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 169.76612100006605,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-reference",
+      "plan": {
+        "algorithm_id": "torch_factored",
+        "algorithm_revision": "v1",
+        "recipe": {},
+        "schema_version": 1
+      },
+      "inference_median_ms": 49.12732100001449,
+      "separate_phase_medians_ms": {
+        "forward_loss": 49.213430000008884,
+        "backward": 115.36546699994688,
+        "optimizer": 5.935388000011699
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 8.0,
+      "route": "dense",
+      "input_hashes": {
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+      },
+      "protocol": "eager FP32 IEEE AdamW; different model",
+      "training_peak_bytes": {
+        "allocated": 34342400,
+        "reserved": 44040192
+      },
+      "training_median_ms": 0.7375189999265785,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": null,
+      "plan": null
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.4805639350654616e-06,
+            "relative_l2": 7.550266891170043e-07
+          },
+          "dX": {
+            "max_abs": 3.1247638556664015e-06,
+            "relative_l2": 7.483576386975322e-07
+          },
+          "all_dP": {
+            "max_abs": 2.8367302708609543e-05,
+            "relative_l2": 7.50066176337721e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.1957752142375284e-06,
+            "relative_l2": 8.220600672386968e-07
+          },
+          "dX": {
+            "max_abs": 3.854742072428863e-06,
+            "relative_l2": 7.680331840230779e-07
+          },
+          "all_dP": {
+            "max_abs": 3.39771462383176e-05,
+            "relative_l2": 7.684093312893078e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 92784640,
+        "reserved": 117440512
+      },
+      "inference_peak_bytes": {
+        "allocated": 94968320,
+        "reserved": 104857600
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "4765b35534f7c3a5a09fd4359681aaa83d106cbaff4326e7e5b5dac9287cbe4c",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 11.600160999932996,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-weight-64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "patch_tile": 32,
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 5.130224000026828,
+      "separate_phase_medians_ms": {
+        "forward_loss": 5.2336920000470855,
+        "backward": 2.2261479999770017,
+        "optimizer": 5.1240760000155205
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.540168579840852e-06,
+            "relative_l2": 7.545086792822825e-07
+          },
+          "dX": {
+            "max_abs": 3.038023094315001e-06,
+            "relative_l2": 7.480667069638723e-07
+          },
+          "all_dP": {
+            "max_abs": 2.7652046971304856e-05,
+            "relative_l2": 7.512500615752838e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.184691535124129e-06,
+            "relative_l2": 8.228583278668043e-07
+          },
+          "dX": {
+            "max_abs": 4.100750650049001e-06,
+            "relative_l2": 7.67776442244744e-07
+          },
+          "all_dP": {
+            "max_abs": 3.3500309080114477e-05,
+            "relative_l2": 7.698707810831877e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 92784640,
+        "reserved": 117440512
+      },
+      "inference_peak_bytes": {
+        "allocated": 94968320,
+        "reserved": 104857600
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "64d0a15c5bd8f60e508c2a9f3399156be4ec8bb8ba8d783652eb813c314e2542",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 13.668886999994356,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-weight-64-tile64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "patch_tile": 64,
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 5.025625999905969,
+      "separate_phase_medians_ms": {
+        "forward_loss": 5.4652480000640935,
+        "backward": 4.00304300001153,
+        "optimizer": 5.566013000020575
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 8.150743914914216e-06,
+            "relative_l2": 1.0043557081047821e-06
+          },
+          "dX": {
+            "max_abs": 6.0816925890883056e-06,
+            "relative_l2": 9.908462726543296e-07
+          },
+          "all_dP": {
+            "max_abs": 2.8367302708609543e-05,
+            "relative_l2": 7.474183302203541e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 5.42077691223497e-06,
+            "relative_l2": 1.0632339664081073e-06
+          },
+          "dX": {
+            "max_abs": 6.3926451492335445e-06,
+            "relative_l2": 1.007200897694857e-06
+          },
+          "all_dP": {
+            "max_abs": 3.39771462383176e-05,
+            "relative_l2": 7.64042983125894e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 91106816,
+        "reserved": 117440512
+      },
+      "inference_peak_bytes": {
+        "allocated": 96646144,
+        "reserved": 125829120
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "be90d4e53414d285ec9b30d2fa4469dad67c9473e30220a8cfbd309922143f6b",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 15.326103000006697,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-support-64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_support",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 5.54192500010231,
+      "separate_phase_medians_ms": {
+        "forward_loss": 5.789586999981111,
+        "backward": 4.914060000032805,
+        "optimizer": 5.152689999931681
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.5199536125296582e-06,
+            "relative_l2": 7.452088311371892e-07
+          },
+          "dX": {
+            "max_abs": 3.1247638556664015e-06,
+            "relative_l2": 7.311369143254804e-07
+          },
+          "all_dP": {
+            "max_abs": 2.9320977025015793e-05,
+            "relative_l2": 7.482500368250223e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.319627874143194e-06,
+            "relative_l2": 8.101517244634946e-07
+          },
+          "dX": {
+            "max_abs": 4.02628277729189e-06,
+            "relative_l2": 7.532083090975064e-07
+          },
+          "all_dP": {
+            "max_abs": 3.2546634763708227e-05,
+            "relative_l2": 7.640371107841168e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 138341888,
+        "reserved": 153092096
+      },
+      "inference_peak_bytes": {
+        "allocated": 93218816,
+        "reserved": 109051904
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "21848066cf6e89b45f9ce3a547c6f1b2478bf4cf327e7bc2c7abff21f9ddabe2",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 19.99799800000801,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-blocked-4096",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 4096,
+          "save_h": true
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 6.320691000041734,
+      "separate_phase_medians_ms": {
+        "forward_loss": 6.867880999948284,
+        "backward": 7.2561740000764985,
+        "optimizer": 5.595231000029344
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.3692847665189873e-06,
+            "relative_l2": 7.48010234106569e-07
+          },
+          "dX": {
+            "max_abs": 3.1247638556664015e-06,
+            "relative_l2": 7.404353400410823e-07
+          },
+          "all_dP": {
+            "max_abs": 2.9559395604117356e-05,
+            "relative_l2": 7.544484400068793e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.2911174553951206e-06,
+            "relative_l2": 8.130483843615709e-07
+          },
+          "dX": {
+            "max_abs": 3.82593003411813e-06,
+            "relative_l2": 7.64566701893965e-07
+          },
+          "all_dP": {
+            "max_abs": 3.4215564817419164e-05,
+            "relative_l2": 7.693346200708027e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 4320266240,
+        "reserved": 5066719232
+      },
+      "inference_peak_bytes": {
+        "allocated": 1534130176,
+        "reserved": 1994391552
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "9db596e2377c12239cc91f2ffa39c044a6c591d525071202653a3e91d4fd8524",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 169.0762050000103,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-reference",
+      "plan": {
+        "algorithm_id": "torch_factored",
+        "algorithm_revision": "v1",
+        "recipe": {},
+        "schema_version": 1
+      },
+      "inference_median_ms": 49.074229999973795,
+      "separate_phase_medians_ms": {
+        "forward_loss": 49.22110999996221,
+        "backward": 114.77448699997694,
+        "optimizer": 6.003276000001279
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "dense",
+      "input_hashes": {
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+      },
+      "protocol": "eager FP32 IEEE AdamW; different model",
+      "training_peak_bytes": {
+        "allocated": 34342400,
+        "reserved": 44040192
+      },
+      "training_median_ms": 0.7323590000396507,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": null,
+      "plan": null
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 8.0,
+      "route": "planned",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "b2716cadd907d9e04d50ffadbc6d4c195e631cb076fe8a611b5163136c5ee8d3",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.017471651434178e-06,
+            "relative_l2": 5.757930641525493e-07
+          },
+          "dX": {
+            "max_abs": 3.010052822272069e-06,
+            "relative_l2": 5.645834134409747e-07
+          },
+          "all_dP": {
+            "max_abs": 1.8170455695465382e-05,
+            "relative_l2": 4.787813219984895e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.293153296723972e-06,
+            "relative_l2": 7.34511586025181e-07
+          },
+          "dX": {
+            "max_abs": 3.220991616370572e-06,
+            "relative_l2": 6.34579920981436e-07
+          },
+          "all_dP": {
+            "max_abs": 1.410049748851172e-05,
+            "relative_l2": 5.17580375123696e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 905334784,
+        "reserved": 1046478848
+      },
+      "inference_peak_bytes": {
+        "allocated": 522919424,
+        "reserved": 564133888
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        },
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        }
+      ],
+      "final_p_hash": "c3a6e9a0069477291e092b5fc6246386b128793509171782af2a37b03830bf67",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 108.69958099988253,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-blocked-16384",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 16384,
+          "save_h": true
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 32.94727699994837,
+      "separate_phase_medians_ms": {
+        "forward_loss": 32.558481000023676,
+        "backward": 70.92933500007348,
+        "optimizer": 5.979347999982565
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 8.0,
+      "route": "planned",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "b2716cadd907d9e04d50ffadbc6d4c195e631cb076fe8a611b5163136c5ee8d3",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.5579782609040933e-06,
+            "relative_l2": 5.359705817986536e-07
+          },
+          "dX": {
+            "max_abs": 3.010300734018756e-06,
+            "relative_l2": 5.33354792583002e-07
+          },
+          "all_dP": {
+            "max_abs": 1.7008165122345265e-05,
+            "relative_l2": 4.872047263865774e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.5063057581830037e-06,
+            "relative_l2": 6.864333615119704e-07
+          },
+          "dX": {
+            "max_abs": 3.109201875517442e-06,
+            "relative_l2": 5.908174343605019e-07
+          },
+          "all_dP": {
+            "max_abs": 1.3860201713233877e-05,
+            "relative_l2": 5.254992574443777e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 297642496,
+        "reserved": 341835776
+      },
+      "inference_peak_bytes": {
+        "allocated": 218839040,
+        "reserved": 262144000
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        },
+        {
+          "min": 7.949428558349609,
+          "max": 7.949556350708008,
+          "mean": 7.949497699737549
+        }
+      ],
+      "final_p_hash": "6de8171415c176c9b292e5f9ffab3d5ec9fd2c84f958b908cd960bd4e17217d8",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 102.71583899998404,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": "sphere-blocked-4096",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_blocked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 4096,
+          "save_h": true
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 29.872275999878184,
+      "separate_phase_medians_ms": {
+        "forward_loss": 29.6154679999745,
+        "backward": 67.44591500000752,
+        "optimizer": 6.058993999886297
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 8.0,
+      "route": "dense",
+      "input_hashes": {
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+      },
+      "protocol": "eager FP32 IEEE AdamW; different model",
+      "training_peak_bytes": {
+        "allocated": 85198336,
+        "reserved": 92274688
+      },
+      "training_median_ms": 1.1302219998015062,
+      "job_id": "l4job-0ee7a10bd2d544848e8dcf0ea3faa89d",
+      "plan_id": null,
+      "plan": null
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.922484488747216e-06,
+            "relative_l2": 1.0746670632758512e-06
+          },
+          "dX": {
+            "max_abs": 8.59406797082407e-06,
+            "relative_l2": 1.063299998543801e-06
+          },
+          "all_dP": {
+            "max_abs": 5.956248939786857e-05,
+            "relative_l2": 1.028952959284518e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 7.232057044226359e-06,
+            "relative_l2": 1.1746263552337059e-06
+          },
+          "dX": {
+            "max_abs": 8.462310964185704e-06,
+            "relative_l2": 1.059571933952417e-06
+          },
+          "all_dP": {
+            "max_abs": 4.8700781016819406e-05,
+            "relative_l2": 1.0307444839727375e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 322970112,
+        "reserved": 354418688
+      },
+      "inference_peak_bytes": {
+        "allocated": 328591360,
+        "reserved": 354418688
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "7c69259ad17bc682b4cbe0f3f07dec456de0d7242690fd3506f7631bd89161ab",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 36.9240590000004,
+      "job_id": "l4job-23d2bbd89c014bc3881e70d897ea9922",
+      "plan_id": "sphere-weight-64-tile64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "patch_tile": 64,
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 17.589455999996062,
+      "separate_phase_medians_ms": {
+        "forward_loss": 16.338403000020207,
+        "backward": 15.322152000010192,
+        "optimizer": 5.121341999995366
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 209715,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 12.766152972845846,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a",
+        "sites": [
+          "a055eb3f8f1a6e44912a84481a28ba144eb5fabe4e21cb1bf975e0f0a2ed9332",
+          "2107ad0aa6812b4ce7197e7ab87b5b7c43de22023d867dd1bb0d971750aa3d4c"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.656690115125485e-06,
+            "relative_l2": 1.0739346870364264e-06
+          },
+          "dX": {
+            "max_abs": 9.190114418577977e-06,
+            "relative_l2": 1.0629192526906774e-06
+          },
+          "all_dP": {
+            "max_abs": 5.917505920682853e-05,
+            "relative_l2": 1.0279576336590457e-06
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 6.9798717591273984e-06,
+            "relative_l2": 1.1740016584950266e-06
+          },
+          "dX": {
+            "max_abs": 8.068282158157913e-06,
+            "relative_l2": 1.0591167151167045e-06
+          },
+          "all_dP": {
+            "max_abs": 4.8700781016819406e-05,
+            "relative_l2": 1.0298591325984411e-06
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 322970112,
+        "reserved": 354418688
+      },
+      "inference_peak_bytes": {
+        "allocated": 328591360,
+        "reserved": 354418688
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.9934699535369873,
+          "max": 2.9935126304626465,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "1ab3a4af43554660488a69a88d11b541079f3aa061a925b36be5a56ee579f1d2",
+      "materialized_atom_tensor_lower_bound_bytes": 3518433853440,
+      "training_median_ms": 30.006484000011824,
+      "job_id": "l4job-23d2bbd89c014bc3881e70d897ea9922",
+      "plan_id": "sphere-weight-64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "patch_tile": 32,
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 17.530572999987726,
+      "separate_phase_medians_ms": {
+        "forward_loss": 16.377446000035434,
+        "backward": 7.798757999978534,
+        "optimizer": 5.575143999976717
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 2048,
+      "sigma_initial": 3.0,
+      "route": "dense",
+      "input_hashes": {
+        "x": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+        "target": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+      },
+      "protocol": "eager FP32 IEEE AdamW; different model",
+      "training_peak_bytes": {
+        "allocated": 85198336,
+        "reserved": 92274688
+      },
+      "training_median_ms": 1.1083300000223062,
+      "job_id": "l4job-23d2bbd89c014bc3881e70d897ea9922",
+      "plan_id": null,
+      "plan": null
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.420959290290071e-06,
+            "relative_l2": 7.550625927841427e-07
+          },
+          "dX": {
+            "max_abs": 3.038023094315001e-06,
+            "relative_l2": 7.476341441699126e-07
+          },
+          "all_dP": {
+            "max_abs": 2.7652046971304856e-05,
+            "relative_l2": 7.512500615752838e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.1720686606284687e-06,
+            "relative_l2": 8.215709724774538e-07
+          },
+          "dX": {
+            "max_abs": 4.0313416991288875e-06,
+            "relative_l2": 7.688406323176927e-07
+          },
+          "all_dP": {
+            "max_abs": 3.3500309080114477e-05,
+            "relative_l2": 7.697170766527948e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 92784640,
+        "reserved": 117440512
+      },
+      "inference_peak_bytes": {
+        "allocated": 94968320,
+        "reserved": 104857600
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "c88a8266a49d022ece6e372401d8063d77f0a782f4e565f8d8e89047791cc786",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 13.27630000002955,
+      "job_id": "l4job-23d2bbd89c014bc3881e70d897ea9922",
+      "plan_id": "sphere-weight-64-tile64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "patch_tile": 64,
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 4.987522000021727,
+      "separate_phase_medians_ms": {
+        "forward_loss": 5.204836000018531,
+        "backward": 3.84452200000851,
+        "optimizer": 5.097158000012314
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "planned",
+      "atoms": 52428,
+      "batch": 32,
+      "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
+      "radius": 9.0270333367641,
+      "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
+      "protocol": "eager public CSTOptimizer; FP32 IEEE; AdamW; dX included",
+      "input_hashes": {
+        "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+        "sites": [
+          "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+          "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+        ]
+      },
+      "correctness_initial": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.3017500007392897e-06,
+            "relative_l2": 7.552952982765307e-07
+          },
+          "dX": {
+            "max_abs": 3.1299271626428204e-06,
+            "relative_l2": 7.483454258098337e-07
+          },
+          "all_dP": {
+            "max_abs": 2.8367302708609543e-05,
+            "relative_l2": 7.50066176337721e-07
+          }
+        }
+      },
+      "correctness_updated": {
+        "status": "PASS",
+        "scope": "full_sites_all_atoms_fp64",
+        "errors": {
+          "Y": {
+            "max_abs": 3.282509722757343e-06,
+            "relative_l2": 8.222140000619967e-07
+          },
+          "dX": {
+            "max_abs": 3.834844728767273e-06,
+            "relative_l2": 7.678564624737462e-07
+          },
+          "all_dP": {
+            "max_abs": 3.39771462383176e-05,
+            "relative_l2": 7.683797357668778e-07
+          }
+        }
+      },
+      "training_peak_bytes": {
+        "allocated": 92784640,
+        "reserved": 117440512
+      },
+      "inference_peak_bytes": {
+        "allocated": 94968320,
+        "reserved": 104857600
+      },
+      "inference_memory_scope": "includes resident trained model and optimizer state",
+      "updated_widths": [
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        },
+        {
+          "min": 2.993471622467041,
+          "max": 2.9935104846954346,
+          "mean": 2.99349045753479
+        }
+      ],
+      "final_p_hash": "b291979bd5af372dca1ce6a468773aa936194a58d6b00cf559776299813ea301",
+      "materialized_atom_tensor_lower_bound_bytes": 219898970112,
+      "training_median_ms": 11.808331999986876,
+      "job_id": "l4job-23d2bbd89c014bc3881e70d897ea9922",
+      "plan_id": "sphere-weight-64",
+      "plan": {
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "patch_tile": 32,
+          "support_capacity": 64
+        },
+        "schema_version": 1
+      },
+      "inference_median_ms": 4.981747000044834,
+      "separate_phase_medians_ms": {
+        "forward_loss": 5.17312499999889,
+        "backward": 2.1734080000328504,
+        "optimizer": 5.074010000043927
+      }
+    },
+    {
+      "status": "PASS",
+      "size": 1024,
+      "sigma_initial": 3.0,
+      "route": "dense",
+      "input_hashes": {
+        "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+        "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+      },
+      "protocol": "eager FP32 IEEE AdamW; different model",
+      "training_peak_bytes": {
+        "allocated": 34342400,
+        "reserved": 44040192
+      },
+      "training_median_ms": 0.7367129999806821,
+      "job_id": "l4job-23d2bbd89c014bc3881e70d897ea9922",
+      "plan_id": null,
+      "plan": null
+    }
+  ],
+  "linear_graph_diagnostics": [
+    {
+      "job_id": "l4job-ea6502086e7945898c2fc9102132a761",
+      "rows": [
+        {
+          "sigma": 3.0,
+          "route": "blocked-4096",
+          "scope": "linear forward plus weighted VJP only; fixed source; excludes loss and optimizer; separate diagnostic graph",
+          "median_ms": 9.37775993347168,
+          "capture_replay_peak_bytes": {
+            "allocated": 135668736,
+            "reserved": 192937984
+          },
+          "support": null
+        },
+        {
+          "sigma": 3.0,
+          "route": "support-64",
+          "scope": "linear forward plus weighted VJP only; fixed source; excludes loss and optimizer; separate diagnostic graph",
+          "median_ms": 8.887295722961426,
+          "capture_replay_peak_bytes": {
+            "allocated": 91825664,
+            "reserved": 178257920
+          },
+          "support": [
+            {
+              "mean": 28.265621185302734,
+              "min": 14,
+              "max": 44,
+              "overflow_atoms": 0
+            },
+            {
+              "mean": 29.498092651367188,
+              "min": 14,
+              "max": 42,
+              "overflow_atoms": 0
+            }
+          ]
+        },
+        {
+          "sigma": 3.0,
+          "route": "weight-64",
+          "scope": "linear forward plus weighted VJP only; fixed source; excludes loss and optimizer; separate diagnostic graph",
+          "median_ms": 6.742015838623047,
+          "capture_replay_peak_bytes": {
+            "allocated": 123293184,
+            "reserved": 236978176
+          },
+          "support": [
+            {
+              "mean": 28.265621185302734,
+              "min": 14,
+              "max": 44,
+              "overflow_atoms": 0
+            },
+            {
+              "mean": 29.498092651367188,
+              "min": 14,
+              "max": 42,
+              "overflow_atoms": 0
+            }
+          ]
+        }
+      ],
+      "compiled": [
+        {
+          "name": "pack",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 128
+        },
+        {
+          "name": "support_forward",
+          "device": 0,
+          "n_regs": 72,
+          "n_spills": 0,
+          "shared_bytes": 512
+        },
+        {
+          "name": "support_backward",
+          "device": 0,
+          "n_regs": 151,
+          "n_spills": 0,
+          "shared_bytes": 1024
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 40,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 64,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 64,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "weight_assemble",
+          "device": 0,
+          "n_regs": 158,
+          "n_spills": 0,
+          "shared_bytes": 0
+        },
+        {
+          "name": "weight_vjp",
+          "device": 0,
+          "n_regs": 255,
+          "n_spills": 30,
+          "shared_bytes": 1024
+        }
+      ]
+    },
+    {
+      "job_id": "l4job-26055f7f93ad4279a841060406adaf10",
+      "rows": [
+        {
+          "sigma": 3.0,
+          "route": "blocked-4096",
+          "scope": "linear forward plus weighted VJP only; fixed source; excludes loss and optimizer; separate diagnostic graph",
+          "median_ms": 9.794560432434082,
+          "capture_replay_peak_bytes": {
+            "allocated": 135668736,
+            "reserved": 192937984
+          },
+          "support": null
+        },
+        {
+          "sigma": 3.0,
+          "route": "support-64",
+          "scope": "linear forward plus weighted VJP only; fixed source; excludes loss and optimizer; separate diagnostic graph",
+          "median_ms": 9.247743606567383,
+          "capture_replay_peak_bytes": {
+            "allocated": 91825664,
+            "reserved": 178257920
+          },
+          "support": [
+            {
+              "mean": 28.265621185302734,
+              "min": 14,
+              "max": 44,
+              "overflow_atoms": 0
+            },
+            {
+              "mean": 29.498092651367188,
+              "min": 14,
+              "max": 42,
+              "overflow_atoms": 0
+            }
+          ]
+        },
+        {
+          "sigma": 3.0,
+          "route": "weight-64",
+          "scope": "linear forward plus weighted VJP only; fixed source; excludes loss and optimizer; separate diagnostic graph",
+          "median_ms": 4.984799861907959,
+          "capture_replay_peak_bytes": {
+            "allocated": 123293184,
+            "reserved": 236978176
+          },
+          "support": [
+            {
+              "mean": 28.265621185302734,
+              "min": 14,
+              "max": 44,
+              "overflow_atoms": 0
+            },
+            {
+              "mean": 29.498092651367188,
+              "min": 14,
+              "max": 42,
+              "overflow_atoms": 0
+            }
+          ]
+        }
+      ],
+      "compiled": [
+        {
+          "name": "pack",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 128
+        },
+        {
+          "name": "support_forward",
+          "device": 0,
+          "n_regs": 72,
+          "n_spills": 0,
+          "shared_bytes": 512
+        },
+        {
+          "name": "support_backward",
+          "device": 0,
+          "n_regs": 151,
+          "n_spills": 0,
+          "shared_bytes": 1024
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 40,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "profiles",
+          "device": 0,
+          "n_regs": 39,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 64,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 64,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "center_vjp",
+          "device": 0,
+          "n_regs": 56,
+          "n_spills": 0,
+          "shared_bytes": 16
+        },
+        {
+          "name": "weight_assemble",
+          "device": 0,
+          "n_regs": 58,
+          "n_spills": 0,
+          "shared_bytes": 0
+        },
+        {
+          "name": "weight_vjp",
+          "device": 0,
+          "n_regs": 128,
+          "n_spills": 0,
+          "shared_bytes": 512
+        }
+      ]
+    }
+  ],
+  "disposition": {
+    "width3": "W64 support capacity with patch tile32: speed winner, two independent runs",
+    "width8": "bounded4096 H/G: lower time and memory than wide support-patch W",
+    "public_selector": "unchanged",
+    "supported_patch_tiles": [
+      32,
+      64
+    ],
+    "full_optimizer_mode": "eager public CSTOptimizer",
+    "db_submission": "unsupported eager Sphere adapter; not submitted",
+    "linear_graph": "separate diagnostic, v2 W VJP has zero spills"
+  }
+}

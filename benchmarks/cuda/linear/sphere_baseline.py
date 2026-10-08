@@ -1,4 +1,4 @@
-"""Diagnostic of the existing two-Sphere Polar contract, with no new kernel.
+"""Compare Torch and research CUDA execution of the existing two-Sphere Polar contract.
 
 The factor-weight route assembles W from the existing factors without the
 public materialized route's [atoms, output, input] temporary. All training
@@ -27,7 +27,23 @@ from torchcst import (
     presets,
 )
 
-ROUTES = ("factored", "factor-weight", "materialized")
+ROUTES = (
+    "factored",
+    "factor-weight",
+    "materialized",
+    "blocked-256",
+    "blocked-1024",
+    "blocked-4096",
+    "blocked-16384",
+    "blocked-recompute",
+    "support-16",
+    "support-64",
+    "support-256",
+    "weight-16",
+    "weight-64",
+    "weight-256",
+    "weight-64-tile64",
+)
 
 
 def fixture(size, sigma, *, batch=32, seed=41, atoms=None):
@@ -77,7 +93,56 @@ def fixture(size, sigma, *, batch=32, seed=41, atoms=None):
 
 
 def forward(model, x, route):
-    if route == "factored":
+    if route.startswith(("blocked-", "support-", "weight-")):
+        from benchmarks.cuda.linear.manifest import REGISTRY
+        from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
+            SphereRecipe,
+        )
+        from torchcst._backends.dispatch import Dispatcher
+        from torchcst._backends.schema import ExecutionPlan
+        from torchcst.operators.execution import LinearBinding, LinearInputs
+
+        chunk = (
+            4096
+            if route == "blocked-recompute" or route.startswith(("support-", "weight-"))
+            else int(route.split("-")[1])
+        )
+        plan = ExecutionPlan(
+            "research_cuda_sphere_polar_blocked",
+            "v1",
+            SphereRecipe(chunk, route != "blocked-recompute"),
+        )
+        if route.startswith(("support-", "weight-")):
+            from torchcst._backends.cuda.algorithms.linear.sphere_polar.support_algorithm import (
+                SphereSupportRecipe,
+            )
+
+            plan = ExecutionPlan(
+                (
+                    "research_cuda_sphere_polar_weight"
+                    if route.startswith("weight-")
+                    else "research_cuda_sphere_polar_support"
+                ),
+                "v1",
+                SphereSupportRecipe(int(route.split("-")[1])),
+            )
+        if route.startswith("weight-"):
+            from torchcst._backends.cuda.algorithms.linear.sphere_polar.weight_algorithm import (
+                SphereWeightRecipe,
+            )
+
+            tile = int(route.split("-")[-1][4:]) if "-tile" in route else 32
+            plan = ExecutionPlan(
+                "research_cuda_sphere_polar_weight",
+                "v2",
+                SphereWeightRecipe(int(route.split("-")[1]), tile),
+            )
+        if not hasattr(model, "_sphere_binding"):
+            model._sphere_binding = LinearBinding(model.operator, model.atoms.p)
+        return Dispatcher(registry=REGISTRY).run(
+            model._sphere_binding, LinearInputs(x), plan=plan
+        )
+    if route in ("factored", "planned"):
         return model(x)
     if route == "factor-weight":
         vi, uo = model.operator.factors()
@@ -124,7 +189,8 @@ def oracle_factors(model, p):
         dist = (sites[:, None] - embedded[None]).square().sum(-1)
         raw = (1 - dist * sigma.reciprocal().square()[None]).clamp_min(0).pow(3)
         # Existing separable Sphere contract floors each profile separately.
-        values.append(raw / raw.norm(dim=0).clamp_min(1e-6)[None])
+        floor = spec.profiles[len(values)].normalization.floor
+        values.append(raw / raw.norm(dim=0).clamp_min(floor)[None])
     return values[0], values[1] * amp[None]
 
 
@@ -171,9 +237,11 @@ def correctness(model, x, dy, route):
     return {"status": "PASS", "scope": "full_sites_all_atoms_fp64", "errors": errors}
 
 
-def optimizer(model):
+def optimizer(model, *, lr=1e-4, weight_decay=0.01):
     return CSTOptimizer(
-        torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01, fused=True),
+        torch.optim.AdamW(
+            model.parameters(), lr=lr, weight_decay=weight_decay, fused=True
+        ),
         model=model,
     )
 
@@ -231,7 +299,13 @@ def run_worker(args):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
-    base, xx, target, dy = fixture(args.size, args.sigma)
+    base, xx, target, dy = fixture(
+        args.size,
+        args.sigma,
+        batch=getattr(args, "batch", 32),
+        seed=getattr(args, "seed", 41),
+        atoms=getattr(args, "atoms", None),
+    )
     inputs = {
         "p": tensor_hash(base.atoms.p),
         "x": tensor_hash(xx),
@@ -241,19 +315,28 @@ def run_worker(args):
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
     model = base.to("cuda")
+    if hasattr(args, "plan"):
+        from benchmarks.cuda.linear.manifest import REGISTRY
+        from torchcst._backends.dispatch import FixedSelector
+
+        model.selector = FixedSelector(args.plan, registry=REGISTRY)
     x, target, dy = xx.cuda().requires_grad_(), target.cuda(), dy.cuda()
     args.stage = "initial_full_correctness"
     proof = correctness(model, x, dy, args.route)
-    opt = optimizer(model)
+    opt = optimizer(
+        model,
+        lr=getattr(args, "lr", 1e-4),
+        weight_decay=getattr(args, "weight_decay", 0.01),
+    )
     # Oracle scratch is excluded; complete training-state allocation remains.
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
     args.stage = "training"
-    for _ in range(3):
+    for _ in range(getattr(args, "warmup", 3)):
         step(model, opt, x, target, args.route)
     torch.cuda.synchronize()
     samples = []
-    for _ in range(21):
+    for _ in range(getattr(args, "rounds", 21)):
         torch.cuda.synchronize()
         t = time.perf_counter()
         step(model, opt, x, target, args.route)
@@ -298,9 +381,9 @@ def run_worker(args):
     args.stage = "inference"
     inference = []
     with torch.no_grad():
-        for _ in range(3):
+        for _ in range(getattr(args, "warmup", 3)):
             forward(model, x, args.route)
-        for _ in range(21):
+        for _ in range(getattr(args, "rounds", 21)):
             torch.cuda.synchronize()
             t = time.perf_counter()
             y = forward(model, x, args.route)
@@ -313,7 +396,7 @@ def run_worker(args):
         "sigma_initial": args.sigma,
         "route": args.route,
         "atoms": model.atom_count,
-        "batch": 32,
+        "batch": len(x),
         "geometry": "two S2 charts; intrinsic centers; uniform random surface sites",
         "radius": math.sqrt(args.size / (4 * math.pi)),
         "normalization": "per-side chart-site discrete L2 with individual 1e-6 floors",
@@ -344,11 +427,22 @@ def run_worker(args):
 def run_dense(args):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
-    _, xx, target, _ = fixture(args.size, args.sigma)
-    torch.manual_seed(41)
+    _, xx, target, _ = fixture(
+        args.size,
+        args.sigma,
+        batch=getattr(args, "batch", 32),
+        seed=getattr(args, "seed", 41),
+        atoms=getattr(args, "atoms", None),
+    )
+    torch.manual_seed(getattr(args, "seed", 41))
     model = torch.nn.Linear(args.size, args.size, bias=False).cuda()
     x, target = xx.cuda().requires_grad_(), target.cuda()
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01, fused=True)
+    opt = torch.optim.AdamW(
+        model.parameters(),
+        lr=getattr(args, "lr", 1e-4),
+        weight_decay=getattr(args, "weight_decay", 0.01),
+        fused=True,
+    )
 
     def train():
         opt.zero_grad(set_to_none=True)
@@ -359,10 +453,10 @@ def run_dense(args):
 
     torch.cuda.empty_cache()
     torch.cuda.reset_peak_memory_stats()
-    for _ in range(3):
+    for _ in range(getattr(args, "warmup", 3)):
         train()
     samples = []
-    for _ in range(21):
+    for _ in range(getattr(args, "rounds", 21)):
         torch.cuda.synchronize()
         t = time.perf_counter()
         train()
@@ -373,6 +467,7 @@ def run_dense(args):
         "size": args.size,
         "sigma_initial": args.sigma,
         "route": "dense",
+        "input_hashes": {"x": tensor_hash(x), "target": tensor_hash(target)},
         "protocol": "eager FP32 IEEE AdamW; different model",
         "training_ms": {"median": statistics.median(samples), "samples": samples},
         "training_peak_bytes": {
@@ -441,6 +536,56 @@ def main():
         ),
         flush=True,
     )
+
+
+def measure_case(args, run):
+    """Use the existing Linear runner with an explicit eager Sphere policy.
+
+    Public Sphere CSTOptimizer contains host validation and rejects capture.
+    Linear Graph correctness is tested separately; this result claims no
+    captured full optimizer step and is not the existing submission adapter.
+    """
+    from dataclasses import asdict
+    from types import SimpleNamespace
+
+    case = run.case
+    config = SimpleNamespace(
+        size=case.size,
+        sigma=float(case.profile[3:]),
+        batch=case.rows,
+        seed=case.seed,
+        atoms=case.atoms,
+        warmup=case.warmup,
+        rounds=case.rounds,
+        lr=case.optimizer.lr,
+        weight_decay=case.optimizer.weight_decay,
+        route="planned",
+    )
+    if args.worker == "dense":
+        result = run_dense(config)
+    else:
+        config.plan = run.entry(args.plan_id).plan
+        result = run_worker(config)
+    hashes = result["input_hashes"]
+    return {
+        "status": result["status"],
+        "reference": "dense_linear" if args.worker == "dense" else args.plan_id,
+        "eager": {
+            "median_ms": result["training_ms"]["median"],
+            "samples_ms": result["training_ms"]["samples"],
+        },
+        "graph": None,
+        "initial_p_sha256": hashes.get("p"),
+        "initial_inputs": {"x_sha256": hashes["x"], "target_sha256": hashes["target"]},
+        "peak_allocated_training_bytes": result["training_peak_bytes"]["allocated"],
+        "peak_reserved_training_bytes": result["training_peak_bytes"]["reserved"],
+        "total_gpu_process_bytes": None,
+        "optimizer": asdict(case.optimizer),
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "sphere_diagnostics": result,
+    }
 
 
 if __name__ == "__main__":
