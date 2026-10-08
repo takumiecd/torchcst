@@ -46,3 +46,16 @@ Torus Graph updates/fused CUDA and same-protocol complete-step timing/memory
 remain required next work. Existing Euclidean spatial primary measurements use
 their separate frozen source/worktree and shared single-L4 queue. Raw local
 logs/build products live in ignored output/torus-reference/.
+
+## Completed CUDA reference gate
+
+Job l4job-07ad83ce66314367a91e26b9bf6477b1 passed all80 tests (44 CPU and
+36 CUDA variants),5.54s; driver exit0/no timeout. Frozen source is
+ dd7a8bcd14950a825819c70e7b41db702bfe6235, source archive SHA256
+55db9b7081c463d45842697b616fc8cf8c6300cbcb8a12a08e7bbccece9bbcb0;
+result archive269c1e94a4af2fc60496dbb62171d8c89574cbc0b29759aba0ce24871ffabb1a.
+Receipt/archive hashes and test proof verified. Hardware/runtime NVIDIA L4,
+Torch2.11.0+cu130, CUDA13.0, Triton3.6.0. Raw results and the frozen source
+remain in the corresponding host-wide pool job directory and ignored evidence.
+This validates the exact reference on CUDA, not a fused kernel or Graph speedup.
+The checkpoint after dd7a8bcd adds only this evidence note; runtime/tests unchanged.
