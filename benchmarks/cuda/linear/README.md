@@ -19,7 +19,7 @@
 | `fixtures.py` | Chart・Kernel・model の共通構築 | 純粋な Spec と設定境界の State 構築。テストからも利用 |
 | `reference.py` | 正規化 Triweight の独立 dense oracle | backend の距離・重み生成を呼ばず、サンプル点から直接計算 |
 
-`__init__.py` を含めて11 Python file。benchmark から `tests/` を読み込まない。
+benchmark から `tests/` を読み込まない。
 旧 `experiments/`、探索用 CLI、移行段階ごとの validation driver は削除した。
 旧 module 名や `--tests-file` / `--chart-suite` の互換入口は用意しない。
 
@@ -63,7 +63,7 @@ output の隣の固有ディレクトリへ保存する。worker はその SHA25
 
 `dense: true` は通常の dense Linear を追加する。dense は性能の参照で、CST と同じ Parameter
 空間の演算ではない。`normalized-1024-sharp.json` は鋭い支持の別条件。通常の sigma3 と混ぜない。
-fixture は現在 normalized Euclidean Strip / FP32 / 1024²・8192²に限定する。
+normalized fixture は Euclidean Strip / FP32 / 1024²・8192²を使う。
 独立 oracle は境界を含む小さい混合 fixture、完全 step は Case の大きい fixture を使う。
 
 `check_normalized --algorithm normalized_full normalized_window` は Algorithm ID から
@@ -471,3 +471,34 @@ these results from both old rectangular Strip and ordinary Product fixtures.
 GPU correctness, captured updates and complete-step time/allocated/reserved
 memory must pass before adopting any route. The measured64-output gains do not
 establish performance for these square Cases.
+
+## Square Strip + Torus profile-product research
+
+`polar_torus_profile_product_strip` は1024入力/1024出力、または2048入力/2048出力を
+単一 chart で扱う。出力 circle の Strip tile は64、pitch68であり、出力全体は64固定ではない。
+入力は S² section の32×32または32×64 Grid。Torus は S¹×S² の intrinsic 表現で、
+centre-fibre の circle chord profile と section chord profile を掛け合わせる。
+全 chart の L2 norm を因数分解し、floor は積に一度だけ適用する。
+section centre による circle radius の変化も微分に含める。
+
+```bash
+python -m benchmarks.cuda.linear.run \
+  --case benchmarks/cuda/linear/cases/torus-profile-product-square-strip-1024-sigma3.json \
+  --plans benchmarks/cuda/linear/plans-torus-profile-product-chunked.json \
+  --polar-update torus --phase-diagnostics \
+  --source-commit COMMIT --output output/torus-strip.json
+python -m benchmarks.submissions check output/torus-strip.json
+```
+
+Case は B32、約5% atoms、FP32 IEEE、seed41、物理幅 sigma3/8を固定する。
+これらの幅を Euclidean rho や同じ支持点数と解釈しない。全性能 atom の全 axis site を
+独立した embedded-fibre FP64 oracle で検証してから、fresh process ごとに完全 step を測る。
+Torus intrinsic retraction の protocol は revision8、更新 Plan は明示的な research 選択。
+古い joint radial `strip_torus.py` とも演算・計測範囲が異なる。
+
+比較は同じ atom_chunk1024 の `h-saved`、`h-recompute`、`w-gemm`。
+Torch の全 site を扱う有界 block 参照実装であり、公開高速経路ではない。
+薄い circle support の差分は FP64 で周期内に戻し、profile・norm・GEMM は FP32で計算する。
+計装済みの別 Graph は診断用で、採否には未計装完全 step と capture/replay peak を使う。
+数学・予算・失敗と採否の記録は
+[H reuse exploration](../../../docs/research-history/local-product/20261008-profile-product-h-reuse.md)を参照。

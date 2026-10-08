@@ -8,7 +8,11 @@ from dataclasses import asdict, dataclass
 
 import torch
 
-from benchmarks.cuda.linear.protocol import LOCAL_OPTIMIZER_POLICY, measurement_operator
+from benchmarks.cuda.linear.protocol import (
+    LOCAL_OPTIMIZER_POLICY,
+    TORUS_OPTIMIZER_POLICY,
+    measurement_operator,
+)
 from benchmarks.database.model import digest
 from torchcst._backends.dispatch.conditions import condition_key, dump_condition
 from torchcst._backends.dispatch.exact import validate_selector_artifact
@@ -75,11 +79,16 @@ def _context(row, mode):
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
         "polar_profile_product_global",
+        "polar_torus_profile_product_strip",
     )
+    torus = case["fixture"] == "polar_torus_profile_product_strip"
+    optimizer_policy = TORUS_OPTIMIZER_POLICY if torus else LOCAL_OPTIMIZER_POLICY
     local = product or case["fixture"] == "local_polar_product"
     global_product = case["fixture"] == "polar_profile_product_global"
     if row["adapter_revision"] != (
-        7
+        8
+        if torus
+        else 7
         if case["fixture"] == "polar_profile_product_square_strip"
         else 6
         if global_product
@@ -101,11 +110,12 @@ def _context(row, mode):
     ):
         raise ValueError("stored worker differs from generation fixture")
     if local and (
-        row["protocol"].get("optimizer_policy") != LOCAL_OPTIMIZER_POLICY
-        or row["protocol"].get("polar_update") not in ("torch", "fused")
+        row["protocol"].get("optimizer_policy") != optimizer_policy
+        or row["protocol"].get("polar_update")
+        not in (("torus",) if torus else ("torch", "fused"))
         or row["payload"]["metadata"].get("polar_update")
         != row["protocol"]["polar_update"]
-        or result.get("optimizer_policy") != LOCAL_OPTIMIZER_POLICY
+        or result.get("optimizer_policy") != optimizer_policy
     ):
         raise ValueError("stored polar optimizer contract differs")
     if env["dtype"] != "float32" or env["tf32"] is not False:
@@ -116,7 +126,7 @@ def _context(row, mode):
         input_strides=(n, 1),
         dtype=torch.float32,
         atom_count=case["atoms"],
-        parameter_dim=4 if local else 5,
+        parameter_dim=5 if torus else 4 if local else 5,
         device=DeviceInfo(
             "cuda", None, env["gpu"], tuple(env["compute_capability"]), env["sm_count"]
         ),
