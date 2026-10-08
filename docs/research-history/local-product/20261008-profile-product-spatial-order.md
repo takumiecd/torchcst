@@ -125,3 +125,19 @@ FP64, changed-order, bijection and retained-gradient checks stay unchanged.
 Runtime/catalog/case bytes remain unchanged. CPU metadata36 passes/166 CUDA
 skips. The corrected motion fixture is a new source/job with the same300s
 budget; the original failure remains part of the disposition.
+
+The corrected job l4job-34c65ba899ef45c18d14470263bb288e at
+dd0fba892bb7ccf722d34ddf4ab35805d17d5af5 passed all4 targeted CUDA cases
+(198 deselected,1 warning,15.47s pytest; driver exit0/no timeout). Source
+archive SHA256 ed1719f61538fa46a24c1bcd6e1271e9050841e418159081e1168dcc9a702f44
+and downloaded archive/receipt are verified and preserved in motion-proof.json.
+Hardware/runtime: NVIDIA L4, Torch2.11.0+cu130, CUDA13.0, Triton3.6.0.
+
+With the concrete fixture correction independently passing, submit the entire
+updated scope as a new job l4job-6a5ade859fe64a0ba410cfd7f21ad24f on the same
+dd0fba89 source: spatial202 + split223 + matrix596 + large48. Retain the
+original1200s driver budget and every original test/tolerance, plus the four
+corrected cases. Preserve the earlier transport interruption and numerical
+fixture failure; neither is discarded or reported as a pass. This is not a
+performance rerun or budget increase. Complete GPU regression and primary
+matched times/peaks remain pending.
