@@ -1,5 +1,10 @@
 # Torus profile product: H/GをCTA内で再利用する候補
 
+この候補は不採用。H/G用global bufferなし・16構成spill0は確認できたが、
+全atomのN1024 sigma3ではdP、N2048 sigma3ではYの数値gateを超えた。
+性能測定へ進まず、sigma8と逆順確認は未実施。本番へprototypeを統合しない。
+三角関数・section中心の精度を次の対象とし、誤差許容値と予算を変更しない。
+
 ## 対象と計算
 
 所有者の追加指定は「中間値を保存というよりcacheに置き、DRAMへ置かない」。
@@ -58,7 +63,7 @@ unsupported layout/dtype/autocast/deterministic要求は明示的に拒否する
   capture/replay allocated/reserved、全atomoracle、21 samples、独立逆順を使う。
   支持範囲を絞る次の候補は、完全走査の費用を測ってから判断する。
 
-## 現時点
+## 初回CPU checkpoint（GPU未検証時点）
 
 research branch `kernel/torus-profile-product-onchip`。実GPUの正しさ/placement/性能は
 まだ未確認。基準Torch比較はPR #75、merge `18077420569c09b207063c1e2cb34f28e4a3173a`。
@@ -163,3 +168,33 @@ primary N1024 job `l4job-c4a08498f1704ea69fad94d790f9d76e`、
 primary N2048 job `l4job-724473c62bd6477a837183377666400a`を提出。
 同じdriver/catalog/固定code、順番はCase plansで検査済み、共有L4を1台ずつ使う。
 現在のdraft PRは#76。結果待ちであり、速度改善・本番採用はまだ主張しない。
+
+## 全atom gateで不採用: 時間/peak測定前に停止
+
+N1024 sigma3、52428atomsのonchip dPでmax absolute
+`0.00045135537893159494` /relative L2 `1.9286866400503026e-5`。
+固定したmax<=4e-4に違反。Y/dXは先に通過した。
+job `l4job-c4a08498f1704ea69fad94d790f9d76e`、
+source archive `dc71e6f927b05f7e2222280c8d3de42b7787728d05f9c9f232f0fd2bc8f920b8`、
+result archive `67a2ab67773581e9f10c046c20b0e7541157309c72484082fd4d3d9fb6ff820d`。
+
+N2048 sigma3、209715atomsはonchip Yでelementwise gate違反、
+41/65536要素、報告された最大絶対差`0.0007270520718771767`、
+位置(batch3, output1649)。この値はassert_closeが報告した差で、
+全tensorのrelative L2は検査完了前に停止しているため未測定。dX/dPも未評価。
+job `l4job-724473c62bd6477a837183377666400a`、
+source archive `911f9221b236d03b34ccf6832bd58750b0f7baa04295aa6df376e29cd9f66d1f`、
+result archive `f9d80073529f96d443dd2f614c8b808872a91455b111733b88f0c3b97bd3c338`。
+
+両jobは26 GPU tests/0skipを再通過し、全atomのTorch3対照もPASSしたが、
+onchip correctnessでrunnerが停止した。各13manifest filesとsource/result hashを照合。
+recordsは4 correctness workersのみ。未計装完全step/phase/dense/peakはこのcohortで
+一つも測っていない。sigma8には進まず、改善条件を評価できないためinverseなし。
+failed primaryのretryやbudget変更はしない。全owned L4停止確認、supervisor正常終了。
+
+元PR #75のH lifetime/方式比較はresearch referenceとして統合済み。
+本候補のPR #76はclosedとしてsource/branch/全失敗結果を保全し、
+この採否noteだけを別PRでmainへ統合する。
+H/G register/shared reuse自体の不成立を示す結果ではなく、現実装の数値適合性不足。
+次はbounded trigの数値精度とsection expmapのFP32計算順序を、
+失敗atom/出力の診断で切り分ける。寄与の小さい要素や失敗caseを捨てて採用しない。
