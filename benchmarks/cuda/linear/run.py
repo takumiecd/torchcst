@@ -57,6 +57,7 @@ class PlanLinear(nn.Module):
         if plan.algorithm_id in (
             "research_profile_product",
             "research_torch_torus_profile_product_chunked",
+            "research_cuda_torus_profile_product_onchip",
             "research_strip_profile_product",
             "research_profile_product_global",
             "research_profile_product_matrix",
@@ -136,7 +137,10 @@ class PlanLinear(nn.Module):
         flat = x.reshape(-1, self.operator.in_features).contiguous()
         binding = (
             self.product_site
-            if self.plan.algorithm_id == "research_torch_torus_profile_product_chunked"
+            if self.plan.algorithm_id in (
+                "research_torch_torus_profile_product_chunked",
+                "research_cuda_torus_profile_product_onchip",
+            )
             else self
         )
         y = Dispatcher(registry=REGISTRY).run(
