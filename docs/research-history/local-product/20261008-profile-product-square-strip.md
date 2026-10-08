@@ -22,10 +22,20 @@ GPUではY/dX/全atom勾配、20 captured更新、moments、可変幅、retained
 prepared、split1/4/8/16、Torch contraction、denseを同じshapeで残す。
 
 宣言・CPUチェックとGPUゲートを先に実行し、その後N1024/2048のrho3/8を測定する。
-8192は追加段階として宣言済み、性能未測定。測定予算は独立jobごと1300秒、
+8192は追加段階として宣言済み、性能未測定。測定予算は各独立jobでゲートを含め1550秒、ゲート300秒、
 各rhoのrunner600秒。ゲート失敗なら測定しない。性能による再試行・予算変更・
 悪いCaseの除外は行わない。採用する改善は別jobの逆順比較で確認する。
 
 CPU全体は1210 passed、2101 skipped、25.46s（追加adapterテスト前）。
-GPU結果・性能は現時点で未検証。raw evidenceはignored
+変更はa5d40b5ae25d657bdf71fedff8a2852c4ea7512aで固定した。
+追加adapter/dispatch/submissionを含むCPU対象は112 passed/32 skipped、Ruffと
+wheel/sdist buildも成功。draft PR #72。
+
+N1024とN2048の独立jobを同一sourceで投入した。各jobで45ケースのGPU/CPU
+ゲートを先に実行するため、ゲート失敗時はそのjobで性能測定しない。
+- N1024: l4job-ce28c141a62845cb8cb1af6265acb26c
+- N2048: l4job-8fc462f00ea64dd28a6ca28765d6f2d2
+
+どちらもrho3/8、prepared・split1/4/8/16・Torch・denseを残す。
+GPU結果・性能は現時点で未検証、共有L4キュー待ち。raw evidenceはignored
 benchmarks/cuda/linear/evidence/profile-product-square-strip-20261008/へ保存する。
