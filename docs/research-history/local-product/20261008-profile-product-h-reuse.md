@@ -351,3 +351,33 @@ N1024 can still be independently confirmed against its retrieved primary.
 PR #75 remains draft. Whole-cohort positive adoption is unproven. The preserved
 negative/acquisition evidence must remain in the final disposition rather than
 being replaced by favorable rows or fresh primary budgets.
+
+## Inverse driver order defect and pre-execution correction
+
+Inspection of load_run proves execution order comes from the Case's top-level
+plans list, not the catalog entry order. The original inverse driver reversed
+only the catalog. N1024 l4job-24e1a0f029b44aa1901733fe8e31c768 had already started
+and therefore cannot count as reverse-order confirmation; preserve its full
+results and label the protocol failure. Do not repeat this measured N1024
+comparison or reuse its2100s confirmation budget. No numerical/optimizer gate
+is relaxed and no favorable timing can repair the order defect.
+
+N2048 l4job-6cde9e65e784419587633b753c457388 was still queued and was cancelled
+before execution. Correct the driver to reverse the Case plans list as well,
+assert the frozen BenchmarkRun order before running, assert unchanged numerical
+Case/recipes/baseline/dense semantics, and check actual measurement record order
+afterward. Local preflight covers both sizes and both widths and proves
+w-gemm,h-recompute,h-saved with identical physical declarations and recipes.
+No N2048 inverse timing preceded this preparation correction.
+
+Use a standalone recovery-bundle clone on named branch
+kernel/profile-product-h-reuse-confirmation at exact runtime commit0aeeff35,
+with a clean source tree, rather than snapshotting the newer documentation
+commits. The only replacement queued job is
+l4job-bf0c6ba7ceb544a5aaa74992c9821a8e, retaining the wholly unused N2048
+confirmation budget2100/300/850s. This is the first execution of that corrected
+reservation, not a retry of lost primary or measured inverse data. Driver and
+preflight proofs remain ignored H-reuse evidence. With the lost N2048 primary
+and invalid N1024 reverse order, independent positive whole-cohort confirmation
+is missing; public/performance adoption remains rejected unless established
+within the existing valid evidence, without new runs or budgets.
