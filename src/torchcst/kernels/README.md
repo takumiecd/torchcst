@@ -78,6 +78,8 @@ spec = layer.declaration()  # 現在の固定 Tensor 設定を明示的に snaps
 ```
 
 単一Chart上のPolar共有幅と各軸profileの積は `presets.polar_profile_product` で宣言する。
+Torusの円周・断面fibreのchord積は `presets.polar_torus_profile_product` で宣言する。
+このrevision 2はprofileを円周、S²断面の順に二つ持ち、中心の結合微分を保持する。
 `KernelSpec.normalization` は積全体のoperator-sites L2正規化で、各軸のProfileBindingはraw。
 座標軸との対応、floor、微分、利用例は [profile productの契約](../../../docs/profile-product.ja.md)を参照。
 

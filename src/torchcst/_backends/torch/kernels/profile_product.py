@@ -54,6 +54,10 @@ def _product(values):
 
 
 def factors(state, chart, p):
+    if state.spec.revision == 2:
+        from .torus_profile_product import factors as torus_factors
+
+        return torus_factors(state, chart, p)
     _, centers = _coordinates._split(state, chart, p)
     amplitude = _coordinates.amplitude(state, chart, p)
     # Preserve Polar's task derivative: widths evolve through the update law,

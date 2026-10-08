@@ -91,6 +91,16 @@ The complete product is L2-normalized over all operator sites with one norm floo
 Torch materialized/factored execution is available; this adds no CUDA performance claim.
 See the [API and mathematical contract](docs/profile-product.ja.md).
 
+`presets.polar_torus_profile_product(profiles=(TriweightSpec(), TriweightSpec()),
+amplitude_max=1.0, bounds=bandwidth_bounds, w_c=0.1)` declares the centre-fibre
+chord product on a single S¹ × S² Torus Product/Strip chart. Profiles are ordered
+circle then section; either can be the logical input axis. Kernel revision 2
+distinguishes these distances from the Euclidean coordinate product. The circular
+distance uses the circle radius at the atom's section centre, so its section
+derivatives remain coupled. Whole-operator L2 normalization uses one global
+floor. Intrinsic/ambient centres and eager geometry-aware Polar updates use the
+Torch reference; CUDA fusion and captured Torus updates are not yet available.
+
 ## Checkpoint
 
 ```python

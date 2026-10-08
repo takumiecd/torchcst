@@ -68,6 +68,10 @@ class PolarUpdateAlgorithm(Algorithm[DefaultRecipe]):
                 binding.kernel, previous, displacement, step_size=inputs.step_size
             )
         else:
+            if state.context.kernel.composition == "profile_product":
+                from torchcst._backends.torch.updates.profile_product import (
+                    apply_parameter_update,
+                )
             updated = apply_parameter_update(
                 binding.kernel,
                 *binding.cst_charts(),
