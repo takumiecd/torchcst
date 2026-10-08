@@ -319,3 +319,35 @@ research update foundation, not an updater speedup or public fast path. Draft
 PR #75 contains this bounded contraction/reference protocol and remains pending
 complete disposition. No research worktree, ignored evidence or branch has been
 removed during the live comparison.
+
+## N2048 primary acquisition failed; no retry
+
+N2048 primary l4job-5ab0622e3f1f43fa8a2b39899e706745 did not return a completion
+acknowledgement or result archive. Its CLI request and supervisor remained live
+beyond the driver budget in wall-clock time. After a documented graceful
+SIGTERM to the supervisor (preventing subsequent dispatch), a read-only server
+session listing authoritatively reported no active sessions and pruned the
+stale owned session cst-pool-f5756d821539-1. Only then was the stale local CLI
+request sent SIGTERM. The supervisor terminated with colab exec exit-15;
+normal pool recovery marked the interrupted job failed and all slots stopped.
+No force kill, queue/slot-state edit or replacement primary submission occurred.
+The source archive SHA256 is verified:
+a8a35ef2cbd8db56d40e115f7a65d1228c002605e20f499815d34a2a7d855d2a.
+There is no result archive, receipt or full-A performance correctness proof.
+The cause of remote session disappearance is unknown; do not label it an OOM,
+numerical error, measured kernel timeout or measured speed regression.
+
+Preserve spec/transport log in ignored lost-primary-2048, server-assignments.log,
+supervisor-stop-request.json and stale-transport-stop.json; original source and
+job records remain in the pool. Treat its full remaining2045s primary driver
+budget as consumed; do not extend/reuse it. The two already queued inverse jobs
+retain their predeclared2100/300/850s budgets and frozen runtime0aeeff35; they are
+not relabelled replacement primary runs. Resume only after verified recovery
+and stopped slots, still with one L4. A successful N2048 inverse can provide a
+first complete correctness/time/memory observation, but cannot prove independent
+N2048 replication or support a positive cross-size performance adoption.
+N1024 can still be independently confirmed against its retrieved primary.
+
+PR #75 remains draft. Whole-cohort positive adoption is unproven. The preserved
+negative/acquisition evidence must remain in the final disposition rather than
+being replaced by favorable rows or fresh primary budgets.
