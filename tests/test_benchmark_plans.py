@@ -31,6 +31,19 @@ from torchcst._backends.cuda.algorithms.linear.normalized_euclidean_strip.plans 
 CASE = DEFAULT_PLANS.parent / "cases/normalized-1024-broad.json"
 
 
+def test_torus_storage_metadata_supports_all_declared_recipes():
+    catalog = DEFAULT_PLANS.with_name("plans-torus-profile-product-onchip.json")
+    entries = decode_catalog(read_json(catalog)[0])
+    assert {entry.id: runner._torus_h_policy(entry.plan) for entry in entries} == {
+        "h-saved": "h_saved",
+        "h-recompute": "h_recompute",
+        "w-gemm": "w_gemm",
+        "onchip": "h_recompute",
+        "cuda-h-saved": "h_saved",
+        "cuda-vjp-saved": "input_vjp_saved",
+    }
+
+
 def test_cpu_batch_initialization_is_independent_of_global_rng():
     first = runner.generate_inputs(21, 4, 16)
     torch.manual_seed(999)

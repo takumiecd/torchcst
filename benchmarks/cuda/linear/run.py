@@ -662,13 +662,7 @@ def measure(args, run):
         "sigma_updates": sigma_updates,
         "persistent_layout": layout_report,
         "hybrid_routing": hybrid_routing,
-        "h_policy": (
-            "w_gemm"
-            if run.entry(args.plan_id).plan.recipe.contraction == "w"
-            else "h_saved"
-            if run.entry(args.plan_id).plan.recipe.save_h
-            else "h_recompute"
-        )
+        "h_policy": _torus_h_policy(run.entry(args.plan_id).plan)
         if torus and args.worker != "dense"
         else getattr(run.entry(args.plan_id).plan.recipe, "execution_route", None)
         if local and args.worker != "dense"
@@ -680,6 +674,24 @@ def measure(args, run):
         if local and args.worker != "dense"
         else None,
     }
+
+
+def _torus_h_policy(plan):
+    """Report storage without assuming CUDA recipes have Torch recipe fields."""
+    recipe = plan.recipe
+    if plan.algorithm_id == "research_cuda_torus_profile_product_onchip":
+        return {
+            "recompute": "h_recompute",
+            "h": "h_saved",
+            "vjp": "input_vjp_saved",
+        }[recipe.save]
+    return (
+        "w_gemm"
+        if recipe.contraction == "w"
+        else "h_saved"
+        if recipe.save_h
+        else "h_recompute"
+    )
 
 
 def generate_inputs(seed, rows, features, *, output_features=None):

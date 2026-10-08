@@ -103,3 +103,47 @@ Colab切断の因果は未確認。GPU未検証の第2版はPR #78の研究draft
 Revision v5 gate_driver.py SHA256 `c1f1348116c4ff0aa9ddeba7029b2c5c27c6e1bc97dd9c3815d6b9a8fce363dd`.
 
 Revision v5 performance_driver.py SHA256 `ecf85f8939a9ac57d710ef67530c1c99ade702729ab97a203bbb75aa2601a152`.
+
+## 第2版GPU correctness: PASS
+
+アップロード完了の連絡後、poolのrecoverで旧interrupted jobを整理し、
+source71df55ea625ee415bc036201cc4cc5961c9f190fを固定して実行した。
+job `l4job-0020d65d07154b26a34a94fbf43c9f50`、237.877driver秒。
+L4 / Torch2.11.0+cu130 / CUDA13.0 / Triton3.6.0。
+81tests PASS（GPU skipなし、75.87秒）、各方式の20Graph stepsとmoments、
+全atomN1024/2048 sigma3/8、計12route/caseのY/dX/全dP/更新はPASS。
+最大絶対誤差0.000221567438839はN2048 sigma8のH保存dX。全12更新比較はexact。
+48compiler variantsはspill0、PTX local load/storeなし。
+register範囲はrecompute48–128、h56–146、vjp62–141。
+source archive SHA256 `90ade67ea654d2e92a2531ab1842f4e85b257df9c103a901930a09383b9b7744`、
+result archive SHA256 `e03022c2c7fde407d8858640570eef9da9d0ecb4911bc95c46424b3fc12c24ec`。
+job全体はignored `output/torus-hybrid-reuse/gate-v5/`へ複製/hash照合した。
+
+## 性能記録処理の補修: 比較結果なし、時間予算据え置き
+
+最初のprimary jobsはN1024 `l4job-2db62713aa16484eb1e717bba9598e8b`、
+N2048 `l4job-f6160393b0f84b3f8e4d4d37416d607b`。
+両方ともsigma3の4方式oracleがPASS後、最初のmeasure/onchipの結果を書き出す
+際に`OnchipRecipe.contraction`がないためAttributeError。比較可能な時間/メモリ
+結果は得られず、方式の性能勝敗には使用しない。両方のFAIL JSON/raw結果は
+`output/torus-hybrid-reuse/metadata-failed-{1024,2048}/`へ保全した。
+実消費はN1024 68.298秒、N2048 235.347秒。source archiveは両方
+`2a9ba8ea3f372adb1a0975f974bf187251436fe88454af2ba4c569fc8aded445`。
+result archiveはN1024 `dc6499867908bb3f358b37b8a6c4d1ae82af987900c9cd7521a4df6e30795e22`、
+N2048 `66079f565ba55ae346baddab140aa8b9245a9e1cb2df9cb50c4648091be3cd48`。
+
+runnerの結果metadataだけを修正し、CUDAのsave設定とTorchのcontraction/save_hを
+区別する。全6宣言recipeのmetadata回帰テストを追加。CPU1332PASS/2267skip、
+Ruff、wheel/sdist buildはPASS。runtime package・Plan・4Caseは精度通過版と
+byte-identicalであり、数学やGPU kernelには変更がない。
+
+元のprimary各1500driver秒から失敗jobの実消費を引き、N1024最大1431秒、
+N2048最大1264秒を補修版の測定へ使用する。実消費が不明な第1correctness版は
+引き続き900秒枠全体を消費として扱う。総7800秒のstage上限を増やさない。
+事前の「primary1job/N」からの運用上の逸脱を明記する。比較結果がない記録処理
+不具合の補修であり、速度に応じた選び直しではない。有効なprimary比較は各N
+一つに固定し、順序・21samples・入力hash・数値gate・採用gate・inverse条件は
+変えない。同一失敗source/jobの再実行はせず、補修commitの別jobを使用する。
+補修測定も失敗した場合、このstageでさらに補修jobを増やさない。
+
+Metadata-repair performance_driver.py SHA256 `6f6576f6399dd14fa23c26ecd23db870bdb9a1f9fa2c687010ad6185400e16d5`.
