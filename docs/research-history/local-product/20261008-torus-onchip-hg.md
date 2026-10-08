@@ -68,3 +68,32 @@ raw evidenceと旧branchは残している。
 CPU checkpoint: full suite1327 passed /2216 skipped /18 warnings、38.23s。
 GPU skipsは実機検証を示さない。Ruff/diff check、contributor prepare/checkもPASS。
 raw CPU logはresearch worktreeの`output/onchip-cpu.log`。
+
+## 第1 GPU gate: 数学はPASS、placementはFAIL
+
+source `899f479dce16ee5c6f7adcf0679a21d387dbb59f`、
+job `l4job-3da2e2de56034021ac6f68fa90f68e3f`、L4/Torch2.11.0+cu130/Triton3.6。
+26 tests passed/0skip、32.95s。独立physical oracle、20step Graph更新を通過。
+しかしN1024 B32 forwardのcompiler auditでregister48/shared8bytes/spill8、
+PTXにld.local/st.localがあり、採用gateはFAIL。性能測定なし。
+source archive `0809c5f30198ba2a3f4e315d3fe46f4d9ed87f7848cf16abc333a2ffc903164d`、
+result archive `3a0db3cee663b72fc4d8eda400973aa2ea9698f627f9714f816396a0a2ca7b6b`。
+driver43.585s消費、900s campaign内。runtime停止確認済み。
+
+PTXのlocal配列は`__internal_trig_reduction_slowpath`の大角度処理にある。
+これをH/Gのregister不足だと断定しない。circle angleはFP64で±piへwrap済み、
+valid intrinsic sectionのangleもsection chart契約でpi以下。
+第2版はこのbounded argumentにtl.sin/tl.cosを使い、不要な大角度slow pathを避ける。
+数学的な演算・oracle・誤差gate・launch shapeは変更しない。
+同じ26 testsと16compiler variantsを再検証し、残存spillがあれば不採用とする。
+
+## 前段の保全とmerge後の整理
+
+`reference-final.bundle` SHA256
+`dbc0ebca22fe7e7a328bb770620210dd7268929b101b67c8211c9b87f0182f03`。
+standalone restore HEAD35acc32eを照合し、git fsck成功。
+`reference-evidence.tar.gz` SHA256
+`129cdc61d4bd77d8ac0a66469a44e8d22ab317b04b6b15ddf02a1600dc03db51`。
+raw evidenceと前段10jobsの381filesを抽出し、全size/SHA256を照合した。
+manifestは同じrecovery directoryの`reference-final-manifest.json`。
+旧branch/worktree/raw copiesは維持し、merge済み#74/#75のremote branchのみ整理する。
