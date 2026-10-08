@@ -37,5 +37,12 @@ N1024とN2048の独立jobを同一sourceで投入した。各jobで45ケース�
 - N2048: l4job-8fc462f00ea64dd28a6ca28765d6f2d2
 
 どちらもrho3/8、prepared・split1/4/8/16・Torch・denseを残す。
-GPU結果・性能は現時点で未検証、共有L4キュー待ち。raw evidenceはignored
-benchmarks/cuda/linear/evidence/profile-product-square-strip-20261008/へ保存する。
+初回は両jobとも9 failed/36 passedでゲートを停止し、性能測定は開始しなかった。
+8件は共有テストのglobal対照にもStrip専用Planを渡していたfixtureの誤り、
+1件はremote環境の第三者tests packageとテストhelperのimport衝突。
+global対照は既存large Product Planへ対応させ、全45ケースを保持する。
+helperはpytestのtests検索パスからimportする。kernel・oracle・許容誤差・測定条件は変更しない。
+初回の失敗ログ・source・receiptは共有poolに保全する。修正版は別jobとして明示投入し、
+各1550秒、ゲート300秒、各rho600秒、全route/Caseの既定予算を維持する。
+raw evidenceはignored benchmarks/cuda/linear/evidence/profile-product-square-strip-20261008/
+と共有poolの各jobディレクトリに保存する。

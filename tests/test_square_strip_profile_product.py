@@ -115,6 +115,10 @@ def test_square_all_sites_y_dx_dp(alias, n):
 @pytest.fixture(params=["prepared", "split1", "split8", "torch-g8-p8"])
 def square_route(request, monkeypatch):
     original = scenarios.model
+    global_run = load_run(
+        "benchmarks/cuda/linear/cases/profile-product-large-global-2048-rho3-split-k.json",
+        "benchmarks/cuda/linear/plans-profile-product-large-global-split-k.json",
+    )
 
     def model(p, family, **kwargs):
         kwargs.setdefault("n", 1041)
@@ -122,8 +126,9 @@ def square_route(request, monkeypatch):
         return original(p, family, **kwargs)
 
     def execute(layer, x, family, **kwargs):
+        selected = global_run if family == "global" else case()
         return Dispatcher(registry=REGISTRY).run(
-            layer, LinearInputs(x), plan=case().entry(request.param).plan
+            layer, LinearInputs(x), plan=selected.entry(request.param).plan
         )
 
     monkeypatch.setattr(scenarios, "model", model)
@@ -148,13 +153,14 @@ def test_adapter_and_dispatch_decode_square_shape_and_reject_old_revision():
     import hashlib
     import json
 
+    from benchmark_database_fixtures import artifact
+
     from benchmarks.cuda.linear.protocol import (
         LOCAL_OPTIMIZER_POLICY,
         SQUARE_STRIP_PRODUCT_ORACLE_SCOPE,
     )
     from benchmarks.database.adapters.linear import project
     from benchmarks.dispatch.generate import _context
-    from tests.benchmark_database_fixtures import artifact
 
     run = case()
     run = replace(run, case=replace(run.case, rounds=3), plans=(run.entry("split1"),))
