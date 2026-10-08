@@ -32,6 +32,20 @@ def case(n=1024, sigma=3):
     )
 
 
+@pytest.mark.parametrize("actual,truth", [(100.001, 100.0), (2e-7, 1e-7)])
+def test_cohort_rejects_errors_elementwise_tolerance_would_allow(actual, truth):
+    actual, truth = (torch.tensor([x], dtype=torch.float64) for x in (actual, truth))
+    torch.testing.assert_close(actual, truth, atol=4e-4, rtol=4e-4)
+    with pytest.raises(AssertionError, match="max/relative-L2 gate"):
+        fixture._strict_check(actual, truth, tol=4e-4)
+
+
+def test_cohort_accepts_both_declared_error_limits():
+    actual, truth = torch.tensor([1.00001]), torch.tensor([1.0])
+    metrics = fixture._strict_check(actual, truth, tol=4e-4)
+    assert metrics["max"] < 4e-4 and metrics["rel_l2"] < 4e-4
+
+
 @pytest.mark.parametrize("n", [1024, 2048])
 @pytest.mark.parametrize("sigma", [3, 8])
 def test_square_chart_state_and_frozen_case(n, sigma):

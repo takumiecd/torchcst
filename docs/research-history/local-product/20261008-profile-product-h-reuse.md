@@ -408,3 +408,83 @@ protocol_valid:false; raw seven-worker case files remain unchanged. Do not
 relabel these rows as reverse-order proof or select them for positive adoption.
 The supervisor drained and stopped its owned session before the corrected
 N2048 reservation was dispatched by a new one-worker supervisor.
+
+## Enforce both predeclared numerical metrics explicitly
+
+The frozen worker's shared check performed finite/elementwise atol+rtol checks
+and reported maximum absolute and relative-L2 metrics, but did not separately
+assert both reported metrics against the predeclared cohort limits. Audit all
+12 retrieved N1024 correctness records (primary and same-order repeat): largest
+task max1.2674e-5, largest relative L2 error5.2744e-7, optimizer max/relative0.
+They satisfy the unchanged strict limits4e-4 and2e-6. This retrospective metric
+check does not repair the inverse order failure. Store the per-record proof in
+ignored strict-numeric-artifact-proof.json; enforce the same strict metrics on
+any retrieved N2048 observation before disposition.
+
+Add the missing explicit max and relative-L2 assertions to the future Torus
+correctness worker. Regression examples demonstrate that elementwise atol/rtol
+can allow excessive absolute error at large values, or excessive relative error
+at tiny values. Both must be rejected; a case meeting both limits passes.
+Local fixture tests23 passed/8 CUDA skipped, Ruff passed. This is a benchmark
+acceptance-guard correction, not a kernel/fixture/optimizer/tolerance change.
+No src file differs from measured runtime0aeeff35. The live N2048 job remains
+frozen at0aeeff35, and only its unchanged reported metrics can establish the
+strict numerical gate; its independent replication status remains false.
+
+## N2048 unpaired observation and disposition
+
+Corrected reserved job l4job-bf0c6ba7ceb544a5aaa74992c9821a8e succeeded.
+All28 manifest entries, source and receipt/result archive hashes were verified.
+The actual worker order is w-gemm,h-recompute,h-saved,dense for both cases.
+The full202-test GPU gate has zero skips; every209715 atom changes width.
+All six full-A correctness workers satisfy strict max/relative-L2 limits and
+exact public update equality. Matched numerical Case/recipes/initial inputs
+and parameters, frozen runtime0aeeff35, L4/Torch2.11.0+cu130/CUDA13/Triton3.6
+were verified. The lost primary still prevents independent N2048 replication.
+
+Graph/eager medians ms; capture/replay peaks in decimal MB:
+
+| sigma | route | Graph ms | eager ms | allocated MB | reserved MB |
+| --- | --- | --- | --- | --- | --- |
+|3|w-gemm|1357.718|1353.166|270.862|830.472|
+|3|h-recompute|921.645|953.514|237.570|780.141|
+|3|h-saved|918.098|947.832|264.701|813.695|
+|3|dense_linear|0.594|1.072|102.239|148.898|
+|8|w-gemm|1382.343|1431.766|270.862|830.472|
+|8|h-recompute|926.994|962.958|237.570|780.141|
+|8|h-saved|921.963|954.424|264.701|813.695|
+|8|dense_linear|0.588|1.047|102.239|148.898|
+
+Maximum task discrepancy over all six workers: 3.04332e-05; largest
+relative-L2 discrepancy: 8.39994e-07; optimizer maximum/relative discrepancies0.
+Initial/final empty/floor-active/both-singleton counts are zero.
+Source/result SHA256:
+a90b491c311cd77592a882e024e45178d35e5175125a2d91eba4f36fc7858b12 /
+d2c9db62eaf249a4fc03dbe6cc8d43f6890e3229ba39ffeea25b2d252da5eb4d.
+Ignored inverse-2048/unpaired-observation.json explicitly states independent
+replication:false and positive_adoption_allowed:false. Neither missing primary
+nor invalid N1024 order was replaced, re-budgeted or hidden.
+
+Disposition: retain the exact bounded Torch implementation and strict fixtures
+as research comparison/reference tools only; reject production/public dispatch
+adoption and a verified cross-size route ranking. Valid observations are far
+slower than dense, and the declared independent-confirmation gate is incomplete.
+H saving has sub-percent timing differences in these dense-factor references,
+with additional6.58/27.13MB allocated at N1024/2048; this is not a generally
+established winner across widths/geometries or optimized CUDA implementations.
+
+The separate instrumented N2048 Graph reports H backward707–715ms versus
+forward209–210ms and optimizer0.507–0.513ms. Sigma3/8 remain close because
+all axis sites are enumerated. The next target is exact support-aware Triweight
+factor/norm preparation and an analytic coupled factor VJP, then fused H/G
+reuse in CUDA. Keep the full chart norm and one global floor, include circle
+radius derivatives through section centres, and preserve live widths/retraction.
+Compact Triweight support can omit mathematically zero sites; Gaussian must
+retain complete support. Test memory/step and strict independent gates afresh
+before any adoption. This note does not assert a hardware cache/traffic result.
+
+The H recompute route already uses a bounded B*atom_chunk temporary H tile
+immediately in the output contraction and parameter cotangent; each G tile is
+shared by dX and input-factor cotangent. This is Torch tensor lifetime reuse,
+not an on-chip CUDA cache claim. No full-chart normalization is partitioned.
+Further CUDA fusion is the next candidate, not an unmeasured part of this result.

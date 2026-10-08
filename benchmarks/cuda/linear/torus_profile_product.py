@@ -230,10 +230,19 @@ def summarize(q, chart):
     }
 
 
+def _strict_check(actual, truth, *, tol):
+    """The cohort gates both maximum absolute and global relative L2 error."""
+    from .check_normalized import check
+
+    metrics = check(actual, truth, tol=tol)
+    if metrics["max"] > tol or metrics["rel_l2"] > tol:
+        raise AssertionError(f"Torus max/relative-L2 gate failed: {metrics}, tol={tol}")
+    return metrics
+
+
 def correctness(args, run, model_type):
     from benchmarks.cuda.polar_update import optimizer_step
 
-    from .check_normalized import check
     from .protocol import TORUS_PRODUCT_ORACLE_SCOPE
 
     case, op = run.case, fixture_operator(run.case)
@@ -280,8 +289,8 @@ def correctness(args, run, model_type):
     return {
         "status": "PASS",
         "scope": TORUS_PRODUCT_ORACLE_SCOPE,
-        "y": check(y, truth, tol=4e-4),
-        "dx": check(gx, tx, tol=4e-4),
-        "dp": check(gp, tp, tol=4e-4),
-        "polar_update": check(model.p, ref.atoms.p, tol=2e-6),
+        "y": _strict_check(y, truth, tol=4e-4),
+        "dx": _strict_check(gx, tx, tol=4e-4),
+        "dp": _strict_check(gp, tp, tol=4e-4),
+        "polar_update": _strict_check(model.p, ref.atoms.p, tol=2e-6),
     }
