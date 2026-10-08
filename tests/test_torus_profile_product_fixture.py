@@ -40,6 +40,7 @@ def test_square_chart_state_and_frozen_case(n, sigma):
     op = measurement_operator(asdict(run.case))
     assert op.charts[0].shape == (n, n)
     assert op.charts[0].tile_shape == (64, n)
+    assert op.charts[0].axes[0].start == (0.0,)
     assert type(op.charts[0].geometry).__name__ == "TorusGeometrySpec"
     assert op.kernel.revision == 2
     assert run.case.atoms == n * n // 20
@@ -52,6 +53,23 @@ def test_square_chart_state_and_frozen_case(n, sigma):
     )
     with pytest.raises(ValueError, match="fixture size"):
         replace(run.case, size=8192)
+
+
+@pytest.mark.parametrize("n", [1024, 2048])
+def test_seeded_circle_centres_have_multiple_samples_at_sigma_three(n):
+    # Centred line defaults rotated the queries relative to the zero-origin
+    # initializer, creating singleton circle factors in the inter-tile gaps.
+    c = replace(case(n).case, atoms=2048)
+    p = fixture.initialize(c).double()
+    op = fixture.fixture_operator(c)
+    layer = CSTLinear(
+        chart=op.charts[0], atoms=p, kernel=op.kernel, dtype=torch.float64
+    )
+    for start in range(0, len(p), 256):
+        u, _, _ = fixture.oracle_factors(
+            layer.kernel, p[start : start + 256], layer.chart
+        )
+        assert (u.count_nonzero(dim=0) >= 2).all()
 
 
 @pytest.mark.parametrize("n", [1024, 2048])

@@ -185,3 +185,41 @@ runner. Confirm all four N/sigma cases and matching fixture/source/update
 conditions, not only the favorable rows. Preserve all negative and partial
 results. Numerical tolerances and these budgets are not increased in response
 to an unfavorable timing or failure. No public dispatcher adoption is implied.
+
+## Pre-timing fixture failure and causal correction
+
+The first two primary attempts at source ec2ce997 passed196 tests with zero
+skips, then failed the all-atom nonzero centre-gradient gate at sigma3 before
+any timing. N1024 job l4job-d3fb0434ca5445579ee597526e3dab78 used28 rounded-up
+driver seconds; N2048 job l4job-e403b7465c444b76922a2e309ba0d16f used27.
+No sigma8 case was attempted. The result manifests and receipt hashes were
+verified; full failures/source/proof files are preserved in the pool and ignored
+failed-primary-{1024,2048} evidence directories.
+
+The Line constructor with spacing1 defaulted to a centred origin (-511.5 or
+-1023.5), but the seeded circle centre initializer used zero-origin Strip site
+indices. Rotation placed some centres in the wrong part of the inter-tile gaps.
+Independent physical-query CPU diagnosis of2048 atoms found54/51 near-zero
+circle-centre derivatives, with zero empty atoms. A single live circle sample
+has a constant normalized factor and zero circle-centre task derivative even
+when the section has multiple samples; the old both-factors singleton count
+did not diagnose this. This is a real normalization behavior, not a CUDA error.
+
+Correct the fixture's circle Line to low0/highN-1, matching the initializer and
+intended physical Strip layout. No kernel, geometry metric, norm floor, width,
+update, numerical gate or route recipe changes. The same independent2048-atom
+diagnosis then has0/0 failing centre components in both sizes. Add regression
+checks for the zero origin and multiple live circle samples at sigma3.
+
+Failed source/result archive hashes, N1024:
+cca5ef8ceedaedfcec9e56565084d234853052d32c6dbebe7c3dbdcc5efcf72d /
+73527a58ffb48aab6176a61c14d945e012110b9314380a5345db956d77f8053d;
+N2048:b0243a13bb197a52e993cb07c180f8a396901e938d08b3caa49155fe6e06ca24 /
+f58f01d6a3b0331ebf78ce90b0f23080403444d1451d815b90474cd7507a7ea0.
+
+Explicitly resubmit corrected source using only remaining predeclared budget:
+2072s for N1024 and2073s for N2048. Conservatively subtract the full failed
+driver time from both the300s pytest budget and850s sigma3 runner budget too
+(272/822s and273/823s). Sigma8 keeps its unused850s budget. Inverse confirmation
+budgets remain unused. This is a fixture correction before timing; no timing
+was discarded, selected or retried and no numerical tolerance is relaxed.

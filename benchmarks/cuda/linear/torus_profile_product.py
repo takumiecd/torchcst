@@ -48,7 +48,7 @@ def fixture_operator(case):
                 axis=0,
                 tile_pitch=68.0,
                 axes=(
-                    pattern_presets.line(n, spacing=1.0),
+                    pattern_presets.line(n, low=0, high=n - 1),
                     pattern_presets.grid(
                         (rows, columns),
                         low=(-(rows - 1) / 2, -(columns - 1) / 2),
