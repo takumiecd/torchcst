@@ -96,9 +96,10 @@
       "plan": {
         "schema_version": 1,
         "algorithm_id": "research_cuda_sphere_polar_weight",
-        "algorithm_revision": "v1",
+        "algorithm_revision": "v2",
         "recipe": {
-          "support_capacity": 16
+          "support_capacity": 16,
+          "patch_tile": 32
         }
       }
     },
@@ -107,9 +108,10 @@
       "plan": {
         "schema_version": 1,
         "algorithm_id": "research_cuda_sphere_polar_weight",
-        "algorithm_revision": "v1",
+        "algorithm_revision": "v2",
         "recipe": {
-          "support_capacity": 64
+          "support_capacity": 64,
+          "patch_tile": 32
         }
       }
     },
@@ -118,9 +120,22 @@
       "plan": {
         "schema_version": 1,
         "algorithm_id": "research_cuda_sphere_polar_weight",
-        "algorithm_revision": "v1",
+        "algorithm_revision": "v2",
         "recipe": {
-          "support_capacity": 256
+          "support_capacity": 256,
+          "patch_tile": 32
+        }
+      }
+    },
+    {
+      "id": "sphere-weight-64-tile64",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_weight",
+        "algorithm_revision": "v2",
+        "recipe": {
+          "support_capacity": 64,
+          "patch_tile": 64
         }
       }
     }

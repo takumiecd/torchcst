@@ -28,9 +28,10 @@ def apply(model, x, chunk=4096, save_h=True, support=None, weight=False):
         if weight:
             from torchcst._backends.cuda.algorithms.linear.sphere_polar.weight_algorithm import (
                 SphereWeightAlgorithm,
+                SphereWeightRecipe,
             )
 
-            algorithm = SphereWeightAlgorithm()
+            algorithm, recipe = SphereWeightAlgorithm(), SphereWeightRecipe(support)
     registry.register(algorithm)
     return Dispatcher(registry=registry).run(
         LinearBinding(model.operator, model.atoms.p),
@@ -382,7 +383,7 @@ def test_sphere_required_gradient_branches(support, need_x, need_p):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
 @pytest.mark.parametrize("route", ["blocked-4096", "support-16", "weight-16"])
-def test_sphere_asymmetric_widths_floors_and_antipodal_centers(route):
+def test_sphere_asymmetric_widths_and_antipodal_centers(route):
     import math
     from dataclasses import replace
 
@@ -403,7 +404,7 @@ def test_sphere_asymmetric_widths_floors_and_antipodal_centers(route):
         replace(
             spec.profiles[1],
             normalization=NormalizationSpec(
-                kind="discrete_l2", domain="chart_sites", floor=2e-6
+                kind="discrete_l2", domain="chart_sites", floor=1e-6
             ),
         ),
     )

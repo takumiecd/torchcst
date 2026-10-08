@@ -64,19 +64,23 @@ class SphereAlgorithm(Algorithm[SphereRecipe]):
         ):
             reasons.append("requires two explicit intrinsic S2 charts")
         if (
-            k.composition != "separable"
+            k.revision != 1
+            or k.composition != "separable"
             or type(k.parameterization) is not PolarAmpWidthSpec
             or len(k.profiles) != 2
             or any(
                 type(b.profile) is not TriweightSpec
+                or b.profile.revision != 1
                 or b.normalization.kind != "discrete_l2"
                 or b.normalization.domain != "chart_sites"
-                or b.normalization.floor is None
+                or b.normalization.floor != 1e-6
                 for b in k.profiles
             )
             or context.parameter_dim != 6
         ):
-            reasons.append("requires Polar Triweight with per-chart floored L2")
+            reasons.append(
+                "requires revision1 Polar Triweight with per-chart L2 floor1e-6"
+            )
         if context.device.type != "cuda" or context.dtype != torch.float32:
             reasons.append("requires CUDA FP32")
         if (

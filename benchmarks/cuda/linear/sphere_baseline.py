@@ -42,6 +42,7 @@ ROUTES = (
     "weight-16",
     "weight-64",
     "weight-256",
+    "weight-64-tile64",
 )
 
 
@@ -124,6 +125,17 @@ def forward(model, x, route):
                 ),
                 "v1",
                 SphereSupportRecipe(int(route.split("-")[1])),
+            )
+        if route.startswith("weight-"):
+            from torchcst._backends.cuda.algorithms.linear.sphere_polar.weight_algorithm import (
+                SphereWeightRecipe,
+            )
+
+            tile = int(route.split("-")[-1][4:]) if "-tile" in route else 32
+            plan = ExecutionPlan(
+                "research_cuda_sphere_polar_weight",
+                "v2",
+                SphereWeightRecipe(int(route.split("-")[1]), tile),
             )
         if not hasattr(model, "_sphere_binding"):
             model._sphere_binding = LinearBinding(model.operator, model.atoms.p)
