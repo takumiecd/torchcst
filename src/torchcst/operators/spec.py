@@ -105,16 +105,15 @@ class OperatorSpec:
 
 
 def validate_profile_product_layout(chart, kernel):
-    """Validate independent coordinate axes using declarations only."""
+    """Validate coordinate/fibre products using declarations only."""
     from torchcst.charts import ProductChartSpec, StripChartSpec
-    from torchcst.geometry.spec import EuclideanGeometrySpec
+    from torchcst.geometry.spec import EuclideanGeometrySpec, TorusGeometrySpec
     from torchcst.patterns.spec import GridPatternSpec, LinePatternSpec
 
     if (
         type(chart) not in (ProductChartSpec, StripChartSpec)
         or chart.revision != 1
         or len(chart.shape) != 2
-        or type(chart.geometry) is not EuclideanGeometrySpec
         or chart.geometry.revision != 1
         or any(
             type(a) not in (GridPatternSpec, LinePatternSpec) or a.revision != 1
@@ -122,7 +121,22 @@ def validate_profile_product_layout(chart, kernel):
         )
     ):
         raise ValueError(
-            "profile_product requires a Euclidean Product/Strip grid chart"
+            "profile_product requires a Product/Strip grid chart"
         )
+    if kernel.revision == 2:
+        from torchcst.charts.base import _circle_axis
+
+        if (
+            type(chart.geometry) is not TorusGeometrySpec
+            or chart.geometry.intrinsic_dim != 3
+            or len(kernel.profiles) != 2
+        ):
+            raise ValueError("revision 2 requires the S1 x S2 Torus fibre product")
+        circle = _circle_axis(chart)
+        if chart.axes[1 - circle].dim != 2:
+            raise ValueError("Torus section must be a two-dimensional grid")
+        return
+    if kernel.revision != 1 or type(chart.geometry) is not EuclideanGeometrySpec:
+        raise ValueError("revision 1 requires a Euclidean Product/Strip grid chart")
     if len(kernel.profiles) != chart.geometry.intrinsic_dim:
         raise ValueError("profile count must match the chart coordinate dimension")

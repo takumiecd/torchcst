@@ -50,6 +50,37 @@ Euclideanの独立軸と読み替えない。Stripではtile_pitchと部分端ti
 
 ## 数学的な契約
 
+### Torusのcentre-fibre product（revision 2）
+
+`presets.polar_torus_profile_product` はS¹×S²のTorus Product/Strip Chartに
+対応する。profileは円周、S²断面の順に二つで、論理入力・出力軸の順とは独立。
+intrinsic中心のParameterは `[polar_x, polar_y, arc, s1, s2]`、ambient中心では
+先頭Polar二座標と既存の四次元中心を持つ。Polarの共有幅・更新則を用いる。
+
+中心を `(theta_a,q_a)`、major/minor radiusを `R,r` とし、円周site `theta_i`、
+断面site `q_j` を用いて、他方の軸をatom中心に固定したfibreのchord距離を定義する。
+
+$$
+d_c(i;a)^2=4(R+r q_{a,0})^2\sin^2((\theta_i-\theta_a)/2),
+\qquad d_s(j;a)^2=r^2\|q_j-q_a\|^2.
+$$
+
+rawな二つのprofileを `u_a(i),v_a(j)` とすると、正規化は
+
+$$
+W_{ij}=\sum_a A_a\frac{u_a(i)v_a(j)}
+ {\max(\|u_a\|_2\|v_a\|_2,\epsilon)}.
+$$
+
+circle radius `R+r*q_a0` の中心依存性をdetachしない。断面中心の勾配は
+二つのprofileと二つのノルムの両方から受け取る。現行Polarと同様、現在の幅は
+task VJP中に固定し、学習stepの更新則で変化する。既存のjoint radial chord距離とは
+異なる合成なので、Euclidean版revision 1のChart検査・意味を置き換えない。
+初期化、eager更新、勾配射影とmoments輸送には既存のTorus Geometryを使う。
+CUDA融合・Graph captureでのTorus更新は引き続き開発対象である。
+
+### Euclidean coordinate product（revision 1）
+
 atomを $a$、座標軸を $d$、その軸の全観測点を $i_d$ とする。
 Triweightのrawな軸profileは
 
