@@ -8,7 +8,7 @@ bounded-poly版を基準に、保存の費用と再計算の費用を同じcohor
 
 ## 保存内容
 
-Algorithm revision v4、same launch: 1atom/CTA、site64、4warps。
+Algorithm revision v5（第1版v4）、same launch: 1atom/CTA、site64、4warps。
 `save=recompute` は元の数学とFP32縮約順を保持し、Hをbackwardで再計算する。
 `save=h` はraw H[B]とq[3]/sinc/nu²/nv²（6scalars/atom）を保存する。
 入力側微分用の縮約とnorm微分はbackwardで再計算する。
@@ -74,3 +74,32 @@ no_gradの推論は保存bufferを作らない。旧forwardのXを変更して�
 元のforwardの勾配を返すことと、推論値の一致を追加検証する（既存testを緩めない）。
 残る第2source版の900driver秒枠で、全方式/全atom/Graph/配置を検証する。
 性能cohortの方式・物理条件・事前の採用gate・予算は変更しない。
+
+## 第2版のローカル検査と転送保留
+
+実装checkpoint c18d8877。CPU全suiteは1331pass/2267skip/18warnings
+（26.57秒）。GPU対象75testsは未実施。6Plan/4Caseの宣言検査、Ruff、
+wheel/sdist buildはPASS。build backendが通常venvにないため、依存の取得を
+せず`uv build --offline`で既存cacheを使用した。正しさのcohortは元の78testsに
+vjpのX保持不要/旧forwardのX変更/no_gradを扱う3testsを追加した81tests。
+数値gate・性能cohort・予算は変更しない。
+
+第1版の凍結archiveから`__pool_driver__.py`を読み直すと、29行目の
+compiler audit用`python -c`引数に引用符の構文エラーがあることを確認した。
+このdriverはGPU検査を完遂できない。接続切断とこの不備を分けて記録し、
+結果が未取得のためkernelの数値失敗や実行時間を推測しない。第2版driverの
+引用符を修正し、driver自身と埋め込みPython文字列のAST parseおよびRuffを
+ローカルで通過させた。同一失敗版のretryは行わず、第2版の枠を使う。
+
+failed jobのspec/source/remote driver/transport logを
+`output/torus-hybrid-reuse/failed-transport-v4/`へ複製し、原本と全hashを照合した。
+`manifest.json`、`frozen-driver.py`、`driver-audit.json`も保存。pool statusは
+job interrupted、全slot stopped。数値/性能結果は存在しない。
+
+ユーザーよりOpenVLAアップロード継続中との回答を得たため、追加のGPU
+ソース転送と結果回収はアップロード完了の連絡まで保留する。帯域使用と
+Colab切断の因果は未確認。GPU未検証の第2版はPR #78の研究draftに留める。
+
+Revision v5 gate_driver.py SHA256 `c1f1348116c4ff0aa9ddeba7029b2c5c27c6e1bc97dd9c3815d6b9a8fce363dd`.
+
+Revision v5 performance_driver.py SHA256 `ecf85f8939a9ac57d710ef67530c1c99ade702729ab97a203bbb75aa2601a152`.
