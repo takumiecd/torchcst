@@ -119,3 +119,40 @@ merge済み#74/#75のremote branch削除は保全後に完了。
 元の3stashesは変更せず、reflog上の旧stashまでarchive refsと
 `stash-history.bundle`へ保全し、復旧cloneで全3commit/tree存在とfsckを確認した。
 追加bundle SHA256 `c69418faca4463dbd991fbae2dfe1ad55c01cc2f08ded7969c6ce91678f90763`。
+
+## 第3 GPU gate: correctnessとplacementがPASS
+
+source `b63046d789acd3571431e5170dd104eb6add0a2b`、
+job `l4job-7069188df24343a7a22adf71505080c2`。
+26tests/0skipとN1024/2048 B32/64の16compiler variantsを通過。
+全variant spill0、PTXにld.local/st.localなし。B32 forward52register/shared8bytes、
+backward x+p96register/shared16bytes。B64 forward60、backward x+p128register。
+H/Gのglobal Tensorも渡していない。全step速度/peakの確認はまだ別。
+source archive `e137a68b02b03080653ea1fb81617d2f695600131aebdda73e2b284f68281d2b`、
+result archive `218fb5366d8f5fc352892af266d182262b5e9b89a894c031bf3de50c3aa64eb5`。
+23manifest files+source/result archive hash照合済み。driver43.175s、
+3sourceの実消費合計129.676s。全slot停止確認済み。
+第2版result archive `0330547902e79b3fac0b1217265d4405fd1eff1ec5e4fe8a8271f557cb16c3b3`も
+全manifest/source/result hash照合し、raw失敗結果を保全した。
+
+## 完全step比較: 実行前に固定する条件
+
+runtime sourceは第3版のb63046d、準備・図示・文書変更はruntimeを変更しない。
+N1024/N2048、sigma3/8、B32、FP32（TF32なし）、約5%atoms、seed41、
+同じ全chart L2/一回floor1e-6/live widths/Torus update/AdamW。
+4routesの実行順はh-saved,h-recompute,w-gemm,onchip、denseは最後。
+各workerのfresh process、全atomのphysical FP64 Y/dX/全dPのstrict二重gate4e-4、
+exact update comparison2e-6、20step widthの変化、21 timing samplesを使う。
+主結果は未計装完全step、capture/replay allocated/reserved。
+phase診断は別Graph。既存fixture/適合条件/数値gateを変えない。
+
+primary2jobsは各2100 driver秒、各sigma runner850秒、pytest220秒。
+新Algorithmが追加された比較であり、前段の無効/消失した確認runの修復ではない。
+速度/メモリ改善はこの新cohort内だけで比較し、旧stageとの独立確認を主張しない。
+有望とする条件は、onchipが速いTorch H経路よりGraph中央値3%以上速い、
+またはallocated5%以上減かつGraph回帰3%以内。正しさ/spill/幅変化が必要条件。
+その場合のみ各Nにつき独立inverse1job（各2100秒、sigma850秒）を使う。
+inverseはCase plansもonchip,w-gemm,h-recompute,h-savedへ逆順にし、
+事前にcase/recipe物理条件が同じこと、結果の実測order/initial hashesが一致することを検査する。
+failed runのretry、予算増加、gate緩和は行わない。改善条件のないNは追加確認しない。
+small gain/negativeを全routes含め保存する。公開fast path採用は別判断。
