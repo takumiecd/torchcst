@@ -156,3 +156,10 @@ inverseはCase plansもonchip,w-gemm,h-recompute,h-savedへ逆順にし、
 事前にcase/recipe物理条件が同じこと、結果の実測order/initial hashesが一致することを検査する。
 failed runのretry、予算増加、gate緩和は行わない。改善条件のないNは追加確認しない。
 small gain/negativeを全routes含め保存する。公開fast path採用は別判断。
+
+比較用standalone cloneはprimary checkoutのignored recovery directory内
+`onchip-comparison-source`、clean HEAD `9b67781`（b63046dからruntime変更なし）。
+primary N1024 job `l4job-c4a08498f1704ea69fad94d790f9d76e`、
+primary N2048 job `l4job-724473c62bd6477a837183377666400a`を提出。
+同じdriver/catalog/固定code、順番はCase plansで検査済み、共有L4を1台ずつ使う。
+現在のdraft PRは#76。結果待ちであり、速度改善・本番採用はまだ主張しない。
