@@ -1,5 +1,7 @@
 """Snapshot operands and optionally retain compact H/input-VJP data for backward."""
 
+from dataclasses import replace
+
 import torch
 from torch.autograd.function import once_differentiable
 
@@ -27,15 +29,16 @@ class _Onchip(torch.autograd.Function):
         assert axis == 0
         maximum = scalars.scalar("amplitude_max")
         y = x.new_zeros((len(x), chart.shape[0]))
-        k, c = (4, 11) if recipe.save == "vjp" else (1, 6)
+        save_mode = recipe.save
+        if save_mode != "recompute" and not ctx.needs_input_grad[1]:
+            save_mode = "norm" if ctx.needs_input_grad[0] else "recompute"
+        k, c = (4, 11) if save_mode == "vjp" else (1, 6)
         h_cache = (
             x.new_empty((len(p), k, len(x)))
-            if recipe.save != "recompute"
+            if save_mode in ("h", "vjp")
             else x.new_empty(0)
         )
-        info = (
-            x.new_empty((len(p), c)) if recipe.save != "recompute" else x.new_empty(0)
-        )
+        info = x.new_empty((len(p), c)) if save_mode != "recompute" else x.new_empty(0)
         if len(p):
             forward[(len(p),)](
                 x,
@@ -55,15 +58,29 @@ class _Onchip(torch.autograd.Function):
                 PB=triton.next_power_of_2(len(x)),
                 T=recipe.site_tile,
                 TRIG=recipe.trig,
-                SAVE=recipe.save,
+                SAVE=save_mode,
                 FLOOR=kernel.spec.normalization.floor,
                 num_warps=recipe.num_warps,
                 enable_fp_fusion=False,
             )
         ctx.recipe = recipe
+        ctx.save_mode = save_mode
+        ctx.input_shape = tuple(x.shape)
         ctx.floor = kernel.spec.normalization.floor
+        # All dependence on X is already represented by saved H/input-VJP
+        # contractions; backward-vjp never loads the X pointer.
+        saved_x = x.new_empty(0) if save_mode == "vjp" else x
         ctx.save_for_backward(
-            x, source, precision, maximum, major, minor, circle, sites, h_cache, info
+            saved_x,
+            source,
+            precision,
+            maximum,
+            major,
+            minor,
+            circle,
+            sites,
+            h_cache,
+            info,
         )
         return y
 
@@ -78,7 +95,7 @@ class _Onchip(torch.autograd.Function):
             ctx.saved_tensors
         )
         need_x, need_p = ctx.needs_input_grad[:2]
-        dx = torch.zeros_like(x) if need_x else None
+        dx = x.new_zeros(ctx.input_shape) if need_x else None
         dp = torch.empty_like(p) if need_p else None
         if len(p) and (need_x or need_p):
             backward[(len(p),)](
@@ -95,13 +112,13 @@ class _Onchip(torch.autograd.Function):
                 info,
                 dx if need_x else x,
                 dp if need_p else p,
-                B=len(x),
-                NI=x.shape[1],
+                B=ctx.input_shape[0],
+                NI=ctx.input_shape[1],
                 NO=dy.shape[1],
-                PB=triton.next_power_of_2(len(x)),
+                PB=triton.next_power_of_2(ctx.input_shape[0]),
                 T=ctx.recipe.site_tile,
                 TRIG=ctx.recipe.trig,
-                SAVE=ctx.recipe.save,
+                SAVE=ctx.save_mode,
                 FLOOR=ctx.floor,
                 NEED_X=need_x,
                 NEED_P=need_p,
@@ -112,4 +129,6 @@ class _Onchip(torch.autograd.Function):
 
 
 def onchip_product(x, p, kernel, chart, recipe):
+    if not torch.is_grad_enabled() and recipe.save != "recompute":
+        recipe = replace(recipe, save="recompute")
     return _Onchip.apply(x, p, kernel, chart, recipe)

@@ -229,7 +229,8 @@ def forward(
         a = tl.program_id(0)
         C: tl.constexpr = 11 if SAVE == "vjp" else 6
         K: tl.constexpr = 4 if SAVE == "vjp" else 1
-        tl.store(HCache + a * K * B + b, h, b < B)
+        if SAVE != "norm":
+            tl.store(HCache + a * K * B + b, h, b < B)
         tl.store(Info + a * C, q0)
         tl.store(Info + a * C + 1, q1)
         tl.store(Info + a * C + 2, q2)

@@ -53,3 +53,24 @@ phase診断は別Graph。runnerの全atomoracleも改めて要求する。
 worker順を確認する。独立確認を通過しなければverified winnerを主張しない。
 本stage最大総driver予算7800秒。元の完了済み精度stageの予算は変更しない。
 公開dispatcherの既定は変えない。PR #78をこの最終scopeの記述へ更新し、採否を残す。
+
+
+## 第1版: transport失敗、数値/配置結果なし
+
+source156b9aec4c311ec63df041c06f00b99351b9fb38、
+job l4job-23b31ee2d09f4e66b2773ceb2f88f7dd。
+source archive25abb9fed85493a136030d66f6f231867d4464d9257ff1266caad5463417169e。
+Colab execの接続が失われ、1080秒のCLI上限/1140秒のhost上限で停止した。
+POOL_RESULT_READYの応答もresult archiveも得られず、correctness・compiler・driver
+実消費は未確認。この版のGPU PASS/FAILや速度を主張しない。資源会計は900driver秒の
+枠を消費したものとして扱い、同じjob/sourceをretryしない。
+owned session停止とserver assignmentなしを確認。CPU1331pass/2264skip、Ruff、
+wheel/sdist build、GitHub CPU CIはPASS（GPU検証ではない）。pool job全体を保全する。
+
+第2版（revision v5）は追加の保存量削減を実装する。
+vjp保存版はbackwardがXを読まないため、autograd ctxにXを保持しない。
+入力勾配だけを要求する場合はq/normだけを保存し、Hや微分用Hを保存しない。
+no_gradの推論は保存bufferを作らない。旧forwardのXを変更してもsaved VJPが
+元のforwardの勾配を返すことと、推論値の一致を追加検証する（既存testを緩めない）。
+残る第2source版の900driver秒枠で、全方式/全atom/Graph/配置を検証する。
+性能cohortの方式・物理条件・事前の採用gate・予算は変更しない。

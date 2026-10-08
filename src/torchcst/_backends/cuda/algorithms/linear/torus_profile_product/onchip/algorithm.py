@@ -44,7 +44,7 @@ class OnchipRecipe:
 @dataclass(frozen=True)
 class TorusOnchipAlgorithm(Algorithm[OnchipRecipe]):
     id: str = "research_cuda_torus_profile_product_onchip"
-    revision: str = "v4"
+    revision: str = "v5"
     operation_id: str = "linear"
     semantics_id: str = "kernel-atom-sum-v1"
     recipe_type: type = OnchipRecipe

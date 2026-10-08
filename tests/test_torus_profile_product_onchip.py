@@ -29,7 +29,7 @@ from torchcst._backends.registry import Registry
 from torchcst._backends.schema import DeviceInfo, ExecutionPlan, PrecisionPolicy
 
 RECIPE = OnchipRecipe()
-PLAN = ExecutionPlan(TorusOnchipAlgorithm().id, "v4", RECIPE)
+PLAN = ExecutionPlan(TorusOnchipAlgorithm().id, "v5", RECIPE)
 
 
 @pytest.fixture(params=("recompute", "h", "vjp"), autouse=True)
@@ -39,7 +39,7 @@ def reuse_recipe(request, monkeypatch):
     monkeypatch.setattr(
         sys.modules[__name__],
         "PLAN",
-        ExecutionPlan(TorusOnchipAlgorithm().id, "v4", recipe),
+        ExecutionPlan(TorusOnchipAlgorithm().id, "v5", recipe),
     )
 
 
@@ -108,7 +108,7 @@ def test_metadata_rejects_unsupported_geometry_shape_and_precision():
 def test_metadata_and_catalog_do_not_import_execution_code():
     code = (
         "import sys; from benchmarks.cuda.linear.manifest import REGISTRY; "
-        "assert REGISTRY.get('research_cuda_torus_profile_product_onchip', revision='v4'); "
+        "assert REGISTRY.get('research_cuda_torus_profile_product_onchip', revision='v5'); "
         "assert 'triton' not in sys.modules"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
@@ -141,6 +141,8 @@ def test_y_dx_all_p_against_independent_embedded_fibres(floor, batch):
         assert (len(layer.atoms.p), c) in saved
     else:
         assert not any(shape == (len(layer.atoms.p), 1, batch) for shape in saved)
+    if RECIPE.save == "vjp":
+        assert (batch, layer.in_features) not in saved
     assert (batch, len(layer.atoms.p)) not in saved
     assert (layer.out_features, len(layer.atoms.p)) not in saved
     assert (layer.in_features, len(layer.atoms.p)) not in saved
@@ -301,3 +303,35 @@ def test_full_axes_thin_periodic_support_and_partial_atoms(n, sigma):
     assert (tp[:, 2:].abs() > 1e-8).all()
     for a, b in ((y, truth), (gx, tx), (gp, tp)):
         _strict_check(a, b, tol=4e-4)
+
+
+@CUDA
+def test_saved_input_vjp_does_not_retain_x_or_inference_caches():
+    from torchcst._backends.cuda.algorithms.linear.torus_profile_product.onchip.executor import (
+        onchip_product,
+    )
+
+    layer = fixture(device="cuda").float()
+    ref = copy.deepcopy(layer)
+    x = torch.randn(3, layer.in_features, device="cuda", requires_grad=True)
+    rx = x.detach().clone().requires_grad_()
+    dy = torch.randn(3, layer.out_features, device="cuda")
+    truth = ref(rx)
+    expected = torch.autograd.grad(truth, (rx, ref.atoms.p), dy)
+    saved = []
+    with torch.autograd.graph.saved_tensors_hooks(
+        lambda t: saved.append(tuple(t.shape)) or t, lambda t: t
+    ):
+        y = onchip_product(
+            x, layer.atoms.p, layer.kernel, layer.chart, OnchipRecipe(save="vjp")
+        )
+    assert tuple(x.shape) not in saved
+    with torch.no_grad():
+        x.add_(1.0)
+    actual = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for a, b in zip(actual, expected, strict=True):
+        _strict_check(a, b, tol=4e-4)
+    with torch.no_grad():
+        inference = onchip_product(x, layer.atoms.p, layer.kernel, layer.chart, RECIPE)
+        reference = ref(x)
+    _strict_check(inference, reference, tol=4e-4)
