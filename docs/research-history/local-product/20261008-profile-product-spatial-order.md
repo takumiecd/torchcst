@@ -141,3 +141,19 @@ corrected cases. Preserve the earlier transport interruption and numerical
 fixture failure; neither is discarded or reported as a pass. This is not a
 performance rerun or budget increase. Complete GPU regression and primary
 matched times/peaks remain pending.
+
+## Completed full CUDA gate
+
+Job l4job-6a5ade859fe64a0ba410cfd7f21ad24f passed all1,069 tests:
+spatial202 (68.50s), split223 (29.91s), matrix596 (110.54s), large48 (26.50s).
+Driver exit0/no timeout,248.19s total within the unchanged1200s budget.
+Source archive SHA256 c8db0a302ee2399831253d9d0a7b40262381f6be63cd52fc70b1221c4cdc4f0e;
+result archive SHA256141265e7d96b550b5309f9a5e054a7c3911ea2c5b8de2e6606e2973441df9bf2.
+Archive/source/result hashes are verified and raw source/logs/receipt are
+preserved in ignored jobs/ and full-gate-proof.json. Runtime/catalog/test bytes
+match current head9b1d328e; its exact-head CPU Actions37705631786 also passed.
+
+Proceed to the predeclared six primary comparison jobs using the same runtime:
+Product/Euclidean Strip1024/2048 rho3+8 and8192 rho3. Keep all six CST routes
+and dense, every oracle/optimizer gate and complete-step allocated/reserved
+peaks. Literal Torus remains a separate distance/composition decision.
