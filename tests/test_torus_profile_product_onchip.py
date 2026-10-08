@@ -29,7 +29,18 @@ from torchcst._backends.registry import Registry
 from torchcst._backends.schema import DeviceInfo, ExecutionPlan, PrecisionPolicy
 
 RECIPE = OnchipRecipe()
-PLAN = ExecutionPlan(TorusOnchipAlgorithm().id, "v3", RECIPE)
+PLAN = ExecutionPlan(TorusOnchipAlgorithm().id, "v4", RECIPE)
+
+
+@pytest.fixture(params=("recompute", "h", "vjp"), autouse=True)
+def reuse_recipe(request, monkeypatch):
+    recipe = OnchipRecipe(save=request.param)
+    monkeypatch.setattr(sys.modules[__name__], "RECIPE", recipe)
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "PLAN",
+        ExecutionPlan(TorusOnchipAlgorithm().id, "v4", recipe),
+    )
 
 
 def fixture(**kwargs):
@@ -83,6 +94,9 @@ def test_metadata_rejects_unsupported_geometry_shape_and_precision():
     gaussian = model().float()
     gc = gaussian.build_context(LinearInputs(torch.randn(3, gaussian.in_features)))
     assert not alg.supports(replace(gc, device=cuda.device), RECIPE).supported
+    for save in (True, 2, "unknown"):
+        with pytest.raises(ValueError):
+            OnchipRecipe(save=save)
     for trig in (True, 2, "unknown"):
         with pytest.raises(ValueError):
             OnchipRecipe(trig=trig)
@@ -94,7 +108,7 @@ def test_metadata_rejects_unsupported_geometry_shape_and_precision():
 def test_metadata_and_catalog_do_not_import_execution_code():
     code = (
         "import sys; from benchmarks.cuda.linear.manifest import REGISTRY; "
-        "assert REGISTRY.get('research_cuda_torus_profile_product_onchip', revision='v3'); "
+        "assert REGISTRY.get('research_cuda_torus_profile_product_onchip', revision='v4'); "
         "assert 'triton' not in sys.modules"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
@@ -121,6 +135,12 @@ def test_y_dx_all_p_against_independent_embedded_fibres(floor, batch):
     gx, gp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
     for actual, expected in ((y, truth), (gx, tx), (gp, tp)):
         _strict_check(actual, expected, tol=4e-4)
+    if RECIPE.save != "recompute":
+        k, c = (4, 11) if RECIPE.save == "vjp" else (1, 6)
+        assert (len(layer.atoms.p), k, batch) in saved
+        assert (len(layer.atoms.p), c) in saved
+    else:
+        assert not any(shape == (len(layer.atoms.p), 1, batch) for shape in saved)
     assert (batch, len(layer.atoms.p)) not in saved
     assert (layer.out_features, len(layer.atoms.p)) not in saved
     assert (layer.in_features, len(layer.atoms.p)) not in saved

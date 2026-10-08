@@ -24,8 +24,11 @@ class OnchipRecipe:
     site_tile: int = 64
     num_warps: int = 4
     trig: str = "bounded-poly"
+    save: str = "recompute"
 
     def __post_init__(self):
+        if type(self.save) is not str or self.save not in ("recompute", "h", "vjp"):
+            raise ValueError("requires recompute, h or vjp reuse")
         if type(self.trig) is not str or self.trig not in (
             "hardware",
             "fp64",
@@ -41,7 +44,7 @@ class OnchipRecipe:
 @dataclass(frozen=True)
 class TorusOnchipAlgorithm(Algorithm[OnchipRecipe]):
     id: str = "research_cuda_torus_profile_product_onchip"
-    revision: str = "v3"
+    revision: str = "v4"
     operation_id: str = "linear"
     semantics_id: str = "kernel-atom-sum-v1"
     recipe_type: type = OnchipRecipe
@@ -50,7 +53,7 @@ class TorusOnchipAlgorithm(Algorithm[OnchipRecipe]):
     def validate_recipe(self, recipe):
         if type(recipe) is not OnchipRecipe:
             raise ValueError("requires validated OnchipRecipe")
-        OnchipRecipe(recipe.site_tile, recipe.num_warps, recipe.trig)
+        OnchipRecipe(recipe.site_tile, recipe.num_warps, recipe.trig, recipe.save)
 
     def supports(self, context, recipe):
         base = TorusChunkAlgorithm().supports(context, TorusChunkRecipe())

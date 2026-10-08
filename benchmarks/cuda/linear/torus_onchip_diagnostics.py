@@ -8,7 +8,7 @@ from pathlib import Path
 import torch
 
 
-def audit(output):
+def audit(output, save_modes=("recompute",), *, require_spill_free=True):
     import triton
 
     from torchcst import CSTLinear
@@ -47,28 +47,37 @@ def audit(output):
         precision = sigma.reciprocal().square().detach()
         major, minor, circle, sites, _ = _queries(layer.chart, p)
         maximum = scalars.scalar("amplitude_max")
-        for b in (32, 64):
-            x = torch.randn(b, n, device="cuda")
-            dy = torch.randn_like(x)
-            y, dx, dp = torch.zeros_like(x), torch.zeros_like(x), torch.empty_like(p)
-            common = {
-                "B": b,
-                "NI": n,
-                "NO": n,
-                "PB": triton.next_power_of_2(b),
-                "T": 64,
-                "FLOOR": 1e-6,
-                "num_warps": 4,
-                "enable_fp_fusion": False,
-            }
-            compiled = forward[(len(p),)](
-                x, p, precision, maximum, major, minor, circle, sites, y, **common
-            )
-            variants = [("forward", compiled)]
-            for gx, gp in ((True, True), (True, False), (False, True)):
-                compiled = backward[(len(p),)](
+        for save in save_modes:
+            for b in (32, 64):
+                x = torch.randn(b, n, device="cuda")
+                dy = torch.randn_like(x)
+                y, dx, dp = (
+                    torch.zeros_like(x),
+                    torch.zeros_like(x),
+                    torch.empty_like(p),
+                )
+                k, c = (4, 11) if save == "vjp" else (1, 6)
+                h_cache = (
+                    x.new_empty((len(p), k, b))
+                    if save != "recompute"
+                    else x.new_empty(0)
+                )
+                info = (
+                    x.new_empty((len(p), c)) if save != "recompute" else x.new_empty(0)
+                )
+                common = {
+                    "B": b,
+                    "SAVE": save,
+                    "NI": n,
+                    "NO": n,
+                    "PB": triton.next_power_of_2(b),
+                    "T": 64,
+                    "FLOOR": 1e-6,
+                    "num_warps": 4,
+                    "enable_fp_fusion": False,
+                }
+                compiled = forward[(len(p),)](
                     x,
-                    dy,
                     p,
                     precision,
                     maximum,
@@ -76,32 +85,55 @@ def audit(output):
                     minor,
                     circle,
                     sites,
-                    dx,
-                    dp,
-                    NEED_X=gx,
-                    NEED_P=gp,
+                    h_cache,
+                    info,
+                    y,
                     **common,
                 )
-                variants.append((f"backward-x{int(gx)}-p{int(gp)}", compiled))
-            torch.cuda.synchronize()
-            for name, compiled in variants:
-                tag = f"{n}-b{b}-{name}"
-                ptx = compiled.asm["ptx"]
-                (output / f"{tag}.ptx").write_text(ptx)
-                report = {
-                    "variant": tag,
-                    "registers": getattr(compiled, "n_regs", None),
-                    "spill_slots": getattr(compiled, "n_spills", None),
-                    "shared_bytes": getattr(compiled.metadata, "shared", None),
-                    "local_loads": "ld.local" in ptx,
-                    "local_stores": "st.local" in ptx,
-                    "ptx_sha256": hashlib.sha256(ptx.encode()).hexdigest(),
-                }
-                reports.append(copy.deepcopy(report))
-                # Preserve all compiled reports before a failing audit exits.
-                (output / "compiler.json").write_text(
-                    json.dumps(reports, indent=2) + "\n"
-                )
-                assert report["spill_slots"] == 0, report
-                assert not report["local_loads"] and not report["local_stores"], report
+                variants = [("forward", compiled)]
+                for gx, gp in ((True, True), (True, False), (False, True)):
+                    compiled = backward[(len(p),)](
+                        x,
+                        dy,
+                        p,
+                        precision,
+                        maximum,
+                        major,
+                        minor,
+                        circle,
+                        sites,
+                        h_cache,
+                        info,
+                        dx,
+                        dp,
+                        NEED_X=gx,
+                        NEED_P=gp,
+                        **common,
+                    )
+                    variants.append((f"backward-x{int(gx)}-p{int(gp)}", compiled))
+                torch.cuda.synchronize()
+                for name, compiled in variants:
+                    tag = f"{save}-{n}-b{b}-{name}"
+                    ptx = compiled.asm["ptx"]
+                    (output / f"{tag}.ptx").write_text(ptx)
+                    report = {
+                        "variant": tag,
+                        "intentional_saved_bytes": (h_cache.numel() + info.numel()) * 4,
+                        "registers": getattr(compiled, "n_regs", None),
+                        "spill_slots": getattr(compiled, "n_spills", None),
+                        "shared_bytes": getattr(compiled.metadata, "shared", None),
+                        "local_loads": "ld.local" in ptx,
+                        "local_stores": "st.local" in ptx,
+                        "ptx_sha256": hashlib.sha256(ptx.encode()).hexdigest(),
+                    }
+                    reports.append(copy.deepcopy(report))
+                    # Preserve all compiled reports before a failing audit exits.
+                    (output / "compiler.json").write_text(
+                        json.dumps(reports, indent=2) + "\n"
+                    )
+                    if require_spill_free:
+                        assert report["spill_slots"] == 0, report
+                        assert (
+                            not report["local_loads"] and not report["local_stores"]
+                        ), report
     return reports

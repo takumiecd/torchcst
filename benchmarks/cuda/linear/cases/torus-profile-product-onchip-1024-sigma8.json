@@ -32,11 +32,11 @@
     }
   },
   "plans": [
-    "h-saved",
-    "h-recompute",
-    "w-gemm",
-    "onchip"
+    "onchip",
+    "cuda-h-saved",
+    "cuda-vjp-saved",
+    "w-gemm"
   ],
-  "baseline": "h-saved",
+  "baseline": "onchip",
   "dense": true
 }
