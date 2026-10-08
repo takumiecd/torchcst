@@ -51,3 +51,38 @@ FP64 Hornerで評価してFP32へ一度丸める。候補recipeはbounded-poly�
 高精度libdeviceの大角度slowpathを呼ばず、H/GのCTA配置を維持する狙い。
 CPUの200001点ではFP64 sin/cos最大差1.71e-13/2.08e-14（GPU保証ではない）。
 完全step時間・高速化はまだ測っていない。前記600秒の第1修正版gateへ提出する。
+
+## 第1修正版: 精度・配置gate PASS（速度未測定）
+
+source 0f71858、job l4job-8a52ac83d0f44704baddd1a382401462。
+26GPU tests/0skip/31.78秒、20step Graph replayとmoments/Parameter比較PASS。
+N1024/2048 B32/64の16compiler variantsは全てspill0、PTX local load/storeなし。
+B32 forward48register/shared8B、backward x+p122register/shared16B。
+B64 forward59register、backward x+p128register。H/G global Tensorなし。
+
+全atom physical FP64 oracle（B32/seed41/TF32なし）、strict二重gate4e-4とelementwise検査：
+
+| N | sigma | Y max | dX max | dP max | 更新 max |
+| --- | --- | --- | --- | --- | --- |
+| 1024 | 3 | 1.1770205e-05 | 4.0190149e-05 | 1.1543707e-05 | 0.0 |
+| 1024 | 8 | 1.8090612e-05 | 8.4947537e-05 | 2.5279361e-06 | 0.0 |
+| 2048 | 3 | 2.8975575e-05 | 7.2819956e-05 | 2.9736204e-05 | 0.0 |
+| 2048 | 8 | 4.2766455e-05 | 0.00021012335 | 5.3932007e-06 | 0.0 |
+
+全relative L2も4e-4以下、Torch H対照もPASS。今回の最悪絶対差は
+N2048 sigma8 dXの0.000210123（gate0.0004）。floor・支持・可変width・chart定義を変更していない。
+最大2修正版のうち第1版で通過し、第2版は未使用。driver123.122秒、診断と合計151.448秒。
+
+source archive2ace709c54437f5b98e9ac235d25ec946d6a7c3e0d155fa8146e2ed0d59a54f5、
+result archived36dde5beb5e25ce2736bece31b808cb60fa7cf2903c0b9993d6f732f434e5cc。
+全manifest/source/result SHA256を照合してraw logs/tensors/PTXを保存した。
+
+CPU checkpoint1327pass/2216skip、targeted metadata2pass/24GPUskip、Ruff、
+plan/case宣言、wheel/sdist buildはPASS。GPU skipsを実機検証と数えない。
+
+保全先: research worktreeの `output/torus-onchip-numerics/`。
+`trig-diagnosis/` と `bounded-poly-gate/` が各pool job全体のコピー。
+各driver、CPU/build logs、source bundleも同じdirectoryにある。
+本段階では精度・on-chip配置の成立まで。完全step時間、allocated/reserved peak、
+独立逆順は未測定であり、速度改善/本番採用を主張しない。draft PR #78に研究sourceを
+保持し、mainのruntimeは変更しない。次は同じvalidated版でtime/peakを比較する。
