@@ -13,8 +13,8 @@ class SphereWeightRecipe(SphereSupportRecipe):
 
     def __post_init__(self):
         super().__post_init__()
-        if type(self.patch_tile) is not int or self.patch_tile not in (16, 32, 64):
-            raise ValueError("requires patch tile16,32 or64")
+        if type(self.patch_tile) is not int or self.patch_tile not in (32, 64):
+            raise ValueError("requires validated patch tile32 or64")
 
 
 @dataclass(frozen=True)

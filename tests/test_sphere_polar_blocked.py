@@ -476,11 +476,11 @@ def test_sphere_weight_patch_recipe_validation():
     registry = Registry()
     a = SphereWeightAlgorithm()
     registry.register(a)
-    for tile in (16, 32, 64):
+    for tile in (32, 64):
         recipe = SphereWeightRecipe(64, tile)
         plan = ExecutionPlan(a.id, a.revision, recipe)
         assert registry.loads_plan(registry.dumps_plan(plan)) == plan
-    for tile in (True, 1, 128):
+    for tile in (True, 1, 16, 128):
         with pytest.raises(ValueError):
             SphereWeightRecipe(64, tile)
     with pytest.raises(TypeError):

@@ -38,7 +38,7 @@ subtracting nearly equal radius-squared dot products.
 Each forward snapshots source parameters, geometry, normalization and Polar
 quantities for its backward. Chart gradients and higher derivatives are out
 of scope. Metadata restricts execution to CUDA FP32 IEEE, two fixed explicit
-intrinsic S² charts, 1..2048 sites per chart and batch 1..64. Atomic support
+intrinsic S² charts, 1..2048 sites per chart and batch 1..64, revision1 Triweight and the existing1e-6 profile floor. Atomic support
 and weight plans reject deterministic mode. Algorithms are registered only
 in the benchmark registry; public selection is unchanged.
 
@@ -96,8 +96,8 @@ norm floors, exact capacity overflow, retained forwards, gradient branches,
 live widths, and separate linear forward/backward Graph replay. Twenty-step
 public optimizer comparisons use2e-6 absolute parameter and4e-4 gradient/
 moment gates with exact step counters. The weight/support primary GPU suite
-passed102 tests; later boundary tests and independent runner replication
-are tracked in the final section below.
+passed102 tests; the final126-test GPU suite, asymmetric widths, near-north/antipodal
+centers, singleton/empty/floor profiles and batch64 also passed.
 
 Failed jobs are retained:
 
@@ -111,6 +111,10 @@ Failed jobs are retained:
   preserve the original19-atom case with the unchanged FP64 gate, bitwise dP,
   and a separate collision-free bitwise dX/dP snapshot check. No numerical
   oracle or optimizer tolerance was relaxed.
+- `983d...`: a custom2e-6 floor fixture was rejected by the existing Torch
+  backend. Restrict optimized supports to the existing revision1/1e-6
+  contract, keep asymmetric-width/antipodal tests within that contract and
+  add metadata rejection coverage. All numerical gates remain unchanged.
 - `6c31...`: diagnostic inspection read a wrapper's saved tensor tuple instead
   of the underlying custom autograd node. Traverse the graph explicitly.
 
@@ -130,5 +134,40 @@ no DB observation or automatic selector promotion is claimed.
 
 The2048 case uses bounded4096 as its executable baseline because the
 original full-factor reference OOMs on L4; the original failure was not erased.
-Final independent results, source validation and PR disposition will be
-added after the currently queued verification batch completes.
+The final implementation checkpoint is `c14676f` (weight revision v2,
+explicit validated patch tile32/64). Revision v1 used tile64 and spilled30 registers
+in its weight VJP. V2 tile32 uses128 registers, zero spills and512 shared
+bytes; assembly uses58 registers and zero spills. The inspected linear-only
+Graph took4.985ms with117.582MiB allocated and226MiB reserved, versus
+v1 tile64's6.742ms. This diagnostic excludes loss and optimizer.
+
+An independent reverse-order existing-runner batch passed all four cases:
+1024 width3/8,2048 width3/8. Every primary before/after full-shape FP64 gate,
+20-update regression, retained forward and live-width linear Graph passed.
+For width3 the v2 W32 route measured11.600ms /88.486MiB allocated at1024,
+and30.562ms /308.008MiB at2048. W64 controls measured13.669ms and38.518ms.
+Support64 H measured15.326ms/86.886MiB and50.505ms/302.008MiB. The original
+1024 reference measured169.076ms, with the same4120.127MiB allocation.
+
+For width8 bounded4096 measured19.460ms/131.933MiB at1024 and
+102.716ms/283.854MiB at2048, versus bounded16384's108.700ms/863.395MiB.
+The executable2048 bounded4096 baseline therefore gives a stronger memory
+comparison than the initial16384 experiment. Initial Parameter/X/target
+hashes match across every compared route and dense shares X/target hashes.
+The separate CPU suite passed1349 tests with2378 GPU/DB skips; Ruff and
+wheel/sdist builds passed. GitHub CPU checks are tracked on PR#80.
+
+A second independent v2 W32/W64 run reverses their order. W32 measured
+11.808ms at1024 and30.006ms at2048, with exactly the same allocated/reserved
+peaks as the first run. W64 controls measured13.276ms and36.924ms. This
+confirms the tile32 improvement across two independent GPU jobs, while
+preserving the same initialization and full-shape oracle gates.
+
+Supported patch tiles are limited to the GPU-validated32 and64 choices;
+unused tile16 metadata is rejected. This final restriction changes no
+measured execution code or plan. Earlier13-job source/result archives are
+all verified and preserved, including failures and negative wide-W results.
+The linear-Graph diagnostic retrieval was successful, but its remote file
+cleanup request timed out; the pool stopped that owned runtime and the next
+batch allocated a new session. Final runtime stop and PR integration status
+are recorded after merge in the evidence manifest.
