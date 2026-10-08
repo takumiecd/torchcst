@@ -97,3 +97,25 @@ standalone restore HEAD35acc32eを照合し、git fsck成功。
 raw evidenceと前段10jobsの381filesを抽出し、全size/SHA256を照合した。
 manifestは同じrecovery directoryの`reference-final-manifest.json`。
 旧branch/worktree/raw copiesは維持し、merge済み#74/#75のremote branchのみ整理する。
+
+## 第2 GPU gate: frontend変更だけではlocal memoryは消えなかった
+
+source `1e3615f57273cd4644fe7bbde173c2a6d04f1e60`、
+job `l4job-db3add834dca43c2bad8d18f12cf1291`。
+26 GPU tests passed/0skip、32.56sだが、同じforwardにregister48/shared8bytes/spill8。
+Triton3.6ではこのtl.sin/tl.cosもPTXのlibdevice slow pathへ下りていた。
+metadataから8spillを推測するだけでなくPTXのlocal load/storeを確認し、gate FAIL。
+source archive `26807f08f37d735f97f3820fa1a6c9d5d50731174be3f134eda2219e7f26c079`、
+result archiveはverified receipt/raw evidenceへ保存。driver42.916s消費、全slot停止。
+
+第3版はbounded sine/cosineを明示的なPTX sin.approx.f32/cos.approx.f32にする。
+range reduction、profile、正規化、VJP、launch shape、既存error gateは変えない。
+これはFP32三角関数の数値近似を変えるため、同じoracle/20step gateで再検証する。
+[NVIDIA PTX sin/cos仕様](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#floating-point-instructions-sin)
+の±2piの絶対誤差保証範囲内に引数を置く。離散site/支持/演算を近似して間引かない。
+このcampaignの最後のsource版。失敗時は予算・gateを変更せず記録する。
+
+merge済み#74/#75のremote branch削除は保全後に完了。
+元の3stashesは変更せず、reflog上の旧stashまでarchive refsと
+`stash-history.bundle`へ保全し、復旧cloneで全3commit/tree存在とfsckを確認した。
+追加bundle SHA256 `c69418faca4463dbd991fbae2dfe1ad55c01cc2f08ded7969c6ce91678f90763`。

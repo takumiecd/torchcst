@@ -11,6 +11,31 @@ from triton.language.extra.cuda import libdevice
 
 
 @tr.jit
+def _sin_bounded(x):
+    # FP32 hardware sine: all callers supply valid angles within +/- pi.
+    return tl.inline_asm_elementwise(
+        "sin.approx.f32 $0, $1;",
+        constraints="=f,f",
+        args=[x],
+        dtype=tl.float32,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@tr.jit
+def _cos_bounded(x):
+    return tl.inline_asm_elementwise(
+        "cos.approx.f32 $0, $1;",
+        constraints="=f,f",
+        args=[x],
+        dtype=tl.float32,
+        is_pure=True,
+        pack=1,
+    )
+
+
+@tr.jit
 def _atom(P, Prec, Maximum, Major, Minor):
     a = tl.program_id(0)
     z0, z1 = tl.load(P + 5 * a), tl.load(P + 5 * a + 1)
@@ -23,8 +48,8 @@ def _atom(P, Prec, Maximum, Major, Minor):
     # Valid intrinsic section coordinates have rho <= pi. Bounded sin/cos
     # avoid libdevice's unneeded huge-angle slow path and its local array.
     safe = tl.where(rho > 0, rho, 1.0)
-    sinc = tl.where(rho > 0, tl.div_rn(tl.sin(rho), safe), 1.0)
-    q0, q1, q2 = tl.cos(rho), sinc * w1, sinc * w2
+    sinc = tl.where(rho > 0, tl.div_rn(_sin_bounded(rho), safe), 1.0)
+    q0, q1, q2 = _cos_bounded(rho), sinc * w1, sinc * w2
     r2 = z0 * z0 + z1 * z1
     zr = libdevice.sqrt(tl.maximum(r2, 1.1754943508222875e-38))
     maximum = tl.load(Maximum)
@@ -59,12 +84,12 @@ def _circle(Circle, i, NO: tl.constexpr, arc, major, minor, q0, inv):
     delta = (delta - 3.141592653589793).to(tl.float32)
     radius = major + minor * q0
     # Delta was reduced in FP64 to [-pi, pi); both sine arguments are bounded.
-    sh = tl.sin(delta / 2)
+    sh = _sin_bounded(delta / 2)
     squared = 4 * radius * radius * sh * sh
     gap = tl.maximum(1 - squared * inv, 0)
     raw = tl.where(i < NO, gap * gap * gap, 0)
     deriv = tl.where(i < NO, -3 * gap * gap * inv, 0)
-    da = deriv * (-2 * radius * radius * tl.sin(delta) / major)
+    da = deriv * (-2 * radius * radius * _sin_bounded(delta) / major)
     dq0 = deriv * (8 * radius * minor * sh * sh)
     return raw, da, dq0
 
