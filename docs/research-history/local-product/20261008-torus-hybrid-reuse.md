@@ -147,3 +147,79 @@ N2048最大1264秒を補修版の測定へ使用する。実消費が不明な�
 補修測定も失敗した場合、このstageでさらに補修jobを増やさない。
 
 Metadata-repair performance_driver.py SHA256 `6f6576f6399dd14fa23c26ecd23db870bdb9a1f9fa2c687010ad6185400e16d5`.
+
+## Performance disposition: N1024 confirmed, N2048 incomplete
+
+`cuda-vjp-saved` passed the same improvement gate in primary and independent inverse jobs for both sigma3/8. Complete Graph step reduction is 7.90–7.92% relative to recompute; all full-atom numerical checks and live width updates passed. There are two independent jobs per sigma, each with 21 timing samples. H-only save improved by 0.28–0.61% in observed cases and raised allocated memory; it does not qualify for adoption. It remains a research control.
+
+The VJP-saved route is a validated research option, not a new public default. On N1024 it uses 34.737 MiB peak allocated versus 12.194 MiB for recompute. Torch W+GEMM is still about 2.11–2.17 times faster than VJP-saved but uses 131.120 MiB allocated. Dense remains much faster. The intermediate-reuse gain does not establish large-linear competitiveness.
+
+Uninstrumented complete-step Graph time is the decision metric. Phase medians come from a separate instrumented Graph and are not summed into that metric. Allocated and reserved peaks include capture/replay; total GPU process usage is unmeasured. Values below use ms and binary MiB.
+
+| order | N | sigma | plan | Graph ms | eager ms | allocated MiB | reserved MiB |
+| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: |
+| primary | 1024 | 3 | onchip | 292.652815 | 295.395672 | 12.194 | 24.000 |
+| primary | 1024 | 3 | cuda-h-saved | 290.953455 | 293.667702 | 14.137 | 64.000 |
+| primary | 1024 | 3 | cuda-vjp-saved | 269.533619 | 272.236398 | 34.737 | 116.000 |
+| primary | 1024 | 3 | w-gemm | 124.050463 | 231.079909 | 131.120 | 400.000 |
+| primary | 1024 | 3 | dense | 0.083014 | 0.657052 | 49.002 | 106.000 |
+| primary | 1024 | 8 | onchip | 292.746232 | 295.404735 | 12.194 | 24.000 |
+| primary | 1024 | 8 | cuda-h-saved | 290.968041 | 293.666771 | 14.137 | 64.000 |
+| primary | 1024 | 8 | cuda-vjp-saved | 269.567167 | 272.252360 | 34.737 | 116.000 |
+| primary | 1024 | 8 | w-gemm | 126.570456 | 232.588155 | 131.120 | 400.000 |
+| primary | 1024 | 8 | dense | 0.082817 | 0.655797 | 49.002 | 106.000 |
+| inverse | 1024 | 3 | w-gemm | 124.747780 | 231.173044 | 131.120 | 400.000 |
+| inverse | 1024 | 3 | cuda-vjp-saved | 269.956395 | 272.643027 | 34.737 | 116.000 |
+| inverse | 1024 | 3 | cuda-h-saved | 291.416330 | 294.112952 | 14.137 | 64.000 |
+| inverse | 1024 | 3 | onchip | 293.125768 | 295.845719 | 12.194 | 24.000 |
+| inverse | 1024 | 3 | dense | 0.082926 | 0.658968 | 49.002 | 106.000 |
+| inverse | 1024 | 8 | w-gemm | 127.695667 | 233.980986 | 131.120 | 400.000 |
+| inverse | 1024 | 8 | cuda-vjp-saved | 269.989919 | 272.760522 | 34.737 | 116.000 |
+| inverse | 1024 | 8 | cuda-h-saved | 291.431772 | 294.150487 | 14.137 | 64.000 |
+| inverse | 1024 | 8 | onchip | 293.149787 | 295.382238 | 12.194 | 24.000 |
+| inverse | 1024 | 8 | dense | 0.082564 | 0.673425 | 49.002 | 106.000 |
+
+N1024 primary job `l4job-aebb8a3edf7d48259bbe6eb50923b1bb` (279.348 measured driver seconds), inverse `l4job-930479e42193468abd3b5c85e6c92b15` (270.134). Both use source commit `8dd36f8e2aef7690cacb02678998ff77d98a3d5e`. All source-file hashes, runtime/physical Case/Plan, initial p/X/target hashes and actual worker orders were verified across jobs. Archive hashes can differ from gzip/container metadata even when every file hash matches.
+
+Primary source/archive SHA256: `9e387718b733442e7b213d9c51d57415aab1dc37163c5f39eda2bc9eeef9a05f` / `9be8eeb548238e55706d6748ea2f8523f05ec16bd70ae0f17478e6af88a1a3b7`.
+
+Inverse source/archive SHA256: `a1d81cdb1312e7ac23c29fe8b8cb4e9a4488e80875da0e99508fa2311aeca6b1` / `7b7bda2b64d2b0301d66138f582ea997f661985830eded6280fda87fb5fb1423`.
+
+N1024 sigma3 separate phase diagnostics: recompute forward-loss 111.355ms / backward 181.077ms; VJP-saved 125.498ms / 143.804ms. Forward work increases while backward saves the input-VJP preparation pass. H-only does not remove that pass. This supports selective reuse but does not identify the remaining hardware bottleneck by profiling.
+
+### N2048 partial evidence
+
+The repaired N2048 primary job `l4job-255301d004834f17b1b2c9dd3a894e0e` reached the declared 650s per-case subprocess limit during sigma3. The outer driver exited after 652.490s with TimeoutExpired. Four full-atom correctness workers and three CUDA measure workers completed; W+GEMM, dense and sigma8 performance did not. The aggregate raw JSON remains RUNNING with seven records and must not be submitted as a complete PASS/FAIL artifact. No inverse job is eligible and no N2048 winner is declared. The stage is not extended or repeated.
+
+| N | sigma | completed worker | Graph ms | allocated MiB | reserved MiB |
+| ---: | ---: | --- | ---: | ---: | ---: |
+| 2048 | 3 | onchip | 2323.770522 | 48.768 | 148.000 |
+| 2048 | 3 | cuda-h-saved | 2317.163663 | 56.656 | 160.000 |
+| 2048 | 3 | cuda-vjp-saved | 2147.341153 | 137.056 | 316.000 |
+
+These are descriptive completed workers inside an incomplete cohort. VJP-saved shows 7.59% reduction for this sigma3 run only; it is not an independently confirmed N2048 improvement.
+
+N2048 source/archive SHA256: `8e37f5dc9390e8152270d4b7b409d92c53cfeda0e119975b90ae089d91612da4` / `4a6cffdcb2d21feabe51da8e27118d6bbb72e080805601441223c481be91aab6`.
+
+Raw copies and per-file preservation manifests are in ignored `output/torus-hybrid-reuse/{primary-1024,inverse-1024,primary-2048-incomplete}/`. The one-L4 supervisor drained the queue and exited; all slots are stopped. Failed metadata jobs are retained separately. The next structural optimization must be a new predeclared study; this stage does not repurpose unused inverse budget for another candidate.
+
+## Database provenance and recovery
+
+Ten completed artifacts were stored through the existing PostgreSQL API: four all-atom correctness-only PASS artifacts, four complete N1024 performance PASS artifacts (primary/inverse sigma3/8), and two metadata-failure FAIL artifacts. Exported bytes/SHA256 match every original, and same-provenance reimports inserted no extra run/projection. Provenance contains the owned pool job ID and verified source/result archive hashes; credentials stayed on the host. The N2048 RUNNING artifact and the unrecovered transport job were not imported.
+
+| artifact | job | status | database run ID |
+| --- | --- | --- | --- |
+| full-1024-sigma3.json | l4job-0020d65d07154b26a34a94fbf43c9f50 | PASS | `70a26356c92976e448e7faa3e53312829fdeda733dd8b1fadbcf6272abaab247` |
+| full-1024-sigma8.json | l4job-0020d65d07154b26a34a94fbf43c9f50 | PASS | `7db4d5c18c8eb8c0d8c0c7075c044391f231321c26a3ac782f8a5cda06c4793c` |
+| full-2048-sigma3.json | l4job-0020d65d07154b26a34a94fbf43c9f50 | PASS | `08cdb175f024fe2fcdef93c5f38974e30bb829206165607d83e500036c356952` |
+| full-2048-sigma8.json | l4job-0020d65d07154b26a34a94fbf43c9f50 | PASS | `2e19dfaee5e0d801fc44673566e0b7ad5b5c919f826ddfd57854a7d67a2734d4` |
+| full-1024-sigma3.json | l4job-2db62713aa16484eb1e717bba9598e8b | FAIL | `224975e1db0b57c9ec63a9d3456e3e61402d7faed7781783dfb984e05d611254` |
+| full-1024-sigma3.json | l4job-930479e42193468abd3b5c85e6c92b15 | PASS | `8cf4f08725ce96fba2347af80e5f4743f6bea22c7f6344478ca5c54a0e66c188` |
+| full-1024-sigma8.json | l4job-930479e42193468abd3b5c85e6c92b15 | PASS | `a8f66ef3f68b1e9c430427fbcdd505cf8a139beeb8926781a5709b7a6a58ec96` |
+| full-1024-sigma3.json | l4job-aebb8a3edf7d48259bbe6eb50923b1bb | PASS | `4f0301db5c8a6f771182acdf7607d8064eed2dd7b87c94bbcfdd1b96e8f817ef` |
+| full-1024-sigma8.json | l4job-aebb8a3edf7d48259bbe6eb50923b1bb | PASS | `4ddcb12d382239c2cba1aeb855501268acfeffde97f5f853cd8d9d59519c91a6` |
+| full-2048-sigma3.json | l4job-f6160393b0f84b3f8e4d4d37416d607b | FAIL | `0546f58d2ed1179cf94361be9f8447fdea1350fca0e70924d7d48dc873fe64dc` |
+
+Final accounted driver time: 2651.471s of the 7800s stage cap, including the full 900s reservation for the unconfirmed first correctness job. Pool driver timestamps include imports/setup; summary timers start later and therefore differ slightly. No N2048 inverse or further repair run was launched.
+
+Database export copies, insertion/reimport receipts and logs are in ignored `output/torus-hybrid-reuse/database/`. Source/history bundles and evidence manifests are retained locally; the research worktree is kept to preserve needed ignored evidence. Remote branch deletion is allowed only after PR merge.
