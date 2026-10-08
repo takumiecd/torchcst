@@ -48,7 +48,11 @@ def _queries(chart, p):
     cross = torch.stack(torch.meshgrid(*section, indexing="ij"), dim=-1).reshape(-1, 2)
     q = torch.cat((minor.expand(len(cross), 1), cross), dim=-1)
     q = q / torch.linalg.vector_norm(q, dim=-1, keepdim=True)
-    return major, minor, circle / major, q, axis
+    # A thin support on a large circle cannot subtract two rounded FP32
+    # quotients reliably, especially across the periodic seam. Only the
+    # angular difference uses FP64; profile values and contractions stay in
+    # the declared dtype. Snapshot the stored geometry, not Python spec values.
+    return major, minor, circle.double() / major.double(), q, axis
 
 
 def _shape(kind, squared, precision):
@@ -64,10 +68,12 @@ def _factors(p, precision, amplitude_max, queries, options):
     angle = torch.linalg.vector_norm(p[:, 3:], dim=-1, keepdim=True) / minor
     q = torch.cat((angle.cos(), torch.sinc(angle / torch.pi) * p[:, 3:] / minor), -1)
     radius = major + minor * q[:, 0]
+    delta = circle[:, None] - p[None, :, 2].double() / major.double()
+    delta = ((delta + torch.pi).remainder(2 * torch.pi) - torch.pi).to(p.dtype)
     dc = (
         4
         * radius[None, :].square()
-        * (((circle[:, None] - p[None, :, 2] / major) / 2).sin().square())
+        * ((delta / 2).sin().square())
     )
     ds = minor.square() * (sites[:, None, :] - q[None, :, :]).square().sum(-1)
     u, v = (_shape(kind, d, precision) for kind, d in zip(kinds, (dc, ds), strict=True))

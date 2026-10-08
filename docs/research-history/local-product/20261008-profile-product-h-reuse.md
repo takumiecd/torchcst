@@ -223,3 +223,39 @@ driver time from both the300s pytest budget and850s sigma3 runner budget too
 (272/822s and273/823s). Sigma8 keeps its unused850s budget. Inverse confirmation
 budgets remain unused. This is a fixture correction before timing; no timing
 was discarded, selected or retried and no numerical tolerance is relaxed.
+
+## Large-circle FP32 numerical failure and correction
+
+Corrected-origin source0369c08b passed198 GPU tests, zero skips, in both jobs,
+and passed the full-atom nonzero-centre gate. It then failed the unchanged
+sigma3 Y comparison before timing:3/32768 mismatches at N1024 (maximum reported
+absolute error9.1224e-4),161/65536 at N2048 (1.7046e-3). Sigma8 was not attempted.
+Jobs l4job-0f7f52b4841844b18841ba4bd225e72a and
+l4job-5d4b439591c640ffa4066c19d4d7bc3a consumed30/28 rounded driver seconds.
+Cumulative prior consumption is58/55s. All9 manifest entries, source archive
+and receipt/result archive hashes were verified and saved in ignored
+failed-numerics-{1024,2048}; neither attempt produced timing evidence.
+
+N1024 source/result hashes:
+840bc9cf0b935a90ab20689d8e7c326731ed209ddf74f01aa695d214d805e2bd /
+b4662cd26adfdfab6afdad1e4978e332909dd1ec67082b1cc738d8f5a5bc0683.
+N2048:2ea31ec298a93c9e37c5caa64fdad85f6a266c06daff3a0c5beec8fe987d38a9 /
+5c416d9aee48bc3f0947fe76106f100c8e72b90f0daa0ca45243510ca6b21359.
+
+A2048 CPU factor comparison isolates the dominant error to subtraction of
+rounded FP32 angular quotients, magnified by a large circle and thin support.
+The section difference is already a stable physical chord difference. Snapshot
+circle queries and form the angular difference in FP64, reduce to[-pi,pi], then
+cast to the declared dtype before sine/profile evaluation. The measured
+scaled circle factor maximum discrepancy against FP64 decreases from
+1.3450e-5/2.7102e-5 to2.0623e-7/2.1344e-7 at N1024/2048. Add FP32 values and
+centre-gradient regressions at the periodic seam and large angles. Profiles,
+norms, contractions, retained H/W, parameters, updates and tolerances stay FP32
+in the performance cohort; only angular difference preprocessing uses FP64.
+This bounded reference implementation makes no claim of fast FP64 geometry or
+public dispatch adoption. All three routes use this same numerical law.
+
+Before a corrected primary submission, retain the unchanged gates and subtract
+all prior consumed time:2042/2045s driver,242/245s pytest and792/795s sigma3
+runner; sigma8 remains850s. No measurement was selected or rerun and no gate,
+cohort, atom count, norm floor or optimizer contract is relaxed.

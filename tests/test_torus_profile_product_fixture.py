@@ -73,6 +73,45 @@ def test_seeded_circle_centres_have_multiple_samples_at_sigma_three(n):
 
 
 @pytest.mark.parametrize("n", [1024, 2048])
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_fp32_thin_circle_profiles_at_large_angles_and_periodic_seam(n, device):
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("actual CUDA required")
+    from torchcst._backends.torch.algorithms.linear.torus_profile_product.executor import (
+        _factors,
+        _queries,
+    )
+
+    c = replace(case(n).case, atoms=4)
+    p = fixture.initialize(c).to(device)
+    period = n // 64 * 68
+    p[:, 2] = p.new_tensor([-0.63, -period / 2 + 0.37, period / 2 - 0.63, 0.37])
+    p.requires_grad_()
+    op = fixture.fixture_operator(c)
+    layer = CSTLinear(chart=op.charts[0], atoms=p, kernel=op.kernel, device=device)
+    amp, sigma = fixture._polar(layer.kernel, p)
+    queries = _queries(layer.chart, p)
+    _, u = _factors(
+        p,
+        sigma.reciprocal().square(),
+        layer.kernel.amplitude_max,
+        queries[:-1],
+        (("triweight", "triweight"), 1e-6, queries[-1]),
+    )
+    actual = u / u.norm(dim=0)
+    tp = p.detach().double().requires_grad_()
+    ru, _, _ = fixture.oracle_factors(
+        copy.deepcopy(layer.kernel).double(), tp, copy.deepcopy(layer.chart).double()
+    )
+    truth = ru / ru.norm(dim=0) * amp.detach().double().sign()[None]
+    torch.testing.assert_close(actual.double(), truth, rtol=2e-6, atol=2e-6)
+    weights = torch.linspace(-1, 1, n, device=device)[:, None]
+    ga = torch.autograd.grad((actual * weights).sum(), p)[0]
+    gt = torch.autograd.grad((truth * weights.double()).sum(), tp)[0]
+    torch.testing.assert_close(ga.double(), gt, rtol=2e-5, atol=2e-5)
+
+
+@pytest.mark.parametrize("n", [1024, 2048])
 @pytest.mark.parametrize("route", ["h-saved", "h-recompute", "w-gemm"])
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_large_full_axes_and_every_gradient_against_embedded_fibres(n, route, device):
