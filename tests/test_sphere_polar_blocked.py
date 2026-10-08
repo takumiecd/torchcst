@@ -121,6 +121,20 @@ def test_sphere_support_rejects_trainable_charts_and_non_ieee():
         replace(ctx, precision=PrecisionPolicy(allow_tf32=True)), recipe
     ).supported
     assert not a.supports(replace(ctx, dtype=torch.float64), recipe).supported
+    from torchcst.kernels.normalization import NormalizationSpec
+
+    bad_profile = replace(
+        ctx.operator.kernel.profiles[0],
+        normalization=NormalizationSpec(
+            kind="discrete_l2", domain="chart_sites", floor=2e-6
+        ),
+    )
+    bad_kernel = replace(
+        ctx.operator.kernel, profiles=(bad_profile, ctx.operator.kernel.profiles[1])
+    )
+    assert not a.supports(
+        replace(ctx, operator=replace(ctx.operator, kernel=bad_kernel)), recipe
+    ).supported
     op = replace(
         ctx.operator,
         layout=replace(
@@ -451,3 +465,23 @@ def test_sphere_batch64_full_oracle(route):
     for aa, bb in zip(actual, truth):
         e = error(aa, bb)
         assert e["max_abs"] <= 4e-4 and e["relative_l2"] <= 4e-4, e
+
+
+def test_sphere_weight_patch_recipe_validation():
+    from torchcst._backends.cuda.algorithms.linear.sphere_polar.weight_algorithm import (
+        SphereWeightAlgorithm,
+        SphereWeightRecipe,
+    )
+
+    registry = Registry()
+    a = SphereWeightAlgorithm()
+    registry.register(a)
+    for tile in (16, 32, 64):
+        recipe = SphereWeightRecipe(64, tile)
+        plan = ExecutionPlan(a.id, a.revision, recipe)
+        assert registry.loads_plan(registry.dumps_plan(plan)) == plan
+    for tile in (True, 1, 128):
+        with pytest.raises(ValueError):
+            SphereWeightRecipe(64, tile)
+    with pytest.raises(TypeError):
+        a.validate_recipe(SphereRecipe())
