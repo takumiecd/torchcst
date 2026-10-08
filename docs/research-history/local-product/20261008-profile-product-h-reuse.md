@@ -133,3 +133,55 @@ or equal support counts. Shared sigma bounds1..16, B32, seed41, A=floor(N*N/20),
 Triweight/Triweight, global floor1e-6 and AdamW lr1e-4/decay0.01 stay fixed.
 Large oracle and finite performance budgets must be recorded before submitting
 that later stage; correctness of this small gate does not prove large speed.
+
+## Verified first gate
+
+Measured source ee6bfbcb, job l4job-c6063ff6924141ccbcbbb096423e7d3c:
+174 passed, zero skipped,15.39s, driver exit0/no timeout. NVIDIA L4,
+Torch2.11.0+cu130/CUDA13.0/Triton3.6.0. Source archive SHA256
+f31415ab7194f2a3fbb0d33ded01f3d16632666645b05113ce64fd4a2288d548;
+result archive2dac7bb49f338a8f82df46805cbcc3c528acee4089997663de9419cd37f9b879.
+All five result manifest entries and the receipt/archive hash were verified.
+CPU complete suite at this checkpoint:1302 passed/2184 skipped/18 warnings.
+Raw gate evidence is in ignored torus-profile-product-h-reuse-20261008/gate-l4
+and the pool job directory. The supervisor finished and its owned slot stopped.
+This is correctness evidence, not a measured speed or memory improvement.
+
+## Large comparison preparation and predeclared budget
+
+Use the existing Linear runner, new polar_torus_profile_product_strip fixture,
+the four torus-profile-product-square-strip-{1024,2048}-sigma{3,8} cases and
+plans-torus-profile-product-chunked.json. All three controls have atom_chunk1024:
+h-saved, h-recompute, w-gemm. No contraction/chunk tuning based on primary times.
+Select --polar-update torus explicitly. The benchmark update uses the verified
+research update Plan with the common binding/Dispatcher; the public optimizer
+wrapper remains eager. Adapter/protocol revision8 distinguishes intrinsic
+Torus retraction and physical-fibre oracle from Euclidean revision7. Reject
+crossed optimizer policies, oracle scopes and update identifiers. Generation
+reconstructs five parameters and the actual Torus chart.
+
+The FP64 oracle enumerates every circle/section site for every performance atom
+in bounded blocks. It constructs actual embedded fibre queries and their chord
+distances independently of the runtime distance expressions. Full-matrix norm
+versus factored norm is checked separately. Y/dX/all source VJP checks retain
+the 4e-4 max and relative-L2 gate and the 2e-6 optimizer-update gate. The
+performance fixture additionally requires nonzero centre derivatives. Record
+all source/result hashes, initial input/parameter hashes and full worker JSONs.
+
+Predeclare two primary L4 jobs, one per N, each with a2100s driver budget:
+300s correctness pytest budget and850s runner subprocess budget per sigma case,
+plus setup. Each job reruns the complete Torus/chunk/fixture gate before timing.
+Each case uses B32, warmup5, rounds21, seed41 and the unchanged optimizer stated
+above. Record isolated-process eager and uninstrumented Graph complete-step
+times and capture/replay allocated/reserved peaks; process usage is unmeasured.
+--phase-diagnostics captures a separate external-event Graph after the primary
+measurements and cannot replace those times or memory peaks.
+
+Reserve at most two independent reverse-order confirmation jobs with the same
+2100/300/850s budgets if a primary route has at least3 percent time improvement
+against a named same-operator control or lower allocated peak without a time
+regression. Reverse all three CST controls; dense remains last in the existing
+runner. Confirm all four N/sigma cases and matching fixture/source/update
+conditions, not only the favorable rows. Preserve all negative and partial
+results. Numerical tolerances and these budgets are not increased in response
+to an unfavorable timing or failure. No public dispatcher adoption is implied.

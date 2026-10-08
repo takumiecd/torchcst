@@ -56,6 +56,7 @@ class PlanLinear(nn.Module):
         self.update_binding = None
         if plan.algorithm_id in (
             "research_profile_product",
+            "research_torch_torus_profile_product_chunked",
             "research_strip_profile_product",
             "research_profile_product_global",
             "research_profile_product_matrix",
@@ -133,7 +134,14 @@ class PlanLinear(nn.Module):
 
     def forward(self, x):
         flat = x.reshape(-1, self.operator.in_features).contiguous()
-        y = Dispatcher(registry=REGISTRY).run(self, LinearInputs(flat), plan=self.plan)
+        binding = (
+            self.product_site
+            if self.plan.algorithm_id == "research_torch_torus_profile_product_chunked"
+            else self
+        )
+        y = Dispatcher(registry=REGISTRY).run(
+            binding, LinearInputs(flat), plan=self.plan
+        )
         return y.reshape(*x.shape[:-1], self.operator.out_features)
 
 
@@ -154,6 +162,7 @@ def _metadata(args, run):
         Path(__file__).with_name("profile_product.py"),
         Path(__file__).with_name("strip_profile_product.py"),
         Path(__file__).with_name("global_profile_product.py"),
+        Path(__file__).with_name("torus_profile_product.py"),
         Path(__file__).parent.parent / "polar_update.py",
     ]
     return {
@@ -193,6 +202,10 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "polar_torus_profile_product_strip":
+        from .torus_profile_product import correctness as torus_correctness
+
+        return torus_correctness(args, run, PlanLinear)
     if run.case.fixture in (
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
@@ -259,12 +272,14 @@ def measure(args, run):
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
     )
+    torus = case.fixture == "polar_torus_profile_product_strip"
     global_product = case.fixture == "polar_profile_product_global"
     product = case.fixture in (
         "polar_profile_product",
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
         "polar_profile_product_global",
+        "polar_torus_profile_product_strip",
     )
     local = product or case.fixture == "local_polar_product"
     out = 64 if case.fixture == "polar_profile_product_strip" else n
@@ -307,8 +322,18 @@ def measure(args, run):
                 initialize,
                 summarize,
             )
+        if torus:
+            from benchmarks.cuda.linear.torus_profile_product import (
+                decode,
+                fixture_operator,
+                fixture_state,
+                initialize,
+                summarize,
+            )
         op, p = fixture_operator(case), initialize(case)
-        support_domain = op.charts[0] if strip or global_product else Domain(n, n)
+        support_domain = (
+            op.charts[0] if strip or global_product or torus else Domain(n, n)
+        )
         support_report = summarize(decode(fixture_state(case), p), support_domain)
     else:
         h, j = (32, 32) if n == 1024 else (64, 128)
@@ -354,7 +379,9 @@ def measure(args, run):
             decode,
         )
 
-        if product:
+        if torus:
+            from benchmarks.cuda.linear.torus_profile_product import decode
+        elif product:
             from benchmarks.cuda.linear.profile_product import decode
         initial_precision = decode(model.local_state, model.p).detach()[:, 1].cpu()
         initial_sigma = initial_precision.rsqrt()
@@ -621,7 +648,9 @@ def measure(args, run):
         "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
         "optimizer": asdict(case.optimizer),
         "scope": "complete-step performance; no independent full-shape all-atom gradient oracle",
-        "optimizer_policy": "euclidean polar finite_chord; AdamW proposal + activity/radial update"
+        "optimizer_policy": "intrinsic torus polar finite_chord; AdamW proposal + activity/radial update + retraction"
+        if torus and args.worker != "dense"
+        else "euclidean polar finite_chord; AdamW proposal + activity/radial update"
         if local and args.worker != "dense"
         else "ordinary AdamW",
         "initial_support": support_report if args.worker != "dense" else None,
@@ -629,9 +658,15 @@ def measure(args, run):
         "sigma_updates": sigma_updates,
         "persistent_layout": layout_report,
         "hybrid_routing": hybrid_routing,
-        "h_policy": getattr(
-            run.entry(args.plan_id).plan.recipe, "execution_route", None
+        "h_policy": (
+            "w_gemm"
+            if run.entry(args.plan_id).plan.recipe.contraction == "w"
+            else "h_saved"
+            if run.entry(args.plan_id).plan.recipe.save_h
+            else "h_recompute"
         )
+        if torus and args.worker != "dense"
+        else getattr(run.entry(args.plan_id).plan.recipe, "execution_route", None)
         if local and args.worker != "dense"
         else None,
         "compiler_reports": __import__(
@@ -673,7 +708,7 @@ def main():
     ap.add_argument("--kernel-diagnostics", action="store_true")
     ap.add_argument(
         "--polar-update",
-        choices=("torch", "fused"),
+        choices=("torch", "fused", "torus"),
         default="torch",
         help="local-product research polar update; AdamW is unchanged",
     )
@@ -721,6 +756,12 @@ def main():
         if args.validate_only:
             print(json.dumps(run.snapshot(), indent=2))
             return
+    if (run.case.fixture == "polar_torus_profile_product_strip") != (
+        args.polar_update == "torus"
+    ):
+        ap.error(
+            "the Torus fixture requires --polar-update torus, and other fixtures reject it"
+        )
     if args.core_diagnostics and run.case.fixture != "local_polar_product":
         ap.error("--core-diagnostics requires the local product fixture")
     if args.polar_update == "fused" and run.case.fixture not in (
@@ -832,6 +873,7 @@ def main():
                 "polar_profile_product_global",
                 "polar_profile_product_strip",
                 "polar_profile_product_square_strip",
+                "polar_torus_profile_product_strip",
             )
             and kind == "measure"
         ):

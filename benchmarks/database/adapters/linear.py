@@ -19,6 +19,8 @@ from benchmarks.cuda.linear.protocol import (
     PRODUCT_ORACLE_SCOPE,
     SQUARE_STRIP_PRODUCT_ORACLE_SCOPE,
     STRIP_PRODUCT_ORACLE_SCOPE,
+    TORUS_OPTIMIZER_POLICY,
+    TORUS_PRODUCT_ORACLE_SCOPE,
     measurement_operator,
 )
 from benchmarks.database.model import (
@@ -185,12 +187,17 @@ def project(value):
         "polar_profile_product_strip",
         "polar_profile_product_square_strip",
         "polar_profile_product_global",
+        "polar_torus_profile_product_strip",
     )
+    torus = run.case.fixture == "polar_torus_profile_product_strip"
+    optimizer_policy = TORUS_OPTIMIZER_POLICY if torus else LOCAL_OPTIMIZER_POLICY
     local = product or run.case.fixture == "local_polar_product"
     global_product = run.case.fixture == "polar_profile_product_global"
     square_strip = run.case.fixture == "polar_profile_product_square_strip"
     revision = (
-        7
+        8
+        if torus
+        else 7
         if square_strip
         else 6
         if global_product
@@ -203,7 +210,9 @@ def project(value):
         else REVISION
     )
     oracle_scope = (
-        SQUARE_STRIP_PRODUCT_ORACLE_SCOPE
+        TORUS_PRODUCT_ORACLE_SCOPE
+        if torus
+        else SQUARE_STRIP_PRODUCT_ORACLE_SCOPE
         if square_strip
         else GLOBAL_PRODUCT_ORACLE_SCOPE
         if global_product
@@ -227,7 +236,7 @@ def project(value):
     }
     if local:
         protocol["correctness"] = oracle_scope
-        protocol["optimizer_policy"] = LOCAL_OPTIMIZER_POLICY
+        protocol["optimizer_policy"] = optimizer_policy
     _hash(value["snapshot_sha256"])
     historical = (json.dumps(run.snapshot(), indent=2, allow_nan=False) + "\n").encode()
     # Older producer revisions used different dictionary order in Plan JSON.
@@ -301,14 +310,16 @@ def project(value):
         protocol["revision"] = 2 if initialization["method"] == "torch.cpu.v1" else 1
         if local:
             actual_update = meta.get("polar_update")
-            if actual_update not in ("torch", "fused"):
+            if actual_update not in (("torus",) if torus else ("torch", "fused")):
                 raise ValueError("unknown polar update implementation")
             if polar_update is not None and polar_update != actual_update:
                 raise ValueError("workers use different polar update implementations")
             polar_update = actual_update
             protocol["polar_update"] = polar_update
             protocol["revision"] = (
-                7
+                8
+                if torus
+                else 7
                 if square_strip
                 else 6
                 if global_product
@@ -376,7 +387,7 @@ def project(value):
                 raise ValueError("measurement operator/optimizer differs")
             dense = record.kind == "dense"
             if local and result.get("optimizer_policy") != (
-                "ordinary AdamW" if dense else LOCAL_OPTIMIZER_POLICY
+                "ordinary AdamW" if dense else optimizer_policy
             ):
                 raise ValueError("measurement polar optimizer contract differs")
             if result.get("reference") != (

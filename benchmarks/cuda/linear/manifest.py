@@ -67,6 +67,9 @@ from torchcst._backends.torch.algorithms.linear.normalized_radial.layout import 
     OPERATION,
     SEMANTICS,
 )
+from torchcst._backends.torch.algorithms.linear.torus_profile_product.algorithm import (
+    TorusChunkAlgorithm,
+)
 
 
 class BenchmarkRegistry(Registry):
@@ -94,6 +97,7 @@ class BenchmarkRegistry(Registry):
 
 # This catalog is benchmark-local. Production registration/selection is unchanged.
 REGISTRY = BenchmarkRegistry()
+REGISTRY.register(TorusChunkAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())
@@ -248,10 +252,13 @@ class BenchmarkCase:
             "polar_profile_product_strip",
             "polar_profile_product_square_strip",
             "polar_profile_product_global",
+            "polar_torus_profile_product_strip",
         ):
             raise ValueError("unknown benchmark fixture")
         sizes = (
-            (256, 512, 1024, 2048, 8192)
+            (1024, 2048)
+            if self.fixture == "polar_torus_profile_product_strip"
+            else (256, 512, 1024, 2048, 8192)
             if self.fixture
             in (
                 "polar_profile_product_strip",
@@ -277,6 +284,7 @@ class BenchmarkCase:
             "polar_profile_product_strip",
             "polar_profile_product_square_strip",
             "polar_profile_product_global",
+            "polar_torus_profile_product_strip",
         ) and (
             type(self.rows) is not int or not 1 <= self.rows <= 64 or self.atoms < 4
         ):
@@ -310,6 +318,7 @@ class BenchmarkCase:
                 "polar_profile_product_strip",
                 "polar_profile_product_square_strip",
                 "polar_profile_product_global",
+                "polar_torus_profile_product_strip",
             )
             else ("broad", "sharp")
         )
@@ -326,6 +335,7 @@ class BenchmarkCase:
                 "polar_profile_product_strip",
                 "polar_profile_product_square_strip",
                 "polar_profile_product_global",
+                "polar_torus_profile_product_strip",
             )
             or self.profile != "mixed"
         ):
@@ -357,6 +367,7 @@ class BenchmarkRun:
                     "polar_profile_product_strip",
                     "polar_profile_product_square_strip",
                     "polar_profile_product_global",
+                    "polar_torus_profile_product_strip",
                 )
                 else LOCAL_SEMANTICS
                 if self.case.fixture == "local_polar_product"
