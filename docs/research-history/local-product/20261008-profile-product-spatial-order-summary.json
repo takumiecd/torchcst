@@ -1,5 +1,5 @@
 {
-  "scope": "Primary comparisons; incomplete selected batch; no adoption",
+  "scope": "Completed predeclared primary comparisons; no spatial-order adoption",
   "source": "b47c57d3cf11e409db8d36a01bc16a87600097bf",
   "jobs": [
     {
@@ -32,6 +32,70 @@
         "session": "cst-pool-dc4fa0566c14-1",
         "downloaded": 1791418392.039265,
         "archive_sha256": "3d3e57f3bc72243518e5d809d6a6aea04bfb842893278e87ef3d764194056bc0"
+      }
+    },
+    {
+      "family": "global",
+      "size": 2048,
+      "timeout": 1300,
+      "source": "b47c57d3cf11e409db8d36a01bc16a87600097bf",
+      "id": "l4job-06e15e4117ba4cf9a2e56e229c6f3985",
+      "directory": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-06e15e4117ba4cf9a2e56e229c6f3985",
+      "status": "queued",
+      "source_sha256": "1a1ed3f2f3559e5cbe22ddefcd6bc6a3f2f0153bda0aaca5eb25b6c678db827c",
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-e20f814fe29e-1",
+        "downloaded": 1791419156.882926,
+        "archive_sha256": "c8fbaacf12c9b235051c373585923b5f4f264b5ca3c427ce90f249197ae100b7"
+      }
+    },
+    {
+      "family": "strip",
+      "size": 2048,
+      "timeout": 1300,
+      "source": "b47c57d3cf11e409db8d36a01bc16a87600097bf",
+      "id": "l4job-01652a1bbc014040b5b0b6196893e9c8",
+      "directory": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-01652a1bbc014040b5b0b6196893e9c8",
+      "status": "queued",
+      "source_sha256": "1a1ed3f2f3559e5cbe22ddefcd6bc6a3f2f0153bda0aaca5eb25b6c678db827c",
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-b0fe72caf75a-1",
+        "downloaded": 1791419708.013005,
+        "archive_sha256": "70155f81e0ccbd769dd1ec3b223202ccb8a46838fb4bfe23671dd7a39bfb44c4"
+      }
+    },
+    {
+      "family": "global",
+      "size": 8192,
+      "timeout": 2000,
+      "source": "b47c57d3cf11e409db8d36a01bc16a87600097bf",
+      "id": "l4job-f85e72cbc03342099fe5953d0ffac918",
+      "directory": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-f85e72cbc03342099fe5953d0ffac918",
+      "status": "queued",
+      "source_sha256": "bafe5383554bd88b455c5c2110d81cb63e86a975cedeb8466aefb81eb230cb02",
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-b0fe72caf75a-1",
+        "downloaded": 1791420646.859562,
+        "archive_sha256": "7ca1f41d215247754c6b7cfab9e1e8518109a99e7aa638903f5253e675cfb687"
+      }
+    },
+    {
+      "family": "strip",
+      "size": 8192,
+      "timeout": 700,
+      "source": "b47c57d3cf11e409db8d36a01bc16a87600097bf",
+      "id": "l4job-558fd6665eca4f318b9b5e3543066798",
+      "directory": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-558fd6665eca4f318b9b5e3543066798",
+      "status": "queued",
+      "source_sha256": "f55a60b44ef9cf8d98d2858b7da336aa5476e8e3b9913417450b9d46b86848f7",
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-b0fe72caf75a-1",
+        "downloaded": 1791420805.8540921,
+        "archive_sha256": "ad6c99205198b21a5940c2a37d8514cdf63d06e35dfee75932fcb9e0c7ff67c0"
       }
     }
   ],
@@ -2423,6 +2487,3588 @@
           "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
         }
       ]
+    },
+    {
+      "job": "l4job-06e15e4117ba4cf9a2e56e229c6f3985",
+      "file": "profile-product-spatial-global-2048-rho3.json",
+      "sha256": "01092f3b9dfe371f457481c3ec0975c7c0949e189585f61a177662468a685679",
+      "execution_id": "d9751814-9a10-4ffb-a92e-9d4e33921a35",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-large-global-2048-rho3-spatial",
+          "fixture": "polar_profile_product_global",
+          "size": 2048,
+          "rows": 32,
+          "atoms": 209715,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_prepared",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split1",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "a4d38f357972d4f4a75ef200cf0ad51ba08cd322548c137d17c65c2c5ec0b70b",
+          "plans_sha256": "bd72980de423709946e1ad812b83dc23de1f737ce4c347221586ebd302ea1c44"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 2.4107380976801096e-05,
+              "rel_l2": 3.9463902736052174e-07
+            },
+            "dx": {
+              "max": 2.6023783465944916e-05,
+              "rel_l2": 4.00219655411686e-07
+            },
+            "dp": {
+              "max": 3.6455934804280332e-06,
+              "rel_l2": 2.0476850994356386e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.234220846299763e-05,
+              "rel_l2": 7.449444746571302e-07
+            },
+            "dx": {
+              "max": 4.2313577129249325e-05,
+              "rel_l2": 7.450837594933513e-07
+            },
+            "dp": {
+              "max": 3.7781781703216666e-06,
+              "rel_l2": 2.1958141087873643e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 9.456414297392968e-06,
+              "rel_l2": 2.9998399243082117e-07
+            },
+            "dx": {
+              "max": 1.0002605840497836e-05,
+              "rel_l2": 3.032767100630025e-07
+            },
+            "dp": {
+              "max": 3.7781781703216666e-06,
+              "rel_l2": 2.1958141087873643e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.234220846299763e-05,
+              "rel_l2": 7.440881141133484e-07
+            },
+            "dx": {
+              "max": 4.2313577129249325e-05,
+              "rel_l2": 7.446468209417592e-07
+            },
+            "dp": {
+              "max": 3.7781781703216666e-06,
+              "rel_l2": 2.1958141087873643e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.234220846299763e-05,
+              "rel_l2": 7.439050469853911e-07
+            },
+            "dx": {
+              "max": 4.2313577129249325e-05,
+              "rel_l2": 7.452587866093938e-07
+            },
+            "dp": {
+              "max": 3.7781781703216666e-06,
+              "rel_l2": 2.1958141087873643e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 9.852768711127169e-06,
+              "rel_l2": 3.174075944177488e-07
+            },
+            "dx": {
+              "max": 9.661195137677936e-06,
+              "rel_l2": 3.20060993702093e-07
+            },
+            "dp": {
+              "max": 3.7781781703216666e-06,
+              "rel_l2": 2.1958141087873643e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 2.279885000007198,
+            "samples_ms": [
+              2.300403999925038,
+              2.279885000007198,
+              2.1710370001528645,
+              2.1190480001678225,
+              2.12032299987186,
+              2.123747000041476,
+              2.1218580000095244,
+              2.122932000020228,
+              2.1207960003266635,
+              2.1199930001785106,
+              2.1254469997984415,
+              2.2210069996617676,
+              2.4383810000472295,
+              2.4440160000267497,
+              2.441946000089956,
+              2.43538599988824,
+              2.4427829998785455,
+              2.4416389996986254,
+              2.437749999899097,
+              2.441289000216784,
+              2.464554999733082
+            ]
+          },
+          "allocated": 101938176,
+          "reserved": 295698432,
+          "initial_p_sha256": "8065ae36c95c674c505ff0f00b0b57ae1b637c9b965a19fcb264fe26158e970f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 1.109657999677438,
+            "samples_ms": [
+              1.1529950002113765,
+              1.1135610002384055,
+              1.1101139998572762,
+              1.1095510003542586,
+              1.1103889996775251,
+              1.1077930003011716,
+              1.108394999846496,
+              1.1054670003431966,
+              1.1082769997301511,
+              1.1071349999838276,
+              1.110161000269727,
+              1.1117059998468903,
+              1.1103970000476693,
+              1.1089949998677184,
+              1.109657999677438,
+              1.1099849998572608,
+              1.108724000005168,
+              1.1073260002376628,
+              1.111901000058424,
+              1.1080910003329336,
+              1.1131009996461216
+            ]
+          },
+          "allocated": 66493952,
+          "reserved": 163577856,
+          "initial_p_sha256": "8065ae36c95c674c505ff0f00b0b57ae1b637c9b965a19fcb264fe26158e970f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 1.0552019998613105,
+            "samples_ms": [
+              1.093002000288834,
+              1.0531389998504892,
+              1.0513410002204182,
+              1.0510970000723319,
+              1.0547179999775835,
+              1.0514220002733055,
+              1.0516900001675822,
+              1.0552019998613105,
+              1.0526020000725111,
+              1.0598530002425832,
+              1.0550619999776245,
+              1.0552369999459188,
+              1.0534550001466414,
+              1.0545330001150433,
+              1.0859779999918828,
+              1.0855570003514003,
+              1.0859869998967042,
+              1.0894279998865386,
+              1.087594999717112,
+              1.0856250000870205,
+              1.0871740000766295
+            ]
+          },
+          "allocated": 66493952,
+          "reserved": 163577856,
+          "initial_p_sha256": "8065ae36c95c674c505ff0f00b0b57ae1b637c9b965a19fcb264fe26158e970f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 1.3002689997847483,
+            "samples_ms": [
+              1.3215640001362772,
+              1.3075030001346022,
+              1.3187999998081068,
+              1.3115100000504754,
+              1.3002689997847483,
+              1.3028979997216084,
+              1.3040009998803725,
+              1.3042920004409098,
+              1.2997439998798654,
+              1.3031989997216442,
+              1.299593000112509,
+              1.3007610000386194,
+              1.2984719996893546,
+              1.3005490000068676,
+              1.2966019999112177,
+              1.299869999911607,
+              1.296593999995821,
+              1.2977139999748033,
+              1.296668000122736,
+              1.2961639999957697,
+              1.296165999974619
+            ]
+          },
+          "allocated": 68171776,
+          "reserved": 197132288,
+          "initial_p_sha256": "8065ae36c95c674c505ff0f00b0b57ae1b637c9b965a19fcb264fe26158e970f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 1.3012649997108383,
+            "samples_ms": [
+              1.3243700000202807,
+              1.3030650002292532,
+              1.3012429999434971,
+              1.2986950000595243,
+              1.2976029997844307,
+              1.3045509999756177,
+              1.3013140001021384,
+              1.2965739997525816,
+              1.3025489997744444,
+              1.2984209997739526,
+              1.3012649997108383,
+              1.299347999974998,
+              1.2978019999536627,
+              1.3000370004192519,
+              1.2988600001335726,
+              1.3007689999540162,
+              1.301899000281992,
+              1.4027939996594796,
+              1.4018530000612373,
+              1.404665999871213,
+              1.4060040002732421
+            ]
+          },
+          "allocated": 68171776,
+          "reserved": 197132288,
+          "initial_p_sha256": "8065ae36c95c674c505ff0f00b0b57ae1b637c9b965a19fcb264fe26158e970f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 0.9277819999624626,
+            "samples_ms": [
+              0.964958000167826,
+              0.9304860000156623,
+              0.9273570003642817,
+              0.9294290002799244,
+              0.9273030000258586,
+              0.9271069998249004,
+              0.925998000184336,
+              0.9270610003113688,
+              0.925669000025664,
+              0.9267559998988872,
+              0.9275810002691287,
+              0.9277819999624626,
+              0.925688999814156,
+              0.9287120001317817,
+              0.9257489996343793,
+              0.9281850002480496,
+              0.9288090000154625,
+              0.942513999689254,
+              0.9515169999758655,
+              0.952785000208678,
+              0.9524660003989993
+            ]
+          },
+          "allocated": 99735040,
+          "reserved": 205520896,
+          "initial_p_sha256": "8065ae36c95c674c505ff0f00b0b57ae1b637c9b965a19fcb264fe26158e970f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 0.5924819997744635,
+            "samples_ms": [
+              0.6101630001467129,
+              0.5956689997219655,
+              0.5965160003142955,
+              0.5977870000606345,
+              0.5924239999330894,
+              0.5970709999019164,
+              0.5929509998168214,
+              0.5872400001862843,
+              0.5851370001437317,
+              0.5953800000497722,
+              0.5897279997952865,
+              0.5903710002712614,
+              0.5917910002608551,
+              0.598854999680043,
+              0.5924819997744635,
+              0.5888290002076246,
+              0.5902190000597329,
+              0.5934549999437877,
+              0.5891239998163655,
+              0.5943490000390739,
+              0.5885330001547118
+            ]
+          },
+          "allocated": 102238720,
+          "reserved": 148897792,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
+    },
+    {
+      "job": "l4job-06e15e4117ba4cf9a2e56e229c6f3985",
+      "file": "profile-product-spatial-global-2048-rho8.json",
+      "sha256": "82893846602c551033e4c1121a3e7eeb0207b7ceb488187c77cd764294bf15e8",
+      "execution_id": "d0d25182-c212-4efd-8ec4-f9ba12246e45",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-large-global-2048-rho8-spatial",
+          "fixture": "polar_profile_product_global",
+          "size": 2048,
+          "rows": 32,
+          "atoms": 209715,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              8
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_prepared",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split1",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "b718ea491da37b73c4eb37d81c3792aa6db569d4a8529bd8da66f29c609ef6d9",
+          "plans_sha256": "bd72980de423709946e1ad812b83dc23de1f737ce4c347221586ebd302ea1c44"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 3.42106566364464e-05,
+              "rel_l2": 5.307015112054252e-07
+            },
+            "dx": {
+              "max": 2.663405047087508e-05,
+              "rel_l2": 5.3525480442359e-07
+            },
+            "dp": {
+              "max": 2.0629870691735164e-06,
+              "rel_l2": 1.7969589614055187e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 5.3809558789197354e-05,
+              "rel_l2": 8.224140138130256e-07
+            },
+            "dx": {
+              "max": 4.000671831150271e-05,
+              "rel_l2": 8.186917729050743e-07
+            },
+            "dp": {
+              "max": 2.039823765009885e-06,
+              "rel_l2": 1.9668850675646813e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 1.2088765419804304e-05,
+              "rel_l2": 3.4152084430853704e-07
+            },
+            "dx": {
+              "max": 1.1068001406044914e-05,
+              "rel_l2": 3.455057295672078e-07
+            },
+            "dp": {
+              "max": 2.039823765009885e-06,
+              "rel_l2": 1.9668850675646813e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.9994861523572354e-05,
+              "rel_l2": 8.22329036625669e-07
+            },
+            "dx": {
+              "max": 3.726213824783997e-05,
+              "rel_l2": 8.182512576214288e-07
+            },
+            "dp": {
+              "max": 2.039823765009885e-06,
+              "rel_l2": 1.9668850675646813e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.9994861523572354e-05,
+              "rel_l2": 8.231083203300156e-07
+            },
+            "dx": {
+              "max": 4.242606616955413e-05,
+              "rel_l2": 8.187759420491283e-07
+            },
+            "dp": {
+              "max": 2.039823765009885e-06,
+              "rel_l2": 1.9668850675646813e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 1.0911349086484279e-05,
+              "rel_l2": 3.584417477907971e-07
+            },
+            "dx": {
+              "max": 1.2327995814409576e-05,
+              "rel_l2": 3.6142584125973225e-07
+            },
+            "dp": {
+              "max": 2.039823765009885e-06,
+              "rel_l2": 1.9668850675646813e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 2.8869000002487155,
+            "samples_ms": [
+              2.7987460002805165,
+              2.7327029997650243,
+              2.7292549998492177,
+              2.7349349998075922,
+              2.7294109995636973,
+              2.7295589998175274,
+              2.7227470000070753,
+              2.782044000014139,
+              2.8869100001429615,
+              2.896602999953757,
+              2.883343999656063,
+              2.886764999857405,
+              2.888922000238381,
+              2.888083000016195,
+              2.8927590001330827,
+              2.8869000002487155,
+              2.895647000059398,
+              2.892958999836992,
+              2.8959420001228864,
+              2.896058000260382,
+              2.891686999646481
+            ]
+          },
+          "allocated": 101938176,
+          "reserved": 295698432,
+          "initial_p_sha256": "8d13ccf38bcccd9a0801d5613d99360b32d2a38bace3141f2ab701df06832fe3",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 1.8245840001327451,
+            "samples_ms": [
+              1.8252429999847664,
+              1.790223000170954,
+              1.7898239998430654,
+              1.7865180002445413,
+              1.7868079999061592,
+              1.788665999811201,
+              1.785771999948338,
+              1.7857529996945232,
+              1.7893760000333714,
+              1.7876709998745355,
+              1.7867239998849982,
+              1.8245840001327451,
+              1.847655999881681,
+              1.8493420002414496,
+              1.8484239999452257,
+              1.8516740001359722,
+              1.8499369998608017,
+              1.8531189998611808,
+              1.8513449999773002,
+              1.8492619997232396,
+              1.8533910001679033
+            ]
+          },
+          "allocated": 66493952,
+          "reserved": 163577856,
+          "initial_p_sha256": "8d13ccf38bcccd9a0801d5613d99360b32d2a38bace3141f2ab701df06832fe3",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 1.6697010000825685,
+            "samples_ms": [
+              1.7385809996994794,
+              1.7030570002134482,
+              1.697978999800398,
+              1.6959859999587934,
+              1.6969700000117882,
+              1.6972890002762142,
+              1.6656139996484853,
+              1.6639249997751904,
+              1.6669509996063425,
+              1.6682099999343336,
+              1.6660500000398315,
+              1.6694179998921754,
+              1.6663679998600855,
+              1.6674030002832296,
+              1.6697010000825685,
+              1.6732899998714856,
+              1.669165000294015,
+              1.6693309999027406,
+              1.8444239999553247,
+              1.8461610002304951,
+              1.8442390000927844
+            ]
+          },
+          "allocated": 66493952,
+          "reserved": 163577856,
+          "initial_p_sha256": "8d13ccf38bcccd9a0801d5613d99360b32d2a38bace3141f2ab701df06832fe3",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 1.9868039998982567,
+            "samples_ms": [
+              2.0168860000921995,
+              1.9960939998782123,
+              1.9897919996765268,
+              1.9868039998982567,
+              1.9090660002802906,
+              1.9057380000049307,
+              1.9025220003641152,
+              1.9082630001321377,
+              1.9074629999522585,
+              1.9025029996555531,
+              1.906028000121296,
+              1.9069760001002578,
+              1.9063980003011238,
+              1.8990329999724054,
+              2.037278999978298,
+              2.0657999998547893,
+              2.0708619999822986,
+              2.065458999823022,
+              2.0599370000127237,
+              2.0650709998335515,
+              2.0669129999077995
+            ]
+          },
+          "allocated": 68171776,
+          "reserved": 197132288,
+          "initial_p_sha256": "8d13ccf38bcccd9a0801d5613d99360b32d2a38bace3141f2ab701df06832fe3",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 2.057241000329668,
+            "samples_ms": [
+              2.091926000048261,
+              1.9841560001623293,
+              1.9784510000135924,
+              1.9784950000030221,
+              1.9772499999817228,
+              1.9771550000768912,
+              1.9754489999286307,
+              1.9833149999612942,
+              1.976527999886457,
+              1.9808849997389189,
+              1.9746590000977449,
+              2.057241000329668,
+              2.062933999695815,
+              2.065090000087366,
+              2.0650249998652725,
+              2.0687549999820476,
+              2.0645310000872996,
+              2.067845000055968,
+              2.064130000235309,
+              2.0649260000027425,
+              2.1108420000928163
+            ]
+          },
+          "allocated": 68171776,
+          "reserved": 197132288,
+          "initial_p_sha256": "8d13ccf38bcccd9a0801d5613d99360b32d2a38bace3141f2ab701df06832fe3",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 1.5830459997232538,
+            "samples_ms": [
+              1.6497769997840805,
+              1.5861070000937616,
+              1.5830020001885714,
+              1.581016000272939,
+              1.57941799989203,
+              1.5814770003999001,
+              1.5807720001248526,
+              1.5830459997232538,
+              1.581189000262384,
+              1.5832909998607647,
+              1.5868360001149995,
+              1.5827710003577522,
+              1.580915999966237,
+              1.581269999860524,
+              1.5818500000932545,
+              1.6623230003460776,
+              1.6906450000533368,
+              1.6928770000959048,
+              1.6921790002015769,
+              1.6883519997463736,
+              1.690943000085099
+            ]
+          },
+          "allocated": 99735040,
+          "reserved": 205520896,
+          "initial_p_sha256": "8d13ccf38bcccd9a0801d5613d99360b32d2a38bace3141f2ab701df06832fe3",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 0.5907810000280733,
+            "samples_ms": [
+              0.6159879999358964,
+              0.5915259998801048,
+              0.590301999636722,
+              0.5901719996472821,
+              0.5894879996048985,
+              0.5980040000395093,
+              0.599592000071425,
+              0.594485999954486,
+              0.5886030003239284,
+              0.5905150001126458,
+              0.593504999869765,
+              0.5906149999646004,
+              0.5907810000280733,
+              0.5887400002393406,
+              0.5921409997426963,
+              0.5980880000606703,
+              0.5922770001234312,
+              0.5923620001340169,
+              0.589531000059651,
+              0.5885670002498955,
+              0.5905390003135835
+            ]
+          },
+          "allocated": 102238720,
+          "reserved": 148897792,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
+    },
+    {
+      "job": "l4job-01652a1bbc014040b5b0b6196893e9c8",
+      "file": "profile-product-spatial-strip-2048-rho3.json",
+      "sha256": "cf36e392ab05848555edf2f144ac490efd08be953f47ac0729910891da5f4936",
+      "execution_id": "b79e9153-6fd2-4bf3-b3b4-92c992b6406a",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-large-strip-2048-rho3-spatial",
+          "fixture": "polar_profile_product_strip",
+          "size": 2048,
+          "rows": 32,
+          "atoms": 6554,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_prepared",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split8",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "7f89461f551718967501e0bf8676022b23a190d43787b060b224feb78a3d4ea1",
+          "plans_sha256": "6f92353e99adee14af937f9a2a693cabcdbc9c9b8c1c9189a7c0c2ac9af43b1a"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 1.7917830019698044e-05,
+              "rel_l2": 4.1167454142289966e-07
+            },
+            "dx": {
+              "max": 1.1133864958878803e-06,
+              "rel_l2": 1.5659683090172245e-07
+            },
+            "dp": {
+              "max": 2.8618763394661073e-06,
+              "rel_l2": 2.0005184772354991e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 2.569992835077528e-05,
+              "rel_l2": 7.435837178113954e-07
+            },
+            "dx": {
+              "max": 1.92395621034791e-06,
+              "rel_l2": 1.9356022056265683e-07
+            },
+            "dp": {
+              "max": 2.894438186018533e-06,
+              "rel_l2": 2.1401442226976247e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 7.201366301501366e-06,
+              "rel_l2": 3.1474131124393656e-07
+            },
+            "dx": {
+              "max": 1.1133864958878803e-06,
+              "rel_l2": 1.7148514785673974e-07
+            },
+            "dp": {
+              "max": 2.894438186018533e-06,
+              "rel_l2": 2.1401442226976247e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 7.678203459704491e-06,
+              "rel_l2": 3.132892634629743e-07
+            },
+            "dx": {
+              "max": 1.1133864958878803e-06,
+              "rel_l2": 1.7150692807378936e-07
+            },
+            "dp": {
+              "max": 2.894438186018533e-06,
+              "rel_l2": 2.1401442226976247e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 7.201366301501366e-06,
+              "rel_l2": 3.134512327129146e-07
+            },
+            "dx": {
+              "max": 1.1133864958878803e-06,
+              "rel_l2": 1.7148983192850918e-07
+            },
+            "dp": {
+              "max": 2.894438186018533e-06,
+              "rel_l2": 2.1401442226976247e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 5.179127291476959e-06,
+              "rel_l2": 1.969429645919179e-07
+            },
+            "dx": {
+              "max": 1.0946052038107723e-06,
+              "rel_l2": 1.624010922074854e-07
+            },
+            "dp": {
+              "max": 2.894438186018533e-06,
+              "rel_l2": 2.1401442226976247e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 0.19151599985889334,
+            "samples_ms": [
+              0.2449730000080308,
+              0.19456699988040782,
+              0.1902530000279512,
+              0.19057099984820525,
+              0.19219600017095217,
+              0.19328799999129842,
+              0.1929630000176985,
+              0.19151599985889334,
+              0.1903799998217437,
+              0.19217399994886364,
+              0.19232800013924134,
+              0.19242600001234678,
+              0.19294899993838044,
+              0.1904690000174014,
+              0.19024099992748233,
+              0.1939139999649342,
+              0.19104700004390907,
+              0.19106000013380253,
+              0.19082099993283919,
+              0.1903689999380731,
+              0.1899750000120548
+            ]
+          },
+          "allocated": 4676096,
+          "reserved": 12582912,
+          "initial_p_sha256": "3cfac06c2f6b8df775453fdd5760a409beed9cf243df7da1bb71ea61062af6ed",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 0.15455099992323085,
+            "samples_ms": [
+              0.19177400008629775,
+              0.15560799988634244,
+              0.15353499998127518,
+              0.15377599993371405,
+              0.15591100009260117,
+              0.15371299991784326,
+              0.1556899999286543,
+              0.15481800005545665,
+              0.15284400001291942,
+              0.15538799993919383,
+              0.1546299999972689,
+              0.15090500005499052,
+              0.15496400010306388,
+              0.15409000002364337,
+              0.15306299997064343,
+              0.15546400004495808,
+              0.1530239999283367,
+              0.1537450000341778,
+              0.15455099992323085,
+              0.15315500013457495,
+              0.15553200000795186
+            ]
+          },
+          "allocated": 2575360,
+          "reserved": 6291456,
+          "initial_p_sha256": "3cfac06c2f6b8df775453fdd5760a409beed9cf243df7da1bb71ea61062af6ed",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 0.08715500007383525,
+            "samples_ms": [
+              0.12718099992525822,
+              0.08838299982016906,
+              0.0868570000420732,
+              0.08687600006851426,
+              0.09623400001146365,
+              0.08682699990458786,
+              0.08664500001032138,
+              0.0854100001106417,
+              0.08791699997345859,
+              0.08777800007919723,
+              0.08655200008433894,
+              0.08715500007383525,
+              0.08593999996264756,
+              0.08761200001572433,
+              0.08597900000495429,
+              0.08766099995227705,
+              0.08699199997863616,
+              0.08760200012147834,
+              0.0873550000051182,
+              0.0868510001055256,
+              0.0875190000897419
+            ]
+          },
+          "allocated": 2575360,
+          "reserved": 6291456,
+          "initial_p_sha256": "3cfac06c2f6b8df775453fdd5760a409beed9cf243df7da1bb71ea61062af6ed",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 0.16687500010448275,
+            "samples_ms": [
+              0.2003899999181158,
+              0.1683460000094783,
+              0.1673480001045391,
+              0.16526900003555056,
+              0.16632100005153916,
+              0.16793800000414194,
+              0.16772399999354093,
+              0.16799899981378985,
+              0.16626499996164057,
+              0.16711299986127415,
+              0.1662970000779751,
+              0.18924599999081693,
+              0.1665289998982189,
+              0.1680150000993308,
+              0.16616999982943526,
+              0.16593899999861605,
+              0.1671859999987646,
+              0.16687500010448275,
+              0.16666200008330634,
+              0.16490699999849312,
+              0.1658679998399748
+            ]
+          },
+          "allocated": 2601984,
+          "reserved": 6291456,
+          "initial_p_sha256": "3cfac06c2f6b8df775453fdd5760a409beed9cf243df7da1bb71ea61062af6ed",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 0.16584500008320902,
+            "samples_ms": [
+              0.1980669999284146,
+              0.16755199999352044,
+              0.16642300010971667,
+              0.1654719999351073,
+              0.16803799985609658,
+              0.16523499994036683,
+              0.16516699997737305,
+              0.16608900000392168,
+              0.1654659999985597,
+              0.16715500009922835,
+              0.16646499989292352,
+              0.16620599990346818,
+              0.1663609998558968,
+              0.16533799998796894,
+              0.16584500008320902,
+              0.16526999979760149,
+              0.16560700009904394,
+              0.16489100016769953,
+              0.16518300003554032,
+              0.164087000030122,
+              0.16623400006210431
+            ]
+          },
+          "allocated": 2601984,
+          "reserved": 6291456,
+          "initial_p_sha256": "3cfac06c2f6b8df775453fdd5760a409beed9cf243df7da1bb71ea61062af6ed",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 0.08338800012097636,
+            "samples_ms": [
+              0.1327150000633992,
+              0.0869570001214015,
+              0.08294600002045627,
+              0.08406300003116485,
+              0.08147800008373451,
+              0.08308299993586843,
+              0.08570199997848249,
+              0.08388399987779849,
+              0.08324100008394453,
+              0.0829409998459596,
+              0.08532999981980538,
+              0.0848689999202179,
+              0.08262400001513015,
+              0.08260499998868909,
+              0.08334499989359756,
+              0.08200599995689117,
+              0.08351800011041632,
+              0.08283000011033437,
+              0.08431700007349718,
+              0.08338800012097636,
+              0.0835959999676561
+            ]
+          },
+          "allocated": 36654080,
+          "reserved": 48234496,
+          "initial_p_sha256": "3cfac06c2f6b8df775453fdd5760a409beed9cf243df7da1bb71ea61062af6ed",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 0.05693000002793269,
+            "samples_ms": [
+              0.08730600006856548,
+              0.0592019998748583,
+              0.05693599996448029,
+              0.0571470000068075,
+              0.056803999996191124,
+              0.05746700003328442,
+              0.056508999932702864,
+              0.05636200012304471,
+              0.05729199983761646,
+              0.05688300007022917,
+              0.05683199992745358,
+              0.0571470000068075,
+              0.05693000002793269,
+              0.057553000033294666,
+              0.05772700001216435,
+              0.058158000001640175,
+              0.056459000006725546,
+              0.05663599995386903,
+              0.05627499990623619,
+              0.056643999869265826,
+              0.056459999996150145
+            ]
+          },
+          "allocated": 36719104,
+          "reserved": 50331648,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
+    },
+    {
+      "job": "l4job-01652a1bbc014040b5b0b6196893e9c8",
+      "file": "profile-product-spatial-strip-2048-rho8.json",
+      "sha256": "07f95a9d691d061826931c089e048aafa3d0e00f52eb1dfbf1bae54eb7eee237",
+      "execution_id": "c2213fc4-72fa-4b0d-a68b-d41281c422e3",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-large-strip-2048-rho8-spatial",
+          "fixture": "polar_profile_product_strip",
+          "size": 2048,
+          "rows": 32,
+          "atoms": 6554,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              8
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_prepared",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split8",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "839c19aa8e5a6f9149a118966fd200f2f3213d8a2cd7ee0db0c555b14be2c860",
+          "plans_sha256": "6f92353e99adee14af937f9a2a693cabcdbc9c9b8c1c9189a7c0c2ac9af43b1a"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 1.2797153249088922e-05,
+              "rel_l2": 5.010537927171111e-07
+            },
+            "dx": {
+              "max": 1.8491826287991842e-06,
+              "rel_l2": 2.0126477770463375e-07
+            },
+            "dp": {
+              "max": 2.135850893481006e-06,
+              "rel_l2": 1.77526245400636e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 3.425719417116113e-05,
+              "rel_l2": 8.740302920474892e-07
+            },
+            "dx": {
+              "max": 2.200712550859407e-06,
+              "rel_l2": 2.345055986707266e-07
+            },
+            "dp": {
+              "max": 1.8134353556575888e-06,
+              "rel_l2": 1.9570669174371998e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 9.340052564255075e-06,
+              "rel_l2": 3.6098685394928494e-07
+            },
+            "dx": {
+              "max": 1.8430846822070635e-06,
+              "rel_l2": 2.107105415205545e-07
+            },
+            "dp": {
+              "max": 1.8134353556575888e-06,
+              "rel_l2": 1.9570669174371998e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 7.5295799156216425e-06,
+              "rel_l2": 3.645650707930506e-07
+            },
+            "dx": {
+              "max": 1.8430846822070635e-06,
+              "rel_l2": 2.1085968868201645e-07
+            },
+            "dp": {
+              "max": 1.8134353556575888e-06,
+              "rel_l2": 1.9570669174371998e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 7.00000981712634e-06,
+              "rel_l2": 3.5829742149109243e-07
+            },
+            "dx": {
+              "max": 1.712046626245467e-06,
+              "rel_l2": 2.106277858358035e-07
+            },
+            "dp": {
+              "max": 1.8134353556575888e-06,
+              "rel_l2": 1.9570669174371998e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 5.317439777385857e-06,
+              "rel_l2": 2.2824498033688062e-07
+            },
+            "dx": {
+              "max": 1.5004970146392793e-06,
+              "rel_l2": 2.0081440010066e-07
+            },
+            "dp": {
+              "max": 1.8134353556575888e-06,
+              "rel_l2": 1.9570669174371998e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 0.21460600009959307,
+            "samples_ms": [
+              0.24003899989111233,
+              0.21451700013130903,
+              0.2161429999887332,
+              0.21341599995139404,
+              0.21409199985100713,
+              0.21270199999889883,
+              0.21534500001507695,
+              0.21460600009959307,
+              0.2133710001999134,
+              0.2158279999093793,
+              0.21579899998869223,
+              0.21364100007303932,
+              0.2144919999409467,
+              0.21351999998842075,
+              0.2156440000362636,
+              0.21479199995155795,
+              0.21391299992501445,
+              0.21280700002535013,
+              0.2154869998776121,
+              0.21494500015251106,
+              0.21518700009437453
+            ]
+          },
+          "allocated": 4676096,
+          "reserved": 12582912,
+          "initial_p_sha256": "fda7b11566807e95b77982f60756521d7cb53ea7f097dc566eb75af7ed853d4c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 0.1726129999042314,
+            "samples_ms": [
+              0.2090159998715535,
+              0.17148699998870143,
+              0.17019500000969856,
+              0.17071100000976003,
+              0.1750999999785563,
+              0.1711659999727999,
+              0.1709480000045005,
+              0.17092300004151184,
+              0.17278200016335177,
+              0.17268600004172185,
+              0.17258399998354435,
+              0.17230899993592175,
+              0.17164199994113005,
+              0.1726129999042314,
+              0.17333599998892169,
+              0.1737620000312745,
+              0.17364099994665594,
+              0.1703840000573109,
+              0.17400399997313798,
+              0.17351799988318817,
+              0.1740599998356629
+            ]
+          },
+          "allocated": 2575360,
+          "reserved": 6291456,
+          "initial_p_sha256": "fda7b11566807e95b77982f60756521d7cb53ea7f097dc566eb75af7ed853d4c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 0.10800499990182288,
+            "samples_ms": [
+              0.16869099999894388,
+              0.11020700003427919,
+              0.10800499990182288,
+              0.10613499989631237,
+              0.10721700004978629,
+              0.10765899992293271,
+              0.10916399992311199,
+              0.10769599998639023,
+              0.10653300000740273,
+              0.10911899994425767,
+              0.10749000011855969,
+              0.10896100002355524,
+              0.10869100015042932,
+              0.10855699997591728,
+              0.10867000014513906,
+              0.10787799988065672,
+              0.10768200013444584,
+              0.10916499991253659,
+              0.10774799989121675,
+              0.10834399995474087,
+              0.10749700004453189
+            ]
+          },
+          "allocated": 2575360,
+          "reserved": 6291456,
+          "initial_p_sha256": "fda7b11566807e95b77982f60756521d7cb53ea7f097dc566eb75af7ed853d4c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 0.18719699983194005,
+            "samples_ms": [
+              0.21733600010520604,
+              0.18885800000134623,
+              0.1876039998478518,
+              0.18921600008070527,
+              0.18588399984764692,
+              0.18571099985820183,
+              0.18514099997446465,
+              0.1870529999905557,
+              0.1885429999219923,
+              0.18719699983194005,
+              0.1858369998899434,
+              0.18696100005399785,
+              0.1875400000699301,
+              0.1887040000383422,
+              0.18801800001710944,
+              0.18534100013312127,
+              0.18722000004345318,
+              0.18702500005929323,
+              0.18590600006973546,
+              0.19566200012377521,
+              0.18693299989536172
+            ]
+          },
+          "allocated": 2601984,
+          "reserved": 6291456,
+          "initial_p_sha256": "fda7b11566807e95b77982f60756521d7cb53ea7f097dc566eb75af7ed853d4c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 0.18917900001724774,
+            "samples_ms": [
+              0.24106700016091054,
+              0.1931860001604946,
+              0.18933500018647464,
+              0.18680399989534635,
+              0.18695300013860106,
+              0.19051999993280333,
+              0.1908199999434146,
+              0.189539000075456,
+              0.18894999993790407,
+              0.18674500006454764,
+              0.18878500009122945,
+              0.18917900001724774,
+              0.18763700018098461,
+              0.1906429999962711,
+              0.18993999992744648,
+              0.1961279999704857,
+              0.18807700007528183,
+              0.18896999995376973,
+              0.18665299990061612,
+              0.1861639998423925,
+              0.193074999970122
+            ]
+          },
+          "allocated": 2601984,
+          "reserved": 6291456,
+          "initial_p_sha256": "fda7b11566807e95b77982f60756521d7cb53ea7f097dc566eb75af7ed853d4c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 0.10427899997011991,
+            "samples_ms": [
+              0.14279200013334048,
+              0.10565299999143463,
+              0.10629400003381306,
+              0.10536399986449396,
+              0.10342799987483886,
+              0.1040550000652729,
+              0.10331199996471696,
+              0.10431600003357744,
+              0.10334899980080081,
+              0.10274700002810278,
+              0.10649900013959268,
+              0.1047339999331598,
+              0.10386700000708515,
+              0.10399999996479892,
+              0.10346299995944719,
+              0.10427899997011991,
+              0.10400000019217259,
+              0.10318899990124919,
+              0.1084850000552251,
+              0.1054499998645042,
+              0.10477699993316492
+            ]
+          },
+          "allocated": 36654080,
+          "reserved": 48234496,
+          "initial_p_sha256": "fda7b11566807e95b77982f60756521d7cb53ea7f097dc566eb75af7ed853d4c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 0.056506999953853665,
+            "samples_ms": [
+              0.08543899980395508,
+              0.05892400008633558,
+              0.056869999980335706,
+              0.056506999953853665,
+              0.05641899997499422,
+              0.057463000075586024,
+              0.05965199989077519,
+              0.05712899996979104,
+              0.057671999911690364,
+              0.05791100011265371,
+              0.056451999853379675,
+              0.05674199996974494,
+              0.05601499992735626,
+              0.05693000002793269,
+              0.05643200006488769,
+              0.0562540001283196,
+              0.05646899990097154,
+              0.056482999980289605,
+              0.05645300007017795,
+              0.05641000007017283,
+              0.05647099987982074
+            ]
+          },
+          "allocated": 36719104,
+          "reserved": 50331648,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
+    },
+    {
+      "job": "l4job-f85e72cbc03342099fe5953d0ffac918",
+      "file": "profile-product-spatial-global-8192-rho3.json",
+      "sha256": "2233dda2c456e07723e63e94ffce4388f4637b929a95e6f2261db9c8e5c56fd4",
+      "execution_id": "289c9512-0523-4dfe-88e2-8c8e7445acfa",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-large-global-8192-rho3-spatial",
+          "fixture": "polar_profile_product_global",
+          "size": 8192,
+          "rows": 32,
+          "atoms": 3355443,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_prepared",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split1",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "317af499c8010d8aa45452f9d65f88942506ac206d189cd09952a2a2c12b88c4",
+          "plans_sha256": "bd72980de423709946e1ad812b83dc23de1f737ce4c347221586ebd302ea1c44"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 0.00011382491832989672,
+              "rel_l2": 7.510547546994549e-07
+            },
+            "dx": {
+              "max": 0.0001015204578109774,
+              "rel_l2": 7.534284194336912e-07
+            },
+            "dp": {
+              "max": 4.470665926348261e-06,
+              "rel_l2": 2.0844821856908558e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 0.00018048161616235348,
+              "rel_l2": 1.4765327133232815e-06
+            },
+            "dx": {
+              "max": 0.00017960524721161164,
+              "rel_l2": 1.4845043162803477e-06
+            },
+            "dp": {
+              "max": 4.811451450592585e-06,
+              "rel_l2": 2.2318285720545613e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.2665568166455614e-05,
+              "rel_l2": 5.465293755883932e-07
+            },
+            "dx": {
+              "max": 3.809111501418272e-05,
+              "rel_l2": 5.453969363612243e-07
+            },
+            "dp": {
+              "max": 4.811451450592585e-06,
+              "rel_l2": 2.2318285720545613e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 0.00018048161616235348,
+              "rel_l2": 1.4767145543291272e-06
+            },
+            "dx": {
+              "max": 0.00017960524721161164,
+              "rel_l2": 1.484282178916422e-06
+            },
+            "dp": {
+              "max": 4.811451450592585e-06,
+              "rel_l2": 2.2318285720545613e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 0.00018048161616235348,
+              "rel_l2": 1.4765883252627103e-06
+            },
+            "dx": {
+              "max": 0.00017960524721161164,
+              "rel_l2": 1.4844733996003449e-06
+            },
+            "dp": {
+              "max": 4.811451450592585e-06,
+              "rel_l2": 2.2318285720545613e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.560146706467094e-05,
+              "rel_l2": 5.818410425020617e-07
+            },
+            "dx": {
+              "max": 4.803734159963824e-05,
+              "rel_l2": 5.773016262413786e-07
+            },
+            "dp": {
+              "max": 4.811451450592585e-06,
+              "rel_l2": 2.2318285720545613e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 79.6797550001429,
+            "samples_ms": [
+              75.87786599970059,
+              77.9195590002928,
+              79.40606600004685,
+              79.68472099992141,
+              79.95156100014356,
+              79.32801800006928,
+              80.07363700016867,
+              80.39447600003768,
+              79.94705300006899,
+              79.6797550001429,
+              83.66985199972987,
+              81.7130929999621,
+              79.8813119999977,
+              78.33346100005656,
+              78.42399899982411,
+              79.61698300005082,
+              79.1501970002173,
+              79.92921599998226,
+              79.55494199995883,
+              79.43248099991251,
+              79.7865780000393
+            ]
+          },
+          "allocated": 1585050112,
+          "reserved": 4034920448,
+          "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 43.13158900004055,
+            "samples_ms": [
+              40.15224399972794,
+              40.74265000008381,
+              42.298992999803886,
+              42.92017100033263,
+              43.505767000169726,
+              43.13158900004055,
+              43.15783600031864,
+              42.952102000072045,
+              42.72862300013003,
+              42.48514500022793,
+              42.99511600038386,
+              43.36167400015256,
+              43.53776900006778,
+              43.459182000333385,
+              43.2379700000638,
+              43.070657000043866,
+              42.91545700016286,
+              44.11459599987211,
+              44.32192199965357,
+              43.49436899974535,
+              44.10015299981751
+            ]
+          },
+          "allocated": 1041040896,
+          "reserved": 2501902336,
+          "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 43.134215000009135,
+            "samples_ms": [
+              39.775052999630134,
+              40.674853999917104,
+              42.40235399993253,
+              42.65562700038572,
+              42.57779799991113,
+              42.881062000105885,
+              43.3767889999217,
+              43.16620400004467,
+              42.98819099994944,
+              42.66739099966799,
+              42.642571999749634,
+              43.134215000009135,
+              44.791040000291105,
+              44.167266999920685,
+              44.021613000040816,
+              43.33457800021279,
+              42.90413000035187,
+              43.515404000118,
+              43.81583300028069,
+              43.49951499989402,
+              44.14598199991815
+            ]
+          },
+          "allocated": 1041040896,
+          "reserved": 2522873856,
+          "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 43.86856599967359,
+            "samples_ms": [
+              41.226131999792415,
+              42.70143000030657,
+              44.38670799981992,
+              43.531902999802696,
+              43.57929400021021,
+              43.183385000247654,
+              43.83595399986007,
+              44.922481999947195,
+              43.99166900020646,
+              43.717465000099764,
+              43.32133799971416,
+              43.86856599967359,
+              44.70396999977311,
+              43.90761500008011,
+              43.987936999656085,
+              43.61369800017201,
+              44.427729999824805,
+              44.864520999908564,
+              43.452245999560546,
+              44.59382499999265,
+              45.3141709999727
+            ]
+          },
+          "allocated": 1053624320,
+          "reserved": 3091202048,
+          "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 43.8778910001929,
+            "samples_ms": [
+              40.84874799991667,
+              40.473207000104594,
+              43.375920999551454,
+              44.35338299981595,
+              43.6196209998343,
+              44.27891900013492,
+              45.03311500002383,
+              43.74515099971177,
+              43.8778910001929,
+              43.490793999808375,
+              46.05299600007129,
+              44.94934300009845,
+              43.74369900006059,
+              43.28269799998452,
+              44.387675000052695,
+              45.645105999938096,
+              44.136528999842994,
+              43.769893999979104,
+              43.37324300013279,
+              46.264720000181114,
+              46.85036399996534
+            ]
+          },
+          "allocated": 1053624320,
+          "reserved": 3091202048,
+          "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 40.319576999991114,
+            "samples_ms": [
+              38.34263699991425,
+              38.22831799971027,
+              40.13013400026466,
+              40.38723099984054,
+              40.46966000032626,
+              40.319576999991114,
+              40.29752600035863,
+              40.12495400002081,
+              40.22209100003238,
+              40.08522100002665,
+              40.15042899982291,
+              40.12305700007346,
+              39.955569000085234,
+              40.46236100020906,
+              40.9241780002958,
+              40.9259530001691,
+              41.052669000237074,
+              40.93023899986292,
+              40.51858999991964,
+              40.449605000048905,
+              40.49719799968443
+            ]
+          },
+          "allocated": 1075119616,
+          "reserved": 2522873856,
+          "initial_p_sha256": "f739ad7d14959de40c67947f77f75b465a67fd4950b55efc7daf29def6c1b40c",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 11.65440699969622,
+            "samples_ms": [
+              11.6159429999243,
+              11.591729999963718,
+              11.628789999576838,
+              11.648287999832974,
+              11.656994000077248,
+              11.677195999709511,
+              11.740880000161269,
+              11.657848000140802,
+              11.624942000253213,
+              11.70360800006165,
+              11.628022999957466,
+              11.65440699969622,
+              11.66497000031086,
+              11.644183000043995,
+              11.656432000108907,
+              11.764628000037192,
+              11.74721799998224,
+              11.648195999896416,
+              11.73104700001204,
+              11.607300999912695,
+              11.626056000295648
+            ]
+          },
+          "allocated": 1112017408,
+          "reserved": 1642070016,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
+    },
+    {
+      "job": "l4job-558fd6665eca4f318b9b5e3543066798",
+      "file": "profile-product-spatial-strip-8192-rho3.json",
+      "sha256": "3c322813021d103da401594503a165c5c99f1ba262f735d861c3d1acb231eaff",
+      "execution_id": "6ed9c749-265a-4e27-a63c-8bdd5b0a5f02",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-large-strip-8192-rho3-spatial",
+          "fixture": "polar_profile_product_strip",
+          "size": 8192,
+          "rows": 32,
+          "atoms": 26214,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_prepared",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v2",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_large_matrix",
+              "algorithm_revision": "v1",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split8",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "434db52263e9ffd858dffd66bdff235ade1e0b0d4eb0a02341e156608639eaa6",
+          "plans_sha256": "6f92353e99adee14af937f9a2a693cabcdbc9c9b8c1c9189a7c0c2ac9af43b1a"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 5.5866415316074836e-05,
+              "rel_l2": 7.496935116451268e-07
+            },
+            "dx": {
+              "max": 1.8489303528212986e-06,
+              "rel_l2": 1.7830519025408996e-07
+            },
+            "dp": {
+              "max": 2.995480977041609e-06,
+              "rel_l2": 2.236559326788806e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 7.824735687478324e-05,
+              "rel_l2": 1.4541164532810574e-06
+            },
+            "dx": {
+              "max": 2.042116032718866e-06,
+              "rel_l2": 2.0930025758929756e-07
+            },
+            "dp": {
+              "max": 3.3608346456937e-06,
+              "rel_l2": 2.374586329635505e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 3.1311670200651065e-05,
+              "rel_l2": 5.715083960292714e-07
+            },
+            "dx": {
+              "max": 2.042116032718866e-06,
+              "rel_l2": 1.8887316286195653e-07
+            },
+            "dp": {
+              "max": 3.3608346456937e-06,
+              "rel_l2": 2.374586329635505e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 3.1311670200651065e-05,
+              "rel_l2": 5.740722744975228e-07
+            },
+            "dx": {
+              "max": 2.042116032718866e-06,
+              "rel_l2": 1.888789304513564e-07
+            },
+            "dp": {
+              "max": 3.3608346456937e-06,
+              "rel_l2": 2.374586329635505e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 3.2265344517057315e-05,
+              "rel_l2": 5.747185837132456e-07
+            },
+            "dx": {
+              "max": 2.042116032718866e-06,
+              "rel_l2": 1.8906663997713884e-07
+            },
+            "dp": {
+              "max": 3.3608346456937e-06,
+              "rel_l2": 2.374586329635505e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 1.2758146350932975e-05,
+              "rel_l2": 2.436076625678164e-07
+            },
+            "dx": {
+              "max": 2.042116032718866e-06,
+              "rel_l2": 2.092627760971766e-07
+            },
+            "dp": {
+              "max": 3.3608346456937e-06,
+              "rel_l2": 2.374586329635505e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 0.4370669998934318,
+            "samples_ms": [
+              0.4695809998338518,
+              0.43641899992508115,
+              0.4390240001157508,
+              0.4370669998934318,
+              0.4374709997136961,
+              0.43593399959718226,
+              0.43717700009437976,
+              0.43718500000977656,
+              0.43718699998862576,
+              0.43662300004143617,
+              0.436500999967393,
+              0.43519400014702114,
+              0.4347730000517913,
+              0.4388759998619207,
+              0.4384260000733775,
+              0.43618600011541275,
+              0.4361570004220994,
+              0.4372090002107143,
+              0.436849999914557,
+              0.43454699971334776,
+              0.4379950000839017
+            ]
+          },
+          "allocated": 18602496,
+          "reserved": 54525952,
+          "initial_p_sha256": "e39302f5e72ebd30dd41146f598c0db3d6d3d744a5ea96dbd91a5f81d75241b7",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 0.4553850003503612,
+            "samples_ms": [
+              0.49724099972081603,
+              0.45765899994876236,
+              0.4559680000966182,
+              0.45478899983208976,
+              0.45339400003285846,
+              0.4538050002338423,
+              0.45512199994846014,
+              0.4560279999168415,
+              0.4539860001386842,
+              0.45400199996947777,
+              0.4557600000225648,
+              0.4553850003503612,
+              0.4559620001600706,
+              0.4550700000436336,
+              0.4570259998217807,
+              0.455966000117769,
+              0.45440699977916665,
+              0.4548510000859096,
+              0.4635199998119788,
+              0.45548000025519286,
+              0.4548719998638262
+            ]
+          },
+          "allocated": 10205184,
+          "reserved": 52428800,
+          "initial_p_sha256": "e39302f5e72ebd30dd41146f598c0db3d6d3d744a5ea96dbd91a5f81d75241b7",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 0.1956309997694916,
+            "samples_ms": [
+              0.23841499978516367,
+              0.19838700018226518,
+              0.19699500035130768,
+              0.19552100002329098,
+              0.19613999984358088,
+              0.19488799989630934,
+              0.19731800011868472,
+              0.1953529999809689,
+              0.19527399990693084,
+              0.1947310001924052,
+              0.1965010001185874,
+              0.19602000020313426,
+              0.19606900013968698,
+              0.19569999994928367,
+              0.1946459997270722,
+              0.20360999997137696,
+              0.19531399993866216,
+              0.1946399997905246,
+              0.19331000021338696,
+              0.19438899971646606,
+              0.1956309997694916
+            ]
+          },
+          "allocated": 10205184,
+          "reserved": 52428800,
+          "initial_p_sha256": "e39302f5e72ebd30dd41146f598c0db3d6d3d744a5ea96dbd91a5f81d75241b7",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 0.28101199995944626,
+            "samples_ms": [
+              0.3096810000897676,
+              0.2838239997799974,
+              0.28117400006522075,
+              0.28018800003337674,
+              0.28095300012864755,
+              0.28174099998068414,
+              0.28266800018172944,
+              0.2802750000228116,
+              0.2807010000651644,
+              0.28459200029828935,
+              0.28007899982185336,
+              0.2795669997794903,
+              0.28019499995934893,
+              0.2809120001074916,
+              0.28127900031904574,
+              0.28230800035089487,
+              0.28254300013941247,
+              0.28191199999128,
+              0.27913299982174067,
+              0.28101199995944626,
+              0.2805199997055752
+            ]
+          },
+          "allocated": 10310144,
+          "reserved": 52428800,
+          "initial_p_sha256": "e39302f5e72ebd30dd41146f598c0db3d6d3d744a5ea96dbd91a5f81d75241b7",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 0.28001100008623325,
+            "samples_ms": [
+              0.30921799998395727,
+              0.28425300024537137,
+              0.2814859999489272,
+              0.28001100008623325,
+              0.2805479998642113,
+              0.28080799984309124,
+              0.279506999959267,
+              0.27713700001186226,
+              0.28118299997004215,
+              0.27903199998036143,
+              0.2790870003082091,
+              0.280367999948794,
+              0.27977600029771565,
+              0.27924500000153785,
+              0.2796970002236776,
+              0.280158999885316,
+              0.2798610003083013,
+              0.2789860000120825,
+              0.28101199995944626,
+              0.2787610001178109,
+              0.2801269997689815
+            ]
+          },
+          "allocated": 10310144,
+          "reserved": 52428800,
+          "initial_p_sha256": "e39302f5e72ebd30dd41146f598c0db3d6d3d744a5ea96dbd91a5f81d75241b7",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 0.16130199992403504,
+            "samples_ms": [
+              0.20739100000355393,
+              0.16134199995576637,
+              0.16151799991348526,
+              0.160760000198934,
+              0.16301300001941854,
+              0.16343600009349757,
+              0.16077700001915218,
+              0.16017999996620347,
+              0.16168100000868435,
+              0.16334299971276778,
+              0.1636910001252545,
+              0.16155000002981978,
+              0.16131600023072679,
+              0.16130199992403504,
+              0.1596000001882203,
+              0.1608389998182247,
+              0.16040199989220127,
+              0.16090600001916755,
+              0.16008000011424883,
+              0.1598250000824919,
+              0.16033399970183382
+            ]
+          },
+          "allocated": 45227008,
+          "reserved": 94371840,
+          "initial_p_sha256": "e39302f5e72ebd30dd41146f598c0db3d6d3d744a5ea96dbd91a5f81d75241b7",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 0.06633500015595928,
+            "samples_ms": [
+              0.09630799968363135,
+              0.06794899991291459,
+              0.0665430002300127,
+              0.06612200013478287,
+              0.06642399966949597,
+              0.0666089999867836,
+              0.06633500015595928,
+              0.06688200028293068,
+              0.06686699998681433,
+              0.06689000019832747,
+              0.06616000018766499,
+              0.06574600001840736,
+              0.06556500011356547,
+              0.06566299998667091,
+              0.06594399974346743,
+              0.06616600012421259,
+              0.06565600006069872,
+              0.06618399993385538,
+              0.06613499999730266,
+              0.06755300000804709,
+              0.06641199979640078
+            ]
+          },
+          "allocated": 44583424,
+          "reserved": 90177536,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
     }
   ],
   "source_hash_sets": {
@@ -2675,5 +6321,6 @@
       "benchmarks/cuda/linear/global_profile_product.py": "1b8e148486254d9b7c687a2067d7d217853a7011891700381df77ab24f1dc076",
       "benchmarks/cuda/polar_update.py": "a33519c3e46f7271b8ab08b43a57e6fbb4a5164cc8eda397fd74137b8304a9e4"
     }
-  }
+  },
+  "disposition": "Reject runtime integration: both spatial candidates are slower than their matching unsorted contractions in every observed case and increase allocated peak. Preserve full source, negative results and original gate attempts."
 }

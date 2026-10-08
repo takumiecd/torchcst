@@ -175,3 +175,26 @@ and SHA256-verified archives, preserved under ignored jobs/. Documented recover
 completed; a new single-L4 supervisor dispatches the four existing queued
 primary jobs and the separate new Torus reference gate. No successful result
 is rerun, no job is re-budgeted and no comparison is dropped.
+
+## Completed primary scope and disposition
+
+All six predeclared jobs completed with exit0/no timeout; all ten cases retain
+every correctness/optimizer gate, all21 timing samples, all six CST routes and
+dense, allocated and reserved peaks. Sourceb47c57d3cf11e409db8d36a01bc16a87600097bf;
+all result archives/receipts verified, frozen source and raw workers preserved
+in the host-wide pool job directories recorded in the summary.
+
+Product2048/rho3 split1/spatial16/spatial32:1.109658/1.300269/1.301265ms;
+allocated66,493,952/68,171,776/68,171,776 bytes.
+Product8192/rho3:43.131589/43.868566/43.877891ms;
+allocated1,041,040,896/1,053,624,320/1,053,624,320 bytes.
+Reserved2,501,902,336/3,091,202,048/3,091,202,048 bytes.
+These are complete-step primary results, not the earlier kernel-event diagnostic.
+
+All observed Product and64-output Strip cases lose against their matching
+unsorted contraction (Product split1; Strip split8). There is no positive route
+to confirm or adopt. Close runtime PR #70; integrate this note and complete
+summary separately. Preserve the prototype branch and original failed/transport
+attempts. This is an engineering disposition based on negative primary evidence,
+not a retrospective significance threshold. The new N-output Strip scope is a
+separate fixture under PR #72; no speed extrapolation from64-output results.
