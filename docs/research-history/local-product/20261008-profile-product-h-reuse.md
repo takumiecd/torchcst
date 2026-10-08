@@ -259,3 +259,63 @@ Before a corrected primary submission, retain the unchanged gates and subtract
 all prior consumed time:2042/2045s driver,242/245s pytest and792/795s sigma3
 runner; sigma8 remains850s. No measurement was selected or rerun and no gate,
 cohort, atom count, norm floor or optimizer contract is relaxed.
+
+## Verified N1024 primary, confirmation pending
+
+Frozen runtime0aeeff35dc32984f1ea21c1418427c7b18a78ecf: local complete CPU suite
+1322 passed/2192 skipped/18 warnings, Ruff/diff checks and wheel/sdist build
+passed. GitHub CPU Actions run37719038254/job113122163314 passed. N1024 primary
+job l4job-465a50431de74ee5b1737bc08944dbf4 passed202 GPU tests without skips and
+both complete cases, including the independent full-A FP64 Y/dX/all-parameter
+VJP, strict nonzero centre derivatives and exact public optimizer proposal.
+The max Y/dX/dP discrepancies over the three routes and both widths are below
+1.3e-5. Every52428 atom changes width; initial/final empty/floor/singleton-both
+counts are zero. All seven workers per case pass submission checking.
+
+NVIDIA L4/Torch2.11.0+cu130/CUDA13/Triton3.6, uninstrumented Graph medians ms;
+peaks include capture/replay, decimal MB. No total process measurement.
+
+| sigma | route | Graph ms | eager ms | allocated MB | reserved MB |
+| --- | --- | --- | --- | --- | --- |
+|3|H saved|94.419|236.477|135.943|436.208|
+|3|H recompute|93.789|237.410|129.363|402.653|
+|3|W + GEMM|122.217|230.535|137.489|419.430|
+|3|dense|0.0825|0.671|51.383|111.149|
+|8|H saved|96.862|239.255|135.943|436.208|
+|8|H recompute|96.492|236.038|129.363|402.653|
+|8|W + GEMM|127.324|228.867|137.489|419.430|
+|8|dense|0.0837|0.707|51.383|111.149|
+
+Same seed/source/initial parameters/inputs/update across routes were verified.
+The reference enumerates dense axis factors; its very large gap to dense is a
+negative production-speed result. H recompute saves6.58 decimal MB relative to
+H saved with only a sub-percent primary-time difference. H routes are faster
+than generated W here; this cannot be generalized to the prior Euclidean CUDA
+cohort or a fused Torus implementation. In the separate instrumented Graph,
+H backward is70.9–73.6ms and optimizer0.23–0.24ms. This points to factor
+regeneration/VJP/contractions as the next diagnostic target, without proving
+hardware memory traffic or an isolated FP64 penalty.
+
+The N1024 primary satisfies the predeclared confirmation trigger: H versus
+W exceeds3 percent time improvement; H recompute also has lower allocated peak
+without primary Graph regression. Queue both N1024 and N2048 independent jobs,
+reverse all three CST routes, preserve dense last, repeat all four cases with
+unchanged runtime0aeeff35 and2100/300/850s budgets. No later source tuning is
+included. Jobs l4job-24e1a0f029b44aa1901733fe8e31c768 and
+l4job-6cde9e65e784419587633b753c457388 are pending, as is N2048 primary
+l4job-5ab0622e3f1f43fa8a2b39899e706745. Do not adopt a positive ranking until
+these are checked.
+
+N1024 primary source/result archives:
+9fe0ecc95667238280b2bb4f99b3b8e9ddd5fefb8cf8373f0b4323c5491de2ba /
+494f15bc64a00c982bb6a424006921d9df4466f2a9d6f8aa73def5d099273a90.
+All25 result entries, source archive and receipt/result archive hashes verified.
+Raw primary-1024 results and verification summary are preserved in ignored
+H-reuse evidence and the pool job directory.
+
+PR #74 merged through GitHub at772b7cdcaa4a2a307a7a02f0dec36e58d2d98ca4;
+local main was fast-forwarded afterward. It integrates the correctness-verified
+research update foundation, not an updater speedup or public fast path. Draft
+PR #75 contains this bounded contraction/reference protocol and remains pending
+complete disposition. No research worktree, ignored evidence or branch has been
+removed during the live comparison.
