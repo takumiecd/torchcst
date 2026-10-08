@@ -94,3 +94,42 @@ required before a positive performance disposition. Preserve negative evidence.
 
 This checkpoint records scope and mathematics only. No new performance result,
 Sphere API, CUDA implementation or public dispatch policy is claimed.
+
+## First implementation checkpoint: Torus block contractions
+
+Add research_torch_torus_profile_product_chunked/v1, not public registration.
+It accepts intrinsic FP32/FP64 Product/Strip centre-fibre Triweight/Gaussian
+profiles, axes up to 2048 and batch up to 64. Each block enumerates every
+circle and section site for exact normalization. Transient factors are not
+saved across the forward/backward boundary. H/save keeps B*A values; H/recompute
+recomputes the input contraction during parameter VJP. W uses the same factors
+to assemble the aggregate matrix and saves W for dX, then uses dW for parameter
+VJPs. All routes recompute factor VJPs in bounded atom blocks and retain both
+normalization derivatives and section/circle-radius coupling.
+
+Snapshot canonical source, current width precision, amplitude maximum, live
+geometry and freshly built axis queries. No geometry state is frozen across
+replays. Older VJPs retain their own forward state after source, pitch, radii
+or amplitude changes. The source law still detaches width in task gradients.
+No approximation, truncation, sampling or new coordinate update is introduced.
+
+The first GPU submission is a correctness gate only, with a predeclared 600s
+driver budget and a 300s pytest child budget. Run test_torus_profile_product.py,
+test_torus_profile_product_graph_update.py and the new chunked tests together.
+These cover independent FP64 physical full-matrix values/dX/all source VJPs,
+both floor cases, Product/Strip/reversed axes, partial atom blocks, old snapshots,
+empty atoms, separate input/parameter gradient requirements, retained tensor
+lifetime, and 20 captured steps with live geometry, evolving widths and AdamW
+moments. No performance repetition or numerical tolerance change is authorized
+by this gate. Diagnose implementation failures before an explicit corrected
+submission and retain the original failure evidence.
+
+The large performance cohort will use equal N input/output lengths, circle
+Strip tiles of 64/pitch68 with unit arc spacing, a centred section Grid32x32
+for N1024 and32x64 for N2048, and minor radius sqrt(N). Major radius is
+(ceil(N/64)*68)/(2*pi), giving a single circular period around the Strip.
+The initial widths are physical sigma3/8, not a claim of equal Euclidean rho
+or equal support counts. Shared sigma bounds1..16, B32, seed41, A=floor(N*N/20),
+Triweight/Triweight, global floor1e-6 and AdamW lr1e-4/decay0.01 stay fixed.
+Large oracle and finite performance budgets must be recorded before submitting
+that later stage; correctness of this small gate does not prove large speed.
