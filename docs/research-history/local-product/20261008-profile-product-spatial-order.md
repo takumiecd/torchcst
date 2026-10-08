@@ -157,3 +157,21 @@ Proceed to the predeclared six primary comparison jobs using the same runtime:
 Product/Euclidean Strip1024/2048 rho3+8 and8192 rho3. Keep all six CST routes
 and dense, every oracle/optimizer gate and complete-step allocated/reserved
 peaks. Literal Torus remains a separate distance/composition decision.
+
+## First primary batch and transport cleanup
+
+Completed verified Product1024 and Euclidean Strip1024 jobs, both rho3/8,
+retain all routes,21 samples, FP64/Polar gates and measured memory in the
+tracked partial summary. At rho3 Product split1/spatial16/spatial32 are
+.315931/.414620/.414199ms; allocated16,688,640/16,898,560/16,898,560 bytes.
+Strip split8/spatial16/spatial32 are.063175/.104381/.104491ms; allocated
+1,305,088/1,318,400/1,318,400 bytes. Ordering is slower at these shapes;
+there is no adoption claim. Keep the remaining predeclared2048/8192 scope.
+
+After the verified Strip result download, remote cleanup's CLI request timed
+out at180s (its execution request30s). Supervisor22547 exited1 and verified
+the owned runtime stopped. Both result statuses remain succeeded with receipts
+and SHA256-verified archives, preserved under ignored jobs/. Documented recover
+completed; a new single-L4 supervisor dispatches the four existing queued
+primary jobs and the separate new Torus reference gate. No successful result
+is rerun, no job is re-budgeted and no comparison is dropped.

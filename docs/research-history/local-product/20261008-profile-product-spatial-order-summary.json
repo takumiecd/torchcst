@@ -1,0 +1,2679 @@
+{
+  "scope": "Primary comparisons; incomplete selected batch; no adoption",
+  "source": "b47c57d3cf11e409db8d36a01bc16a87600097bf",
+  "jobs": [
+    {
+      "family": "global",
+      "size": 1024,
+      "timeout": 1300,
+      "source": "b47c57d3cf11e409db8d36a01bc16a87600097bf",
+      "id": "l4job-3dd17852f5b94d0cb435ae635a68d496",
+      "directory": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-3dd17852f5b94d0cb435ae635a68d496",
+      "status": "queued",
+      "source_sha256": "171f43339db9f833dfa7c2cea6959db62a157a6971845f794a0529701beb1460",
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-dc4fa0566c14-1",
+        "downloaded": 1791418234.2531672,
+        "archive_sha256": "2e1a696128cad9bb2e6e4deb648ef5907f908249915a78b61c417f092873e6fc"
+      }
+    },
+    {
+      "family": "strip",
+      "size": 1024,
+      "timeout": 1300,
+      "source": "b47c57d3cf11e409db8d36a01bc16a87600097bf",
+      "id": "l4job-0ea75689c4904da6ad8a913fef8941c9",
+      "directory": "/Users/ware10sai/.local/state/colab-l4-pool/jobs/l4job-0ea75689c4904da6ad8a913fef8941c9",
+      "status": "queued",
+      "source_sha256": "171f43339db9f833dfa7c2cea6959db62a157a6971845f794a0529701beb1460",
+      "receipt": {
+        "slot": 1,
+        "session": "cst-pool-dc4fa0566c14-1",
+        "downloaded": 1791418392.039265,
+        "archive_sha256": "3d3e57f3bc72243518e5d809d6a6aea04bfb842893278e87ef3d764194056bc0"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "job": "l4job-3dd17852f5b94d0cb435ae635a68d496",
+      "file": "profile-product-spatial-global-1024-rho3.json",
+      "sha256": "6cdc2fdeef1edd300358a546446f9eb061cc6a1be9d0e36ecc210ade298d21e8",
+      "execution_id": "e6851213-da9a-400a-b3c2-80847cd9218a",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-global-1024-rho3-spatial",
+          "fixture": "polar_profile_product_global",
+          "size": 1024,
+          "rows": 32,
+          "atoms": 52429,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_profile_product_global",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v4",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v4",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v5",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v5",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split1",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "1086a80f2380fe52dd62fb913e65f8d4bb819c59903af586e5bd625cae77f9c2",
+          "plans_sha256": "f62087d663112c4f25a503266d736875c78ecbd2da5af0a35af52050554d409f"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 1.2004343382443494e-05,
+              "rel_l2": 3.0301446133762643e-07
+            },
+            "dx": {
+              "max": 1.1809749027591465e-05,
+              "rel_l2": 3.019135535959617e-07
+            },
+            "dp": {
+              "max": 2.9792731206512713e-06,
+              "rel_l2": 2.045814383830459e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 2.4594212362671897e-05,
+              "rel_l2": 5.394389775007144e-07
+            },
+            "dx": {
+              "max": 1.997828234401311e-05,
+              "rel_l2": 5.422318312319677e-07
+            },
+            "dp": {
+              "max": 3.4561102788543963e-06,
+              "rel_l2": 2.1912851733152038e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.89970333106271e-06,
+              "rel_l2": 2.4219261214482106e-07
+            },
+            "dx": {
+              "max": 5.702416910224883e-06,
+              "rel_l2": 2.415834782364294e-07
+            },
+            "dp": {
+              "max": 3.4561102788543963e-06,
+              "rel_l2": 2.1912851733152038e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 2.2686863729859397e-05,
+              "rel_l2": 5.404826670309624e-07
+            },
+            "dx": {
+              "max": 2.093195666041936e-05,
+              "rel_l2": 5.425213048735925e-07
+            },
+            "dp": {
+              "max": 3.4561102788543963e-06,
+              "rel_l2": 2.1912851733152038e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 2.4594212362671897e-05,
+              "rel_l2": 5.408626021257273e-07
+            },
+            "dx": {
+              "max": 1.997828234401311e-05,
+              "rel_l2": 5.421808580716287e-07
+            },
+            "dp": {
+              "max": 3.4561102788543963e-06,
+              "rel_l2": 2.1912851733152038e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 4.606687797448217e-06,
+              "rel_l2": 2.137586038462097e-07
+            },
+            "dx": {
+              "max": 4.6215055879983424e-06,
+              "rel_l2": 2.1570850729335102e-07
+            },
+            "dp": {
+              "max": 3.4561102788543963e-06,
+              "rel_l2": 2.1912851733152038e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 0.5601630000455771,
+            "samples_ms": [
+              0.5894620007893536,
+              0.5624189998343354,
+              0.5609810004898463,
+              0.5578270001933561,
+              0.5612260001726099,
+              0.5583869997280999,
+              0.559547000193561,
+              0.558480999643507,
+              0.5589099991993862,
+              0.5663270003424259,
+              0.558620000447263,
+              0.5584219998127082,
+              0.5587059995377786,
+              0.5612129998553428,
+              0.563949000024877,
+              0.5603820000033011,
+              0.5544910000025993,
+              0.5633139999190462,
+              0.5571620004047872,
+              0.5602279998129234,
+              0.5601630000455771
+            ]
+          },
+          "allocated": 25604096,
+          "reserved": 102760448,
+          "initial_p_sha256": "7528ac278abc3ca75b5f70fd814412de01533056fb2bb0ab52e38a375cdf2b9f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 0.31593099993187934,
+            "samples_ms": [
+              0.3570500002751942,
+              0.3234050000173738,
+              0.3154759997414658,
+              0.3147469997202279,
+              0.31523799952992704,
+              0.316030999783834,
+              0.3155860003971611,
+              0.3192309995938558,
+              0.31593099993187934,
+              0.3272280000601313,
+              0.3151930004605674,
+              0.3197410005668644,
+              0.3159379994031042,
+              0.31783799931872636,
+              0.314486999741348,
+              0.3139630007353844,
+              0.3143339999951422,
+              0.31694799963588594,
+              0.3160049991492997,
+              0.31488000058743637,
+              0.3122339994661161
+            ]
+          },
+          "allocated": 16688640,
+          "reserved": 56623104,
+          "initial_p_sha256": "7528ac278abc3ca75b5f70fd814412de01533056fb2bb0ab52e38a375cdf2b9f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 0.2809979996527545,
+            "samples_ms": [
+              0.3226059998269193,
+              0.28331699923000997,
+              0.2801139999064617,
+              0.28054099948349176,
+              0.28101299994887086,
+              0.2815219995682128,
+              0.27810699975816533,
+              0.2809979996527545,
+              0.2826670006470522,
+              0.28312200083746575,
+              0.27913099984289147,
+              0.28095200013922295,
+              0.2815789994201623,
+              0.28167499931441853,
+              0.2796139997371938,
+              0.27784600024460815,
+              0.2795529999275459,
+              0.279158000012103,
+              0.27962100011791335,
+              0.28163099977973616,
+              0.2811880003719125
+            ]
+          },
+          "allocated": 16688640,
+          "reserved": 58720256,
+          "initial_p_sha256": "7528ac278abc3ca75b5f70fd814412de01533056fb2bb0ab52e38a375cdf2b9f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 0.41461999990133336,
+            "samples_ms": [
+              0.4484750006668037,
+              0.4148280004301341,
+              0.4166119997535134,
+              0.4119059994991403,
+              0.41462600074737566,
+              0.41272699945693603,
+              0.4119499999433174,
+              0.4113370005143224,
+              0.41301900000689784,
+              0.41297899952041917,
+              0.4135350000069593,
+              0.41270099973189645,
+              0.41586600036680466,
+              0.4132369995204499,
+              0.41461999990133336,
+              0.41548900026100455,
+              0.4132690000915318,
+              0.41636199966887943,
+              0.4154700000071898,
+              0.41468300059932517,
+              0.41754999983822927
+            ]
+          },
+          "allocated": 16898560,
+          "reserved": 58720256,
+          "initial_p_sha256": "7528ac278abc3ca75b5f70fd814412de01533056fb2bb0ab52e38a375cdf2b9f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 0.4141990002608509,
+            "samples_ms": [
+              0.4437649995452375,
+              0.4166310000073281,
+              0.4119909999644733,
+              0.41694799983815756,
+              0.4141990002608509,
+              0.41214799966837745,
+              0.4152229994360823,
+              0.4126559997530421,
+              0.4160680000495631,
+              0.4129349999857368,
+              0.41550300011294894,
+              0.4167790002611582,
+              0.4125120003664051,
+              0.41410900030314224,
+              0.41636999958427623,
+              0.4136659999858239,
+              0.4123680000702734,
+              0.4133399997954257,
+              0.4136830002607894,
+              0.4149529995629564,
+              0.41522599985910347
+            ]
+          },
+          "allocated": 16898560,
+          "reserved": 58720256,
+          "initial_p_sha256": "7528ac278abc3ca75b5f70fd814412de01533056fb2bb0ab52e38a375cdf2b9f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 0.24496599962731125,
+            "samples_ms": [
+              0.29014099982305197,
+              0.2494569998816587,
+              0.24631099950056523,
+              0.24457099971186835,
+              0.24505500005034264,
+              0.24369499988097232,
+              0.24690899954293855,
+              0.2425029997539241,
+              0.24421499983873218,
+              0.2451800000926596,
+              0.2436380000290228,
+              0.24361400028283242,
+              0.24328200015588664,
+              0.24378099988098256,
+              0.2458380004100036,
+              0.24595299964857986,
+              0.24760399992374005,
+              0.24243900043074973,
+              0.24457099971186835,
+              0.24500200015609153,
+              0.24496599962731125
+            ]
+          },
+          "allocated": 50767360,
+          "reserved": 115343360,
+          "initial_p_sha256": "7528ac278abc3ca75b5f70fd814412de01533056fb2bb0ab52e38a375cdf2b9f",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 0.08329799948114669,
+            "samples_ms": [
+              0.11574499967537122,
+              0.08536599943909096,
+              0.08526700003130827,
+              0.08424699990428053,
+              0.08329799948114669,
+              0.0830569997560815,
+              0.08376700043299934,
+              0.08445999992545694,
+              0.08356299986189697,
+              0.08290900041174609,
+              0.08534100015822332,
+              0.08324600003106752,
+              0.0828160000310163,
+              0.08253499981947243,
+              0.08316599996760488,
+              0.08408499979850603,
+              0.08133000028465176,
+              0.0832010000522132,
+              0.08276900007331278,
+              0.0830569997560815,
+              0.08377699941775063
+            ]
+          },
+          "allocated": 51382784,
+          "reserved": 111149056,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
+    },
+    {
+      "job": "l4job-3dd17852f5b94d0cb435ae635a68d496",
+      "file": "profile-product-spatial-global-1024-rho8.json",
+      "sha256": "24633ea56862b92cd663d2a4f9d802d7ad72769e6fc3757337f23aca0df3cac0",
+      "execution_id": "7c560056-4f39-4798-a0a9-98ae1a7f6379",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-global-1024-rho8-spatial",
+          "fixture": "polar_profile_product_global",
+          "size": 1024,
+          "rows": 32,
+          "atoms": 52429,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              8
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_profile_product_global",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v4",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v4",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v5",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v5",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_profile_product_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split1",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "a526e8d832c541b917e3080932a5640e883a0a001e73bb787c688b57a5a68347",
+          "plans_sha256": "f62087d663112c4f25a503266d736875c78ecbd2da5af0a35af52050554d409f"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 1.8724343085807504e-05,
+              "rel_l2": 4.028960916128607e-07
+            },
+            "dx": {
+              "max": 1.7297978606833908e-05,
+              "rel_l2": 4.0520873374561846e-07
+            },
+            "dp": {
+              "max": 2.210377651579165e-06,
+              "rel_l2": 1.7989244034832175e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 2.4049197360653807e-05,
+              "rel_l2": 6.074616278217828e-07
+            },
+            "dx": {
+              "max": 2.1034462953650745e-05,
+              "rel_l2": 6.073667978861558e-07
+            },
+            "dp": {
+              "max": 2.059118568986662e-06,
+              "rel_l2": 1.9588584602775132e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 5.93766259981976e-06,
+              "rel_l2": 2.864499000085059e-07
+            },
+            "dx": {
+              "max": 5.9156064651233464e-06,
+              "rel_l2": 2.768054143357201e-07
+            },
+            "dp": {
+              "max": 2.059118568986662e-06,
+              "rel_l2": 1.9588584602775132e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 2.3095523044247557e-05,
+              "rel_l2": 6.043833586809587e-07
+            },
+            "dx": {
+              "max": 2.462193670993429e-05,
+              "rel_l2": 6.046066614079877e-07
+            },
+            "dp": {
+              "max": 2.059118568986662e-06,
+              "rel_l2": 1.9588584602775132e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 2.5002871677060057e-05,
+              "rel_l2": 6.051232169758396e-07
+            },
+            "dx": {
+              "max": 2.462193670993429e-05,
+              "rel_l2": 6.046118982732715e-07
+            },
+            "dp": {
+              "max": 2.059118568986662e-06,
+              "rel_l2": 1.9588584602775132e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Product sites Y/dX/all atom gradients; factored global norm; production polar update",
+            "y": {
+              "max": 5.376676039503536e-06,
+              "rel_l2": 2.5460435630932223e-07
+            },
+            "dx": {
+              "max": 6.085306463177176e-06,
+              "rel_l2": 2.5197543470535135e-07
+            },
+            "dp": {
+              "max": 2.059118568986662e-06,
+              "rel_l2": 1.9588584602775132e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 0.6534770000143908,
+            "samples_ms": [
+              0.6804259992350126,
+              0.6574580002052244,
+              0.6551010001203394,
+              0.6512360005217488,
+              0.6541049997395021,
+              0.6568239996340708,
+              0.6526239994855132,
+              0.6558009999935166,
+              0.6485860003522248,
+              0.6538620000355877,
+              0.6521249997604173,
+              0.6533209998451639,
+              0.6534770000143908,
+              0.6523689999085036,
+              0.6559559997185715,
+              0.6564409995917231,
+              0.6491750000350294,
+              0.6513429998449283,
+              0.6515680006486946,
+              0.6548889996338403,
+              0.6508750002467423
+            ]
+          },
+          "allocated": 25604096,
+          "reserved": 102760448,
+          "initial_p_sha256": "b83a85f583d5c3770cd73157a4a9fe36f86186be41801509c6962137291ca55b",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 0.45811299969500396,
+            "samples_ms": [
+              0.5003469996154308,
+              0.45890299952588975,
+              0.45696799952565925,
+              0.4601219998221495,
+              0.4562880003504688,
+              0.4561240002658451,
+              0.4588189995047287,
+              0.4585389997373568,
+              0.4584079997584922,
+              0.45651599975826684,
+              0.45701499948336277,
+              0.45868000051996205,
+              0.45811299969500396,
+              0.45970700011821464,
+              0.458206999610411,
+              0.456851999842911,
+              0.4588149995470303,
+              0.4571589997794945,
+              0.45706299988523824,
+              0.45516299996961607,
+              0.45698799931415124
+            ]
+          },
+          "allocated": 16688640,
+          "reserved": 56623104,
+          "initial_p_sha256": "b83a85f583d5c3770cd73157a4a9fe36f86186be41801509c6962137291ca55b",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 0.42292099988117116,
+            "samples_ms": [
+              0.4644430000553257,
+              0.4259170000295853,
+              0.42226400000799913,
+              0.4225129996484611,
+              0.42089499947906006,
+              0.422973000240745,
+              0.42284600021957885,
+              0.4232809997120057,
+              0.42183499954262516,
+              0.4232910005157464,
+              0.4228940006214543,
+              0.42292099988117116,
+              0.42263700015610084,
+              0.4246380003678496,
+              0.42268899960618,
+              0.4224819995215512,
+              0.42161800047324505,
+              0.4244479996486916,
+              0.4235110000081477,
+              0.4230169997754274,
+              0.4257020000295597
+            ]
+          },
+          "allocated": 16688640,
+          "reserved": 58720256,
+          "initial_p_sha256": "b83a85f583d5c3770cd73157a4a9fe36f86186be41801509c6962137291ca55b",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 0.549833999684779,
+            "samples_ms": [
+              0.5951849998382386,
+              0.551193000319472,
+              0.5518449997907737,
+              0.548717999663495,
+              0.5503889997271472,
+              0.5504810005731997,
+              0.5502859994521714,
+              0.5473809997056378,
+              0.5500620000020717,
+              0.5501969999386347,
+              0.5494739998539444,
+              0.5488990000230842,
+              0.5500799998117145,
+              0.5468670005939202,
+              0.5469919997267425,
+              0.5487489997904049,
+              0.5488919996423647,
+              0.549833999684779,
+              0.5517489998965175,
+              0.5496260000654729,
+              0.5471829999805777
+            ]
+          },
+          "allocated": 16898560,
+          "reserved": 58720256,
+          "initial_p_sha256": "b83a85f583d5c3770cd73157a4a9fe36f86186be41801509c6962137291ca55b",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 0.5527280000023893,
+            "samples_ms": [
+              0.5818649997308967,
+              0.5536449998544413,
+              0.5514140002560453,
+              0.5519380001715035,
+              0.5533129997274955,
+              0.5528559995582327,
+              0.5525980004676967,
+              0.5573830003413605,
+              0.5506199995579664,
+              0.5500280003616353,
+              0.5514770000445424,
+              0.5548789995373227,
+              0.5585890003203531,
+              0.5497920001289458,
+              0.5531140004677582,
+              0.5505200006155064,
+              0.5535959999178885,
+              0.5521140001292224,
+              0.5527280000023893,
+              0.555988999622059,
+              0.5516410001291661
+            ]
+          },
+          "allocated": 16898560,
+          "reserved": 58720256,
+          "initial_p_sha256": "b83a85f583d5c3770cd73157a4a9fe36f86186be41801509c6962137291ca55b",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 0.39116500011004973,
+            "samples_ms": [
+              0.43748099960794207,
+              0.3938890004064888,
+              0.3904730001522694,
+              0.3902219996234635,
+              0.39175300025817705,
+              0.38886400034243707,
+              0.3898049999406794,
+              0.3931029996238067,
+              0.3912820002369699,
+              0.39050100076565286,
+              0.3909739998562145,
+              0.3911780004273169,
+              0.39128500065999106,
+              0.38987900006759446,
+              0.39116500011004973,
+              0.393252999856486,
+              0.3925869996237452,
+              0.3909249999196618,
+              0.38966700049059,
+              0.3897079996022512,
+              0.3916080004273681
+            ]
+          },
+          "allocated": 50767360,
+          "reserved": 115343360,
+          "initial_p_sha256": "b83a85f583d5c3770cd73157a4a9fe36f86186be41801509c6962137291ca55b",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 0.083980999988853,
+            "samples_ms": [
+              0.11671199990814785,
+              0.08652500036987476,
+              0.09006500022223918,
+              0.08347599941771477,
+              0.083980999988853,
+              0.08281500049633905,
+              0.08554400028515374,
+              0.08687999979883898,
+              0.08417800017923582,
+              0.083199000073364,
+              0.08469399926980259,
+              0.08258600064436905,
+              0.08285199965030188,
+              0.08379099926969502,
+              0.08323799920617603,
+              0.08322199937538244,
+              0.08314600017911289,
+              0.0863919995026663,
+              0.08613699992565671,
+              0.0844349997350946,
+              0.08315399918501498
+            ]
+          },
+          "allocated": 51382784,
+          "reserved": 111149056,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
+    },
+    {
+      "job": "l4job-0ea75689c4904da6ad8a913fef8941c9",
+      "file": "profile-product-spatial-strip-1024-rho3.json",
+      "sha256": "9ed9f8796631790f02d596ee2902e737ce805c632cacae21032028b6d4145edc",
+      "execution_id": "80610bf6-88e3-44ea-94e9-f44642d3ff8a",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-strip-1024-rho3-spatial",
+          "fixture": "polar_profile_product_strip",
+          "size": 1024,
+          "rows": 32,
+          "atoms": 3276,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              3
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v4",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v4",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v5",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v5",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split8",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "d11ee36240cb1a2f194a8cf0a34eb7955d01473d7acea8958402dee27490b558",
+          "plans_sha256": "57614176a442a1859ff94a8c5629edaa8cbbd9d86d283dad4544d06915259c70"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 8.999166931644709e-06,
+              "rel_l2": 3.016974379853663e-07
+            },
+            "dx": {
+              "max": 1.2835723222082152e-06,
+              "rel_l2": 1.545537377856857e-07
+            },
+            "dp": {
+              "max": 2.111585523323356e-06,
+              "rel_l2": 1.9980740801186006e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 1.1783740273330068e-05,
+              "rel_l2": 5.189845092010577e-07
+            },
+            "dx": {
+              "max": 1.7689864142411693e-06,
+              "rel_l2": 1.9420426947017476e-07
+            },
+            "dp": {
+              "max": 3.0014004028799945e-06,
+              "rel_l2": 2.1385098409622667e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 3.702809322270184e-06,
+              "rel_l2": 2.309142023490041e-07
+            },
+            "dx": {
+              "max": 1.048064504960422e-06,
+              "rel_l2": 1.705258721745377e-07
+            },
+            "dp": {
+              "max": 3.0014004028799945e-06,
+              "rel_l2": 2.1385098409622667e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 3.7346978221108884e-06,
+              "rel_l2": 2.3325003363964504e-07
+            },
+            "dx": {
+              "max": 1.1420332819422896e-06,
+              "rel_l2": 1.6981752554735572e-07
+            },
+            "dp": {
+              "max": 3.0014004028799945e-06,
+              "rel_l2": 2.1385098409622667e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 3.7346978221108884e-06,
+              "rel_l2": 2.3206634650267228e-07
+            },
+            "dx": {
+              "max": 1.1420332819422896e-06,
+              "rel_l2": 1.695500979609388e-07
+            },
+            "dp": {
+              "max": 3.0014004028799945e-06,
+              "rel_l2": 2.1385098409622667e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 2.6371904500166465e-06,
+              "rel_l2": 1.7403612144461974e-07
+            },
+            "dx": {
+              "max": 9.973686574404894e-07,
+              "rel_l2": 1.5971646662823298e-07
+            },
+            "dp": {
+              "max": 3.0014004028799945e-06,
+              "rel_l2": 2.1385098409622667e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 0.11495099988678703,
+            "samples_ms": [
+              0.16135599980771076,
+              0.11947999973926926,
+              0.11493900001369184,
+              0.11483399975986686,
+              0.11504299982334487,
+              0.11511299999256153,
+              0.11487599931570003,
+              0.11487200026749633,
+              0.11495099988678703,
+              0.11572400035220198,
+              0.11413300035201246,
+              0.11373500001354842,
+              0.11582200022530742,
+              0.1156999996965169,
+              0.11502800043672323,
+              0.11410000024625333,
+              0.11543200071173487,
+              0.11581799935811432,
+              0.11468800039438065,
+              0.11469399942143355,
+              0.11421300041547511
+            ]
+          },
+          "allocated": 2355200,
+          "reserved": 8388608,
+          "initial_p_sha256": "7a87911d95ab38eb2d9d35de875af16d1d0348f116adaa62fd2f9ffee6667b44",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 0.0953779999690596,
+            "samples_ms": [
+              0.13882999974157428,
+              0.09735000003274763,
+              0.0960710003710119,
+              0.09717699958855519,
+              0.0961499999903026,
+              0.09667900030763121,
+              0.09580499954608968,
+              0.09504399986326462,
+              0.09480700009589782,
+              0.09412100007466506,
+              0.09532500007480849,
+              0.09486100043432089,
+              0.09485499958827859,
+              0.09505799971520901,
+              0.09712799965200247,
+              0.09673299973655958,
+              0.09567599954607431,
+              0.0953779999690596,
+              0.0949180002862704,
+              0.09511799999017967,
+              0.09462600064580329
+            ]
+          },
+          "allocated": 1305088,
+          "reserved": 6291456,
+          "initial_p_sha256": "7a87911d95ab38eb2d9d35de875af16d1d0348f116adaa62fd2f9ffee6667b44",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 0.06317499992292142,
+            "samples_ms": [
+              0.10226200083707226,
+              0.0649719995635678,
+              0.06318800024018856,
+              0.0643539997327025,
+              0.06282300000748364,
+              0.06367000059981365,
+              0.06346899954223773,
+              0.06317499992292142,
+              0.0631220000286703,
+              0.06390700036718044,
+              0.06267999924602918,
+              0.062265000451589,
+              0.06315799964795588,
+              0.06257400036702165,
+              0.06248399949981831,
+              0.06265299998631235,
+              0.06376500004989794,
+              0.06316300004982622,
+              0.0625789998593973,
+              0.06411599952116376,
+              0.06441700043069432
+            ]
+          },
+          "allocated": 1305088,
+          "reserved": 6291456,
+          "initial_p_sha256": "7a87911d95ab38eb2d9d35de875af16d1d0348f116adaa62fd2f9ffee6667b44",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 0.10438100071041845,
+            "samples_ms": [
+              0.1540020002721576,
+              0.10659199961082777,
+              0.10517899954720633,
+              0.10427399956824956,
+              0.10449699948367197,
+              0.10425999971630517,
+              0.1046090001182165,
+              0.1046919996952056,
+              0.10438100071041845,
+              0.10330300028726924,
+              0.10457299958943622,
+              0.10388900045654736,
+              0.10452900005475385,
+              0.10380700041423552,
+              0.10391700016043615,
+              0.10513200049899751,
+              0.10474099963175831,
+              0.10354000005463604,
+              0.10396600009698886,
+              0.10397400001238566,
+              0.10396499965281691
+            ]
+          },
+          "allocated": 1318400,
+          "reserved": 6291456,
+          "initial_p_sha256": "7a87911d95ab38eb2d9d35de875af16d1d0348f116adaa62fd2f9ffee6667b44",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 0.10449099954712437,
+            "samples_ms": [
+              0.15287699989130488,
+              0.1065399992512539,
+              0.10592500075290445,
+              0.1045319995682803,
+              0.10451400066813221,
+              0.10364999980083667,
+              0.11494899990793783,
+              0.10533899967413163,
+              0.10524499975872459,
+              0.10434700016048737,
+              0.10381799984315876,
+              0.10425799973745598,
+              0.10369000028731534,
+              0.10381600077380426,
+              0.10426600056234747,
+              0.10449099954712437,
+              0.10507799925107975,
+              0.10487499912414933,
+              0.10402200041426113,
+              0.10383200060459785,
+              0.10380099956819322
+            ]
+          },
+          "allocated": 1318400,
+          "reserved": 6291456,
+          "initial_p_sha256": "7a87911d95ab38eb2d9d35de875af16d1d0348f116adaa62fd2f9ffee6667b44",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 0.06756200036761584,
+            "samples_ms": [
+              0.10791800013976172,
+              0.07055899914121255,
+              0.06675500026176451,
+              0.0677779999023187,
+              0.06651300009252736,
+              0.07994800034794025,
+              0.06882999969093362,
+              0.06831599966972135,
+              0.06553000002895715,
+              0.06867599950055592,
+              0.06617100007133558,
+              0.0679200002196012,
+              0.06725499952153768,
+              0.06709999979648273,
+              0.06724200011376524,
+              0.06662000032520154,
+              0.06669999947916949,
+              0.06718800068483688,
+              0.0682379995851079,
+              0.0682360005157534,
+              0.06756200036761584
+            ]
+          },
+          "allocated": 35383808,
+          "reserved": 48234496,
+          "initial_p_sha256": "7a87911d95ab38eb2d9d35de875af16d1d0348f116adaa62fd2f9ffee6667b44",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 0.05508399954123888,
+            "samples_ms": [
+              0.08474799960822565,
+              0.057360000027983915,
+              0.055435999456676655,
+              0.055697999414405786,
+              0.055874000281619374,
+              0.05508399954123888,
+              0.05511800009116996,
+              0.054583999371971004,
+              0.07307399937417358,
+              0.05529899954126449,
+              0.055001999498927034,
+              0.05507199966814369,
+              0.05489699924510205,
+              0.0547439994988963,
+              0.05461000000650529,
+              0.054767999245086685,
+              0.054831999477755744,
+              0.05435999992187135,
+              0.05518400030268822,
+              0.05539999983739108,
+              0.05488799979502801
+            ]
+          },
+          "allocated": 35408384,
+          "reserved": 48234496,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
+    },
+    {
+      "job": "l4job-0ea75689c4904da6ad8a913fef8941c9",
+      "file": "profile-product-spatial-strip-1024-rho8.json",
+      "sha256": "a1a5bb27beb21cd663601074765dceb6e7c59151c451251d3f3706c4eef551a8",
+      "execution_id": "de7fb7a7-0e79-4ec6-8075-26c15884f51d",
+      "run": {
+        "schema_version": 1,
+        "case": {
+          "id": "profile-product-strip-1024-rho8-spatial",
+          "fixture": "polar_profile_product_strip",
+          "size": 1024,
+          "rows": 32,
+          "atoms": 3276,
+          "profile": "mixed",
+          "dtype": "float32",
+          "seed": 41,
+          "warmup": 5,
+          "rounds": 21,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "widths": {
+            "minimum": 1.0,
+            "birth": 1.0,
+            "maximum": 16,
+            "rho": [
+              8
+            ],
+            "fractions": [
+              1.0
+            ],
+            "center_jitter": null
+          }
+        },
+        "plans": [
+          {
+            "id": "prepared",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_block": 32,
+                "atom_group": 4,
+                "execution_route": "grid",
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "sorting": "torch"
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split1",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v4",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 1
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "split8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v4",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial16",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v5",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 16,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "spatial32",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v5",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "triton",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support",
+                "spatial_tile": 32,
+                "split_k": 8
+              },
+              "schema_version": 1
+            }
+          },
+          {
+            "id": "torch-g8-p8",
+            "plan": {
+              "algorithm_id": "research_strip_profile_product_matrix",
+              "algorithm_revision": "v3",
+              "recipe": {
+                "atom_group": 8,
+                "gemm": "torch",
+                "patch_sites": 8,
+                "prep_group": 16,
+                "prep_sites": 16,
+                "preparation": "support"
+              },
+              "schema_version": 1
+            }
+          }
+        ],
+        "baseline": "split8",
+        "dense": true,
+        "input_hashes": {
+          "case_sha256": "fc2cd1e860746ce8b0a8c3a987c709df26e577e624e6ccc15977012c695df145",
+          "plans_sha256": "57614176a442a1859ff94a8c5629edaa8cbbd9d86d283dad4544d06915259c70"
+        }
+      },
+      "rows": [
+        {
+          "worker": "correctness",
+          "plan_id": "prepared",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 1.3270271351117913e-05,
+              "rel_l2": 3.764112377311589e-07
+            },
+            "dx": {
+              "max": 1.6251330414718268e-06,
+              "rel_l2": 1.9454275361674894e-07
+            },
+            "dp": {
+              "max": 1.2827130495551842e-06,
+              "rel_l2": 1.8009738412417052e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split1",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 1.4076063656887072e-05,
+              "rel_l2": 5.830557778146399e-07
+            },
+            "dx": {
+              "max": 2.7925118963878504e-06,
+              "rel_l2": 2.3308773371399445e-07
+            },
+            "dp": {
+              "max": 1.4643438126515917e-06,
+              "rel_l2": 1.9196309574397102e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "split8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 5.79170987435873e-06,
+              "rel_l2": 2.7832761301460285e-07
+            },
+            "dx": {
+              "max": 1.7983472435645353e-06,
+              "rel_l2": 2.0574779255481877e-07
+            },
+            "dp": {
+              "max": 1.4643438126515917e-06,
+              "rel_l2": 1.9196309574397102e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial16",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 6.74538419076498e-06,
+              "rel_l2": 2.800959424774793e-07
+            },
+            "dx": {
+              "max": 1.7983472435645353e-06,
+              "rel_l2": 2.0555341203328204e-07
+            },
+            "dp": {
+              "max": 1.4643438126515917e-06,
+              "rel_l2": 1.9196309574397102e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "spatial32",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 5.79170987435873e-06,
+              "rel_l2": 2.834839891312713e-07
+            },
+            "dx": {
+              "max": 1.6004190008800379e-06,
+              "rel_l2": 2.0552727266320008e-07
+            },
+            "dp": {
+              "max": 1.4643438126515917e-06,
+              "rel_l2": 1.9196309574397102e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "correctness",
+          "plan_id": "torch-g8-p8",
+          "result": {
+            "status": "PASS",
+            "scope": "independent FP64 complete Strip sites Y/dX/all atom gradients; global norm; production polar update",
+            "y": {
+              "max": 3.895866344194587e-06,
+              "rel_l2": 2.147650326080208e-07
+            },
+            "dx": {
+              "max": 1.1972041340513329e-06,
+              "rel_l2": 1.9463445171769376e-07
+            },
+            "dp": {
+              "max": 1.4643438126515917e-06,
+              "rel_l2": 1.9196309574397102e-07
+            },
+            "polar_update": {
+              "max": 0.0,
+              "rel_l2": 0.0
+            }
+          },
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "prepared",
+          "graph": {
+            "median_ms": 0.12685699948633555,
+            "samples_ms": [
+              0.1760989998729201,
+              0.12773900016327389,
+              0.13456000033329474,
+              0.12679999963438604,
+              0.12685699948633555,
+              0.1263009999092901,
+              0.12666199927480193,
+              0.12717700064968085,
+              0.12670300020545255,
+              0.12503899961302523,
+              0.12699300077656517,
+              0.1267260004169657,
+              0.12506399980338756,
+              0.12762900041707326,
+              0.12767800035362598,
+              0.12624900045921095,
+              0.1268050000362564,
+              0.12815199988835957,
+              0.12731900005746866,
+              0.12636599967663642,
+              0.12727899957098998
+            ]
+          },
+          "allocated": 2355200,
+          "reserved": 8388608,
+          "initial_p_sha256": "84a4a4db77aea734187a49f3e4d653cff2900d31c7a71cd0abac4c80410bd03d",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split1",
+          "graph": {
+            "median_ms": 0.10777499937830726,
+            "samples_ms": [
+              0.14767999982723268,
+              0.10942000062641455,
+              0.1071579999916139,
+              0.10594800005492289,
+              0.10729799942055251,
+              0.1086309994207113,
+              0.10884800030908082,
+              0.10761600060504861,
+              0.11317400003463263,
+              0.10779100011859555,
+              0.10739800018200185,
+              0.10777499937830726,
+              0.10617899988574209,
+              0.10717799978010589,
+              0.11326299954816932,
+              0.10896000003413064,
+              0.1059340002029785,
+              0.10707300043577561,
+              0.10794099944178015,
+              0.10757099971669959,
+              0.10790299984364538
+            ]
+          },
+          "allocated": 1305088,
+          "reserved": 6291456,
+          "initial_p_sha256": "84a4a4db77aea734187a49f3e4d653cff2900d31c7a71cd0abac4c80410bd03d",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "split8",
+          "graph": {
+            "median_ms": 0.07518700022046687,
+            "samples_ms": [
+              0.11653700039460091,
+              0.09000499994726852,
+              0.07647499933227664,
+              0.07429099969158415,
+              0.07578800068586133,
+              0.07540099977632053,
+              0.07473799996660091,
+              0.07502500011469238,
+              0.07464299960702192,
+              0.07480299973394722,
+              0.0747460007914924,
+              0.07518700022046687,
+              0.07794500015734229,
+              0.07638599981873995,
+              0.07424600062222453,
+              0.07613500019942876,
+              0.07561799975519534,
+              0.07486699996661628,
+              0.07472600009350572,
+              0.0771530003476073,
+              0.0748250004107831
+            ]
+          },
+          "allocated": 1305088,
+          "reserved": 6291456,
+          "initial_p_sha256": "84a4a4db77aea734187a49f3e4d653cff2900d31c7a71cd0abac4c80410bd03d",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial16",
+          "graph": {
+            "median_ms": 0.11552999967534561,
+            "samples_ms": [
+              0.16320700069627492,
+              0.11892000020452542,
+              0.11612499929469777,
+              0.11496299975988222,
+              0.11678499959089095,
+              0.11644100050034467,
+              0.11533999986568233,
+              0.1160970005003037,
+              0.11624000035226345,
+              0.1146989998233039,
+              0.11526799971761648,
+              0.11464199997135438,
+              0.11551700026757317,
+              0.11619900033110753,
+              0.11548799921001773,
+              0.11622500005614711,
+              0.11703600011969684,
+              0.1146199992945185,
+              0.11552999967534561,
+              0.1152240001829341,
+              0.11531499967532
+            ]
+          },
+          "allocated": 1318400,
+          "reserved": 6291456,
+          "initial_p_sha256": "84a4a4db77aea734187a49f3e4d653cff2900d31c7a71cd0abac4c80410bd03d",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "spatial32",
+          "graph": {
+            "median_ms": 0.11614300001383526,
+            "samples_ms": [
+              0.16443799995613517,
+              0.1196470002469141,
+              0.11883099978149403,
+              0.1159310004368308,
+              0.11611199988692533,
+              0.11671199990814785,
+              0.11575299959076801,
+              0.11614300001383526,
+              0.11562800045794575,
+              0.11620500026765512,
+              0.11674199959088583,
+              0.11549400005606003,
+              0.11534399982338073,
+              0.11534799978107912,
+              0.11564299984456738,
+              0.11651200020423857,
+              0.11491299937915755,
+              0.11708700003509875,
+              0.11667299986584112,
+              0.11545399956958136,
+              0.11656799961201614
+            ]
+          },
+          "allocated": 1318400,
+          "reserved": 6291456,
+          "initial_p_sha256": "84a4a4db77aea734187a49f3e4d653cff2900d31c7a71cd0abac4c80410bd03d",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "measure",
+          "plan_id": "torch-g8-p8",
+          "graph": {
+            "median_ms": 0.07645900041097775,
+            "samples_ms": [
+              0.11630100016191136,
+              0.0789499999882537,
+              0.0783220002631424,
+              0.07639000068593305,
+              0.07679699956497643,
+              0.07704299969191197,
+              0.07662799998797709,
+              0.07579999964946182,
+              0.07563500003016088,
+              0.07540600017819088,
+              0.075687999924412,
+              0.07581099998787977,
+              0.07702499988226919,
+              0.07571700007247273,
+              0.07656599973415723,
+              0.07645900041097775,
+              0.07874400034779683,
+              0.07710299996688263,
+              0.07526599983975757,
+              0.07636800000909716,
+              0.07603599988215137
+            ]
+          },
+          "allocated": 35383808,
+          "reserved": 48234496,
+          "initial_p_sha256": "84a4a4db77aea734187a49f3e4d653cff2900d31c7a71cd0abac4c80410bd03d",
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        },
+        {
+          "worker": "dense",
+          "plan_id": null,
+          "graph": {
+            "median_ms": 0.05492699983733473,
+            "samples_ms": [
+              0.08509500003128778,
+              0.05716700070479419,
+              0.055836999308667146,
+              0.05562900059885578,
+              0.05530399994313484,
+              0.055237000196939334,
+              0.05453600078908494,
+              0.05479700030264212,
+              0.06709599983878434,
+              0.05569600034505129,
+              0.05486800000653602,
+              0.05511299968929961,
+              0.0548289999642293,
+              0.054832999921927694,
+              0.0546710007256479,
+              0.054553000154555775,
+              0.0547500003449386,
+              0.0545109996892279,
+              0.060899000345671084,
+              0.05492699983733473,
+              0.05445300030260114
+            ]
+          },
+          "allocated": 35408384,
+          "reserved": 48234496,
+          "initial_p_sha256": null,
+          "optimizer": {
+            "name": "AdamW",
+            "lr": 0.0001,
+            "weight_decay": 0.01,
+            "fused": true,
+            "capturable": true
+          },
+          "memory_scope": "isolated process; warmed model, gradients and AdamW state; peak includes capture/replay; process usage unmeasured",
+          "source_hash_set_sha256": "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18"
+        }
+      ]
+    }
+  ],
+  "source_hash_sets": {
+    "d30fc44d74b32de71cc87d2d7a1639f7805a6fb8b8a60ea0da0df16909588c18": {
+      "src/torchcst/__init__.py": "9099ca10a11bc2735a3679f42a1e24e613d00e0193f8ea2e6c77e19c6ad0f304",
+      "src/torchcst/_backends/__init__.py": "597953ea5a2474d31536e0a8ebeec756af942fd9d2bac393dd845d77d4ed89ac",
+      "src/torchcst/_backends/algorithm.py": "e20f172dfab47ac9f4bf05756dbc977867c98b6fb9f5ffb9408df6bab0594b0a",
+      "src/torchcst/_backends/catalog.py": "6ae7dfbfc25682bbde01af925cf40387633ede703009f596d928cf806ce66dc3",
+      "src/torchcst/_backends/cuda/__init__.py": "c77e56f1b0a4ca494f49f4e18f2a5e1f75b0779508991ae61d77148f766091e3",
+      "src/torchcst/_backends/cuda/algorithms/__init__.py": "abb4fe434d7cae20c567d655cac959503d001dc1eedb50cd3ce385ea83f2db07",
+      "src/torchcst/_backends/cuda/algorithms/linear/__init__.py": "6b9e052181b5c747e9f296d89f5d53aa23dca35d94e40ba0d42595bde7eea67c",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/__init__.py": "470284e01c38c391fce81430d8687e2829aee55ff807aa0b9f7a10aa32bf42b3",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/contract.py": "852754c14a683619fc3c146b27c10e6f74dcfce8d1d132b6137b29e16639fc05",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/executor.py": "b1c97c30d399c29c5e7f7a6c7fb98fd1037da51cd0dc08fe37f7565283225097",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/kernels.py": "575b29eb2e387f8186aef967326abb4b948316e3ad73d9562a189d9c37d628ab",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/layout_kernels.py": "637918bb80623227a16c53891d7421eda44deae955d9f7a44e5c3d3113171450",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/order_cache.py": "4d1dbd04f7919428b94ce7d47ad58c812f2fd566589e5b217648a1d7a04a78b7",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/persistent.py": "7971fa27096131c1b0f449fc28bac493a4d46bdc9a4073b1dc236510471ca943",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/preparation.py": "99bc34a629a189a430157f624530a51201efab6e22867442cf20ebe6d824d675",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/recipe.py": "94b5e6ffe576a639d15b2d32e663012db6922de76c1752866a1f5fdafbba82d2",
+      "src/torchcst/_backends/cuda/algorithms/linear/local_product/support.py": "2a93ff6ffe942592a6c6d1087dbc729ee263b020a34ac96a5ba10d3c6ff2152c",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/__init__.py": "8cd9962e202b0f6be00b7d26f7c56b592716591a49e846b527624e5b83e41cd9",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/_shared/__init__.py": "84eccec4bf19ada45bddd8e331c4a784ae01b5e0a91294d6236d9b356009f811",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/_shared/algorithm.py": "c07ae6fadfb14a4755d9aaba13e21a7a6c50be182b0fea9159da537512f38075",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/_shared/atlas_table.py": "0d4e424bc25dde1ad247de66f9404096f93f9d4c1a63dbfc6c660107dfacac02",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/_shared/common.py": "8d131a6c9d0cec07ffe0da2e42980c0c65d9abb3444cd736cf00827d7e6c8828",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/_shared/geometry.py": "afc855306420186b4ce6b4fabd279f5c3f3b7f33b059ba541f4aed7f7a1b7218",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/constraints.py": "7e99fa0e66db5d93ca6e8b54ec7f223590cf51e92e8c77693fb7131e8936e901",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/full/__init__.py": "84eccec4bf19ada45bddd8e331c4a784ae01b5e0a91294d6236d9b356009f811",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/full/algorithm.py": "2b718e69c5cadc0403f0662321190a216417375bc45dbc3c61d443309cea278c",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/full/executor.py": "98c0494664f3e4414fe0eaf02c2393e9b32133b75b64ae45679e6f1ce8aade01",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/full/kernels.py": "23c9a1c29f49a381ac9d615b19d5457fd536f6e1ce19dad9ef43c91795d34413",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/full/recipe.py": "557a063eaa0ab95dcfaa3045676737b81abb658e5ff79f3372b286e4ac047e81",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/plans.py": "5a221fb7c8ae4eaf6877d9a234a4b0b4e800d961ddac91801112911b58cf2bfe",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/__init__.py": "84eccec4bf19ada45bddd8e331c4a784ae01b5e0a91294d6236d9b356009f811",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/algorithm.py": "3d7c240e6080b660c9b048bde9fbdf45143f32276ff5663c2ebff36864aae21a",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/executor.py": "b015c3b3d4153ab595ecd8bb9b1a92d9914adbbb68338e7f58ea8ab642e8a14f",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/kernels.py": "7eb4cb0ea0a571ba2f5e03dff91e5581613f133a4eca869ff31b2cab2ab56295",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/narrow_table.py": "bfaba8b51615c876ecb557fba988793bf114348899a559d5faf6e1a6166b0ddd",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/provider.py": "cc99c46caeac009a629f7f2866c5d42f16f0fbc2ce999b78ea99b5ff52cf8a8c",
+      "src/torchcst/_backends/cuda/algorithms/linear/normalized_euclidean_strip/window/recipe.py": "c00d815e09e7c5375af107a1a277c55be9682fb04fd28a747ca1226b9a8fc019",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product/__init__.py": "ad192950fbcd0523ce0f87d317c2ff4d884bae9439e89131f029c81ebc8f17ba",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product/algorithm.py": "e0191e575ab5193cb0596d76a227d65f172ef79a2e1f35faba19c82eb0ebf316",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product/kernels.py": "669f5ba79d7aaeb74ffeb791726061bb6a6b8530a071999b9ad4ab0c335bdd4c",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product/recipe.py": "ab8e1eed9c91406b325c01db5cd7ca838b872c731ee3aae0f1f9de171aedf2f3",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/__init__.py": "6ab5461d288be3c5219d6bccd9d9f0b351609584163847da0805baf5bf9c20f1",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/algorithm.py": "47594f977bfb33a5fcce3e623ad2efce82de6aba29783f77af7f2f6ccf293f50",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/algorithm_v2.py": "df631de94918a9528a8f380d5222110c18239c9cc02d4965b2bd8fd984a2d67d",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/algorithm_v3.py": "e5ffd430d61cf54c927bf2b85b17c105ea8dfb07e33b820b957f4561f3a8eab6",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/executor.py": "a1c45ed54e72658744f32a1326292d11171f8707a37bec11fe6de86cf52e1a8f",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/grouped_kernels.py": "67dd51e879beda2c959593ae26382e115b0d170f1e5689e819a07b15305405b4",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/kernels.py": "30078b4c4907ed9afa0095e117e50e5d147d41e5a17605e84d5738a3c4b7b5a4",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/recipe.py": "ce41286ba4c723f0574b22ff751ed7238e6e5f3e7444f93056191e46445b7765",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/recipe_v2.py": "98d374a76d48b588e8517d90b0d12c2c87b789d51b0ad8d6423ff836f3f13362",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_global/recipe_v3.py": "f771cb7848dfa6ffad7e9fcdf253925aa774de514ac6d1cf750f8cb625ebc157",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/__init__.py": "231bbb7af5de7f4c1c064f7b5c337c7f5b9f13531ac70c9107c90d98bf81b55b",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/algorithm.py": "3b4579c74fdcfd8c6c680e3eeecb0fdfdfa277865ab47457725e62bb643bcd5a",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/algorithm_v2.py": "ff9bdc4a63ee77e6a146fa37639fc492cd9ce4596bc16f37ff6f371a4d512ee8",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/algorithm_v3.py": "812474d1cd199dc8b1059eb26231d97d8bb692da836bc9a057eaf487b6a0a5c1",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/algorithm_v4.py": "22f5e9bc8a2402ec6bb70bebcce8a1230bbad9b5d534b5a21d8387673a8243b9",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/algorithm_v5.py": "f4c72179d3e69ab06b6721ddc4b6d7cc26a22a620e47623e8cad239c347b1fd3",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/executor.py": "ae965b6f9fcee8296c6676c63936249cc32c8551c80c5502ecd5f9b4cda1a3f5",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/grouped_kernels.py": "d2f7f62716babcf181ace34f4e4db7fd228ccf4764978d3dc69c65abad40a784",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/kernels.py": "4b33507a1b77953415a3ca96cc910af310de86ad74b95245238438964bbc4108",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/large_algorithm.py": "5b1750912ff1263b715587102ff7d567055c3e4adb9b60a2126b7d4e19ebdd87",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/recipe.py": "328bc7fb0d2c38217d149856ed9b2282066345c0c7b4feb1dac515995972c74d",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/recipe_v2.py": "16e43d8876f7ae93199855d0d11d22da18f57c42d68b5160ad54cbf9b5889455",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/recipe_v3.py": "080c5b567b4eb57fe644341b6239ae9c2f882f64904e5f213208802bf129d96e",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/recipe_v4.py": "9f86857e76f50eba2fc1b9518509146adb97e17a017f97d097ef2d3e6c10e271",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/recipe_v5.py": "5bb5c8a80e17d639e852d163e6108878e5ff8951e3123b2f210b184fda818fe5",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/spatial_kernels.py": "9030f1b04fb7c64b1fff9204da2818765dbb147426f01128417305451836577c",
+      "src/torchcst/_backends/cuda/algorithms/linear/profile_product_matrix/split_kernels.py": "53c8e760b203b0a1fd21460e0ad837d258c7652cea9fabc109a8715ec332b685",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_profile_product/__init__.py": "552b60522e68d0541f62d22be1eb81d89adfcde8123b93ceb432c0cb128fee8e",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_profile_product/algorithm.py": "1ce4b1aaffd50b6f03469f1d5dd2a6e8a5bb290bff48c8a5c1ee682a3d7e7a98",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_profile_product/executor.py": "8b31402c1a96dad8eb1dfc4d5d5a0cb80b2e77ec5143841456dab165dfd238b6",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_profile_product/grid_executor.py": "1d80d64c4bf9a69a665425819c64b1551bd6baf3148053c645be2abab83674a7",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_profile_product/kernels.py": "3dbe62820175176f12529e32af06a7b6df96269b13abc441b188c904503f5fa2",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_profile_product/recipe.py": "12e6545a4e8b132c95480c3aa0bb0797b4b51fd51e399e6295735bce78e69a56",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_torus/__init__.py": "84eccec4bf19ada45bddd8e331c4a784ae01b5e0a91294d6236d9b356009f811",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_torus/fused/__init__.py": "84eccec4bf19ada45bddd8e331c4a784ae01b5e0a91294d6236d9b356009f811",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_torus/fused/algorithm.py": "0a491b0f7bcbcc983fd01824607f5434b892661c01aa33bcb4fe137b4189cf6b",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_torus/fused/executor.py": "255310d99f3dcaeb574c888b250eff28249c4e6abc7c0fe64d7cdff7c3ee8f1c",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_torus/fused/host.py": "e40888743e26968accd1bb9a6180f3d11cdd662e6854eb39913cc9570ec92e11",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_torus/fused/kernels.py": "087d13dbc9b830c9f7fcc6920a80a1888a9b7ee0f7255cfef3d018b5940d9755",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_torus/fused/preparation.py": "cae94928154f2fbf79ac83c770e365ab1024b9d3186f655ec3d5a9b0cc9f99cc",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_torus/fused/preparation_kernels.py": "3eb3d52129fee3eeb474a6c42b68e107674a7b40007f2d71a60b678434a3bac9",
+      "src/torchcst/_backends/cuda/algorithms/linear/strip_torus/fused/schedule.py": "b827be00f108129ebcfe78847c30ec5683b76cf2a7c5483fd3b28d6993fe47f7",
+      "src/torchcst/_backends/cuda/algorithms/polar_update/__init__.py": "deb96a2719a462afa503fa8b26c7ac2d6c8f035a2e5ceb50fb1b2c914e73fd9f",
+      "src/torchcst/_backends/cuda/algorithms/polar_update/algorithm.py": "6a8defd0ca21319676b74c7dbd93349bb6826b1a98d18af68616955aa1c4558b",
+      "src/torchcst/_backends/cuda/algorithms/polar_update/executor.py": "72e83a204261271bbd9839d05faa1cb70ea18ae8ee6100b5776a57f65fa90836",
+      "src/torchcst/_backends/cuda/algorithms/polar_update/kernels.py": "2a6a17026f55e79e52276b5f57c79757e589adb8a18f9f8df0031e2e25efa5fe",
+      "src/torchcst/_backends/cuda/algorithms/polar_update/plans.py": "459d23fe0ed5b04876c7ab41a2d954e1281f00d500b7fdf86679a16e97bf164c",
+      "src/torchcst/_backends/dispatch/__init__.py": "a71b2845911c5a69ff41fe30a221e39f1fa712af0879ce3a5eb0999ec3e568c5",
+      "src/torchcst/_backends/dispatch/base.py": "12e64072a0d538a211e08d5652616edad38c60d7fe49ea9d68fcc17f0829f84c",
+      "src/torchcst/_backends/dispatch/conditions.py": "d08e3e3928092312e894ebb5294629af0f8f0b02a9d21bb4383f66e36d416d45",
+      "src/torchcst/_backends/dispatch/exact.py": "3e8f8750805112f874210f392e7e2a4ea740dab2ad3bde95bcbbdccee277b0be",
+      "src/torchcst/_backends/dispatch/runtime.py": "906f791d8115aee413b8b90175b4103dc97a1c08781101ce444f8f11d844baae",
+      "src/torchcst/_backends/dispatch/select.py": "ada471c5c7b01bdd1236ab776eceaa822d691495d325027f165f50abc4bcb217",
+      "src/torchcst/_backends/dispatch/validation.py": "1f3315758a43fa5f4a39bcced68b0c040c6d5c9f7923ae881c4e9e7a2f73d954",
+      "src/torchcst/_backends/registry.py": "df9859197d1961abb883e619b5c13942f73f5943eb788f1e2e16bf9180381741",
+      "src/torchcst/_backends/schema.py": "4bc45f224eccd2d856275420d7ffdaea6254277394a2e62623f6838b6f17ea63",
+      "src/torchcst/_backends/serialization.py": "7b418826580c7d4744fb995c774f44a37e7c09b5417043f12be5e6f7e8da966d",
+      "src/torchcst/_backends/state.py": "adc21a6285cdf27cf1729a56a4cfbd83f5656421ee8f557ce1ceee15e58035f7",
+      "src/torchcst/_backends/torch/__init__.py": "3cdeb91caa81fabfd311715c760ada79bc84e4acd858b4ed1be09055939f22fa",
+      "src/torchcst/_backends/torch/algorithms/__init__.py": "288b0006ec63835fd8416a4c8ba128d7e050e3bfa4e211be9c7b3cbecb98079c",
+      "src/torchcst/_backends/torch/algorithms/atom_update/__init__.py": "5b7cfc9fd801585e3887454d28d22f4d2dc506a78af8879ee238842f14980a05",
+      "src/torchcst/_backends/torch/algorithms/atom_update/algorithm.py": "3dc26869dea57ffb2b938bc38a0ffca78daaa75df1699e7783799a166d63c5b9",
+      "src/torchcst/_backends/torch/algorithms/atom_update/plans.py": "8e1249e3b98b34e95fde449449b307382e7208e16b6a0d96696b3698b9af194f",
+      "src/torchcst/_backends/torch/algorithms/linear/__init__.py": "6b9e052181b5c747e9f296d89f5d53aa23dca35d94e40ba0d42595bde7eea67c",
+      "src/torchcst/_backends/torch/algorithms/linear/factored/__init__.py": "b87ca9f94cd440d22ca1553c0564ae0d2590aca36e4b49377e0afbfe4e2ba4c6",
+      "src/torchcst/_backends/torch/algorithms/linear/factored/algorithm.py": "2c39debcb6d94d81a25657fcf399fa41fccd7c0d77289a7d9c044264685ab226",
+      "src/torchcst/_backends/torch/algorithms/linear/materialized/__init__.py": "5a890f9ceca90891194731f17babf83a95e394fd93d1ca80ff49a21d6cc28975",
+      "src/torchcst/_backends/torch/algorithms/linear/materialized/algorithm.py": "649a775c937bef0724f388a333b29aa50ec6adcd9c346f2823e9ab292c98055a",
+      "src/torchcst/_backends/torch/algorithms/linear/normalized_radial/__init__.py": "51fd3b300d073767a685319e15626c047da5daf86a6573f98fb1177dc02138d8",
+      "src/torchcst/_backends/torch/algorithms/linear/normalized_radial/algorithm.py": "749b4a5a15f3a7664fc6d33fd30a27ff119d45283d2c2b9a67d1995330bfc682",
+      "src/torchcst/_backends/torch/algorithms/linear/normalized_radial/executor.py": "e548e7e32bc4a70ec66f576482f4ac7b05da7f74b23c44b066142868a2c312c1",
+      "src/torchcst/_backends/torch/algorithms/linear/normalized_radial/layout.py": "d9bcc100ac974c19b67cf285e9c4c791841bc678025d8e7068c96418e8162fa0",
+      "src/torchcst/_backends/torch/algorithms/linear/tiled/__init__.py": "14a01e25c8dbffbbd1e712c459d98dd2101f09f8a3976ccce5bcbea1e90da395",
+      "src/torchcst/_backends/torch/algorithms/linear/tiled/algorithm.py": "3a35eb67c408224bf5bf8136d523b4716b8253484bb48b8b3162a553cb25cf56",
+      "src/torchcst/_backends/torch/algorithms/polar_update/__init__.py": "5d4a96c44c3a8ed7c836ee81275834731137d431e38ed66557ab3d54b5c858ed",
+      "src/torchcst/_backends/torch/algorithms/polar_update/algorithm.py": "cd20f980a5cf32a25ac99e47a9036b7fe19d5a534064b1a5bf26bad98a455832",
+      "src/torchcst/_backends/torch/algorithms/polar_update/executor.py": "6b1a7b30c4f97df0e26839e4f0111fe86e3a262b5a019ae17caa4a5c4ebc5b89",
+      "src/torchcst/_backends/torch/algorithms/polar_update/plans.py": "c7bd15e8d7e62522b08311cffdbf323763ec4b9b248dee8738adc1a3a4ab0f4e",
+      "src/torchcst/_backends/torch/charts/__init__.py": "7b4a4fe8ed61f61614bad5743e9e9333271320befc90debf503702e3868d832c",
+      "src/torchcst/_backends/torch/charts/construction.py": "49401696c962a5415a9f02605a75d597d524b9cbef8586e05e75fbaf807eb28c",
+      "src/torchcst/_backends/torch/charts/execution.py": "897a193cd66e4b078ab710d5bc815d22415f27c13492662fa2a07ea96980334c",
+      "src/torchcst/_backends/torch/charts/explicit.py": "3cfdb7d90e4f725222129dc35f1fd0c163f70bf716e303d07a784dc8b5c37ea2",
+      "src/torchcst/_backends/torch/charts/lazy.py": "121d6df5220e1ccc28b3247e4b0b73165ba217217790129f2fcc4c7fd137af30",
+      "src/torchcst/_backends/torch/charts/product.py": "228a2c2e26c2baed3bf3fc0c988f373b3c843df6ccee0efbb98189e278ce36bc",
+      "src/torchcst/_backends/torch/charts/strip.py": "5a37d604388685cdf5d87f77e19a4e2f2226d1e8b3361d2855322f7b7d98bcb8",
+      "src/torchcst/_backends/torch/geometry/__init__.py": "7b4a4fe8ed61f61614bad5743e9e9333271320befc90debf503702e3868d832c",
+      "src/torchcst/_backends/torch/geometry/base.py": "cab3e69ea36c6bfca7e274016379d66e2671de372aa7e134f424ce151c934fb3",
+      "src/torchcst/_backends/torch/geometry/euclidean.py": "d32a982dd5c03ee882b38d0058ef36c7a47c8a68d0d8a5557326d28193a83d18",
+      "src/torchcst/_backends/torch/geometry/execution.py": "92c32221f8ccc674bedb0ceead9049ba5224e3b50018c0075e52fc287068232f",
+      "src/torchcst/_backends/torch/geometry/sphere.py": "d00e5e0965009477c3764e74c9d7cfa264053366810479f87bb75c0cf53ba076",
+      "src/torchcst/_backends/torch/geometry/torus.py": "6d1da2a31df87ae150769e2aaa9901e901d83864d6a555c6455cf58015d98587",
+      "src/torchcst/_backends/torch/kernels/__init__.py": "3cdeb91caa81fabfd311715c760ada79bc84e4acd858b4ed1be09055939f22fa",
+      "src/torchcst/_backends/torch/kernels/amp_width.py": "08c863663e6eec2790dbab2c38364c24008120278741592dc391ebdf3308b190",
+      "src/torchcst/_backends/torch/kernels/amplitude.py": "b2682eb1a35de5a31094ccde1de40b8f1e8b76b559678cbf1ead5e6e1e23c34b",
+      "src/torchcst/_backends/torch/kernels/direct_amp_width.py": "26b40b7282aa3dfacf2c39bf11e367007d8f8344057ae153f2e01168b28f1820",
+      "src/torchcst/_backends/torch/kernels/execution.py": "1d5c1a0a074975fd48ec8e8144c7f3bb3ae264b07887119de0dd15a33a50bfdd",
+      "src/torchcst/_backends/torch/kernels/log_width.py": "0ea7c17ced728535dbdee06eaa6d24da74262c7ad0320670fa70afb883e4cdaa",
+      "src/torchcst/_backends/torch/kernels/polar_amp_width.py": "588ac138110d73f0f60f1257faf63e12809cb8195a687a3754f678b1fdf9a18d",
+      "src/torchcst/_backends/torch/kernels/profile_product.py": "f505a71c429351a05fe4e7df579505451c6bed04cc6f61453b1996849a748ad5",
+      "src/torchcst/_backends/torch/kernels/radial.py": "450e3842f7ab3c269ef180b3bb57e650cec1ee97fed4d33415040b9918ed318b",
+      "src/torchcst/_backends/torch/kernels/separable.py": "c6a5eac7e91d884bf530cda9bff0404abf8be41d0acaf383ebbb3b6ff51dff3c",
+      "src/torchcst/_backends/torch/kernels/tangent.py": "a99470a6500e49b1ff47ea021c3d6140f728291002cf86785a3bc96e79b8ce7a",
+      "src/torchcst/_backends/torch/operators/__init__.py": "c856c4aa1935b28caa9f408430a87b2dc11e8349d031e20a7054702f3f421d00",
+      "src/torchcst/_backends/torch/operators/dispatch.py": "0409416b5fabd68dbbdc2460caad2233416d67b275cca6d6448d26d362331ce4",
+      "src/torchcst/_backends/torch/operators/linear.py": "a4b5cfab3f58a539fee1cb88992e3ee9dd4ed3f9322cf2a45ee3768e2d582e4d",
+      "src/torchcst/_backends/torch/operators/strip_torus/__init__.py": "84eccec4bf19ada45bddd8e331c4a784ae01b5e0a91294d6236d9b356009f811",
+      "src/torchcst/_backends/torch/operators/strip_torus/layout.py": "b610df38dadcfbc10c9a916c607e758382a5c218f2650bca9b54ab02d3896377",
+      "src/torchcst/_backends/torch/operators/strip_torus/preparation.py": "9d4ea49f4873e0b516242f9f5e58f17990a4aa69f10972b77217a2a23713c792",
+      "src/torchcst/_backends/torch/operators/strip_torus/support.py": "476eb28846a044fb09cbf2a10c5688d917ff095a337b33974a6e0da5cb4caea1",
+      "src/torchcst/_backends/torch/operators/strip_torus/tiled.py": "5c16773a3e6a81f89189754d26cc99ef661788d9c546c6108a65ed98a8c17cab",
+      "src/torchcst/_backends/torch/parameterizations/__init__.py": "3cdeb91caa81fabfd311715c760ada79bc84e4acd858b4ed1be09055939f22fa",
+      "src/torchcst/_backends/torch/parameterizations/amp_width.py": "975d024377db880755180bce8df74efa31d495b7c0ff06f30818a96ec3a3ba6d",
+      "src/torchcst/_backends/torch/parameterizations/direct_amp_width.py": "e94c6df2213ac773b5143a86497c4d7c427d50993ed26224ae014f4a04fd3a9e",
+      "src/torchcst/_backends/torch/parameterizations/polar_amp_width.py": "20cf6d1def1709d67f4902aeb54b8e3f84dc8decfde5283147b52c3ad2da7a1c",
+      "src/torchcst/_backends/torch/parameterizations/profile_product.py": "a4e8c6c8191fbfcdb7bada768dc2c46b749688d46ff6e351e7f019e1441a69c6",
+      "src/torchcst/_backends/torch/patterns/__init__.py": "7b4a4fe8ed61f61614bad5743e9e9333271320befc90debf503702e3868d832c",
+      "src/torchcst/_backends/torch/patterns/execution.py": "9ba79296f873db17f845880eaf7301eaba2ba88c1d3fe455b1cecfea150b9ec7",
+      "src/torchcst/_backends/torch/patterns/grid.py": "cfcaa9efe231dbcc7841b0316a1836ddbbc005e163cbce1dfb386fa973657f36",
+      "src/torchcst/_backends/torch/patterns/points.py": "e205ab7b33fa42380f8c2dc33e40f41e00e5906bf7682d72caab606bac810262",
+      "src/torchcst/_backends/torch/profiles/__init__.py": "3cdeb91caa81fabfd311715c760ada79bc84e4acd858b4ed1be09055939f22fa",
+      "src/torchcst/_backends/torch/profiles/compact.py": "dfdd7bc014f91794bb35b215b922eb90e9928fe407aeed2d6fb64e63cb40f2f6",
+      "src/torchcst/_backends/torch/profiles/execution.py": "369e3efef9b79650920d5e8e809f8b3f58eae87965fe6d6183c6f47b9e0c2222",
+      "src/torchcst/_backends/torch/profiles/gaussian.py": "0516d2bf20d59b7d7e28e96d8d5d4c88bddcdb4b09f01025e2833a490c2f2283",
+      "src/torchcst/_backends/torch/updates/__init__.py": "3cdeb91caa81fabfd311715c760ada79bc84e4acd858b4ed1be09055939f22fa",
+      "src/torchcst/_backends/torch/updates/amp_width.py": "891359b9d30c0bde086a82a14930f5d0f1a285284753dec10761e40926fccbf5",
+      "src/torchcst/_backends/torch/updates/amplitude.py": "a47a0cfa0e49a54b46c4f93d514536b60840aef7adc0402574f87a91fdc6b355",
+      "src/torchcst/_backends/torch/updates/direct_amp_width.py": "fe0955bf12a00fec8c3497676c831387a1336f676334b42f1528c0bf8f69c976",
+      "src/torchcst/_backends/torch/updates/log_width.py": "1fb9b235f96360092a4695a14c9b55f119c12004f101fb26e75ce2fa2a4a9026",
+      "src/torchcst/_backends/torch/updates/profile_product.py": "1ad776d4bf32fa8a1dc493b2d4c4013d83fc05848e287104bc6d1254ae906576",
+      "src/torchcst/_backends/torch/updates/radial.py": "5179511fe41a67d3fa75647eb3879cdaa7b3a8742b566abfe461e57feadff00a",
+      "src/torchcst/_backends/torch/updates/separable.py": "bc4ae88c31b610dda03294d520910fd373bb17007c43649df292c5b26c30b8a1",
+      "src/torchcst/_coordinate_state.py": "64c066614f08ce574d5d2b7d200e5ec8a677aa66f3ceddfef0f3f0c4d347cf43",
+      "src/torchcst/_derivatives/__init__.py": "3f1b18ad7115a8d825d9af9c8b806801c3bc64dbb3edec512d0ecde3ffead6a8",
+      "src/torchcst/_derivatives/_captured.py": "82b01b5f0eb1b20ba559d3d747089ba7294f1105a236e38338a79720c525d5ea",
+      "src/torchcst/_derivatives/_cholesky.py": "c852057aa0475b7bc8a2ae2c1d9ccbb504dd40b2b45b8d0774f54fda8f55fd33",
+      "src/torchcst/_derivatives/_hessian.py": "7a1529d772c39bda5e6a5669ad9231f9f398db80c473c50e7af89570caeb3f02",
+      "src/torchcst/_derivatives/_jacobi.py": "13b5a85d32627d6bd3644dcf53d8e6308435c5b8481ad7f403c75c755ad106a3",
+      "src/torchcst/_derivatives/atoms.py": "b9fdb342b9b055b541c395d39348e5ac7f511bbb27d2a5785cdac1605c2186b8",
+      "src/torchcst/_derivatives/dense.py": "2c8598a1e395707c68c48c3f37e0d445c8cf4aa4580cf7a21d25f84c83e0585d",
+      "src/torchcst/_derivatives/factored_taylor.py": "f106bf3231557e28455aae9eb1a7541e1961d95328c06693e44cf72e0616bd86",
+      "src/torchcst/_derivatives/frame.py": "b05209bd2127011fa546d4321a77e9e77e4715369960475ef89a95e5a56b8fc9",
+      "src/torchcst/_derivatives/protocol.py": "34ef0e173a2353372a073aac04a6aaea5045b94afad47e8c5d6f18880c9e9530",
+      "src/torchcst/_derivatives/quadratic.py": "5790683f3f4723be862adcaf7faa1a9200de5e0e89a6f051effc3b1a5a8648ec",
+      "src/torchcst/_runtime/__init__.py": "c2f3ecd5ca97b643a4c503fa20a7b98b6f7f70ddc2ba202f89fd118e29c81007",
+      "src/torchcst/_runtime/graphs.py": "b922e3f4c664733ae0f4b161e1f6a8874506828b0e314caa98c56d58bd3284d5",
+      "src/torchcst/_runtime/validation.py": "68438c0f1b7d160327effbfad1e4ae429277286f50f90238e6ab632e3caadb71",
+      "src/torchcst/_validation.py": "017de311db7a208dcaaf8939552f7c99784a4f0974fda9de8b8241fb720d74cf",
+      "src/torchcst/atoms/__init__.py": "6c38f8fc6a48aa519b5690038dba4720d064b9eab52e4624268ba9ec1cc6ddc0",
+      "src/torchcst/atoms/atoms.py": "5adb7e737133fe2dec67804ccb55407c62bbc71d9cbf276cab236d4d6b6295eb",
+      "src/torchcst/atoms/optimizer_state.py": "4a9b0fa4ccd70613f057992f4639549f5748915394d52fa44ec3e6a58b596bf3",
+      "src/torchcst/atoms/state.py": "f3ffac5b74b3532b4146748c9c558913800ed79aca9a3e7e8adb172c07e8e3b1",
+      "src/torchcst/charts/__init__.py": "040e4df417c5c7ec43f42071030e34aa78d7c4ef42abf4f8d1421c1af67426f3",
+      "src/torchcst/charts/base.py": "76b31fa50d73d9ec9d5ca419f6da83b6a5dda0df7758a9a827211c1f9a902bcf",
+      "src/torchcst/charts/explicit.py": "b41f13d33a53667fe4e77a6bf47ee7ff5e846de168693400a4306eef6846964a",
+      "src/torchcst/charts/presets.py": "c8fa505493bd1d19eb8a2ca3fe17f4a4549457f6ae4001addac6069e39ce6f64",
+      "src/torchcst/charts/product.py": "c0eaac2f6d5c88b567bc0db95444dc31cc5363f815c1f79afd4f3bd49c00db7d",
+      "src/torchcst/charts/strip.py": "5df736ae8fb5ba885a0859faa7a0c1eed81d822873a75ac5c2e742fb2dc1ef60",
+      "src/torchcst/geometry/__init__.py": "159486dd19d8b4e2af92c8bdd7dc1de758d4a7bf49335b5beb7797cab0d6c15d",
+      "src/torchcst/geometry/presets.py": "3d6ef4b184b91b4a9911ef9456a26c8c9adc5f989b73d83d32d2813699cbbcfa",
+      "src/torchcst/geometry/spec.py": "8ac88faa45c95fded5bd5e4b4763a32a1f9f47baf8d8b236ee2ca310eb102544",
+      "src/torchcst/geometry/state.py": "3a433ee1271c948dd7d54a79f4b3a8256a1f25306ad403b980a63cdfc0cc3d0a",
+      "src/torchcst/kernels/__init__.py": "6ae0204a7cd63029f35abe23918914f4e18ac34323db747a812624ee44ba501c",
+      "src/torchcst/kernels/normalization.py": "0b03828fdc048e1be194846cd4ed5b2606d34c12a6e28fe3d023813179c9e662",
+      "src/torchcst/kernels/options.py": "f47bc235ee28cbe7308bfeac6e2c33ccd8aea051a93e09278fd44ae068643185",
+      "src/torchcst/kernels/parameterizations/__init__.py": "5cde6179136b8a4946c91adbefa54475d28ad9161bbdf3dae5c2eff5f288d48a",
+      "src/torchcst/kernels/parameterizations/activity_width.py": "60e5c83b3e3d420c7f637cfc005f4c2acdf1f7bd10a2b0b96698bf6181085dd0",
+      "src/torchcst/kernels/parameterizations/amp_width.py": "299f48063890a4a8097a9a355de81ecca8a60059f39435bc4f89c0dce4481365",
+      "src/torchcst/kernels/parameterizations/base.py": "c9337ab7b83b4b5663bf7ec1236dc01c79e62cfca2f4a281b74aef81a329d8ab",
+      "src/torchcst/kernels/parameterizations/log_width.py": "b3705e7946c29139fd9d30f4cacde99a54ca339924dbc2c64bef520af747b690",
+      "src/torchcst/kernels/presets.py": "a524b9dc9149218061c7ec2310ae401fe4072293c4b4bc2c435b182e26a2823a",
+      "src/torchcst/kernels/profiles/__init__.py": "c2c72c29da24d0a85adf1bd53208642091dab9d804661015afc0c9d1d0ffaccb",
+      "src/torchcst/kernels/profiles/base.py": "a295bea96580cb196035e6a384a1e4ab7e3cf0909031eb816c197fe9eaf4b360",
+      "src/torchcst/kernels/profiles/compact.py": "f624fcafb49c3da06b08832073a56903d697f5873bb7c71373afe0c99d35ae5b",
+      "src/torchcst/kernels/profiles/gaussian.py": "f96fee260a8902044b29b6acd7a59566eeaa614ebe08013ae4900563183579a6",
+      "src/torchcst/kernels/spec.py": "963011662cb98e80709864d292295bccc6f053a42e36674de6a6834204976a28",
+      "src/torchcst/kernels/state.py": "caa4fa40c0aae44e3694f0734f7e9230a9d438d77d51b8c0784ca99e851acff3",
+      "src/torchcst/nn/__init__.py": "8ddac85e7f5cad7f79e18216338aaeeff7dccec0d071a9dcd0a49a607b082ac3",
+      "src/torchcst/nn/conv.py": "87b6dc0d623f9a4592e90e2187d99fbc368b69f2133f7d37f95952674821498b",
+      "src/torchcst/nn/linear.py": "968e759198009a6b6e57a29df87182d554c9c540d6fbdefceebbdce342f773d2",
+      "src/torchcst/nn/module.py": "0f20a3804668d92f6feaee89b1842d0991a244d03a301cd66adb93fbd8ec1f48",
+      "src/torchcst/operators/__init__.py": "07360406898dc39369299c59c755a904a51a98fd911518664a36bac542a4a5b5",
+      "src/torchcst/operators/atom_update.py": "dbe92f5c30e795ece5c1f6ecb15a0517cd7a868adf21ac187f696cdc740d26d6",
+      "src/torchcst/operators/binding.py": "f8cef6222bb6dfb5bc0f8f25eec2ba4049ba655a4e1262da8da24dcf616d6721",
+      "src/torchcst/operators/context.py": "11836be5d8e0745d1bf5d16929764198915d336ddfe8efb252fb68016e7ca672",
+      "src/torchcst/operators/execution.py": "ecf5f390f3874bf423943a162be8898575d9c45ec19ea0ac2cdce5a201d8a88e",
+      "src/torchcst/operators/metadata.py": "872347b1104b6ba7066e6d9873daea2ce68baad31b90c7e4097a92e27b6d33e8",
+      "src/torchcst/operators/spec.py": "e23f87a2cf7809d2bb1ddaaa599fa80df8603af3c7e82e314eb33a5f4bb2e487",
+      "src/torchcst/optim/__init__.py": "88ccd98b9e383a7afff13cd55b18684b3fb7366c06e13baa38432ba0e7561820",
+      "src/torchcst/optim/binding.py": "5ffb64698cb813b6273177415de04868f8ace6b927ddd0e1ade3186168e31750",
+      "src/torchcst/optim/optimizer.py": "ad79ece8923c14055913cb343d9655bbc0439ef659c2b7bd5bba1b184cb10cc9",
+      "src/torchcst/optim/state.py": "f1ebed61fd7dfcf64f1aa68ecd4dda8290d4d846440e0c83d9dace5bce6df45c",
+      "src/torchcst/patterns/__init__.py": "49993ba1001363820e0e5e843ade855e5df9fcde113ceab4561eeeceb9f5c7e4",
+      "src/torchcst/patterns/presets.py": "9e15c4d297e2188d31c0215f4a0471348165dcdca920e0b11e677e7e32414908",
+      "src/torchcst/patterns/spec.py": "6d4b2f14ec3667d58e640fe350be5fbce150ee27d334067ca62cc54f3b1c2892",
+      "src/torchcst/patterns/state.py": "b630a839e91bf9cd70211d23391f1728874ad6e102d720eda821f2dbd0bc6cae",
+      "src/torchcst/profiling.py": "dbd76f6fd5af4d504ee66ad083ef5f32e12eb9b2c27d0676da4770a9671fb418",
+      "benchmarks/cuda/linear/run.py": "0b04d30b668bfb0f34f156bbbe9cef4d4041650fc8832afe153f8a26d4c17926",
+      "benchmarks/cuda/linear/reference.py": "4461c1443a116816759d8d204f953cd9f0a7fb81778e449533f4975ae1d37d4e",
+      "benchmarks/cuda/linear/fixtures.py": "c7569fda1c94983bb189a97836c701c9e5496007f6461be1a6ee10187e062759",
+      "benchmarks/cuda/linear/check_normalized.py": "86a5af0eaa61d8a6ff689d1e440f367faf39148783ca24351e4856ea732e69d7",
+      "benchmarks/cuda/linear/manifest.py": "9238d1772c5c46cf512e005f302e5e6968dd0680b442ffeee4e4b7fd1c0fa64d",
+      "benchmarks/cuda/linear/local_product.py": "86bb0d3005e6766ece20b6bd1e300aa89570f1bb7b50e83b77dcd4936a366a30",
+      "benchmarks/cuda/linear/profile_product.py": "50a3cb26fbefa7e2e6ce43d05dfa2060c6b4ed3a49ca90bad37a988219bd66d5",
+      "benchmarks/cuda/linear/strip_profile_product.py": "c812ef40b40d629fbc8a5497dca6da48ad43427b0adf700b953204e1f9a48517",
+      "benchmarks/cuda/linear/global_profile_product.py": "1b8e148486254d9b7c687a2067d7d217853a7011891700381df77ab24f1dc076",
+      "benchmarks/cuda/polar_update.py": "a33519c3e46f7271b8ab08b43a57e6fbb4a5164cc8eda397fd74137b8304a9e4"
+    }
+  }
+}
