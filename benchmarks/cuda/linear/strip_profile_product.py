@@ -20,18 +20,23 @@ PITCH = 68.0
 OUTPUT = 64
 
 
+def output_size(case):
+    return case.size if case.fixture == "polar_profile_product_square_strip" else OUTPUT
+
+
 def fixture_state(case):
     return product_state(case)
 
 
 def fixture_operator(case):
+    out = output_size(case)
     return OperatorSpec(
         layout=SingleChartSpec(
             chart=chart_presets.strip(
-                (OUTPUT, case.size),
-                (OUTPUT, TILE),
+                (out, case.size),
+                (out, TILE),
                 axes=(
-                    pattern_presets.line(OUTPUT, low=0, high=OUTPUT - 1),
+                    pattern_presets.line(out, low=0, high=out - 1),
                     pattern_presets.line(case.size, low=0, high=case.size - 1),
                 ),
                 axis=1,
@@ -43,7 +48,15 @@ def fixture_operator(case):
 
 
 def initialize(case):
-    p = product_initialize(replace(case, fixture="polar_profile_product", size=64))
+    p = product_initialize(
+        replace(
+            case,
+            fixture="polar_profile_product_global"
+            if case.fixture == "polar_profile_product_square_strip"
+            else "polar_profile_product",
+            size=output_size(case),
+        )
+    )
     gen = torch.Generator().manual_seed(case.seed + 907)
     logical = torch.randint(0, case.size, (case.atoms,), generator=gen)
     p[:, 3] = (logical % TILE).float() + (logical // TILE).float() * PITCH + 0.37
@@ -99,7 +112,10 @@ def correctness(args, run, model_type):
     import copy
 
     from benchmarks.cuda.linear.check_normalized import check
-    from benchmarks.cuda.linear.protocol import STRIP_PRODUCT_ORACLE_SCOPE
+    from benchmarks.cuda.linear.protocol import (
+        SQUARE_STRIP_PRODUCT_ORACLE_SCOPE,
+        STRIP_PRODUCT_ORACLE_SCOPE,
+    )
     from benchmarks.cuda.polar_update import optimizer_step
 
     case = run.case
@@ -107,8 +123,11 @@ def correctness(args, run, model_type):
     model = model_type(p, fixture_operator(case), run.entry(args.plan_id).plan)
     gen = torch.Generator().manual_seed(case.seed)
     x = torch.randn(case.rows, case.size, generator=gen).cuda().requires_grad_()
-    dy = torch.randn(case.rows, OUTPUT, generator=gen).cuda()
-    truth, tx, tp = oracle_vjp(
+    dy = torch.randn(case.rows, output_size(case), generator=gen).cuda()
+    oracle = oracle_vjp
+    if case.fixture == "polar_profile_product_square_strip":
+        oracle = square_oracle_vjp
+    truth, tx, tp = oracle(
         copy.deepcopy(model.local_state).double(),
         p,
         x,
@@ -150,9 +169,30 @@ def correctness(args, run, model_type):
     )
     return {
         "status": "PASS",
-        "scope": STRIP_PRODUCT_ORACLE_SCOPE,
+        "scope": SQUARE_STRIP_PRODUCT_ORACLE_SCOPE
+        if case.fixture == "polar_profile_product_square_strip"
+        else STRIP_PRODUCT_ORACLE_SCOPE,
         "y": check(y, truth, tol=4e-4),
         "dx": check(gx, tx, tol=4e-4),
         "dp": check(gp, tp, tol=4e-4),
         "polar_update": check(model.p, reference.atoms.p, tol=2e-6),
     }
+
+
+def square_oracle_vjp(value, p, x, dy, chart, *, chunk=512):
+    """Enumerate all factor sites in FP64, never truncate an atom's support."""
+    from .global_profile_product import oracle_factors
+
+    inputs, _ = positions(chart, device=p.device, dtype=torch.float64)
+    tx = x.detach().double().requires_grad_()
+    y = tx.new_zeros((len(x), chart.shape[0]))
+    dx, parts = torch.zeros_like(tx), []
+    for start in range(0, len(p), chunk):
+        tp = p[start : start + chunk].detach().double().requires_grad_()
+        u, v, scale = oracle_factors(value, tp, chart, input_sites=inputs)
+        yy = ((tx @ v.T) * scale[None, :]) @ u
+        gx, gp = torch.autograd.grad(yy, (tx, tp), dy.double())
+        y += yy.detach()
+        dx += gx
+        parts.append(gp)
+    return y, dx, torch.cat(parts) if parts else p.double()

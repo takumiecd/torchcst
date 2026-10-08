@@ -36,7 +36,7 @@ def compact_width_record(record):
     return record | {"result": result | {"sigma_updates": compact}}
 
 
-def oracle_factors(value, p, chart):
+def oracle_factors(value, p, chart, *, input_sites=None):
     # Written from the public Polar definition; no CUDA preparation/VJP reuse.
     radius2 = p[:, :2].square().sum(-1)
     amp = (
@@ -68,6 +68,8 @@ def oracle_factors(value, p, chart):
         * chart.axes[1].spacing[0]
         + chart.axes[1].start[0]
     )
+    if input_sites is not None:
+        inp = input_sites
     u = (
         (1 - (out[None, :] - p[:, 2, None]).square() / sigma[:, None].square())
         .clamp_min(0)

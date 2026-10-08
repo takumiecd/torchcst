@@ -66,16 +66,30 @@ def _context(row, mode):
     """Protocol-specific reconstruction, never an arbitrary JSON type loader."""
     case, env = row["case_declaration"], row["environment"]
     n = case["size"]
-    strip = case["fixture"] == "polar_profile_product_strip"
+    strip = case["fixture"] in (
+        "polar_profile_product_strip",
+        "polar_profile_product_square_strip",
+    )
     product = case["fixture"] in (
         "polar_profile_product",
         "polar_profile_product_strip",
+        "polar_profile_product_square_strip",
         "polar_profile_product_global",
     )
     local = product or case["fixture"] == "local_polar_product"
     global_product = case["fixture"] == "polar_profile_product_global"
     if row["adapter_revision"] != (
-        6 if global_product else 5 if strip else 4 if product else 3 if local else 2
+        7
+        if case["fixture"] == "polar_profile_product_square_strip"
+        else 6
+        if global_product
+        else 5
+        if strip
+        else 4
+        if product
+        else 3
+        if local
+        else 2
     ):
         raise ValueError("generation fixture/adapter revision differs")
     operator = measurement_operator(case)

@@ -17,6 +17,7 @@ from benchmarks.cuda.linear.protocol import (
     LOCAL_OPTIMIZER_POLICY,
     LOCAL_ORACLE_SCOPE,
     PRODUCT_ORACLE_SCOPE,
+    SQUARE_STRIP_PRODUCT_ORACLE_SCOPE,
     STRIP_PRODUCT_ORACLE_SCOPE,
     measurement_operator,
 )
@@ -175,16 +176,23 @@ def project(value):
     execution_identity(value)
     run = decode_snapshot(value["run"])
     case = json.loads(json.dumps(asdict(run.case), allow_nan=False))
-    strip = run.case.fixture == "polar_profile_product_strip"
+    strip = run.case.fixture in (
+        "polar_profile_product_strip",
+        "polar_profile_product_square_strip",
+    )
     product = run.case.fixture in (
         "polar_profile_product",
         "polar_profile_product_strip",
+        "polar_profile_product_square_strip",
         "polar_profile_product_global",
     )
     local = product or run.case.fixture == "local_polar_product"
     global_product = run.case.fixture == "polar_profile_product_global"
+    square_strip = run.case.fixture == "polar_profile_product_square_strip"
     revision = (
-        6
+        7
+        if square_strip
+        else 6
         if global_product
         else 5
         if strip
@@ -195,7 +203,9 @@ def project(value):
         else REVISION
     )
     oracle_scope = (
-        GLOBAL_PRODUCT_ORACLE_SCOPE
+        SQUARE_STRIP_PRODUCT_ORACLE_SCOPE
+        if square_strip
+        else GLOBAL_PRODUCT_ORACLE_SCOPE
         if global_product
         else STRIP_PRODUCT_ORACLE_SCOPE
         if strip
@@ -298,7 +308,15 @@ def project(value):
             polar_update = actual_update
             protocol["polar_update"] = polar_update
             protocol["revision"] = (
-                6 if global_product else 5 if strip else 4 if product else 3
+                7
+                if square_strip
+                else 6
+                if global_product
+                else 5
+                if strip
+                else 4
+                if product
+                else 3
             )
         if (
             record.status != "PASS"

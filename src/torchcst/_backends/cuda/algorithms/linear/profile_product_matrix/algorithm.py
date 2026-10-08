@@ -69,7 +69,9 @@ class MatrixStripAlgorithm(StripProductAlgorithm):
         from .executor import matrix_product
 
         x, p, declaration, operator = live_inputs(state, inputs)
-        chart = chart_spec(declaration, max_input=self.max_input)
+        chart = chart_spec(
+            declaration, max_input=self.max_input, max_output=self.max_output
+        )
         sizes = (
             len(x),
             chart.shape[1],
