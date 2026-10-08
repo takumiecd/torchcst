@@ -52,6 +52,11 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.large_algo
     LargePreparationProductAlgorithm,
     LargePreparationStripAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_strip_algorithm import (
+    SquareStripMatrixAlgorithm,
+    SquareStripPreparationAlgorithm,
+    SquareStripSplitAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
     StripProductAlgorithm,
 )
@@ -113,6 +118,9 @@ REGISTRY.register(SplitMatrixProductAlgorithm())
 REGISTRY.register(SplitMatrixStripAlgorithm())
 REGISTRY.register(LargeSplitMatrixProductAlgorithm())
 REGISTRY.register(LargeSplitMatrixStripAlgorithm())
+REGISTRY.register(SquareStripPreparationAlgorithm())
+REGISTRY.register(SquareStripMatrixAlgorithm())
+REGISTRY.register(SquareStripSplitAlgorithm())
 
 DEFAULT_PLANS = Path(__file__).with_name("plans.json")
 
@@ -238,19 +246,25 @@ class BenchmarkCase:
             "local_polar_product",
             "polar_profile_product",
             "polar_profile_product_strip",
+            "polar_profile_product_square_strip",
             "polar_profile_product_global",
         ):
             raise ValueError("unknown benchmark fixture")
         sizes = (
             (256, 512, 1024, 2048, 8192)
             if self.fixture
-            in ("polar_profile_product_strip", "polar_profile_product_global")
+            in (
+                "polar_profile_product_strip",
+                "polar_profile_product_square_strip",
+                "polar_profile_product_global",
+            )
             else (16, 32, 64, 128)
             if self.fixture
             in (
                 "local_polar_product",
                 "polar_profile_product",
                 "polar_profile_product_strip",
+                "polar_profile_product_square_strip",
                 "polar_profile_product_global",
             )
             else (1024, 8192)
@@ -261,6 +275,7 @@ class BenchmarkCase:
             "local_polar_product",
             "polar_profile_product",
             "polar_profile_product_strip",
+            "polar_profile_product_square_strip",
             "polar_profile_product_global",
         ) and (
             type(self.rows) is not int or not 1 <= self.rows <= 64 or self.atoms < 4
@@ -293,6 +308,7 @@ class BenchmarkCase:
                 "local_polar_product",
                 "polar_profile_product",
                 "polar_profile_product_strip",
+                "polar_profile_product_square_strip",
                 "polar_profile_product_global",
             )
             else ("broad", "sharp")
@@ -308,6 +324,7 @@ class BenchmarkCase:
                 "local_polar_product",
                 "polar_profile_product",
                 "polar_profile_product_strip",
+                "polar_profile_product_square_strip",
                 "polar_profile_product_global",
             )
             or self.profile != "mixed"
@@ -338,6 +355,7 @@ class BenchmarkRun:
                 in (
                     "polar_profile_product",
                     "polar_profile_product_strip",
+                    "polar_profile_product_square_strip",
                     "polar_profile_product_global",
                 )
                 else LOCAL_SEMANTICS

@@ -64,6 +64,8 @@ class PlanLinear(nn.Module):
             "research_strip_profile_product_large_matrix",
             "research_profile_product_large_prepared",
             "research_strip_profile_product_large_prepared",
+            "research_square_strip_profile_product_prepared",
+            "research_square_strip_profile_product_matrix",
         ):
             from torchcst import AtomUpdateBinding, CSTLinear
 
@@ -191,7 +193,10 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
-    if run.case.fixture == "polar_profile_product_strip":
+    if run.case.fixture in (
+        "polar_profile_product_strip",
+        "polar_profile_product_square_strip",
+    ):
         from benchmarks.cuda.linear.strip_profile_product import (
             correctness as strip_check,
         )
@@ -250,15 +255,19 @@ def correctness(args, run):
 def measure(args, run):
     case = run.case
     n, m = case.size, case.rows
-    strip = case.fixture == "polar_profile_product_strip"
+    strip = case.fixture in (
+        "polar_profile_product_strip",
+        "polar_profile_product_square_strip",
+    )
     global_product = case.fixture == "polar_profile_product_global"
     product = case.fixture in (
         "polar_profile_product",
         "polar_profile_product_strip",
+        "polar_profile_product_square_strip",
         "polar_profile_product_global",
     )
     local = product or case.fixture == "local_polar_product"
-    out = 64 if strip else n
+    out = 64 if case.fixture == "polar_profile_product_strip" else n
     support_report = None
     if local:
         from benchmarks.cuda.linear.local_product import (
@@ -718,6 +727,7 @@ def main():
         "local_polar_product",
         "polar_profile_product",
         "polar_profile_product_strip",
+        "polar_profile_product_square_strip",
         "polar_profile_product_global",
     ):
         ap.error("--polar-update fused requires the local product fixture")
@@ -818,7 +828,11 @@ def main():
             }
         if (
             run.case.fixture
-            in ("polar_profile_product_global", "polar_profile_product_strip")
+            in (
+                "polar_profile_product_global",
+                "polar_profile_product_strip",
+                "polar_profile_product_square_strip",
+            )
             and kind == "measure"
         ):
             from .global_profile_product import compact_width_record

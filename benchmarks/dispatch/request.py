@@ -49,7 +49,7 @@ def validate_request(value):
     if (
         dataset["adapter"] != "cuda.linear.complete-step"
         or type(dataset["adapter_revision"]) is not int
-        or dataset["adapter_revision"] not in (2, 3)
+        or dataset["adapter_revision"] not in (2, 3, 7)
     ):
         raise ValueError("unsupported generation adapter/revision")
     if type(dataset["gpu"]) is not str or not dataset["gpu"]:

@@ -452,3 +452,22 @@ For Product and input-Strip profile-product fixtures, consolidated
 ranges, change counts and exact-array hashes; every per-atom width remains in
 the unmodified `measure-PLAN.json` under `artifacts_directory`. This bounds the
 combined submission JSON without changing its timing or correctness records.
+
+### Square input-Strip profile products
+
+`plans-profile-product-square-strip.json` and `profile-product-square-strip-N-rhoR`
+Cases compare **N inputs and N outputs**, batch32, and floor(N²/20) trainable atoms.
+The existing `polar_profile_product_strip` fixture remains 64 outputs.
+The new `polar_profile_product_square_strip` fixture tiles only the input axis
+with tile64/pitch68 and normalizes each atom over the whole chart, once.
+N is1024,2048 or8192; initial rho3 andrho8 both evolve within widths1..16.
+Explicit `research_square_strip_profile_product_{prepared,matrix}` research
+plans admit outputs up to8192; earlier Strip plans retain their output128 limit.
+
+The independent FP64 oracle enumerates every factor site and chunks only atoms.
+CPU tests compare its Y/dX/all-atom VJP to full, explicitly normalized matrices,
+including the global floor and empty supports. Adapter revision7 distinguishes
+these results from both old rectangular Strip and ordinary Product fixtures.
+GPU correctness, captured updates and complete-step time/allocated/reserved
+memory must pass before adopting any route. The measured64-output gains do not
+establish performance for these square Cases.
