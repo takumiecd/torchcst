@@ -166,6 +166,16 @@ def _activity(
     )
 
 
+def polar_torus_profile_product(*, profiles, **kwargs):
+    """Circle/Sphere centre-fibre chord profiles on one Torus Chart.
+
+    Profile order is circle then section, independently of logical input/output
+    order. Revision 2 distinguishes this metric from revision 1's Euclidean
+    coordinate product. Shared Polar width and one operator L2 floor remain.
+    """
+    return replace(polar_profile_product(profiles=profiles, **kwargs), revision=2)
+
+
 def direct_activity(
     *,
     amplitude_max,

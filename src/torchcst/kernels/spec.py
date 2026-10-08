@@ -112,6 +112,8 @@ class KernelSpec:
         elif self.composition == "profile_product":
             if self.inner is not None or not self.profiles:
                 raise ValueError("profile_product needs a nonempty tuple of profiles")
+            if self.revision == 2 and len(self.profiles) != 2:
+                raise ValueError("Torus centre-fibre product requires two profiles")
             if type(self.parameterization) is not PolarAmpWidthSpec:
                 raise ValueError("profile_product requires Polar parameterization")
             if (

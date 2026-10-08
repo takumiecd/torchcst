@@ -18,6 +18,8 @@ wrapper は inner Kernel に同じ判定を適用する。片方の配置をも�
 解釈したり、Chart を複製して枚数を合わせたりしない。
 
 profile_productは一枚のEuclidean Product/Strip gridで各座標profileを掛け合わせる。
+revision 2の `polar_torus_profile_product` は一枚のS¹×S² Torus Chart上で、
+atom中心に固定した各fibreのchord距離profileを掛け合わせる。
 入力・出力の因子はbackend内部で分け、単一Chartの `operator.factors()` と
 Torch factored実行に接続する。[数学的な契約](../../../docs/profile-product.ja.md)を参照。
 
