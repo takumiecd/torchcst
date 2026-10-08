@@ -213,24 +213,31 @@ def test_captured_center_permutation_keeps_old_forward_and_canonical_vjps(family
     dy = torch.randn(7, 65, device="cuda")
     kwargs = {"spatial_tile": tile, "split_k": 8 if family == "strip" else 1}
     initial = scenarios.oracle(layer, x, dy, family)
-    retained = run(layer, x, family, **kwargs)
 
     def probe():
         y = run(layer, x, family, **kwargs)
         # Keep the algorithm's saved physical-to-canonical map as a live
         # diagnostic buffer. Its values must rebuild during Graph replay.
-        order = y.grad_fn.saved_tensors[-1]
+        node = y.grad_fn
+        while type(node).__name__ == "_ReadParameterBackward":
+            node = node.next_functions[0][0]
+        assert type(node).__name__ == "_ProfileMatrixBackward"
+        order = node.saved_tensors[-1]
+        assert order.shape == (len(p),) and order.dtype == torch.int32
         dx, dp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
         return y, dx, dp, order
 
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(stream):
+        # Retained leaf AccumulateGrad nodes must originate on the same
+        # stream as capture; a default-stream node forces an illegal sync.
+        retained = run(layer, x, family, **kwargs)
         for _ in range(2):
             probe()
     torch.cuda.current_stream().wait_stream(stream)
     graph = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(graph):
+    with torch.cuda.graph(graph, stream=stream):
         actual = probe()
     torch.cuda.synchronize()
     first_order = actual[3].cpu().tolist()
@@ -243,6 +250,9 @@ def test_captured_center_permutation_keeps_old_forward_and_canonical_vjps(family
     assert sorted(actual[3].cpu().tolist()) == list(range(len(p)))
     for value, truth in zip(actual[:3], moved, strict=True):
         torch.testing.assert_close(value.double(), truth, rtol=4e-4, atol=2e-5)
-    old_grads = torch.autograd.grad(retained, (x, layer.atoms.p), dy)
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        old_grads = torch.autograd.grad(retained, (x, layer.atoms.p), dy)
+    torch.cuda.current_stream().wait_stream(stream)
     for value, truth in zip((retained, *old_grads), initial, strict=True):
         torch.testing.assert_close(value.double(), truth, rtol=4e-4, atol=2e-5)

@@ -107,3 +107,21 @@ diagnose small moving-order execution, but cannot replace the interrupted full
 gate. No performance jobs are submitted until the complete validation scope
 is established. PR#70 remains draft. Its head215051da passed exact-head CPU
 Actions37703941653, including prepare/check, declarations, CPU and wheel/sdist.
+
+## Motion fixture stream correction
+
+The separate motion job returned a verified result (exit1, timed_out=false):
+four failures,198 deselected. The first case fails during captured autograd:
+a retained default-stream AccumulateGrad node forces an illegal dependency on
+the capturing stream; later cases inherit its invalidated capture. This is a
+fixture execution failure, not a measured spatial speedup or numerical pass.
+Keep its original source, logs and receipt under ignored jobs/.
+
+Create retained forwards and capture on the same explicit side stream. Also
+unwrap the existing AtomState _ReadParameter lifetime wrapper before reading
+the matrix's saved permutation; the wrapper's saved tensor is a CPU marker,
+not the CUDA order. Assert matrix node, order shape and int32 dtype. All four
+FP64, changed-order, bijection and retained-gradient checks stay unchanged.
+Runtime/catalog/case bytes remain unchanged. CPU metadata36 passes/166 CUDA
+skips. The corrected motion fixture is a new source/job with the same300s
+budget; the original failure remains part of the disposition.
