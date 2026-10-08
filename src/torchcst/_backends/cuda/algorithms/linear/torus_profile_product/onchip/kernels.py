@@ -12,6 +12,23 @@ from triton.language.extra.cuda import libdevice
 
 @tr.jit
 def _sin_bounded(x, TRIG: tl.constexpr):
+    if TRIG == "bounded-poly":
+        # Full valid interval [-pi, pi]; FP64 Horner, one FP32 output rounding.
+        xx = x.to(tl.float64)
+        z = xx * xx
+        p = tl.full((), -3.868170170630684e-23, tl.float64)
+        p = p * z + (1.9572941063391263e-20)
+        p = p * z + (-8.22063524662433e-18)
+        p = p * z + (2.8114572543455206e-15)
+        p = p * z + (-7.647163731819816e-13)
+        p = p * z + (1.6059043836821613e-10)
+        p = p * z + (-2.505210838544172e-08)
+        p = p * z + (2.7557319223985893e-06)
+        p = p * z + (-0.0001984126984126984)
+        p = p * z + (0.008333333333333333)
+        p = p * z + (-0.16666666666666666)
+        p = p * z + (1.0)
+        return (p * xx).to(tl.float32)
     if TRIG == "fp64":
         return libdevice.sin(x.to(tl.float64)).to(tl.float32)
     # FP32 hardware sine: all callers supply valid angles within +/- pi.
@@ -27,6 +44,24 @@ def _sin_bounded(x, TRIG: tl.constexpr):
 
 @tr.jit
 def _cos_bounded(x, TRIG: tl.constexpr):
+    if TRIG == "bounded-poly":
+        # Full valid interval [-pi, pi]; FP64 Horner, one FP32 output rounding.
+        xx = x.to(tl.float64)
+        z = xx * xx
+        p = tl.full((), 1.6117375710961184e-24, tl.float64)
+        p = p * z + (-8.896791392450574e-22)
+        p = p * z + (4.110317623312165e-19)
+        p = p * z + (-1.5619206968586225e-16)
+        p = p * z + (4.779477332387385e-14)
+        p = p * z + (-1.1470745597729725e-11)
+        p = p * z + (2.08767569878681e-09)
+        p = p * z + (-2.755731922398589e-07)
+        p = p * z + (2.48015873015873e-05)
+        p = p * z + (-0.001388888888888889)
+        p = p * z + (0.041666666666666664)
+        p = p * z + (-0.5)
+        p = p * z + (1.0)
+        return p.to(tl.float32)
     if TRIG == "fp64":
         return libdevice.cos(x.to(tl.float64)).to(tl.float32)
     return tl.inline_asm_elementwise(
@@ -129,7 +164,7 @@ def forward(
     PB: tl.constexpr,
     T: tl.constexpr,
     FLOOR: tl.constexpr,
-    TRIG: tl.constexpr = "hardware",
+    TRIG: tl.constexpr = "bounded-poly",
 ):
     (
         amp,
@@ -203,7 +238,7 @@ def backward(
     FLOOR: tl.constexpr,
     NEED_X: tl.constexpr,
     NEED_P: tl.constexpr,
-    TRIG: tl.constexpr = "hardware",
+    TRIG: tl.constexpr = "bounded-poly",
 ):
     (
         amp,

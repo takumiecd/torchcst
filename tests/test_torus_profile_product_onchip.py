@@ -29,7 +29,7 @@ from torchcst._backends.registry import Registry
 from torchcst._backends.schema import DeviceInfo, ExecutionPlan, PrecisionPolicy
 
 RECIPE = OnchipRecipe()
-PLAN = ExecutionPlan(TorusOnchipAlgorithm().id, "v2", RECIPE)
+PLAN = ExecutionPlan(TorusOnchipAlgorithm().id, "v3", RECIPE)
 
 
 def fixture(**kwargs):
@@ -94,7 +94,7 @@ def test_metadata_rejects_unsupported_geometry_shape_and_precision():
 def test_metadata_and_catalog_do_not_import_execution_code():
     code = (
         "import sys; from benchmarks.cuda.linear.manifest import REGISTRY; "
-        "assert REGISTRY.get('research_cuda_torus_profile_product_onchip', revision='v2'); "
+        "assert REGISTRY.get('research_cuda_torus_profile_product_onchip', revision='v3'); "
         "assert 'triton' not in sys.modules"
     )
     subprocess.run([sys.executable, "-c", code], check=True)

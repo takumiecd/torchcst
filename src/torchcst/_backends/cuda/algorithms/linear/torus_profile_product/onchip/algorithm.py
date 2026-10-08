@@ -23,11 +23,15 @@ from torchcst.operators.execution import (
 class OnchipRecipe:
     site_tile: int = 64
     num_warps: int = 4
-    trig: str = "hardware"
+    trig: str = "bounded-poly"
 
     def __post_init__(self):
-        if type(self.trig) is not str or self.trig not in ("hardware", "fp64"):
-            raise ValueError("requires hardware or fp64 trig diagnostic")
+        if type(self.trig) is not str or self.trig not in (
+            "hardware",
+            "fp64",
+            "bounded-poly",
+        ):
+            raise ValueError("requires validated trig diagnostic or bounded-poly")
         if type(self.site_tile) is not int or self.site_tile != 64:
             raise ValueError("first candidate requires site_tile64")
         if type(self.num_warps) is not int or self.num_warps != 4:
@@ -37,7 +41,7 @@ class OnchipRecipe:
 @dataclass(frozen=True)
 class TorusOnchipAlgorithm(Algorithm[OnchipRecipe]):
     id: str = "research_cuda_torus_profile_product_onchip"
-    revision: str = "v2"
+    revision: str = "v3"
     operation_id: str = "linear"
     semantics_id: str = "kernel-atom-sum-v1"
     recipe_type: type = OnchipRecipe
