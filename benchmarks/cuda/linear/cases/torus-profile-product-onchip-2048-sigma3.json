@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "torus-profile-product-square-strip-2048-sigma3",
+    "fixture": "polar_torus_profile_product_strip",
+    "size": 2048,
+    "rows": 32,
+    "atoms": 209715,
+    "profile": "mixed",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 5,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": true
+    },
+    "widths": {
+      "minimum": 1.0,
+      "birth": 1.0,
+      "maximum": 16,
+      "rho": [
+        3
+      ],
+      "fractions": [
+        1.0
+      ],
+      "center_jitter": null
+    }
+  },
+  "plans": [
+    "h-saved",
+    "h-recompute",
+    "w-gemm",
+    "onchip"
+  ],
+  "baseline": "h-saved",
+  "dense": true
+}

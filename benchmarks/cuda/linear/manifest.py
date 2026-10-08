@@ -60,6 +60,9 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
     StripProductAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.torus_profile_product.onchip.algorithm import (
+    TorusOnchipAlgorithm,
+)
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
 from torchcst._backends.serialization import decode_json
@@ -98,6 +101,7 @@ class BenchmarkRegistry(Registry):
 # This catalog is benchmark-local. Production registration/selection is unchanged.
 REGISTRY = BenchmarkRegistry()
 REGISTRY.register(TorusChunkAlgorithm())
+REGISTRY.register(TorusOnchipAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())
