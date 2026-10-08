@@ -24,6 +24,10 @@ from benchmarks.cuda.linear.manifest import (
 
 ROOT = Path(__file__).resolve().parents[2]
 GPU_SUITES = {
+    "sphere-polar": (
+        "tests/test_sphere_polar_blocked.py",
+        "tests/test_sphere_baseline.py",
+    ),
     "profile-product-global": ("tests/test_global_profile_product_cuda.py",),
     "profile-product-strip": ("tests/test_strip_profile_product_cuda.py",),
     "profile-product": ("tests/test_profile_product_cuda.py",),

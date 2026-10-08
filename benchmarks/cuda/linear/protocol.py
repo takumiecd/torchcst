@@ -28,6 +28,17 @@ LOCAL_OPTIMIZER_POLICY = (
 def measurement_operator(case):
     """Rebuild from a validated Case, never from arbitrary serialized types."""
     case = _case({"id": "stored-case", **case})
+    if case.fixture == "polar_sphere_separable":
+        from .sphere_baseline import fixture
+
+        model, *_ = fixture(
+            case.size,
+            float(case.profile[3:]),
+            batch=case.rows,
+            seed=case.seed,
+            atoms=case.atoms,
+        )
+        return model.declaration()
     if case.fixture == "polar_torus_profile_product_strip":
         from .torus_profile_product import fixture_operator as torus_operator
 

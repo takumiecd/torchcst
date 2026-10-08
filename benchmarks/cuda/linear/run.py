@@ -137,7 +137,8 @@ class PlanLinear(nn.Module):
         flat = x.reshape(-1, self.operator.in_features).contiguous()
         binding = (
             self.product_site
-            if self.plan.algorithm_id in (
+            if self.plan.algorithm_id
+            in (
                 "research_torch_torus_profile_product_chunked",
                 "research_cuda_torus_profile_product_onchip",
             )
@@ -167,6 +168,7 @@ def _metadata(args, run):
         Path(__file__).with_name("strip_profile_product.py"),
         Path(__file__).with_name("global_profile_product.py"),
         Path(__file__).with_name("torus_profile_product.py"),
+        Path(__file__).with_name("sphere_baseline.py"),
         Path(__file__).parent.parent / "polar_update.py",
     ]
     return {
@@ -206,6 +208,18 @@ def _metadata(args, run):
 
 
 def correctness(args, run):
+    if run.case.fixture == "polar_sphere_separable":
+        from torchcst._backends.dispatch import FixedSelector
+
+        from .sphere_baseline import correctness as check_sphere
+        from .sphere_baseline import fixture
+
+        model, x, _, dy = fixture(
+            64, float(run.case.profile[3:]), batch=3, atoms=273, seed=run.case.seed
+        )
+        model = model.cuda()
+        model.selector = FixedSelector(run.entry(args.plan_id).plan, registry=REGISTRY)
+        return check_sphere(model, x.cuda().requires_grad_(), dy.cuda(), "planned")
     if run.case.fixture == "polar_torus_profile_product_strip":
         from .torus_profile_product import correctness as torus_correctness
 
@@ -270,6 +284,10 @@ def correctness(args, run):
 
 
 def measure(args, run):
+    if run.case.fixture == "polar_sphere_separable":
+        from .sphere_baseline import measure_case
+
+        return measure_case(args, run)
     case = run.case
     n, m = case.size, case.rows
     strip = case.fixture in (
@@ -924,6 +942,7 @@ def main():
                     mode + "_time_ratio_to_baseline": result[mode]["median_ms"]
                     / baseline[mode]["median_ms"]
                     for mode in ("eager", "graph")
+                    if result.get(mode) is not None and baseline.get(mode) is not None
                 }
                 for name, result in measured.items()
             }
