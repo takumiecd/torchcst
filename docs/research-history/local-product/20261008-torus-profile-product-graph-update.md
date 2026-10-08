@@ -25,6 +25,24 @@ benchmark uses an explicit base-optimizer proposal plus declared update Plan,
 as existing Euclidean complete-step measurements do. Intrinsic tangent/state
 transport is identity. Ambient GPU/Graph updates are outside this candidate.
 
-GPU verification and complete-step time/peaks remain pending. This is a Graph
-comparison baseline and a prerequisite for fused CUDA work, not a speed claim.
+L4 GPU gate:33 passed, zero skipped,6.06s. This includes both activity modes,
+strict FP32/FP64 optimizer state equivalence and20 captured full steps with
+evolving widths in Product/Strip/reversed axes. No tolerances were relaxed.
+Complete-step time/peaks remain unmeasured. This provides a verified research
+Graph comparison baseline before fused CUDA work; it establishes correctness.
+
+- Job:l4job-d1b6c6d403034932b19bf5676b256796
+- Measured commit:d1dd00edff1b99153b4c7bd3d16e83b8305b7709
+- Frozen source SHA256:1efbcd997bf27bdc3c2afe816758512a4c419a9a89dddfe6d13bd80ce2631985
+- Result archive SHA256:fc230dfa062c91586ff595e2d9f0a1ed8ca2051aa5dfcf5c30b65dfdb763a335
+- Runtime:NVIDIA L4,Torch2.11.0+cu130,CUDA13.0,Triton3.6.0.
+- Driver:benchmarks/cuda/linear/evidence/torus-profile-product-graph-update-20261008/driver.py
+- Reproduction:pytest -q tests/test_torus_profile_product_graph_update.py
+
+The branch was subsequently rebased on the reference validation note9e369267;
+the updater and test contents are identical to the measured source checkpoint,
+which is also preserved in kernel/torus-profile-product-graph-update-first-gate.
+The shared pool keeps source.tar.gz,spec.json,receipt.json,results.tar.gz and
+results/artifacts/{graph-update.log,gate-proof.json} for this job under
+~/.local/state/colab-l4-pool/jobs/. The local archive hash matches the receipt.
 Raw drivers/logs/results remain in ignored evidence/ and the shared pool.
