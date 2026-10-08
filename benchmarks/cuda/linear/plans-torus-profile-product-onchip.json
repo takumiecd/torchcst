@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "h-saved",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_torch_torus_profile_product_chunked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 1024,
+          "contraction": "h",
+          "save_h": true
+        }
+      }
+    },
+    {
+      "id": "h-recompute",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_torch_torus_profile_product_chunked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 1024,
+          "contraction": "h",
+          "save_h": false
+        }
+      }
+    },
+    {
+      "id": "w-gemm",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_torch_torus_profile_product_chunked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 1024,
+          "contraction": "w",
+          "save_h": false
+        }
+      }
+    },
+    {
+      "id": "onchip",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_torus_profile_product_onchip",
+        "algorithm_revision": "v5",
+        "recipe": {
+          "site_tile": 64,
+          "num_warps": 4,
+          "trig": "bounded-poly",
+          "save": "recompute"
+        }
+      }
+    },
+    {
+      "id": "cuda-h-saved",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_torus_profile_product_onchip",
+        "algorithm_revision": "v5",
+        "recipe": {
+          "site_tile": 64,
+          "num_warps": 4,
+          "trig": "bounded-poly",
+          "save": "h"
+        }
+      }
+    },
+    {
+      "id": "cuda-vjp-saved",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_torus_profile_product_onchip",
+        "algorithm_revision": "v5",
+        "recipe": {
+          "site_tile": 64,
+          "num_warps": 4,
+          "trig": "bounded-poly",
+          "save": "vjp"
+        }
+      }
+    }
+  ]
+}
