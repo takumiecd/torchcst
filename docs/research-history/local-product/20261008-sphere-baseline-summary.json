@@ -1,0 +1,1075 @@
+{
+  "measured_source": "3ae00284ac8fdcbe2d91f67b49dacd11c787f46f",
+  "runtime_changed": false,
+  "protocol": "eager public CSTOptimizer; not CUDA Graph; FP32 IEEE; B32; atom fraction0.05",
+  "fixture": "two S2 charts; uniform random sites; radius sqrt(N/(4*pi)); intrinsic centers; per-side L2 floor1e-6",
+  "runs": {
+    "primary": {
+      "job_id": "l4job-cb5b123add6a481c96001d84b05df3d7",
+      "source_archive_sha256": "51f0aeda037deb490e9d907767d9139a39973a0fb0acb0777ccbe65ec87af0c0",
+      "result_archive_sha256": "a50cf07ba43520163f7f22cb5fe82f2439e78ce843c9e3953ba02d91fafb5d5a",
+      "status": "COMPLETE",
+      "driver_seconds": 126.51458843599994,
+      "gpu": "NVIDIA L4",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "rows": [
+        {
+          "status": "PASS",
+          "size": 64,
+          "sigma_initial": 3.0,
+          "route": "factored",
+          "training_median_ms": 10.364433000177087,
+          "training_peak_bytes": {
+            "allocated": 18165760,
+            "reserved": 23068672
+          },
+          "inference_median_ms": 2.3862040002313734,
+          "inference_peak_bytes": {
+            "allocated": 17508352,
+            "reserved": 23068672
+          },
+          "input_hashes": {
+            "p": "0d7ccc4e96db42ffde4c9f2e8795aaf9d042a7c87c9d21293beb57a3265a0cdd",
+            "x": "934fa601276bb68912c5cd7964019cf340cd25ac3535dc5817e202372861cff9",
+            "target": "9e313250d9cb99f076aaed897c8822aff5a993fa603665f6b2a85b720a0ccce4",
+            "sites": [
+              "037590b43c9d79653c7a2edd4fbca32bb9aca1e65b5365bb38f307f280b765ff",
+              "96c9c4e2c8c8c9321fa6435a65e94739c089ae4262ea199b2e556c0c6cadb2d7"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.3032404764266055e-07,
+                "relative_l2": 2.91046340988365e-07
+              },
+              "dX": {
+                "max_abs": 3.276921151096346e-07,
+                "relative_l2": 3.2934450154521216e-07
+              },
+              "all_dP": {
+                "max_abs": 5.4816966503778985e-06,
+                "relative_l2": 3.002022487450455e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 2.837536992039702e-07,
+                "relative_l2": 3.123416893662214e-07
+              },
+              "dX": {
+                "max_abs": 3.819974961905004e-07,
+                "relative_l2": 3.572335760233456e-07
+              },
+              "all_dP": {
+                "max_abs": 4.744554552793545e-06,
+                "relative_l2": 2.9229955424163183e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 2.993478298187256,
+              "max": 2.99350643157959,
+              "mean": 2.9934909343719482
+            },
+            {
+              "min": 2.993478298187256,
+              "max": 2.99350643157959,
+              "mean": 2.9934909343719482
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 3.1803809997654753,
+            "backward": 2.7549910000743694,
+            "optimizer": 5.053701999713667
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 64,
+          "sigma_initial": 3.0,
+          "route": "factor-weight",
+          "training_median_ms": 9.982205999676808,
+          "training_peak_bytes": {
+            "allocated": 18165760,
+            "reserved": 23068672
+          },
+          "inference_median_ms": 1.9658539999909408,
+          "inference_peak_bytes": {
+            "allocated": 17508352,
+            "reserved": 23068672
+          },
+          "input_hashes": {
+            "p": "0d7ccc4e96db42ffde4c9f2e8795aaf9d042a7c87c9d21293beb57a3265a0cdd",
+            "x": "934fa601276bb68912c5cd7964019cf340cd25ac3535dc5817e202372861cff9",
+            "target": "9e313250d9cb99f076aaed897c8822aff5a993fa603665f6b2a85b720a0ccce4",
+            "sites": [
+              "037590b43c9d79653c7a2edd4fbca32bb9aca1e65b5365bb38f307f280b765ff",
+              "96c9c4e2c8c8c9321fa6435a65e94739c089ae4262ea199b2e556c0c6cadb2d7"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 2.409170804795746e-07,
+                "relative_l2": 2.7930101689297596e-07
+              },
+              "dX": {
+                "max_abs": 3.2321333148788156e-07,
+                "relative_l2": 3.2149504668008883e-07
+              },
+              "all_dP": {
+                "max_abs": 4.9945372330162385e-06,
+                "relative_l2": 3.0878818909030017e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.4170775464748004e-07,
+                "relative_l2": 3.043698462354544e-07
+              },
+              "dX": {
+                "max_abs": 2.921426522917159e-07,
+                "relative_l2": 3.4926274270751215e-07
+              },
+              "all_dP": {
+                "max_abs": 5.22139171099667e-06,
+                "relative_l2": 2.925732546230065e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 2.993478298187256,
+              "max": 2.99350643157959,
+              "mean": 2.9934909343719482
+            },
+            {
+              "min": 2.993478298187256,
+              "max": 2.99350643157959,
+              "mean": 2.9934909343719482
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 2.513439000267681,
+            "backward": 2.6889400000982278,
+            "optimizer": 5.023298999731196
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 64,
+          "sigma_initial": 3.0,
+          "route": "materialized",
+          "training_median_ms": 9.796063000067079,
+          "training_peak_bytes": {
+            "allocated": 25250816,
+            "reserved": 44040192
+          },
+          "inference_median_ms": 1.969336000001931,
+          "inference_peak_bytes": {
+            "allocated": 21169664,
+            "reserved": 23068672
+          },
+          "input_hashes": {
+            "p": "0d7ccc4e96db42ffde4c9f2e8795aaf9d042a7c87c9d21293beb57a3265a0cdd",
+            "x": "934fa601276bb68912c5cd7964019cf340cd25ac3535dc5817e202372861cff9",
+            "target": "9e313250d9cb99f076aaed897c8822aff5a993fa603665f6b2a85b720a0ccce4",
+            "sites": [
+              "037590b43c9d79653c7a2edd4fbca32bb9aca1e65b5365bb38f307f280b765ff",
+              "96c9c4e2c8c8c9321fa6435a65e94739c089ae4262ea199b2e556c0c6cadb2d7"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 2.388708610912005e-07,
+                "relative_l2": 2.7992004426306676e-07
+              },
+              "dX": {
+                "max_abs": 3.069488079265881e-07,
+                "relative_l2": 3.212769561916566e-07
+              },
+              "all_dP": {
+                "max_abs": 5.054141877791629e-06,
+                "relative_l2": 2.981836085744154e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.2902421864822173e-07,
+                "relative_l2": 3.0982922935688317e-07
+              },
+              "dX": {
+                "max_abs": 3.5142788157305205e-07,
+                "relative_l2": 3.487929987286295e-07
+              },
+              "all_dP": {
+                "max_abs": 4.744554552793545e-06,
+                "relative_l2": 2.847393062541906e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 2.993478298187256,
+              "max": 2.99350643157959,
+              "mean": 2.9934909343719482
+            },
+            {
+              "min": 2.993478298187256,
+              "max": 2.99350643157959,
+              "mean": 2.9934909343719482
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 2.43290500020521,
+            "backward": 2.699960999962059,
+            "optimizer": 4.76861499964798
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 64,
+          "sigma_initial": 3.0,
+          "route": "dense",
+          "training_median_ms": 0.7174600000325881,
+          "training_peak_bytes": {
+            "allocated": 17147392,
+            "reserved": 23068672
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 3.0,
+          "route": "factored",
+          "training_median_ms": 168.74184500011324,
+          "training_peak_bytes": {
+            "allocated": 4320266240,
+            "reserved": 5066719232
+          },
+          "inference_median_ms": 49.01182300000073,
+          "inference_peak_bytes": {
+            "allocated": 1534130176,
+            "reserved": 1994391552
+          },
+          "input_hashes": {
+            "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+            "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+            "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+            "sites": [
+              "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+              "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.3692847665189873e-06,
+                "relative_l2": 7.48010234106569e-07
+              },
+              "dX": {
+                "max_abs": 3.1247638556664015e-06,
+                "relative_l2": 7.404353400410823e-07
+              },
+              "all_dP": {
+                "max_abs": 2.9559395604117356e-05,
+                "relative_l2": 7.544484400068793e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.2911174553951206e-06,
+                "relative_l2": 8.130483843615709e-07
+              },
+              "dX": {
+                "max_abs": 3.82593003411813e-06,
+                "relative_l2": 7.64566701893965e-07
+              },
+              "all_dP": {
+                "max_abs": 3.4215564817419164e-05,
+                "relative_l2": 7.693346200708027e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 2.993471622467041,
+              "max": 2.9935104846954346,
+              "mean": 2.99349045753479
+            },
+            {
+              "min": 2.993471622467041,
+              "max": 2.9935104846954346,
+              "mean": 2.99349045753479
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 49.12864300013098,
+            "backward": 114.60809600021094,
+            "optimizer": 5.740555000102177
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 3.0,
+          "route": "factor-weight",
+          "training_median_ms": 182.7272450000237,
+          "training_peak_bytes": {
+            "allocated": 4320266240,
+            "reserved": 5066719232
+          },
+          "inference_median_ms": 54.8274089996994,
+          "inference_peak_bytes": {
+            "allocated": 1534130176,
+            "reserved": 1994391552
+          },
+          "input_hashes": {
+            "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+            "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+            "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+            "sites": [
+              "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+              "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.4305466453665723e-06,
+                "relative_l2": 7.487502510098784e-07
+              },
+              "dX": {
+                "max_abs": 2.9999086444965073e-06,
+                "relative_l2": 7.447506595180565e-07
+              },
+              "all_dP": {
+                "max_abs": 2.9320977025015793e-05,
+                "relative_l2": 7.52355810138071e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.461512429747682e-06,
+                "relative_l2": 8.122949393981372e-07
+              },
+              "dX": {
+                "max_abs": 3.977127451149087e-06,
+                "relative_l2": 7.650735251715148e-07
+              },
+              "all_dP": {
+                "max_abs": 3.4453983396520727e-05,
+                "relative_l2": 7.695429923953822e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 2.993471622467041,
+              "max": 2.9935104846954346,
+              "mean": 2.99349045753479
+            },
+            {
+              "min": 2.993471622467041,
+              "max": 2.9935104846954346,
+              "mean": 2.99349045753479
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 54.04644600002939,
+            "backward": 123.714297999868,
+            "optimizer": 5.942350000168517
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 3.0,
+          "route": "dense",
+          "training_median_ms": 0.7333059998018143,
+          "training_peak_bytes": {
+            "allocated": 34342400,
+            "reserved": 44040192
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 8.0,
+          "route": "factored",
+          "training_median_ms": 169.66892699974778,
+          "training_peak_bytes": {
+            "allocated": 4320266240,
+            "reserved": 5066719232
+          },
+          "inference_median_ms": 49.01686100038205,
+          "inference_peak_bytes": {
+            "allocated": 1534130176,
+            "reserved": 1994391552
+          },
+          "input_hashes": {
+            "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+            "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+            "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+            "sites": [
+              "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+              "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 1.9653561906807226e-06,
+                "relative_l2": 5.61221037091949e-07
+              },
+              "dX": {
+                "max_abs": 2.4910437159131327e-06,
+                "relative_l2": 5.512563158654342e-07
+              },
+              "all_dP": {
+                "max_abs": 8.293536738257501e-06,
+                "relative_l2": 4.5160332089307275e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 2.092200229619756e-06,
+                "relative_l2": 6.841288901105399e-07
+              },
+              "dX": {
+                "max_abs": 2.11021921669996e-06,
+                "relative_l2": 6.300800215937864e-07
+              },
+              "all_dP": {
+                "max_abs": 8.352073722406317e-06,
+                "relative_l2": 5.006464214341302e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 7.949434757232666,
+              "max": 7.949553966522217,
+              "mean": 7.949497222900391
+            },
+            {
+              "min": 7.949434757232666,
+              "max": 7.949553966522217,
+              "mean": 7.949497222900391
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 49.14474999986851,
+            "backward": 115.3859599999123,
+            "optimizer": 5.8144889999312
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 8.0,
+          "route": "factor-weight",
+          "training_median_ms": 184.20076500024152,
+          "training_peak_bytes": {
+            "allocated": 4320266240,
+            "reserved": 5066719232
+          },
+          "inference_median_ms": 55.22772899985284,
+          "inference_peak_bytes": {
+            "allocated": 1534130176,
+            "reserved": 1994391552
+          },
+          "input_hashes": {
+            "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+            "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+            "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+            "sites": [
+              "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+              "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 1.635273094713341e-06,
+                "relative_l2": 4.3344430166042755e-07
+              },
+              "dX": {
+                "max_abs": 1.6978908268239223e-06,
+                "relative_l2": 4.3593236816025125e-07
+              },
+              "all_dP": {
+                "max_abs": 8.055118159155938e-06,
+                "relative_l2": 4.502927452395771e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 1.6564423451215227e-06,
+                "relative_l2": 5.52880077034319e-07
+              },
+              "dX": {
+                "max_abs": 1.6975703143184973e-06,
+                "relative_l2": 5.122066701976527e-07
+              },
+              "all_dP": {
+                "max_abs": 8.270611250804638e-06,
+                "relative_l2": 4.982981326140061e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 7.949434757232666,
+              "max": 7.949553966522217,
+              "mean": 7.949497222900391
+            },
+            {
+              "min": 7.949434757232666,
+              "max": 7.949553966522217,
+              "mean": 7.949497222900391
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 54.543610000109766,
+            "backward": 124.73300700003165,
+            "optimizer": 5.737986999974964
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 8.0,
+          "route": "dense",
+          "training_median_ms": 0.721510999937891,
+          "training_peak_bytes": {
+            "allocated": 34342400,
+            "reserved": 44040192
+          }
+        },
+        {
+          "status": "OOM",
+          "size": 2048,
+          "sigma_initial": 3.0,
+          "route": "factored",
+          "stage": "initial_full_correctness",
+          "incomplete_peak_bytes": {
+            "allocated": 22415981056,
+            "reserved": 22433234944
+          },
+          "error": "CUDA out of memory. Tried to allocate 1.60 GiB. GPU 0 has a total capacity of 22.03 GiB of which 927.12 MiB is free. Including non-PyTorch memory, this process has 21.12 GiB memory in use. Of the allocated memory 20.88 GiB is allocated by PyTorch, and 16.45 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "status": "OOM",
+          "size": 2048,
+          "sigma_initial": 3.0,
+          "route": "factor-weight",
+          "stage": "initial_full_correctness",
+          "incomplete_peak_bytes": {
+            "allocated": 22415981056,
+            "reserved": 22433234944
+          },
+          "error": "CUDA out of memory. Tried to allocate 1.60 GiB. GPU 0 has a total capacity of 22.03 GiB of which 927.12 MiB is free. Including non-PyTorch memory, this process has 21.12 GiB memory in use. Of the allocated memory 20.88 GiB is allocated by PyTorch, and 16.45 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "status": "PASS",
+          "size": 2048,
+          "sigma_initial": 3.0,
+          "route": "dense",
+          "training_median_ms": 1.1364710003363143,
+          "training_peak_bytes": {
+            "allocated": 85198336,
+            "reserved": 92274688
+          }
+        },
+        {
+          "status": "OOM",
+          "size": 2048,
+          "sigma_initial": 8.0,
+          "route": "factored",
+          "stage": "initial_full_correctness",
+          "incomplete_peak_bytes": {
+            "allocated": 22415981056,
+            "reserved": 22433234944
+          },
+          "error": "CUDA out of memory. Tried to allocate 1.60 GiB. GPU 0 has a total capacity of 22.03 GiB of which 927.12 MiB is free. Including non-PyTorch memory, this process has 21.12 GiB memory in use. Of the allocated memory 20.88 GiB is allocated by PyTorch, and 16.45 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "status": "OOM",
+          "size": 2048,
+          "sigma_initial": 8.0,
+          "route": "factor-weight",
+          "stage": "initial_full_correctness",
+          "incomplete_peak_bytes": {
+            "allocated": 22415981056,
+            "reserved": 22433234944
+          },
+          "error": "CUDA out of memory. Tried to allocate 1.60 GiB. GPU 0 has a total capacity of 22.03 GiB of which 927.12 MiB is free. Including non-PyTorch memory, this process has 21.12 GiB memory in use. Of the allocated memory 20.88 GiB is allocated by PyTorch, and 16.45 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)"
+        },
+        {
+          "status": "PASS",
+          "size": 2048,
+          "sigma_initial": 8.0,
+          "route": "dense",
+          "training_median_ms": 1.1292700000922196,
+          "training_peak_bytes": {
+            "allocated": 85198336,
+            "reserved": 92274688
+          }
+        }
+      ]
+    },
+    "inverse": {
+      "job_id": "l4job-47f3b309c4384467916ff947e021372a",
+      "source_archive_sha256": "a43508789d699421244ce522251e233323dcd8d156b495a01484654e4337286e",
+      "result_archive_sha256": "5b246ddf371db0a53d3634f88e1ca5ddf3558c9902c4e16c0a84377271aa3191",
+      "status": "COMPLETE",
+      "driver_seconds": 74.13086731899989,
+      "gpu": "NVIDIA L4",
+      "torch": "2.11.0+cu130",
+      "cuda": "13.0",
+      "rows": [
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 3.0,
+          "route": "dense",
+          "training_median_ms": 0.7299769999917771,
+          "training_peak_bytes": {
+            "allocated": 34342400,
+            "reserved": 44040192
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 3.0,
+          "route": "factor-weight",
+          "training_median_ms": 182.11141599999792,
+          "training_peak_bytes": {
+            "allocated": 4320266240,
+            "reserved": 5066719232
+          },
+          "inference_median_ms": 54.52141499995378,
+          "inference_peak_bytes": {
+            "allocated": 1534130176,
+            "reserved": 1994391552
+          },
+          "input_hashes": {
+            "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+            "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+            "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+            "sites": [
+              "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+              "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.4305466453665723e-06,
+                "relative_l2": 7.487502510098784e-07
+              },
+              "dX": {
+                "max_abs": 2.9999086444965073e-06,
+                "relative_l2": 7.447506595180565e-07
+              },
+              "all_dP": {
+                "max_abs": 2.9320977025015793e-05,
+                "relative_l2": 7.52355810138071e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.461512429747682e-06,
+                "relative_l2": 8.122949393981372e-07
+              },
+              "dX": {
+                "max_abs": 3.977127451149087e-06,
+                "relative_l2": 7.650735251715148e-07
+              },
+              "all_dP": {
+                "max_abs": 3.4453983396520727e-05,
+                "relative_l2": 7.695429923953822e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 2.993471622467041,
+              "max": 2.9935104846954346,
+              "mean": 2.99349045753479
+            },
+            {
+              "min": 2.993471622467041,
+              "max": 2.9935104846954346,
+              "mean": 2.99349045753479
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 53.83838699981425,
+            "backward": 123.36138000000574,
+            "optimizer": 5.813172000216582
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 3.0,
+          "route": "factored",
+          "training_median_ms": 169.01574500002425,
+          "training_peak_bytes": {
+            "allocated": 4320266240,
+            "reserved": 5066719232
+          },
+          "inference_median_ms": 49.04190199999903,
+          "inference_peak_bytes": {
+            "allocated": 1534130176,
+            "reserved": 1994391552
+          },
+          "input_hashes": {
+            "p": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+            "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+            "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+            "sites": [
+              "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+              "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.3692847665189873e-06,
+                "relative_l2": 7.48010234106569e-07
+              },
+              "dX": {
+                "max_abs": 3.1247638556664015e-06,
+                "relative_l2": 7.404353400410823e-07
+              },
+              "all_dP": {
+                "max_abs": 2.9559395604117356e-05,
+                "relative_l2": 7.544484400068793e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 3.2911174553951206e-06,
+                "relative_l2": 8.130483843615709e-07
+              },
+              "dX": {
+                "max_abs": 3.82593003411813e-06,
+                "relative_l2": 7.64566701893965e-07
+              },
+              "all_dP": {
+                "max_abs": 3.4215564817419164e-05,
+                "relative_l2": 7.693346200708027e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 2.993471622467041,
+              "max": 2.9935104846954346,
+              "mean": 2.99349045753479
+            },
+            {
+              "min": 2.993471622467041,
+              "max": 2.9935104846954346,
+              "mean": 2.99349045753479
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 49.37515699998585,
+            "backward": 114.71517200016024,
+            "optimizer": 6.204297999829578
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 8.0,
+          "route": "dense",
+          "training_median_ms": 0.711045999878479,
+          "training_peak_bytes": {
+            "allocated": 34342400,
+            "reserved": 44040192
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 8.0,
+          "route": "factor-weight",
+          "training_median_ms": 183.7724999998045,
+          "training_peak_bytes": {
+            "allocated": 4320266240,
+            "reserved": 5066719232
+          },
+          "inference_median_ms": 55.06502100001853,
+          "inference_peak_bytes": {
+            "allocated": 1534130176,
+            "reserved": 1994391552
+          },
+          "input_hashes": {
+            "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+            "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+            "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+            "sites": [
+              "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+              "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 1.635273094713341e-06,
+                "relative_l2": 4.3344430166042755e-07
+              },
+              "dX": {
+                "max_abs": 1.6978908268239223e-06,
+                "relative_l2": 4.3593236816025125e-07
+              },
+              "all_dP": {
+                "max_abs": 8.055118159155938e-06,
+                "relative_l2": 4.502927452395771e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 1.6564423451215227e-06,
+                "relative_l2": 5.52880077034319e-07
+              },
+              "dX": {
+                "max_abs": 1.6975703143184973e-06,
+                "relative_l2": 5.122066701976527e-07
+              },
+              "all_dP": {
+                "max_abs": 8.270611250804638e-06,
+                "relative_l2": 4.982981326140061e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 7.949434757232666,
+              "max": 7.949553966522217,
+              "mean": 7.949497222900391
+            },
+            {
+              "min": 7.949434757232666,
+              "max": 7.949553966522217,
+              "mean": 7.949497222900391
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 54.36077099989234,
+            "backward": 124.58436399992934,
+            "optimizer": 5.8899150001252565
+          }
+        },
+        {
+          "status": "PASS",
+          "size": 1024,
+          "sigma_initial": 8.0,
+          "route": "factored",
+          "training_median_ms": 169.7337289999723,
+          "training_peak_bytes": {
+            "allocated": 4320266240,
+            "reserved": 5066719232
+          },
+          "inference_median_ms": 49.08444500006226,
+          "inference_peak_bytes": {
+            "allocated": 1534130176,
+            "reserved": 1994391552
+          },
+          "input_hashes": {
+            "p": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+            "x": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+            "target": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03",
+            "sites": [
+              "8982da1ceec986ba39e177545e4a7ee7ab8e9a545eedb4be4a6a46aaa37da45c",
+              "2136160d121453a6ee22dcba30abdb9fbeeaeab32fa47959693ce04930e5d74d"
+            ]
+          },
+          "correctness_initial": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 1.9653561906807226e-06,
+                "relative_l2": 5.61221037091949e-07
+              },
+              "dX": {
+                "max_abs": 2.4910437159131327e-06,
+                "relative_l2": 5.512563158654342e-07
+              },
+              "all_dP": {
+                "max_abs": 8.293536738257501e-06,
+                "relative_l2": 4.5160332089307275e-07
+              }
+            }
+          },
+          "correctness_updated": {
+            "status": "PASS",
+            "scope": "full_sites_all_atoms_fp64",
+            "errors": {
+              "Y": {
+                "max_abs": 2.092200229619756e-06,
+                "relative_l2": 6.841288901105399e-07
+              },
+              "dX": {
+                "max_abs": 2.11021921669996e-06,
+                "relative_l2": 6.300800215937864e-07
+              },
+              "all_dP": {
+                "max_abs": 8.352073722406317e-06,
+                "relative_l2": 5.006464214341302e-07
+              }
+            }
+          },
+          "updated_widths": [
+            {
+              "min": 7.949434757232666,
+              "max": 7.949553966522217,
+              "mean": 7.949497222900391
+            },
+            {
+              "min": 7.949434757232666,
+              "max": 7.949553966522217,
+              "mean": 7.949497222900391
+            }
+          ],
+          "phase_medians_ms": {
+            "forward_loss": 49.15024799993262,
+            "backward": 115.3965060000246,
+            "optimizer": 5.931051000061416
+          }
+        }
+      ]
+    },
+    "diagnostic": {
+      "job_id": "l4job-360aab2e5cf241368ffa6d81b7e7a984",
+      "source_archive_sha256": "0e61d4e56b062d1d1b8cc17d09e9a1abd0df9ac993e1b2b70f76b61cd5ff71d3",
+      "result_archive_sha256": "956c5791720d82467c6a6e1c959ab2ca58afc7d3e8ae26fa290977aba16b0b96",
+      "status": "COMPLETE",
+      "driver_seconds": null,
+      "gpu": null,
+      "torch": null,
+      "cuda": null,
+      "rows": [
+        {
+          "n": 1024,
+          "sigma": 3,
+          "source": "3ae00284ac8fdcbe2d91f67b49dacd11c787f46f",
+          "scope": "instrumented autograd diagnostic, not a performance result",
+          "forward_peak_bytes": {
+            "allocated": 3249143296,
+            "reserved": 3321888768
+          },
+          "forward_live_allocated_bytes": 3249012224,
+          "backward_peak_bytes": {
+            "allocated": 4323917312,
+            "reserved": 5100273664
+          },
+          "status": "PASS",
+          "unique_saved_storage_bytes": 3239473744,
+          "saved_storage_scope": "cumulative distinct storages requested by forward autograd; not GPU peak",
+          "initial_sigma3_support": [
+            {
+              "min": 14,
+              "median": 28,
+              "mean": 28.265602111816406,
+              "max": 44,
+              "empty_atoms": 0
+            },
+            {
+              "min": 14,
+              "median": 30,
+              "mean": 29.498092651367188,
+              "max": 42,
+              "empty_atoms": 0
+            }
+          ]
+        },
+        {
+          "n": 2048,
+          "sigma": 3,
+          "source": "3ae00284ac8fdcbe2d91f67b49dacd11c787f46f",
+          "scope": "instrumented autograd diagnostic, not a performance result",
+          "status": "OOM",
+          "stage": "forward_loss",
+          "incomplete_peak_bytes": {
+            "allocated": 22388980736,
+            "reserved": 22412263424
+          },
+          "unique_saved_storage_bytes": 15503810568,
+          "saved_storage_scope": "cumulative distinct storages requested by forward autograd; not GPU peak"
+        }
+      ]
+    }
+  }
+}
