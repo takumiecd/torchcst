@@ -381,3 +381,30 @@ preflight proofs remain ignored H-reuse evidence. With the lost N2048 primary
 and invalid N1024 reverse order, independent positive whole-cohort confirmation
 is missing; public/performance adoption remains rejected unless established
 within the existing valid evidence, without new runs or budgets.
+
+N1024 attempted inverse completed and its artifacts were retrieved: all25
+manifest entries, source and receipt/result archive hashes verified. The strict
+comparison verifier then failed the actual-order assertion, as required. Every
+numerical/optimizer worker and full step passed, with the same runtime, physics,
+recipes, initial parameters/inputs as primary; this is a same-order repeat,
+not the declared reverse-order confirmation. Preserve all rows:
+
+| sigma | route | same-order repeat Graph ms | eager ms | allocated MB | reserved MB |
+| --- | --- | --- | --- | --- | --- |
+|3|H saved|94.289|241.917|135.943|436.208|
+|3|H recompute|93.680|241.571|129.363|402.653|
+|3|W + GEMM|121.680|230.000|137.489|419.430|
+|3|dense|0.0824|0.640|51.383|111.149|
+|8|H saved|96.135|242.146|135.943|436.208|
+|8|H recompute|95.452|247.850|129.363|402.653|
+|8|W + GEMM|126.066|243.504|137.489|419.430|
+|8|dense|0.0827|0.664|51.383|111.149|
+
+Source/result SHA256:
+4a62defdfa7b31841aa78e313b385bcca7875d8e245054af2a1bbc646cae9336 /
+957c90d41011bebd594ab4f24e994883598172b155571039d01df359e5a4d422.
+Ignored inverse-1024/protocol-failure-observation.json explicitly has
+protocol_valid:false; raw seven-worker case files remain unchanged. Do not
+relabel these rows as reverse-order proof or select them for positive adoption.
+The supervisor drained and stopped its owned session before the corrected
+N2048 reservation was dispatched by a new one-worker supervisor.
