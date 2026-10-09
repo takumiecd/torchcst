@@ -58,6 +58,7 @@ class PlanLinear(nn.Module):
             "research_profile_product",
             "research_torch_torus_profile_product_chunked",
             "research_cuda_torus_profile_product_onchip",
+            "research_cuda_torus_profile_product_sparse_weight",
             "research_strip_profile_product",
             "research_profile_product_global",
             "research_profile_product_matrix",
@@ -141,6 +142,7 @@ class PlanLinear(nn.Module):
             in (
                 "research_torch_torus_profile_product_chunked",
                 "research_cuda_torus_profile_product_onchip",
+                "research_cuda_torus_profile_product_sparse_weight",
             )
             else self
         )
@@ -697,6 +699,8 @@ def measure(args, run):
 def _torus_h_policy(plan):
     """Report storage without assuming CUDA recipes have Torch recipe fields."""
     recipe = plan.recipe
+    if plan.algorithm_id == "research_cuda_torus_profile_product_sparse_weight":
+        return "sparse_w_gemm"
     if plan.algorithm_id == "research_cuda_torus_profile_product_onchip":
         return {
             "recompute": "h_recompute",
