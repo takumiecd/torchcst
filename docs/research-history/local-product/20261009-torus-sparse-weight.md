@@ -203,6 +203,16 @@ The CPU check rejects unvalidated recipes and roundtrips all six permitted
 combinations. Full CPU results and offline build status are recorded in the
 curated summary; CUDA skips in local CPU runs are not GPU validation.
 
+After saving the metadata/evidence checkpoint, final history is rebased onto
+main `b9fb73aaf2fc6d03cf2f4ed790e465ca2458d008` (Sphere capturable-update PR82).
+The GPU integration anchor76f4337 uses the earlier PR81 base13fd1b4; it remains
+unchanged and recoverable. After the final rebase all four numerical files
+above remain byte-identical to76f4337. Combined-main CPU suite passes1356tests,
+2465CUDA-skipped,18warnings in26.29s; changed Python AST parsing, all four
+Case/Plan declarations, Ruff, and offline wheel/sdist build pass. The later
+Sphere updater is covered by combined CPU/CI integration, not a newly measured
+Torus performance cohort.
+
 The structural lesson for ordinary Sphere is to share expensive geometric
 factor preparation and a common dW across every atom VJP when W is profitable.
 The fast circle window depends on regular Strip order and bounded circle

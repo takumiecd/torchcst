@@ -48,7 +48,8 @@
       "onchip/kernels.py",
       "sparse_weight/kernels.py",
       "sparse_weight/executor.py"
-    ]
+    ],
+    "post_rebase_numeric_files_byte_identical_to_integration76": true
   },
   "performance_jobs": [
     {
@@ -1463,7 +1464,8 @@
         }
       }
     ],
-    "base_commit": "13fd1b46e79153e26e9331be461f99d6a6368c88"
+    "base_commit": "13fd1b46e79153e26e9331be461f99d6a6368c88",
+    "later_rebase": "Final CPU/CI integration is on main b9fb73aa (Sphere capturable-update merge); no Torus numeric execution file changes."
   },
   "negative_jobs": [
     {
@@ -1498,13 +1500,15 @@
     }
   ],
   "local_validation": {
-    "cpu_passed": 1351,
-    "cpu_skipped": 2441,
+    "cpu_passed": 1356,
+    "cpu_skipped": 2465,
     "cpu_warnings": 18,
-    "cpu_seconds": 25.85,
+    "cpu_seconds": 26.29,
     "ruff": "PASS",
     "wheel_sdist": "PASS",
-    "declarations": "PASS"
+    "declarations": "PASS",
+    "base_commit": "b9fb73aaf2fc6d03cf2f4ed790e465ca2458d008",
+    "gpu_skips_are_not_validation": true
   },
   "raw_evidence": "ignored output/torus-sparse-weight and host pool job directories",
   "recovery_anchors": [
