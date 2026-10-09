@@ -207,7 +207,9 @@ def trajectory_gate(size=32, sigma=3.0, steps=20, route="weight-64", linear_plan
     }
 
 
-def public_trajectory_gate(size=32, sigma=3.0, steps=20, mode="finite_chord"):
+def public_trajectory_gate(
+    size=32, sigma=3.0, steps=20, mode="finite_chord", linear_plan=None
+):
     """Both use independent Torch linear; only coordinate implementation differs."""
     from dataclasses import replace
 
@@ -225,6 +227,10 @@ def public_trajectory_gate(size=32, sigma=3.0, steps=20, mode="finite_chord"):
         ),
     )
     actual, reference = base.cuda(), copy.deepcopy(base).cuda()
+    candidate_route = "factored"
+    if linear_plan is not None:
+        candidate_route = apply_linear_plan(actual, linear_plan)
+    reference.selector = None
     aopt, ropt = public_cuda_optimizer(actual), baseline.optimizer(reference)
     ax, rx = xx.cuda().requires_grad_(), xx.cuda().requires_grad_()
     target = target.cuda()
@@ -237,7 +243,7 @@ def public_trajectory_gate(size=32, sigma=3.0, steps=20, mode="finite_chord"):
         ropt.zero_grad(set_to_none=True)
         ax.grad, rx.grad = None, None
         ay, ry = (
-            baseline.forward(actual, ax, "factored"),
+            baseline.forward(actual, ax, candidate_route),
             baseline.forward(reference, rx, "factored"),
         )
         (ay - target).square().mean().backward()

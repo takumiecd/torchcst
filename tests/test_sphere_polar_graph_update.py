@@ -250,3 +250,27 @@ def test_public_cuda_selector_still_checks_nonfinite_before_base_mutation():
         opt.step()
     assert torch.equal(old, model.atoms.p)
     assert not any(opt.state.values())
+
+
+@GPU
+@pytest.mark.parametrize("sigma", [3.0, 8.0])
+def test_compound_public_selector_and_complete_graph_twenty_steps(sigma):
+    from benchmarks.cuda.linear.sphere_graph import public_trajectory_gate
+    from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
+        SphereRecipe,
+    )
+    from torchcst._backends.cuda.algorithms.linear.sphere_polar.weight_algorithm import (
+        SphereWeightRecipe,
+    )
+    from torchcst._backends.schema import ExecutionPlan
+
+    if sigma == 3.0:
+        plan = ExecutionPlan(
+            "research_cuda_sphere_polar_fused_weight", "v1", SphereWeightRecipe(64, 32)
+        )
+    else:
+        plan = ExecutionPlan(
+            "research_cuda_sphere_polar_blocked", "v1", SphereRecipe(4096)
+        )
+    assert public_trajectory_gate(sigma=sigma, linear_plan=plan)["status"] == "PASS"
+    assert trajectory_gate(sigma=sigma, linear_plan=plan)["status"] == "PASS"
