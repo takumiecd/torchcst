@@ -182,3 +182,45 @@ def test_twenty_complete_graph_steps_full_parameter_moment_and_gradient_gate(
     route, sigma
 ):
     assert trajectory_gate(sigma=sigma, route=route)["status"] == "PASS"
+
+
+@pytest.mark.parametrize("fault", ["radius_dtype", "margin_count", "radius_device"])
+def test_live_geometry_metadata_preflight_before_parameter_or_optimizer_mutation(fault):
+    from benchmarks.cuda.linear.sphere_graph import validate_geometry_scalars
+
+    model, *_ = fixture(17, 3.0, atoms=4)
+    opt = torch.optim.AdamW(model.parameters())
+    old = model.atoms.p.detach().clone()
+    geometry = model.cst_charts()[0].geometry
+    if fault == "radius_dtype":
+        geometry.radius = geometry.radius.double()
+    elif fault == "margin_count":
+        geometry.chart_margin = geometry.chart_margin.expand(2).clone()
+    else:
+        geometry.radius = geometry.radius.to("meta")
+    with pytest.raises(ValueError, match="radius/margin"):
+        validate_geometry_scalars(model)
+    assert torch.equal(old, model.atoms.p)
+    assert not any(opt.state.values())
+
+
+@GPU
+@pytest.mark.parametrize("fault", ["radius_dtype", "margin_count", "radius_device"])
+def test_research_step_revalidates_live_geometry_before_base_proposal(fault):
+    from benchmarks.cuda.linear.sphere_graph import ResearchStep
+
+    model, x, target, _ = fixture(17, 3.0, batch=2, atoms=4)
+    model = model.cuda()
+    step = ResearchStep(model, x.cuda().requires_grad_(), target.cuda())
+    old = model.atoms.p.detach().clone()
+    geometry = model.cst_charts()[0].geometry
+    if fault == "radius_dtype":
+        geometry.radius = geometry.radius.double()
+    elif fault == "margin_count":
+        geometry.chart_margin = geometry.chart_margin.expand(2).clone()
+    else:
+        geometry.radius = geometry.radius.cpu()
+    with pytest.raises(ValueError, match="radius/margin"):
+        step()
+    assert torch.equal(old, model.atoms.p)
+    assert not any(step.opt.state.values())

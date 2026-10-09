@@ -32,6 +32,31 @@ def update_dispatcher():
     return Dispatcher(registry=registry)
 
 
+def validate_geometry_scalars(model):
+    """Reject malformed live radius/margin buffers before any base proposal."""
+    p = model.atoms.p
+    if any(
+        not isinstance(s, torch.Tensor)
+        or s.dtype != p.dtype
+        or s.device != p.device
+        or s.numel() != 1
+        for chart in model.cst_charts()
+        for s in (chart.geometry.radius, chart.geometry.chart_margin)
+    ):
+        raise ValueError(
+            "requires scalar Sphere radius/margin on the atom device and dtype"
+        )
+
+
+def apply_linear_plan(model, plan):
+    from benchmarks.cuda.linear.manifest import REGISTRY
+    from torchcst._backends.dispatch import FixedSelector
+
+    REGISTRY.validate_plan(plan)
+    model.selector = FixedSelector(plan, registry=REGISTRY)
+    return "planned"
+
+
 class ResearchStep:
     """Benchmark-only explicit base proposal; no public optimizer bypass."""
 
@@ -40,6 +65,7 @@ class ResearchStep:
     ):
         if not model.atoms.p.is_cuda or model.atoms.p.dtype != torch.float32:
             raise ValueError("research Sphere steps require CUDA FP32")
+        validate_geometry_scalars(model)
         if any(chart.trainable for chart in model.cst_charts()):
             raise ValueError("research Sphere steps require fixed charts")
         if not all(bool(torch.isfinite(t).all()) for t in (model.atoms.p, x, target)):
@@ -66,6 +92,7 @@ class ResearchStep:
         self.dispatch.select(self.binding.build_context(inputs), plan=FUSED)
 
     def __call__(self):
+        validate_geometry_scalars(self.model)
         self.opt.zero_grad(set_to_none=True)
         self.x.grad = None
         y = baseline.forward(self.model, self.x, self.route)
@@ -91,16 +118,19 @@ def capture(step, *, warmups=3):
     return graph, outputs
 
 
-def trajectory_gate(size=32, sigma=3.0, steps=20, route="weight-64"):
+def trajectory_gate(size=32, sigma=3.0, steps=20, route="weight-64", linear_plan=None):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
     base, xx, target, _ = baseline.fixture(size, sigma, batch=4)
     actual = base.cuda()
+    if linear_plan is not None:
+        route = apply_linear_plan(actual, linear_plan)
     x, target = xx.cuda().requires_grad_(), target.cuda()
     step = ResearchStep(actual, x, target, route)
     graph, (cy, closs) = capture(step)
     reference = copy.deepcopy(actual)
+    reference.selector = None  # Independent Torch factored linear trajectory.
     opt = torch.optim.AdamW(
         reference.parameters(), lr=step.lr, weight_decay=0.01, fused=True
     )
@@ -175,10 +205,15 @@ def timed(call, samples=21):
     return {"median_ms": statistics.median(values), "samples_ms": values}
 
 
-def measure(size, sigma, route, mode):
+def measure(size, sigma, route, mode, linear_plan=None):
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
+    serialized_linear_plan = None
+    if linear_plan is not None:
+        from benchmarks.cuda.linear.manifest import REGISTRY
+
+        serialized_linear_plan = REGISTRY.dump_plan(linear_plan)
     base, xx, target, dy = baseline.fixture(size, sigma)
     fixture_hashes = {
         "parameters": baseline.tensor_hash(base.atoms.p),
@@ -196,6 +231,8 @@ def measure(size, sigma, route, mode):
         del base, dy
     else:
         model, dy = base.cuda(), dy.cuda()
+        if linear_plan is not None:
+            route = apply_linear_plan(model, linear_plan)
         del base
         before = baseline.correctness(model, x, dy, route)
     initial_hashes = {
@@ -249,6 +286,7 @@ def measure(size, sigma, route, mode):
         "atoms": None if dense else model.atom_count,
         "route": route,
         "mode": mode,
+        "linear_plan": serialized_linear_plan,
         "protocol": "complete loss/backward/dX/AdamW + declared Sphere update"
         if mode.startswith("research")
         else mode,
@@ -287,9 +325,17 @@ def main():
         ),
         default="research_graph",
     )
+    p.add_argument(
+        "--linear-plan", type=Path, help="registered benchmark ExecutionPlan JSON"
+    )
     p.add_argument("--output", type=Path, required=True)
     args = p.parse_args()
-    result = measure(args.size, args.sigma, args.route, args.mode)
+    plan = None
+    if args.linear_plan is not None:
+        from benchmarks.cuda.linear.manifest import REGISTRY
+
+        plan = REGISTRY.loads_plan(args.linear_plan.read_text())
+    result = measure(args.size, args.sigma, args.route, args.mode, plan)
     args.output.write_text(json.dumps(result, indent=2))
 
 
