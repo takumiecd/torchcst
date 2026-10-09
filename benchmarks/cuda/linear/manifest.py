@@ -72,6 +72,9 @@ from torchcst._backends.cuda.algorithms.linear.sphere_polar.weight_algorithm imp
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
     StripProductAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.torus_profile_product.sparse_weight.algorithm import (
+    TorusSparseWeightAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.torus_profile_product.onchip.algorithm import (
     TorusOnchipAlgorithm,
 )
@@ -120,6 +123,7 @@ REGISTRY.register(SphereFusedWeightAlgorithm())
 REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(TorusChunkAlgorithm())
 REGISTRY.register(TorusOnchipAlgorithm())
+REGISTRY.register(TorusSparseWeightAlgorithm())
 REGISTRY.register(NormalizedFullAlgorithm())
 REGISTRY.register(NormalizedWindowAlgorithm())
 REGISTRY.register(LocalAlgorithm())

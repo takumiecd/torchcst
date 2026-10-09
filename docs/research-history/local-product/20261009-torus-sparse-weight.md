@@ -1,0 +1,222 @@
+# Torus centre-fibre sparse W candidate
+
+The mathematical operator remains the intrinsic S¹×S² centre-fibre profile
+product on one circle-output Strip, Triweight/Triweight, live Polar width,
+combined complete-chart L2 norm with one floor. This research candidate packs
+complete raw supports and norm derivatives once, assembles W through sparse
+atom patches, computes Y/dX/shared dW with IEEE FP32 cuBLAS, and contracts every
+atom VJP against dW. Coupled section q0 / circle-radius differentiation remains.
+
+For regular circle sites a conservative angular chord bound defines a compact
+index window. Positive spacing, full tiles, nonoverlapping pitch, sufficient
+capacity, and a period/pitch discrepancy below one spacing are required. The
+bound includes the entire pitch gap and two rounding indices; duplicate windows
+are disabled when N is below capacity. Unsafe geometry uses complete-axis
+packing. Packing overflow uses complete-axis contraction, never truncation.
+The S² axis is always fully enumerated during packing. Forward snapshots own
+p/scalars/queries/support and W; no forward state lives on Algorithm instances.
+
+Predeclared stage: one 900-driver-second correctness job, 40 GPU tests plus
+full-shape B32/N1024/2048/sigma3/8 all-atom physical FP64 oracle and public
+optimizer update checks. max absolute, relative L2 and existing elementwise
+4e-4 gates; public parameter update 2e-6; twenty captured evolving steps with
+moments 2e-5. Gate failure prevents performance measurement. New corrective
+source, if needed, is a separate job; failures and scope remain recorded.
+
+Only after correctness, one primary performance job up to 1500 driver seconds
+for all four cases, old W+GEMM baseline, sparse W, dense. Existing runner retains
+21 full evolving-step samples, eager and Graph, capture/replay peak allocated
+and reserved bytes. Process GPU memory is unmeasured. A separate inverse job
+(up to 1500 seconds) is eligible only for >3% time improvement or >=5% allocated
+memory reduction with <=3% time regression. CPU declarations are not GPU PASS.
+Public default selector remains unchanged. Raw drivers/results belong in
+ignored `output/torus-sparse-weight/` and the shared pool job directories.
+
+Initial source f6a140b7 gate job `l4job-9e2177a6458a458995b2d795db1e81b7`
+failed in driver setup before importing Torch or running any GPU test. The
+Colab Python3.13 environment cannot bootstrap venv ensurepip; driver time
+0.164 seconds. No numerical or performance result exists. Source archive
+`fa62f19dbf1bed3715462043581fc842614bef1e97cce0894787361a5cbc497c`,
+result archive `d691537135094321aacf98a8b948203c1a4ab386a5880453953d1628f62a25cb`.
+Complete job copied to ignored `output/torus-sparse-weight/failed-setup-v1/`,
+all files and archives hash-verified. Corrected driver uses installed pytest
+first; only if absent, creates a no-ensurepip job-local environment and directs
+pip explicitly to that environment. Corrected gate has 899 seconds, retaining
+all tests, four cases, oracle and tolerance gates. This is a setup repair,
+not a retry justified by numerical or performance outcomes.
+
+Metadata checkpoint e1f6506 additionally rejects TF32 for cuBLAS contractions;
+cohort already sets TF32 false and numerical execution files are unchanged.
+Local CPU full suite: 1350 passed, 2418 skipped, 18 warnings,26.44 seconds;
+wheel/sdist offline build and Ruff passed. CUDA skips are unvalidated.
+
+Setup-repaired source3992aac job `l4job-474d449075174d26abcc402c59115c9d`
+reached GPU tests:37failed/4passed/0skipped in11.50 seconds,16.046 driver
+seconds. Nonempty cases failed Triton compilation because the circle pack's
+conditional branches reused vector names at different CAP/full-axis shapes;
+no numerical comparison or full-atom case completed. Entire job is retained in
+`output/torus-sparse-weight/failed-compile-v1/` with every file hash verified.
+Correction assigns branch-exclusive names to full-axis vectors, preserving
+operations, norm, support, derivatives and all gates. Corrected gate has882
+seconds, within the original900 after both failures; no performance runs have
+started. Failed source/result hashes remain in the copiedspec/receipt.
+
+Compiled source5bf4db4 gate `l4job-14ca8d30b90747e68d84365b13ea4c5b`
+completed33tests but failed all8 large-axis window/overflow tests. The first
+seam case returned incorrect Y (maxabs0.7653142); subsequent cases encountered
+illegal GPU memory accesses. The GPU clock ran41.948 driver seconds,
+37.33test seconds. No full-atom or performance cohort completed. Wholejob is
+hash-verified and retained at `output/torus-sparse-weight/failed-seam-v1/`.
+Triton's signed integer remainder retained negative indices across the seam,
+unlike Python modulo. Corrected packing normalizes remainder to [0,N) before
+any query/load/scatter. All existing seam/overflow/math tests and tolerances
+remain; no result is selected from the failed numerical cohort. Revised gate
+has840 seconds, deducting failures from the original900; performance remains
+blocked until correctness passes.
+
+## Correctness passed before performance
+
+Final measured source `7a970a9954217d39d17664b8a5a6423a6b088fa2`, job
+`l4job-b5400ed460f64e4f901b5beb1c3b9468`:41tests passed,0skipped,50.93seconds,
+96.590driver seconds. All four full-A B32 cases passed physical FP64 Y/dX/allP
+and public update checks. Worst maxabs: Y2.141064e-5, dX3.039439e-5,
+dP2.973620e-5; all relative L2 below8.55e-7. Four update comparisons are exact.
+Twenty captured evolving updates compare parameter2e-6/moments2e-5 and live
+geometry/width. Scalar floor, empty atoms, full-axis overflow, retained forward,
+independent gradient requirements and periodic seam are covered.
+Source archive `920444dfbf49d256aa000837b7d11c620937a7de3e960976c22f833ed3b0366e`,
+result archive `236754960eccd7c69c3e245c8a7c79940ad22154873e45373878057704dd4bb0`.
+Complete job copied/hash-verified under ignored `output/torus-sparse-weight/gate-passed/`.
+
+## Complete-step primary and independent inverse cohorts
+
+L4/Torch2.11.0+cu130/CUDA13.0/Triton3.6.0, B32, FP32 IEEE,5%atoms,
+one intrinsic circle-output Strip, live widths. Existing Torch factor/W+GEMM
+is the baseline; candidate CUDA sparse factor/W assembly/allP VJP uses cuBLAS
+for Y,dX,dW. Values are ms; memory is binary MiB. Both orders pass the declared
+time gate in all four cases. This is a validated research option for the stated
+cases; public dispatch remains unchanged.
+
+| N | sigma | baseline Graph | candidate Graph | candidate eager | dense Graph | baseline allocated | candidate allocated | candidate reserved |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+|1024|3|121.959247|11.676789|13.670464|0.083464|131.120|178.636|370|
+|1024|8|124.136649|15.901810|17.714389|0.083299|131.120|178.636|370|
+|2048|3|1363.371469|47.173414|49.453839|0.590511|258.314|611.955|1244|
+|2048|8|1389.783154|83.660056|87.706464|0.590886|258.314|611.955|1244|
+
+The independent inverse repeats candidate then baseline, on a different
+physical L4 and VM. Dense remains last. Its complete-step medians are:
+
+| N | sigma | baseline Graph | candidate Graph | candidate eager | dense Graph |
+|---:|---:|---:|---:|---:|---:|
+|1024|3|118.981528|11.656532|13.665850|0.083237|
+|1024|8|121.957025|15.564900|17.366956|0.083204|
+|2048|3|1345.125376|46.746574|49.205031|0.589327|
+|2048|8|1367.797857|83.962170|88.012864|0.591975|
+
+All four improvements reproduce beyond the predeclared 3% gate in both jobs:
+7.8–28.9 times faster than the existing exact W baseline. Allocated/reserved
+peaks reproduce identically. Allocated memory increases 36.2% at1024 and136.9%
+at2048; this is a speed/memory tradeoff. Baseline reserved peaks are400/792MiB,
+candidate370/1244MiB. Dense remains80–191times faster across the cases; these
+gains do not establish Dense parity. Every method's time/memory and negative failures
+remain recorded. Memory includes CUDA Graph capture/replay; GPU process usage
+is unmeasured. Separately instrumented phase medians are diagnostics, not
+components to add or subtract from complete-step timing.
+
+Primary `l4job-ba408eb87c2b4e038553de2333a9dab6`,428.515driverseconds,
+source `d5c40731e45bd7f885889ae05420ca00511a7f6eccbbdf17b121b90e12daee0e`,
+result `df1270e7ed70f504f8ac187adc320a2e25ee247db30368f686e1a66a1512f9a2`.
+Each case passes both plans' all-atom oracle/update before timing21samples.
+Every initial p/X/target hash matches within case; every atom's sigma changes
+through current Polar activity, maxDelta0.01407(sigma3)/0.10873(sigma8).
+Complete job under ignored `output/torus-sparse-weight/primary/`, files/archive
+hash-verified. Inverse `l4job-52d34b291b4d4c48882c7151e09242c2` completes
+in436.400driverseconds, all cases PASS; source archive
+`d4f6c03642de449978f480bc399abb414e4e0456ea34e879725282ee2cd8819b`,
+result archive `acbc7445ea7acb386578af08050a59f1fee1d2d98faf4d0a47c51e1b2fc59820`.
+All1515 source-file hashes match primary, including driver. Initial p/X/target
+hashes match for all eight baseline/candidate pairs and between orders. Both
+jobs use the declared1500driver-second cap. Raw21samples within each route are
+not21independent jobs; there are two independent performance jobs per case.
+
+Pool results record primary GPU UUID `da372d56-a20b-d875-bda0-e31cf085f9ba`,
+VM `cst-pool-33db6eba35cc-1`; inverse UUID `daafb1dd-665e-4d51-f4ec-3ad9687b80fa`,
+VM `cst-pool-e8e750ccf3e2-1`. Both are NVIDIA L4, driver580.82.07,23034MiB,
+Torch2.11.0+cu130,Triton3.6.0. Each comparison includes its baseline on the same
+exclusive GPU/runtime. Full compact evidence, per-route medians/peaks/errors,
+input hashes and all job archive hashes are in
+[the curated summary](20261009-torus-sparse-weight-summary.json).
+
+## Shared numerical calculation placement
+
+After both measured anchors were frozen, exact bounded trigonometry/atom/fibre
+helpers moved from onchip/kernels.py into operation-local `_shared/profiles.py`.
+Onchip and sparse W import these actually shared helpers lazily. All seven
+numerical helper/forward/backward ASTs match measured7a970a9 exactly. This
+structural proof does not replace the GPU integration regression and all
+four full-atom oracle cases for the relocated source. Public default dispatch
+is unchanged. Source anchor7a970a9 and all failure/gate/performance raw snapshots
+remain recoverable in this named research branch and ignored evidence.
+
+For report reuse, raw circle/section profiles u/v obey
+D_a=max(sqrt(sum_j u_aj²)*sqrt(sum_i v_ai²),epsilon),
+W_ji=sum_a amp_a*u_aj*v_ai/D_a. For common centre coordinate c and shared dW Q,
+t_a=sum_ji Q_ji*u_aj*v_ai and
+
+    grad_c = amp_a/D_a * [ sum_ji Q_ji*(du_aj/dc*v_ai+u_aj*dv_ai/dc)
+               - 1[norm_u*norm_v >= epsilon]*t_a
+                 *(sum_j u_aj*du_aj/dc / norm_u²
+                   +sum_i v_ai*dv_ai/dc / norm_v²) ].
+
+The q0 term includes both circle-radius and section derivatives. Empty norms
+use the inactive floor branch and zero raw derivatives; no0/0 correction is
+formed. Shared parameter dependence does not invalidate the factorized norm
+identity for each fixed atom, but both terms must be included in its VJP.
+
+Before integration the branch is rebased on main13fd1b4 (PR81), retaining all
+Sphere fused preparation registrations. Measured7a970a9 is preserved on local
+`kernel/torus-sparse-weight-measured`; primary/inverse snapshots remain frozen.
+Four GPU boundary tests are added without changing circle predicates or math:
+true circle period offset ±0.9spacing uses the window, ±1.1spacing falls back,
+with atoms near both seam sides. Y,dX/allP compare to the existing independent
+physical FP64 oracle. Integration suite now126tests (all previous122 retained)
+plus four all-atom cases,900seconds. The index bound includes pitchgap/spacing
+and two extra sites: a period discrepancy below one spacing contributes at
+most one extra index near the seam; larger discrepancies fully enumerate.
+
+Final integration source `76f4337747940a2c30a2855c919c21804d5ecc42`, job
+`l4job-b1ce3044e8404813b4657a6f90be0692`, passes all126tests with0skips in104.73s
+and all four full-A physical FP64 oracle/update cases. Driver149.857s fits the
+900second budget. Worst absolute errors remain Y2.141064e-5,dX3.039439e-5,
+dP2.973620e-5; relative L2 below8.55e-7; public update errors are exactly zero.
+The complete result and archive hashes are in the curated summary and the
+verified ignored `output/torus-sparse-weight/integration-passed/` job copy.
+
+The final difference after measured7a970a9 and integration76f4337 is restricted
+recipe metadata plus CPU declaration checks and evidence documentation.
+Allowed circle capacities are16/64, section capacities16/64/256, patch tile16;
+default is64/256/16, matching the measured plan. Unmeasured C128/256,S128,T32
+are rejected. Kernel/executor/shared numerical files are byte-identical to
+integration76f4337; no additional GPU experiment is required for this narrowing.
+The CPU check rejects unvalidated recipes and roundtrips all six permitted
+combinations. Full CPU results and offline build status are recorded in the
+curated summary; CUDA skips in local CPU runs are not GPU validation.
+
+After saving the metadata/evidence checkpoint, final history is rebased onto
+main `b9fb73aaf2fc6d03cf2f4ed790e465ca2458d008` (Sphere capturable-update PR82).
+The GPU integration anchor76f4337 uses the earlier PR81 base13fd1b4; it remains
+unchanged and recoverable. After the final rebase all four numerical files
+above remain byte-identical to76f4337. Combined-main CPU suite passes1356tests,
+2465CUDA-skipped,18warnings in26.29s; changed Python AST parsing, all four
+Case/Plan declarations, Ruff, and offline wheel/sdist build pass. The later
+Sphere updater is covered by combined CPU/CI integration, not a newly measured
+Torus performance cohort.
+
+The structural lesson for ordinary Sphere is to share expensive geometric
+factor preparation and a common dW across every atom VJP when W is profitable.
+The fast circle window depends on regular Strip order and bounded circle
+support; it does not transfer directly to an irregular S² axis. Section packing
+still enumerates all sites, and support capacity dominates the DRAM cost. A
+separate narrow-capacity study could reduce that cost, with exact overflow;
+it is not silently substituted for this measured C64/S256 cohort.

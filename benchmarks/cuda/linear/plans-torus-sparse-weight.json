@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "w-gemm",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_torch_torus_profile_product_chunked",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "atom_chunk": 1024,
+          "contraction": "w",
+          "save_h": false
+        }
+      }
+    },
+    {
+      "id": "sparse-w",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_torus_profile_product_sparse_weight",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "circle_capacity": 64,
+          "section_capacity": 256,
+          "patch_tile": 16
+        }
+      }
+    }
+  ]
+}

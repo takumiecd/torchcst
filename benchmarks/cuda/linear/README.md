@@ -503,6 +503,35 @@ Torch の全 site を扱う有界 block 参照実装であり、公開高速経�
 数学・予算・失敗と採否の記録は
 [H reuse exploration](../../../docs/research-history/local-product/20261008-profile-product-h-reuse.md)を参照。
 
+### Exact sparse W research option
+
+`plans-torus-sparse-weight.json` adds the research-only CUDA sparse W plan next
+to the existing `w-gemm` reference. It packs complete raw circle/section
+supports and norm derivatives, assembles W, then shares cuBLAS Y/dX/dW and the
+exact all-atom VJP. Regular circle sites use a conservative support window;
+unsafe geometry or capacity overflow falls back to complete-axis traversal.
+The global combined L2 floor and coupled section/circle-radius derivative are
+unchanged. Support buffers and W/dW deliberately reside in DRAM.
+
+```bash
+python -m benchmarks.cuda.linear.run \
+  --case benchmarks/cuda/linear/cases/torus-sparse-weight-1024-sigma3.json \
+  --plans benchmarks/cuda/linear/plans-torus-sparse-weight.json \
+  --polar-update torus --phase-diagnostics \
+  --source-commit COMMIT --output output/torus-sparse-weight.json
+python -m benchmarks.submissions check output/torus-sparse-weight.json
+```
+
+The measured plan uses circle capacity64, section capacity256 and patch tile16.
+Declarations allow only GPU-validated circle16/64, section16/64/256, tile16.
+The four square N1024/2048,sigma3/8 cases pass full-atom physical FP64 oracles
+and captured evolving updates. Two independent L4 jobs reproduce7.8–28.9×
+complete-step speedups over the existing W reference, with allocated peaks
+increased36.2%/136.9% atN1024/2048. Dense remains80–191× faster. Public default
+selection is unchanged. Protocol, memory tradeoff, negative attempts,
+independent inverse results and final integration are recorded in
+[the sparse W study](../../../docs/research-history/local-product/20261009-torus-sparse-weight.md).
+
 ## Existing Sphere + Polar research plans
 
 `plans-sphere-polar.json` compares the existing two explicit intrinsic S²
