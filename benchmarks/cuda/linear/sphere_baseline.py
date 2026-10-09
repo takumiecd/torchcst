@@ -292,9 +292,11 @@ def trajectory_gate(size=32, sigma=3.0, steps=20, *, device="cpu"):
 
 
 def tensor_hash(tensor):
-    return hashlib.sha256(
-        tensor.detach().cpu().contiguous().numpy().tobytes()
-    ).hexdigest()
+    # Preserve the historical raw-byte SHA without requiring NumPy (which is
+    # not a core/dev dependency). Reshape handles scalars; the byte view limits
+    # hashing to tensor contents even when a contiguous slice has extra storage.
+    cpu = tensor.detach().cpu().contiguous().reshape(-1)
+    return hashlib.sha256(bytes(cpu.view(torch.uint8).tolist())).hexdigest()
 
 
 def run_worker(args):

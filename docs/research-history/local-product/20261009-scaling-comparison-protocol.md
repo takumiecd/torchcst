@@ -14,7 +14,8 @@ exact step counter and geometry update. Equal sigma is not equal mathematical
 work: Sphere retains two S² charts and per-side floors; Torus retains its single
 S¹×S² centre-fibre chart, coupled circle radius and one whole-product floor.
 
-Research Graph executes two warmup updates, one capture update and21 replays.
+Research Graph executes two warmup updates, one explicitly replayed capture
+update and21 measured replays (capture recording itself executes no update).
 Eager executes three warmup updates and21 measured updates. Each worker gates
 initial and24-updated complete-site/all-atom Y/dX/dP against the existing
 independent FP64 oracle with fixed dy, bounded atom chunk128, maxabs and relative
@@ -23,7 +24,12 @@ moments, counters and MSE must be finite before error comparisons; NaN metrics
 cannot pass the thresholds. Final training outputs, gradients and optimizer
 state are checked outside timing, including Dense.
 The separate20-step same-cotangent state gate compares the public Torch update:
-parameters2e-6, Sphere moments4e-4/Torus moments2e-5, exact counters.
+parameters2e-6, Sphere moments4e-4/Torus moments2e-5, exact counters. Its AdamW
+state is initialized by an eager update before capture; an explicit Graph replay
+and synchronization precede copying the shared starting parameters/moments/clock.
+The first failed common GPU preflight ran no primary worker: capturing lazy
+optimizer initialization reset moments on replay. Corrective preflight retains
+the original thresholds and precedes every primary retry.
 
 Public eager retains synchronous guards and public gradient/state handling.
 Research eager/Graph retain the previously declared explicit AdamW proposal
@@ -47,7 +53,9 @@ allocated-memory reduction with <=3% time regression. Raw drivers/results and
 frozen source inventories remain in ignored output. Cohorts match X/target,
 fixed dy, atom initialization, full operator declaration and sorted hashes of
 all actual model buffers and non-atom parameters (coordinates, chart radii,
-Line/Grid start/spacing/pitch and live kernel scalars). Snapshot import paths are
+Line/Grid start/spacing/pitch and live kernel scalars), with dtype/shape labels.
+Raw-byte SHA remains identical to the previous NumPy-backed hash, using a
+contiguous torch uint8 view so the benchmark needs no NumPy dependency. Snapshot import paths are
 recorded and driver workers use the frozen src tree. Timed samples must be
 finite and positive; capture/replay peak byte counts must be positive integers
 with reserved at least allocated. These checks precede any primary GPU run; only the orchestrator owns

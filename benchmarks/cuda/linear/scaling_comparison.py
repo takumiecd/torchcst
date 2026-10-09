@@ -227,6 +227,9 @@ def capture(call):
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph, stream=stream):
         outputs = call()
+    # The recorded capture update must be explicitly executed before the
+    # twenty-one measured replays: two warmups + this replay + twenty-one =24.
+    graph.replay()
     torch.cuda.synchronize()
     return graph, outputs
 
@@ -348,9 +351,25 @@ def state_trajectory(geometry, sigma, *, steps=20):
     actual = ProposalUpdate(model, geometry, capturable=True)
     gradient = torch.full_like(model.atoms.p, 0.03)
     model.atoms.p.grad = gradient
+    # Allocate and initialize AdamW state eagerly. Capturing its first step
+    # would record zero-initialization nodes that reset moments on every replay.
+    actual()
+    torch.cuda.synchronize()
+    if int(actual.opt.state[model.atoms.p]["step"]) != 1:
+        raise AssertionError("eager AdamW initialization must advance clock to1")
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):
         actual()
+    torch.cuda.synchronize()
+    if int(actual.opt.state[model.atoms.p]["step"]) != 1:
+        raise AssertionError("recording a Graph must not execute an optimizer update")
+    # Capture records work; run and synchronize it before copying the common
+    # starting parameters/moments/clock for the twenty subsequent comparisons.
+    graph.replay()
+    torch.cuda.synchronize()
+    initial_step = int(actual.opt.state[model.atoms.p]["step"])
+    if initial_step != 2:
+        raise AssertionError("explicit initial Graph replay must advance clock to2")
     reference = copy.deepcopy(model)
     base = torch.optim.AdamW(
         reference.parameters(), lr=LR, weight_decay=DECAY, fused=True
@@ -395,10 +414,15 @@ def state_trajectory(geometry, sigma, *, steps=20):
             base.state[reference.atoms.p]["step"],
         ):
             raise AssertionError("step counter differs")
+    if int(actual.opt.state[model.atoms.p]["step"]) != initial_step + steps:
+        raise AssertionError("same-cotangent trajectory update count differs")
     return {
         "status": "PASS",
         "steps": steps,
         "same_cotangent": True,
+        "initial_step_counter": initial_step,
+        "eager_state_initialization_steps": 1,
+        "explicit_replays_before_reference_copy": 1,
         "exact_step_counter": True,
         "max_abs": maxima,
     }
@@ -415,6 +439,8 @@ def phase_diagnostics(step, *, samples=5):
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph):
         step(events, updates)
+    graph.replay()
+    torch.cuda.synchronize()
     phases = {name: [] for name in ("forward_loss", "backward", "optimizer")}
     components = (
         {name: [] for name in ("snapshot", "adamw", "geometry_update")}
@@ -471,24 +497,28 @@ def source_metadata():
 def fixture_metadata(model):
     declaration = asdict(model.execution_declaration())
     payload = json.dumps(declaration, sort_keys=True, separators=(",", ":")).encode()
+    # Hash contents independently of declarations; retain shape/dtype labels
+    # separately so the longstanding raw-byte tensor hashes remain comparable.
+    tensors = dict(
+        sorted(
+            [(f"buffer:{name}", value) for name, value in model.named_buffers()]
+            + [
+                (f"parameter:{name}", value)
+                for name, value in model.named_parameters()
+                if value is not model.atoms.p
+            ]
+        )
+    )
     return {
         "operator_declaration": declaration,
         "declaration_sha256": hashlib.sha256(payload).hexdigest(),
-        # Counts/specs do not uniquely identify coordinates, radii or live
-        # kernel scalars. Keep every actual fixed tensor in this comparison.
-        "tensor_hashes": dict(
-            sorted(
-                [
-                    (f"buffer:{name}", sphere.tensor_hash(value))
-                    for name, value in model.named_buffers()
-                ]
-                + [
-                    (f"parameter:{name}", sphere.tensor_hash(value))
-                    for name, value in model.named_parameters()
-                    if value is not model.atoms.p
-                ]
-            )
-        ),
+        "tensor_hashes": {
+            name: sphere.tensor_hash(value) for name, value in tensors.items()
+        },
+        "tensor_specs": {
+            name: {"dtype": str(value.dtype), "shape": list(value.shape)}
+            for name, value in tensors.items()
+        },
     }
 
 
@@ -616,6 +646,11 @@ def worker(geometry, size, sigma, mode, *, plan=None, verify_only=False, phases=
         phase["initial_step_counter"] = final_step
         phase["capture_steps"] = 1
         phase["replay_steps"] = 5
+        phase["final_step_counter"] = int(
+            diagnostic.opt.state[next(diagnostic_model.parameters())]["step"]
+        )
+        if phase["final_step_counter"] != final_step + 6:
+            raise AssertionError("diagnostic capture/replay update count differs")
     return {
         "status": "PASS",
         "geometry": geometry,

@@ -1,5 +1,7 @@
 """Common inputs, exact oracles, frozen metadata and declared state trajectories."""
 
+import hashlib
+import struct
 import subprocess
 
 import pytest
@@ -156,3 +158,57 @@ def test_invalid_measurement_cannot_be_reported_as_a_win(value):
         protocol.validate_measurement(
             None, {"allocated_bytes": value, "reserved_bytes": 2}
         )
+
+
+def test_tensor_hash_does_not_require_numpy_and_preserves_exact_bytes(monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("NumPy is not available")
+
+    monkeypatch.setattr(torch.Tensor, "numpy", unavailable)
+    fixtures = [
+        (torch.tensor(1.25, dtype=torch.float64), struct.pack("<d", 1.25)),
+        (torch.tensor([9.0, 1.25, -2.5, 8.0])[1:3], struct.pack("<ff", 1.25, -2.5)),
+        (torch.tensor([[1, -2]], dtype=torch.int16), struct.pack("<hh", 1, -2)),
+        (torch.empty(0), b""),
+    ]
+    for tensor, data in fixtures:
+        assert protocol.sphere.tensor_hash(tensor) == hashlib.sha256(data).hexdigest()
+    model, *_ = protocol.fixture("sphere", 32, 3, atoms=7)
+    metadata = protocol.fixture_metadata(model)
+    key = "buffer:input_chart.coordinates"
+    assert metadata["tensor_specs"][key] == {"dtype": "torch.float32", "shape": [32, 3]}
+    assert list(metadata["tensor_specs"]) == sorted(metadata["tensor_specs"])
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
+def test_graph_capture_executes_exactly_twenty_four_updates():
+    clock = torch.zeros((), device="cuda", dtype=torch.int64)
+
+    def update():
+        clock.add_(1)
+        return clock
+
+    graph, result = protocol.capture(update)
+    assert int(clock) == 3  # Two eager warmups and the explicitly run capture.
+    for _ in range(21):
+        graph.replay()
+    torch.cuda.synchronize()
+    assert int(result) == 24
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
+def test_diagnostic_capture_and_five_replays_execute_six_updates():
+    clock = torch.zeros((), device="cuda", dtype=torch.int64)
+
+    class Diagnostic:
+        update = None
+
+        def __call__(self, events, updates):
+            events[0].record()
+            clock.add_(1)
+            for event in events[1:]:
+                event.record()
+
+    protocol.phase_diagnostics(Diagnostic())
+    torch.cuda.synchronize()
+    assert int(clock) == 6
