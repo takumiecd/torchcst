@@ -60,3 +60,16 @@ Correction assigns branch-exclusive names to full-axis vectors, preserving
 operations, norm, support, derivatives and all gates. Corrected gate has882
 seconds, within the original900 after both failures; no performance runs have
 started. Failed source/result hashes remain in the copiedspec/receipt.
+
+Compiled source5bf4db4 gate `l4job-14ca8d30b90747e68d84365b13ea4c5b`
+completed33tests but failed all8 large-axis window/overflow tests. The first
+seam case returned incorrect Y (maxabs0.7653142); subsequent cases encountered
+illegal GPU memory accesses. The GPU clock ran41.948 driver seconds,
+37.33test seconds. No full-atom or performance cohort completed. Wholejob is
+hash-verified and retained at `output/torus-sparse-weight/failed-seam-v1/`.
+Triton's signed integer remainder retained negative indices across the seam,
+unlike Python modulo. Corrected packing normalizes remainder to [0,N) before
+any query/load/scatter. All existing seam/overflow/math tests and tolerances
+remain; no result is selected from the failed numerical cohort. Revised gate
+has840 seconds, deducting failures from the original900; performance remains
+blocked until correctness passes.

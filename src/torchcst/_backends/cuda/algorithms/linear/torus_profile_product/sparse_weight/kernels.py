@@ -78,7 +78,7 @@ def pack(
         )
         if window:
             k = tl.arange(0, CAP)
-            idx = (centre + k - CAP // 2) % N
+            idx = ((centre + k - CAP // 2) % N + N) % N
             u, d0, d1 = _circle(
                 Circle, idx, N, arc, major, minor, q0, inv, "bounded-poly"
             )
