@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "sphere-polar-2048-sigma8-fused",
+    "fixture": "polar_sphere_separable",
+    "size": 2048,
+    "rows": 32,
+    "atoms": 209715,
+    "profile": "rho8",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 3,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "sphere-weight-256",
+    "sphere-fused-weight-256",
+    "sphere-blocked-4096"
+  ],
+  "baseline": "sphere-weight-256",
+  "dense": true
+}
