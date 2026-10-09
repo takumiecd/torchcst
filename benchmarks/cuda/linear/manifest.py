@@ -75,6 +75,9 @@ from torchcst._backends.cuda.algorithms.linear.sphere_polar.grouped_algorithm im
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.recompute_algorithm import (
     SphereDirectRecomputeAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.sphere_polar.site_gather_algorithm import (
+    SphereSiteGatherAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.support_algorithm import (
     SphereSupportAlgorithm,
 )
@@ -139,6 +142,7 @@ REGISTRY.register(SphereGroupedWeightAlgorithm())
 REGISTRY.register(SphereGroupedCompactAlgorithm())
 REGISTRY.register(SphereDirectAlgorithm())
 REGISTRY.register(SphereDirectRecomputeAlgorithm())
+REGISTRY.register(SphereSiteGatherAlgorithm())
 REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(TorusChunkAlgorithm())
 REGISTRY.register(TorusOnchipAlgorithm())

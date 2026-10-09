@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "sphere-site-gather-2048-sigma3",
+    "fixture": "polar_sphere_separable",
+    "size": 2048,
+    "rows": 32,
+    "atoms": 209715,
+    "profile": "rho3",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 3,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "compact-weight",
+    "recompute-g4-merged",
+    "site-gather1",
+    "site-gather4"
+  ],
+  "baseline": "compact-weight",
+  "dense": true
+}
