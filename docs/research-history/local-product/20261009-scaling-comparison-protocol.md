@@ -18,7 +18,10 @@ Research Graph executes two warmup updates, one capture update and21 replays.
 Eager executes three warmup updates and21 measured updates. Each worker gates
 initial and24-updated complete-site/all-atom Y/dX/dP against the existing
 independent FP64 oracle with fixed dy, bounded atom chunk128, maxabs and relative
-L2 <=4e-4; Torus also retains elementwise4e-4. MSE loss values are recorded.
+L2 <=4e-4; Torus also retains elementwise4e-4. MSE loss values are recorded. Actual/reference Y, dX, all dP, parameters,
+moments, counters and MSE must be finite before error comparisons; NaN metrics
+cannot pass the thresholds. Final training outputs, gradients and optimizer
+state are checked outside timing, including Dense.
 The separate20-step same-cotangent state gate compares the public Torch update:
 parameters2e-6, Sphere moments4e-4/Torus moments2e-5, exact counters.
 
@@ -41,5 +44,11 @@ Caller cohorts run each plan/mode in an isolated sequential worker, retain all
 four primary cases and their baseline/candidates/dense, and stop on any failure.
 Independent inverse selection is predeclared only for >3% time gain, or >=5%
 allocated-memory reduction with <=3% time regression. Raw drivers/results and
-frozen source inventories remain in ignored output; only the orchestrator owns
+frozen source inventories remain in ignored output. Cohorts match X/target,
+fixed dy, atom initialization, full operator declaration and sorted hashes of
+all actual model buffers and non-atom parameters (coordinates, chart radii,
+Line/Grid start/spacing/pitch and live kernel scalars). Snapshot import paths are
+recorded and driver workers use the frozen src tree. Timed samples must be
+finite and positive; capture/replay peak byte counts must be positive integers
+with reserved at least allocated. These checks precede any primary GPU run; only the orchestrator owns
 GPU submission and PR integration. Local CPU skips are not CUDA validation.

@@ -91,3 +91,68 @@ def test_same_cotangent_public_parameters_moments_and_exact_clock(geometry, sigm
     proof = protocol.state_trajectory(geometry, sigma)
     assert proof["status"] == "PASS"
     assert proof["same_cotangent"] and proof["exact_step_counter"]
+
+
+@pytest.mark.parametrize("geometry", ["sphere", "torus"])
+def test_actual_geometry_tensors_distinguish_same_declaration(geometry, monkeypatch):
+    model, *_ = protocol.fixture(geometry, 1024, 3, atoms=7)
+    declaration = model.execution_declaration()
+    # A previously frozen declaration (or metadata-only declaration in a
+    # future adapter) cannot substitute for hashing actual runtime tensors.
+    monkeypatch.setattr(model, "execution_declaration", lambda: declaration)
+    before = protocol.fixture_metadata(model)
+    coordinate_name = (
+        "input_chart.coordinates" if geometry == "sphere" else "chart.axes.0.start"
+    )
+    with torch.no_grad():
+        dict(model.named_buffers())[coordinate_name].flatten()[0] += 0.125
+    after = protocol.fixture_metadata(model)
+    assert before["declaration_sha256"] == after["declaration_sha256"]
+    assert before["tensor_hashes"] != after["tensor_hashes"]
+    key = "buffer:" + coordinate_name
+    assert before["tensor_hashes"][key] != after["tensor_hashes"][key]
+    expected = {"buffer:" + name for name, _ in model.named_buffers()}
+    assert set(before["tensor_hashes"]) == expected
+    assert list(before["tensor_hashes"]) == sorted(before["tensor_hashes"])
+    # Atom parameters use a separate initialization hash; every other parameter
+    # (e.g. a declared live scalar) belongs to the actual fixture fingerprint.
+    model.register_parameter("fixture_probe", torch.nn.Parameter(torch.tensor(2.0)))
+    assert (
+        "parameter:fixture_probe" in protocol.fixture_metadata(model)["tensor_hashes"]
+    )
+
+
+def test_oracle_rejects_nan_operator(monkeypatch):
+    model, x, target, dy = protocol.fixture("sphere", 32, 3, batch=2, atoms=7)
+    original = model.forward
+    monkeypatch.setattr(model, "forward", lambda value: original(value) * float("nan"))
+    with pytest.raises(FloatingPointError, match="nonfinite oracle Y"):
+        protocol.oracle_check(model, x, dy, target, "sphere")
+
+
+@pytest.mark.parametrize("side", ["actual", "reference"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_state_error_rejects_nonfinite_parameters_or_moments(side, value):
+    a, b = torch.ones(2), torch.ones(2)
+    (a if side == "actual" else b)[0] = value
+    with pytest.raises(FloatingPointError, match="nonfinite"):
+        protocol.finite_error("exp_avg", a, b)
+
+
+def test_finite_tensor_with_nonfinite_error_metric_is_rejected(monkeypatch):
+    monkeypatch.setattr(protocol.sphere, "error", lambda *_: {"max_abs": float("nan")})
+    with pytest.raises(FloatingPointError, match="error metrics"):
+        protocol.finite_error("parameters", torch.ones(2), torch.ones(2))
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), 0.0, -1.0])
+def test_invalid_measurement_cannot_be_reported_as_a_win(value):
+    with pytest.raises(AssertionError, match="finite positive"):
+        protocol.validate_measurement(
+            {"median_ms": 1.0, "samples_ms": [value] * 21},
+            {"allocated_bytes": 1, "reserved_bytes": 2},
+        )
+    with pytest.raises(AssertionError, match="peak"):
+        protocol.validate_measurement(
+            None, {"allocated_bytes": value, "reserved_bytes": 2}
+        )

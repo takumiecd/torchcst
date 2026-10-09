@@ -11,6 +11,7 @@ import copy
 import gc
 import hashlib
 import json
+import math
 import os
 import statistics
 import subprocess
@@ -265,6 +266,34 @@ def support_summary(model, geometry, plan, *, chunk=128):
     }
 
 
+def require_finite(name, value):
+    if not bool(torch.isfinite(value).all()):
+        raise FloatingPointError(f"nonfinite {name}")
+
+
+def finite_error(name, actual, expected):
+    require_finite(f"{name} actual", actual)
+    require_finite(f"{name} reference", expected)
+    metrics = sphere.error(actual, expected)
+    if not all(math.isfinite(value) for value in metrics.values()):
+        raise FloatingPointError(f"nonfinite {name} error metrics")
+    return metrics
+
+
+def validate_measurement(timing, peaks):
+    if timing is not None:
+        values = [timing["median_ms"], *timing["samples_ms"]]
+        if len(timing["samples_ms"]) != ROUNDS or not all(
+            math.isfinite(value) and value > 0 for value in values
+        ):
+            raise AssertionError("timing requires 21 finite positive samples")
+    allocated, reserved = (peaks[key] for key in ("allocated_bytes", "reserved_bytes"))
+    if any(type(value) is not int or value <= 0 for value in (allocated, reserved)):
+        raise AssertionError("peak bytes must be positive integers")
+    if reserved < allocated:
+        raise AssertionError("reserved peak cannot be below allocated peak")
+
+
 def oracle_check(model, x, dy, target, geometry):
     """Independent fixed cotangent, all atoms/sites, no sampled accuracy gate."""
     truth = (
@@ -281,12 +310,13 @@ def oracle_check(model, x, dy, target, geometry):
     )
     xx = x.detach().clone().requires_grad_()
     y = model(xx)
+    require_finite("oracle Y", y)
     gx, gp = torch.autograd.grad(y, (xx, model.atoms.p), dy)
     errors = {}
     for name, actual, expected in zip(
         ("Y", "dX", "all_dP"), (y, gx, gp), truth, strict=True
     ):
-        metrics = sphere.error(actual, expected)
+        metrics = finite_error(name, actual, expected)
         if metrics["max_abs"] > 4e-4 or metrics["relative_l2"] > 4e-4:
             raise AssertionError((name, metrics))
         if geometry == "torus":
@@ -294,6 +324,8 @@ def oracle_check(model, x, dy, target, geometry):
         errors[name] = metrics
     actual_loss = float((y.detach().double() - target.double()).square().mean())
     oracle_loss = float((truth[0] - target.double()).square().mean())
+    if not all(math.isfinite(value) for value in (actual_loss, oracle_loss)):
+        raise FloatingPointError("nonfinite oracle MSE loss")
     return {
         "status": "PASS",
         "scope": "independent FP64 full sites and all atoms, fixed dy",
@@ -352,10 +384,12 @@ def state_trajectory(geometry, sigma, *, steps=20):
                 base.state[reference.atoms.p]["exp_avg_sq"],
             ),
         ):
-            metric = sphere.error(aa, bb)["max_abs"]
+            metric = finite_error(name, aa, bb)["max_abs"]
             maxima[name] = max(maxima[name], metric)
             if metric > (2e-6 if name == "parameters" else moment_tol):
                 raise AssertionError((name, metric))
+        require_finite("actual step", actual.opt.state[model.atoms.p]["step"])
+        require_finite("reference step", base.state[reference.atoms.p]["step"])
         if not torch.equal(
             actual.opt.state[model.atoms.p]["step"],
             base.state[reference.atoms.p]["step"],
@@ -421,7 +455,10 @@ def source_metadata():
         # Frozen pool archives deliberately have no .git. The pool spec owns
         # its provenance; a caller hint is separate from the actual file hashes.
         commit = None
+    import torchcst
+
     return {
+        "imported_package_file": str(Path(torchcst.__file__).resolve()),
         "source_commit": commit,
         "source_commit_hint": os.environ.get("CST_FROZEN_SOURCE_COMMIT"),
         "source_hashes": {
@@ -437,6 +474,21 @@ def fixture_metadata(model):
     return {
         "operator_declaration": declaration,
         "declaration_sha256": hashlib.sha256(payload).hexdigest(),
+        # Counts/specs do not uniquely identify coordinates, radii or live
+        # kernel scalars. Keep every actual fixed tensor in this comparison.
+        "tensor_hashes": dict(
+            sorted(
+                [
+                    (f"buffer:{name}", sphere.tensor_hash(value))
+                    for name, value in model.named_buffers()
+                ]
+                + [
+                    (f"parameter:{name}", sphere.tensor_hash(value))
+                    for name, value in model.named_parameters()
+                    if value is not model.atoms.p
+                ]
+            )
+        ),
     }
 
 
@@ -479,6 +531,7 @@ def worker(geometry, size, sigma, mode, *, plan=None, verify_only=False, phases=
         "parameters": sphere.tensor_hash(next(model.parameters())),
         "x": sphere.tensor_hash(x),
         "target": sphere.tensor_hash(target),
+        "dy": None if dense else sphere.tensor_hash(dy),
     }
     geometry_metadata = None if dense else fixture_metadata(model)
     width0 = None if dense else widths(model, geometry)
@@ -491,17 +544,19 @@ def worker(geometry, size, sigma, mode, *, plan=None, verify_only=False, phases=
     graph = None
     captured = mode.endswith("graph")
     if mode.endswith("graph"):
-        graph, _ = capture(step)
+        graph, outputs = capture(step)
         call = graph.replay
     else:
         for _ in range(3):
-            step()
+            outputs = step()
         call = step
     samples = []
     for _ in range(ROUNDS):
         torch.cuda.synchronize()
         start = time.perf_counter()
-        call()
+        result = call()
+        if not captured:
+            outputs = result
         torch.cuda.synchronize()
         if not verify_only:
             samples.append((time.perf_counter() - start) * 1000)
@@ -509,6 +564,22 @@ def worker(geometry, size, sigma, mode, *, plan=None, verify_only=False, phases=
         "allocated_bytes": torch.cuda.max_memory_allocated(),
         "reserved_bytes": torch.cuda.max_memory_reserved(),
     }
+    timing = (
+        None
+        if verify_only
+        else {"median_ms": statistics.median(samples), "samples_ms": samples}
+    )
+    validate_measurement(timing, peaks)
+    for name, value in zip(("final Y", "final loss"), outputs, strict=True):
+        require_finite(name, value)
+    for name, parameter in model.named_parameters():
+        require_finite(f"final parameter {name}", parameter)
+        if parameter.grad is not None:
+            require_finite(f"final gradient {name}", parameter.grad)
+        for state_name, value in step.opt.state[parameter].items():
+            if isinstance(value, torch.Tensor):
+                require_finite(f"final optimizer {name}/{state_name}", value)
+    require_finite("final dX", x.grad)
     after = None if dense else oracle_check(model, x, dy, target, geometry)
     support1 = None if dense else support_summary(model, geometry, plan)
     width_changes = None
@@ -560,9 +631,7 @@ def worker(geometry, size, sigma, mode, *, plan=None, verify_only=False, phases=
         "linear_plan": None if dense else REGISTRY.dump_plan(plan),
         "loss": "mean((Y-target)^2)",
         "optimizer": {"name": "AdamW", "lr": LR, "weight_decay": DECAY, "fused": True},
-        "timing": None
-        if verify_only
-        else {"median_ms": statistics.median(samples), "samples_ms": samples},
+        "timing": timing,
         "warmup_steps": 2 if captured else 3,
         "capture_steps": 1 if captured else 0,
         "replay_or_timed_steps": ROUNDS,
@@ -662,7 +731,7 @@ def main():
             phases=args.phases,
         )
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, indent=2) + "\n")
+    args.output.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
     print(
         json.dumps(
             {
