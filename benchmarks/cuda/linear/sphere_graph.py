@@ -180,26 +180,29 @@ def measure(size, sigma, route, mode):
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
     base, xx, target, dy = baseline.fixture(size, sigma)
-    model, x, target, dy = (
-        base.cuda(),
-        xx.cuda().requires_grad_(),
-        target.cuda(),
-        dy.cuda(),
-    )
-    initial_hashes = {
-        "parameters": baseline.tensor_hash(model.atoms.p),
-        "x": baseline.tensor_hash(x),
+    fixture_hashes = {
+        "parameters": baseline.tensor_hash(base.atoms.p),
+        "x": baseline.tensor_hash(xx),
         "target": baseline.tensor_hash(target),
         "sites": [
-            baseline.tensor_hash(chart.coordinates) for chart in model.cst_charts()
+            baseline.tensor_hash(chart.coordinates) for chart in base.cst_charts()
         ],
     }
     dense = mode.startswith("dense")
-    if not dense:
-        before = baseline.correctness(model, x, dy, route)
-    else:
-        before = None
+    x, target = xx.cuda().requires_grad_(), target.cuda()
+    if dense:
         model = torch.nn.Linear(size, size, bias=False, device="cuda")
+        before = None
+        del base, dy
+    else:
+        model, dy = base.cuda(), dy.cuda()
+        del base
+        before = baseline.correctness(model, x, dy, route)
+    initial_hashes = {
+        "parameters": baseline.tensor_hash(next(model.parameters())),
+        "x": baseline.tensor_hash(x),
+        "target": baseline.tensor_hash(target),
+    }
     if dense:
         opt = torch.optim.AdamW(
             model.parameters(),
@@ -255,6 +258,7 @@ def measure(size, sigma, route, mode):
         "initial_oracle": before,
         "updated_oracle": after,
         "initial_hashes": initial_hashes,
+        "shared_fixture_hashes": fixture_hashes,
         "final_parameter_hash": baseline.tensor_hash(next(model.parameters())),
         "warmup_steps": 2 if mode.endswith("graph") else 3,
         "capture_steps": 1 if mode.endswith("graph") else 0,
