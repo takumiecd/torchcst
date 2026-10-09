@@ -109,5 +109,93 @@ cohort keeps those wrapper guards to measure that question.
 The full source-file inventories agree between these two jobs; only the
 explicitly reversed driver differs. Curated medians/oracle proofs are in the
 adjacent summary JSON; raw timing arrays and full verified job archives remain
-in ignored output and the shared pool. Public-optimizer CUDA selection and
-compound fused-preparation tests are pending their own GPU gates.
+in ignored output and the shared pool. Public CUDA selection and composed-plan gates/results are recorded below.
+
+
+## Isolating the CUDA update inside public CSTOptimizer
+
+The public-CUDA eager mode retains the same public gradient projection,
+synchronous finite checks, AdamW proposal and vector-state transport. Only the
+common update selector changes from the Torch reference to the CUDA Sphere
+plan. Independent 20-step tests compare parameters/moments/counters and both
+activity modes; non-finite gradients still reject before base mutation.
+Both upfront regressions pass50 tests with zero skips.
+
+| N,width | public Torch update ms | public CUDA update ms | allocated MiB |
+| --- | --- | --- | --- |
+| 1024,3 | 11.344 / 11.626 | 9.566 / 9.527 | 88.486 |
+| 2048,3 | 30.650 / 29.738 | 29.082 / 28.721 | 308.008 |
+| 1024,8 | 18.164 / 18.045 | 16.664 / 16.305 | 131.933 |
+| 2048,8 | 102.204 (one job) | 100.608 (one job) | 283.854 |
+
+The first three cases qualify above3% in both independent jobs; allocated peaks
+are identical. N2048,width8 improves only1.6% in the primary job and was not
+selected for an independent inverse run. The second job reverses the three
+predeclared qualified cases and both modes; no thresholds were relaxed.
+This isolates the updater gain from the removal of public guards in research
+Graph execution. Public optimizer CUDA Graph capture remains unsupported.
+
+- Public primary: `l4job-f475fa84222e4a439a231bff021e122e`.
+- Source SHA256: `27765132084c47a2a926308261297c23ff254695b184a67dfab44f0a8ff83f18`.
+- Result SHA256: `0ef2aa75d635c51b2fb0c7a2f71c859f8c7dd2a9f61f98684d2d0f8575a1c2ad`.
+- Public inverse: `l4job-82df8ce0e1bb4b609533f84658fc09b3`.
+- Source SHA256: `3ed0afadabe55f849e7ad7a09eefd2eb8729224d51f374a0de399406a0095dc8`.
+- Result SHA256: `74e88c94a7fef9550e022e3fd0a1033070eab93d0dc4bd5fa61bec84cf218b6a`.
+
+All1512 source entries match except the declared driver. Full initial parameter,
+X,target and site hashes match across corresponding independent cases. Every
+large measurement passes full-shape FP64 Y/dX/all dP initially and after training.
+
+## Composed Linear and update plans
+
+On merged preparation PR81, width3 uses the fused-preparation W64/patch32 plan
+and width8 retains the best bounded H/G4096 plan. Both the old-plan/public-Torch
+baseline and candidate-plan/public-CUDA use the same public CSTLinear binding.
+The research Graph retains its explicitly stated guard boundary.
+
+Compound gate `l4job-b2133f880ec942c8bb564fbc59c90378` passes72 tests without
+skips, including20 public and20 Graph trajectories against independent Torch
+factored execution. Source SHA256
+`05fb1d13aceb603a41280014d9fd254a8c3fc4a750af7b54dce51ce912d22c1f`,
+result SHA256
+`9c26048ed2a1b52e3ef8cadb2442bc7be0cd42adad366a1a599b64dde9401ad2`.
+Frozen source checkpoint: c0efcbf372ddecdea31a767fbfab7e14ac603ae6.
+
+| N,width | public old plan ms | public compound ms | research Graph ms | public allocated MiB | Graph allocated MiB |
+| --- | --- | --- | --- | --- | --- |
+| 1024,3 | 11.291 / 11.291 | 7.927 / 7.949 | 4.784 / 4.729 | 88.486 | 105.662 |
+| 2048,3 | 29.657 / 29.989 | 27.022 / 27.368 | 24.424 / 24.489 | 307.209 | 323.585 |
+| 1024,8 | 18.033 / 18.023 | 16.275 / 16.157 | 9.865 / 9.928 | 131.933 | 148.833 |
+| 2048,8 | 101.519 (one job) | 99.900 (one job) | 93.465 (one job) | 283.854 | 299.432 |
+
+Primary compound job `l4job-05854f92ac3246a68228b405eb33d968` passes52
+upfront regressions and all16 full-step measurements with matching initial/
+shared fixture hashes and full initial/updated FP64 oracle gates. Source
+SHA256 `fcc7cebb91ef4944e25e66f39fead921772e74712ca165fee43de61c938cb3bd`,
+result SHA256 `725c9fb00de349bb66382c8cd864cd7f677dc953587feee01fdde3352354a295`.
+
+The first three public compound cases qualify above3% in both independent
+runs: about29.6–29.8% atN1024,width3,8.7–8.9% atN2048,width3, and9.8–10.4%
+atN1024,width8. N2048,width8 is again only1.6% and remains a one-job result;
+it was not selected for independent inverse. Allocated peaks are unchanged
+atN1024 and slightly lower (0.799MiB) atN2048,width3. Graph allocated peaks
+are higher than public eager and are reported separately; Dense Graph remains
+much faster, around0.085ms atN1024 and0.594ms atN2048. Public dispatch stays
+unchanged and no isolated kernel gain is inferred from public/Graph ratios.
+
+Qualified compound inverse `l4job-6c7cb7ea1a23405188ed0ff0e02f71ef` passes52
+upfront tests and all12 predeclared complete-step measurements with initial/
+updated full-shape FP64 oracle gates. Source SHA256
+`46aafdd10eb34cf584584a976932f392d7e4159740709106d40b2d3882a2d382`,
+result SHA256
+`07503e523189440d96858f70f891f664437455f77353a27cf507814cc1225166`.
+Corresponding initial parameter/X/target/site hashes agree; source inventories
+match except the explicit inverse driver. The second job reverses the three
+qualified cases and all four modes. Graph comparisons retain their research
+wrapper boundary; N2048,width8 compound Graph is one job, with the earlier
+unchanged blocked Graph plan's separate independent evidence above.
+
+Final composed-source CPU check: 1,355 passed, 2,421 CUDA/DB skips,18 warnings,
+26.20 seconds. Ruff0.16.3 and offline wheel/sdist build pass. Optimizer core is
+unchanged; the API additions are research algorithms and independent benchmark
+selection/testing paths.
