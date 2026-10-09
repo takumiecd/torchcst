@@ -49,3 +49,14 @@ Metadata checkpoint e1f6506 additionally rejects TF32 for cuBLAS contractions;
 cohort already sets TF32 false and numerical execution files are unchanged.
 Local CPU full suite: 1350 passed, 2418 skipped, 18 warnings,26.44 seconds;
 wheel/sdist offline build and Ruff passed. CUDA skips are unvalidated.
+
+Setup-repaired source3992aac job `l4job-474d449075174d26abcc402c59115c9d`
+reached GPU tests:37failed/4passed/0skipped in11.50 seconds,16.046 driver
+seconds. Nonempty cases failed Triton compilation because the circle pack's
+conditional branches reused vector names at different CAP/full-axis shapes;
+no numerical comparison or full-atom case completed. Entire job is retained in
+`output/torus-sparse-weight/failed-compile-v1/` with every file hash verified.
+Correction assigns branch-exclusive names to full-axis vectors, preserving
+operations, norm, support, derivatives and all gates. Corrected gate has882
+seconds, within the original900 after both failures; no performance runs have
+started. Failed source/result hashes remain in the copiedspec/receipt.

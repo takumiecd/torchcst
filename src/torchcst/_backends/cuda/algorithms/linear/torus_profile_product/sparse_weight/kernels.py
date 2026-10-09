@@ -93,20 +93,20 @@ def pack(
             tl.store(Stats + a * 5 + 3, tl.sum(u * d1))
             tl.store(Stats + a * 5 + 4, 0.0)
         else:
-            idx = tl.arange(0, V)
-            u, d0, d1 = _circle(
-                Circle, idx, N, arc, major, minor, q0, inv, "bounded-poly"
+            full_idx = tl.arange(0, V)
+            full_u, full_d0, full_d1 = _circle(
+                Circle, full_idx, N, arc, major, minor, q0, inv, "bounded-poly"
             )
-            present = (idx < N) & (u > 0)
-            rank = tl.cumsum(present.to(tl.int32)) - 1
-            count = tl.sum(present.to(tl.int32))
-            mask = present & (count <= CAP)
-            tl.store(Index + a * CAP + rank, idx, mask)
-            tl.store(Raw + a * CAP + rank, u, mask)
-            tl.store(Stats + a * 5, count)
-            tl.store(Stats + a * 5 + 1, tl.sum(u * u))
-            tl.store(Stats + a * 5 + 2, tl.sum(u * d0))
-            tl.store(Stats + a * 5 + 3, tl.sum(u * d1))
+            full_present = (full_idx < N) & (full_u > 0)
+            full_rank = tl.cumsum(full_present.to(tl.int32)) - 1
+            full_count = tl.sum(full_present.to(tl.int32))
+            full_mask = full_present & (full_count <= CAP)
+            tl.store(Index + a * CAP + full_rank, full_idx, full_mask)
+            tl.store(Raw + a * CAP + full_rank, full_u, full_mask)
+            tl.store(Stats + a * 5, full_count)
+            tl.store(Stats + a * 5 + 1, tl.sum(full_u * full_u))
+            tl.store(Stats + a * 5 + 2, tl.sum(full_u * full_d0))
+            tl.store(Stats + a * 5 + 3, tl.sum(full_u * full_d1))
             tl.store(Stats + a * 5 + 4, 0.0)
     else:
         idx = tl.arange(0, V)
