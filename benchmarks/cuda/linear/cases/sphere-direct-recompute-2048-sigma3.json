@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "sphere-direct-recompute-2048-sigma3",
+    "fixture": "polar_sphere_separable",
+    "size": 2048,
+    "rows": 32,
+    "atoms": 209715,
+    "profile": "rho3",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 3,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "compact-weight",
+    "old-direct",
+    "direct-g1-separate",
+    "direct-g4-separate",
+    "direct-g1-merged",
+    "direct-g4-merged",
+    "recompute-g1-separate",
+    "recompute-g4-separate",
+    "recompute-g1-merged",
+    "recompute-g4-merged"
+  ],
+  "baseline": "compact-weight",
+  "dense": true
+}

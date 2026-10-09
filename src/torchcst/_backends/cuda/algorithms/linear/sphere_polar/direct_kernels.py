@@ -23,6 +23,7 @@ def _block(
     T: tl.constexpr,
     FULL: tl.constexpr,
     FLOOR: tl.constexpr,
+    RECOMPUTE: tl.constexpr = False,
 ):
     off = base + tl.arange(0, T)
     if FULL:
@@ -37,7 +38,8 @@ def _block(
     precision = tl.load(P + a, live, 0)
     gap = tl.maximum(1.0 - ((d0 * d0 + d1 * d1) + d2 * d2) * precision[:, None], 0.0)
     gap = tl.where(valid, gap, 0.0)
-    if FULL:
+    if FULL or RECOMPUTE:
+        # Saved geometry/norm make recomputation independent of live state.
         phi = gap * gap * gap / tl.maximum(tl.load(Norm + a, live, 0)[:, None], FLOOR)
     else:
         phi = tl.load(Phi + a[:, None] * CAP + off[None, :], valid, 0)
@@ -78,6 +80,7 @@ def _forward(
     FLOOR_I: tl.constexpr,
     FLOOR_O: tl.constexpr,
     SAVE_H: tl.constexpr,
+    RECOMPUTE: tl.constexpr = False,
 ):
     batch = tl.arange(0, PB)
     ci = tl.load(CI + a, live, 0)
@@ -85,7 +88,22 @@ def _forward(
     h = tl.full((G, PB), 0.0, tl.float32)
     for base in range(0, IN if FULL_I else tl.max(ci, 0), T):
         idx, valid, phi, _, _, _, _, _ = _block(
-            SI, QI, PI, II, FI, NI, a, live, ci, base, IN, CAP, T, FULL_I, FLOOR_I
+            SI,
+            QI,
+            PI,
+            II,
+            FI,
+            NI,
+            a,
+            live,
+            ci,
+            base,
+            IN,
+            CAP,
+            T,
+            FULL_I,
+            FLOOR_I,
+            RECOMPUTE,
         )
         xx = tl.load(
             X + batch[None, :, None] * IN + idx[:, None, :],
@@ -100,7 +118,22 @@ def _forward(
     h *= tl.load(AMP + a, live, 0)[:, None]
     for base in range(0, OUT if FULL_O else tl.max(co, 0), T):
         idx, valid, phi, _, _, _, _, _ = _block(
-            SO, QO, PO, IO, FO, NO, a, live, co, base, OUT, CAP, T, FULL_O, FLOOR_O
+            SO,
+            QO,
+            PO,
+            IO,
+            FO,
+            NO,
+            a,
+            live,
+            co,
+            base,
+            OUT,
+            CAP,
+            T,
+            FULL_O,
+            FLOOR_O,
+            RECOMPUTE,
         )
         tl.atomic_add(
             Y + batch[None, :, None] * OUT + idx[:, None, :],
@@ -151,6 +184,7 @@ def _backward(
     NEED_X: tl.constexpr,
     NEED_P: tl.constexpr,
     MERGE: tl.constexpr,
+    RECOMPUTE: tl.constexpr = False,
 ):
     batch = tl.arange(0, PB)
     ci = tl.load(CI + a, live, 0)
@@ -171,7 +205,22 @@ def _backward(
         n2 = tl.full((G,), 0.0, tl.float32)
     for base in range(0, OUT if FULL_O else tl.max(co, 0), T):
         idx, valid, phi, gap, d0, d1, d2, precision = _block(
-            SO, QO, PO, IO, FO, NO, a, live, co, base, OUT, CAP, T, FULL_O, FLOOR_O
+            SO,
+            QO,
+            PO,
+            IO,
+            FO,
+            NO,
+            a,
+            live,
+            co,
+            base,
+            OUT,
+            CAP,
+            T,
+            FULL_O,
+            FLOOR_O,
+            RECOMPUTE,
         )
         yy = tl.load(
             DY + batch[None, :, None] * OUT + idx[:, None, :],
@@ -208,7 +257,22 @@ def _backward(
         normi = tl.load(NI + a, live, 0)
     for base in range(0, IN if FULL_I else tl.max(ci, 0), T):
         idx, valid, phi, gap, d0, d1, d2, precision = _block(
-            SI, QI, PI, II, FI, NI, a, live, ci, base, IN, CAP, T, FULL_I, FLOOR_I
+            SI,
+            QI,
+            PI,
+            II,
+            FI,
+            NI,
+            a,
+            live,
+            ci,
+            base,
+            IN,
+            CAP,
+            T,
+            FULL_I,
+            FLOOR_I,
+            RECOMPUTE,
         )
         mask = (batch[None, :, None] < B) & valid[:, None, :]
         if NEED_X:
@@ -270,6 +334,7 @@ def _backward(
                     T,
                     FULL_O,
                     FLOOR_O,
+                    RECOMPUTE,
                 )
                 yy = tl.load(
                     DY + batch[None, :, None] * OUT + idx[:, None, :],
@@ -325,6 +390,7 @@ def forward(
     FLOOR_I: tl.constexpr,
     FLOOR_O: tl.constexpr,
     SAVE_H: tl.constexpr,
+    RECOMPUTE: tl.constexpr = False,
 ):
     a = tl.program_id(0) * G + tl.arange(0, G)
     real = a < A
@@ -364,6 +430,7 @@ def forward(
         FLOOR_I,
         FLOOR_O,
         SAVE_H,
+        RECOMPUTE,
     )
     # Overflow predicates are uniform and exclude the atom from packed work.
     # G1 retains the same single-pass ablation on full-axis fallback too.
@@ -409,6 +476,7 @@ def forward(
                         FLOOR_I,
                         FLOOR_O,
                         SAVE_H,
+                        RECOMPUTE,
                     )
                 else:
                     _forward(
@@ -444,6 +512,7 @@ def forward(
                         FLOOR_I,
                         FLOOR_O,
                         SAVE_H,
+                        RECOMPUTE,
                     )
             elif fullo:
                 _forward(
@@ -479,6 +548,7 @@ def forward(
                     FLOOR_I,
                     FLOOR_O,
                     SAVE_H,
+                    RECOMPUTE,
                 )
 
 
@@ -520,6 +590,7 @@ def backward(
     NEED_X: tl.constexpr,
     NEED_P: tl.constexpr,
     MERGE: tl.constexpr,
+    RECOMPUTE: tl.constexpr = False,
 ):
     a = tl.program_id(0) * G + tl.arange(0, G)
     real = a < A
@@ -566,6 +637,7 @@ def backward(
         NEED_X,
         NEED_P,
         MERGE,
+        RECOMPUTE,
     )
     # Overflow predicates are uniform and exclude the atom from packed work.
     # G1 retains the same single-pass ablation on full-axis fallback too.
@@ -618,6 +690,7 @@ def backward(
                         NEED_X,
                         NEED_P,
                         MERGE,
+                        RECOMPUTE,
                     )
                 else:
                     _backward(
@@ -660,6 +733,7 @@ def backward(
                         NEED_X,
                         NEED_P,
                         MERGE,
+                        RECOMPUTE,
                     )
             elif fullo:
                 _backward(
@@ -702,4 +776,5 @@ def backward(
                     NEED_X,
                     NEED_P,
                     MERGE,
+                    RECOMPUTE,
                 )

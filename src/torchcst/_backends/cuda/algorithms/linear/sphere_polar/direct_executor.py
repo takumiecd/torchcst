@@ -8,14 +8,21 @@ from .fused_prepare import prepare
 
 class _Direct(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, p, kernel, charts, recipe):
+    def forward(ctx, x, p, kernel, charts, recipe, recompute_phi):
         import triton
 
         from .direct_kernels import forward
 
-        x, source, amp, damp, floors, sides = prepare(
-            x, p, kernel, charts, recipe, index_dtype=torch.int16
-        )
+        if recompute_phi:
+            from .recompute_prepare import prepare_ids
+
+            x, source, amp, damp, floors, sides = prepare_ids(
+                x, p, kernel, charts, recipe, index_dtype=torch.int16
+            )
+        else:
+            x, source, amp, damp, floors, sides = prepare(
+                x, p, kernel, charts, recipe, index_dtype=torch.int16
+            )
         need_p = ctx.needs_input_grad[1]
         h = x.new_empty((len(p), len(x))) if need_p else x.new_empty(0)
         y = x.new_zeros((len(x), len(sides[1][0])))
@@ -37,10 +44,12 @@ class _Direct(torch.autograd.Function):
                 recipe.atom_group,
                 *floors,
                 need_p,
+                recompute_phi,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
         ctx.recipe, ctx.floors = recipe, floors
+        ctx.recompute_phi = recompute_phi
         ctx.save_for_backward(x, source, amp, damp, h, *sides[0], *sides[1])
         return y
 
@@ -77,11 +86,12 @@ class _Direct(torch.autograd.Function):
                 need_x,
                 need_p,
                 ctx.recipe.merge_output_vjp,
+                ctx.recompute_phi,
                 num_warps=4,
                 enable_fp_fusion=False,
             )
-        return dx, dp, None, None, None
+        return dx, dp, None, None, None, None
 
 
-def direct_linear(x, p, kernel, charts, recipe):
-    return _Direct.apply(x, p, kernel, charts, recipe)
+def direct_linear(x, p, kernel, charts, recipe, *, recompute_phi=False):
+    return _Direct.apply(x, p, kernel, charts, recipe, recompute_phi)
