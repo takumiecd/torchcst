@@ -50,6 +50,8 @@ class TorusSparseWeightAlgorithm(Algorithm[SparseWeightRecipe]):
         base = TorusOnchipAlgorithm().supports(context, OnchipRecipe())
         if not base.supported:
             return base
+        if context.precision.allow_tf32:
+            return SupportResult(("requires IEEE FP32 GEMM without TF32",))
         if type(context.operator.charts[0].axes[0]) is not LinePatternSpec:
             return SupportResult(("requires regular line circle sites",))
         return base

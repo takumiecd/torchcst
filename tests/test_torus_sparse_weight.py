@@ -49,6 +49,9 @@ def test_recipe_metadata_and_roundtrip():
     algorithm = TorusSparseWeightAlgorithm()
     assert algorithm.supports(cuda, RECIPE).supported
     assert not algorithm.supports(context, RECIPE).supported
+    assert not algorithm.supports(
+        replace(cuda, precision=replace(cuda.precision, allow_tf32=True)), RECIPE
+    ).supported
     registry = Registry()
     registry.register(algorithm)
     assert registry.loads_plan(registry.dumps_plan(PLAN)) == PLAN
