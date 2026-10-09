@@ -144,6 +144,8 @@ def block(
         valid = off < Count
         idx = tl.load(Index + a * CAP + off, valid, 0)
         raw = tl.load(Raw + a * CAP + off, valid, 0)
+    valid = valid & (idx >= 0) & (idx < N)
+    idx = tl.where(valid, idx, 0)
     return idx, valid, raw
 
 
