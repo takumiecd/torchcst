@@ -194,3 +194,42 @@ def test_periodic_circle_window_and_exact_overflow(n, sigma, capacity):
     gx, gp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
     for actual, expected in ((y, truth), (gx, tx), (gp, tp)):
         _strict_check(actual, expected, tol=4e-4)
+
+
+@CUDA
+@pytest.mark.parametrize("period_shift", [-1.1, -0.9, 0.9, 1.1])
+def test_period_mismatch_spacing_boundary_near_seam(period_shift):
+    import math
+
+    from benchmarks.cuda.linear.manifest import load_run
+    from benchmarks.cuda.linear.torus_profile_product import (
+        fixture_operator,
+        initialize,
+    )
+    from torchcst import CSTLinear
+
+    case = load_run(
+        "benchmarks/cuda/linear/cases/torus-sparse-weight-1024-sigma3.json",
+        "benchmarks/cuda/linear/plans-torus-sparse-weight.json",
+    ).case
+    op = fixture_operator(case)
+    p = initialize(case)[:9]
+    p[:3, 2] = torch.tensor([-0.01, 0.01, -5.01])
+    layer = CSTLinear(chart=op.charts[0], kernel=op.kernel, atoms=p, device="cuda")
+    with torch.no_grad():
+        layer.chart.geometry.major_radius.add_(period_shift / (2 * math.pi))
+    spacing = float(layer.chart.axes[0].spacing[0])
+    discrepancy = abs(
+        2 * math.pi * float(layer.chart.geometry.major_radius)
+        - case.size // layer.chart.tile_shape[0] * float(layer.chart.tile_pitch)
+    )
+    assert (discrepancy < spacing) == (abs(period_shift) < 1)
+    x = torch.randn(3, case.size, device="cuda", requires_grad=True)
+    dy = torch.randn(3, case.size, device="cuda")
+    truth, tx, tp = oracle_vjp(
+        copy.deepcopy(layer.kernel).double(), layer.atoms.p, x, dy, layer.chart
+    )
+    y = run(layer, x)
+    gx, gp = torch.autograd.grad(y, (x, layer.atoms.p), dy)
+    for actual, expected in ((y, truth), (gx, tx), (gp, tp)):
+        _strict_check(actual, expected, tol=4e-4)

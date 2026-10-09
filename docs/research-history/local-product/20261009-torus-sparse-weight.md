@@ -148,3 +148,14 @@ The q0 term includes both circle-radius and section derivatives. Empty norms
 use the inactive floor branch and zero raw derivatives; no0/0 correction is
 formed. Shared parameter dependence does not invalidate the factorized norm
 identity for each fixed atom, but both terms must be included in its VJP.
+
+Before integration the branch is rebased on main13fd1b4 (PR81), retaining all
+Sphere fused preparation registrations. Measured7a970a9 is preserved on local
+`kernel/torus-sparse-weight-measured`; primary/inverse snapshots remain frozen.
+Four GPU boundary tests are added without changing circle predicates or math:
+true circle period offset ±0.9spacing uses the window, ±1.1spacing falls back,
+with atoms near both seam sides. Y,dX/allP compare to the existing independent
+physical FP64 oracle. Integration suite now126tests (all previous122 retained)
+plus four all-atom cases,900seconds. The index bound includes pitchgap/spacing
+and two extra sites: a period discrepancy below one spacing contributes at
+most one extra index near the seam; larger discrepancies fully enumerate.
