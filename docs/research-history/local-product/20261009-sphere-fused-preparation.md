@@ -35,7 +35,7 @@ Validation before performance:
 
 Small N64 smoke eager fused/old-W32 time ratio was 0.7377245754. This is a smoke
 result, not the large-case adoption decision. Primary N1024/2048 B32 sigma3/8
-complete eager steps and peak allocated/reserved memory passed the primary run; the qualifying N1024 sigma3 inverse run is pending. The sigma8
+complete eager steps and peak allocated/reserved memory passed the primary run; the qualifying N1024 sigma3 inverse run also passed. The sigma8
 W256 baseline isolates preparation fusion; bounded H4096 is also a control and
 must decide whether the candidate wins the actual wide-support workload.
 
@@ -79,3 +79,26 @@ The next hypothesis is exact conservative sorted-axis support scanning. Fusion
 alone leaves the full O(A*N) profile scan, W patch work and eager optimizer
 launches. That next candidate must keep all supports and per-side norm floors,
 forward snapshots, live widths, exact overflow and full-step/memory gates.
+
+## Independent inverse order run
+
+`l4job-af16098d606a451ab3f170ec9ce60db1` passed the same fixed N1024 sigma3
+case in fused/old-W/blocked order with dense, the same initial hashes, 24 evolving
+updates, and full-size FP64 oracle gates before and after. Fused W32 took
+9.927613 ms versus old W32 11.452574 ms, a 13.32% improvement. Allocated peak
+remained 88.486 MiB for both. The primary's 11.91% gain is thus confirmed in two
+independent jobs, while N2048 and sigma8 have only their retained primary results
+and do not qualify as demonstrated wins under the predeclared threshold.
+
+Source SHA256: `4c505d0c3ba91e8abdb31a221abc053cf30ad75a36c459b946d2563e8d194e15`.
+Result archive SHA256: `1f81149662ae92f10c9fbc9a6074571f0bad31bc37d5fd8e60b5e6ff8a52c2ce`.
+The complete verified job is preserved in `output/sphere-fused-prepare/inverse-v1`
+with `inverse-v1-sha256.json`. All three measured source snapshots use numerical
+implementation commit `0aaadd80`; differing source archive hashes include their
+experiment drivers. No result claims a captured full optimizer step or measured
+GPU process residency.
+
+Disposition: retain fused W preparation as a research plan with the confirmed
+N1024 sigma3 conditional gain. Preserve old W and H alternatives; use bounded
+H4096 for sigma8. The public selection policy remains unchanged. Continue exact
+sorted-support exploration separately on `kernel/sphere-sorted-support`.
