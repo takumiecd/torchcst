@@ -155,16 +155,26 @@ def forward(model, x, route):
 def oracle_factors(model, p, *, scale_amplitude=True):
     """Independent embedded-distance and Polar algebra; no backend math calls."""
     spec = model.kernel.spec
-    pars = spec.parameterization
+
+    # KernelSpec is the immutable initial declaration. Research tests mutate
+    # scalar buffers during live/Graph execution, so the independent oracle
+    # must read their actual stored values while keeping its algebra separate.
+    def scalar(name):
+        return model.kernel.scalar(name).detach().to(p)
+
     q = p[:, :2].square().sum(-1)
-    amp = pars.amplitude_max * p[:, 0] / q.clamp_min(torch.finfo(p.dtype).tiny).sqrt()
+    amp = (
+        scalar("amplitude_max")
+        * p[:, 0]
+        / q.clamp_min(torch.finfo(p.dtype).tiny).sqrt()
+    )
     alpha = ((q - 1) / 3).clamp(0, 1)
-    z = (amp / pars.w_c).square()
+    z = (amp / scalar("w_c")).square()
     values = []
-    for center, chart, bounds in zip(
+    for center, chart, side in zip(
         (p[:, 2:4], p[:, 4:6]),
         model.cst_charts(),
-        (pars.input_bounds, pars.output_bounds),
+        ("input", "output"),
     ):
         radius = chart.geometry.radius.double()
         theta = center.norm(dim=-1, keepdim=True) / radius
@@ -173,13 +183,14 @@ def oracle_factors(model, p, *, scale_amplitude=True):
         )
         sites = chart.coordinates.double()
         sites = sites * (radius / sites.norm(dim=-1, keepdim=True))
-        lo = bounds.minimum + (bounds.birth - bounds.minimum) / (
-            1 + pars.lower_kappa * z
+        minimum = scalar("sigma_min_" + side)
+        birth = scalar("sigma_birth_" + side)
+        maximum = scalar("sigma_max_" + side)
+        lo = minimum + (birth - minimum) / (1 + scalar("lower_kappa") * z)
+        hi = minimum + (maximum - minimum) * scalar("kappa") / (
+            scalar("kappa") + z.pow(scalar("upper_decay_power"))
         )
-        hi = bounds.minimum + (bounds.maximum - bounds.minimum) * pars.kappa / (
-            pars.kappa + z.pow(pars.upper_decay_power)
-        )
-        hi = hi.clamp_min(bounds.upper_floor)
+        hi = hi.clamp_min(scalar("upper_floor_" + side))
         hi = torch.maximum(hi, lo)
         sigma = (
             torch.exp((1 - alpha) * lo.log() + alpha * hi.log())
