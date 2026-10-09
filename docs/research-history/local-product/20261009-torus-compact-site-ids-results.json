@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "disposition": "QUALIFIED_RESEARCH_MEMORY_CANDIDATE",
+  "mathematics": "unchanged original Torus centre-fibre S1xS2 profile product / Polar / Triweight / combined global L2 floor",
+  "source_commit": "dffe00111d6294cd1026d0fe07838c5bde23dc9e",
+  "driver_sha256": "8ad59c07a7852963dc31000246a5d1ed6801ebc0512ede70f8a183d276647d05",
+  "recipe": {
+    "circle_capacity": 64,
+    "section_capacity": 256,
+    "patch_tile": 16,
+    "index_bits": 16
+  },
+  "cohort": {
+    "batch": 32,
+    "sizes": [
+      1024,
+      2048
+    ],
+    "sigma": [
+      3,
+      8
+    ],
+    "atom_fraction": 0.05,
+    "seed": 41,
+    "dtype": "IEEE FP32",
+    "loss": "MSE",
+    "optimizer": "AdamWlr1e-4decay.01fused",
+    "modes": [
+      "research_graph",
+      "dense_graph"
+    ],
+    "updates": 24,
+    "diagnostic_updates": 6,
+    "same_cotangent_state_tolerance": {
+      "parameter": 2e-06,
+      "moments": 2e-05
+    },
+    "oracle_gate": {
+      "maximum_absolute": 0.0004,
+      "relative_l2": 0.0004,
+      "existing_elementwise": true
+    }
+  },
+  "qualification": {
+    "time_improvement_strict_percent": 3,
+    "or_allocated_reduction_percent": 5,
+    "maximum_allowed_time_regression_percent": 3,
+    "qualified_by": "allocated_memory",
+    "all_four_cases_primary_and_inverse_pass": true,
+    "speed_gain_gt3percent": false
+  },
+  "source_proof": {
+    "all_snapshot_files_match_gate_primary_inverse": 1564,
+    "all12inverse_initial_fixture_hashes_match_primary": true,
+    "independent_physical_GPU": true,
+    "baseline_source_and126previous_tests_byte_identical": true,
+    "public_dispatch_changed": false
+  },
+  "correctness": {
+    "run": {
+      "job_id": "l4job-30e4fbc68e644ece829b7a67a0752e68",
+      "source_archive_sha256": "b2481c60c3712b667e6ef5b5e05cc4a562d1ae2cd31f09d98e6d11b228c8cf21",
+      "result_archive_sha256": "44e1d0a97e953b5674f81f74fbc16aa74604a774ee1b2d0a039004d6148e14d9",
+      "gpu": "NVIDIA L4, GPU-cfe05025-644c-5fd3-6266-b23c55e5a86c, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "driver_seconds": 263.394315352
+    },
+    "tests": 63,
+    "skipped": 0,
+    "fullshape_workers": 12,
+    "maxabs": 3.621140548992763e-05,
+    "maxrelative_l2": 8.575590923899703e-07
+  },
+  "primary": {
+    "run": {
+      "job_id": "l4job-c368dce23461417383ed51d321c7d053",
+      "source_archive_sha256": "55ba1a4b02314c8bc15d96a984d292dd3767d53531c8e7fb75de3401615123b7",
+      "result_archive_sha256": "ddd2c8058ea64eae2f78ed81f2ee620c075caa6af042277a06a1aef3c82d8a4b",
+      "gpu": "NVIDIA L4, GPU-96e9ef46-55a3-93e0-016c-581fd8a59d0c, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "driver_seconds": 245.47958723300002
+    },
+    "metrics": [
+      {
+        "size": 1024,
+        "sigma": 3,
+        "baseline_ms": 11.668480000025738,
+        "candidate_ms": 11.661548000006405,
+        "dense_ms": 0.08488600002465319,
+        "time_improvement_percent": 0.05940790933623985,
+        "allocated_reduction_percent": 17.664640421007803,
+        "baseline_peak": {
+          "allocated_bytes": 187575808,
+          "reserved_bytes": 245366784
+        },
+        "candidate_peak": {
+          "allocated_bytes": 154441216,
+          "reserved_bytes": 207618048
+        },
+        "dense_peak": {
+          "allocated_bytes": 34474496,
+          "reserved_bytes": 90177536
+        }
+      },
+      {
+        "size": 2048,
+        "sigma": 3,
+        "baseline_ms": 46.78250099999559,
+        "candidate_ms": 46.919377999984135,
+        "dense_ms": 0.5939430000125867,
+        "time_improvement_percent": -0.2925816214668808,
+        "allocated_reduction_percent": 20.992200659391536,
+        "baseline_peak": {
+          "allocated_bytes": 641367040,
+          "reserved_bytes": 734003200
+        },
+        "candidate_peak": {
+          "allocated_bytes": 506729984,
+          "reserved_bytes": 599785472
+        },
+        "dense_peak": {
+          "allocated_bytes": 85461504,
+          "reserved_bytes": 111149056
+        }
+      },
+      {
+        "size": 1024,
+        "sigma": 8,
+        "baseline_ms": 15.863154000044233,
+        "candidate_ms": 15.826468999989629,
+        "dense_ms": 0.08488599996780977,
+        "time_improvement_percent": 0.23125918121013056,
+        "allocated_reduction_percent": 17.664640421007803,
+        "baseline_peak": {
+          "allocated_bytes": 187575808,
+          "reserved_bytes": 245366784
+        },
+        "candidate_peak": {
+          "allocated_bytes": 154441216,
+          "reserved_bytes": 207618048
+        },
+        "dense_peak": {
+          "allocated_bytes": 34474496,
+          "reserved_bytes": 90177536
+        }
+      },
+      {
+        "size": 2048,
+        "sigma": 8,
+        "baseline_ms": 84.41673900000524,
+        "candidate_ms": 84.46644200000719,
+        "dense_ms": 0.5940060000284575,
+        "time_improvement_percent": -0.05887813316498569,
+        "allocated_reduction_percent": 20.992200659391536,
+        "baseline_peak": {
+          "allocated_bytes": 641367040,
+          "reserved_bytes": 734003200
+        },
+        "candidate_peak": {
+          "allocated_bytes": 506729984,
+          "reserved_bytes": 599785472
+        },
+        "dense_peak": {
+          "allocated_bytes": 85461504,
+          "reserved_bytes": 111149056
+        }
+      }
+    ]
+  },
+  "inverse": {
+    "run": {
+      "job_id": "l4job-78d0eb719f454803961507afa5497ea0",
+      "source_archive_sha256": "9c9411904283662167c14fe56cdb946c64a05b940f8249978fea5560aabca5bb",
+      "result_archive_sha256": "c1e8136320d97793d276ace26cda3767c66802729e1abc2a7722cbdcb1b96015",
+      "gpu": "NVIDIA L4, GPU-54b8bfdc-84bf-c63f-b279-2048d69985fd, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "driver_seconds": 237.92129997899997
+    },
+    "metrics": [
+      {
+        "size": 1024,
+        "sigma": 3,
+        "baseline_ms": 11.66975600006026,
+        "candidate_ms": 11.661914999990586,
+        "dense_ms": 0.08466999997835956,
+        "time_improvement_percent": 0.06719077990692268,
+        "allocated_reduction_percent": 17.664640421007803,
+        "baseline_peak": {
+          "allocated_bytes": 187575808,
+          "reserved_bytes": 245366784
+        },
+        "candidate_peak": {
+          "allocated_bytes": 154441216,
+          "reserved_bytes": 207618048
+        },
+        "dense_peak": {
+          "allocated_bytes": 34474496,
+          "reserved_bytes": 90177536
+        }
+      },
+      {
+        "size": 2048,
+        "sigma": 3,
+        "baseline_ms": 47.33149200001208,
+        "candidate_ms": 47.2895400000084,
+        "dense_ms": 0.5943959999967774,
+        "time_improvement_percent": 0.088634433927548,
+        "allocated_reduction_percent": 20.992200659391536,
+        "baseline_peak": {
+          "allocated_bytes": 641367040,
+          "reserved_bytes": 734003200
+        },
+        "candidate_peak": {
+          "allocated_bytes": 506729984,
+          "reserved_bytes": 599785472
+        },
+        "dense_peak": {
+          "allocated_bytes": 85461504,
+          "reserved_bytes": 111149056
+        }
+      },
+      {
+        "size": 1024,
+        "sigma": 8,
+        "baseline_ms": 16.13903999998456,
+        "candidate_ms": 16.057764000038333,
+        "dense_ms": 0.08471000001009088,
+        "time_improvement_percent": 0.5035987267291375,
+        "allocated_reduction_percent": 17.664640421007803,
+        "baseline_peak": {
+          "allocated_bytes": 187575808,
+          "reserved_bytes": 245366784
+        },
+        "candidate_peak": {
+          "allocated_bytes": 154441216,
+          "reserved_bytes": 207618048
+        },
+        "dense_peak": {
+          "allocated_bytes": 34474496,
+          "reserved_bytes": 90177536
+        }
+      },
+      {
+        "size": 2048,
+        "sigma": 8,
+        "baseline_ms": 84.62545499997987,
+        "candidate_ms": 83.26501499999495,
+        "dense_ms": 0.5950420000431222,
+        "time_improvement_percent": 1.607601400766756,
+        "allocated_reduction_percent": 20.992200659391536,
+        "baseline_peak": {
+          "allocated_bytes": 641367040,
+          "reserved_bytes": 734003200
+        },
+        "candidate_peak": {
+          "allocated_bytes": 506729984,
+          "reserved_bytes": 599785472
+        },
+        "dense_peak": {
+          "allocated_bytes": 85461504,
+          "reserved_bytes": 111149056
+        }
+      }
+    ],
+    "maxabs": 3.6338162006765984e-05,
+    "maxrelative_l2": 8.575668732258256e-07
+  },
+  "limits": [
+    "No >3% measured speed gain",
+    "Dense is materially faster and lower-memory in this cohort",
+    "Allocated/reserved peaks include capture/replay; oracle scratch is excluded; process GPU usage is unavailable",
+    "Only C64/S256/T16 and validated axes<=2048; storage-only eligibility allows IDs0..32767 but does not broaden runtime shape scope",
+    "Rejected Grid-window runtime is preserved separately and excluded from this integration"
+  ]
+}

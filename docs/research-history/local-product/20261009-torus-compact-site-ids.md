@@ -64,8 +64,8 @@ An independent inverse is qualified only by>3%complete-step improvement, or
 passes. No selection from partial or interrupted results, no silent rebudgeting.
 Original window16memory savings suggest a hypothesis, not a performance claim
 for this different full-scan implementation. All GPU work and submissions are
-owned by root; raw logs/snapshots remain ignored. This candidate has no GPU
-result at this checkpoint.
+owned by root; raw logs/snapshots remain ignored. The implementation checkpoint preceded GPU measurements; the completed result
+is recorded below.
 
 Local runtime checkpoint: full CPU suite1380passed,2616skipped,18warnings,
 26.43seconds; initial new target1passed/29CUDA-skipped. After adding four Case
@@ -86,3 +86,55 @@ and are not part of this new source or reused route validation. The candidate
 33tests and common30tests form63tests for the fresh correctness stage, followed
 by all12 fixed full-shape verify workers. Evidence and source proof are under
 ignored `output/torus-compact-ids/`.
+
+## Measured outcome and integration scope
+
+Correctness job `l4job-30e4fbc68e644ece829b7a67a0752e68` passed63tests0skips
+(55.57pytestseconds) and all12fixed full-shape verification workers in
+263.394driverseconds. The candidate's count-asserted circle-only/section-only/
+both-overflow witnesses passed. Primary `l4job-c368dce23461417383ed51d321c7d053`
+and independent inverse `l4job-78d0eb719f454803961507afa5497ea0` each passed
+all12workers,common30tests0skips,initial/24updated full-A physical FP64
+oracles and24/30step counters. All1564source files including the central
+driver match gate/primary/inverse; all12inverse initial parameter/input/target/
+fixed-dy/geometry-buffer hashes match primary. Distinct physical L4s UUID
+96e9ef46-55a3-93e0-016c-581fd8a59d0c and54b8bfdc-84bf-c63f-b279-2048d69985fd
+provide the independent comparison, both driver580.82.07,Torch2.11.0+cu130,
+CUDA13,Triton3.6.0. Full phase diagnostics remain present and did not alter the
+primary memory/timing measurement. Worst inverse maxabs3.634e-5 and relativeL2
+8.576e-7 are below the unchanged4e-4gates.
+
+| N | sigma | primary baseline→compact ms | inverse baseline→compact ms | allocated baseline→compact MiB | memory reduction |
+|---|---|---:|---:|---:|---:|
+|1024|3|11.668→11.662|11.670→11.662|178.886→147.287|17.665%|
+|2048|3|46.783→46.919|47.331→47.290|611.655→483.255|20.992%|
+|1024|8|15.863→15.826|16.139→16.058|178.886→147.287|17.665%|
+|2048|8|84.417→84.466|84.625→83.265|611.655→483.255|20.992%|
+
+All four pairs pass the predeclared memory criterion in both independent runs.
+This is a memory improvement while maintaining baseline throughput and numerical
+accuracy in the measured cohort; none shows>3% speed improvement. The primary
+latency difference is within0.3%,inverse within1.7%. Dense complete-step time is
+about0.085ms/0.594ms with32.877/81.502MiB allocated at1024/2048, substantially
+faster and lower-memory than either Torus route here. Reserved peaks and exact
+raw bytes, archive hashes, actual runtime and per-run metrics are retained in
+`20261009-torus-compact-site-ids-results.json`. Process GPU usage was not
+recorded; allocated and reserved bytes are not that quantity.
+
+This research-only family can be integrated; public dispatch stays unchanged.
+The integration checkpoint modifies only study documentation/curated metrics
+after measured source dffe00111d6294cd1026d0fe07838c5bde23dc9e. Runtime, own
+tests, plan catalog and Cases remain byte-identical to dffe. No additional
+GPU or broad CPU repeat is warranted for those document changes. The final
+canonical full CPU/build CI runs on the PR head. Full source/result/log archives
+are SHA-verified under ignored `output/torus-compact-ids/`; negative Grid-window
+math, failed/interrupted jobs and recoverable anchors are summarized separately
+in `20261009-torus-grid-window-negative.md`, without rejected runtime imports.
+
+Reproduce correctness using the unchanged central pool driver with
+`--geometry torus --stage gate --catalog benchmarks/cuda/linear/plans-torus-compact-ids.json --candidate-pattern compact16 --tests tests/test_torus_compact_ids.py`
+and900seconds. Primary uses `--stage primary` without `--tests`,1500seconds.
+Inverse uses `--stage inverse --inverse-selection` containing the original
+four-case list,each candidatecompact16,1500seconds; the driver reverses case
+and pair execution order once. Each worker runs as an isolated subprocess.
+GPU allocation/submission/retrieval/cleanup remain root-owned.
