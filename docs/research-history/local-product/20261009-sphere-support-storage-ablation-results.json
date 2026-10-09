@@ -1,0 +1,315 @@
+{
+  "schema_version": 1,
+  "study": "sphere support storage ablation",
+  "frozen_commit": "84188009d9a530562f1cd289e07f1e0baf0a9231",
+  "driver_sha256": "ea2f3aa87ae6e84e673e51d073d9050ff6a35afde7768be46a5ba86feb192584",
+  "protocol_sha256": "fa7fddb73f33e4d344982fb83cd88ecf4b187ff760a7dc6e0e94a22dd876eab0",
+  "assessor_sha256": "81062c87ce55f44791345666bf32568536ab8ae0343013a3f68d63ed993141ec",
+  "jobs": [
+    {
+      "job": "l4job-9517953e13bf42d98c1d23dfe2d10714",
+      "stage": "gate",
+      "status": "PASS",
+      "workers": 8,
+      "driver_seconds": 231.71884751,
+      "source_archive_sha256": "f3453a467c8e350955ff6f384cee875e80a1194654cd413d84d618a009d11d83",
+      "result_archive_sha256": "b0448d1dfae8a5249276f846b040966c5cadef21a1eec4b29a7cb01e485e5b18",
+      "cohort_sha256": "7ec38266060fef9266d61c671675a1bbf7173e4d30c46cc7b62dc1c1af4b6469",
+      "source_file_count": 1582,
+      "physical_gpu": "NVIDIA L4, GPU-5cad34a2-3b04-d314-53df-c10170b970a2, 580.82.07, 23034 MiB"
+    },
+    {
+      "job": "l4job-8a0da5eb19c1466d96d6f85b170bdb63",
+      "stage": "primary",
+      "status": "PASS",
+      "workers": 8,
+      "driver_seconds": 183.00659178900003,
+      "source_archive_sha256": "999f0ce8afe6be9d754237923dd8da347aa84a33bd59d3cc02ece61d522810d8",
+      "result_archive_sha256": "c77982ef3e8b898a5ec969f3bb8a8dc61644f2c1d7f07672bae5918a20e0fc30",
+      "cohort_sha256": "b4dc948527838939d9efd5977743e8bba7c636a01a8f3d802c1e52e9105cbb14",
+      "source_file_count": 1582,
+      "physical_gpu": "NVIDIA L4, GPU-1bb31ecf-0b39-b799-a078-4d2f046c041a, 580.82.07, 23034 MiB"
+    },
+    {
+      "job": "l4job-2e70ee1c8b9e408db3e1103b3643b4a1",
+      "stage": "inverse",
+      "status": "PASS",
+      "workers": 7,
+      "driver_seconds": 171.27995023699998,
+      "source_archive_sha256": "15917df190a3781a74fffebfd9cef0d7f94f1acd5a6ce8bd5b0ce178cffa4b71",
+      "result_archive_sha256": "17ceaceae1390fc938fbaafc0b29f2d81a3026467ab6f9251129e7250f7154a9",
+      "cohort_sha256": "7a44c4ae550e907205f053ea13c9d14691ec7036b9440e0a98ba3b3ce17b7af9",
+      "source_file_count": 1582,
+      "physical_gpu": "NVIDIA L4, GPU-7caf1c9d-bef3-6645-1f08-054a3b2716c1, 580.82.07, 23034 MiB"
+    }
+  ],
+  "primary_baseline_pairs": [
+    {
+      "size": 1024,
+      "sigma": 3,
+      "reference": "baseline",
+      "candidate": "grouped-compact",
+      "reference_ms": 4.330065000004879,
+      "candidate_ms": 4.293788999973458,
+      "reference_peak": {
+        "allocated_bytes": 110794752,
+        "reserved_bytes": 174063616
+      },
+      "candidate_peak": {
+        "allocated_bytes": 97373184,
+        "reserved_bytes": 165675008
+      },
+      "time_improvement_percent": 0.8377703344263909,
+      "time_regression_percent": -0.8377703344263909,
+      "allocated_reduction_percent": 12.11390229024566,
+      "qualifies_speed": false,
+      "qualifies_memory": true,
+      "qualifies_independent_inverse": true
+    },
+    {
+      "size": 1024,
+      "sigma": 3,
+      "reference": "baseline",
+      "candidate": "cell-support",
+      "reference_ms": 4.330065000004879,
+      "candidate_ms": 5.246658000004345,
+      "reference_peak": {
+        "allocated_bytes": 110794752,
+        "reserved_bytes": 174063616
+      },
+      "candidate_peak": {
+        "allocated_bytes": 97373184,
+        "reserved_bytes": 165675008
+      },
+      "time_improvement_percent": -21.168111795052337,
+      "time_regression_percent": 21.168111795052337,
+      "allocated_reduction_percent": 12.11390229024566,
+      "qualifies_speed": false,
+      "qualifies_memory": false,
+      "qualifies_independent_inverse": false
+    },
+    {
+      "size": 2048,
+      "sigma": 3,
+      "reference": "baseline",
+      "candidate": "grouped-compact",
+      "reference_ms": 23.393492000025162,
+      "candidate_ms": 23.475461999964864,
+      "reference_peak": {
+        "allocated_bytes": 339303424,
+        "reserved_bytes": 408944640
+      },
+      "candidate_peak": {
+        "allocated_bytes": 284777472,
+        "reserved_bytes": 354418688
+      },
+      "time_improvement_percent": -0.35039659722291283,
+      "time_regression_percent": 0.35039659722291283,
+      "allocated_reduction_percent": 16.069968100292442,
+      "qualifies_speed": false,
+      "qualifies_memory": true,
+      "qualifies_independent_inverse": true
+    },
+    {
+      "size": 2048,
+      "sigma": 3,
+      "reference": "baseline",
+      "candidate": "cell-support",
+      "reference_ms": 23.393492000025162,
+      "candidate_ms": 23.418053000000327,
+      "reference_peak": {
+        "allocated_bytes": 339303424,
+        "reserved_bytes": 408944640
+      },
+      "candidate_peak": {
+        "allocated_bytes": 284777472,
+        "reserved_bytes": 354418688
+      },
+      "time_improvement_percent": -0.10499073834355777,
+      "time_regression_percent": 0.10499073834355777,
+      "allocated_reduction_percent": 16.069968100292442,
+      "qualifies_speed": false,
+      "qualifies_memory": true,
+      "qualifies_independent_inverse": true
+    }
+  ],
+  "primary_directed_cell_vs_compact": [
+    {
+      "size": 1024,
+      "sigma": 3,
+      "reference": "grouped-compact",
+      "candidate": "cell-support",
+      "reference_ms": 4.293788999973458,
+      "candidate_ms": 5.246658000004345,
+      "reference_peak": {
+        "allocated_bytes": 97373184,
+        "reserved_bytes": 165675008
+      },
+      "candidate_peak": {
+        "allocated_bytes": 97373184,
+        "reserved_bytes": 165675008
+      },
+      "time_improvement_percent": -22.19179843342971,
+      "time_regression_percent": 22.19179843342971,
+      "allocated_reduction_percent": 0.0,
+      "qualifies_speed": false,
+      "qualifies_memory": false,
+      "qualifies_independent_inverse": false
+    },
+    {
+      "size": 2048,
+      "sigma": 3,
+      "reference": "grouped-compact",
+      "candidate": "cell-support",
+      "reference_ms": 23.475461999964864,
+      "candidate_ms": 23.418053000000327,
+      "reference_peak": {
+        "allocated_bytes": 284777472,
+        "reserved_bytes": 354418688
+      },
+      "candidate_peak": {
+        "allocated_bytes": 284777472,
+        "reserved_bytes": 354418688
+      },
+      "time_improvement_percent": 0.24454896761828548,
+      "time_regression_percent": -0.24454896761828548,
+      "allocated_reduction_percent": 0.0,
+      "qualifies_speed": false,
+      "qualifies_memory": false,
+      "qualifies_independent_inverse": false
+    }
+  ],
+  "inverse_baseline_pairs": [
+    {
+      "size": 1024,
+      "sigma": 3,
+      "reference": "baseline",
+      "candidate": "grouped-compact",
+      "reference_ms": 4.238934999989397,
+      "candidate_ms": 4.283245999999963,
+      "reference_peak": {
+        "allocated_bytes": 110794752,
+        "reserved_bytes": 174063616
+      },
+      "candidate_peak": {
+        "allocated_bytes": 97373184,
+        "reserved_bytes": 165675008
+      },
+      "time_improvement_percent": -1.0453333210034277,
+      "time_regression_percent": 1.0453333210034277,
+      "allocated_reduction_percent": 12.11390229024566,
+      "qualifies_speed": false,
+      "qualifies_memory": true,
+      "qualifies_independent_inverse": true
+    },
+    {
+      "size": 2048,
+      "sigma": 3,
+      "reference": "baseline",
+      "candidate": "grouped-compact",
+      "reference_ms": 22.810373000027084,
+      "candidate_ms": 22.758673999987877,
+      "reference_peak": {
+        "allocated_bytes": 339303424,
+        "reserved_bytes": 408944640
+      },
+      "candidate_peak": {
+        "allocated_bytes": 284777472,
+        "reserved_bytes": 354418688
+      },
+      "time_improvement_percent": 0.22664688577931358,
+      "time_regression_percent": -0.22664688577931358,
+      "allocated_reduction_percent": 16.069968100292442,
+      "qualifies_speed": false,
+      "qualifies_memory": true,
+      "qualifies_independent_inverse": true
+    },
+    {
+      "size": 2048,
+      "sigma": 3,
+      "reference": "baseline",
+      "candidate": "cell-support",
+      "reference_ms": 22.810373000027084,
+      "candidate_ms": 21.856353999964995,
+      "reference_peak": {
+        "allocated_bytes": 339303424,
+        "reserved_bytes": 408944640
+      },
+      "candidate_peak": {
+        "allocated_bytes": 284777472,
+        "reserved_bytes": 354418688
+      },
+      "time_improvement_percent": 4.182391055424461,
+      "time_regression_percent": -4.182391055424461,
+      "allocated_reduction_percent": 16.069968100292442,
+      "qualifies_speed": true,
+      "qualifies_memory": true,
+      "qualifies_independent_inverse": true
+    }
+  ],
+  "inverse_directed_cell_vs_compact": [
+    {
+      "size": 2048,
+      "sigma": 3,
+      "reference": "grouped-compact",
+      "candidate": "cell-support",
+      "reference_ms": 22.758673999987877,
+      "candidate_ms": 21.856353999964995,
+      "reference_peak": {
+        "allocated_bytes": 284777472,
+        "reserved_bytes": 354418688
+      },
+      "candidate_peak": {
+        "allocated_bytes": 284777472,
+        "reserved_bytes": 354418688
+      },
+      "time_improvement_percent": 3.9647301069621332,
+      "time_regression_percent": -3.9647301069621332,
+      "allocated_reduction_percent": 0.0,
+      "qualifies_speed": true,
+      "qualifies_memory": false,
+      "qualifies_independent_inverse": true
+    }
+  ],
+  "integration_eligibility": [
+    {
+      "size": 1024,
+      "sigma": 3,
+      "inverse_evidence_received": true,
+      "fullcompact_baseline_qualified_both_runs": true,
+      "cell_baseline_qualified_both_runs": false,
+      "cell_over_qualified_fullcompact_gate_both_runs": false,
+      "fullcompact_preference_condition_met": true,
+      "csr_baseline_only_scope": false,
+      "automatic_adoption": false
+    },
+    {
+      "size": 2048,
+      "sigma": 3,
+      "inverse_evidence_received": true,
+      "fullcompact_baseline_qualified_both_runs": true,
+      "cell_baseline_qualified_both_runs": true,
+      "cell_over_qualified_fullcompact_gate_both_runs": false,
+      "fullcompact_preference_condition_met": true,
+      "csr_baseline_only_scope": false,
+      "automatic_adoption": false
+    }
+  ],
+  "root_disposition": {
+    "integrate": "fixed G8/int16 fullscan research algorithm for sigma3 N1024/N2048 memory objective",
+    "cell_csr": "research source/evidence preserved; not integrated because directed speed/memory improvement fails the required both-run gate",
+    "public_dispatch": "unchanged",
+    "broad_sigma8": "retain H4096",
+    "speed_claim": "no compact speed win; CSR one-order improvement unconfirmed in primary"
+  },
+  "cpu_integration": {
+    "passed": 1389,
+    "gpu_db_skipped": 2644,
+    "warnings": 18,
+    "seconds": 27.66,
+    "ruff": "PASS",
+    "build": "PASS",
+    "declarations_prepare_check": "PASS"
+  },
+  "recovery": "output/sphere-support-recovery-20261009/"
+}
