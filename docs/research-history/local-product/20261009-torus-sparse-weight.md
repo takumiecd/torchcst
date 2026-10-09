@@ -31,3 +31,21 @@ and reserved bytes. Process GPU memory is unmeasured. A separate inverse job
 memory reduction with <=3% time regression. CPU declarations are not GPU PASS.
 Public default selector remains unchanged. Raw drivers/results belong in
 ignored `output/torus-sparse-weight/` and the shared pool job directories.
+
+Initial source f6a140b7 gate job `l4job-9e2177a6458a458995b2d795db1e81b7`
+failed in driver setup before importing Torch or running any GPU test. The
+Colab Python3.13 environment cannot bootstrap venv ensurepip; driver time
+0.164 seconds. No numerical or performance result exists. Source archive
+`fa62f19dbf1bed3715462043581fc842614bef1e97cce0894787361a5cbc497c`,
+result archive `d691537135094321aacf98a8b948203c1a4ab386a5880453953d1628f62a25cb`.
+Complete job copied to ignored `output/torus-sparse-weight/failed-setup-v1/`,
+all files and archives hash-verified. Corrected driver uses installed pytest
+first; only if absent, creates a no-ensurepip job-local environment and directs
+pip explicitly to that environment. Corrected gate has 899 seconds, retaining
+all tests, four cases, oracle and tolerance gates. This is a setup repair,
+not a retry justified by numerical or performance outcomes.
+
+Metadata checkpoint e1f6506 additionally rejects TF32 for cuBLAS contractions;
+cohort already sets TF32 false and numerical execution files are unchanged.
+Local CPU full suite: 1350 passed, 2418 skipped, 18 warnings,26.44 seconds;
+wheel/sdist offline build and Ruff passed. CUDA skips are unvalidated.
