@@ -10,7 +10,7 @@ per-chart discrete L2 floors, live widths and all six atom gradients.
 ## Execution change and constraints
 
 The new research Algorithm owns the storage choice; its Recipe has the same
-CAP64/T16/int16/group1-or4/separate-or-merged fields as stored direct.
+CAP64/T16/int16/group1-or 4/separate-or-merged fields as stored direct.
 The existing decoder and site normalization are reused. A dedicated packer
 stores complete Norm and Count plus ordered support IDs, never allocating Phi.
 The contraction recomputes gap³/max(savedNorm,floor) from saved sites, centres
@@ -25,12 +25,12 @@ FP32 IEEE, disabled TF32 and disabled floating-point fusion are unchanged.
 
 ## Frozen comparison before GPU execution
 
-N1024/N2048, batch32, floor(.05*N²) atoms, seed41, sigma3, MSE, fused AdamW
-lr1e-4/weight-decay.01, existing research Graph update, and exactly24 updates
+N1024/N2048, batch 32, floor(.05*N²) atoms, seed41, sigma3, MSE, fused AdamW
+lr 1e-4 / weight decay 0.01, existing research Graph update, and exactly 24 updates
 match the preceding cohort. All CST routes require independent full-site,
-all-atom FP64 Y/dX/all-dP at initial and after24 checkpoints with both maxabs
-and relative-L2<=4e-4. Twenty-one timed Graph replays follow the same2 warmup
-and1 capture/replay updates. Peak allocated/reserved includes capture/replay.
+all-atom FP64 Y/dX/all-dP at initial and after 24 checkpoints with both maxabs
+and relative-L2<=4e-4. Twenty-one timed Graph replays follow the same 2 warmup
+and 1 capture/replay updates. Peak allocated/reserved includes capture/replay.
 Separate phase diagnostics are never added to or subtracted from step timing.
 
 The new fixed cohort has22 workers: compact W, old direct, four stored direct
@@ -44,9 +44,9 @@ benchmark result alone.
 
 Compilation-heavy regression checks use two separate prerequisite jobs:
 the original159 tests and the new73 runtime plus6 benchmark tests (238 unique
-regression cases total). A third job checks all22 full correctness workers;
+regression cases total). A third job checks all 22 full correctness workers;
 timing starts only after all prerequisites pass on the same frozen source.
-Each job keeps the900s outer/875s driver/350s child limits. All collections,
+Each job keeps the 900s outer/875s driver/350s child limits. All collections,
 partitions, JUnit mappings, source hashes and failures are preserved. This is
 a separately declared implementation study, not an expanded retry budget for
 the preceding failed gate. No tolerance relaxation or partial winner selection
@@ -56,18 +56,18 @@ is permitted.
 
 The frozen implementation is commit
 `3134fd2e32a110b5c8afe56e0cada39caf5d6575` on
-`kernel/sphere-direct-recompute`. Original regressions passed159/159 and
-recompute regressions passed79/79 with zero skips. The full correctness gate
-passed all22 workers, followed by all22 primary workers and30 common tests.
-Each CST worker passed the independent initial/after24 FP64 Y, dX and all-dP
-checks without changing the4e-4 maxabs or relative-L2 limits. Primary driver
+`kernel/sphere-direct-recompute`. Original regressions passed 159/159 and
+recompute regressions passed 79/79 with zero skips. The full correctness gate
+passed all 22 workers, followed by all 22 primary workers and 30 common tests.
+Each CST worker passed the independent initial/after 24 FP64 Y, dX and all-dP
+checks without changing the 4e-4 maxabs or relative-L2 limits. Primary driver
 time was597.665s, within the frozen875s limit. Hardware was NVIDIA L4
-(`GPU-d176e854-fb7f-9cc1-bf2d-7e9fd3badf50`, driver580.82.07), Torch2.11.0+cu130,
-CUDA13.0 and Triton3.6.0.
+(`GPU-d176e854-fb7f-9cc1-bf2d-7e9fd3badf50`, driver580.82.07), Torch 2.11.0+cu130,
+CUDA 13.0 and Triton 3.6.0.
 
 These are matched primary complete-step medians and capture/replay memory
 peaks. Memory columns are allocated / reserved MiB, not GPU process usage.
-Each cell is one independent worker with21 timed replays, not21 independent
+Each cell is one independent worker with 21 timed replays, not21 independent
 runs. Stored/recomputed pairs differ in Phi storage and recomputation only.
 
 | Route | N1024 ms | N1024 MiB | N2048 ms | N2048 MiB |
@@ -85,11 +85,11 @@ runs. Stored/recomputed pairs differ in Phi storage and recomputation only.
 | dense | 0.085190 | 32.877 / 86 | 0.592783 | 81.502 / 106 |
 
 Against matching stored routes, recomputation lowers allocated peak35.263%
-at1024 and41.557% at2048. Time changes (positive means slower) are respectively
+at 1024 and 41.557% at 2048. Time changes (positive means slower) are respectively
 G1 separate +3.398% / -0.996%, G4 separate +1.919% / -0.526%, G1 merged
 +1.292% / -2.714%, and G4 merged +1.023% / -1.778%. The measured peak reductions
 are26.399MiB /104MiB; these include allocator/Graph lifetimes and are distinct
-from the25.6MiB /102.4MiB eliminated Phi tensor capacity.
+from the 25.6MiB /102.4MiB eliminated Phi tensor capacity.
 
 The fastest recompute route is G4 merged at both sizes. Relative to compact W,
 its allocated peak falls47.812% /46.146%, but complete-step time rises52.438%
@@ -99,11 +99,14 @@ The assessor returned `PASS`, `primary_both_shapes_qualified=[]`,
 eligible or run. The route remains a negative research result with a measured
 memory benefit; it is not adopted and no public default changes.
 
+The subsequent [output ownership study](20261010-sphere-site-gather.md)
+remeasures its own controls while changing only output consumption.
+
 ## Compiler evidence and remaining hypotheses
 
 The separate actual-N2048/B32/A209715 G4-merged resource diagnostic records
-forward127 registers, zero spills and512 shared bytes; backward168 registers,
-eight spills and1024 shared bytes. PTX contains FP32 multiply/add instructions
+forward 127 registers, zero spills and 512 shared bytes; backward 168 registers,
+eight spills and 1024 shared bytes. PTX contains FP32 multiply/add instructions
 and no MMA or TF32. These compilation facts do not prove the cause of the
 complete-step timing result: cache traffic, occupancy and atomic contention
 were not attributed by this study.
@@ -121,12 +124,18 @@ implementation or explanation of the measured slowdown.
 The candidate implementation, tests and catalogs remain on the retained
 `kernel/sphere-direct-recompute` research branch at the frozen commit above.
 They are not in `main`; this integration contains research notes only.
-Local recovery artifacts are being collected under
+Final recovery is preserved under
 `output/sphere-cuda-core-recovery-20261010/` in the primary checkout.
-Its `checkpoint-manifest.json` records an intermediate bundle verification,
-restore and fsck PASS. Final recovery-bundle and restore verification is pending,
-including the final Site study heads and raw evidence; no final recovery or
-cleanup completion is claimed here. Preservation follows the
+`manifest.json` records exact restoration of all three named research refs,
+presence of every frozen measured commit, and `git fsck` exit code 0.
+The history bundle SHA256 is
+`6845e7966ab5509e1c9f48d75e54dedc49a338cc02d0559828e48f686bc39b71`.
+`evidence-manifest.json` records 608 raw/tooling files restored byte-for-byte;
+the evidence archive SHA256 is
+`a7d8970176bbbf32d9f041177c8db5a4779f05a843c08e43caee222431e1b6ac`.
+`gpu-stopped.json` records every owned pool slot stopped. No branch or worktree
+was deleted. Candidate code remains on the local named research refs; this
+integration contains notes only. Preservation follows the
 [research operating rules](../../research-operations.ja.md).
 
 All four stages used the same frozen tracked implementation and comparison
@@ -142,7 +151,7 @@ tracked-source identity across stages.
 
 Frozen tools and assessed results are retained in ignored
 `output/sphere-direct-recompute/`; raw results/source manifests remain under
-`~/.local/state/colab-l4-pool/jobs/<job-id>/results/`. All22 primary worker JSON
+`~/.local/state/colab-l4-pool/jobs/<job-id>/results/`. All 22 primary worker JSON
 SHA values were independently checked against the primary cohort manifest.
 
 - Protocol SHA256: `5cc4485386d4414062ee2aba5da900307e8f062fc1883bec4cc86e3fc002f375`.

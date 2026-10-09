@@ -11,8 +11,8 @@ The operator/chart contract is described in the
 ## Fixed initial candidates
 
 All new routes reuse the existing fused preparation and lossless int16
-support IDs with int32 address widening. CAP64 and site tile16 are fixed.
-The four routes cross atom groups1/4 with separate/merged output VJP.
+support IDs with int32 address widening. CAP64 and site tile 16 are fixed.
+The four routes cross atom groups 1/4 with separate/merged output VJP.
 They retain H for backward, keep G within each contraction CTA, and allocate
 neither square W/dW nor complete sites-by-atoms U/V arrays. Bounded packed
 profile values and support IDs remain saved for backward reuse; this study
@@ -59,16 +59,16 @@ formula alone.
 N1024/N2048, B32, floor(0.05*N²) atoms, seed41, initial sigma3, FP32 IEEE,
 TF32 disabled, MSE and existing fused AdamW/research Sphere update Graph.
 Each isolated worker checks full-site/all-atom FP64 Y, dX and all-dP both
-initially and after24 actual updates with maxabs AND relative-L2 <=4e-4.
-Two warmup updates, one initial Graph replay and21 timed replays total24.
+initially and after 24 actual updates with maxabs AND relative-L2 <=4e-4.
+Two warmup updates, one initial Graph replay and 21 timed replays total24.
 Peak allocated/reserved include capture/replay. Separate phase diagnostics
 are never summed into or subtracted from the uninstrumented complete step.
 
 The fixed initial cohort contains compact W, old direct, all four new
 ablations and dense at both sizes, without filtering. All correctness workers
 must pass before timing. A candidate qualifies against compact W with either
-strictly more than3% speed improvement, or at least5% allocated reduction
-and no more than3% time regression. Adoption requires independent reverse
+strictly more than 3% speed improvement, or at least5% allocated reduction
+and no more than 3% time regression. Adoption requires independent reverse
 confirmation at both shapes. Improvements against old direct alone are
 mechanism evidence. Failed or negative outcomes remain preserved.
 
@@ -94,26 +94,26 @@ gate and retains bitwise dP equality and independent FP64 checks before and
 after mutation. The runtime is unchanged by this correction.
 
 The first failed gate also returned partial G1 compiler diagnostics:
-forward39 registers, backward80, zero spills and512 bytes shared memory,
+forward 39 registers, backward 80, zero spills and 512 bytes shared memory,
 for both separate and merged VJP. These are diagnostics from an incomplete
 job, not evidence that all variants passed or that a candidate is faster.
-The replacement gate partitions the same159 tests without omission or retry.
-All partitions and all14 correctness workers passed before timing.
+The replacement gate partitions the same 159 tests without omission or retry.
+All partitions and all 14 correctness workers passed before timing.
 
 ## Completed fixed cohort: negative adoption result
 
-The partitioned gate l4job-d5540038f89747358b2edd4ab07b8153 passed159 tests
-with zero skips and all14 full correctness workers in763.31s. Its six
-partitions contained98/1/1/1/1/57 distinct tests. The independent source,
+The partitioned gate l4job-d5540038f89747358b2edd4ab07b8153 passed 159 tests
+with zero skips and all 14 full correctness workers in 763.31s. Its six
+partitions contained 98/1/1/1/1/57 distinct tests. The independent source,
 JUnit and raw-artifact audit passed. Maximum absolute oracle error was
 5.6681e-5, within the unchanged4e-4 gate.
 
-Primary l4job-e1735b731bae4f05964b6e19b343088d passed30 protocol tests
-and all14 workers in374.92s. Both jobs used frozen source
+Primary l4job-e1735b731bae4f05964b6e19b343088d passed 30 protocol tests
+and all 14 workers in 374.92s. Both jobs used frozen source
 5b8e1d8d7353ec24b3a394d8e3ddc50b7b36e372 and partitioned-v2 driver
-SHA2561b6ddd34c52f0e71c63b3c092108bcd3d49cbd390c318e915243d4b38ee5b6a8.
-Hardware was NVIDIA L4; Python3.13.15, Torch2.11.0+cu130, CUDA13.0 and
-Triton3.6.0. Complete Graph step medians and capture/replay peak allocated
+SHA256 1b6ddd34c52f0e71c63b3c092108bcd3d49cbd390c318e915243d4b38ee5b6a8.
+Hardware was NVIDIA L4; Python 3.13.15, Torch 2.11.0+cu130, CUDA 13.0 and
+Triton 3.6.0. Complete Graph step medians and capture/replay peak allocated
 memory were:
 
 | Route | N1024 ms | N1024 MiB | N2048 ms | N2048 MiB |
@@ -127,21 +127,21 @@ memory were:
 | dense control | 0.0855 | 32.877 | 0.5937 | 81.502 |
 
 All four new routes reduced allocated memory versus compact W, but failed
-the predeclared time constraint. G4 merged was45.29% slower at1024 and
-40.49% slower at2048, with19.38% and7.85% allocated reductions. The frozen
+the predeclared time constraint. G4 merged was45.29% slower at 1024 and
+40.49% slower at 2048, with 19.38% and 7.85% allocated reductions. The frozen
 assessor returned an empty eligible selection; no reverse adoption run or
 public-dispatch change followed. Improvement over old direct is mechanism
 evidence only, and CST still has no measured memory advantage over dense here.
 
-Separate instrumented diagnostics at2048 measured compact W forward/loss
-14.569ms and backward7.220ms; G4 merged measured18.830ms and12.748ms.
+Separate instrumented diagnostics at 2048 measured compact W forward/loss
+14.569ms and backward7.220ms; G4 merged measured18.830ms and 12.748ms.
 These separate30-update runs are not added to or subtracted from primary
 timings. Neither CUDA Core grouping nor output-VJP fusion removed atomic
 scatter. Atomic dominance is a hypothesis, not an isolated measurement.
 
-Matched2048 compiler diagnostics found G1 forward39/backward80 registers
-with zero spills; G4 forward71/backward168 registers, with2 backward spills
-for separate VJP and0 for merged. No MMA/TF32 instructions were present.
+Matched2048 compiler diagnostics found G1 forward 39/backward 80 registers
+with zero spills; G4 forward 71/backward 168 registers, with 2 backward spills
+for separate VJP and 0 for merged. No MMA/TF32 instructions were present.
 These explain resource differences but do not establish a timing cause.
 
 Raw jobs, frozen-v2 driver/protocol/assessor and their source/result archives
@@ -158,10 +158,16 @@ saved support/geometry/norm; its completed results are recorded in the
 [profile recomputation study](20261010-sphere-direct-recompute.md).
 Those measurements are distinct from the 107374080-byte capacity estimate at 2048.
 
-Local recovery artifacts are being collected under
+Final recovery is preserved under
 `output/sphere-cuda-core-recovery-20261010/` in the primary checkout.
-Its `checkpoint-manifest.json` records an intermediate bundle verification,
-restore and fsck PASS. Final recovery-bundle and restore verification is pending,
-including the final Site study heads and raw evidence; the intermediate
-checkpoint is not a final recovery claim. Preservation follows the
+`manifest.json` records exact restoration of all three named research refs,
+presence of every frozen measured commit, and `git fsck` exit code 0.
+The history bundle SHA256 is
+`6845e7966ab5509e1c9f48d75e54dedc49a338cc02d0559828e48f686bc39b71`.
+`evidence-manifest.json` records 608 raw/tooling files restored byte-for-byte;
+the evidence archive SHA256 is
+`a7d8970176bbbf32d9f041177c8db5a4779f05a843c08e43caee222431e1b6ac`.
+`gpu-stopped.json` records every owned pool slot stopped. No branch or worktree
+was deleted. Candidate code remains on the local named research refs; this
+integration contains notes only. Preservation follows the
 [research operating rules](../../research-operations.ja.md).
