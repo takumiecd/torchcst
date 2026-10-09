@@ -430,6 +430,13 @@ def state_trajectory(geometry, sigma, *, steps=20):
 
 def phase_diagnostics(step, *, samples=5):
     """Separate bounded Graph after primary peaks; phases are not additive."""
+    if isinstance(step, TrainingStep) and isinstance(step.model, CSTLinear):
+        # deepcopy invalidates metadata/tensor identities and dispatcher state.
+        # Prepare this fresh binding outside capture without advancing AdamW.
+        step.model.execution_declaration()
+        prepared = step.model(step.x)
+        del prepared
+        torch.cuda.synchronize()
     events = [torch.cuda.Event(enable_timing=True, external=True) for _ in range(4)]
     updates = (
         None

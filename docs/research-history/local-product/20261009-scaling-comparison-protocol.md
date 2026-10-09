@@ -43,7 +43,10 @@ raw positive support (including zero-amplitude atoms); exact FP32 boundary
 rounding may change runtime overflow counts. A separate fresh diagnostic model
 copies the24-updated parameters/moments/clock, executes one capture plus five
 instrumented replays, and records forward/loss, backward, optimizer and proposal
-components. These phases neither mutate the primary model nor replace/add up to
+components. A fresh CST diagnostic copy refreshes its declaration and runs/frees
+an untimed dry forward outside capture to bind new tensor identities and query
+state, without an additional optimizer update. The diagnostic clock advances
+from24 to30 while the primary remains24. These phases neither mutate the primary model nor replace/add up to
 uninstrumented complete-step timing. Correctness-only workers emit no timing.
 
 Caller cohorts run each plan/mode in an isolated sequential worker, retain all

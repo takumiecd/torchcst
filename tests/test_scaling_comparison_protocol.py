@@ -1,5 +1,6 @@
 """Common inputs, exact oracles, frozen metadata and declared state trajectories."""
 
+import copy
 import hashlib
 import struct
 import subprocess
@@ -212,3 +213,36 @@ def test_diagnostic_capture_and_five_replays_execute_six_updates():
     protocol.phase_diagnostics(Diagnostic())
     torch.cuda.synchronize()
     assert int(clock) == 6
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="actual CUDA required")
+@pytest.mark.parametrize("geometry", ["sphere", "torus"])
+def test_copied_cst_phase_refreshes_metadata_without_extra_update(geometry):
+    model, x, target, _ = protocol.fixture(
+        geometry, 64 if geometry == "sphere" else 1024, 3, batch=4, atoms=17
+    )
+    model = model.cuda()
+    x, target = x.cuda().requires_grad_(), target.cuda()
+    protocol.bind_plan(model, protocol.baseline_plan(geometry, 3))
+    step = protocol.TrainingStep(model, x, target, geometry, "research_graph")
+    graph, _ = protocol.capture(step)
+    for _ in range(21):
+        graph.replay()
+    torch.cuda.synchronize()
+    assert int(step.opt.state[model.atoms.p]["step"]) == 24
+    primary_parameters = model.atoms.p.detach().clone()
+    diagnostic_model = copy.deepcopy(model)
+    assert "_execution_declaration" not in diagnostic_model.__dict__
+    diagnostic = protocol.TrainingStep(
+        diagnostic_model,
+        x.detach().clone().requires_grad_(),
+        target.clone(),
+        geometry,
+        "research_graph",
+    )
+    diagnostic.opt.load_state_dict(copy.deepcopy(step.opt.state_dict()))
+    report = protocol.phase_diagnostics(diagnostic)
+    assert report["samples"] == 5
+    assert int(diagnostic.opt.state[diagnostic_model.atoms.p]["step"]) == 30
+    assert int(step.opt.state[model.atoms.p]["step"]) == 24
+    assert torch.equal(primary_parameters, model.atoms.p)
