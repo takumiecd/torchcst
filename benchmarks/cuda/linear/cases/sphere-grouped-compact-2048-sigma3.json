@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "sphere-grouped-compact-2048-sigma3",
+    "fixture": "polar_sphere_separable",
+    "size": 2048,
+    "rows": 32,
+    "atoms": 209715,
+    "profile": "rho3",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 3,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "sphere-grouped-weight-64-g8-t16",
+    "grouped-compact"
+  ],
+  "baseline": "sphere-grouped-weight-64-g8-t16",
+  "dense": true
+}

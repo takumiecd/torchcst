@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "sphere-grouped-weight-64-g8-t16",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_grouped_weight",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64,
+          "patch_tile": 16,
+          "atom_group": 8,
+          "index_bits": 32
+        }
+      }
+    },
+    {
+      "id": "grouped-compact",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_grouped_compact",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64,
+          "patch_tile": 16,
+          "atom_group": 8,
+          "index_bits": 16
+        }
+      }
+    }
+  ]
+}

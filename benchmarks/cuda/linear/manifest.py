@@ -60,6 +60,9 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
     SphereAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.sphere_polar.compact_algorithm import (
+    SphereGroupedCompactAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.fused_algorithm import (
     SphereFusedWeightAlgorithm,
 )
@@ -127,6 +130,7 @@ REGISTRY.register(SphereSupportAlgorithm())
 REGISTRY.register(SphereWeightAlgorithm())
 REGISTRY.register(SphereFusedWeightAlgorithm())
 REGISTRY.register(SphereGroupedWeightAlgorithm())
+REGISTRY.register(SphereGroupedCompactAlgorithm())
 REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(TorusChunkAlgorithm())
 REGISTRY.register(TorusOnchipAlgorithm())
