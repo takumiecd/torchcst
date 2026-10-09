@@ -224,3 +224,29 @@ def test_research_step_revalidates_live_geometry_before_base_proposal(fault):
         step()
     assert torch.equal(old, model.atoms.p)
     assert not any(step.opt.state.values())
+
+
+@GPU
+@pytest.mark.parametrize("sigma", [3.0, 8.0])
+@pytest.mark.parametrize("mode", ["finite_chord", "time_energy"])
+def test_public_cuda_selector_twenty_steps_preserves_public_parameter_state(
+    sigma, mode
+):
+    from benchmarks.cuda.linear.sphere_graph import public_trajectory_gate
+
+    assert public_trajectory_gate(sigma=sigma, mode=mode)["status"] == "PASS"
+
+
+@GPU
+def test_public_cuda_selector_still_checks_nonfinite_before_base_mutation():
+    from benchmarks.cuda.linear.sphere_graph import public_cuda_optimizer
+
+    model, *_ = fixture(17, 3.0, atoms=4)
+    model = model.cuda()
+    opt = public_cuda_optimizer(model)
+    old = model.atoms.p.detach().clone()
+    model.atoms.p.grad = torch.full_like(model.atoms.p, float("nan"))
+    with pytest.raises(FloatingPointError, match="non-finite"):
+        opt.step()
+    assert torch.equal(old, model.atoms.p)
+    assert not any(opt.state.values())

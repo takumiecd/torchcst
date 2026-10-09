@@ -32,6 +32,19 @@ def update_dispatcher():
     return Dispatcher(registry=registry)
 
 
+def public_cuda_optimizer(model, *, lr=1e-4):
+    """Change only the declared updater; retain the complete public wrapper."""
+    from torchcst._backends.dispatch import FixedSelector
+
+    validate_geometry_scalars(model)
+    registry = update_dispatcher().registry
+    return CSTOptimizer(
+        torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01, fused=True),
+        model=model,
+        update_selector=FixedSelector(FUSED, registry=registry),
+    )
+
+
 def validate_geometry_scalars(model):
     """Reject malformed live radius/margin buffers before any base proposal."""
     p = model.atoms.p
@@ -194,6 +207,78 @@ def trajectory_gate(size=32, sigma=3.0, steps=20, route="weight-64", linear_plan
     }
 
 
+def public_trajectory_gate(size=32, sigma=3.0, steps=20, mode="finite_chord"):
+    """Both use independent Torch linear; only coordinate implementation differs."""
+    from dataclasses import replace
+
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.set_float32_matmul_precision("highest")
+    base, xx, target, _ = baseline.fixture(size, sigma, batch=4)
+    base.kernel.spec = replace(
+        base.kernel.spec,
+        update=replace(
+            base.kernel.spec.update,
+            settings=tuple(
+                (k, mode if k == "activity_mode" else v)
+                for k, v in base.kernel.spec.update.settings
+            ),
+        ),
+    )
+    actual, reference = base.cuda(), copy.deepcopy(base).cuda()
+    aopt, ropt = public_cuda_optimizer(actual), baseline.optimizer(reference)
+    ax, rx = xx.cuda().requires_grad_(), xx.cuda().requires_grad_()
+    target = target.cuda()
+    width0 = actual.atoms.p[:, :2].detach().square().sum(-1).clone()
+    maxima = {
+        k: 0.0 for k in ("Y", "dX", "all_dP", "parameters", "exp_avg", "exp_avg_sq")
+    }
+    for _ in range(steps):
+        aopt.zero_grad(set_to_none=True)
+        ropt.zero_grad(set_to_none=True)
+        ax.grad, rx.grad = None, None
+        ay, ry = (
+            baseline.forward(actual, ax, "factored"),
+            baseline.forward(reference, rx, "factored"),
+        )
+        (ay - target).square().mean().backward()
+        (ry - target).square().mean().backward()
+        aopt.step()
+        ropt.step()
+        for key, aa, bb in (
+            ("Y", ay, ry),
+            ("dX", ax.grad, rx.grad),
+            ("all_dP", actual.atoms.p.grad, reference.atoms.p.grad),
+            ("parameters", actual.atoms.p, reference.atoms.p),
+            (
+                "exp_avg",
+                aopt.state[actual.atoms.p]["exp_avg"],
+                ropt.state[reference.atoms.p]["exp_avg"],
+            ),
+            (
+                "exp_avg_sq",
+                aopt.state[actual.atoms.p]["exp_avg_sq"],
+                ropt.state[reference.atoms.p]["exp_avg_sq"],
+            ),
+        ):
+            e = baseline.error(aa, bb)
+            maxima[key] = max(maxima[key], e["max_abs"])
+            if e["max_abs"] > (2e-6 if key == "parameters" else 4e-4):
+                raise AssertionError((key, e))
+        assert torch.equal(
+            aopt.state[actual.atoms.p]["step"], ropt.state[reference.atoms.p]["step"]
+        )
+    changed = bool(torch.any(width0 != actual.atoms.p[:, :2].detach().square().sum(-1)))
+    if not changed:
+        raise AssertionError("activity width clock did not evolve")
+    return {
+        "status": "PASS",
+        "steps": steps,
+        "mode": mode,
+        "max_abs": maxima,
+        "live_width_changed": changed,
+    }
+
+
 def timed(call, samples=21):
     values = []
     for _ in range(samples):
@@ -257,8 +342,12 @@ def measure(size, sigma, route, mode, linear_plan=None):
             loss.backward()
             opt.step()
             return y, loss
-    elif mode == "public_eager":
-        opt = baseline.optimizer(model)
+    elif mode in ("public_eager", "public_cuda_eager"):
+        opt = (
+            public_cuda_optimizer(model)
+            if mode == "public_cuda_eager"
+            else baseline.optimizer(model)
+        )
 
         def call():
             return baseline.step(model, opt, x, target, route)
@@ -290,7 +379,7 @@ def measure(size, sigma, route, mode, linear_plan=None):
         "protocol": "complete loss/backward/dX/AdamW + declared Sphere update"
         if mode.startswith("research")
         else mode,
-        "public_optimizer_guards": mode == "public_eager",
+        "public_optimizer_guards": mode in ("public_eager", "public_cuda_eager"),
         "timing": timing,
         **peaks,
         "initial_oracle": before,
@@ -318,6 +407,7 @@ def main():
         "--mode",
         choices=(
             "public_eager",
+            "public_cuda_eager",
             "research_eager",
             "research_graph",
             "dense_eager",
