@@ -63,6 +63,9 @@ from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.fused_algorithm import (
     SphereFusedWeightAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.sphere_polar.grouped_algorithm import (
+    SphereGroupedWeightAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.support_algorithm import (
     SphereSupportAlgorithm,
 )
@@ -72,11 +75,11 @@ from torchcst._backends.cuda.algorithms.linear.sphere_polar.weight_algorithm imp
 from torchcst._backends.cuda.algorithms.linear.strip_profile_product import (
     StripProductAlgorithm,
 )
-from torchcst._backends.cuda.algorithms.linear.torus_profile_product.sparse_weight.algorithm import (
-    TorusSparseWeightAlgorithm,
-)
 from torchcst._backends.cuda.algorithms.linear.torus_profile_product.onchip.algorithm import (
     TorusOnchipAlgorithm,
+)
+from torchcst._backends.cuda.algorithms.linear.torus_profile_product.sparse_weight.algorithm import (
+    TorusSparseWeightAlgorithm,
 )
 from torchcst._backends.registry import Registry
 from torchcst._backends.schema import ExecutionPlan
@@ -120,6 +123,7 @@ REGISTRY.register(SphereAlgorithm())
 REGISTRY.register(SphereSupportAlgorithm())
 REGISTRY.register(SphereWeightAlgorithm())
 REGISTRY.register(SphereFusedWeightAlgorithm())
+REGISTRY.register(SphereGroupedWeightAlgorithm())
 REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(TorusChunkAlgorithm())
 REGISTRY.register(TorusOnchipAlgorithm())

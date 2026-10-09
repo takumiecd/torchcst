@@ -59,7 +59,7 @@ def _block(
         valid = off < N
     else:
         valid = off < tl.load(Count + a)
-        idx = tl.load(Index + a * CAP + off, valid, 0)
+        idx = tl.load(Index + a * CAP + off, valid, 0).to(tl.int32)
     gap, d0, d1, d2, precision = _raw(S, Q, P, a, idx, N)
     gap = tl.where(valid, gap, 0.0)
     if FULL:
