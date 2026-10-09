@@ -36,8 +36,13 @@ def run(layer, x, recipe=RECIPE):
 
 
 def test_recipe_metadata_and_roundtrip():
+    assert SparseWeightRecipe() == RECIPE
     for kwargs in (
         {"circle_capacity": True},
+        {"circle_capacity": 128},
+        {"circle_capacity": 256},
+        {"section_capacity": 128},
+        {"patch_tile": 32},
         {"section_capacity": 32},
         {"patch_tile": 64},
     ):
@@ -55,6 +60,11 @@ def test_recipe_metadata_and_roundtrip():
     registry = Registry()
     registry.register(algorithm)
     assert registry.loads_plan(registry.dumps_plan(PLAN)) == PLAN
+    for circle in (16, 64):
+        for section in (16, 64, 256):
+            recipe = SparseWeightRecipe(circle, section, 16)
+            plan = replace(PLAN, recipe=recipe)
+            assert registry.loads_plan(registry.dumps_plan(plan)) == plan
 
 
 @CUDA

@@ -1,0 +1,1547 @@
+{
+  "schema_version": 1,
+  "study": "exact intrinsic Torus centre-fibre sparse W",
+  "disposition": "validated research option; speed-memory tradeoff; public default unchanged",
+  "measured_source_commit": "7a970a9954217d39d17664b8a5a6423a6b088fa2",
+  "integration_source_commit": "76f4337747940a2c30a2855c919c21804d5ecc42",
+  "protocol": {
+    "n": [
+      1024,
+      2048
+    ],
+    "batch": 32,
+    "atoms_fraction": 0.05,
+    "initial_sigma": [
+      3,
+      8
+    ],
+    "sigma_live": true,
+    "dtype": "FP32 IEEE",
+    "tf32": false,
+    "seed": 41,
+    "normalization": "full chart factored L2, one combinedfloor1e-6",
+    "centres": "intrinsic S1xS2 with coupled section/circle-radius derivative",
+    "optimizer": "AdamW + public-equivalent intrinsic Torus Polar update",
+    "timing": "uninstrumented complete evolving training step",
+    "samples_per_route_per_job": 21,
+    "independent_performance_jobs": 2,
+    "memory": "peak allocated/reserved including CUDA Graph capture/replay",
+    "gpu_process_usage": null,
+    "adoption_gate": "time improvement >3%, or allocated -5% with time regression <=3%",
+    "numeric_gates": {
+      "max_absolute": 0.0004,
+      "relative_l2": 0.0004,
+      "elementwise_atol": 0.0004,
+      "elementwise_rtol": 0.0004,
+      "parameter_update": 2e-06,
+      "moments20steps": 2e-05
+    }
+  },
+  "source_file_verification": {
+    "primary_inverse_all1515_source_files_equal": true,
+    "initial_parameters_inputs_targets_per_route_equal": true,
+    "runtime_fields_equal": true,
+    "independent_distinct_physical_L4_UUIDs": true,
+    "measured_vs_relocated_all7_function_ASTs_equal": true,
+    "final_numeric_files_byte_identical_to_integration76": [
+      "_shared/profiles.py",
+      "onchip/kernels.py",
+      "sparse_weight/kernels.py",
+      "sparse_weight/executor.py"
+    ]
+  },
+  "performance_jobs": [
+    {
+      "job_id": "l4job-ba408eb87c2b4e038553de2333a9dab6",
+      "source_archive_sha256": "d5c40731e45bd7f885889ae05420ca00511a7f6eccbbdf17b121b90e12daee0e",
+      "result_archive_sha256": "df1270e7ed70f504f8ac187adc320a2e25ee247db30368f686e1a66a1512f9a2",
+      "gpu": "NVIDIA L4, GPU-da372d56-a20b-d875-bda0-e31cf085f9ba, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "pool_vm_session": "cst-pool-33db6eba35cc-1",
+      "pool_slot": 1,
+      "returncode": 0,
+      "timed_out": false,
+      "driver_seconds": 428.5148274898529
+    },
+    {
+      "job_id": "l4job-52d34b291b4d4c48882c7151e09242c2",
+      "source_archive_sha256": "d4f6c03642de449978f480bc399abb414e4e0456ea34e879725282ee2cd8819b",
+      "result_archive_sha256": "acbc7445ea7acb386578af08050a59f1fee1d2d98faf4d0a47c51e1b2fc59820",
+      "gpu": "NVIDIA L4, GPU-daafb1dd-665e-4d51-f4ec-3ad9687b80fa, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "pool_vm_session": "cst-pool-e8e750ccf3e2-1",
+      "pool_slot": 1,
+      "returncode": 0,
+      "timed_out": false,
+      "driver_seconds": 436.400182723999
+    }
+  ],
+  "cases": [
+    {
+      "n": 1024,
+      "sigma": 3,
+      "atoms": 52428,
+      "orders": [
+        {
+          "order": "primary",
+          "records": [
+            {
+              "worker": "correctness",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 9.564673128181767e-06,
+                  "rel_l2": 4.5376456100104517e-07
+                },
+                "dx": {
+                  "max": 9.41380945662651e-06,
+                  "rel_l2": 4.4269084052290375e-07
+                },
+                "dp": {
+                  "max": 1.2673738169155513e-05,
+                  "rel_l2": 5.274407630256337e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "correctness",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 8.346258336899837e-06,
+                  "rel_l2": 4.47156850255067e-07
+                },
+                "dx": {
+                  "max": 1.036748377303276e-05,
+                  "rel_l2": 4.3867341988889386e-07
+                },
+                "dp": {
+                  "max": 1.2497381264520158e-05,
+                  "rel_l2": 5.145074441865257e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "initial_p_sha256": "54cbbefaf4d0f059e4a267d3156726659337c8f4d3bd803a9806eab4d2b69caf",
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 137489408,
+              "peak_reserved_capture_replay_bytes": 419430400,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 52428,
+                "max_abs_change": 0.014068841934204102,
+                "atoms": 52428,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-w-gemm.json",
+                "initial_range": [
+                  3.0000007152557373,
+                  3.0000007152557373
+                ],
+                "final_range": [
+                  2.985931873321533,
+                  2.985975980758667
+                ],
+                "initial_sha256": "3c9d470764813cecf162e5307d681643282c2e39f49f69b740095467c305602d",
+                "final_sha256": "f26f298f0ede0d97df0336683496d48c57eba34bf09a2773a45e125e96cf4d07"
+              },
+              "eager_median_ms": 231.16516000004594,
+              "graph_median_ms": 121.95924699994976,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 32.90009689331055,
+                "backward": 89.57337951660156,
+                "optimizer": 0.24985599517822266
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "initial_p_sha256": "54cbbefaf4d0f059e4a267d3156726659337c8f4d3bd803a9806eab4d2b69caf",
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 187313664,
+              "peak_reserved_capture_replay_bytes": 387973120,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 52428,
+                "max_abs_change": 0.014068841934204102,
+                "atoms": 52428,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-sparse-w.json",
+                "initial_range": [
+                  3.0000007152557373,
+                  3.0000007152557373
+                ],
+                "final_range": [
+                  2.985931873321533,
+                  2.9859719276428223
+                ],
+                "initial_sha256": "3c9d470764813cecf162e5307d681643282c2e39f49f69b740095467c305602d",
+                "final_sha256": "b30c560c1a74fa9e6449a31542c711d93afc09abf10addb5caacc82aab714c22"
+              },
+              "eager_median_ms": 13.670464000142601,
+              "graph_median_ms": 11.676789000148347,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 6.993919849395752,
+                "backward": 4.490240097045898,
+                "optimizer": 0.1945600062608719
+              }
+            },
+            {
+              "worker": "dense",
+              "plan_id": null,
+              "status": "PASS",
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 51382784,
+              "peak_reserved_capture_replay_bytes": 111149056,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": null,
+              "eager_median_ms": 0.6756560001122125,
+              "graph_median_ms": 0.08346399999936693,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 0.021503999829292297,
+                "backward": 0.028672000393271446,
+                "optimizer": 0.030719999223947525
+              }
+            }
+          ],
+          "graph_speedup_to_existing_w": 10.444587719997367,
+          "allocated_ratio_to_existing_w": 1.3623861410473161
+        },
+        {
+          "order": "inverse",
+          "records": [
+            {
+              "worker": "correctness",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 8.346258336899837e-06,
+                  "rel_l2": 4.470960042474132e-07
+                },
+                "dx": {
+                  "max": 1.036748377303276e-05,
+                  "rel_l2": 4.386921275720023e-07
+                },
+                "dp": {
+                  "max": 1.2497381264520158e-05,
+                  "rel_l2": 5.145074441865257e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "correctness",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 9.564673128181767e-06,
+                  "rel_l2": 4.5376456100104517e-07
+                },
+                "dx": {
+                  "max": 9.41380945662651e-06,
+                  "rel_l2": 4.4269084052290375e-07
+                },
+                "dp": {
+                  "max": 1.2673738169155513e-05,
+                  "rel_l2": 5.274407630256337e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "initial_p_sha256": "54cbbefaf4d0f059e4a267d3156726659337c8f4d3bd803a9806eab4d2b69caf",
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 187313664,
+              "peak_reserved_capture_replay_bytes": 387973120,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 52428,
+                "max_abs_change": 0.014068841934204102,
+                "atoms": 52428,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-sparse-w.json",
+                "initial_range": [
+                  3.0000007152557373,
+                  3.0000007152557373
+                ],
+                "final_range": [
+                  2.985931873321533,
+                  2.9859719276428223
+                ],
+                "initial_sha256": "3c9d470764813cecf162e5307d681643282c2e39f49f69b740095467c305602d",
+                "final_sha256": "b30c560c1a74fa9e6449a31542c711d93afc09abf10addb5caacc82aab714c22"
+              },
+              "eager_median_ms": 13.66585000005216,
+              "graph_median_ms": 11.656532000074549,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 6.996992111206055,
+                "backward": 4.486144065856934,
+                "optimizer": 0.19353599846363068
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "initial_p_sha256": "54cbbefaf4d0f059e4a267d3156726659337c8f4d3bd803a9806eab4d2b69caf",
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 137489408,
+              "peak_reserved_capture_replay_bytes": 419430400,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 52428,
+                "max_abs_change": 0.014068841934204102,
+                "atoms": 52428,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-w-gemm.json",
+                "initial_range": [
+                  3.0000007152557373,
+                  3.0000007152557373
+                ],
+                "final_range": [
+                  2.985931873321533,
+                  2.985975980758667
+                ],
+                "initial_sha256": "3c9d470764813cecf162e5307d681643282c2e39f49f69b740095467c305602d",
+                "final_sha256": "f26f298f0ede0d97df0336683496d48c57eba34bf09a2773a45e125e96cf4d07"
+              },
+              "eager_median_ms": 236.40563300000395,
+              "graph_median_ms": 118.98152799994932,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 32.15769577026367,
+                "backward": 87.28166198730469,
+                "optimizer": 0.24371199309825897
+              }
+            },
+            {
+              "worker": "dense",
+              "plan_id": null,
+              "status": "PASS",
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 51382784,
+              "peak_reserved_capture_replay_bytes": 111149056,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": null,
+              "eager_median_ms": 0.6860939998887261,
+              "graph_median_ms": 0.08323700001255929,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 0.021503999829292297,
+                "backward": 0.028672000393271446,
+                "optimizer": 0.03174399957060814
+              }
+            }
+          ],
+          "graph_speedup_to_existing_w": 10.207283607095865,
+          "allocated_ratio_to_existing_w": 1.3623861410473161
+        }
+      ]
+    },
+    {
+      "n": 1024,
+      "sigma": 8,
+      "atoms": 52428,
+      "orders": [
+        {
+          "order": "primary",
+          "records": [
+            {
+              "worker": "correctness",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 7.246669837090991e-06,
+                  "rel_l2": 3.027553071475694e-07
+                },
+                "dx": {
+                  "max": 5.994335909420556e-06,
+                  "rel_l2": 3.0200161053420255e-07
+                },
+                "dp": {
+                  "max": 3.4767632186571973e-06,
+                  "rel_l2": 3.1504669855217653e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "correctness",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 9.5884736399654e-06,
+                  "rel_l2": 3.3862368284793786e-07
+                },
+                "dx": {
+                  "max": 6.771089150703347e-06,
+                  "rel_l2": 3.40470009888081e-07
+                },
+                "dp": {
+                  "max": 2.490978470159888e-06,
+                  "rel_l2": 2.688667228515986e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "initial_p_sha256": "de4e9b12ddba485b90ea18c67532260069f66d461bb804e3bee1ce7a2d163188",
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 137489408,
+              "peak_reserved_capture_replay_bytes": 419430400,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 52428,
+                "max_abs_change": 0.10872507095336914,
+                "atoms": 52428,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-w-gemm.json",
+                "initial_range": [
+                  8.000001907348633,
+                  8.000001907348633
+                ],
+                "final_range": [
+                  7.891276836395264,
+                  7.891434669494629
+                ],
+                "initial_sha256": "2c44c0082757e6234e60e2f553a3c89b458d21c2a7f190d87acf8b23df67faa4",
+                "final_sha256": "77abab0d5366bdac203472ed4d477f42d5d7d9182965e67ce45ffcf08be7f1f1"
+              },
+              "eager_median_ms": 231.36147000013807,
+              "graph_median_ms": 124.1366490000928,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 33.370113372802734,
+                "backward": 90.59225463867188,
+                "optimizer": 0.2549760043621063
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "initial_p_sha256": "de4e9b12ddba485b90ea18c67532260069f66d461bb804e3bee1ce7a2d163188",
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 187313664,
+              "peak_reserved_capture_replay_bytes": 387973120,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 52428,
+                "max_abs_change": 0.10872507095336914,
+                "atoms": 52428,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-sparse-w.json",
+                "initial_range": [
+                  8.000001907348633,
+                  8.000001907348633
+                ],
+                "final_range": [
+                  7.891276836395264,
+                  7.891434669494629
+                ],
+                "initial_sha256": "2c44c0082757e6234e60e2f553a3c89b458d21c2a7f190d87acf8b23df67faa4",
+                "final_sha256": "45a189a6cbba1d744c698fbb5d6a2b73093f0445a0c17bf8254a5bb2bce35c91"
+              },
+              "eager_median_ms": 17.714388999820585,
+              "graph_median_ms": 15.90180999983204,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 10.369983673095703,
+                "backward": 5.172224044799805,
+                "optimizer": 0.19763199985027313
+              }
+            },
+            {
+              "worker": "dense",
+              "plan_id": null,
+              "status": "PASS",
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 51382784,
+              "peak_reserved_capture_replay_bytes": 111149056,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": null,
+              "eager_median_ms": 0.6455610000557499,
+              "graph_median_ms": 0.08329899992531864,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 0.021503999829292297,
+                "backward": 0.028672000393271446,
+                "optimizer": 0.03174399957060814
+              }
+            }
+          ],
+          "graph_speedup_to_existing_w": 7.806447756664428,
+          "allocated_ratio_to_existing_w": 1.3623861410473161
+        },
+        {
+          "order": "inverse",
+          "records": [
+            {
+              "worker": "correctness",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 6.799267427304301e-06,
+                  "rel_l2": 3.380736578223577e-07
+                },
+                "dx": {
+                  "max": 6.468537312120937e-06,
+                  "rel_l2": 3.410560880959079e-07
+                },
+                "dp": {
+                  "max": 2.490978470159888e-06,
+                  "rel_l2": 2.688667228515986e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "correctness",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 7.246669837090991e-06,
+                  "rel_l2": 3.027553071475694e-07
+                },
+                "dx": {
+                  "max": 5.994335909420556e-06,
+                  "rel_l2": 3.0200161053420255e-07
+                },
+                "dp": {
+                  "max": 3.4767632186571973e-06,
+                  "rel_l2": 3.1504669855217653e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "initial_p_sha256": "de4e9b12ddba485b90ea18c67532260069f66d461bb804e3bee1ce7a2d163188",
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 187313664,
+              "peak_reserved_capture_replay_bytes": 387973120,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 52428,
+                "max_abs_change": 0.10872507095336914,
+                "atoms": 52428,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-sparse-w.json",
+                "initial_range": [
+                  8.000001907348633,
+                  8.000001907348633
+                ],
+                "final_range": [
+                  7.891276836395264,
+                  7.891434669494629
+                ],
+                "initial_sha256": "2c44c0082757e6234e60e2f553a3c89b458d21c2a7f190d87acf8b23df67faa4",
+                "final_sha256": "45a189a6cbba1d744c698fbb5d6a2b73093f0445a0c17bf8254a5bb2bce35c91"
+              },
+              "eager_median_ms": 17.36695600004623,
+              "graph_median_ms": 15.56489999995847,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 10.144767761230469,
+                "backward": 5.054463863372803,
+                "optimizer": 0.19353599846363068
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "initial_p_sha256": "de4e9b12ddba485b90ea18c67532260069f66d461bb804e3bee1ce7a2d163188",
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 137489408,
+              "peak_reserved_capture_replay_bytes": 419430400,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 52428,
+                "max_abs_change": 0.10872507095336914,
+                "atoms": 52428,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-w-gemm.json",
+                "initial_range": [
+                  8.000001907348633,
+                  8.000001907348633
+                ],
+                "final_range": [
+                  7.891276836395264,
+                  7.891434669494629
+                ],
+                "initial_sha256": "2c44c0082757e6234e60e2f553a3c89b458d21c2a7f190d87acf8b23df67faa4",
+                "final_sha256": "77abab0d5366bdac203472ed4d477f42d5d7d9182965e67ce45ffcf08be7f1f1"
+              },
+              "eager_median_ms": 227.6045849999946,
+              "graph_median_ms": 121.9570250000288,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 32.912384033203125,
+                "backward": 89.10950469970703,
+                "optimizer": 0.24985599517822266
+              }
+            },
+            {
+              "worker": "dense",
+              "plan_id": null,
+              "status": "PASS",
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "fd06035298c2611c45cef5c840a7124ad01292b45b496312333ccffd798506e6",
+                "target_sha256": "2e728763fc4a4d28cd1336067ec6d8ef02c7bf04bf20fef1abd0dcd5cf4acc88"
+              },
+              "peak_allocated_capture_replay_bytes": 51382784,
+              "peak_reserved_capture_replay_bytes": 111149056,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": null,
+              "eager_median_ms": 0.6635380000261648,
+              "graph_median_ms": 0.083204000020487,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 0.021503999829292297,
+                "backward": 0.028672000393271446,
+                "optimizer": 0.03174399957060814
+              }
+            }
+          ],
+          "graph_speedup_to_existing_w": 7.835387635022019,
+          "allocated_ratio_to_existing_w": 1.3623861410473161
+        }
+      ]
+    },
+    {
+      "n": 2048,
+      "sigma": 3,
+      "atoms": 209715,
+      "orders": [
+        {
+          "order": "primary",
+          "records": [
+            {
+              "worker": "correctness",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 2.0381160413140975e-05,
+                  "rel_l2": 7.659462092139125e-07
+                },
+                "dx": {
+                  "max": 2.8337210340012575e-05,
+                  "rel_l2": 7.567045583196588e-07
+                },
+                "dp": {
+                  "max": 2.675891224579452e-05,
+                  "rel_l2": 8.399943134219357e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "correctness",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 2.1410637235597108e-05,
+                  "rel_l2": 7.863083417576767e-07
+                },
+                "dx": {
+                  "max": 3.0394386057785994e-05,
+                  "rel_l2": 7.805519112145877e-07
+                },
+                "dp": {
+                  "max": 2.97362043379934e-05,
+                  "rel_l2": 8.540670836135762e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "initial_p_sha256": "0dc79d57907ba383bf57f41bb5712262a833c2a3ff30dcf42080e3ee3d5e2847",
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 270861824,
+              "peak_reserved_capture_replay_bytes": 830472192,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 209715,
+                "max_abs_change": 0.01407003402709961,
+                "atoms": 209715,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-w-gemm.json",
+                "initial_range": [
+                  3.0000007152557373,
+                  3.0000007152557373
+                ],
+                "final_range": [
+                  2.9859306812286377,
+                  2.9859750270843506
+                ],
+                "initial_sha256": "89d7fe87bc2b95ca7eee38664449ad8d74891240708aadf88033130fb00e0fd2",
+                "final_sha256": "bc3c148ae63b9bac868cb4ebc9774b6feaa7fd3436da1067ec00dd69099bb4b7"
+              },
+              "eager_median_ms": 1370.3184700000293,
+              "graph_median_ms": 1363.3714689999579,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 382.65240478515625,
+                "backward": 987.8456420898438,
+                "optimizer": 0.5242879986763
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "initial_p_sha256": "0dc79d57907ba383bf57f41bb5712262a833c2a3ff30dcf42080e3ee3d5e2847",
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 641681408,
+              "peak_reserved_capture_replay_bytes": 1304428544,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 209715,
+                "max_abs_change": 0.01407003402709961,
+                "atoms": 209715,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-sparse-w.json",
+                "initial_range": [
+                  3.0000007152557373,
+                  3.0000007152557373
+                ],
+                "final_range": [
+                  2.9859306812286377,
+                  2.985973358154297
+                ],
+                "initial_sha256": "89d7fe87bc2b95ca7eee38664449ad8d74891240708aadf88033130fb00e0fd2",
+                "final_sha256": "10905db88ae3681bda8f3f34ce4ceabb99152384ec90c67d2c2be82305f280c9"
+              },
+              "eager_median_ms": 49.453839000079824,
+              "graph_median_ms": 47.173414000099,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 28.721120834350586,
+                "backward": 17.9998722076416,
+                "optimizer": 0.37171199917793274
+              }
+            },
+            {
+              "worker": "dense",
+              "plan_id": null,
+              "status": "PASS",
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 102238720,
+              "peak_reserved_capture_replay_bytes": 148897792,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": null,
+              "eager_median_ms": 1.046382000140511,
+              "graph_median_ms": 0.5905110001549474,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 0.06963200122117996,
+                "backward": 0.07475200295448303,
+                "optimizer": 0.4413439929485321
+              }
+            }
+          ],
+          "graph_speedup_to_existing_w": 28.90126775639127,
+          "allocated_ratio_to_existing_w": 2.369035984930826
+        },
+        {
+          "order": "inverse",
+          "records": [
+            {
+              "worker": "correctness",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 2.1410637235597108e-05,
+                  "rel_l2": 7.862868733776469e-07
+                },
+                "dx": {
+                  "max": 3.0394386057785994e-05,
+                  "rel_l2": 7.804203786679311e-07
+                },
+                "dp": {
+                  "max": 2.97362043379934e-05,
+                  "rel_l2": 8.540670836135762e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "correctness",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 2.0381160413140975e-05,
+                  "rel_l2": 7.659462092139125e-07
+                },
+                "dx": {
+                  "max": 2.8337210340012575e-05,
+                  "rel_l2": 7.567045583196588e-07
+                },
+                "dp": {
+                  "max": 2.675891224579452e-05,
+                  "rel_l2": 8.399943134219357e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "initial_p_sha256": "0dc79d57907ba383bf57f41bb5712262a833c2a3ff30dcf42080e3ee3d5e2847",
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 641681408,
+              "peak_reserved_capture_replay_bytes": 1304428544,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 209715,
+                "max_abs_change": 0.01407003402709961,
+                "atoms": 209715,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-sparse-w.json",
+                "initial_range": [
+                  3.0000007152557373,
+                  3.0000007152557373
+                ],
+                "final_range": [
+                  2.9859306812286377,
+                  2.985973358154297
+                ],
+                "initial_sha256": "89d7fe87bc2b95ca7eee38664449ad8d74891240708aadf88033130fb00e0fd2",
+                "final_sha256": "10905db88ae3681bda8f3f34ce4ceabb99152384ec90c67d2c2be82305f280c9"
+              },
+              "eager_median_ms": 49.20503099992857,
+              "graph_median_ms": 46.74657400005344,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 28.502016067504883,
+                "backward": 17.86675262451172,
+                "optimizer": 0.3665919899940491
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "initial_p_sha256": "0dc79d57907ba383bf57f41bb5712262a833c2a3ff30dcf42080e3ee3d5e2847",
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 270861824,
+              "peak_reserved_capture_replay_bytes": 830472192,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 209715,
+                "max_abs_change": 0.01407003402709961,
+                "atoms": 209715,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-w-gemm.json",
+                "initial_range": [
+                  3.0000007152557373,
+                  3.0000007152557373
+                ],
+                "final_range": [
+                  2.9859306812286377,
+                  2.9859750270843506
+                ],
+                "initial_sha256": "89d7fe87bc2b95ca7eee38664449ad8d74891240708aadf88033130fb00e0fd2",
+                "final_sha256": "bc3c148ae63b9bac868cb4ebc9774b6feaa7fd3436da1067ec00dd69099bb4b7"
+              },
+              "eager_median_ms": 1351.9796350000206,
+              "graph_median_ms": 1345.1253760000554,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 380.6146545410156,
+                "backward": 984.6651000976562,
+                "optimizer": 0.52019202709198
+              }
+            },
+            {
+              "worker": "dense",
+              "plan_id": null,
+              "status": "PASS",
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 102238720,
+              "peak_reserved_capture_replay_bytes": 148897792,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": null,
+              "eager_median_ms": 1.0614389999545892,
+              "graph_median_ms": 0.589326999943296,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 0.07065600156784058,
+                "backward": 0.07372800260782242,
+                "optimizer": 0.44441598653793335
+              }
+            }
+          ],
+          "graph_speedup_to_existing_w": 28.774844034527916,
+          "allocated_ratio_to_existing_w": 2.369035984930826
+        }
+      ]
+    },
+    {
+      "n": 2048,
+      "sigma": 8,
+      "atoms": 209715,
+      "orders": [
+        {
+          "order": "primary",
+          "records": [
+            {
+              "worker": "correctness",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 1.394677463473215e-05,
+                  "rel_l2": 4.70293641925574e-07
+                },
+                "dx": {
+                  "max": 1.4534327133830516e-05,
+                  "rel_l2": 4.680672866696258e-07
+                },
+                "dp": {
+                  "max": 5.98522782579991e-06,
+                  "rel_l2": 3.906159514351879e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "correctness",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 1.2952270463273408e-05,
+                  "rel_l2": 4.854415908069895e-07
+                },
+                "dx": {
+                  "max": 1.4132090761620475e-05,
+                  "rel_l2": 4.7617818322750674e-07
+                },
+                "dp": {
+                  "max": 5.035572824940715e-06,
+                  "rel_l2": 3.5776099980717525e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "initial_p_sha256": "de6ebe05fa66a34e4c601400753bd927d49e3d2234ba55f3eca77031adabc546",
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 270861824,
+              "peak_reserved_capture_replay_bytes": 830472192,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 209715,
+                "max_abs_change": 0.10872650146484375,
+                "atoms": 209715,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-w-gemm.json",
+                "initial_range": [
+                  8.000001907348633,
+                  8.000001907348633
+                ],
+                "final_range": [
+                  7.891275405883789,
+                  7.891434669494629
+                ],
+                "initial_sha256": "a15357ae37c98cce72416bf32a46b0ee151ab72784745b3d4551d3f15e638241",
+                "final_sha256": "6bd8a6d47eaae5157015ff09bdd9578eda157ac5cd2447a7d029c086b1f194ca"
+              },
+              "eager_median_ms": 1406.8794980000803,
+              "graph_median_ms": 1389.7831540000425,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 388.6438293457031,
+                "backward": 987.8497314453125,
+                "optimizer": 0.52019202709198
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "initial_p_sha256": "de6ebe05fa66a34e4c601400753bd927d49e3d2234ba55f3eca77031adabc546",
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 641681408,
+              "peak_reserved_capture_replay_bytes": 1304428544,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 209715,
+                "max_abs_change": 0.10872650146484375,
+                "atoms": 209715,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-sparse-w.json",
+                "initial_range": [
+                  8.000001907348633,
+                  8.000001907348633
+                ],
+                "final_range": [
+                  7.891275405883789,
+                  7.891434669494629
+                ],
+                "initial_sha256": "a15357ae37c98cce72416bf32a46b0ee151ab72784745b3d4551d3f15e638241",
+                "final_sha256": "bbe1d3f640822e5ce36204a334d8523d4c42d25374ce9f4eaeabfafddd99f640"
+              },
+              "eager_median_ms": 87.70646400012083,
+              "graph_median_ms": 83.66005599987147,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 48.24883270263672,
+                "backward": 33.126399993896484,
+                "optimizer": 0.4280320107936859
+              }
+            },
+            {
+              "worker": "dense",
+              "plan_id": null,
+              "status": "PASS",
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 102238720,
+              "peak_reserved_capture_replay_bytes": 148897792,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": null,
+              "eager_median_ms": 1.0471329999290901,
+              "graph_median_ms": 0.5908860000545246,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 0.06963200122117996,
+                "backward": 0.07475200295448303,
+                "optimizer": 0.43929600715637207
+              }
+            }
+          ],
+          "graph_speedup_to_existing_w": 16.612266599512886,
+          "allocated_ratio_to_existing_w": 2.369035984930826
+        },
+        {
+          "order": "inverse",
+          "records": [
+            {
+              "worker": "correctness",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 1.4959570218131546e-05,
+                  "rel_l2": 4.860492415971651e-07
+                },
+                "dx": {
+                  "max": 1.4132090761620475e-05,
+                  "rel_l2": 4.755524306102832e-07
+                },
+                "dp": {
+                  "max": 5.035572824940715e-06,
+                  "rel_l2": 3.5776099980717525e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "correctness",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "errors": {
+                "y": {
+                  "max": 1.394677463473215e-05,
+                  "rel_l2": 4.70293641925574e-07
+                },
+                "dx": {
+                  "max": 1.4534327133830516e-05,
+                  "rel_l2": 4.680672866696258e-07
+                },
+                "dp": {
+                  "max": 5.98522782579991e-06,
+                  "rel_l2": 3.906159514351879e-07
+                },
+                "polar_update": {
+                  "max": 0.0,
+                  "rel_l2": 0.0
+                }
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "sparse-w",
+              "status": "PASS",
+              "initial_p_sha256": "de6ebe05fa66a34e4c601400753bd927d49e3d2234ba55f3eca77031adabc546",
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 641681408,
+              "peak_reserved_capture_replay_bytes": 1304428544,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 209715,
+                "max_abs_change": 0.10872650146484375,
+                "atoms": 209715,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-sparse-w.json",
+                "initial_range": [
+                  8.000001907348633,
+                  8.000001907348633
+                ],
+                "final_range": [
+                  7.891275405883789,
+                  7.891434669494629
+                ],
+                "initial_sha256": "a15357ae37c98cce72416bf32a46b0ee151ab72784745b3d4551d3f15e638241",
+                "final_sha256": "bbe1d3f640822e5ce36204a334d8523d4c42d25374ce9f4eaeabfafddd99f640"
+              },
+              "eager_median_ms": 88.01286400000663,
+              "graph_median_ms": 83.96216999994977,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 48.71372985839844,
+                "backward": 33.32915115356445,
+                "optimizer": 0.42393600940704346
+              }
+            },
+            {
+              "worker": "measure",
+              "plan_id": "w-gemm",
+              "status": "PASS",
+              "initial_p_sha256": "de6ebe05fa66a34e4c601400753bd927d49e3d2234ba55f3eca77031adabc546",
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 270861824,
+              "peak_reserved_capture_replay_bytes": 830472192,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": {
+                "fixed": false,
+                "source": "current polar activity every forward/replay",
+                "changed_atoms": 209715,
+                "max_abs_change": 0.10872650146484375,
+                "atoms": 209715,
+                "series_storage": "full initial/final arrays in the unmodified measure worker JSON",
+                "hash_encoding": "SHA256 of each exact JSON array with separators comma/colon",
+                "worker_record": "measure-w-gemm.json",
+                "initial_range": [
+                  8.000001907348633,
+                  8.000001907348633
+                ],
+                "final_range": [
+                  7.891275405883789,
+                  7.891434669494629
+                ],
+                "initial_sha256": "a15357ae37c98cce72416bf32a46b0ee151ab72784745b3d4551d3f15e638241",
+                "final_sha256": "6bd8a6d47eaae5157015ff09bdd9578eda157ac5cd2447a7d029c086b1f194ca"
+              },
+              "eager_median_ms": 1412.8380559999414,
+              "graph_median_ms": 1367.7978570000278,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 385.8524169921875,
+                "backward": 985.3767700195312,
+                "optimizer": 0.5222399830818176
+              }
+            },
+            {
+              "worker": "dense",
+              "plan_id": null,
+              "status": "PASS",
+              "initial_p_sha256": null,
+              "initial_inputs": {
+                "x_sha256": "6a18727f1ae946aa6d432c04396ec3fe7aa7f395e2d8b24a5a4fdc3cdc12fab1",
+                "target_sha256": "dee167be014868cd2118f1f61a253953bc6fee6e26ff30b4315fe71434902d16"
+              },
+              "peak_allocated_capture_replay_bytes": 102238720,
+              "peak_reserved_capture_replay_bytes": 148897792,
+              "total_gpu_process_bytes": null,
+              "sigma_updates": null,
+              "eager_median_ms": 1.0748570000487234,
+              "graph_median_ms": 0.5919750001339708,
+              "separate_diagnostic_phase_medians_ms": {
+                "forward_loss": 0.07065600156784058,
+                "backward": 0.07782399654388428,
+                "optimizer": 0.4362240135669708
+              }
+            }
+          ],
+          "graph_speedup_to_existing_w": 16.290644429519226,
+          "allocated_ratio_to_existing_w": 2.369035984930826
+        }
+      ]
+    }
+  ],
+  "integration": {
+    "job": {
+      "job_id": "l4job-b1ce3044e8404813b4657a6f90be0692",
+      "source_archive_sha256": "16f230691dcc6c26e2b5d3f2e05ffcc60ab1055330e5dd67850cecb05621df5c",
+      "result_archive_sha256": "9b096adb5a2c71b579fa2a63c211b1817eae7bd6b913fe50db3ab7dbc13ca1a1",
+      "gpu": "NVIDIA L4, GPU-596110c8-cadf-dfb9-1d1b-094b45b1bce1, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "pool_vm_session": "cst-pool-fea0e461f2d3-2",
+      "pool_slot": 2,
+      "returncode": 0,
+      "timed_out": false,
+      "driver_seconds": 149.85715413093567
+    },
+    "tests": 126,
+    "skipped": 0,
+    "pytest_seconds": 104.73,
+    "full_atom_cases": [
+      {
+        "file": "full-1024-3.json",
+        "errors": {
+          "status": "PASS",
+          "scope": "independent FP64 complete S1xS2 Strip embedded-fibre sites Y/dX/all atom gradients; factored global norm; intrinsic Torus polar update",
+          "y": {
+            "max": 8.346258336899837e-06,
+            "rel_l2": 4.4732119839316476e-07
+          },
+          "dx": {
+            "max": 1.036748377303276e-05,
+            "rel_l2": 4.386747155342083e-07
+          },
+          "dp": {
+            "max": 1.2497381264520158e-05,
+            "rel_l2": 5.145074441865257e-07
+          },
+          "polar_update": {
+            "max": 0.0,
+            "rel_l2": 0.0
+          }
+        }
+      },
+      {
+        "file": "full-1024-8.json",
+        "errors": {
+          "status": "PASS",
+          "scope": "independent FP64 complete S1xS2 Strip embedded-fibre sites Y/dX/all atom gradients; factored global norm; intrinsic Torus polar update",
+          "y": {
+            "max": 6.72745069074665e-06,
+            "rel_l2": 3.3885597028537614e-07
+          },
+          "dx": {
+            "max": 6.323758489745757e-06,
+            "rel_l2": 3.41349159918349e-07
+          },
+          "dp": {
+            "max": 2.490978470159888e-06,
+            "rel_l2": 2.688667228515986e-07
+          },
+          "polar_update": {
+            "max": 0.0,
+            "rel_l2": 0.0
+          }
+        }
+      },
+      {
+        "file": "full-2048-3.json",
+        "errors": {
+          "status": "PASS",
+          "scope": "independent FP64 complete S1xS2 Strip embedded-fibre sites Y/dX/all atom gradients; factored global norm; intrinsic Torus polar update",
+          "y": {
+            "max": 2.1410637235597108e-05,
+            "rel_l2": 7.863926462449715e-07
+          },
+          "dx": {
+            "max": 3.0394386057785994e-05,
+            "rel_l2": 7.804924413289671e-07
+          },
+          "dp": {
+            "max": 2.97362043379934e-05,
+            "rel_l2": 8.540670836135762e-07
+          },
+          "polar_update": {
+            "max": 0.0,
+            "rel_l2": 0.0
+          }
+        }
+      },
+      {
+        "file": "full-2048-8.json",
+        "errors": {
+          "status": "PASS",
+          "scope": "independent FP64 complete S1xS2 Strip embedded-fibre sites Y/dX/all atom gradients; factored global norm; intrinsic Torus polar update",
+          "y": {
+            "max": 1.4005895901725296e-05,
+            "rel_l2": 4.856405839164868e-07
+          },
+          "dx": {
+            "max": 1.6039439394432975e-05,
+            "rel_l2": 4.7578748710347724e-07
+          },
+          "dp": {
+            "max": 5.035572824940715e-06,
+            "rel_l2": 3.5776099980717525e-07
+          },
+          "polar_update": {
+            "max": 0.0,
+            "rel_l2": 0.0
+          }
+        }
+      }
+    ],
+    "base_commit": "13fd1b46e79153e26e9331be461f99d6a6368c88"
+  },
+  "negative_jobs": [
+    {
+      "job_id": "l4job-9e2177a6458a458995b2d795db1e81b7",
+      "kind": "setup",
+      "source_sha256": "fa62f19dbf1bed3715462043581fc842614bef1e97cce0894787361a5cbc497c",
+      "result_archive_sha256": "d691537135094321aacf98a8b948203c1a4ab386a5880453953d1628f62a25cb",
+      "driver_elapsed_s": 0.16439294815063477,
+      "returncode": 1,
+      "gpu_performance_started": false,
+      "full_atom_cohort_completed": false
+    },
+    {
+      "job_id": "l4job-474d449075174d26abcc402c59115c9d",
+      "kind": "compile",
+      "source_sha256": "a035149a3c92ddd5cb724df636a99e93cfe7a34521dc2246dc5c79294297159a",
+      "result_archive_sha256": "15c1b7185ef26a30d3ce931c15e77f49feffdd80ad6df419e234ff8b9d63bca2",
+      "driver_elapsed_s": 16.046250104904175,
+      "returncode": 1,
+      "gpu_performance_started": false,
+      "full_atom_cohort_completed": false
+    },
+    {
+      "job_id": "l4job-14ca8d30b90747e68d84365b13ea4c5b",
+      "kind": "numerical-seam-and-illegal-address",
+      "source_sha256": "8c3cb641975512afc83eef3fab04f096aa6293b924fd2a925a45e01318cd761c",
+      "result_archive_sha256": "1645068b19c423e136e867cf0987601d76d4f011df3079f86206289b8387f6e7",
+      "driver_elapsed_s": 41.94798707962036,
+      "returncode": 1,
+      "gpu_performance_started": false,
+      "full_atom_cohort_completed": false
+    }
+  ],
+  "local_validation": {
+    "cpu_passed": 1351,
+    "cpu_skipped": 2441,
+    "cpu_warnings": 18,
+    "cpu_seconds": 25.85,
+    "ruff": "PASS",
+    "wheel_sdist": "PASS",
+    "declarations": "PASS"
+  },
+  "raw_evidence": "ignored output/torus-sparse-weight and host pool job directories",
+  "recovery_anchors": [
+    "kernel/torus-sparse-weight-measured",
+    "kernel/torus-sparse-weight-before-rebase"
+  ],
+  "final_declaration_scope": {
+    "circle_capacity": [
+      16,
+      64
+    ],
+    "section_capacity": [
+      16,
+      64,
+      256
+    ],
+    "patch_tile": [
+      16
+    ],
+    "default": [
+      64,
+      256,
+      16
+    ],
+    "all6_permitted_recipe_roundtrips": "PASS",
+    "unvalidated_recipe_rejection": "PASS",
+    "post_integration_change": "metadata narrowing, CPU checks and documentation only"
+  },
+  "pre_performance_gate": {
+    "job_id": "l4job-b5400ed460f64e4f901b5beb1c3b9468",
+    "source_commit": "7a970a9954217d39d17664b8a5a6423a6b088fa2",
+    "source_archive_sha256": "920444dfbf49d256aa000837b7d11c620937a7de3e960976c22f833ed3b0366e",
+    "result_archive_sha256": "236754960eccd7c69c3e245c8a7c79940ad22154873e45373878057704dd4bb0",
+    "tests": 41,
+    "skipped": 0,
+    "pytest_seconds": 50.93,
+    "driver_seconds": 96.58987,
+    "all4_full_atom_cases": "PASS"
+  }
+}

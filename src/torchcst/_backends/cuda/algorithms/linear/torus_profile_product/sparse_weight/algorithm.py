@@ -19,15 +19,23 @@ from torchcst.operators.execution import (
 @dataclass(frozen=True)
 class SparseWeightRecipe:
     circle_capacity: int = 64
-    section_capacity: int = 128
+    section_capacity: int = 256
     patch_tile: int = 16
 
     def __post_init__(self):
-        for value in (self.circle_capacity, self.section_capacity):
-            if type(value) is not int or value not in (16, 64, 128, 256):
-                raise ValueError("support capacity must be 16, 64, 128 or 256")
-        if type(self.patch_tile) is not int or self.patch_tile not in (16, 32):
-            raise ValueError("patch tile must be 16 or 32")
+        if type(self.circle_capacity) is not int or self.circle_capacity not in (
+            16,
+            64,
+        ):
+            raise ValueError("circle capacity must be GPU-validated 16 or 64")
+        if type(self.section_capacity) is not int or self.section_capacity not in (
+            16,
+            64,
+            256,
+        ):
+            raise ValueError("section capacity must be GPU-validated 16, 64 or 256")
+        if type(self.patch_tile) is not int or self.patch_tile != 16:
+            raise ValueError("patch tile must be GPU-validated 16")
 
 
 @dataclass(frozen=True)
