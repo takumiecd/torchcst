@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "plans": [
+    {
+      "id": "compact-weight",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_grouped_compact",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64,
+          "patch_tile": 16,
+          "atom_group": 8,
+          "index_bits": 16
+        }
+      }
+    },
+    {
+      "id": "old-direct",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_support",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64
+        }
+      }
+    },
+    {
+      "id": "direct-g1-separate",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_direct",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64,
+          "support_tile": 16,
+          "atom_group": 1,
+          "index_bits": 16,
+          "merge_output_vjp": false
+        }
+      }
+    },
+    {
+      "id": "direct-g4-separate",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_direct",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64,
+          "support_tile": 16,
+          "atom_group": 4,
+          "index_bits": 16,
+          "merge_output_vjp": false
+        }
+      }
+    },
+    {
+      "id": "direct-g1-merged",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_direct",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64,
+          "support_tile": 16,
+          "atom_group": 1,
+          "index_bits": 16,
+          "merge_output_vjp": true
+        }
+      }
+    },
+    {
+      "id": "direct-g4-merged",
+      "plan": {
+        "schema_version": 1,
+        "algorithm_id": "research_cuda_sphere_polar_direct",
+        "algorithm_revision": "v1",
+        "recipe": {
+          "support_capacity": 64,
+          "support_tile": 16,
+          "atom_group": 4,
+          "index_bits": 16,
+          "merge_output_vjp": true
+        }
+      }
+    }
+  ]
+}
