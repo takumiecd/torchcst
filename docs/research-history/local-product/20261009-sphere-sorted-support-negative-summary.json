@@ -1,0 +1,1292 @@
+{
+  "status": "rejected_for_main_runtime",
+  "reason": "all_four_complete_step_cases_nonqualifying",
+  "numerical_source_commit": "4b3a785005c647c4397d668ebd4678fdedc73d75",
+  "source_branch": "kernel/sphere-sorted-support",
+  "main_docs_base": "13fd1b46e79153e26e9331be461f99d6a6368c88",
+  "qualification": {
+    "minimum_time_gain_fraction": 0.03,
+    "minimum_allocated_reduction_fraction": 0.05,
+    "maximum_time_regression_for_memory_win_fraction": 0.03
+  },
+  "source_equality": {
+    "status": "PASS",
+    "numerical_source_commit": "4b3a785005c647c4397d668ebd4678fdedc73d75",
+    "gate_job": "l4job-006defc03b1d4260a047b631142ebcdb",
+    "primary_job": "l4job-45db0bdf2d2b4fb2bd5a48291f6322d5",
+    "identical_non_driver_source_files": 1523,
+    "non_driver_source_file_hash_differences": {},
+    "driver_hashes": {
+      "smoke": "ff50238acf86a4e00eb87cfa8511e8279c2fc9e9e618b1aa3738fb1efc95cde8",
+      "measure": "8c7e60ce89598a46825564342738a68e8cd25fa95daf78d2232967607834b819"
+    }
+  },
+  "jobs": [
+    {
+      "kind": "gate-v1",
+      "job_id": "l4job-006defc03b1d4260a047b631142ebcdb",
+      "source_sha256": "a158137a357724913ea3779b40cb864ef755e9dc66d409e3421389d30fc98811",
+      "result_archive_sha256": "6718c9bd52f4f603adfa86111592c1080ba34e9fc7ce93648c7bb815e7c2994c",
+      "gpu": "NVIDIA L4, GPU-596110c8-cadf-dfb9-1d1b-094b45b1bce1, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "driver_timeout": 900.0
+    },
+    {
+      "kind": "primary-v1",
+      "job_id": "l4job-45db0bdf2d2b4fb2bd5a48291f6322d5",
+      "source_sha256": "38d53eb131e1a115f9bbf69e16d42a3a23fe7fc5b56ff9999bd401076aeef6d4",
+      "result_archive_sha256": "08da14cf7048fa43b5abfabdd4a2a158cde3056637ea3a7b982af6fc481b445f",
+      "gpu": "NVIDIA L4, GPU-daafb1dd-665e-4d51-f4ec-3ad9687b80fa, 580.82.07, 23034 MiB",
+      "versions": {
+        "python": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+        "torch": "2.11.0+cu130",
+        "cuda": "13.0",
+        "triton": "3.6.0"
+      },
+      "returncode": 0,
+      "timed_out": false,
+      "driver_timeout": 1500.0
+    }
+  ],
+  "measurements": [
+    {
+      "kind": "gate-v1",
+      "case_result": "runner64.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-fused-weight-64",
+        "graph": null,
+        "initial_p_sha256": "0d7ccc4e96db42ffde4c9f2e8795aaf9d042a7c87c9d21293beb57a3265a0cdd",
+        "initial_inputs": {
+          "x_sha256": "934fa601276bb68912c5cd7964019cf340cd25ac3535dc5817e202372861cff9",
+          "target_sha256": "9e313250d9cb99f076aaed897c8822aff5a993fa603665f6b2a85b720a0ccce4"
+        },
+        "peak_allocated_training_bytes": 17395712,
+        "peak_reserved_training_bytes": 23068672,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 6.724628000029043,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 2.8936631213394293e-07,
+              "relative_l2": 3.034367771452188e-07
+            },
+            "dX": {
+              "max_abs": 3.665534527019787e-07,
+              "relative_l2": 3.348898712830995e-07
+            },
+            "all_dP": {
+              "max_abs": 5.292560456893192e-06,
+              "relative_l2": 3.162802387889873e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.301743024541892e-07,
+              "relative_l2": 3.2020817594890113e-07
+            },
+            "dX": {
+              "max_abs": 3.1485834173228255e-07,
+              "relative_l2": 3.711817127179243e-07
+            },
+            "all_dP": {
+              "max_abs": 4.841482167172728e-06,
+              "relative_l2": 2.7417576678684313e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 2.993478298187256,
+            "max": 2.99350643157959,
+            "mean": 2.9934909343719482
+          },
+          {
+            "min": 2.993478298187256,
+            "max": 2.99350643157959,
+            "mean": 2.9934909343719482
+          }
+        ]
+      }
+    },
+    {
+      "kind": "gate-v1",
+      "case_result": "runner64.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-sorted-weight-64",
+        "graph": null,
+        "initial_p_sha256": "0d7ccc4e96db42ffde4c9f2e8795aaf9d042a7c87c9d21293beb57a3265a0cdd",
+        "initial_inputs": {
+          "x_sha256": "934fa601276bb68912c5cd7964019cf340cd25ac3535dc5817e202372861cff9",
+          "target_sha256": "9e313250d9cb99f076aaed897c8822aff5a993fa603665f6b2a85b720a0ccce4"
+        },
+        "peak_allocated_training_bytes": 17395712,
+        "peak_reserved_training_bytes": 23068672,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 6.948714999907679,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.2502098273878843e-07,
+              "relative_l2": 3.1617789633159186e-07
+            },
+            "dX": {
+              "max_abs": 3.665534527019787e-07,
+              "relative_l2": 3.33531497911426e-07
+            },
+            "all_dP": {
+              "max_abs": 5.530979035994754e-06,
+              "relative_l2": 3.192064988093258e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 2.782779504051369e-07,
+              "relative_l2": 3.205757146445782e-07
+            },
+            "dX": {
+              "max_abs": 3.043160176074977e-07,
+              "relative_l2": 3.736620817317935e-07
+            },
+            "all_dP": {
+              "max_abs": 4.841482167172728e-06,
+              "relative_l2": 2.845884656570311e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 2.993478298187256,
+            "max": 2.99350643157959,
+            "mean": 2.9934909343719482
+          },
+          {
+            "min": 2.993478298187256,
+            "max": 2.99350643157959,
+            "mean": 2.9934909343719482
+          }
+        ]
+      }
+    },
+    {
+      "kind": "gate-v1",
+      "case_result": "runner64.json",
+      "result": {
+        "status": "PASS",
+        "reference": "dense_linear",
+        "graph": null,
+        "initial_p_sha256": null,
+        "initial_inputs": {
+          "x_sha256": "934fa601276bb68912c5cd7964019cf340cd25ac3535dc5817e202372861cff9",
+          "target_sha256": "9e313250d9cb99f076aaed897c8822aff5a993fa603665f6b2a85b720a0ccce4"
+        },
+        "peak_allocated_training_bytes": 17147392,
+        "peak_reserved_training_bytes": 23068672,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 0.7441289999405853,
+        "correctness_initial": null,
+        "correctness_updated": null,
+        "updated_widths": null
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-1024-sigma3.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-fused-weight-64",
+        "graph": null,
+        "initial_p_sha256": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "initial_inputs": {
+          "x_sha256": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+          "target_sha256": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+        },
+        "peak_allocated_training_bytes": 92784640,
+        "peak_reserved_training_bytes": 115343360,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 10.01819200018872,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.4746477405311893e-06,
+              "relative_l2": 8.008892243516324e-07
+            },
+            "dX": {
+              "max_abs": 3.7208103034203077e-06,
+              "relative_l2": 7.844413208351524e-07
+            },
+            "all_dP": {
+              "max_abs": 2.7531390467405714e-05,
+              "relative_l2": 7.856233164110175e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.290423018387223e-06,
+              "relative_l2": 8.52988987050743e-07
+            },
+            "dX": {
+              "max_abs": 3.905043215207682e-06,
+              "relative_l2": 8.247917765242608e-07
+            },
+            "all_dP": {
+              "max_abs": 3.3500309080114477e-05,
+              "relative_l2": 8.024747336471185e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 2.993471622467041,
+            "max": 2.9935104846954346,
+            "mean": 2.99349045753479
+          },
+          {
+            "min": 2.993471622467041,
+            "max": 2.9935104846954346,
+            "mean": 2.99349045753479
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-1024-sigma3.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-sorted-weight-64",
+        "graph": null,
+        "initial_p_sha256": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "initial_inputs": {
+          "x_sha256": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+          "target_sha256": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+        },
+        "peak_allocated_training_bytes": 92784640,
+        "peak_reserved_training_bytes": 115343360,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 10.661230000096111,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.4150430957557987e-06,
+              "relative_l2": 8.015115077018702e-07
+            },
+            "dX": {
+              "max_abs": 3.7405803437577656e-06,
+              "relative_l2": 7.82138021236949e-07
+            },
+            "all_dP": {
+              "max_abs": 2.7590995112181105e-05,
+              "relative_l2": 7.848661712763425e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.331357701363835e-06,
+              "relative_l2": 8.537411274009876e-07
+            },
+            "dX": {
+              "max_abs": 3.795709289572402e-06,
+              "relative_l2": 8.238930529384687e-07
+            },
+            "all_dP": {
+              "max_abs": 3.3500309080114477e-05,
+              "relative_l2": 8.013351204320093e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 2.993471622467041,
+            "max": 2.9935104846954346,
+            "mean": 2.99349045753479
+          },
+          {
+            "min": 2.993471622467041,
+            "max": 2.9935104846954346,
+            "mean": 2.99349045753479
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-1024-sigma3.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-blocked-4096",
+        "graph": null,
+        "initial_p_sha256": "dad8c76d5a59f9085d346ad2377589870740951513dd832dd185fdfb041a1ea6",
+        "initial_inputs": {
+          "x_sha256": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+          "target_sha256": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+        },
+        "peak_allocated_training_bytes": 138341888,
+        "peak_reserved_training_bytes": 153092096,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 18.56622199989033,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.5199536125296582e-06,
+              "relative_l2": 7.452088311371892e-07
+            },
+            "dX": {
+              "max_abs": 3.1247638556664015e-06,
+              "relative_l2": 7.311369143254804e-07
+            },
+            "all_dP": {
+              "max_abs": 2.9320977025015793e-05,
+              "relative_l2": 7.482500368250223e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.319627874143194e-06,
+              "relative_l2": 8.101517244634946e-07
+            },
+            "dX": {
+              "max_abs": 4.02628277729189e-06,
+              "relative_l2": 7.532083090975064e-07
+            },
+            "all_dP": {
+              "max_abs": 3.2546634763708227e-05,
+              "relative_l2": 7.640371107841168e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 2.993471622467041,
+            "max": 2.9935104846954346,
+            "mean": 2.99349045753479
+          },
+          {
+            "min": 2.993471622467041,
+            "max": 2.9935104846954346,
+            "mean": 2.99349045753479
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-1024-sigma3.json",
+      "result": {
+        "status": "PASS",
+        "reference": "dense_linear",
+        "graph": null,
+        "initial_p_sha256": null,
+        "initial_inputs": {
+          "x_sha256": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+          "target_sha256": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+        },
+        "peak_allocated_training_bytes": 34342400,
+        "peak_reserved_training_bytes": 44040192,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 0.7085180000103719,
+        "correctness_initial": null,
+        "correctness_updated": null,
+        "updated_widths": null
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-1024-sigma8.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-fused-weight-256",
+        "graph": null,
+        "initial_p_sha256": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "initial_inputs": {
+          "x_sha256": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+          "target_sha256": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+        },
+        "peak_allocated_training_bytes": 257202176,
+        "peak_reserved_training_bytes": 268435456,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 129.44934100005412,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 4.085166588785327e-06,
+              "relative_l2": 8.86708043838011e-07
+            },
+            "dX": {
+              "max_abs": 3.7034914759370707e-06,
+              "relative_l2": 8.801817729564046e-07
+            },
+            "all_dP": {
+              "max_abs": 8.455180718680566e-06,
+              "relative_l2": 3.9840580107711043e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.0405607163164206e-06,
+              "relative_l2": 9.851493419028046e-07
+            },
+            "dX": {
+              "max_abs": 3.0369318756440222e-06,
+              "relative_l2": 9.253786969885835e-07
+            },
+            "all_dP": {
+              "max_abs": 8.07116344414549e-06,
+              "relative_l2": 4.2175834442101885e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 7.949434757232666,
+            "max": 7.949553966522217,
+            "mean": 7.949497222900391
+          },
+          {
+            "min": 7.949434757232666,
+            "max": 7.949553966522217,
+            "mean": 7.949497222900391
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-1024-sigma8.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-sorted-weight-256",
+        "graph": null,
+        "initial_p_sha256": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "initial_inputs": {
+          "x_sha256": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+          "target_sha256": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+        },
+        "peak_allocated_training_bytes": 257202176,
+        "peak_reserved_training_bytes": 268435456,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 147.09360599999854,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.557540155796346e-06,
+              "relative_l2": 8.880473857475136e-07
+            },
+            "dX": {
+              "max_abs": 3.453536075559427e-06,
+              "relative_l2": 8.800927566637511e-07
+            },
+            "all_dP": {
+              "max_abs": 9.170436455985254e-06,
+              "relative_l2": 3.9933201440511353e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.451731723891349e-06,
+              "relative_l2": 9.86966834973313e-07
+            },
+            "dX": {
+              "max_abs": 3.299306261528301e-06,
+              "relative_l2": 9.250282051809807e-07
+            },
+            "all_dP": {
+              "max_abs": 8.428791312797834e-06,
+              "relative_l2": 4.2071634479578465e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 7.949434757232666,
+            "max": 7.949553966522217,
+            "mean": 7.949497222900391
+          },
+          {
+            "min": 7.949434757232666,
+            "max": 7.949553966522217,
+            "mean": 7.949497222900391
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-1024-sigma8.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-blocked-4096",
+        "graph": null,
+        "initial_p_sha256": "686ed15818883eb52a0f12b873b3f5e34806e2c7c98d57698d259358f73b5b34",
+        "initial_inputs": {
+          "x_sha256": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+          "target_sha256": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+        },
+        "peak_allocated_training_bytes": 138341888,
+        "peak_reserved_training_bytes": 153092096,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 18.258632999959445,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 1.8349333150702307e-06,
+              "relative_l2": 4.18467044815127e-07
+            },
+            "dX": {
+              "max_abs": 1.8171001163747036e-06,
+              "relative_l2": 4.044149520768687e-07
+            },
+            "all_dP": {
+              "max_abs": 1.0200885371070001e-05,
+              "relative_l2": 4.011442108501619e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 1.7132775759209906e-06,
+              "relative_l2": 5.531987058455494e-07
+            },
+            "dX": {
+              "max_abs": 1.6283408991180082e-06,
+              "relative_l2": 4.953475891482017e-07
+            },
+            "all_dP": {
+              "max_abs": 9.190423684746207e-06,
+              "relative_l2": 4.5356197806582327e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 7.949434757232666,
+            "max": 7.949553966522217,
+            "mean": 7.949497222900391
+          },
+          {
+            "min": 7.949434757232666,
+            "max": 7.949553966522217,
+            "mean": 7.949497222900391
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-1024-sigma8.json",
+      "result": {
+        "status": "PASS",
+        "reference": "dense_linear",
+        "graph": null,
+        "initial_p_sha256": null,
+        "initial_inputs": {
+          "x_sha256": "1f3d2fa8b39507f2babc6ddf9231b61184505f71dcffcbe57bd1cd3537900492",
+          "target_sha256": "dc5088ecf456f2136826d4a857fc52a8c5cc22162b5202af73e2f778f6172a03"
+        },
+        "peak_allocated_training_bytes": 34342400,
+        "peak_reserved_training_bytes": 44040192,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 0.7023289999779081,
+        "correctness_initial": null,
+        "correctness_updated": null,
+        "updated_widths": null
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-2048-sigma3.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-fused-weight-64",
+        "graph": null,
+        "initial_p_sha256": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "initial_inputs": {
+          "x_sha256": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+          "target_sha256": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+        },
+        "peak_allocated_training_bytes": 322132480,
+        "peak_reserved_training_bytes": 350224384,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 29.979101999970226,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 7.136055918621764e-06,
+              "relative_l2": 1.1296524421467002e-06
+            },
+            "dX": {
+              "max_abs": 1.0376553477353667e-05,
+              "relative_l2": 1.1145508474493133e-06
+            },
+            "all_dP": {
+              "max_abs": 5.477431998546223e-05,
+              "relative_l2": 1.0921543785158727e-06
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 7.959664524492815e-06,
+              "relative_l2": 1.2169524057748363e-06
+            },
+            "dX": {
+              "max_abs": 8.661996223402468e-06,
+              "relative_l2": 1.0878149840947412e-06
+            },
+            "all_dP": {
+              "max_abs": 4.588800782734381e-05,
+              "relative_l2": 1.0830488970495913e-06
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 2.9934699535369873,
+            "max": 2.9935126304626465,
+            "mean": 2.99349045753479
+          },
+          {
+            "min": 2.9934699535369873,
+            "max": 2.9935126304626465,
+            "mean": 2.99349045753479
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-2048-sigma3.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-sorted-weight-64",
+        "graph": null,
+        "initial_p_sha256": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "initial_inputs": {
+          "x_sha256": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+          "target_sha256": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+        },
+        "peak_allocated_training_bytes": 322132480,
+        "peak_reserved_training_bytes": 350224384,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 30.34514599994509,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 7.136055918621764e-06,
+              "relative_l2": 1.1310843700393077e-06
+            },
+            "dX": {
+              "max_abs": 1.0138134898252105e-05,
+              "relative_l2": 1.1145473095702906e-06
+            },
+            "all_dP": {
+              "max_abs": 5.477431998546223e-05,
+              "relative_l2": 1.0918092532119076e-06
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 7.782451749260844e-06,
+              "relative_l2": 1.217272686208358e-06
+            },
+            "dX": {
+              "max_abs": 9.392497021476487e-06,
+              "relative_l2": 1.087698636268736e-06
+            },
+            "all_dP": {
+              "max_abs": 4.493433351093756e-05,
+              "relative_l2": 1.0833604638985488e-06
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 2.9934699535369873,
+            "max": 2.9935126304626465,
+            "mean": 2.99349045753479
+          },
+          {
+            "min": 2.9934699535369873,
+            "max": 2.9935126304626465,
+            "mean": 2.99349045753479
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-2048-sigma3.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-blocked-4096",
+        "graph": null,
+        "initial_p_sha256": "4a2849721b5a7d4e014eae1abc969238247bc2818580bbe6d30c4fbdd082d2c2",
+        "initial_inputs": {
+          "x_sha256": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+          "target_sha256": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+        },
+        "peak_allocated_training_bytes": 297642496,
+        "peak_reserved_training_bytes": 341835776,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 102.3416929999712,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 6.445647330544091e-06,
+              "relative_l2": 1.0428919695196073e-06
+            },
+            "dX": {
+              "max_abs": 8.549050064532437e-06,
+              "relative_l2": 1.0231422486789434e-06
+            },
+            "all_dP": {
+              "max_abs": 5.964444578443473e-05,
+              "relative_l2": 1.024702240671901e-06
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 6.964719060142954e-06,
+              "relative_l2": 1.1403071157305903e-06
+            },
+            "dX": {
+              "max_abs": 8.197325349401652e-06,
+              "relative_l2": 1.0163885449384529e-06
+            },
+            "all_dP": {
+              "max_abs": 4.822394385861628e-05,
+              "relative_l2": 1.0276080180629263e-06
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 2.9934699535369873,
+            "max": 2.9935126304626465,
+            "mean": 2.99349045753479
+          },
+          {
+            "min": 2.9934699535369873,
+            "max": 2.9935126304626465,
+            "mean": 2.99349045753479
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-2048-sigma3.json",
+      "result": {
+        "status": "PASS",
+        "reference": "dense_linear",
+        "graph": null,
+        "initial_p_sha256": null,
+        "initial_inputs": {
+          "x_sha256": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+          "target_sha256": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+        },
+        "peak_allocated_training_bytes": 85198336,
+        "peak_reserved_training_bytes": 92274688,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 1.0953250000511616,
+        "correctness_initial": null,
+        "correctness_updated": null,
+        "updated_widths": null
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-2048-sigma8.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-fused-weight-256",
+        "graph": null,
+        "initial_p_sha256": "b2716cadd907d9e04d50ffadbc6d4c195e631cb076fe8a611b5163136c5ee8d3",
+        "initial_inputs": {
+          "x_sha256": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+          "target_sha256": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+        },
+        "peak_allocated_training_bytes": 963021312,
+        "peak_reserved_training_bytes": 996147200,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 541.3504990001456,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 5.0977558944120815e-06,
+              "relative_l2": 1.0048631490815144e-06
+            },
+            "dX": {
+              "max_abs": 5.023523845792965e-06,
+              "relative_l2": 1.0045401711634018e-06
+            },
+            "all_dP": {
+              "max_abs": 1.6287823429550485e-05,
+              "relative_l2": 4.982699600825757e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 5.164753775266373e-06,
+              "relative_l2": 1.1755856863157317e-06
+            },
+            "dX": {
+              "max_abs": 5.202387837188738e-06,
+              "relative_l2": 1.0483846930445747e-06
+            },
+            "all_dP": {
+              "max_abs": 1.3991213550612613e-05,
+              "relative_l2": 5.125574030556057e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 7.949428558349609,
+            "max": 7.949556350708008,
+            "mean": 7.949497699737549
+          },
+          {
+            "min": 7.949428558349609,
+            "max": 7.949556350708008,
+            "mean": 7.949497699737549
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-2048-sigma8.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-sorted-weight-256",
+        "graph": null,
+        "initial_p_sha256": "b2716cadd907d9e04d50ffadbc6d4c195e631cb076fe8a611b5163136c5ee8d3",
+        "initial_inputs": {
+          "x_sha256": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+          "target_sha256": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+        },
+        "peak_allocated_training_bytes": 963021312,
+        "peak_reserved_training_bytes": 996147200,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 578.4308170000259,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 4.9785466048613e-06,
+              "relative_l2": 1.0026352213275315e-06
+            },
+            "dX": {
+              "max_abs": 5.092624188074435e-06,
+              "relative_l2": 1.0041126152782564e-06
+            },
+            "all_dP": {
+              "max_abs": 1.5989800205673532e-05,
+              "relative_l2": 4.985817172352647e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 4.976116576044243e-06,
+              "relative_l2": 1.1771251181411527e-06
+            },
+            "dX": {
+              "max_abs": 5.4915155307533325e-06,
+              "relative_l2": 1.0503114435100816e-06
+            },
+            "all_dP": {
+              "max_abs": 1.3872004261061832e-05,
+              "relative_l2": 5.13203662023908e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 7.949428558349609,
+            "max": 7.949556350708008,
+            "mean": 7.949497699737549
+          },
+          {
+            "min": 7.949428558349609,
+            "max": 7.949556350708008,
+            "mean": 7.949497699737549
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-2048-sigma8.json",
+      "result": {
+        "status": "PASS",
+        "reference": "sphere-blocked-4096",
+        "graph": null,
+        "initial_p_sha256": "b2716cadd907d9e04d50ffadbc6d4c195e631cb076fe8a611b5163136c5ee8d3",
+        "initial_inputs": {
+          "x_sha256": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+          "target_sha256": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+        },
+        "peak_allocated_training_bytes": 297642496,
+        "peak_reserved_training_bytes": 341835776,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 102.02922700000272,
+        "correctness_initial": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.5579782609040933e-06,
+              "relative_l2": 5.359705817986536e-07
+            },
+            "dX": {
+              "max_abs": 3.010300734018756e-06,
+              "relative_l2": 5.33354792583002e-07
+            },
+            "all_dP": {
+              "max_abs": 1.7008165122345265e-05,
+              "relative_l2": 4.872047263865774e-07
+            }
+          }
+        },
+        "correctness_updated": {
+          "status": "PASS",
+          "scope": "full_sites_all_atoms_fp64",
+          "errors": {
+            "Y": {
+              "max_abs": 3.5063057581830037e-06,
+              "relative_l2": 6.864333615119704e-07
+            },
+            "dX": {
+              "max_abs": 3.109201875517442e-06,
+              "relative_l2": 5.908174343605019e-07
+            },
+            "all_dP": {
+              "max_abs": 1.3860201713233877e-05,
+              "relative_l2": 5.254992574443777e-07
+            }
+          }
+        },
+        "updated_widths": [
+          {
+            "min": 7.949428558349609,
+            "max": 7.949556350708008,
+            "mean": 7.949497699737549
+          },
+          {
+            "min": 7.949428558349609,
+            "max": 7.949556350708008,
+            "mean": 7.949497699737549
+          }
+        ]
+      }
+    },
+    {
+      "kind": "primary-v1",
+      "case_result": "runner-2048-sigma8.json",
+      "result": {
+        "status": "PASS",
+        "reference": "dense_linear",
+        "graph": null,
+        "initial_p_sha256": null,
+        "initial_inputs": {
+          "x_sha256": "0308efb0cc6dabf29b7b22324e09bd19411b8d21bff3de657aff04d782dbe11d",
+          "target_sha256": "31237c0f9960dc9f136684bbb1054ba270fee0e465fbcd710e32a78df77c883a"
+        },
+        "peak_allocated_training_bytes": 85198336,
+        "peak_reserved_training_bytes": 92274688,
+        "total_gpu_process_bytes": null,
+        "optimizer": {
+          "name": "AdamW",
+          "lr": 0.0001,
+          "weight_decay": 0.01,
+          "fused": true,
+          "capturable": false
+        },
+        "optimizer_policy": "eager public CSTOptimizer; intrinsic S2 retraction and Polar activity",
+        "scope": "complete eager step with full-site all-atom FP64 checks before and after training",
+        "memory_scope": "eager model, gradients and AdamW state; no Graph capture; GPU process usage unmeasured",
+        "eager_median_ms": 1.1183659999005613,
+        "correctness_initial": null,
+        "correctness_updated": null,
+        "updated_widths": null
+      }
+    }
+  ],
+  "unchanged_fused_numerical_files_from_first_study": {
+    "weight_executor.py": true,
+    "weight_kernels.py": true,
+    "support_kernels.py": true,
+    "fused_prepare_kernels.py": true
+  },
+  "cancelled_job": {
+    "id": "l4job-fa343894cffc41728ebaab99643c173a",
+    "numerical_source": "ef30bb9",
+    "disposition": "cancelled_before_CUDA_execution_for_CTA_visibility_code_review",
+    "source_sha256": "fb09489670e2f90d6c591213027b2b233e20c58e7061bda2d0c837e004884125",
+    "not_a_failed_gpu_run": true
+  }
+}
