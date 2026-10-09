@@ -152,7 +152,7 @@ def forward(model, x, route):
     raise ValueError(route)
 
 
-def oracle_factors(model, p):
+def oracle_factors(model, p, *, scale_amplitude=True):
     """Independent embedded-distance and Polar algebra; no backend math calls."""
     spec = model.kernel.spec
     pars = spec.parameterization
@@ -191,7 +191,9 @@ def oracle_factors(model, p):
         # Existing separable Sphere contract floors each profile separately.
         floor = spec.profiles[len(values)].normalization.floor
         values.append(raw / raw.norm(dim=0).clamp_min(floor)[None])
-    return values[0], values[1] * amp[None]
+    # Untimed support diagnostics retain positive support at zero amplitude;
+    # sigma still follows the actual amplitude/activity law.
+    return values[0], values[1] * amp[None] if scale_amplitude else values[1]
 
 
 def oracle_vjp(model, x, dy, *, chunk=256):
@@ -290,9 +292,11 @@ def trajectory_gate(size=32, sigma=3.0, steps=20, *, device="cpu"):
 
 
 def tensor_hash(tensor):
-    return hashlib.sha256(
-        tensor.detach().cpu().contiguous().numpy().tobytes()
-    ).hexdigest()
+    # Preserve the historical raw-byte SHA without requiring NumPy (which is
+    # not a core/dev dependency). Reshape handles scalars; the byte view limits
+    # hashing to tensor contents even when a contiguous slice has extra storage.
+    cpu = tensor.detach().cpu().contiguous().reshape(-1)
+    return hashlib.sha256(bytes(cpu.view(torch.uint8).tolist())).hexdigest()
 
 
 def run_worker(args):
