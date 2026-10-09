@@ -152,7 +152,7 @@ def forward(model, x, route):
     raise ValueError(route)
 
 
-def oracle_factors(model, p):
+def oracle_factors(model, p, *, scale_amplitude=True):
     """Independent embedded-distance and Polar algebra; no backend math calls."""
     spec = model.kernel.spec
     pars = spec.parameterization
@@ -191,7 +191,9 @@ def oracle_factors(model, p):
         # Existing separable Sphere contract floors each profile separately.
         floor = spec.profiles[len(values)].normalization.floor
         values.append(raw / raw.norm(dim=0).clamp_min(floor)[None])
-    return values[0], values[1] * amp[None]
+    # Untimed support diagnostics retain positive support at zero amplitude;
+    # sigma still follows the actual amplitude/activity law.
+    return values[0], values[1] * amp[None] if scale_amplitude else values[1]
 
 
 def oracle_vjp(model, x, dy, *, chunk=256):
