@@ -91,4 +91,10 @@ python -m benchmarks.cuda.linear.scaling_comparison \
   --output output/sphere-grouped-worker.json
 ```
 
-Use the frozen catalog `benchmarks/cuda/linear/plans-sphere-polar-grouped.json` and all four declared Cases through `tools.kernel_dev check` for public runner declarations. To reproduce the comparison, run every fixed primary case/recipe/control/dense worker in isolation, then reverse the strict qualified condition order with unchanged source and protocol. Individual phase timings or a single worker cannot replace this paired complete-step gate.
+Use the frozen catalog `benchmarks/cuda/linear/plans-sphere-polar-grouped.json` and all four declared Cases through `tools.kernel_dev check` for public runner declarations. The generic sigma8 Cases retain fused W256 as the existing runner baseline and include H4096 as a comparison plan. The matched complete-step protocol independently chooses H4096 as its sigma8 control; the recommendations above use that measured control, rather than the generic Case baseline alias. To reproduce the comparison, run every fixed primary case/recipe/control/dense worker in isolation, then reverse the strict qualified condition order with unchanged source and protocol. Individual phase timings or a single worker cannot replace this paired complete-step gate.
+
+## Integration validation
+
+The candidate was rebased onto `origin/main` at `5711a26ad71d3595dc9653dd8caab05cf769f0b3` after the shared protocol PR merged. All runtime files and own numeric tests/catalog/Cases remain byte-identical to numeric checkpoint95beaac. Shared benchmark/protocol files remain byte-identical to correction150a5bc; runtime and benchmark files also match the measured aa9 source. Only the study prose changed after measurement. The measured recovery anchors and ignored raw evidence remain intact.
+
+Final local CPU validation:1379 passed,2587 GPU/DB tests skipped,18 warnings in28.10s. All27 catalog Plans and four Cases passed declaration checks; changed Python files passed Ruff. Wheel and source distribution builds passed. CUDA source was not rerun solely for the prose/rebase because its bytes and the measured benchmark bytes are unchanged; the independent GPU gates and both complete-step runs above remain the evidence for that exact implementation.
