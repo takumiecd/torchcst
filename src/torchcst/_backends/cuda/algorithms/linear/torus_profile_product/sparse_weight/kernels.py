@@ -8,7 +8,7 @@ import triton as tr
 import triton.language as tl
 from triton.language.extra.cuda import libdevice
 
-from ..onchip.kernels import _atom, _circle, _section
+from .._shared.profiles import _atom, _circle, _section
 
 
 @tr.jit
