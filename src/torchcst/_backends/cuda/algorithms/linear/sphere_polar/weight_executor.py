@@ -8,10 +8,10 @@ from .support_executor import prepare
 
 class _Weight(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, p, kernel, charts, recipe):
+    def forward(ctx, x, p, kernel, charts, recipe, preparer):
         from .weight_kernels import assemble
 
-        x, source, amp, damp, floors, sides = prepare(x, p, kernel, charts, recipe)
+        x, source, amp, damp, floors, sides = preparer(x, p, kernel, charts, recipe)
         w = x.new_zeros((len(sides[1][0]), x.shape[1]))
         if len(p):
             assemble[(len(p),)](
@@ -59,8 +59,8 @@ class _Weight(torch.autograd.Function):
                     num_warps=4,
                     enable_fp_fusion=False,
                 )
-        return dx, dp, None, None, None
+        return dx, dp, None, None, None, None
 
 
-def weight_linear(x, p, kernel, charts, recipe):
-    return _Weight.apply(x, p, kernel, charts, recipe)
+def weight_linear(x, p, kernel, charts, recipe, *, preparer=prepare):
+    return _Weight.apply(x, p, kernel, charts, recipe, preparer)
