@@ -1,7 +1,9 @@
 """Metadata-only declaration for exact intrinsic S2 Polar retraction."""
 
 from dataclasses import dataclass
+
 import torch
+
 from torchcst._backends.algorithm import Algorithm
 from torchcst._backends.schema import DefaultRecipe, SupportResult
 from torchcst.geometry.spec import SphereGeometrySpec
