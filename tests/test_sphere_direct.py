@@ -350,8 +350,9 @@ def test_retained_forward_owns_live_geometry_and_scalars(options):
         oracle_vjp(model, x, dy),
     )
     after = torch.autograd.grad(y, (x, model.atoms.p), dy)
-    for aa, bb in zip(first, after):
-        torch.testing.assert_close(aa, bb, atol=0, rtol=0)
+    # dX sums atom contributions with atomics; dP has one writer per atom.
+    gate((after[0],), (first[0],))
+    torch.testing.assert_close(after[1], first[1], atol=0, rtol=0)
     gate((y, *after), expected)
 
 
