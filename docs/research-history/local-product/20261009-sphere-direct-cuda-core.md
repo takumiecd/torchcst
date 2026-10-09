@@ -97,4 +97,57 @@ forward39 registers, backward80, zero spills and512 bytes shared memory,
 for both separate and merged VJP. These are diagnostics from an incomplete
 job, not evidence that all variants passed or that a candidate is faster.
 The replacement gate partitions the same159 tests without omission or retry.
-All partitions and all14 correctness workers must pass before timing.
+All partitions and all14 correctness workers passed before timing.
+
+## Completed fixed cohort: negative adoption result
+
+The partitioned gate l4job-d5540038f89747358b2edd4ab07b8153 passed159 tests
+with zero skips and all14 full correctness workers in763.31s. Its six
+partitions contained98/1/1/1/1/57 distinct tests. The independent source,
+JUnit and raw-artifact audit passed. Maximum absolute oracle error was
+5.6681e-5, within the unchanged4e-4 gate.
+
+Primary l4job-e1735b731bae4f05964b6e19b343088d passed30 protocol tests
+and all14 workers in374.92s. Both jobs used frozen source
+5b8e1d8d7353ec24b3a394d8e3ddc50b7b36e372 and partitioned-v2 driver
+SHA2561b6ddd34c52f0e71c63b3c092108bcd3d49cbd390c318e915243d4b38ee5b6a8.
+Hardware was NVIDIA L4; Python3.13.15, Torch2.11.0+cu130, CUDA13.0 and
+Triton3.6.0. Complete Graph step medians and capture/replay peak allocated
+memory were:
+
+| Route | N1024 ms | N1024 MiB | N2048 ms | N2048 MiB |
+| --- | ---: | ---: | ---: | ---: |
+| compact W | 4.164 | 92.862 | 22.562 | 271.585 |
+| old direct | 8.928 | 87.662 | 43.700 | 302.259 |
+| G1 separate | 8.024 | 74.862 | 40.080 | 250.259 |
+| G4 separate | 6.414 | 74.862 | 33.289 | 250.259 |
+| G1 merged | 7.487 | 74.862 | 37.035 | 250.259 |
+| G4 merged | 6.051 | 74.862 | 31.697 | 250.259 |
+| dense control | 0.0855 | 32.877 | 0.5937 | 81.502 |
+
+All four new routes reduced allocated memory versus compact W, but failed
+the predeclared time constraint. G4 merged was45.29% slower at1024 and
+40.49% slower at2048, with19.38% and7.85% allocated reductions. The frozen
+assessor returned an empty eligible selection; no reverse adoption run or
+public-dispatch change followed. Improvement over old direct is mechanism
+evidence only, and CST still has no measured memory advantage over dense here.
+
+Separate instrumented diagnostics at2048 measured compact W forward/loss
+14.569ms and backward7.220ms; G4 merged measured18.830ms and12.748ms.
+These separate30-update runs are not added to or subtracted from primary
+timings. Neither CUDA Core grouping nor output-VJP fusion removed atomic
+scatter. Atomic dominance is a hypothesis, not an isolated measurement.
+
+Matched2048 compiler diagnostics found G1 forward39/backward80 registers
+with zero spills; G4 forward71/backward168 registers, with2 backward spills
+for separate VJP and0 for merged. No MMA/TF32 instructions were present.
+These explain resource differences but do not establish a timing cause.
+
+Raw jobs, frozen-v2 driver/protocol/assessor and their source/result archives
+are preserved in the primary checkout under
+output/sphere-direct-cuda-core-20261009/. The named research branch preserves
+the implementations; they are not selected as public defaults. All owned L4
+sessions were verified stopped after the completed batch. The next isolated
+study removes Phi storage at allocation time and recomputes profiles from
+saved support/geometry/norm; its speed and peak memory are not inferred from
+the107374080-byte capacity estimate at2048.
