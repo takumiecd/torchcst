@@ -73,5 +73,28 @@ mechanism evidence. Failed or negative outcomes remain preserved.
 The ignored protocol is output/sphere-direct-cuda-core/protocol.json,
 SHA256 d598c11d2c0bf4b274ce73da53754dd327db68e096a479a9088b8a57d5d12c22.
 Budgets are900s outer,875s driver,350s child. Runtime source, driver, plan and
-result hashes will be recorded with completed jobs. Implementation and GPU
-validation are pending; this initial note reports no performance result.
+result hashes will be recorded with completed jobs. Implementation is present;
+complete GPU validation and performance results are pending.
+
+## Initial validation failures
+
+Source b0a8edb was preserved with job
+l4job-dbcf30dde1ef49d29a65bfe2f1105c8e. Its single pytest child exceeded350s
+after three retained-forward assertions failed. No cohort worker ran and this
+job supplies no accepted performance result. The fixed900/875/350s budgets
+and numerical gates remain unchanged.
+
+The separate diagnostic l4job-aeb622904ddf4456a1568b64f98467b1 reproduced all
+three failures in dX only (192 elements, maximum absolute differences
+1.4901161193847656e-8,7.450580596923828e-9,7.450580596923828e-9).
+The test incorrectly demanded bitwise repeatability of atomic dX reductions.
+Commit c3557d8 checks repeated dX with the existing maxabs AND relative-L2
+gate and retains bitwise dP equality and independent FP64 checks before and
+after mutation. The runtime is unchanged by this correction.
+
+The first failed gate also returned partial G1 compiler diagnostics:
+forward39 registers, backward80, zero spills and512 bytes shared memory,
+for both separate and merged VJP. These are diagnostics from an incomplete
+job, not evidence that all variants passed or that a candidate is faster.
+The replacement gate partitions the same159 tests without omission or retry.
+All partitions and all14 correctness workers must pass before timing.
