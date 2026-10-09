@@ -5,7 +5,7 @@ training step in all four large cases, with no allocated-memory reduction.
 Do not add its runtime, registry, catalog or tests to main. Preserve the source
 on `kernel/sphere-sorted-support` at `4b3a785005c647c4397d668ebd4678fdedc73d75`,
 with verified raw jobs and recovery proof. This change records negative evidence
-only; the fused W and bounded H alternatives from PR81 remain available.
+only; fused W from PR81 and bounded H from PR80 remain available.
 
 ## Complete-step result and decision
 
