@@ -3,12 +3,16 @@
 import torch
 
 
-def prepare(x, p, kernel, charts, recipe):
+def prepare(x, p, kernel, charts, recipe, *, index_dtype=torch.int32):
     import triton
 
     from .fused_prepare_kernels import decode_atoms, normalize_sites
     from .support_kernels import pack
 
+    if index_dtype not in (torch.int16, torch.int32):
+        raise ValueError("requires int16 or int32 packed site IDs")
+    if index_dtype == torch.int16 and any(len(c.coordinates) > 32768 for c in charts):
+        raise ValueError("int16 packed site IDs require at most32768 sites")
     x = x.contiguous()
     source = p.contiguous().clone()
     amp = x.new_empty(len(p))
@@ -31,7 +35,7 @@ def prepare(x, p, kernel, charts, recipe):
         jac = x.new_empty((len(p), 3, 2))
         precision = x.new_empty(len(p))
         index = torch.empty(
-            (len(p), recipe.support_capacity), device=x.device, dtype=torch.int32
+            (len(p), recipe.support_capacity), device=x.device, dtype=index_dtype
         )
         phi = x.new_empty((len(p), recipe.support_capacity))
         norm = x.new_empty(len(p))
