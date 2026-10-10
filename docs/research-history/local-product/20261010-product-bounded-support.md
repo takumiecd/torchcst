@@ -89,3 +89,89 @@ roundtrip, then the same-engine native/Torch controls plus dense at2048 and8192.
 Use the same acceptance thresholds and full initial/24-update FP64 oracles,
 1000s for the new2048 job and1600s for the new8192 job. This is a new execution
 candidate after the observed2048 recomputation loss; do not replace that loss.
+
+
+## Checkpoint and provenance
+
+The compact-cache source is commit
+`08b72c84732cfb428bee6b357d41be8b6e726093`; local CPU validation passed1412
+with2699 skips, and wheel/sdist build passed. Its2048 GPU gate/comparison is
+`l4job-98aa5d354344453494c60c70be55bccf` with the declared1000s budget.
+No GPU result or adoption is implied by this checkpoint.
+
+The corrected v1/2048 provenance proof matched all1591 non-driver source-file
+SHA256 values to commit `b469c4853ce70ccfd9f74aefa837029b5a360c9d`.
+The frozen driver SHA256 is
+`09b71fbe44eb8fd90f7ba6fda794e73d865521272eb0c459946c9eb1a3ad1c24`.
+The measured source archive SHA256 is
+`005bd9b68f4acc1b920918592f749d3a164866f462ee01e5cdd9319a911a94cc`;
+retrieved result archive SHA256 is
+`09a8c61ec305f80e42f1537d5f713b1e73c4d45c2786b1436778d6b82846b630`.
+The companion proof is ignored `output/product-bounded-2048-source-proof.json`.
+Raw artifacts remain in the default pool job directory; the symbolic `HEAD`
+field is not rewritten.
+
+Runtime for this batch: NVIDIA L4, PyTorch2.11.0+cu130, CUDA13.0,
+Triton3.6.0. Reproduce a candidate with the committed catalog/case via
+`python -m benchmarks.cuda.linear.run --plans <catalog> --case <case>
+--polar-update fused --phase-diagnostics --source-commit <explicit-commit>
+--output <ignored-output-path>`. The frozen pool driver in each source archive
+also preserves the independent gate and supplemental24-update oracle.
+
+
+## Arithmetic support and retained mathematical state
+
+For one positive regular axis, site coordinates are \(t_i=o+i\Delta\),
+\(\Delta>0\). In exact arithmetic the positive Triweight support is
+\[
+\left\{i\in[0,N):\frac{c-\sigma-o}{\Delta}<i<
+\frac{c+\sigma-o}{\Delta}\right\}.
+\]
+The runtime does not rely on those exact real-number inequalities at a rounded
+boundary: `_candidate_span` expands the interval conservatively, applies the
+original FP32 positive-gap predicate, and falls back to a full scan when the
+spacing/coordinate/radius precision bound cannot certify the candidate. The
+saved endpoints are the first positive site and one past the last positive site,
+with `(N,0)` for an empty axis. Both input/output ranges fit signed16-bit integers
+for the declared N<=8192; `precision` fallback is also representable.
+
+Let \(v_i=(1-(t_i-c_{in})^2/\sigma^2)_+^3\),
+\(u_j=(1-(s_j-c_{out})^2/\sigma^2)_+^3\). The matrix contribution remains
+\[
+W_{ji}=\sum_a\frac{A_a u_{a,j}v_{a,i}}
+{\max(\|u_a\|_2\|v_a\|_2,F)}.
+\]
+The packed normalization factors and their center-derivative coefficients are
+copied at FP32 precision, including the whole-product floor convention. The
+stored ranges avoid backward's support search; they do not replace the complete
+norm, omit positive sites, or freeze subsequent forwards' live widths.
+
+
+## v1 large result: reject recomputation
+
+Job `l4job-dfd73c99fb604a46b4487c8a858b77fb` succeeded: all four initial
+complete FP64 oracles plus both updated candidate oracles passed. Both updated
+candidates changed all3355443 widths in24 updates; worst updated Y maxabs was
+2.180e-4, dX8.162e-10 and dP3.087e-11, all below the predeclared4e-4 gates.
+Submission validation also passed. Native/Torch controls and candidates use the
+same source b469c48 and inputs; this is one independent run with21 timed replays.
+
+| N8192 route | Complete step ms | Allocated peak bytes | Reserved peak bytes |
+| --- | ---: | ---: | ---: |
+| Native control | 42.318327 | 1041040896 | 2501902336 |
+| Native recompute | 47.926771 | 881241600 | 2164260864 |
+| Torch control | 39.708207 | 1075119616 | 2522873856 |
+| Torch recompute | 45.602354 | 915320320 | 2185232384 |
+| Dense | 11.683064 | 1112017408 | 1642070016 |
+
+The native candidate reduces allocated peak15.35% but slows13.25%; Torch reduces
+14.86% but slows14.84%. Reject both under the stated <=3% regression requirement.
+Phase diagnostics separately increase backward12.09→17.28ms (native) and
+11.84→17.17ms (Torch), consistent with norm recomputation cost. The candidate
+remains slower than dense; memory reduction does not establish training quality.
+The source archive SHA256 is
+`d0a651be339a321709a47e94c721587efebdade75a108720f1d96c86a6d87c93`;
+retrieved result archive SHA256 is
+`c324359ed38c2a330f08101177117e8a490db60a18312a89bc9d561b18ef2d7c`.
+Preserve this validated negative route on the research branch; it is not eligible
+for public dispatch adoption. The cache candidate is evaluated separately.
