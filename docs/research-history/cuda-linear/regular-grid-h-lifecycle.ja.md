@@ -588,3 +588,158 @@ clone／sorted-Pのbitwise照合とCPU census照合は通過したが、診断ti
 比較Tensorをdetachして同じdeviceへ転送するhost比較だけを修正し、kernel・gate・budgetは維持する。
 修正sourceを別commitで検証に明示的に提出する。失敗archive／manifestは照合して保全した。
 source archive `bbc774d075e98e48e666990b401d7d004621b128f0acb273b65810f6a081d648`、result archive `261c2c105cd6f57efc43cbe88c7ec7b7c46ea299e9ad16e095f2da6398fb58f1`。
+
+
+## Y集約の内訳調査（2026-10-10結果）
+
+測定sourceは `8b26df2ba50f87a10445eb266773031c78b935dd`。L4、B32、N1024/2048、
+rho3/8、5% atoms、seed41、FP32/TF32 off、fused AdamW＋Polar update、24実更新を固定。
+各Case/controlは1cohort、21sampleであり、独立21runではない。
+CPU suiteは1659 passed / 2854 skipped（18既存warning）、追加GPU診断テストは4 passed / 170 deselected。
+前節の250 GPU checksは前のsourceでの検証で、今回の新4checkと区別する。
+CPU CIもSUCCESS: https://github.com/takumiecd/torchcst/actions/runs/38055509930/job/114223015387
+
+36主workerは全PASS。初期／post24の64 FP64 snapshotでY、dX、全atom勾配、正規化を
+従来の4e-4 gateで検証。診断の16 snapshot（4Case×2容量×2状態）でも全ownerの
+CPU censusが一致。数学を保つruntime含む5variantの全Y、計80比較が独立FP64 gateをPASSした。
+診断max_abs最大0.00032577739691497243、relative_l2最大7.394209486711291e-7。
+cloneとsorted-Pはruntimeとbitwise一致。診断snapshot hashも主worker snapshotと照合した。
+変更した係数順序／並び替えについて、candidate backward・optimizerは未実装／未検証。
+
+### 完全step対照（今回のcohort）
+
+各セルは完全step中央値ms / capture-replay allocated MiB / reserved MiB。
+主測定は未計装Graphであり、診断kernelや並び替えscratchを含まない。
+
+| N / rho | W＋Torch | W＋Triton | 全H factor | atom担当H/G | 出力所有H再計算 | H8 | H16 | H32 | dense |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1024 / 3 | 0.393 / 48.67 / 116 | 0.462 / 16.17 / 36 | 1.276 / 20.96 / 36 | 1.172 / 10.84 / 36 | 2.014 / 10.84 / 36 | 5.413 / 10.84 / 36 | 3.354 / 10.84 / 36 | 3.220 / 13.92 / 36 | 0.085 / 33.00 / 86 |
+| 2048 / 3 | 1.295 / 96.16 / 142 | 1.483 / 63.11 / 122 | 5.131 / 83.11 / 130 | 4.415 / 42.87 / 114 | 8.531 / 42.87 / 114 | 13.190 / 42.87 / 114 | 13.235 / 43.26 / 102 | 11.681 / 55.02 / 104 | 0.591 / 81.75 / 106 |
+| 1024 / 8 | 0.866 / 48.67 / 116 | 0.941 / 16.17 / 36 | 2.719 / 20.96 / 36 | 2.703 / 10.84 / 36 | 3.210 / 10.84 / 36 | 6.274 / 10.84 / 36 | 4.200 / 10.84 / 36 | 4.119 / 13.92 / 36 | 0.085 / 33.00 / 86 |
+| 2048 / 8 | 3.267 / 96.16 / 142 | 3.475 / 63.11 / 122 | 11.217 / 83.11 / 130 | 9.911 / 42.87 / 114 | 12.933 / 42.87 / 114 | 16.048 / 42.87 / 114 | 16.040 / 43.26 / 102 | 14.581 / 55.02 / 104 | 0.593 / 81.75 / 106 |
+
+### 固定post24・Y-only probe
+
+H生成を除外し、同じH/routing/metadataを使う。BM8 / BO16 / GROUP8。
+chunk別Graphを外部Eventで計測し、sample内のchunk時間を合計して中央値を取った。
+probe順序をrotation/reverseしている。値はms、完全stepとは加算しない。
+
+| N / rho | H容量 | runtime | 同式clone | amp/norm先行 | sorted-P | 両方 | binary支持 | synthetic H | gather/reduce | index walk |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| n1024-rho3 | 16 | 2.482 | 2.467 | 1.621 | 2.012 | 1.309 | 2.431 | 2.489 | 0.249 | 0.147 |
+| n1024-rho3 | 32 | 2.360 | 2.324 | 1.474 | 1.822 | 1.160 | 2.285 | 2.368 | 0.187 | 0.072 |
+| n2048-rho3 | 16 | 9.499 | 9.383 | 5.926 | 7.287 | 4.623 | 9.201 | 9.566 | 0.733 | 0.279 |
+| n2048-rho3 | 32 | 7.910 | 7.777 | 5.028 | 6.253 | 4.164 | 7.668 | 7.954 | 0.663 | 0.156 |
+| n1024-rho8 | 16 | 2.490 | 2.478 | 1.625 | 2.017 | 1.313 | 2.440 | 2.484 | 0.246 | 0.145 |
+| n1024-rho8 | 32 | 2.359 | 2.347 | 1.489 | 1.841 | 1.171 | 2.309 | 2.365 | 0.188 | 0.072 |
+| n2048-rho8 | 16 | 9.546 | 9.417 | 6.195 | 7.329 | 4.663 | 9.239 | 9.532 | 0.736 | 0.279 |
+| n2048-rho8 | 32 | 7.968 | 7.810 | 5.095 | 6.266 | 4.168 | 7.706 | 7.896 | 0.664 | 0.157 |
+
+- amp/norm先行は約35〜38%短縮、sorted-P単独は約19〜23%短縮、両方は約47〜51%短縮。
+  係数 `q_u / D * amp` を `q_u * (amp / D)` とした数学を保つ診断である。
+  Dは既存の全site joint L2 normalizer＋一度だけのfloorをそのまま使う。
+- H読込をsynthetic値で置換しても差は約1%以内で、今回のscheduleでH読込単独を
+  第一候補にする根拠は弱い。置換は出力を変え、演算／compilerにも影響する。
+  H帯域のphysical上限や他scheduleについての証明ではない。
+- binary支持でも支持距離・正値maskの計算は残るため、U評価全体を除いた診断ではない。
+  gather/reduceはP読込・U評価を除き、軽いsynthetic係数で全候補のHを読む。
+  index walkはOrder ID checksumを出力へ残す下限診断。これらは出力を変え、shared memory、
+  register数、layoutも変わる。時間差を排他的な「各部分の費用」に分解／加算できない。
+- 今のYはownerごとに一度storeし、atomicを使わない。この測定の遅さはY atomic競合ではない。
+
+### 候補とmetadataアクセス
+
+下表はpost24全ownerの論理件数。batch tileによる重複を除いたcensusであり、
+U-positiveは出力支持が正という意味（Hやampが非ゼロという意味ではない）。
+site検査は候補atom×16。sectorは振幅fieldのgroup内32byte address区画数で、実transactionではない。
+
+| N / rho | bins / groups | 候補atom | U-positive atom | U-positive pair | 候補/positive atom | site検査/positive pair | 原順sector / sorted sector |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| n1024-rho3 | 192 / 19740 | 157284 | 68821 | 313913 | 2.285 | 8.017 | 149733 / 35712 |
+| n2048-rho3 | 384 / 78816 | 629145 | 274796 | 1255610 | 2.289 | 8.017 | 614061 / 145161 |
+| n1024-rho8 | 192 / 19743 | 157284 | 101332 | 833593 | 1.552 | 3.019 | 149769 / 35715 |
+| n2048-rho8 | 384 / 78810 | 629145 | 405054 | 3334234 | 1.553 | 3.019 | 614112 / 146433 |
+
+rho3/8ともBO16単位で3binを訪問し、候補数は同じ。MaxDistanceはそれぞれ5/10だが、
+ceil(distance/16)=1のため粗いbinが差を吸収する。rho3は約56%の候補atomがownerの
+全16siteでU=0、site検査は正値pairの約8倍。rho8は約36%／約3倍。
+規則格子で支持範囲を直接割り出せても、Yでの粗い候補走査が残っている。
+
+sorted-PはHのsorted positionと同じ順にPをコピーする。振幅fieldの論理sector数は約4.2分の1。
+ただし、original atom IDのOrder gatherも省いているため、短縮をcache改善だけに帰属しない。
+コピーした全13fieldの明示scratchとGraph index_select時間は以下。事前確保bufferへの書込であり、
+allocation費用を含まず、candidate完全step peakは計測していない。
+
+| N / rho | sorted P MiB | H16 copy ms | H32 copy ms |
+| --- | --- | --- | --- |
+| n1024-rho3 | 2.60 | 0.021 | 0.021 |
+| n2048-rho3 | 10.40 | 0.072 | 0.075 |
+| n1024-rho8 | 2.60 | 0.022 | 0.020 |
+| n2048-rho8 | 10.40 | 0.073 | 0.076 |
+
+### compilerとphysical counterの限界
+
+valid probeのstatic `div.rn.f32` はruntime、clone、amp/norm先行、sorted-P、両方すべて32で同じ。
+「先行化でGPU除算命令を16分の1にした」とは言えない。依存順／compiler schedule／layoutの
+影響が考えられるが、dynamic instruction数とstall原因は未確定。
+N2048/rho8/H32のcompiler registers / spills / shared bytesは、runtime115/0/128、
+clone114/0/128、先行128/2/128、sorted113/0/128、両方134/0/128。
+static ld.globalは原順75／sorted59。PTXとhashを各oracle directoryへ保存した。
+compiler spills=2でもPTX ld.local/st.localは0であり、実spill trafficの根拠にはしない。
+register数だけからoccupancy／速度を推定しない。
+
+物理counterの取得も既存sourceの別固定job（240秒上限、retryなし）で一度試した。
+Nsight Computeは利用可能でmetric queryも通過。N2048/rho3/H32 post24を再構成し、
+runtime／先行／sorted／両方のYを確認してからcudaProfilerStart/Stop区間を指定した。
+CLI exit=0だがCSVにMetric Name行がなく、counterはUNAVAILABLE。空のreportと全logを保持する。
+permission拒否は記録されず、kernelのcapture/match原因は未調査。cache miss／stall／
+physical bandwidthは依然不明。Nsight時間を主測定へ代入せず、この結果で追加retryは行わない。
+
+### 次の実装候補と判定
+
+1. 係数の寿命をHから分離し、同一forward中で再利用できる `beta_a=amp_a/D_a` を準備段階で
+   一度計算する。今回の局所先行化より本当にdynamic重複が減るかを別Algorithmとして測る。
+2. H順のhot metadata（beta、inv、center等）だけを小さく用意する。
+   現在の全13fieldコピーはN2048で10.4MiB増えるため、そのまま採用しない。
+   3/4fieldなら明示容量は約2.4/3.2MiBだが、完全step両peakと全勾配の検証が必要。
+3. centerの整数site順に細分化し、No+1長のprefix境界からownerの候補区間を参照する。
+   torus seamでは2区間、全周支持は全atomを一度だけ訪問し、既存guardとexact U評価を保持する。
+   per-output CSR edge listを作らず、候補索引の寿命はParameter更新までとする。
+   BO16＋MaxDistance5/10ならcenter候補windowは26/36site相当で、粗い3binの48siteより
+   小さくできる可能性がある。ただし削減率／速度は未実装・未測定の仮説。
+
+まず1＋2をforward/backward/optimizerの真のcandidateにし、同条件の完全stepとdense両peakで
+比較するのが妥当。Hの小batch寿命とY所有は維持する。候補細分化は次の独立変更とし、
+効果を切り分ける。公開dispatchへ採用せず、研究候補と診断をDraft PR #100に保持する。
+
+### evidenceと運用結果
+
+| scope | job | source archive SHA256 | result archive SHA256 |
+| --- | --- | --- | --- |
+| 4 GPU tests | `l4job-c2be2564a1ee4bb7b5d9c585b41be91a` | `a93eced882f19401b7de2f0504b7dab394bb6105a8bba0996c7dee63f18628ec` | `880e71efa6f4b2db8f646748db9a79ee3c3a2d3967e42ecc96130c0fbf11d407` |
+| n1024-rho3 | `l4job-883b1a6013df4edc9034f1307673416d` | `250798849246875097d5e68ca7d104d8f09a5b361c08491315782ba7df92cd8b` | `91ec8eba58d7a9d7d0b7e9bf362d11008b7388bd965f619c556f5086e4d1f2f8` |
+| n2048-rho3 | `l4job-bf87537f954f450892cc5d046f7397e6` | `49bec144cfd8b70b8e1bd9926cc721271df6b872deaca664ae46cd606f96cb77` | `4aeefc5d7d8774958b1261b30f5eb92149a811ab87b1a0b2f3e0aeb747b82810` |
+| n1024-rho8 | `l4job-a8ae652f83804eef9ea87d4b9cca3048` | `6d3e323e716e6973729028b5c566bc8f2b276ed001f62d61a2eee2f99aff62bd` | `d87ee27d727354468c487f37416fe7962799e060ed0bfa7fea69b0704d3336b4` |
+| n2048-rho8 | `l4job-b8b53e503a224f27810ac2d6a9571d85` | `761cdf97f025a09a52ab6e2e67e313bbbfb3d2fe7ffdc165b274f15e9d9932a3` | `0dc1539fc3aab08de03bd1e0d2ce485a0ff5bb0dbfbc57477fe9133930d1973c` |
+| counter unavailable | `l4job-f8f8297634ae48c3bb5105145000fca0` | `5fad2623d1dd88edf89fdc9b32aedf67032d9e4c2e232a7db8118ac9fe93b132` | `0126affe0e8dfd4db61c35454dbc598cee4b119e49cc365155e5c61b67dda6da` |
+
+成功unit／4比較／counter attemptの6sourceはdriver以外同一。全source/result archive hash、
+全file manifest、64主snapshot＋counter anchorの2snapshot、runtime/benchmark source hashを照合。
+ignored `output/regular-grid-h/aggregation-evidence/`に全job、PTX、verified-summary、ncu-verifiedを保全。
+初回検証失敗も前節のとおり保全し、host device比較だけを別commitで修正した。
+成功検証の結果回収後にremote cleanup RPCがtimeoutしたが、結果hashは一致し、旧所有VMを停止。
+terminated／server active sessionなしを確認してから新VMで4比較を実行した。測定のretryではない。
+最終的にも全slot stopped／所有VM terminated／server active sessionなしを確認。
+lifecycle.logとpool-final-status.jsonをevidenceへ保存した。
+
+再現は測定source commitで以下（4Caseを各一度。追加診断はH16/H32 workerだけ）。
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.cuda.linear.periodic_comparison \
+  --case benchmarks/cuda/linear/cases/regular-grid-h-2048-rho3.json \
+  --isolated-oracle --phases --aggregation-diagnostics \
+  --output output/regular-grid-h-aggregation.json
+```
+
+高次元CUDA、別GPU、実DB、独立confirmatory cohort、candidate完全step／backward、
+physical counterによる因果確定は未検証。
