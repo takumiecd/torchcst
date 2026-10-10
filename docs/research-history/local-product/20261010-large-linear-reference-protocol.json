@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "study": "all-atom physical FP64 Sphere reference",
+  "status": "DESIGN_DECLARED_RUNTIME_NOT_FROZEN",
+  "base_main": "5755a1b50a53c74f92551d48219270ab009ada98",
+  "scope": "first numerical reference and cost study; no measured improvement or public adoption",
+  "geometry": "two Explicit intrinsic S2 charts; physical chord distance",
+  "kernel": "revision1 separable Polar/activity Triweight",
+  "normalization": {
+    "domain": "complete chart independently on each side",
+    "kind": "discrete_l2",
+    "floor": 0.000001,
+    "equality_derivative": "norm >= floor",
+    "product_denominator": "max(norm_input,floor)*max(norm_output,floor)"
+  },
+  "precision": {
+    "scope": "new physical-reference CST route only",
+    "comparators": "compact retains inherited FP32; dense standard FP32 IEEE; common external FP32/TF32 policy; internal precision differences explicitly reported",
+    "external_dtype": "float32",
+    "physical_geometry_profiles_jacobian": "float64",
+    "contraction_reduction": "float64",
+    "output_cast": "float32 only at API Y/dX/dP boundaries",
+    "tf32": false,
+    "autocast": false,
+    "triton_fp_fusion": false,
+    "constants": "explicit float64 floor/pi/inexact series constants",
+    "amplitude_origin_tiny": "original float32 parameter-domain tiny; not float64 tiny",
+    "task_width_gradient": "stop_gradient"
+  },
+  "reference_execution": {
+    "atom_chunk": 128,
+    "site_tile": 256,
+    "atom_start": "runtime offset, fixed chunk and live-row mask",
+    "support_discovery": "full chart scan for every atom",
+    "global_support_ID_Phi": false,
+    "global_H_G": false,
+    "global_U_V_W_dW": false,
+    "backward": "recompute full physical profiles and H per chunk from immutable forward snapshots",
+    "workspace": "reused bounded chunk/site tiles; explicit bound including norm/moment/VJP buffers required before source freeze"
+  },
+  "fixture": {
+    "sizes": [1024, 2048],
+    "batch": 32,
+    "atoms": "floor(0.05*N*N)",
+    "seed": 41,
+    "initial_sigma": [1.25, 3, 8],
+    "primary_sigma": 3,
+    "width_updates": "live original activity law; not frozen",
+    "shared_inputs": "existing independent X/target/dY stream",
+    "required_hashes": ["X", "target", "dY", "initial P", "sites", "radius", "kernel scalars", "operator declaration"],
+    "dense_initialization": "separate fixed seed41 weight stream; not CST parameter equivalence"
+  },
+  "training": {
+    "mode": "explicit existing research Graph update; public optimizer trajectory checked independently",
+    "loss": "MSE mean",
+    "optimizer": "AdamW",
+    "fused": true,
+    "lr": 0.0001,
+    "weight_decay": 0.01,
+    "betas": [0.9, 0.999],
+    "eps": 0.00000001,
+    "amsgrad": false,
+    "warmup_updates": 2,
+    "initial_replay_updates": 1,
+    "timed_replays": 21,
+    "total_actual_updates": 24,
+    "clock": "exact"
+  },
+  "cohorts": {
+    "numerical_reference": {
+      "reference_CST": "2 sizes * 3 initial sigmas = 6 workers",
+      "compact_CST": "2 sizes * sigma3 = 2 workers",
+      "standard_dense": "2 sizes = 2 workers",
+      "total_workers": 10,
+      "timing_allowed": false
+    },
+    "ordinary_cost": {
+      "routes": ["physical reference", "validated compact W", "standard dense"],
+      "sizes": [1024, 2048],
+      "sigma_CST": 3,
+      "total_workers": 6,
+      "prerequisites": "all exact regression nodes zero-skip PASS and all 10 numerical workers PASS on identical frozen source/driver/protocol",
+      "purpose": "establish physical-reference cost; not qualify a speed optimization"
+    }
+  },
+  "correctness": {
+    "checkpoints": ["initial", "after24actualupdates"],
+    "CST_quantities": ["all Y", "all dX", "all6dP for every atom"],
+    "dense_quantities": ["all Y", "all dX", "all dW", "finite optimizer state", "moments", "exact clock"],
+    "max_abs": 0.0004,
+    "relative_l2": 0.0004,
+    "requires_both_metrics": true,
+    "oracle": "independent explicit physical FP64 + Torch autograd, no runtime math helper sharing; new revision preserves declared amplitude tiny",
+    "oracle_coverage": "all sites and atoms; no sampled replacement",
+    "oracle_memory": "local chunk VJP with fixed dY; release local graph before detached FP64 Y/dX accumulation; all dP preallocated or exact streamed metrics",
+    "cast_error": "record independently without weakening gate",
+    "regressions": "freeze exact collection and disjoint partition union after implementation and before first GPU submission"
+  },
+  "measurement": {
+    "time": "uninstrumented complete forward/loss/backward/AdamW/geometry-update Graph step for CST; normal dense step for dense",
+    "memory": "capture/replay peak allocated and reserved",
+    "oracle_scratch": "released and allocator cache cleared before capture/peak reset; after24 check begins only after peaks recorded",
+    "phase_diagnostics": "independent trajectory outside primary timing/peak; never sum or subtract",
+    "GPU_process_usage": "unmeasured unless explicitly instrumented"
+  },
+  "jobs": {
+    "accelerator": "one shared-pool NVIDIA L4",
+    "ownership": "root supervisor only; agents do not provision",
+    "partition": "one complete worker per isolated job, plus exact regression partitions",
+    "outer_seconds": 900,
+    "driver_seconds": 875,
+    "child_seconds": 350,
+    "union": "every declared case/route exactly once; fixed source and driver/protocol hashes; no partial winner",
+    "failure": "retain failed source/raw result; stop qualification for that freeze; no timeout retry or tolerance relaxation"
+  },
+  "before_submission": [
+    "standalone research Algorithm/Recipe and strict supported-domain declaration",
+    "benchmark-local registry/catalog/cases and complete existing-runner integration",
+    "independent oracle revision and meaningful boundary/snapshot/optimizer regression coverage",
+    "workspace bound and captured allocation-lifetime review",
+    "exact test-node and worker manifests plus frozen runtime/driver/protocol hashes",
+    "root source review, commit, clean snapshot and excluded raw evidence"
+  ],
+  "future_stages": {
+    "indexed_support": "same physical precision; conservative outward-rounded candidate bounds, canonical IDs, exact predicate and complete fallback",
+    "bounded_execution": "same support and arithmetic; isolated chunk/storage/fusion mechanism",
+    "larger_sizes": "4096 then8192 only after preceding complete gates; separately declared domain and full-oracle budgets based on measured cost",
+    "performance_qualification": ">3% complete-step speed improvement OR >=5% allocated reduction with <=3% time regression against valid matched CST control; independent complete reverse confirmation",
+    "dense_reporting": "always report same-shape/batch/task/external FP32 and TF32 policy/AdamW engineering ratios; internal precision differences explicitly reported; no identical parameterization or learning-quality claim",
+    "fixed_K_control": "K209715 at2048/4096/8192 for mechanism attribution only; not a replacement for 5% primary series"
+  }
+}
