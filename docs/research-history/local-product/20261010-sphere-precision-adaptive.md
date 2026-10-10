@@ -145,7 +145,46 @@ The fixed0.001 candidate is rejected for large-scale qualification. There is
 no complete16-worker pass, primary timing, reverse confirmation or adoption.
 Its implementation and tests remain on the recoverable research branch;
 only the negative research notes are intended for main integration. The floor
-repair will receive a separately frozen regression validation. Any broader
+repair received a separately frozen regression validation below. Any broader
 precision policy must first be declared as a new study with unchanged accuracy
 gates; the next mechanism should establish a complete physical precision
 reference before narrowing its coverage for cost.
+
+## Separate floor-promotion repair validation
+
+Commit `98e1f40` materializes physical FP64 floor and inexact geometry
+constants explicitly. The denominator, derivative branch and singleton
+predicate share the same typed floor. It changes two new runtime files;
+the fixed0.001 selection guard, all298 inherited runtime files, original
+test nodes and error tolerances are unchanged.
+
+Research source `ae1401f06ffda70cac571f600912d3f5a0d6e7f5` passed the full
+CPU suite again (1468 passed,2943 GPU/database skips). Separately frozen
+regression-only job `l4job-e316941eccec478084c0125f4eb54ff3` then passed all78
+tests, zero failures/errors/skips. The disjoint5/17/17/17/22 partitions exactly
+match the frozen collection and merged JUnit, including all below/equal/above
+norm-floor probes. Independent receipt, archive, manifest, all1630 source
+files,13 AST anchors,298 parent files and6 new runtime hashes passed audit.
+
+- Source archive SHA256:
+  `6fa0e32fa93a7a5c44e5cd3e920e8665deebb20405ff7a18e4a26d3ca70f5a35`.
+- Result archive SHA256:
+  `f32a00fa02c7d332836eb5885754da2129cb8c634dc22523c2bcf69e24e318a5`.
+- Driver SHA256:
+  `10122a4c9b71998e79609b85b1f638c3162b0f3103523a19a6a71e0f8d887844`.
+- Protocol SHA256:
+  `06c7bdb8013d43c68626b7fda51a7636a5db9f41a4feceda5cfb9457c325c437`.
+
+Hardware was L4 UUID `GPU-830d467c-9a14-4e9e-93d2-03e4cc22e43f`, NVIDIA
+driver580.82.07, Torch2.11.0+cu130, CUDA13.0 and Triton3.6.0. Driver duration
+254.79s stayed within875s; every child stayed within350s; the900s pool job
+finished without timeout and its owned runtime was stopped. These are
+validation durations, not complete-step performance measurements.
+
+Ignored `output/sphere-precision-floorfix-v2/` preserves its independent
+protocol/driver/assessor, source and final result audits, exact collection and
+reproduction commands. The original study's25 local evidence/helper files
+were restored byte-identically; original GPU receipts and source archives
+were never modified. The repair validates the normalization implementation
+defect only. It does not supply the missing large full16-worker gate or
+requalify the fixed0.001 candidate.
