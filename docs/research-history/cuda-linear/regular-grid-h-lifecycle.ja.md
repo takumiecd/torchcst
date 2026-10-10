@@ -1203,3 +1203,12 @@ parameter-onlyの場合は従来のkernelを使う。partialは元のatom IDへ�
 同じsource内でgroup32 control・input-owner candidate・既存方式・denseを比較する。
 時間は21サンプル、24実更新、全atom/全siteのinitial/post24 oracle、両allocator peak<=dense。
 試作が遅い／メモリ条件を外れる場合も結果を保全し、条件を変えて採用扱いにしない。
+
+3つ目のgroup32比較（N1024 rho8）は結果archive・全manifest・oracle snapshotを取得照合後、
+remote cleanup要求の接続が切れた。supervisorはcleanup CLIの180s timeout後に終了1となり、
+所有VM `cst-pool-0baa66a66ecb-1` を停止した。lifecycleの `Session terminated` と
+`No active sessions found on server` を確認した。測定job自体は成功済み・結果保全済みであり、
+再測定は行わない。残るqueued N2048 rho8比較とinput-owner検証を新supervisorへ渡した。
+状態DBの編集・pool所有sessionへの直接操作は行っていない。
+停止記録は `output/regular-grid-h/overnight-evidence/interrupted-stop-lifecycle.log`。
+`interrupted-supervisor-status.json` は再開直後のsnapshotで、停止確認そのものはlifecycleを使う。
