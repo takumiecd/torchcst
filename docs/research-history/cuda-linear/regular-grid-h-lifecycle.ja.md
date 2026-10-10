@@ -1109,3 +1109,37 @@ PYTHONPATH=src:. python -m benchmarks.cuda.linear.periodic_comparison \
   --plans matrix-torch factor onchip-h reused-h16 reused-h32 prepared-h16 prepared-h32 dense \
   --isolated-oracle --phases --output output/regular-grid-h-prepared-final.json
 ```
+
+## 残る集約・backwardの切り分け（2026-10-11）
+
+ユーザーの継続依頼を受け、guard付きprepared Hを基準として夜間調査を続ける。
+出発点はcommit `f206a24d` の結果であり、denseとの速度差はまだ残る。
+Hの小batch寿命、単一joint normalization floor、全atom勾配を維持する。
+
+最初の固定診断はN2048、B32、rho3/8、prepared H32の2条件とする。
+既存runnerのfull oracle、24実更新、未計装完全stepの後で、initial/post24 snapshotを調べる。
+診断用Graphは主測定・capture/replay memoryから分離し、時間を足し引きしない。
+
+- prepared式のcloneを実際のguard付きruntimeとbitwise照合する。
+- profile評価を簡単な係数に置換、H読取りを合成値に置換、index-onlyの3条件は
+  出力を変える下限診断。選択可能なPlanや採用根拠にはしない。
+- exact式でoutput atom groupを8から32へ増やす。また各候補列を4/8分割し、
+  atomicなしの部分Yを最後に加算する。group32+split4も固定候補に含める。
+  reduction順序の変更はFP64 oracleの既存4e-4 gateで検査する。
+  全Hは保持せず、同じ小batchのHを全分割で再利用する。
+- 既存backwardのfull/input-only/parameter-only specializationを比較する。
+  input-onlyはG計算+dX zero/scatter、parameter-onlyはG/dG/H/dH+partial store。
+  specializationによるcompiler scheduleの違いも含むため、差をatomic stallなどの
+  物理的な原因に直結させない。共通dXの一致、parameter partialのbitwise一致を確認する。
+
+有望なexact候補のみ明示的な研究Planへ実装し、GPU契約テストの後、同一条件で
+基準・candidate・denseの完全stepとallocated/reserved総peakを測る。
+メモリは両peakがdense以下という既存方針を維持する。CSRは導入しない。
+GPUは共有poolのL4を1台使用し、NCUの空counter報告を繰り返さない。
+
+初回診断source `5fde5748` のjob `l4job-e29b995705e6420697ce4c57077fb7fb` は、
+動的Tensor長にconstexpr用 `tr.cdiv` を使ったcompile errorで小さい2検証が失敗した。
+大規模性能測定へは進んでいない。修正sourceは `3be51957`。
+誤ったsource hintを指定したqueued job `l4job-2c8fcb06b2e646928ae3d7a3e52e7551` は
+実行前にcancelし、正しいhintで別jobを提出した。失敗archiveは
+ignored `output/regular-grid-h/overnight-evidence/` にhash照合して保全した。
