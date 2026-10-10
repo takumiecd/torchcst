@@ -7,7 +7,7 @@ derivatives are cast to FP32 before contractions; no late norm cancellation.
 import triton as tr
 import triton.language as tl
 
-from .precision_prepare_kernels import physical_raw
+from .precision_prepare_kernels import _f64, physical_raw
 
 
 @tr.jit
@@ -38,10 +38,13 @@ def _block(
     gap, d0, d1, d2, precision = physical_raw(S, Q, P, a, idx, N)
     gap = tl.where(valid, gap, 0.0)
     norm = tl.load(Norm + a)
-    denominator = tl.maximum(norm, FLOOR)
+    # Keep the same FP64 floor in the denominator and derivative branch.
+    # Implicit FP32 constexpr promotion can flip the exact-equality branch.
+    floor = _f64(FLOOR)
+    denominator = tl.maximum(norm, floor)
     phi = gap * gap * gap / denominator
     coefficient = 6.0 * precision * gap * gap / denominator
-    project = tl.where(norm >= FLOOR, phi, 0.0)
+    project = tl.where(norm >= floor, phi, 0.0)
     t0 = coefficient * d0 - project * tl.load(Moment + 3 * a)
     t1 = coefficient * d1 - project * tl.load(Moment + 3 * a + 1)
     t2 = coefficient * d2 - project * tl.load(Moment + 3 * a + 2)
@@ -56,7 +59,7 @@ def _block(
         + t2 * tl.load(J + 6 * a + 5)
     )
     # Exact analytic identity, never used under the normalization floor.
-    singleton = (count == 1) & (norm >= FLOOR)
+    singleton = (count == 1) & (norm >= floor)
     g0 = tl.where(singleton | ~valid, 0.0, g0).to(tl.float32)
     g1 = tl.where(singleton | ~valid, 0.0, g1).to(tl.float32)
     return idx, valid, phi.to(tl.float32), g0, g1

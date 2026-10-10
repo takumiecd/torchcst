@@ -6,6 +6,12 @@ from triton.language.extra.cuda import libdevice
 
 
 @tr.jit
+def _f64(value: tl.constexpr):
+    """Materialize constants before mixed arithmetic can round them to FP32."""
+    return tl.full((), value, tl.float64)
+
+
+@tr.jit
 def classify(
     NI,
     NO,
@@ -79,13 +85,14 @@ def _geometry(Source, a, valid, Radius, Q, Jac, COL: tl.constexpr):
     r = tl.load(Radius).to(tl.float64)
     square = c0 * c0 + c1 * c1
     theta = libdevice.sqrt(square) / r
-    sinc_arg = theta / 3.141592653589793 * 3.141592653589793
+    pi = _f64(3.141592653589793)
+    sinc_arg = theta / pi * pi
     sinc = tl.where(sinc_arg == 0.0, 1.0, libdevice.sin(sinc_arg) / sinc_arg)
     cosine = libdevice.cos(theta)
     t2 = theta * theta
     curv = tl.where(
-        tl.abs(theta) < 1e-3,
-        (-1.0 / 3.0 + t2 / 30.0 - t2 * t2 / 840.0) / (r * r),
+        tl.abs(theta) < _f64(1e-3),
+        (_f64(-1.0 / 3.0) + t2 / 30.0 - t2 * t2 / 840.0) / (r * r),
         (cosine - sinc) / tl.maximum(square, 1.1754943508222875e-38),
     )
     tl.store(Q + 3 * a, r * cosine, valid)
@@ -183,7 +190,7 @@ def pack_physical(
         tl.store(Count + a, count)
         # phi*t = raw*draw/D². Belowfloor the projection is inactive;
         # its finite moment is still stored for a stable immutable snapshot.
-        denominator = tl.maximum(norm, FLOOR)
+        denominator = tl.maximum(norm, _f64(FLOOR))
         weight = raw * (6.0 * precision * gap * gap) / (denominator * denominator)
         tl.store(Moment + 3 * a, tl.sum(weight * d0, 0))
         tl.store(Moment + 3 * a + 1, tl.sum(weight * d1, 0))
