@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "case": {
+    "id": "sphere-support-adaptive-1024-sigma3",
+    "fixture": "polar_sphere_separable",
+    "size": 1024,
+    "rows": 32,
+    "atoms": 52428,
+    "profile": "rho3",
+    "dtype": "float32",
+    "seed": 41,
+    "warmup": 3,
+    "rounds": 21,
+    "optimizer": {
+      "name": "AdamW",
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "fused": true,
+      "capturable": false
+    }
+  },
+  "plans": [
+    "compact-weight",
+    "recompute-g4-merged",
+    "tiny16-adaptive"
+  ],
+  "baseline": "compact-weight",
+  "dense": true
+}

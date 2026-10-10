@@ -57,6 +57,9 @@ from torchcst._backends.cuda.algorithms.linear.profile_product_matrix.square_str
     SquareStripPreparationAlgorithm,
     SquareStripSplitAlgorithm,
 )
+from torchcst._backends.cuda.algorithms.linear.sphere_polar.adaptive_algorithm import (
+    SphereSupportAdaptiveAlgorithm,
+)
 from torchcst._backends.cuda.algorithms.linear.sphere_polar.algorithm import (
     SphereAlgorithm,
 )
@@ -143,6 +146,7 @@ REGISTRY.register(SphereGroupedCompactAlgorithm())
 REGISTRY.register(SphereDirectAlgorithm())
 REGISTRY.register(SphereDirectRecomputeAlgorithm())
 REGISTRY.register(SphereSiteGatherAlgorithm())
+REGISTRY.register(SphereSupportAdaptiveAlgorithm())
 REGISTRY.register(FactoredAlgorithm())
 REGISTRY.register(TorusChunkAlgorithm())
 REGISTRY.register(TorusOnchipAlgorithm())
@@ -311,11 +315,11 @@ class BenchmarkCase:
         if self.fixture == "polar_sphere_separable":
             if (
                 self.optimizer.capturable
-                or self.profile not in ("rho3", "rho8")
+                or self.profile not in ("rho1.25", "rho3", "rho8")
                 or self.widths is not None
             ):
                 raise ValueError(
-                    "Sphere requires eager optimizer and rho3/rho8 without custom widths"
+                    "Sphere requires eager optimizer and rho1.25/rho3/rho8 without custom widths"
                 )
         elif not self.optimizer.capturable:
             raise ValueError("existing fixtures require capturable AdamW")
@@ -364,7 +368,7 @@ class BenchmarkCase:
         if self.seed >= 2**63:
             raise ValueError("seed must be less than 2**63")
         profiles = (
-            ("rho3", "rho8")
+            ("rho1.25", "rho3", "rho8")
             if self.fixture == "polar_sphere_separable"
             else (
                 "broad",
